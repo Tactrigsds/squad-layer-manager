@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
+import { indexedChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
@@ -259,5 +260,134 @@ plainTest.describe('settings page', () => {
 
 		await mode.getByRole('button', { name: 'GUI', exact: true }).click()
 		await expect(expander).toHaveCount(1)
+	})
+})
+
+// The history page, against the events this app has recorded for itself. Its whole query lives in the url,
+// so a test can arrange one by navigating to it, and the results below the tabs always answer the type the
+// tabs name -- which is the invariant these mostly guard.
+
+const HISTORY_TALKER = 'e2e_history_talker'
+const HISTORY_NEEDLE = 'zqhistoryneedle'
+
+// Seeded once for the file, and waited for in the index rather than on screen: the page runs its query on
+// load and holds the result, so arriving before the event is indexed shows an empty page that never fills.
+async function seedHistory(app: AppFixture) {
+	if (indexedChatMatches(app, HISTORY_NEEDLE) > 0) return
+	const talker =
+		app.emu.world.playerList().find((p) => p.name === HISTORY_TALKER) ??
+		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_TALKER}`, teamId: 1 }))
+	app.emu.world.chat(talker, 'ChatAll', `${HISTORY_NEEDLE} said something`)
+	await app.waitFor(() => indexedChatMatches(app, HISTORY_NEEDLE) > 0 || undefined, {
+		label: 'the seeded chat message to reach the history index',
+		timeoutMs: 30_000,
+	})
+}
+
+// appended, not passed as part of the path: loginUrl adds its own `?login=`, so a path that already carries
+// a query string ends up with the second one folded into the last value
+const historyUrl = (app: AppFixture, search: string) => `${app.loginUrl(app.adminUser, '/history')}&${search}`
+const resultTab = (page: Page, name: 'Events' | 'Players' | 'Matches') => page.getByRole('button', { name, exact: true })
+
+test.describe('history page', () => {
+	test.beforeEach(async ({ app }) => {
+		await seedHistory(app)
+	})
+
+	test('answers the query the url carries', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+
+		const results = page.getByRole('region', { name: 'Event results' })
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+		// the needle is the whole filter, so every row that came back is the seeded message
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
+		await expect(page.getByText('No results')).toBeHidden()
+	})
+
+	// The tabs name what the results answer. They used to follow the draft instead, so a switch that could
+	// not re-run moved the tab and left the page on the previous type.
+	test('switching result type re-runs and takes the url with it', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+
+		await resultTab(page, 'Players').click()
+		await expect(page).toHaveURL(/type=players/)
+		await expect(page.getByRole('table', { name: 'Player results' })).toBeVisible({ timeout: 20_000 })
+
+		await resultTab(page, 'Matches').click()
+		await expect(page).toHaveURL(/type=matches/)
+		await expect(page.getByRole('table', { name: 'Match results' })).toBeVisible({ timeout: 20_000 })
+	})
+
+	// An unfinished node cannot be run and must not be silently dropped, so the results say so rather than
+	// answering a query nobody asked for. Switching type stays available: it is still a switch of what is
+	// being built, and Run catches the page up once the tree is finishable again.
+	test('an unfinished filter replaces the results, and the type still switches', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+
+		await page.getByRole('button', { name: 'Advanced' }).click()
+		await page.getByRole('button', { name: 'Add to this group' }).first().click()
+		await page.getByRole('menuitem', { name: 'Comparison' }).click()
+
+		await expect(page.getByText('Unfinished filter')).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Event results' })).toBeHidden()
+
+		await resultTab(page, 'Players').click()
+		await expect(resultTab(page, 'Players')).toHaveAttribute('data-state', 'active')
+		// the switch is pending, not applied: nothing below the tabs claims to be player results yet
+		await expect(page.getByText('Unfinished filter')).toBeVisible()
+		await expect(page.getByRole('table', { name: 'Player results' })).toBeHidden()
+
+		// back in basic mode the tree no longer applies, so the query is runnable -- but not yet run
+		await page.getByRole('button', { name: 'Basic' }).click()
+		await expect(page.getByText('Run to see these results')).toBeVisible()
+
+		await page.getByRole('button', { name: 'Run', exact: true }).click()
+		await expect(page).toHaveURL(/type=players/)
+		await expect(page.getByRole('table', { name: 'Player results' })).toBeVisible({ timeout: 20_000 })
+	})
+
+	// A results row expands into the events behind its own count, fetched as rendered html and filled into a
+	// panel row by the delegated handlers rather than by react.
+	test('a player row opens the events behind its count', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=players&name=${HISTORY_TALKER}`))
+
+		const table = page.getByRole('table', { name: 'Player results' })
+		const row = table.getByRole('row').filter({ hasText: HISTORY_TALKER })
+		await expect(row).toBeVisible({ timeout: 30_000 })
+
+		await row.click()
+		// the panel is the row's sibling, revealed and filled once the events come back
+		const panel = table.locator('tr[data-dom-row-events-panel]:not([hidden])')
+		await expect(panel).toBeVisible({ timeout: 20_000 })
+		await expect(panel.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 20_000 })
+	})
+
+	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save
+	// updates that one rather than duplicating it under a second name.
+	test('saves a query, then updates it in place', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+
+		const name = `e2e saved ${Date.now()}`
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await page.getByPlaceholder('Query name').fill(name)
+		await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click()
+
+		// the page now holds a saved query of the user's own, so Save becomes update-or-save-as-new
+		const update = page.getByRole('button', { name: 'Update', exact: true })
+		await expect(update).toBeVisible()
+
+		await resultTab(page, 'Matches').click()
+		await expect(page).toHaveURL(/type=matches/)
+		await update.click()
+		await expect(page.getByText(`Updated "${name}"`)).toBeVisible({ timeout: 20_000 })
+
+		// what was saved is what the page was showing when it was updated
+		await page.goto(historyUrl(app, 'type=events'))
+		await page.getByRole('button', { name: 'Saved' }).click()
+		await page.getByRole('button', { name }).click()
+		await expect(page).toHaveURL(/type=matches/)
 	})
 })

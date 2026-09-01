@@ -145,6 +145,8 @@ function SsrRows(props: { rows: string[]; matches: MH.MatchDetails[] }) {
 	return (
 		<div
 			ref={hostRef}
+			role="region"
+			aria-label={tr.text(HistoryMsgs.eventResults())}
 			{...{ [RC.SCOPE_ATTR]: ctx.scopeId }}
 			className="flex flex-col [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
 		/>

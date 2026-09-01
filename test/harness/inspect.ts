@@ -74,6 +74,18 @@ export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	}
 }
 
+// how many recorded chat messages the history engine's fts index holds for a needle. The index is written
+// as the app ingests the event, so this is what a history search over that text is about to find.
+export function indexedChatMatches(app: AppFixture, needle: string): number {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT count(*) AS n FROM chatSearch WHERE chatSearch MATCH ?`).get(needle) as { n: number }
+		return row.n
+	} finally {
+		db.close()
+	}
+}
+
 // every AdminWarn the app addressed to this player, in order. Warns name their target by eos or steam id.
 export function warnsTo(app: AppFixture, player: Pick<EmuPlayer, 'eos' | 'steam'>): string[] {
 	return app.emu.rcon.commandLog

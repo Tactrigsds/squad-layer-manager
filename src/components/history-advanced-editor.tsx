@@ -121,7 +121,7 @@ function BlockEditor(
 				</Select>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<Button variant="ghost" size="sm" className="h-6 px-1.5">
+						<Button variant="ghost" size="sm" className="h-6 px-1.5" aria-label={tr.text(HistoryMsgs.addNode())}>
 							<Icons.Plus className="h-3 w-3" />
 						</Button>
 					</DropdownMenuTrigger>

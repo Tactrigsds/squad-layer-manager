@@ -390,7 +390,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 			<ResultNotices res={res} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			<div className="min-h-0 overflow-y-auto">
-				<table className="w-full border-collapse text-xs">
+				<table aria-label={tr.text(HistoryMsgs.playerResults())} className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
@@ -430,7 +430,7 @@ function MatchesResults(props: { query: HQ.Query }) {
 			<ResultNotices res={res} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			<div className="min-h-0 overflow-y-auto">
-				<table className="w-full border-collapse text-xs">
+				<table aria-label={tr.text(HistoryMsgs.matchResults())} className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
