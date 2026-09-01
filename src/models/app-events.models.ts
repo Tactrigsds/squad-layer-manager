@@ -846,6 +846,11 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 	for (const [layerId, kind] of iterAssocLayerIds(e)) {
 		rows.push({ dimension: 'layer', value: layerId, time, appEventId: e.id, role: kind })
 	}
+	// one role, unlike the other dimensions: iterAssocUserIds already folds the actor in with the users an
+	// event attributes to, and no query has yet wanted to tell those apart
+	for (const userId of iterAssocUserIds(e)) {
+		rows.push({ dimension: 'user', value: userId.toString(), time, appEventId: e.id, role: 'involved' })
+	}
 	return rows
 }
 

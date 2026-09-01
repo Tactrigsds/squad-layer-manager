@@ -1,12 +1,13 @@
 import * as HQ from '@/models/history.models'
 
-// Basic mode's optional fields, as the chip row presents them: which control edits one, where it sits in the
-// "+ Filter" menu, and which result types offer it. Server, time and player are not here -- they are the
-// scope row, always shown, because every query is scoped by them.
+// Basic mode's optional fields, as the rail lists them: which control edits one, where it sits in the
+// "+ Filter" menu, and which result types offer it. Server, time, player and user are not here -- they are
+// the scope block, always shown, because every query is scoped by them.
 //
 // Relevance is ordering, not capability. Every field compiles for every result type (queryFilterNode), so
-// "event type" on a matches query means "matches containing such an event", which is worth having. The menu
-// just leads with the group the current result type is about.
+// "event type" on a matches query means "matches containing such an event", which is worth having. The
+// result type only decides which fields are shown before you ask for them (DEFAULT_FIELDS) and what the
+// "+ Filter" menu leads with.
 
 export type FieldKey =
 	| 'types'
@@ -63,6 +64,37 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 	matches: ['match', 'layer', 'events', 'players'],
 }
 
+// What the rail shows for a result type before anything is asked for: the fields that type's questions are
+// usually about. Not a capability boundary -- every other field is one "+ Filter" away, and a field carried
+// in from another result type stays visible while it holds a value (see visibleFields).
+const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
+	events: ['types', 'chat'],
+	players: ['minMatches', 'types'],
+	matches: ['outcome', 'map', 'ticketDiff'],
+}
+
+/**
+ * The fields the rail lists, in menu order.
+ *
+ * A set field is always shown, whichever result type set it: switching type is a change of view over one
+ * query, so a filter that survives into the new results has to stay visible, or the results answer a
+ * question the rail no longer admits to asking. `extra` carries the fields "+ Filter" has added but which
+ * have no value yet.
+ */
+export function visibleFields(query: HQ.Query, extra: readonly FieldKey[] = []): { group: FieldGroup; fields: FieldDef[] }[] {
+	const out: { group: FieldGroup; fields: FieldDef[] }[] = []
+	for (const group of GROUP_ORDER[query.type]) {
+		const fields = Object.values(FIELD_DEFS).filter(
+			(def) =>
+				def.group === group &&
+				(def.onlyFor === undefined || def.onlyFor.includes(query.type)) &&
+				(isSet(query, def.key) || extra.includes(def.key) || DEFAULT_FIELDS[query.type].includes(def.key)),
+		)
+		if (fields.length > 0) out.push({ group, fields })
+	}
+	return out
+}
+
 /** Whether the query carries a value for this field, which is what decides if it has a chip. */
 export function isSet(query: HQ.Query, key: FieldKey): boolean {
 	switch (key) {
@@ -81,12 +113,12 @@ export function clearPatch(key: FieldKey): Partial<HQ.Query> {
 	return { [key]: undefined }
 }
 
-/** The unset fields the "+ Filter" menu offers, grouped, with the current result type's group first. */
-export function addableGroups(query: HQ.Query): { group: FieldGroup; fields: FieldDef[] }[] {
+/** The fields the "+ Filter" menu offers: everything applicable that the rail is not already showing. */
+export function addableGroups(query: HQ.Query, shown: readonly FieldKey[]): { group: FieldGroup; fields: FieldDef[] }[] {
 	const out: { group: FieldGroup; fields: FieldDef[] }[] = []
 	for (const group of GROUP_ORDER[query.type]) {
 		const fields = Object.values(FIELD_DEFS).filter(
-			(def) => def.group === group && !isSet(query, def.key) && (def.onlyFor === undefined || def.onlyFor.includes(query.type)),
+			(def) => def.group === group && !shown.includes(def.key) && (def.onlyFor === undefined || def.onlyFor.includes(query.type)),
 		)
 		if (fields.length > 0) out.push({ group, fields })
 	}

@@ -386,6 +386,74 @@ describe('the event archive', () => {
 		expect(withVariant.total).toBe(0)
 	})
 
+	// The `user` dimension: the SLM user an app event is attributable to, indexed in the same generic sidecar
+	// as the player dimension. Nothing else covers it, and the rows only exist because migration 0110 clears
+	// feedVisible to make the backfill replay the extractors over rows that predate them.
+	it('searches app events by the SLM user they are attributable to', async () => {
+		// an app event with an slm-user actor: everything the emulator drives on its own is system-actored, so
+		// the dimension has nothing to index until a signed-in user does something
+		const toggled = await client.squadServer.toggleFogOfWar({ serverId: app.serverId, disabled: true })
+		expect(toggled.code).toBe('ok')
+
+		const db = app.readDb()
+		let subject: { value: string; total: number }
+		try {
+			const row = db
+				.prepare(
+					`SELECT value, count(*) AS total FROM appEventAssociations
+					 WHERE dimension = 'user' GROUP BY value ORDER BY total DESC LIMIT 1`,
+				)
+				.get() as { value: string; total: number } | undefined
+			if (!row) throw new Error('the backfill recorded no user associations')
+			subject = row
+		} finally {
+			db.close()
+		}
+
+		const byUser = await client.history.query({ query: { type: 'events', user: subject.value } })
+		expect(byUser.code).toBe('ok')
+		if (byUser.code !== 'ok' || byUser.type !== 'events') return
+		expect(byUser.total).toBeGreaterThan(0)
+
+		// a user nobody is: the dimension filters rather than being ignored
+		const nobody = await client.history.query({ query: { type: 'events', user: '00000000000000000' } })
+		expect(nobody.code).toBe('ok')
+		if (nobody.code !== 'ok' || nobody.type !== 'events') return
+		expect(nobody.total).toBe(0)
+
+		// every result type compiles it, matches included, where it reads as "matches containing such an event"
+		for (const type of ['matches', 'players'] as const) {
+			const res = await client.history.query({ query: { type, user: subject.value } })
+			expect(res.code, `${type} filtered by user`).toBe('ok')
+		}
+	})
+
+	// Names, not ids: the user field's combo-box is what actually calls this, and it is the only cover for
+	// resolveNamedUserIds, which searches the nickname and the discord username together.
+	it('searches users by name for the query bar', async () => {
+		const db = app.readDb()
+		let name: string
+		try {
+			const row = db
+				.prepare(
+					`SELECT coalesce(u.nickname, d.username) AS name FROM users u JOIN discordAccounts d ON d.discordId = u.discordId LIMIT 1`,
+				)
+				.get() as { name: string } | undefined
+			if (!row) throw new Error('no user to search for')
+			name = row.name
+		} finally {
+			db.close()
+		}
+
+		const found = await client.history.searchUsers({ needle: name.slice(0, 3) })
+		expect(found.code).toBe('ok')
+		if (found.code !== 'ok') return
+		expect(found.users.some((u) => u.name === name)).toBe(true)
+
+		const missing = await client.history.searchUsers({ needle: 'zzz-no-such-user-zzz' })
+		expect(missing.code === 'ok' && missing.users.length).toBe(0)
+	})
+
 	// A match-layer node is rewritten to a match-ids node before it reaches the engine (see history-resolve),
 	// and every compiler has to know that kind. Nothing else covers the advanced editor's layer node.
 	it('runs an advanced query whose layer node resolved to match ids', async () => {

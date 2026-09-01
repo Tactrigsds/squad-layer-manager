@@ -75,8 +75,10 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-2 p-2" onKeyDown={onKeyDown}>
-			<div className="flex flex-wrap items-center gap-2">
+		// the builder is a rail so the results keep the full height of the page: a query that grows another
+		// field pushes the rail's own scroll rather than the result rows down
+		<div className="flex h-full min-h-0 gap-2 p-2" onKeyDown={onKeyDown}>
+			<aside className="flex w-64 shrink-0 flex-col gap-2 border-r pr-2">
 				<TabsList
 					options={[
 						{ value: 'events', label: tr.text(HistoryMsgs.tabEvents()) },
@@ -94,16 +96,17 @@ export default function HistoryPage(props: HistoryPageProps) {
 					active={draft.mode}
 					setActive={(mode) => HistoryFrame.Actions.setMode(props.stores, mode)}
 				/>
-				<div className="grow" />
-				<RecentMenu onRun={props.onRun} />
-				<SavedMenu onRun={props.onRun} />
-				<Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
-					{tr.text(HistoryMsgs.save())}
-				</Button>
-				<CopyLinkButton />
+				{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
+				<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
+					{draft.mode === 'basic' ? (
+						<HistoryQueryBar draft={draft} set={set} />
+					) : (
+						<p className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.advancedInMainColumn())}</p>
+					)}
+				</div>
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Button size="sm" disabled={!canRun} onClick={run}>
+						<Button size="sm" className="w-full" disabled={!canRun} onClick={run}>
 							{tr.text(HistoryMsgs.run())}
 						</Button>
 					</TooltipTrigger>
@@ -114,15 +117,22 @@ export default function HistoryPage(props: HistoryPageProps) {
 						</KbdGroup>
 					</TooltipContent>
 				</Tooltip>
-			</div>
+			</aside>
 
-			{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-			<div key={executedKey}>
-				<HistoryQueryBar draft={draft} set={set} />
+			<div className="flex min-w-0 flex-1 flex-col gap-2">
+				<div className="flex flex-wrap items-center gap-2">
+					<div className="grow" />
+					<RecentMenu onRun={props.onRun} />
+					<SavedMenu onRun={props.onRun} />
+					<Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
+						{tr.text(HistoryMsgs.save())}
+					</Button>
+					<CopyLinkButton />
+				</div>
+				{/* the tree editor wants horizontal room the rail does not have, so advanced mode builds here */}
+				{draft.mode === 'advanced' && <HistoryAdvancedEditor stores={props.stores} />}
+				<Results query={props.executed} onRun={props.onRun} />
 			</div>
-			{draft.mode === 'advanced' && <HistoryAdvancedEditor stores={props.stores} />}
-
-			<Results query={props.executed} onRun={props.onRun} />
 			<SaveDialog stores={props.stores} open={saveOpen} onOpenChange={setSaveOpen} />
 		</div>
 	)

@@ -29,6 +29,8 @@ export type ColumnDomain =
 	| { kind: 'dynamic-enum'; source: DynamicEnumSource }
 	// a player reference: an eos id, or a steam64 the engine resolves to one
 	| { kind: 'player' }
+	// an SLM user reference: a discord id, or a name the engine resolves against nickname and username
+	| { kind: 'user' }
 	// free text; `eq` reads as "contains" (fts MATCH for chat)
 	| { kind: 'text' }
 
@@ -47,6 +49,10 @@ export const COLUMN_DEFS = {
 	eventId: { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
 	server: { key: 'server', displayName: 'Server', domain: { kind: 'dynamic-enum', source: 'servers' } },
 	player: { key: 'player', displayName: 'Player', domain: { kind: 'player' } },
+	// The SLM user an event is attributable to: whoever performed it, plus anyone it was performed against
+	// (see iterAssocUserIds). Only app events have one, so this reads as false against a server event, which
+	// is what makes "events involving user X" mean the audit trail rather than nothing.
+	user: { key: 'user', displayName: 'SLM user', domain: { kind: 'user' } },
 	'event.type': { key: 'event.type', displayName: 'Event type', domain: { kind: 'enum', options: EVENT_TYPES } },
 	'event.variant': { key: 'event.variant', displayName: 'Kill variant', domain: { kind: 'enum', options: EVENT_VARIANTS } },
 	'event.damageSource': {
@@ -106,6 +112,7 @@ export function columnValueDomain(key: string): F.ValueDomain | undefined {
 		case 'dynamic-enum':
 			return { kind: 'enum', mapping: `history:${key}` }
 		case 'player':
+		case 'user':
 		case 'text':
 			return { kind: 'string' }
 		default:
@@ -123,6 +130,7 @@ export function columnCompOptions(key: string): F.CompOpSelectOption[] {
 		case 'text':
 			return all.filter((o) => o.type === 'eq').map((o) => ({ ...o, label: o.neg ? 'not containing' : 'contains' }))
 		case 'player':
+		case 'user':
 			return all.filter((o) => o.type === 'eq' || o.type === 'in')
 		default:
 			return all
@@ -253,6 +261,7 @@ export const QuerySchema = z.object({
 
 	// basic mode's fields, one url param each so a basic query reads as a url
 	player: z.string().optional(),
+	user: z.string().optional(),
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
@@ -310,6 +319,7 @@ export function queryFilterNode(query: Query): Node {
 	// `player` on the players result type filters which rows are shown, not which events are aggregated;
 	// the engine reads it from the query directly (see groupPlayerRefs)
 	if (query.player && query.type !== 'players') children.push(comp('player', [query.player]))
+	if (query.user) children.push(comp('user', [query.user]))
 	if (query.types && query.types.length > 0) children.push(comp('event.type', query.types))
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))

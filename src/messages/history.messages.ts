@@ -38,11 +38,16 @@ export const anyOption = def('Any')
 export const noLayerFilter = def('No layer filter')
 export const fieldTicketDiff = def('Ticket difference')
 export const fieldTime = def('Time')
+export const fieldUser = def('SLM user')
 
 // the scope row's player picker, which searches names and accepts a pasted id
 export const playerSearchPlaceholder = def('Any player')
 export const playerSearchHint = def('Type a name, or paste an EOS / Steam64 id')
 export const playerSearchShort = def('Keep typing to search names')
+
+// the same, for the SLM user who performed an action or had one taken against them
+export const userSearchPlaceholder = def('Any user')
+export const userSearchHint = def('Type a nickname or discord name')
 export const filterByTyped = def((needle: string) => t('Filter by "{needle}"', { needle }))
 
 // time presets
@@ -53,6 +58,8 @@ export const timeLast30d = def('Last 30 days')
 export const timeCustom = def('Custom range')
 
 export const addFilter = def('Filter')
+export const advancedInMainColumn = def('Building the query tree on the right.')
+export const groupScope = def('Scope')
 export const groupEvents = def('Event')
 export const groupMatch = def('Match')
 export const groupLayer = def('Layer')

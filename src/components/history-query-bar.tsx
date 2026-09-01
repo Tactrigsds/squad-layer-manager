@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { assertNever } from '@/lib/type-guards'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import type * as HQ from '@/models/history.models'
@@ -29,9 +30,12 @@ import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-// The query bar: a scope row every query has (server, time, player), then one chip per optional field that
-// is set, and a "+ Filter" menu offering the rest. A field with no value has no chip, which is what keeps
-// the bar showing only what the current query actually constrains.
+// The query builder's rail: a scope block every query has (server, time, player, user), then the optional
+// fields for the current result type, then a "+ Filter" menu offering the rest.
+//
+// Which optional fields are listed is the result type's default set, plus anything currently set. A set
+// field stays listed after a type switch because the filter itself carries across: the results answer with
+// it applied, so the rail has to keep admitting to it.
 
 type Set = (patch: Partial<HQ.Query>) => void
 
@@ -39,24 +43,48 @@ const ANY = '$any'
 
 export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
+	// fields "+ Filter" has added that hold no value yet, so nothing else can infer they should be listed
+	const [extra, setExtra] = React.useState<readonly QF.FieldKey[]>([])
+	const groups = QF.visibleFields(draft, extra)
+	const shown = groups.flatMap((g) => g.fields.map((f) => f.key))
+
 	return (
-		<div className="flex flex-col gap-1.5">
-			<ScopeRow draft={draft} set={set} />
-			<ChipRow draft={draft} set={set} />
+		<div className="flex flex-col gap-3">
+			<ScopeBlock draft={draft} set={set} />
+			{groups.map((group) => (
+				<section key={group.group} className="flex flex-col gap-1">
+					<GroupHeading>{groupLabel(group.group)}</GroupHeading>
+					{group.fields.map((field) => (
+						<FieldRow
+							key={field.key}
+							field={field}
+							draft={draft}
+							set={set}
+							onRemove={() => setExtra((prev) => prev.filter((k) => k !== field.key))}
+						/>
+					))}
+				</section>
+			))}
+			<AddFilterMenu draft={draft} shown={shown} onPick={(key) => setExtra((prev) => [...prev, key])} />
 		</div>
 	)
 }
 
+function GroupHeading(props: { children: React.ReactNode }) {
+	return <h3 className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{props.children}</h3>
+}
+
 // -------- scope --------
 
-function ScopeRow(props: { draft: HQ.Query; set: Set }) {
+function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 	return (
-		<div className="flex flex-wrap items-end gap-2">
+		<section className="flex flex-col gap-1">
+			<GroupHeading>{tr.text(HistoryMsgs.groupScope())}</GroupHeading>
 			<Field label={tr.text(HistoryMsgs.fieldServer())}>
 				<Select value={draft.server ?? ANY} onValueChange={(v) => set({ server: v === ANY ? undefined : v })}>
-					<SelectTrigger className="h-7 w-max text-xs">
+					<SelectTrigger className="h-7 w-full text-xs">
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
@@ -75,15 +103,18 @@ function ScopeRow(props: { draft: HQ.Query; set: Set }) {
 			<Field label={tr.text(HistoryMsgs.fieldPlayer())}>
 				<PlayerPicker value={draft.player} onSelect={(player) => set({ player })} />
 			</Field>
-		</div>
+			<Field label={tr.text(HistoryMsgs.fieldUser())}>
+				<UserPicker value={draft.user} onSelect={(user) => set({ user })} />
+			</Field>
+		</section>
 	)
 }
 
 function Field(props: { label: string; children: React.ReactNode }) {
 	return (
-		<label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-			{props.label}
-			{props.children}
+		<label className="flex items-center gap-2 text-xs text-muted-foreground">
+			<span className="w-16 shrink-0 truncate">{props.label}</span>
+			<span className="min-w-0 flex-1">{props.children}</span>
 		</label>
 	)
 }
@@ -208,7 +239,7 @@ function PlayerPicker(props: { value: string | undefined; onSelect: (value: stri
 				trimmed.length > 0 && trimmed.length < HistoryClient.MIN_PLAYER_NEEDLE ? tr.text(HistoryMsgs.playerSearchShort()) : undefined
 			}
 			allowEmpty
-			className="w-52"
+			className="w-full"
 			inputValue={needle}
 			setInputValue={setNeedle}
 			value={props.value}
@@ -218,45 +249,57 @@ function PlayerPicker(props: { value: string | undefined; onSelect: (value: stri
 	)
 }
 
-// -------- chips --------
+// The user counterpart to PlayerPicker. Same shape, but no minimum needle and no trigram index behind it:
+// an install has hundreds of users where it has hundreds of thousands of players.
+function UserPicker(props: { value: string | undefined; onSelect: (value: string | undefined) => void }) {
+	const [needle, setNeedle] = React.useState('')
+	const trimmed = needle.trim()
+	const search = useQuery(HistoryClient.userSearchBase(trimmed))
+	const selectedInfo = useQuery(HistoryClient.userInfoBase(props.value))
 
-function ChipRow(props: { draft: HQ.Query; set: Set }) {
-	const { draft, set } = props
-	// The field the "+ Filter" menu just added, which has no value yet and so no chip of its own. Held here
-	// rather than in the menu so that a chip's identity is its field key: setting a value must not remount
-	// it, which would tear down the popover being edited.
-	const [pending, setPending] = React.useState<QF.FieldKey | undefined>(undefined)
-	const active = (Object.keys(QF.FIELD_DEFS) as QF.FieldKey[]).filter((key) => QF.isSet(draft, key))
-	const shown = pending !== undefined && !active.includes(pending) ? [...active, pending] : active
+	const options = React.useMemo(() => {
+		const found = search.data?.code === 'ok' ? search.data.users : []
+		const list = found.map((u) => ({ value: u.userId, label: u.name }))
+		if (trimmed !== '' && !list.some((o) => o.label === trimmed)) {
+			list.unshift({ value: trimmed, label: tr.text(HistoryMsgs.filterByTyped(trimmed)) })
+		}
+		if (props.value !== undefined && !list.some((o) => o.value === props.value)) {
+			const name = selectedInfo.data?.code === 'ok' ? selectedInfo.data.name : undefined
+			list.unshift({ value: props.value, label: name ?? props.value })
+		}
+		return list
+	}, [search.data, trimmed, props.value, selectedInfo.data])
 
 	return (
-		<div className="flex flex-wrap items-center gap-1.5">
-			{shown.map((key) => (
-				<FieldChip
-					key={key}
-					field={QF.FIELD_DEFS[key]}
-					draft={draft}
-					set={set}
-					onDismiss={() => setPending((prev) => (prev === key ? undefined : prev))}
-				/>
-			))}
-			<AddFilterMenu draft={draft} onPick={setPending} />
-		</div>
+		<ComboBox
+			title={tr.text(HistoryMsgs.fieldUser())}
+			placeholder={tr.text(HistoryMsgs.userSearchPlaceholder())}
+			searchPlaceholder={tr.text(HistoryMsgs.userSearchHint())}
+			allowEmpty
+			className="w-full"
+			inputValue={needle}
+			setInputValue={setNeedle}
+			value={props.value}
+			options={trimmed !== '' && search.isFetching ? LOADING : options}
+			onSelect={(v) => props.onSelect(v ?? undefined)}
+		/>
 	)
 }
 
-function AddFilterMenu(props: { draft: HQ.Query; onPick: (key: QF.FieldKey) => void }) {
-	const groups = QF.addableGroups(props.draft)
+// -------- fields --------
+
+function AddFilterMenu(props: { draft: HQ.Query; shown: readonly QF.FieldKey[]; onPick: (key: QF.FieldKey) => void }) {
+	const groups = QF.addableGroups(props.draft, props.shown)
 	if (groups.length === 0) return null
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline" size="sm" className="h-6 border-dashed px-2 text-xs font-normal text-muted-foreground">
+				<Button variant="outline" size="sm" className="h-7 w-full border-dashed text-xs font-normal text-muted-foreground">
 					<Icons.Plus className="mr-1 h-3 w-3" />
 					{tr.text(HistoryMsgs.addFilter())}
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent className="max-h-96 overflow-y-auto">
+			<DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
 				{groups.map((group, i) => (
 					<React.Fragment key={group.group}>
 						{i > 0 && <DropdownMenuSeparator />}
@@ -273,31 +316,35 @@ function AddFilterMenu(props: { draft: HQ.Query; onPick: (key: QF.FieldKey) => v
 	)
 }
 
-// A newly added chip does not open its own editor: the dropdown that added it holds focus for the length of
+// A newly added field does not open its own editor: the dropdown that added it holds focus for the length of
 // its exit animation and dismisses any popover opened before that, so auto-opening means racing a duration
-// this component cannot see. The chip reads "Any" until it is clicked, which says the same thing.
-function FieldChip(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onDismiss: () => void }) {
+// this component cannot see. The row reads "Any" until it is clicked, which says the same thing.
+function FieldRow(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onRemove: () => void }) {
 	const { field, draft, set } = props
 	const [open, setOpen] = React.useState(false)
 	const summary = fieldSummary(draft, field.key)
+	const isSet = QF.isSet(draft, field.key)
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<div className="flex h-6 items-center rounded-full border border-border bg-muted/40 pr-1 text-xs">
+			<div className="flex items-center gap-2 text-xs">
+				<span className="w-16 shrink-0 truncate text-muted-foreground">{fieldLabel(field.key)}</span>
 				<PopoverTrigger asChild>
-					<button type="button" className="flex h-full items-center gap-1.5 rounded-l-full px-2 hover:bg-accent">
-						<span className="text-muted-foreground">{fieldLabel(field.key)}</span>
-						<span className="max-w-56 truncate">{summary ?? tr.text(HistoryMsgs.anyOption())}</span>
+					<button
+						type="button"
+						className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-input bg-transparent px-2 text-left hover:bg-accent"
+					>
+						<span className={cn('truncate', !isSet && 'text-muted-foreground')}>{summary ?? tr.text(HistoryMsgs.anyOption())}</span>
 					</button>
 				</PopoverTrigger>
 				<button
 					type="button"
-					className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+					className="shrink-0 text-muted-foreground hover:text-foreground"
 					title={tr.text(HistoryMsgs.clearFilter())}
 					onClick={() => {
 						set(QF.clearPatch(field.key))
 						setOpen(false)
-						props.onDismiss()
+						props.onRemove()
 					}}
 				>
 					<Icons.X className="h-3 w-3" />

@@ -78,11 +78,44 @@ export type ResolvedArtifacts = {
 	matchSets: Map<HQ.Node, number[]>
 	playerSets: Map<HQ.Node, string[]>
 	playerValues: Map<HQ.Node, string[]>
+	userValues: Map<HQ.Node, string[]>
 	damageSourceIds: Map<HQ.Node, number[]>
 	// the layer ids a layer-part predicate selects. Held as ids rather than as the matches that played them:
 	// the id is what every table already carries, and there are a few hundred of them against any number of
 	// matches, so `layerId IN (...)` reaches the same rows through matchHistory's own index.
 	layerSets: Map<HQ.Node, string[]>
+}
+
+// A discord id is the user id itself; anything else reads as a name substring, matching how a player ref
+// works. No trigram index here and none wanted: an install has hundreds of users where it has hundreds of
+// thousands of players, so a LIKE over both name columns is already an insignificant scan.
+const DISCORD_ID_RE = /^\d{17,20}$/
+
+export async function resolveUserRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
+	const userIds: string[] = []
+	for (const ref of refs) {
+		if (DISCORD_ID_RE.test(ref)) userIds.push(ref)
+		else userIds.push(...(await resolveNamedUserIds(ctx, ref)))
+	}
+	return userIds
+}
+
+export async function resolveNamedUserIds(ctx: C.Db, name: string): Promise<string[]> {
+	const trimmed = name.trim()
+	if (trimmed === '') return []
+	const needle = `%${trimmed.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+	// the nickname is the display name when set, so it is searched alongside the discord username the account
+	// carries; either matching is a hit, since the searcher does not know which the user goes by here
+	const rows = await ctx
+		.db()
+		.select({ discordId: Schema.users.discordId })
+		.from(Schema.users)
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+		.where(
+			E.or(sql`${Schema.users.nickname} LIKE ${needle} ESCAPE '\\'`, sql`${Schema.discordAccounts.username} LIKE ${needle} ESCAPE '\\'`),
+		)
+		.limit(MAX_NAME_MATCHES)
+	return rows.map((r) => r.discordId.toString())
 }
 
 const STEAM64_RE = /^7656\d{13}$/
@@ -236,6 +269,7 @@ export async function resolveArtifacts(
 		matchSets: new Map(),
 		playerSets: new Map(),
 		playerValues: new Map(),
+		userValues: new Map(),
 		damageSourceIds: new Map(),
 		layerSets: new Map(),
 	}
@@ -298,6 +332,10 @@ export async function resolveArtifacts(
 		if (column === 'player') {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			artifacts.playerValues.set(node, await resolvePlayerRefs(ctx, refs))
+		}
+		if (column === 'user') {
+			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
+			artifacts.userValues.set(node, await resolveUserRefs(ctx, refs))
 		}
 		if (HQ.isLayerColumn(column)) {
 			played ??= await playedLayers(ctx, bounds)
@@ -533,6 +571,10 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 					: sql`${pei.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.layerId, layerIds)})`
 			return comp.neg ? negate(cond) : cond
 		}
+		// an app-event dimension a server event has no counterpart for: it records what the game did, which is
+		// never attributable to an SLM user
+		case 'user':
+			return comp.neg ? negate(sql`0 = 1`) : sql`0 = 1`
 		default:
 			assertNever(column)
 	}
@@ -589,6 +631,11 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			const cond = playerIds.length === 0 ? sql`0 = 1` : appEventPlayerCond(playerIds)
 			return comp.neg ? negate(cond) : cond
 		}
+		case 'user': {
+			const userIds = art.userValues.get(node) ?? []
+			const cond = userIds.length === 0 ? sql`0 = 1` : appEventUserCond(userIds)
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.outcome':
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
@@ -618,6 +665,10 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 
 function appEventPlayerCond(playerIds: string[]): E.SQL {
 	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'player' AND ${inJsonSet(aea.value, playerIds)})`
+}
+
+function appEventUserCond(userIds: string[]): E.SQL {
+	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'user' AND ${inJsonSet(aea.value, userIds)})`
 }
 
 /**
@@ -687,6 +738,7 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		// event-valued leaves: the match contains a matching event, of either family
 		case 'eventId':
 		case 'player':
+		case 'user':
 		case 'event.type':
 		case 'event.variant':
 		case 'event.damageSource': {

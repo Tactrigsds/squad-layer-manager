@@ -169,6 +169,7 @@ type RenderOpts = z.infer<typeof RenderSchema>
 
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
+const USER_SEARCH_LIMIT = 25
 
 async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
@@ -290,6 +291,33 @@ export const router = {
 			.where(E.inArray(Schema.players.eosId, eosIds))
 			.limit(PLAYER_SEARCH_LIMIT)
 		return { code: 'ok' as const, players: rows }
+	}),
+
+	// who an SLM user is: the display name the rows already resolve actors to (see actorLabels)
+	userInfo: orpcBase.input(z.object({ userId: z.string() })).handler(async ({ input, context: ctx }) => {
+		const [row] = await ctx
+			.db()
+			.select({ nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(E.eq(Schema.users.discordId, BigInt(input.userId)))
+		if (!row) return { code: 'err:not-found' as const }
+		return { code: 'ok' as const, name: row.nickname || row.username }
+	}),
+
+	// the user field's counterpart to searchPlayers. No minimum needle length here: the users table is small
+	// enough that the shortest needle is still a trivial scan (see resolveNamedUserIds).
+	searchUsers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
+		const userIds = await HistoryQuery.resolveNamedUserIds(ctx, input.needle)
+		if (userIds.length === 0) return { code: 'ok' as const, users: [] }
+		const rows = await ctx
+			.db()
+			.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(E.inArray(Schema.users.discordId, userIds.map(BigInt)))
+			.limit(USER_SEARCH_LIMIT)
+		return { code: 'ok' as const, users: rows.map((r) => ({ userId: r.discordId.toString(), name: r.nickname || r.username })) }
 	}),
 
 	// -------- saved queries --------

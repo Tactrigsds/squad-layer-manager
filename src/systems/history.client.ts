@@ -40,6 +40,21 @@ export const playerInfoBase = (playerId: string | undefined) =>
 		staleTime: Infinity,
 	})
 
+// no minimum needle: the users table is small, so even one character is a trivial scan server-side
+export const userSearchBase = (needle: string) =>
+	RPC.orpc.history.searchUsers.queryOptions({
+		input: { needle },
+		enabled: needle.trim().length > 0,
+		staleTime: 60_000,
+	})
+
+export const userInfoBase = (userId: string | undefined) =>
+	RPC.orpc.history.userInfo.queryOptions({
+		input: { userId: userId ?? '' },
+		enabled: !!userId,
+		staleTime: Infinity,
+	})
+
 function invalidateSaved() {
 	void RPC.queryClient.invalidateQueries({ queryKey: savedQueriesBase().queryKey })
 }
