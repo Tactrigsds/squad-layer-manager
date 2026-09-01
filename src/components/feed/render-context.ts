@@ -40,9 +40,10 @@ export type RenderCtx = {
 	// resolve comes back undefined and the template falls back to naming the actor generically.
 	userLabel: (userId: USR.UserId) => string | undefined
 	pluginName: (pluginId: string) => string | undefined
-	// The rendered event rows behind a results row's count, by ROW_EVENTS_ATTR key. Supplied by the page
-	// rather than closed over by the row, which has no closures to give.
-	loadRowEvents?: (key: string) => Promise<string[]>
+	// One page of the rendered event rows behind a results row's count, by ROW_EVENTS_ATTR key. Supplied by
+	// the page rather than closed over by the row, which has no closures to give. The cursor is opaque here:
+	// it is parked on the row as json and handed back to resume.
+	loadRowEvents?: (key: string, cursor?: unknown) => Promise<{ rows: string[]; nextCursor?: unknown }>
 }
 
 // Whether a row's timestamp carries its date as well as its time. Ambient rather than a prop or a ctx field,
@@ -125,12 +126,25 @@ export const ADMIN_BADGE_ATTR = 'data-dom-admin-badge'
 /** a name whose colour follows the active player grouping, recoloured in place rather than rebuilt */
 export const PLAYER_ATTR = 'data-dom-player'
 
-// A results row that can show the events behind its own number, as `player:<eosId>` or `match:<id>`. The
-// row stays inert: it carries the key and an empty slot, and the ctx knows how to fill it.
+// A results row that can show the events behind its own number, as `player:<eosId>` or `match:<id>`.
+//
+// Two rows: the data row carries the key, and a panel row underneath spans the table and holds the events.
+// A panel row rather than a disclosure inside the count's cell, because the events want the width of the
+// whole table and a cell would make its own column grow to fit them.
+//
+// The rows stay inert. They carry the key, an empty slot and a hidden panel; the ctx knows how to fill it.
 export const ROW_EVENTS_ATTR = 'data-dom-row-events'
+export const ROW_EVENTS_PANEL_ATTR = 'data-dom-row-events-panel'
 export const ROW_EVENTS_SLOT_ATTR = 'data-dom-row-events-slot'
+export const ROW_EVENTS_MORE_ATTR = 'data-dom-row-events-more'
+// the one line a slot uses to say it is loading, or that it could not
+export const ROW_EVENTS_STATUS_ATTR = 'data-dom-row-events-status'
 // set once the slot has been filled, so hovering and opening do not fetch twice
 export const ROW_EVENTS_DONE_ATTR = 'data-dom-row-events-done'
+// the page cursor the next "load more" resumes from, parked on the row between fetches
+export const ROW_EVENTS_CURSOR_ATTR = 'data-dom-row-events-cursor'
+// on the data row while its panel is showing, which is what turns the chevron
+export const ROW_OPEN_ATTR = 'data-open'
 
 export function menuAttrs(target: MenuTarget, matchId?: number | null): Attrs {
 	return {

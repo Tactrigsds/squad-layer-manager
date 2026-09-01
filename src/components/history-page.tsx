@@ -317,17 +317,22 @@ function DomRowsBody(props: { rows: React.ReactNode[]; scopeId?: string }) {
 function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const loadRowEvents = React.useCallback(
-		async (key: string) => {
+		async (key: string, cursor?: unknown) => {
 			const separator = key.indexOf(':')
 			const kind = key.slice(0, separator)
 			const id = key.slice(separator + 1)
 			const narrowed =
 				kind === 'player' ? HQ.eventsForPlayer(query, id) : kind === 'match' ? HQ.eventsForMatch(query, Number(id)) : undefined
-			if (!narrowed) return []
+			if (!narrowed) return { rows: [] }
 			const res = await RPC.queryClient.fetchQuery(
-				HistoryClient.queryPageBase({ query: narrowed, render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() } }),
+				HistoryClient.queryPageBase({
+					query: narrowed,
+					cursor: cursor as HistoryClient.QueryPageInput['cursor'],
+					render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() },
+				}),
 			)
-			return res.code === 'ok' && res.type === 'events' ? res.rowsHtml : []
+			if (res.code !== 'ok' || res.type !== 'events') throw new Error(res.code)
+			return { rows: res.rowsHtml, nextCursor: res.nextCursor }
 		},
 		[query, displayTeamsNormalized],
 	)
@@ -364,14 +369,15 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 				<table className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
+							<th className={`${HEADER_CELL} w-6`} />
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colPlayer())}</th>
 							{sortHeader('matches', tr.text(HistoryMsgs.colMatches()))}
 							{sortHeader('kills', tr.text(HistoryMsgs.colKills()))}
 							{sortHeader('deaths', tr.text(HistoryMsgs.colDeaths()))}
 							{sortHeader('teamkills', tr.text(HistoryMsgs.colTeamkills()))}
 							{sortHeader('chatMessages', tr.text(HistoryMsgs.colChat()))}
-							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
+							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
@@ -403,6 +409,7 @@ function MatchesResults(props: { query: HQ.Query }) {
 				<table className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
+							<th className={`${HEADER_CELL} w-6`} />
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTime())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colServer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>

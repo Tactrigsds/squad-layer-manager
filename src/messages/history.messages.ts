@@ -107,6 +107,9 @@ export const resizeBuilder = def('Resize the query builder')
 export const orderNewest = def('Newest first')
 export const orderOldest = def('Oldest first')
 export const colEvents = def('Events')
+// a results row's own events, while they are being fetched and if they cannot be
+export const eventsLoading = def('Loading events...')
+export const eventsFailed = def('Could not load these events')
 
 export const outcomeTeam1 = def('Team 1')
 export const outcomeTeam2 = def('Team 2')
