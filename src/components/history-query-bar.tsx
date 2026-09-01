@@ -234,52 +234,53 @@ const PRESETS = [
 // also saved and shared, and a saved "last 7 days" would answer a different question every time it was run.
 function TimeRange(props: { draft: HQ.Query; set: Set; showCustom: boolean; setCustom: (custom: boolean) => void }) {
 	const { draft, set, setCustom, showCustom } = props
-
-	if (showCustom) {
-		return (
-			<div className="flex min-w-0 flex-col gap-1">
-				<BoundInput
-					type="datetime-local"
-					label={tr.text(HistoryMsgs.rangeFrom())}
-					defaultValue={toDatetimeLocal(draft.from)}
-					onChange={(value) => set({ from: value === '' ? undefined : new Date(value).getTime() })}
-				/>
-				<BoundInput
-					type="datetime-local"
-					label={tr.text(HistoryMsgs.rangeTo())}
-					defaultValue={toDatetimeLocal(draft.to)}
-					onChange={(value) => set({ to: value === '' ? undefined : new Date(value).getTime() })}
-				/>
-			</div>
-		)
-	}
-
-	const current = matchedPreset(draft)?.key ?? ANY
 	return (
-		<Select
-			value={current}
-			onValueChange={(v) => {
-				if (v === 'custom') {
-					setCustom(true)
-					return
-				}
-				const preset = PRESETS.find((p) => p.key === v)
-				set(preset ? { from: Date.now() - preset.ms, to: undefined } : { from: undefined, to: undefined })
-			}}
-		>
-			<SelectTrigger className="h-7 w-full text-xs">
-				<SelectValue />
-			</SelectTrigger>
-			<SelectContent>
-				<SelectItem value={ANY}>{tr.text(HistoryMsgs.timeAny())}</SelectItem>
-				{PRESETS.map((preset) => (
-					<SelectItem key={preset.key} value={preset.key}>
-						{preset.label()}
-					</SelectItem>
-				))}
-				<SelectItem value="custom">{tr.text(HistoryMsgs.timeCustom())}</SelectItem>
-			</SelectContent>
-		</Select>
+		// the picker stays put and the two dates appear under it, rather than replacing it: a custom range the
+		// user has not filled in yet sets nothing, so a picker that had swapped itself out would leave no way
+		// back to the presets at all
+		<div className="flex min-w-0 flex-col gap-1">
+			<Select
+				value={showCustom ? 'custom' : (matchedPreset(draft)?.key ?? ANY)}
+				onValueChange={(v) => {
+					if (v === 'custom') {
+						setCustom(true)
+						return
+					}
+					setCustom(false)
+					const preset = PRESETS.find((p) => p.key === v)
+					set(preset ? { from: Date.now() - preset.ms, to: undefined } : { from: undefined, to: undefined })
+				}}
+			>
+				<SelectTrigger className="h-7 w-full text-xs">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value={ANY}>{tr.text(HistoryMsgs.timeAny())}</SelectItem>
+					{PRESETS.map((preset) => (
+						<SelectItem key={preset.key} value={preset.key}>
+							{preset.label()}
+						</SelectItem>
+					))}
+					<SelectItem value="custom">{tr.text(HistoryMsgs.timeCustom())}</SelectItem>
+				</SelectContent>
+			</Select>
+			{showCustom && (
+				<>
+					<BoundInput
+						type="datetime-local"
+						label={tr.text(HistoryMsgs.fieldFrom())}
+						defaultValue={toDatetimeLocal(draft.from)}
+						onChange={(value) => set({ from: value === '' ? undefined : new Date(value).getTime() })}
+					/>
+					<BoundInput
+						type="datetime-local"
+						label={tr.text(HistoryMsgs.fieldTo())}
+						defaultValue={toDatetimeLocal(draft.to)}
+						onChange={(value) => set({ to: value === '' ? undefined : new Date(value).getTime() })}
+					/>
+				</>
+			)}
+		</div>
 	)
 }
 
@@ -423,7 +424,9 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			return (
 				<ComboBoxMulti
 					title={fieldLabel(field.key)}
+					emptyLabel={tr.text(HistoryMsgs.anyOption())}
 					className="w-full"
+					chipDisplay
 					values={draft.types ?? []}
 					options={control.options as string[]}
 					onSelect={(update) => {

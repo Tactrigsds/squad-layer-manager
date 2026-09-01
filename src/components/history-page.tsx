@@ -55,12 +55,20 @@ export default function HistoryPage(props: HistoryPageProps) {
 		props.onRun(query)
 	}
 
-	// runs from anywhere on the page, so a query typed into any field goes without reaching for the button
-	const onKeyDown = (e: React.KeyboardEvent) => {
-		if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return
-		e.preventDefault()
-		run()
-	}
+	// Runs from anywhere on the page, which is why it listens on the document rather than on the page's own
+	// element: nothing is focused after a load or a click on dead space, so the key event targets `body` and
+	// never reaches a handler mounted inside the tree.
+	const runRef = React.useRef(run)
+	runRef.current = run
+	React.useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return
+			e.preventDefault()
+			runRef.current()
+		}
+		document.addEventListener('keydown', onKeyDown)
+		return () => document.removeEventListener('keydown', onKeyDown)
+	}, [])
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
 
@@ -112,7 +120,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
 		// w-full: without it the row sizes to its content, so widening the rail grows the page instead of
 		// taking the space from the results
-		<div className="flex h-full min-h-0 w-full gap-2 p-2" onKeyDown={onKeyDown}>
+		<div className="flex h-full min-h-0 w-full gap-2 p-2">
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<TabsList
