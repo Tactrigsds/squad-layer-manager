@@ -76,19 +76,20 @@ function GroupHeading(props: { children: React.ReactNode }) {
 
 function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
+	const time = useTimeRange(props)
 	return (
 		<section className="flex flex-col gap-1">
 			<GroupHeading>{tr.text(HistoryMsgs.groupScope())}</GroupHeading>
-			<Field label={tr.text(HistoryMsgs.fieldServer())}>
+			<Field label={tr.text(HistoryMsgs.fieldServer())} canClear={!!draft.servers?.length} onClear={() => set({ servers: undefined })}>
 				<ServerSelect draft={draft} set={set} />
 			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldTime())}>
-				<TimeRange draft={draft} set={set} />
+			<Field label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear}>
+				<TimeRange draft={draft} set={set} custom={time.custom} setCustom={time.setCustom} />
 			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldPlayer())}>
+			<Field label={tr.text(HistoryMsgs.fieldPlayer())} canClear={!!draft.players?.length} onClear={() => set({ players: undefined })}>
 				<PlayerPicker values={draft.players ?? []} onSelect={(players) => set({ players: players.length > 0 ? players : undefined })} />
 			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldUser())}>
+			<Field label={tr.text(HistoryMsgs.fieldUser())} canClear={!!draft.users?.length} onClear={() => set({ users: undefined })}>
 				<UserPicker values={draft.users ?? []} onSelect={(users) => set({ users: users.length > 0 ? users : undefined })} />
 			</Field>
 		</section>
@@ -104,16 +105,37 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
  */
 export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
+	const time = useTimeRange(props)
 	return (
 		<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-			<Field className="w-56" label={tr.text(HistoryMsgs.fieldServer())}>
+			<Field
+				className="w-72"
+				label={tr.text(HistoryMsgs.fieldServer())}
+				canClear={!!draft.servers?.length}
+				onClear={() => set({ servers: undefined })}
+			>
 				<ServerSelect draft={draft} set={set} />
 			</Field>
-			<Field className="w-max" label={tr.text(HistoryMsgs.fieldTime())}>
-				<TimeRange draft={draft} set={set} />
+			<Field className="w-max" label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear}>
+				<TimeRange draft={draft} set={set} custom={time.custom} setCustom={time.setCustom} />
 			</Field>
 		</div>
 	)
+}
+
+// "custom range" is picked before any date is typed, so whether the custom inputs show cannot be derived from
+// the query alone. The row owns the flag because the row owns the clear, which has to put it back.
+function useTimeRange(props: { draft: HQ.Query; set: Set }) {
+	const [custom, setCustom] = React.useState(false)
+	return {
+		custom,
+		setCustom,
+		isSet: props.draft.from !== undefined || props.draft.to !== undefined,
+		clear: () => {
+			setCustom(false)
+			props.set({ from: undefined, to: undefined })
+		},
+	}
 }
 
 function ServerSelect(props: { draft: HQ.Query; set: Set }) {
@@ -135,12 +157,32 @@ function ServerSelect(props: { draft: HQ.Query; set: Set }) {
 	)
 }
 
-function Field(props: { label: string; className?: string; children: React.ReactNode }) {
+/**
+ * One row of the builder: label, the control itself, and the clear beside it.
+ *
+ * The clear lives out here rather than inside each control, so every row has it in the same place whatever it
+ * holds -- a combo-box, a pair of date inputs, a text field. Same shape as the layer filter menu's rows.
+ *
+ * A div rather than a label: a label wrapping the clear would fire the control when the clear was clicked.
+ */
+function Field(props: { label: string; className?: string; canClear?: boolean; onClear?: () => void; children: React.ReactNode }) {
 	return (
-		<label className={cn('flex items-center gap-2 text-xs text-muted-foreground', props.className)}>
+		<div className={cn('flex items-center gap-2 text-xs text-muted-foreground', props.className)}>
 			<span className="w-16 shrink-0 truncate">{props.label}</span>
 			<span className="min-w-0 flex-1">{props.children}</span>
-		</label>
+			{props.onClear && (
+				<Button
+					variant="ghost"
+					size="icon"
+					className="h-6 w-6 shrink-0"
+					disabled={props.canClear === false}
+					title={tr.text(HistoryMsgs.clearFilter())}
+					onClick={props.onClear}
+				>
+					<Icons.Trash className="h-3.5 w-3.5" />
+				</Button>
+			)}
+		</div>
 	)
 }
 
@@ -152,9 +194,8 @@ const PRESETS = [
 
 // A preset resolves to absolute bounds at pick time rather than staying relative: the query is a url that is
 // also saved and shared, and a saved "last 7 days" would answer a different question every time it was run.
-function TimeRange(props: { draft: HQ.Query; set: Set }) {
-	const { draft, set } = props
-	const [custom, setCustom] = React.useState(false)
+function TimeRange(props: { draft: HQ.Query; set: Set; custom: boolean; setCustom: (custom: boolean) => void }) {
+	const { draft, set, custom, setCustom } = props
 	const showCustom = custom || (draft.from !== undefined && !matchedPreset(draft))
 
 	if (showCustom) {
@@ -172,18 +213,6 @@ function TimeRange(props: { draft: HQ.Query; set: Set }) {
 					defaultValue={toDatetimeLocal(draft.to)}
 					onChange={(e) => set({ to: e.target.value === '' ? undefined : new Date(e.target.value).getTime() })}
 				/>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="h-7 w-7"
-					title={tr.text(HistoryMsgs.clearFilter())}
-					onClick={() => {
-						setCustom(false)
-						set({ from: undefined, to: undefined })
-					}}
-				>
-					<Icons.X className="h-3 w-3" />
-				</Button>
 			</div>
 		)
 	}
@@ -335,23 +364,17 @@ function AddFilterMenu(props: { draft: HQ.Query; shown: readonly QF.FieldKey[]; 
 function FieldRow(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onRemove: () => void }) {
 	const { field, draft, set } = props
 	return (
-		<div className="flex items-center gap-2 text-xs">
-			<span className="w-16 shrink-0 truncate text-muted-foreground">{fieldLabel(field.key)}</span>
-			<span className="min-w-0 flex-1">
-				<FieldControl field={field} draft={draft} set={set} />
-			</span>
-			<button
-				type="button"
-				className="shrink-0 text-muted-foreground hover:text-destructive"
-				title={tr.text(HistoryMsgs.clearFilter())}
-				onClick={() => {
-					set(QF.clearPatch(field.key))
-					props.onRemove()
-				}}
-			>
-				<Icons.Trash2 className="h-3.5 w-3.5" />
-			</button>
-		</div>
+		<Field
+			label={fieldLabel(field.key)}
+			// never disabled, unlike a scope row's: here the clear also takes the field off the rail, which is
+			// the only way to undo a "+ Filter" that was added and left empty
+			onClear={() => {
+				set(QF.clearPatch(field.key))
+				props.onRemove()
+			}}
+		>
+			<FieldControl field={field} draft={draft} set={set} />
+		</Field>
 	)
 }
 
