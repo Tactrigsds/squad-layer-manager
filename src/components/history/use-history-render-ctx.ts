@@ -21,7 +21,11 @@ const NO_FRAME_STORES = {} as SquadServerFrame.KeyProp
  * interactions resolve their server frame from its match, minted on first use for servers that have a live
  * managed instance.
  */
-export function useHistoryRenderCtx(matches: MH.MatchDetails[], events?: readonly CHAT.EventEnriched[] | null): RC.RenderCtx {
+export function useHistoryRenderCtx(
+	matches: MH.MatchDetails[],
+	events?: readonly CHAT.EventEnriched[] | null,
+	loadRowEvents?: RC.RenderCtx['loadRowEvents'],
+): RC.RenderCtx {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const zIndexBase = React.useContext(BaseZIndexContext)
@@ -55,9 +59,10 @@ export function useHistoryRenderCtx(matches: MH.MatchDetails[], events?: readonl
 			latestMatch: undefined,
 			currentMatch: undefined,
 			groupColor: () => null,
+			loadRowEvents,
 			...actorLabels,
 		}
-	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels])
+	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()

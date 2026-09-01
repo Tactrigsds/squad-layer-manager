@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import * as RC from '@/components/feed/render-context'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
 import HistoryQueryBar, { HistoryQueryBounds } from '@/components/history-query-bar'
 import * as HistoryTemplates from '@/components/history/templates'
+import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -18,8 +20,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
+import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
-import type * as RPC from '@/orpc.client'
+import type * as MH from '@/models/match-history.models'
+import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
@@ -297,14 +301,37 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 }
 
 // rows are inert templates walked straight to dom (see static-render.ts)
-function DomRowsBody(props: { rows: React.ReactNode[] }) {
+function DomRowsBody(props: { rows: React.ReactNode[]; scopeId?: string }) {
 	const ref = React.useRef<HTMLTableSectionElement | null>(null)
 	React.useLayoutEffect(() => {
 		const body = ref.current
 		if (!body) return
 		body.replaceChildren(...props.rows.flatMap((row) => renderStatic(row) ?? []))
 	})
-	return <tbody ref={ref} />
+	// the scope lives on the body rather than around the table: a row's disclosure resolves it by walking up
+	return <tbody ref={ref} {...(props.scopeId ? { [RC.SCOPE_ATTR]: props.scopeId } : {})} />
+}
+
+// The events behind one results row, fetched as rendered html and handed to the row's disclosure. The same
+// query the results answered, narrowed to that row, so what opens is a subset of what was counted.
+function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const loadRowEvents = React.useCallback(
+		async (key: string) => {
+			const separator = key.indexOf(':')
+			const kind = key.slice(0, separator)
+			const id = key.slice(separator + 1)
+			const narrowed =
+				kind === 'player' ? HQ.eventsForPlayer(query, id) : kind === 'match' ? HQ.eventsForMatch(query, Number(id)) : undefined
+			if (!narrowed) return []
+			const res = await RPC.queryClient.fetchQuery(
+				HistoryClient.queryPageBase({ query: narrowed, render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() } }),
+			)
+			return res.code === 'ok' && res.type === 'events' ? res.rowsHtml : []
+		},
+		[query, displayTeamsNormalized],
+	)
+	return useHistoryRenderCtx(matches, null, loadRowEvents)
 }
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'
@@ -312,6 +339,9 @@ const HEADER_CELL = 'px-2 py-1 text-left font-medium'
 function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 	const { res, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'players')
+	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
+	// the rows they open still name their match, which is all the feed row needs
+	const rowCtx = useRowEvents(props.query, EMPTY_MATCHES)
 	const sort = props.query.sort ?? { column: 'matches' as const, dir: 'desc' as const }
 
 	const sortHeader = (column: HQ.PlayerSortColumn, label: string) => (
@@ -340,10 +370,12 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('deaths', tr.text(HistoryMsgs.colDeaths()))}
 							{sortHeader('teamkills', tr.text(HistoryMsgs.colTeamkills()))}
 							{sortHeader('chatMessages', tr.text(HistoryMsgs.colChat()))}
+							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
 						</tr>
 					</thead>
 					<DomRowsBody
+						scopeId={rowCtx.scopeId}
 						rows={(ok?.rows ?? []).map((row) => (
 							<HistoryTemplates.PlayerRow key={row.playerId} row={row} />
 						))}
@@ -355,10 +387,13 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 	)
 }
 
+const EMPTY_MATCHES: MH.MatchDetails[] = []
+
 function MatchesResults(props: { query: HQ.Query }) {
 	const { res, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'matches')
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
 
 	return (
 		<div className="flex min-h-0 flex-col gap-1">
@@ -374,11 +409,18 @@ function MatchesResults(props: { query: HQ.Query }) {
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colOutcome())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTicketDiff())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
+							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
+						scopeId={rowCtx.scopeId}
 						rows={(ok?.matches ?? []).map((m) => (
-							<HistoryTemplates.MatchRow key={m.historyEntryId} details={m} displayTeamsNormalized={displayTeamsNormalized} />
+							<HistoryTemplates.MatchRow
+								key={m.historyEntryId}
+								details={m}
+								displayTeamsNormalized={displayTeamsNormalized}
+								events={ok?.eventCounts[m.historyEntryId] ?? 0}
+							/>
 						))}
 					/>
 				</table>

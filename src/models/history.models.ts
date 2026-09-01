@@ -364,6 +364,24 @@ export function queryFilterNode(query: Query): Node {
 	return { type: 'and', children }
 }
 
+/**
+ * The same query, narrowed to the events of one row of a players or matches result.
+ *
+ * Always advanced form, whichever mode the query was built in: `queryFilterNode` normalizes both to one
+ * tree, and anding a leaf onto that tree is the only narrowing that composes with everything already in it.
+ */
+function narrowedToEvents(query: Query, extra: Node): Query {
+	return { ...query, type: 'events', mode: 'advanced', q: { type: 'and', children: [queryFilterNode(query), extra] } }
+}
+
+export function eventsForPlayer(query: Query, playerId: string): Query {
+	return narrowedToEvents(query, comp('player', [playerId]))
+}
+
+export function eventsForMatch(query: Query, matchId: number): Query {
+	return narrowedToEvents(query, { type: 'match-ids', neg: false, matchIds: [matchId] })
+}
+
 // the players result type's output filter: which player rows to show, as opposed to which events count
 export function groupPlayerRefs(query: Query): { players?: string[]; name?: string } {
 	if (query.type !== 'players') return {}
@@ -397,6 +415,8 @@ export type PlayerRow = {
 	teamkills: number
 	chatMessages: number
 	lastSeen: number
+	// how many events the query matched for this player, which is what the row expands to show
+	events: number
 }
 
 export const PAGE_SIZES = { events: 100, players: 50, matches: 50 } as const

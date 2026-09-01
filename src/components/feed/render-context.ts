@@ -40,6 +40,9 @@ export type RenderCtx = {
 	// resolve comes back undefined and the template falls back to naming the actor generically.
 	userLabel: (userId: USR.UserId) => string | undefined
 	pluginName: (pluginId: string) => string | undefined
+	// The rendered event rows behind a results row's count, by ROW_EVENTS_ATTR key. Supplied by the page
+	// rather than closed over by the row, which has no closures to give.
+	loadRowEvents?: (key: string) => Promise<string[]>
 }
 
 // Whether a row's timestamp carries its date as well as its time. Ambient rather than a prop or a ctx field,
@@ -121,6 +124,13 @@ export const TIP_TIME_ATTR = 'data-dom-tip-time'
 export const ADMIN_BADGE_ATTR = 'data-dom-admin-badge'
 /** a name whose colour follows the active player grouping, recoloured in place rather than rebuilt */
 export const PLAYER_ATTR = 'data-dom-player'
+
+// A results row that can show the events behind its own number, as `player:<eosId>` or `match:<id>`. The
+// row stays inert: it carries the key and an empty slot, and the ctx knows how to fill it.
+export const ROW_EVENTS_ATTR = 'data-dom-row-events'
+export const ROW_EVENTS_SLOT_ATTR = 'data-dom-row-events-slot'
+// set once the slot has been filled, so hovering and opening do not fetch twice
+export const ROW_EVENTS_DONE_ATTR = 'data-dom-row-events-done'
 
 export function menuAttrs(target: MenuTarget, matchId?: number | null): Attrs {
 	return {

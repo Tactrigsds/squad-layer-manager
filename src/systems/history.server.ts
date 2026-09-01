@@ -260,6 +260,8 @@ export const router = {
 						code: 'ok' as const,
 						type: 'matches' as const,
 						matches: res.rows.flatMap((row) => toMatchDetails(row) ?? []),
+						// keyed by match id, since a row toMatchDetails drops has no details to hang a count on
+						eventCounts: res.events,
 						total: res.total,
 						unrecognisedLayerMatches,
 					}

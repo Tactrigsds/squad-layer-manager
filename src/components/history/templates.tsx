@@ -7,6 +7,7 @@
 import React from 'react'
 
 import * as Atoms from '@/components/feed/atoms'
+import * as RC from '@/components/feed/render-context'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import type * as HQ from '@/models/history.models'
@@ -14,8 +15,28 @@ import type * as MH from '@/models/match-history.models'
 
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-const CELL = 'px-2 py-1 whitespace-nowrap'
+// align-top so a row whose events are expanded keeps its own columns beside the first of them, rather than
+// centring them against the whole expansion
+const CELL = 'px-2 py-1 align-top whitespace-nowrap'
 const NUM_CELL = `${CELL} text-right tabular-nums`
+
+/**
+ * The count of events behind a results row, as a disclosure that shows them.
+ *
+ * A native details, so the row stays inert: it names itself with a key and leaves an empty slot, and the
+ * page fills the slot through the render ctx on hover or on open (see interactions.ts).
+ */
+function EventsCell(props: { rowKey: string; count: number }) {
+	if (props.count === 0) return <td className={NUM_CELL}>0</td>
+	return (
+		<td className={NUM_CELL}>
+			<details {...{ [RC.ROW_EVENTS_ATTR]: props.rowKey }}>
+				<summary className="cursor-pointer tabular-nums">{props.count}</summary>
+				<div {...{ [RC.ROW_EVENTS_SLOT_ATTR]: '' }} className="mt-1 flex flex-col gap-0.5 text-left font-normal" />
+			</details>
+		</td>
+	)
+}
 
 export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	const { row } = props
@@ -30,6 +51,7 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 			<td className={NUM_CELL}>{row.deaths}</td>
 			<td className={NUM_CELL}>{row.teamkills}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
+			<EventsCell rowKey={`player:${row.playerId}`} count={row.events} />
 			<td className={CELL}>{dateTime.format(row.lastSeen)}</td>
 		</tr>
 	)
@@ -59,7 +81,7 @@ function ticketDiffText(details: MH.MatchDetails): string {
 	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
 }
 
-export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean }) {
+export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
 	const { details } = props
 	const time = details.startTime ?? (details.status === 'post-game' && details.endTime !== 'unknown' ? details.endTime : undefined)
 	return (
@@ -77,6 +99,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			<td className={CELL}>{outcomeText(details)}</td>
 			<td className={CELL}>{ticketDiffText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
+			<EventsCell rowKey={`match:${details.historyEntryId}`} count={props.events} />
 		</tr>
 	)
 }

@@ -13,6 +13,7 @@ import * as HQ from '@/models/history.models'
 import type * as C from '@/server/context'
 import {
 	ae,
+	aea,
 	appEventBoundsCond,
 	compileAppEventCond,
 	compileEventCond,
@@ -176,6 +177,63 @@ async function queryAppEventHits(
 	return rows.flatMap((r) => (r.matchId === null ? [] : [{ appEventId: r.appEventId, matchId: r.matchId, time: r.time }]))
 }
 
+/**
+ * How many events the query matches, per player or per match, for the rows of one page.
+ *
+ * Both families, because that is what the expanded list shows: a count that disagreed with the list it opens
+ * would be worse than no count at all. One grouped query per family over the page's keys, rather than a
+ * correlated subquery per row.
+ */
+async function eventCountsFor(
+	ctx: C.Db & CS.AbortSignal,
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds },
+	dimension: 'player' | 'match',
+	keys: (string | number)[],
+): Promise<Record<string, number>> {
+	const counts: Record<string, number> = {}
+	if (keys.length === 0) return counts
+
+	const serverKey = dimension === 'player' ? pei.playerId : pei.matchId
+	const serverRows = await ctx
+		.db()
+		.select({ key: serverKey, n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
+		.from(pei)
+		.where(
+			E.and(
+				inJsonSet(serverKey, keys),
+				E.ne(pei.assocType, GAME_PARTICIPANT),
+				eventBoundsCond(opts.bounds),
+				compileEventCond(opts.node, opts.art),
+			),
+		)
+		.groupBy(serverKey)
+	for (const row of serverRows) counts[String(row.key)] = (counts[String(row.key)] ?? 0) + row.n
+
+	const appCond = E.and(appEventBoundsCond(opts.bounds), compileAppEventCond(opts.node, opts.art))
+	if (dimension === 'match') {
+		const appRows = await ctx
+			.db()
+			.select({ key: ae.matchId, n: sql<number>`count(DISTINCT ${ae.id})` })
+			.from(ae)
+			.where(E.and(inJsonSet(ae.matchId, keys), appCond))
+			.groupBy(ae.matchId)
+		for (const row of appRows) counts[String(row.key)] = (counts[String(row.key)] ?? 0) + row.n
+		return counts
+	}
+
+	// a player's app events are the ones the association sidecar attributes to them, which is the same
+	// dimension the `player` column compiles against
+	const appRows = await ctx
+		.db()
+		.select({ key: aea.value, n: sql<number>`count(DISTINCT ${ae.id})` })
+		.from(aea)
+		.innerJoin(ae, E.eq(ae.id, aea.appEventId))
+		.where(E.and(E.eq(aea.dimension, 'player'), inJsonSet(aea.value, keys), appCond))
+		.groupBy(aea.value)
+	for (const row of appRows) counts[row.key] = (counts[row.key] ?? 0) + row.n
+	return counts
+}
+
 export async function queryPlayerRows(
 	ctx: C.Db & CS.AbortSignal,
 	opts: {
@@ -230,6 +288,12 @@ export async function queryPlayerRows(
 			),
 		)
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
+	const events = await eventCountsFor(
+		ctx,
+		opts,
+		'player',
+		rows.map((r) => r.playerId),
+	)
 
 	return {
 		total,
@@ -243,6 +307,7 @@ export async function queryPlayerRows(
 			teamkills: r.teamkills ?? 0,
 			chatMessages: r.chatMessages ?? 0,
 			lastSeen: r.lastSeen,
+			events: events[r.playerId] ?? 0,
 		})),
 	}
 }
@@ -250,7 +315,7 @@ export async function queryPlayerRows(
 export async function queryMatchRows(
 	ctx: C.Db & CS.AbortSignal,
 	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; limit: number; offset: number },
-): Promise<{ rows: SchemaModels.MatchHistory[]; total: number }> {
+): Promise<{ rows: SchemaModels.MatchHistory[]; total: number; events: Record<string, number> }> {
 	const cond = E.and(matchBoundsCond(opts.bounds), compileMatchCond(opts.node, opts.art, opts.bounds))
 	const [{ count: total } = { count: 0 }] = await ctx.db().select({ count: E.count() }).from(mh).where(cond)
 	const rows = await ctx
@@ -261,7 +326,13 @@ export async function queryMatchRows(
 		.orderBy(sql`${matchTime} DESC`, E.desc(mh.id))
 		.limit(opts.limit)
 		.offset(opts.offset)
-	return { rows, total }
+	const events = await eventCountsFor(
+		ctx,
+		opts,
+		'match',
+		rows.map((r) => r.id),
+	)
+	return { rows, total, events }
 }
 
 // -------- the engine entrypoint --------
@@ -296,7 +367,7 @@ export type EngineRequest =
 export type EngineResponse =
 	| { code: 'ok'; kind: 'events'; hits: EventHit[]; total?: number }
 	| { code: 'ok'; kind: 'players'; rows: HQ.PlayerRow[]; total: number }
-	| { code: 'ok'; kind: 'matches'; rows: SchemaModels.MatchHistory[]; total: number }
+	| { code: 'ok'; kind: 'matches'; rows: SchemaModels.MatchHistory[]; total: number; events: Record<string, number> }
 
 async function countEventHits(
 	ctx: C.Db & CS.AbortSignal,
@@ -347,14 +418,14 @@ export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRe
 			return { code: 'ok', kind: 'players', rows, total }
 		}
 		case 'matches': {
-			const { rows, total } = await queryMatchRows(ctx, {
+			const { rows, total, events } = await queryMatchRows(ctx, {
 				node: req.node,
 				art,
 				bounds: req.bounds,
 				limit: req.limit,
 				offset: req.offset,
 			})
-			return { code: 'ok', kind: 'matches', rows, total }
+			return { code: 'ok', kind: 'matches', rows, total, events }
 		}
 		default:
 			assertNever(req)

@@ -159,6 +159,9 @@ function onPointerOver(event: PointerEvent) {
 	if (tip) showTip(tip)
 	else closeTip()
 
+	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
+	if (rowEvents) fillRowEvents(rowEvents)
+
 	const opener = elementAt(event, RC.WINDOW_ATTR)
 	if (opener === intentElement) return
 	clearIntent()
@@ -171,6 +174,39 @@ function onPointerOver(event: PointerEvent) {
 		if (target && props) DraggableWindowStore.getState().preloadWindow(target.windowId, props, outletOf(opener))
 		clearIntent()
 	}, INTENT_DELAY)
+}
+
+// -------- a results row's own events --------
+
+/**
+ * Fills a row's disclosure with the events behind its count, once.
+ *
+ * Driven by hover as well as by opening it, so the fetch is usually already done by the time the disclosure
+ * is opened. Idempotent: whichever fires first claims the slot, and the other finds it claimed.
+ */
+function fillRowEvents(host: Element) {
+	if (host.hasAttribute(RC.ROW_EVENTS_DONE_ATTR)) return
+	const key = host.getAttribute(RC.ROW_EVENTS_ATTR)
+	const slot = host.querySelector(`[${RC.ROW_EVENTS_SLOT_ATTR}]`)
+	const ctx = RC.scopeOf(host)
+	if (!key || !slot || !ctx?.loadRowEvents) return
+	// claimed before the await, so a second hover during the fetch does not start another
+	host.setAttribute(RC.ROW_EVENTS_DONE_ATTR, '')
+	void ctx
+		.loadRowEvents(key)
+		.then((rows) => {
+			slot.innerHTML = rows.join('')
+		})
+		.catch(() => {
+			// leave the slot empty and let it be retried by reopening the results
+			host.removeAttribute(RC.ROW_EVENTS_DONE_ATTR)
+		})
+}
+
+// toggle does not bubble, so it is caught on the way down instead
+function onToggle(event: Event) {
+	const target = event.target
+	if (target instanceof Element && target.hasAttribute(RC.ROW_EVENTS_ATTR)) fillRowEvents(target)
 }
 
 function onFocusIn(event: FocusEvent) {
@@ -201,5 +237,6 @@ export function setup() {
 	document.addEventListener('pointerover', onPointerOver)
 	document.addEventListener('focusin', onFocusIn)
 	document.addEventListener('focusout', onFocusOut)
+	document.addEventListener('toggle', onToggle, true)
 	document.addEventListener('scroll', onScroll, { capture: true, passive: true })
 }
