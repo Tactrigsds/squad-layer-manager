@@ -14,6 +14,7 @@ import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
@@ -26,6 +27,7 @@ import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as HistoryRetention from '@/systems/history-retention.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -416,9 +418,17 @@ async function assembleEventPage(
 	for (const [serverId, ids] of byServer) {
 		const serverCtx = { ...ctx, serverId, matchEventsCache: MatchEventsCache.initMatchEventsCacheContext() }
 		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(serverCtx, Settings.GLOBAL_SETTINGS.chat, ...ids)
-		// app events replay into the same buffer and carry string ids; the index covers server events only
+		// by containment, not by id: a hit whose event replay folded into another entry -- a warn collapsed under
+		// the app event that issued it, one of a burst merged into a WARNS_AGGREGATED -- is shown by that entry,
+		// and matching on the top-level id alone would drop it from the page
 		events.push(
-			...enriched.filter((e) => (typeof e.id === 'number' && wanted.has(e.id)) || (includeMatchBoundaries && e.type === 'NEW_GAME')),
+			...enriched.filter((e) => {
+				if (includeMatchBoundaries && e.type === 'NEW_GAME') return true
+				for (const id of CHAT.iterContainedEventIds(e)) {
+					if (wanted.has(id)) return true
+				}
+				return false
+			}),
 		)
 	}
 	// newest first, matching the page order: each further page stacks downward into the past
@@ -426,7 +436,7 @@ async function assembleEventPage(
 	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
 	const revived = await reviveNoops(ctx, events)
 	if (format === 'wire') return { rowsHtml: [] as string[], events: CHAT.Wire.encode(revived), matches }
-	return { rowsHtml: renderEventRows(revived, matches, render), events: null, matches }
+	return { rowsHtml: renderEventRows(revived, matches, render, await actorLabels(ctx, revived)), events: null, matches }
 }
 
 // Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a
@@ -496,7 +506,39 @@ async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promi
 	return out
 }
 
-function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[], render: RenderOpts): string[] {
+// display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
+// templates: the same lookup the client does through its stores (see use-actor-labels.ts).
+async function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
+	const userIds = new Set<USR.UserId>()
+	for (const event of events) {
+		if (event.type !== 'APP_EVENT') continue
+		for (const id of AppEvents.iterAssocUserIds(event.appEvent)) userIds.add(id)
+	}
+	// nickname over the discord username, and no discord fetch: a row is not worth a round trip per actor, and
+	// this is the fallback every lookup lands on anyway when discord is disabled (see selectBestDisplayName)
+	const users =
+		userIds.size > 0
+			? await ctx
+					.db()
+					.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+					.from(Schema.users)
+					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+					.where(E.inArray(Schema.users.discordId, [...userIds]))
+			: []
+	const names = new Map(users.map((u) => [u.discordId, u.nickname || u.username]))
+	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
+	return {
+		userLabel: (userId: USR.UserId) => names.get(userId),
+		pluginName: (pluginId: string) => pluginNames.get(pluginId),
+	}
+}
+
+function renderEventRows(
+	events: CHAT.EventEnriched[],
+	matches: MH.MatchDetails[],
+	render: RenderOpts,
+	labels: Pick<RC.RenderCtx, 'userLabel' | 'pluginName'>,
+): string[] {
 	const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
 	const rctx: RC.RenderCtx = {
 		scopeId: '',
@@ -510,6 +552,7 @@ function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[
 		latestMatch: undefined,
 		currentMatch: undefined,
 		groupColor: () => null,
+		...labels,
 	}
 	// safe to set-and-restore without a scope: the render loop below is synchronous, so nothing else can
 	// read the ambient locale while it is ours
@@ -518,7 +561,6 @@ function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[
 	try {
 		const out: string[] = []
 		for (const event of events) {
-			if (event.type === 'APP_EVENT') continue
 			const html = renderRow(rctx, event)
 			if (html !== '') out.push(html)
 		}

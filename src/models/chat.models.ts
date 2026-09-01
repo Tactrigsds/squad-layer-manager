@@ -1301,3 +1301,20 @@ export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.Pla
 export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
 	return events.filter((event) => hasAssocPlayer(event, playerId))
 }
+
+/**
+ * The storage event ids a feed entry stands for: its own, plus the ids of the entries replay folded into it.
+ *
+ * Replay restructures the buffer rather than just enriching it -- a server event attributed to an app event
+ * collapses under that app event, a burst of matching warns merges into one entry -- so an event that matched a
+ * query is not necessarily a top-level entry afterwards. This maps a hit back to the row that actually shows it.
+ * Driven by Wire.FIELDS, whose `nested` already names every field holding folded-in entries.
+ */
+export function* iterContainedEventIds(event: EventEnriched): Generator<number> {
+	if (typeof event.id === 'number') yield event.id
+	const fields = (Wire.FIELDS as Record<string, { nested?: readonly string[] }>)[event.type]
+	for (const key of fields?.nested ?? []) {
+		const nested = (event as unknown as Record<string, EventEnriched[] | undefined>)[key]
+		for (const child of nested ?? []) yield* iterContainedEventIds(child)
+	}
+}
