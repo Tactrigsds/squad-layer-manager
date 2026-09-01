@@ -10,6 +10,7 @@ export const modeBasic = def('Basic')
 export const modeAdvanced = def('Advanced')
 export const switchToAdvanced = def('Build the query as a tree')
 export const switchToBasic = def('Build the query from fields')
+export const finishQueryToSwitch = def('Finish the query before switching result type')
 
 export const run = def('Run')
 export const save = def('Save')
