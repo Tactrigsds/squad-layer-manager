@@ -8,17 +8,15 @@ import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
-import * as SE from '@/models/server-events.models'
 import type * as C from '@/server/context'
 
-// Compiles a history query's node tree to sql, and evaluates the same tree in memory. The whole vocabulary is
-// projected -- playerEventIndex, chatSearch and matchHistory hold every filterable dimension -- so no query
-// ever unpacks an archived match to decide membership; bodies are read only to display a page
-// (history.server.ts) and by the retention sieve, which uses the evaluator at the bottom of this file.
+// Compiles a history query's node tree to sql. The whole vocabulary is projected -- playerEventIndex,
+// chatSearch and matchHistory hold every filterable dimension -- so no query ever unpacks an archived match
+// to decide membership; bodies are read only to display a page (history.server.ts).
 //
 // Shared rather than server-owned because it has callers in two execution contexts: the query engine on its
 // worker thread (history-query.worker.ts, which runs the queries these conditions feed) and the main thread,
-// where retention sieves archive-blob events and history-resolve rewrites layer nodes.
+// where history-resolve rewrites layer nodes.
 //
 // Semantics are per-event, not per-index-row: `and[player = X, player = Y]` matches an event involving both.
 // Player-valued predicates therefore compile to serverEventId subselects rather than row conditions, since
@@ -170,6 +168,28 @@ function layerColumnValues(column: HQ.LayerColumnKey, layer: L.UnvalidatedLayer)
 			return [layer.Unit_1, layer.Unit_2]
 		default:
 			assertNever(column)
+	}
+}
+
+/** The comparison against one value, before negation: what resolves a layer predicate over parsed ids. */
+function evalCompValue(comp: F.CompNode, actual: F.Value | undefined): boolean {
+	const value = actual ?? null
+	const values = compValueList(comp)
+	switch (comp.type) {
+		case 'eq':
+			return value === (values[0] ?? null)
+		case 'in':
+			return values.includes(value)
+		case 'lt':
+			return typeof value === 'number' && typeof values[0] === 'number' && value < values[0]
+		case 'gt':
+			return typeof value === 'number' && typeof values[0] === 'number' && value > values[0]
+		case 'inrange': {
+			const [lo, hi] = values
+			return typeof value === 'number' && typeof lo === 'number' && typeof hi === 'number' && value >= lo && value <= hi
+		}
+		default:
+			assertNever(comp)
 	}
 }
 
@@ -667,132 +687,6 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 				sql`${mh.id} IN (SELECT DISTINCT ${ae.matchId} FROM ${ae} ${appInner ? sql`WHERE ${appInner}` : sql``})`,
 			) as E.SQL
 			return comp.neg ? negate(cond) : cond
-		}
-		default:
-			assertNever(column)
-	}
-}
-
-// -------- the in-memory evaluator --------
-// The same semantics as compileEventCond, over a parsed event instead of index rows. The retention sieve
-// runs this against the events of a match being pruned, whose rows live in the archive blob rather than any
-// table. One deliberate deviation: chat.message is a case-insensitive substring test here, where sql uses
-// fts MATCH -- for retention, matching slightly more than fts would is the safe direction.
-
-export type EvalEventCtx = {
-	event: SE.Event
-	row: SchemaModels.ServerEvent
-	match: Pick<SchemaModels.MatchHistory, 'id' | 'serverId' | 'outcome' | 'setByType' | 'layerId'>
-}
-
-/** The comparison against one value, before negation. Also what resolves a layer predicate over parsed ids. */
-function evalCompValue(comp: F.CompNode, actual: F.Value | undefined): boolean {
-	const value = actual ?? null
-	const values = compValueList(comp)
-	switch (comp.type) {
-		case 'eq':
-			return value === (values[0] ?? null)
-		case 'in':
-			return values.includes(value)
-		case 'lt':
-			return typeof value === 'number' && typeof values[0] === 'number' && value < values[0]
-		case 'gt':
-			return typeof value === 'number' && typeof values[0] === 'number' && value > values[0]
-		case 'inrange': {
-			const [lo, hi] = values
-			return typeof value === 'number' && typeof lo === 'number' && typeof hi === 'number' && value >= lo && value <= hi
-		}
-		default:
-			assertNever(comp)
-	}
-}
-
-function evalComp(comp: F.CompNode, actual: F.Value | undefined): boolean {
-	const result = evalCompValue(comp, actual)
-	return comp.neg ? !result : result
-}
-
-export function evalEventNode(node: HQ.Node, art: ResolvedArtifacts, ectx: EvalEventCtx): boolean {
-	if (HQ.isBlockNode(node)) {
-		const { conjunction, negated } = F.BLOCK_TYPE_SEMANTICS[node.type]
-		const combined = conjunction
-			? node.children.every((child) => evalEventNode(child, art, ectx))
-			: node.children.some((child) => evalEventNode(child, art, ectx))
-		return negated ? !combined : combined
-	}
-	if (!HQ.isCompNode(node)) {
-		switch (node.type) {
-			case 'match-layer':
-			case 'match-ids': {
-				const result = (art.matchSets.get(node) ?? []).includes(ectx.match.id)
-				return node.neg ? !result : result
-			}
-			case 'subquery': {
-				if (node.target === 'matches') {
-					const result = (art.matchSets.get(node) ?? []).includes(ectx.match.id)
-					return node.neg ? !result : result
-				}
-				const playerIds = new Set(art.playerSets.get(node) ?? [])
-				let result = false
-				for (const [playerId] of SE.iterAssocPlayerIds(ectx.event)) {
-					if (playerIds.has(playerId)) {
-						result = true
-						break
-					}
-				}
-				return node.neg ? !result : result
-			}
-			default:
-				assertNever(node)
-		}
-	}
-	const comp = node as F.CompNode
-	const column = mustColumnKey(comp)
-	switch (column) {
-		case 'time':
-			return evalComp(comp, ectx.row.time.getTime())
-		case 'eventId':
-			return evalComp(comp, ectx.row.id)
-		case 'server':
-			return evalComp(comp, ectx.match.serverId)
-		case 'event.type':
-			return evalComp(comp, ectx.row.type)
-		case 'event.variant':
-			return evalComp(comp, 'variant' in ectx.event ? (ectx.event.variant ?? null) : null)
-		case 'event.damageSource':
-			return evalComp(comp, 'weapon' in ectx.event ? ectx.event.weapon : null)
-		case 'player': {
-			const playerIds = new Set(art.playerValues.get(node) ?? [])
-			let result = false
-			for (const [playerId, assocType] of SE.iterAssocPlayerIds(ectx.event)) {
-				if (assocType === GAME_PARTICIPANT) continue
-				if (playerIds.has(playerId)) {
-					result = true
-					break
-				}
-			}
-			return comp.neg ? !result : result
-		}
-		case 'chat.message': {
-			const needle = compValueList(comp)[0]
-			const message = ectx.event.type === 'CHAT_MESSAGE' ? ectx.event.message : null
-			const result =
-				typeof needle === 'string' && needle.length > 0 && message !== null
-					? message.toLowerCase().includes(needle.toLowerCase())
-					: false
-			return comp.neg ? !result : result
-		}
-		case 'match.outcome':
-			return evalComp(comp, ectx.match.outcome)
-		case 'match.setBy':
-			return evalComp(comp, ectx.match.setByType)
-		case 'layer.layer':
-		case 'layer.map':
-		case 'layer.gamemode':
-		case 'layer.faction':
-		case 'layer.unit': {
-			const result = (art.layerSets.get(node) ?? []).includes(ectx.match.layerId)
-			return comp.neg ? !result : result
 		}
 		default:
 			assertNever(column)

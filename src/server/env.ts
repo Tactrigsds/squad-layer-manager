@@ -291,12 +291,6 @@ export const groups = {
 				envExample: { dev: { include: 'omit' } },
 			}),
 
-		EVENT_HISTORY_RETENTION_PERIOD: ZodUtils.HumanTime.optional().meta({
-			description:
-				'archived matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken, along with their entries in the player event index. The most recent matches are always kept, and matches still inside the recent window are never touched. Unset keeps history forever.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-
 		EVENT_ARCHIVE_MIN_HOT_MATCHES: ZodUtils.ParsedIntSchema.pipe(z.number().min(0))
 			.default(100)
 			.meta({

@@ -3,7 +3,6 @@ import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Arr from '@/lib/array-utils'
 import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as EA from '@/models/event-archive.models'
@@ -50,19 +49,6 @@ async function runCompactionLoop() {
 // how many matches one pass will pack, so a long-idle install catches up over several passes rather than
 // spending minutes in one. Each match costs a few ms of compression plus a short write transaction.
 const COMPACT_BATCH = 200
-
-// how many matches one retention transaction drops. Each is a scan of the two tables with no matchId index,
-// so bigger is cheaper -- bounded only to keep the write lock short.
-const PRUNE_BATCH = 500
-
-// Which of a batch's events pruning must keep, moved into retainedEvents by the sieve itself before it
-// returns. Registered by history-retention.server.ts rather than imported: that module reaches back into
-// this one through the layer engine chain, so an import here would close a cycle.
-export type RetentionSieve = (ctx: C.Db & CS.AbortSignal, matchIds: number[]) => Promise<Set<number>>
-let retentionSieve: RetentionSieve | undefined
-export function registerRetentionSieve(sieve: RetentionSieve) {
-	retentionSieve = sieve
-}
 
 // The ordinal below which matches may leave the hot table, or undefined while the server has not yet played
 // enough of them for any to be eligible.
@@ -229,110 +215,6 @@ export const loadMatchEvents = Instr.spanOp(
 			}
 		}
 
-		// a pruned match may still have events a retention rule kept; the row shape mirrors serverEvents
-		const prunedIds = matchIds.filter((id) => byMatch.get(id)!.length === 0)
-		if (prunedIds.length > 0) {
-			const kept = await ctx
-				.db()
-				.select()
-				.from(Schema.retainedEvents)
-				.where(E.inArray(Schema.retainedEvents.matchId, prunedIds))
-				.orderBy(E.asc(Schema.retainedEvents.serverEventId))
-			for (const row of kept) {
-				byMatch.get(row.matchId)?.push({
-					id: row.serverEventId,
-					type: row.type,
-					time: row.time,
-					matchId: row.matchId,
-					appEventId: row.appEventId,
-					version: row.version,
-					data: row.data,
-				})
-			}
-		}
-
 		return byMatch
-	},
-)
-
-/**
- * Drops archived matches that fell past the retention period, with the index entries and chat text that point
- * into them.
- * The matchHistory rows stay: they are small, and they are what the balance and repeat rules read.
- *
- * This is the second half of the event lifecycle -- compaction moves a match from hot to archived, and this
- * moves it from archived to gone. Only ever deletes what compaction has already packed, so an install with
- * retention set still keeps every match hot for its window first.
- */
-export const pruneArchivedMatches = Instr.spanOp(
-	'pruneArchivedMatches',
-	{ module },
-	async (ctx: C.Db & CS.AbortSignal, opts: { retention: number }) => {
-		const cutoff = Date.now() - opts.retention
-		const minHotMatches = ENV.EVENT_ARCHIVE_MIN_HOT_MATCHES
-		const serverIds = await ctx.db().selectDistinct({ serverId: Schema.matchHistory.serverId }).from(Schema.matchHistory)
-
-		let matches = 0
-		let events = 0
-		for (const { serverId } of serverIds) {
-			ctx.signal.throwIfAborted()
-
-			const floor = await hotFloorOrdinal(ctx, serverId, minHotMatches)
-			if (floor === undefined) continue
-
-			const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-			const stale = await ctx
-				.db()
-				.select({ matchId: Schema.archivedMatches.matchId, eventCount: Schema.archivedMatches.eventCount })
-				.from(Schema.archivedMatches)
-				.innerJoin(Schema.matchHistory, E.eq(Schema.matchHistory.id, Schema.archivedMatches.matchId))
-				.where(E.and(E.eq(Schema.matchHistory.serverId, serverId), E.lt(Schema.matchHistory.ordinal, floor), E.lt(matchTime, cutoff)))
-			if (stale.length === 0) continue
-
-			// Both deletes below scan a table that has no index on matchId -- by design in each case (see the
-			// note on playerEventIndex, and fts5's UNINDEXED columns). So each runs ONCE for the server's whole
-			// stale set rather than once per match, which is what keeps pruning linear rather than quadratic.
-			const staleIds = stale.map((s) => s.matchId)
-			for (const batch of Arr.paged(staleIds, PRUNE_BATCH)) {
-				ctx.signal.throwIfAborted()
-				// outside the transaction: the sieve unpacks archive blobs, which yields to the threadpool
-				const retained = retentionSieve ? await retentionSieve(ctx, batch) : new Set<number>()
-				const keep = retained.size > 0 ? JSON.stringify([...retained]) : undefined
-				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx
-						.db()
-						.delete(Schema.playerEventIndex)
-						.where(
-							E.and(
-								E.inArray(Schema.playerEventIndex.matchId, batch),
-								keep ? E.sql`${Schema.playerEventIndex.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))` : undefined,
-							),
-						)
-					// not awaited: run() on the better-sqlite3 driver is synchronous (see the insert in squad-server)
-					ctx.db().run(
-						ctx
-							.db()
-							.delete(Schema.Virtual.chatSearch)
-							.where(
-								E.and(
-									E.inArray(Schema.Virtual.chatSearch.matchId, batch),
-									keep
-										? E.sql`${Schema.Virtual.chatSearch.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))`
-										: undefined,
-								),
-							)
-							.getSQL(),
-					)
-					await ctx.db().delete(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, batch))
-				})
-				await Timers.setImmediate(undefined, { signal: ctx.signal })
-			}
-			matches += stale.length
-			for (const s of stale) events += s.eventCount
-
-			log.info('pruned %d archived matches on server %s', stale.length, serverId)
-		}
-
-		return { matches, events }
 	},
 )

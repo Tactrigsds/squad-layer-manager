@@ -87,7 +87,6 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	TIMEOUT_CANCELLED: { target: 'eos1' },
 	BROADCAST_SENT: { message: 'hello' },
 	MATCH_LAYERS_RECONCILED: { layerDataHash: 'h', matchesUpdated: 0, resolved: [], unresolvedRemaining: 0 },
-	HISTORY_RETENTION_CHANGED: { savedQueryId: 'q', savedQueryName: 'q', retain: true },
 	TEAMSWAPS_UPDATED: {
 		trigger: 'saved',
 		prevSwaps: new Map(),

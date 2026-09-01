@@ -54,15 +54,6 @@ async function handle(req: Request): Promise<Response> {
 			})
 			return { code: 'ok', ...res }
 		}
-		// forces a retention pass (including the sieve for retain-marked saved queries) -- for after
-		// EVENT_HISTORY_RETENTION_PERIOD is shortened, or to reclaim space without waiting for the schedule
-		case 'prune-events': {
-			const retention = req.args?.retention
-			if (typeof retention !== 'number') return { code: 'err:bad-args', message: 'retention (ms) is required' }
-			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
-			const res = await EventArchive.pruneArchivedMatches(ctx, { retention })
-			return { code: 'ok', ...res }
-		}
 		// re-resolves matches whose layer the engine could not place. Normally driven by a layer artifact
 		// changing; forced here for the pass that follows an out-of-band artifact swap
 		case 'reconcile-layers': {

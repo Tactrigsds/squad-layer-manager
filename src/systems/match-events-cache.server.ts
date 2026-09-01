@@ -142,9 +142,10 @@ export const getEnrichedEventsForMatches = Instr.spanOp(
 /**
  * Put players back on the events a replay could not resolve them for.
  *
- * Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a match
- * that only survives as retained rows. The raw event is revived with minimal players -- name from the players
- * table, no team or squad -- on the fields interpolation reads.
+ * Interpolation NOOPs an event whose players are missing from the replayed roster, which is what a match SLM
+ * restarted in the middle of looks like: the roster reseeds from the next teams poll, so everything before it
+ * resolves against nothing. The raw event is revived with minimal players -- name from the players table, no
+ * team or squad -- on the fields interpolation reads.
  *
  * A suppressed event is never revived, since that would undo the suppression, so `keepSuppressed` only decides
  * whether it stays as the NOOP it is. A results page keeps it: it is a hit, the index having no idea a pattern

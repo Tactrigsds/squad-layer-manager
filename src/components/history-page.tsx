@@ -569,7 +569,6 @@ function SavedMenu(props: { onRun: (query: HQ.Query) => void }) {
 	const saved = useQuery(HistoryClient.savedQueriesBase())
 	const me = UsersClient.useLoggedInUser()
 	const deleteQuery = HistoryClient.useDeleteSavedQuery()
-	const setRetain = HistoryClient.useSetRetain()
 	const queries = saved.data?.code === 'ok' ? saved.data.queries : []
 
 	return (
@@ -591,13 +590,6 @@ function SavedMenu(props: { onRun: (query: HQ.Query) => void }) {
 									<span className="ml-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
 								)}
 							</button>
-							{query.query.type === 'events' && (
-								<Switch
-									checked={query.retain}
-									title={tr.text(HistoryMsgs.retainResults())}
-									onCheckedChange={(retain) => setRetain.mutate({ id: query.id, retain })}
-								/>
-							)}
 							{mine && (
 								<Button
 									variant="ghost"

@@ -219,10 +219,9 @@ export const playerEventIndex = sqliteTable(
 		variant: text('variant'),
 	},
 	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
-	// narrows to one contiguous range and a match filter is applied within it; the only matchId-driven query is
-	// retention, which deletes a whole server's stale set in one statement and can afford the scan. On a
-	// WITHOUT ROWID table a secondary index carries the entire pk, so that one index measured 26MB against the
-	// table's own 42MB on the largest install -- more than a third of the cost, for nothing.
+	// narrows to one contiguous range and a match filter is applied within it. On a WITHOUT ROWID table a
+	// secondary index carries the entire pk, so that one index measured 26MB against the table's own 42MB on
+	// the largest install -- more than a third of the cost, for nothing.
 	(table) => ({
 		pk: primaryKey({ columns: [table.playerId, table.time, table.serverEventId, table.assocType] }),
 	}),
@@ -328,8 +327,7 @@ export namespace Virtual {
 }
 
 // A history query a user chose to keep: the page's whole query state as one json value, so loading one is
-// just writing it back into the url. 'shared' rows are visible to every user; `retain` marks an events query
-// as a retention rule (see retainedEvents).
+// just writing it back into the url. 'shared' rows are visible to every user.
 export const savedQueries = sqliteTable(
 	'savedQueries',
 	{
@@ -341,7 +339,6 @@ export const savedQueries = sqliteTable(
 		visibility: text('visibility', { enum: ['private', 'shared'] })
 			.notNull()
 			.default('private'),
-		retain: boolean('retain').notNull().default(false),
 		query: json('query').notNull(),
 		createdAt: timestamp('createdAt')
 			.$defaultFn(() => new Date())
@@ -352,48 +349,6 @@ export const savedQueries = sqliteTable(
 	},
 	(table) => ({
 		savedQueriesOwnerIndex: index('savedQueriesOwnerIndex').on(table.ownerId),
-	}),
-)
-
-// Events kept past the retention period because a retention rule matched them, sieved out of a match as it
-// is pruned. Rows mirror serverEvents so a reader can treat them as the rows they once were. matchHistory
-// rows are never pruned, so the FK holds.
-export const retainedEvents = sqliteTable(
-	'retainedEvents',
-	{
-		serverEventId: integer('serverEventId').primaryKey(),
-		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
-		time: timestamp('time').notNull(),
-		matchId: integer('matchId')
-			.notNull()
-			.references(() => matchHistory.id, { onDelete: 'cascade' }),
-		serverId: text('serverId')
-			.notNull()
-			.references(() => servers.id, { onDelete: 'cascade' }),
-		appEventId: text('appEventId'),
-		version: integer('version'),
-		data: json('data').notNull(),
-	},
-	(table) => ({
-		retainedEventsMatchIdIndex: index('retainedEventsMatchIdIndex').on(table.matchId),
-	}),
-)
-
-// Which retention rule keeps which event. An event may be claimed by several rules, and it is only dropped
-// when its last claim goes.
-export const retainedEventClaims = sqliteTable(
-	'retainedEventClaims',
-	{
-		savedQueryId: text('savedQueryId')
-			.notNull()
-			.references(() => savedQueries.id, { onDelete: 'cascade' }),
-		serverEventId: integer('serverEventId')
-			.notNull()
-			.references(() => retainedEvents.serverEventId, { onDelete: 'cascade' }),
-	},
-	(table) => ({
-		pk: primaryKey({ columns: [table.savedQueryId, table.serverEventId] }),
-		retainedEventClaimsEventIndex: index('retainedEventClaimsEventIndex').on(table.serverEventId),
 	}),
 )
 

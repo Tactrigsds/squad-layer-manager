@@ -14,20 +14,16 @@ import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
 import type * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
-import * as HistoryRetention from '@/systems/history-retention.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as PluginsSys from '@/systems/plugins.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // The history page's server half. A query request is: authorize and resolve on the main thread
@@ -302,7 +298,6 @@ export const router = {
 				ownerId: row.ownerId,
 				ownerName,
 				visibility: row.visibility,
-				retain: row.retain,
 				query: query.data,
 				updatedAt: row.updatedAt.getTime(),
 			})
@@ -317,12 +312,6 @@ export const router = {
 				const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
 				if (!existing) return { code: 'err:not-found' as const }
 				if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
-				// editing a retention rule's query changes what gets kept, so it takes the same permission as
-				// flipping the flag
-				if (existing.retain) {
-					const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RETAIN_PERM_REQ)
-					if (denyRes) return denyRes
-				}
 				await ctx
 					.db()
 					.update(Schema.savedQueries)
@@ -346,45 +335,9 @@ export const router = {
 		if (!existing) return { code: 'err:not-found' as const }
 		if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
 		await ctx.db().delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
-		// the delete cascaded this rule's claims; events kept only by it can go too
-		if (existing.retain) await HistoryRetention.gcOrphanRetainedEvents(ctx)
-		return { code: 'ok' as const }
-	}),
-
-	setRetain: orpcBase.input(z.object({ id: HQ.SAVED_QUERY_ID, retain: z.boolean() })).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RETAIN_PERM_REQ)
-		if (denyRes) return denyRes
-		const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
-		if (!existing) return { code: 'err:not-found' as const }
-		if (existing.ownerId !== ctx.user.discordId && existing.visibility !== 'shared') return { code: 'err:not-found' as const }
-		const query = HQ.QuerySchema.safeParse(existing.query)
-		if (!query.success || query.data.type !== 'events') {
-			return { code: 'err:invalid-query' as const, message: 'only queries with the events result type can retain their results' }
-		}
-		if (existing.retain === input.retain) return { code: 'ok' as const }
-		await ctx.db().update(Schema.savedQueries).set({ retain: input.retain }).where(E.eq(Schema.savedQueries.id, input.id))
-		if (!input.retain) {
-			await ctx.db().delete(Schema.retainedEventClaims).where(E.eq(Schema.retainedEventClaims.savedQueryId, input.id))
-			await HistoryRetention.gcOrphanRetainedEvents(ctx)
-		}
-		await AppEventsSys.persistAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.HistoryRetentionChanged>({
-				type: 'HISTORY_RETENTION_CHANGED',
-				savedQueryId: input.id,
-				savedQueryName: existing.name,
-				retain: input.retain,
-				actor: { type: 'slm-user', userId: ctx.user.discordId },
-				serverId: null,
-				matchId: null,
-				causeId: null,
-			}),
-		)
 		return { code: 'ok' as const }
 	}),
 }
-
-const RETAIN_PERM_REQ = RBAC.permReq('any', ['global-settings:write'])
 
 function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.MatchDetails | undefined {
 	try {

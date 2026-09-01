@@ -447,21 +447,13 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 		case 'BACKUP_CREATED': {
 			const size = `${(e.sizeBytes / 1024 / 1024).toFixed(1)} MB`
 			const upload = e.uploaded === undefined ? '' : e.uploaded ? ', uploaded offsite' : ', offsite upload FAILED'
-			const pruned =
-				e.pruned && e.pruned.events > 0
-					? `, pruned ${e.pruned.events} events from ${e.pruned.matches} ${e.pruned.matches === 1 ? 'match' : 'matches'}`
-					: ''
 			const what = e.reason === 'pre-migration' ? 'backed up the database before migrating it' : 'backed up the database'
-			return `${what}, to ${e.fileName} (${size})${upload}${pruned}`
+			return `${what}, to ${e.fileName} (${size})${upload}`
 		}
 		case 'MATCH_LAYERS_RECONCILED': {
 			const matches = `${e.matchesUpdated} ${e.matchesUpdated === 1 ? 'match' : 'matches'}`
 			const remaining = e.unresolvedRemaining > 0 ? `, ${e.unresolvedRemaining} still unrecognised` : ''
 			return `recognised the layers of ${matches} after a layer data update${remaining}`
 		}
-		case 'HISTORY_RETENTION_CHANGED':
-			return e.retain
-				? `made the saved query "${e.savedQueryName}" a retention rule: its matching events now outlive the retention period`
-				: `stopped the saved query "${e.savedQueryName}" from retaining events`
 	}
 }

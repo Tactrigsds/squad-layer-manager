@@ -14,8 +14,6 @@ import * as Rbac from '@/systems/rbac.server'
 // The main-thread half of query resolution: the parts the query engine must not depend on. Visibility comes
 // from rbac; match-layer nodes need the layer engine's wasm artifact, so they are evaluated here and
 // rewritten into match-id sets before the tree is shipped to the engine, which may be running in a worker
-// thread (see history.server.ts). Also what lets the retention sieve share the engine's semantics without
-// the sieve dragging the layer engine into the archive module.
 
 const MAX_LAYER_MATCHES = 100_000
 

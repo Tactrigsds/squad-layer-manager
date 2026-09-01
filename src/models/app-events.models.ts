@@ -196,15 +196,6 @@ export const MatchLayersReconciledSchema = event('MATCH_LAYERS_RECONCILED', {
 })
 export type MatchLayersReconciled = z.infer<typeof MatchLayersReconciledSchema>
 
-// a saved history query's retention rule was switched on or off. Logged because a rule changes what the
-// prune pass keeps, which outlives every other setting on the page.
-export const HistoryRetentionChangedSchema = event('HISTORY_RETENTION_CHANGED', {
-	savedQueryId: z.string(),
-	savedQueryName: z.string(),
-	retain: z.boolean(),
-})
-export type HistoryRetentionChanged = z.infer<typeof HistoryRetentionChangedSchema>
-
 export const VoteAbortedSchema = event('VOTE_ABORTED', {})
 export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
@@ -219,9 +210,8 @@ export type AppStarted = z.infer<typeof AppStartedSchema>
 export const AppRestartedSchema = event('APP_RESTARTED', versionShape)
 export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
-// a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken, whether it
-// made it to the configured offsite target, and what the event-history prune that ran alongside it deleted -- the one
-// place in the app that destroys history, so it needs to be accounted for.
+// a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken and whether
+// it made it to the configured offsite target.
 export const BackupCreatedSchema = event('BACKUP_CREATED', {
 	fileName: z.string(),
 	sizeBytes: z.number(),
@@ -232,8 +222,6 @@ export const BackupCreatedSchema = event('BACKUP_CREATED', {
 	durationMs: z.number().optional(),
 	// absent when no sftp target is configured; false when the upload failed (the local backup still exists)
 	uploaded: z.boolean().optional(),
-	// the prune that ran before the snapshot was taken. absent when event-history retention is disabled.
-	pruned: z.object({ events: z.number(), matches: z.number() }).optional(),
 })
 export type BackupCreated = z.infer<typeof BackupCreatedSchema>
 
@@ -440,7 +428,6 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteEndedSchema,
 	VoteAbortedSchema,
 	MatchLayersReconciledSchema,
-	HistoryRetentionChangedSchema,
 	QueueUpdatedSchema,
 	TeamswapsUpdatedSchema,
 	SwitchRequestsFulfilledSchema,
@@ -538,7 +525,6 @@ export const APP_EVENT_META = {
 	PLUGIN_EVENT: EM.meta<PluginEvent>(),
 	PLUGIN_DATA_PURGED: EM.meta<PluginDataPurged>(),
 	MATCH_LAYERS_RECONCILED: EM.meta<MatchLayersReconciled>(),
-	HISTORY_RETENTION_CHANGED: EM.meta<HistoryRetentionChanged>(),
 	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
 	// its own event does not have fails here
 } satisfies { [K in AppEventType]: EM.EventMeta<Extract<AppEvent, { type: K }>> }

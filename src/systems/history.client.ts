@@ -35,10 +35,6 @@ export function useDeleteSavedQuery() {
 	return useMutation(RPC.orpc.history.deleteSaved.mutationOptions({ onSuccess: invalidateSaved }))
 }
 
-export function useSetRetain() {
-	return useMutation(RPC.orpc.history.setRetain.mutationOptions({ onSuccess: invalidateSaved }))
-}
-
 // -------- recents --------
 // purely a convenience, so localStorage is the right home: per browser, survives nothing it shouldn't
 

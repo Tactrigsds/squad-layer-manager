@@ -48,9 +48,6 @@ export const unrecognisedLayers = def((n: number) =>
 export const queryName = def('Query name')
 export const visibilityPrivate = def('Private')
 export const visibilityShared = def('Shared')
-export const retainResults = def('Retain results')
-// shown under the retain toggle in the save dialog
-export const retainHint = def('Events matched by this query are kept past the retention period. Needs global settings access.')
 export const deleteQuery = def('Delete')
 export const copyLink = def('Copy link')
 export const saveDialogTitle = def('Save query')

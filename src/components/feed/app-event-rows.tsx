@@ -537,8 +537,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		appEvent.type === 'APP_RESTARTED' ||
 		appEvent.type === 'BACKUP_CREATED' ||
 		appEvent.type === 'PLUGIN_DATA_PURGED' ||
-		appEvent.type === 'MATCH_LAYERS_RECONCILED' ||
-		appEvent.type === 'HISTORY_RETENTION_CHANGED'
+		appEvent.type === 'MATCH_LAYERS_RECONCILED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).

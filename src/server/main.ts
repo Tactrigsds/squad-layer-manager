@@ -19,7 +19,6 @@ import * as EventArchive from '@/systems/event-archive.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
-import * as HistoryRetention from '@/systems/history-retention.server'
 import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
@@ -125,7 +124,6 @@ await Instr.spanOp('main', { module }, async () => {
 	Backups.setup()
 	EventArchive.setup()
 	History.setup()
-	HistoryRetention.setup()
 	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off

@@ -354,6 +354,5 @@ export type SavedQueryUpdate = z.infer<typeof SavedQueryUpdateSchema>
 export type SavedQuery = SavedQueryUpdate & {
 	id: string
 	ownerId: bigint
-	retain: boolean
 	updatedAt: number
 }
