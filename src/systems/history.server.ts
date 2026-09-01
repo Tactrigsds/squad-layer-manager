@@ -499,6 +499,7 @@ function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[
 		zIndexBase: 0,
 		displayTeamsNormalized: render.displayTeamsNormalized,
 		showTeamlessChat: true,
+		placeholderUndrawn: true,
 		matchById: (matchId) => (matchId === null || matchId === undefined ? undefined : byId.get(matchId)),
 		latestMatch: undefined,
 		currentMatch: undefined,

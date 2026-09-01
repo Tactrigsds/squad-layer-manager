@@ -406,8 +406,35 @@ function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, {
 	)
 }
 
-/** One feed row, or null when the event draws nothing. App events return null: live react draws those. */
+/**
+ * One feed row, or null when the event draws nothing. App events return null: live react draws those.
+ *
+ * A results context asks for a placeholder instead of nothing (see RenderCtx.placeholderUndrawn): the live
+ * feed leaves roster bookkeeping undrawn on purpose, but a query that matched such an event has to show it,
+ * or the result count disagrees with what is on screen.
+ */
 export function Row({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched }): React.ReactNode {
+	const drawn = drawRow({ ctx, event })
+	if (drawn !== null || !ctx.placeholderUndrawn || event.type === 'APP_EVENT') return drawn
+	return <UndrawnRow event={event} />
+}
+
+// The event as its type and its payload, for the types the feed has no rendering for. A native disclosure, so
+// it stays inert: no handler, and it works the same server-rendered, walked to dom, or in a react tree.
+function UndrawnRow({ event }: { event: CHAT.EventEnriched }) {
+	const type = event.type === 'NOOP' ? event.originalEvent.type : event.type
+	return (
+		<Atoms.EventLine time={event.time} icon={<Icon name="Dot" className="h-4 w-4 text-muted-foreground shrink-0" />}>
+			<details className="min-w-0">
+				<summary className="cursor-pointer font-mono text-2xs text-muted-foreground">{type}</summary>
+				<pre className="mt-1 overflow-x-auto rounded bg-muted/40 p-1 text-2xs wrap-anywhere">{JSON.stringify(event, null, 2)}</pre>
+			</details>
+		</Atoms.EventLine>
+	)
+}
+
+// not a component: Row needs the result to decide whether to stand a placeholder in for it
+function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched }): React.ReactNode {
 	switch (event.type) {
 		case 'CHAT_MESSAGE':
 		case 'ADMIN_BROADCAST':

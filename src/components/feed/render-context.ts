@@ -26,6 +26,9 @@ export type RenderCtx = {
 	storesForMatch?: (matchId: number | null | undefined) => SquadServerFrame.KeyProp | undefined
 	// a results context renders every event its query matched, including teamless chat the live feed drops
 	showTeamlessChat?: boolean
+	// and including the types the feed draws nothing for, which appear as a type-and-payload placeholder
+	// rather than as a silent gap between the result count and the rows
+	placeholderUndrawn?: boolean
 	matchById: (matchId: number | null | undefined) => MH.MatchDetails | undefined
 	// the most recent match on record, and the one in progress -- not always the same match
 	latestMatch: MH.MatchDetails | undefined
