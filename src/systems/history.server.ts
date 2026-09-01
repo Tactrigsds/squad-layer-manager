@@ -167,6 +167,9 @@ const RenderSchema = z.object({
 })
 type RenderOpts = z.infer<typeof RenderSchema>
 
+// a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
+const PLAYER_SEARCH_LIMIT = 25
+
 async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
 	const problems = HQ.validateQueryNode(node)
@@ -273,6 +276,20 @@ export const router = {
 			.where(E.eq(Schema.players.eosId, input.playerId))
 		if (!row) return { code: 'err:not-found' as const }
 		return { code: 'ok' as const, username: row.username, steamId: row.steamId?.toString() ?? null }
+	}),
+
+	// what the player field's combo-box lists as you type. Names rather than ids: nobody filters by an eos id
+	// they remembered, and the trigram index makes a substring needle an index lookup (resolveNamedPlayerIds).
+	searchPlayers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
+		const eosIds = await HistoryQuery.resolveNamedPlayerIds(ctx, input.needle)
+		if (eosIds.length === 0) return { code: 'ok' as const, players: [] }
+		const rows = await ctx
+			.db()
+			.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+			.from(Schema.players)
+			.where(E.inArray(Schema.players.eosId, eosIds))
+			.limit(PLAYER_SEARCH_LIMIT)
+		return { code: 'ok' as const, players: rows }
 	}),
 
 	// -------- saved queries --------

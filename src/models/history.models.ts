@@ -57,6 +57,9 @@ export const COLUMN_DEFS = {
 	'chat.message': { key: 'chat.message', displayName: 'Chat text', domain: { kind: 'text' } },
 	'match.outcome': { key: 'match.outcome', displayName: 'Match outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
 	'match.setBy': { key: 'match.setBy', displayName: 'Layer set by', domain: { kind: 'enum', options: SET_BY_TYPES } },
+	// how lopsided the match was, as the winner's remaining tickets over the loser's. Unsigned, because which
+	// side won is `match.outcome`'s question; this one is only ever asked as "a blowout" or "a close game".
+	'match.ticketDiff': { key: 'match.ticketDiff', displayName: 'Ticket difference', domain: { kind: 'number' } },
 	// The layer played, by part. Every one of these is read off the layer id (L.toLayer), never off a join:
 	// the id spells out map, gamemode and both sides, so the engine resolves them by parsing the few hundred
 	// distinct ids in range rather than by asking the layer engine, which it has no artifact for.
@@ -260,6 +263,9 @@ export const QuerySchema = z.object({
 	faction: z.string().optional(),
 	outcome: z.enum(MATCH_OUTCOMES).optional(),
 	setBy: z.enum(SET_BY_TYPES).optional(),
+	// bounds on match.ticketDiff. Either alone reads as "a blowout" / "a close game"; both make a band
+	ticketDiffMin: z.number().int().nonnegative().optional(),
+	ticketDiffMax: z.number().int().nonnegative().optional(),
 	name: z.string().optional(),
 	minMatches: z.number().int().positive().optional(),
 
@@ -278,6 +284,19 @@ function comp(column: ColumnKey, values: (string | number)[]): F.CompNode {
 	const subject: F.ColumnArg = { type: 'column', column }
 	if (values.length === 1) return { type: 'eq', neg: false, args: [subject, { type: 'value', value: values[0] }] }
 	return { type: 'in', neg: false, args: [subject, { type: 'values', values }] }
+}
+
+// `gt`/`lt` are strict, so an inclusive bound is expressed as the neighbouring integer. A pair becomes one
+// `inrange` rather than two comparisons, which is what the advanced editor shows when the mode is switched.
+function ticketDiffNodes(query: Query): Node[] {
+	const subject: F.ColumnArg = { type: 'column', column: 'match.ticketDiff' }
+	const { ticketDiffMin: min, ticketDiffMax: max } = query
+	if (min !== undefined && max !== undefined) {
+		return [{ type: 'inrange', neg: false, args: [subject, { type: 'value', value: min }, { type: 'value', value: max }] }]
+	}
+	if (min !== undefined) return [{ type: 'gt', neg: false, args: [subject, { type: 'value', value: min - 1 }] }]
+	if (max !== undefined) return [{ type: 'lt', neg: false, args: [subject, { type: 'value', value: max + 1 }] }]
+	return []
 }
 
 /**
@@ -301,6 +320,7 @@ export function queryFilterNode(query: Query): Node {
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.outcome) children.push(comp('match.outcome', [query.outcome]))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
+	children.push(...ticketDiffNodes(query))
 	return { type: 'and', children }
 }
 

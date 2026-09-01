@@ -396,4 +396,48 @@ describe('the event archive', () => {
 			expect(res.code, `${type} with a layer node`).toBe('ok')
 		}
 	})
+
+	// match.ticketDiff is computed rather than stored, and it compiles differently for each of the three
+	// result types (a correlated subquery for the two event families, the bare expression for matches).
+	it('filters by ticket difference, and reads the same bound from every result type', async () => {
+		const db = app.readDb()
+		let diffs: number[]
+		try {
+			const rows = db
+				.prepare(
+					`SELECT abs(team1Tickets - team2Tickets) AS d FROM matchHistory WHERE team1Tickets IS NOT NULL AND team2Tickets IS NOT NULL`,
+				)
+				.all() as { d: number }[]
+			diffs = rows.map((r) => r.d)
+		} finally {
+			db.close()
+		}
+		if (diffs.length === 0) throw new Error('no finished match recorded a ticket count')
+		const max = Math.max(...diffs)
+
+		// a bound at the largest recorded difference keeps every match; one above it keeps none
+		const kept = await client.history.query({ query: { type: 'matches', ticketDiffMax: max } })
+		expect(kept.code).toBe('ok')
+		if (kept.code !== 'ok' || kept.type !== 'matches') return
+		expect(kept.total).toBe(diffs.length)
+
+		const none = await client.history.query({ query: { type: 'matches', ticketDiffMin: max + 1 } })
+		expect(none.code).toBe('ok')
+		if (none.code !== 'ok' || none.type !== 'matches') return
+		expect(none.total).toBe(0)
+
+		// the events and players compilers reach the same column through matchId, so they must at least run
+		for (const type of ['events', 'players'] as const) {
+			const res = await client.history.query({ query: { type, ticketDiffMin: 0, ticketDiffMax: max } })
+			expect(res.code, `${type} with a ticket bound`).toBe('ok')
+		}
+	})
+
+	// the player field accepts a name, so the picker's list has to resolve to the same ids the filter does
+	it('searches players by name substring', async () => {
+		const res = await client.history.searchPlayers({ needle: 'archive_subject'.slice(0, 8) })
+		expect(res.code).toBe('ok')
+		if (res.code !== 'ok') return
+		expect(res.players.some((p) => p.username?.includes('archive_subject'))).toBe(true)
+	})
 })

@@ -2,17 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import ComboBox from '@/components/combo-box/combo-box'
 import { renderStatic } from '@/components/feed/static-render'
-import HistoryAdvancedEditor, { LayerFilterPicker } from '@/components/history-advanced-editor'
+import HistoryAdvancedEditor from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
+import HistoryQueryBar from '@/components/history-query-bar'
 import * as HistoryTemplates from '@/components/history/templates'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -20,12 +19,10 @@ import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as HQ from '@/models/history.models'
-import * as L from '@/models/layer'
 import type * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
-import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
 export type HistoryPageProps = {
@@ -103,6 +100,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 				<Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
 					{tr.text(HistoryMsgs.save())}
 				</Button>
+				<CopyLinkButton />
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button size="sm" disabled={!canRun} onClick={run}>
@@ -119,9 +117,8 @@ export default function HistoryPage(props: HistoryPageProps) {
 			</div>
 
 			{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-			<div key={executedKey} className="flex flex-wrap items-end gap-2">
-				<CommonFields stores={props.stores} draft={draft} set={set} />
-				{draft.mode === 'basic' && <BasicFields draft={draft} set={set} />}
+			<div key={executedKey}>
+				<HistoryQueryBar draft={draft} set={set} />
 			</div>
 			{draft.mode === 'advanced' && <HistoryAdvancedEditor stores={props.stores} />}
 
@@ -131,244 +128,25 @@ export default function HistoryPage(props: HistoryPageProps) {
 	)
 }
 
-function Field(props: { label: string; children: React.ReactNode }) {
+function CopyLinkButton() {
+	const [copied, setCopied] = React.useState(false)
+	React.useEffect(() => {
+		if (!copied) return
+		const timer = setTimeout(() => setCopied(false), 1500)
+		return () => clearTimeout(timer)
+	}, [copied])
 	return (
-		<label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-			{props.label}
-			{props.children}
-		</label>
-	)
-}
-
-function toDatetimeLocal(value: number | undefined): string {
-	if (value === undefined) return ''
-	return new Date(value - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-}
-
-function CommonFields(props: { stores: HistoryFrame.KeyProp; draft: HQ.Query; set: (patch: Partial<HQ.Query>) => void }) {
-	const { draft, set } = props
-	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
-	const ANY = '$any'
-	return (
-		<>
-			<Field label={tr.text(HistoryMsgs.fieldServer())}>
-				<Select value={draft.server ?? ANY} onValueChange={(v) => set({ server: v === ANY ? undefined : v })}>
-					<SelectTrigger className="h-7 w-max text-xs">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-						{servers?.map((server) => (
-							<SelectItem key={server.id} value={server.id}>
-								{server.displayName}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldFrom())}>
-				<Input
-					type="datetime-local"
-					className="h-7 w-max text-xs"
-					defaultValue={toDatetimeLocal(draft.from)}
-					onChange={(e) => set({ from: e.target.value === '' ? undefined : new Date(e.target.value).getTime() })}
-				/>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldTo())}>
-				<Input
-					type="datetime-local"
-					className="h-7 w-max text-xs"
-					defaultValue={toDatetimeLocal(draft.to)}
-					onChange={(e) => set({ to: e.target.value === '' ? undefined : new Date(e.target.value).getTime() })}
-				/>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldPlayer())}>
-				<Input
-					className="h-7 w-52 text-xs"
-					placeholder={tr.text(HistoryMsgs.playerPlaceholder())}
-					defaultValue={draft.player ?? ''}
-					onChange={(e) => set({ player: e.target.value || undefined })}
-				/>
-			</Field>
-		</>
-	)
-}
-
-function BasicFields(props: { draft: HQ.Query; set: (patch: Partial<HQ.Query>) => void }) {
-	const { draft, set } = props
-	const ANY = '$any'
-	const types = draft.types ?? []
-	return (
-		<>
-			{draft.type === 'events' && (
-				<>
-					<Field label={tr.text(HistoryMsgs.fieldEventTypes())}>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="outline" size="sm" className="h-7 max-w-56 truncate px-2 text-xs font-normal">
-									{types.length > 0 ? types.join(', ') : tr.text(HistoryMsgs.anyOption())}
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="max-h-80 overflow-y-auto">
-								{HQ.EVENT_TYPES.map((type) => (
-									<DropdownMenuCheckboxItem
-										key={type}
-										checked={types.includes(type)}
-										onCheckedChange={(checked) => set({ types: checked ? [...types, type] : types.filter((t) => t !== type) })}
-										onSelect={(e) => e.preventDefault()}
-									>
-										{type}
-									</DropdownMenuCheckboxItem>
-								))}
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</Field>
-					<Field label={tr.text(HistoryMsgs.fieldVariant())}>
-						<Select
-							value={draft.variant ?? ANY}
-							onValueChange={(v) => set({ variant: v === ANY ? undefined : (v as HQ.Query['variant']) })}
-						>
-							<SelectTrigger className="h-7 w-max text-xs">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-								{HQ.EVENT_VARIANTS.map((variant) => (
-									<SelectItem key={variant} value={variant}>
-										{variant}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</Field>
-					<Field label={tr.text(HistoryMsgs.fieldDamageSource())}>
-						<Input
-							className="h-7 w-40 text-xs"
-							defaultValue={draft.damageSource ?? ''}
-							onChange={(e) => set({ damageSource: e.target.value || undefined })}
-						/>
-					</Field>
-					<Field label={tr.text(HistoryMsgs.fieldChat())}>
-						<Input
-							className="h-7 w-40 text-xs"
-							defaultValue={draft.chat ?? ''}
-							onChange={(e) => set({ chat: e.target.value || undefined })}
-						/>
-					</Field>
-				</>
-			)}
-			{draft.type === 'players' && (
-				<>
-					<Field label={tr.text(HistoryMsgs.fieldName())}>
-						<Input
-							className="h-7 w-40 text-xs"
-							defaultValue={draft.name ?? ''}
-							onChange={(e) => set({ name: e.target.value || undefined })}
-						/>
-					</Field>
-					<Field label={tr.text(HistoryMsgs.fieldMinMatches())}>
-						<Input
-							type="number"
-							min={1}
-							className="h-7 w-20 text-xs"
-							defaultValue={draft.minMatches ?? ''}
-							onChange={(e) => set({ minMatches: e.target.value === '' ? undefined : Number(e.target.value) })}
-						/>
-					</Field>
-				</>
-			)}
-			{draft.type === 'matches' && (
-				<>
-					<Field label={tr.text(HistoryMsgs.fieldOutcome())}>
-						<Select
-							value={draft.outcome ?? ANY}
-							onValueChange={(v) => set({ outcome: v === ANY ? undefined : (v as HQ.Query['outcome']) })}
-						>
-							<SelectTrigger className="h-7 w-max text-xs">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-								{HQ.MATCH_OUTCOMES.map((outcome) => (
-									<SelectItem key={outcome} value={outcome}>
-										{outcome}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</Field>
-					<Field label={tr.text(HistoryMsgs.fieldSetBy())}>
-						<Select
-							value={draft.setBy ?? ANY}
-							onValueChange={(v) => set({ setBy: v === ANY ? undefined : (v as HQ.Query['setBy']) })}
-						>
-							<SelectTrigger className="h-7 w-max text-xs">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-								{HQ.SET_BY_TYPES.map((setBy) => (
-									<SelectItem key={setBy} value={setBy}>
-										{setBy}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</Field>
-				</>
-			)}
-			{/* the layer a match played, by part. A saved filter answers the questions these cannot (matchups,
-			    extra columns, pool membership), so both are offered rather than one standing in for the other */}
-			<Field label={tr.text(HistoryMsgs.fieldMap())}>
-				<LayerPartPicker
-					title={tr.text(HistoryMsgs.fieldMap())}
-					options={L.StaticLayerComponents.maps}
-					value={draft.map}
-					onSelect={(map) => set({ map })}
-				/>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldGamemode())}>
-				<LayerPartPicker
-					title={tr.text(HistoryMsgs.fieldGamemode())}
-					options={L.StaticLayerComponents.gamemodes}
-					value={draft.gamemode}
-					onSelect={(gamemode) => set({ gamemode })}
-				/>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldFaction())}>
-				<LayerPartPicker
-					title={tr.text(HistoryMsgs.fieldFaction())}
-					options={L.StaticLayerComponents.factions}
-					value={draft.faction}
-					onSelect={(faction) => set({ faction })}
-				/>
-			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldLayer())}>
-				<LayerFilterPicker
-					value={draft.layer?.type === 'included-in' ? draft.layer.filterId : undefined}
-					onSelect={(filterId) => set({ layer: filterId ? { type: 'included-in', filterId } : undefined })}
-				/>
-			</Field>
-		</>
-	)
-}
-
-function LayerPartPicker(props: {
-	title: string
-	options: readonly string[]
-	value: string | undefined
-	onSelect: (v: string | undefined) => void
-}) {
-	const options = React.useMemo(() => props.options.map((option) => ({ value: option, label: option })), [props.options])
-	return (
-		<ComboBox
-			title={props.title}
-			placeholder={tr.text(HistoryMsgs.anyOption())}
-			allowEmpty
-			value={props.value}
-			options={options}
-			onSelect={(v) => props.onSelect(v ?? undefined)}
-		/>
+		<Button
+			variant="ghost"
+			size="icon"
+			className="h-8 w-8"
+			title={tr.text(copied ? HistoryMsgs.linkCopied() : HistoryMsgs.copyLink())}
+			onClick={() => {
+				void navigator.clipboard.writeText(window.location.href).then(() => setCopied(true))
+			}}
+		>
+			{copied ? <Icons.Check className="h-4 w-4" /> : <Icons.Link className="h-4 w-4" />}
+		</Button>
 	)
 }
 

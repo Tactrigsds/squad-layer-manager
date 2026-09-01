@@ -35,6 +35,10 @@ export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
 export const cs = Schema.Virtual.chatSearch
 export const us = Schema.Virtual.usernameSearch
+
+// abs(team1 - team2) over the match row, null while either side's tickets are unrecorded (an unfinished or
+// pre-outcome match), which every comparison then reads as not-true rather than as zero
+const ticketDiffOf = (row: typeof mh) => sql`abs(${row.team1Tickets} - ${row.team2Tickets})`
 export const se = Schema.serverEvents
 export const am = Schema.archivedMatches
 
@@ -515,6 +519,8 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+		case 'match.ticketDiff':
+			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'layer.layer':
 		case 'layer.map':
 		case 'layer.gamemode':
@@ -587,6 +593,8 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
+		case 'match.ticketDiff':
+			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'layer.layer':
 		case 'layer.map':
 		case 'layer.gamemode':
@@ -657,6 +665,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			return compileComp(comp, mh.outcome, id)
 		case 'match.setBy':
 			return compileComp(comp, mh.setByType, id)
+		case 'match.ticketDiff':
+			return compileComp(comp, ticketDiffOf(mh), id)
 		case 'server':
 			return compileComp(comp, mh.serverId, id)
 		case 'chat.message': {

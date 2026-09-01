@@ -23,6 +23,23 @@ export const savedQueriesBase = () =>
 		staleTime: 30_000,
 	})
 
+// a needle shorter than the trigram index's three characters scans the players table, so it is not sent
+export const MIN_PLAYER_NEEDLE = 3
+
+export const playerSearchBase = (needle: string) =>
+	RPC.orpc.history.searchPlayers.queryOptions({
+		input: { needle },
+		enabled: needle.trim().length >= MIN_PLAYER_NEEDLE,
+		staleTime: 60_000,
+	})
+
+export const playerInfoBase = (playerId: string | undefined) =>
+	RPC.orpc.history.playerInfo.queryOptions({
+		input: { playerId: playerId ?? '' },
+		enabled: !!playerId,
+		staleTime: Infinity,
+	})
+
 function invalidateSaved() {
 	void RPC.queryClient.invalidateQueries({ queryKey: savedQueriesBase().queryKey })
 }
