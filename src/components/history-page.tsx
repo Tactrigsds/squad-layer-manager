@@ -11,9 +11,11 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
@@ -38,6 +40,9 @@ type OkRes = Extract<QueryRes, { code: 'ok' }>
 function okOf<T extends OkRes['type']>(res: QueryRes | undefined, type: T): Extract<OkRes, { type: T }> | undefined {
 	return res && res.code === 'ok' && res.type === type ? (res as Extract<OkRes, { type: T }>) : undefined
 }
+
+// both modifiers run (see onKeyDown); this is only which one to show
+const RUN_MODIFIER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '\u2318' : 'Ctrl'
 
 export default function HistoryPage(props: HistoryPageProps) {
 	const draft = Zus.useStore(props.stores.history, (s) => s.draft)
@@ -95,9 +100,19 @@ export default function HistoryPage(props: HistoryPageProps) {
 				<Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
 					{tr.text(HistoryMsgs.save())}
 				</Button>
-				<Button size="sm" disabled={!canRun} onClick={run}>
-					{tr.text(HistoryMsgs.run())}
-				</Button>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button size="sm" disabled={!canRun} onClick={run}>
+							{tr.text(HistoryMsgs.run())}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						<KbdGroup>
+							<Kbd>{RUN_MODIFIER}</Kbd>
+							<Kbd>Enter</Kbd>
+						</KbdGroup>
+					</TooltipContent>
+				</Tooltip>
 			</div>
 
 			{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
