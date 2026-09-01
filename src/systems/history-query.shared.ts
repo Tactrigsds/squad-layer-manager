@@ -35,8 +35,8 @@ export const pei = Schema.playerEventIndex
 export const ae = Schema.appEvents
 export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
-export const cs = Schema.chatSearch
-export const us = Schema.usernameSearch
+export const cs = Schema.Virtual.chatSearch
+export const us = Schema.Virtual.usernameSearch
 export const se = Schema.serverEvents
 export const am = Schema.archivedMatches
 

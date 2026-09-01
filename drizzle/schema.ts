@@ -292,26 +292,40 @@ export const archivedMatches = sqliteTable(
 	}),
 )
 
-// The two fts5 indexes, declared for reference only.
-//
-// Their DDL lives in the migrations (0106, 0108) because drizzle cannot express a virtual table, and neither is
-// ever read through the query builder -- an fts5 search is a MATCH, which only the sql template can say. They
-// are here so a query naming one names these objects rather than a bare string, which is what makes every use
-// of a table or column findable.
-export const chatSearch = sqliteTable('chatSearch', {
-	message: text('message').notNull(),
-	serverEventId: integer('serverEventId').notNull(),
-	playerId: text('playerId').notNull(),
-	matchId: integer('matchId').notNull(),
-	serverId: text('serverId').notNull(),
-	time: timestamp('time').notNull(),
-})
+/**
+ * Virtual tables, declared for reference only. Namespaced so a reader can tell at the use site that these are
+ * not ordinary tables, because three things about them are different:
+ *
+ *  - Their DDL is in the migrations, not here. Drizzle cannot express `CREATE VIRTUAL TABLE`, so these
+ *    declarations describe a table drizzle did not create and must never be asked to.
+ *  - They have no rowid of their own, no constraints and no indexes. A declaration below says a column exists
+ *    and what it holds, and nothing more.
+ *  - Searching one is a `MATCH` against the table name, which the query builder has no way to say. Reads go
+ *    through a `sql` template; only the writes are builder calls.
+ *
+ * They are declared at all so a query naming one names this object rather than a bare string, which is what
+ * makes every use of a table or column findable. The namespace is also what keeps them out of drizzle-kit's
+ * reach: it scans this module's top-level exports for tables, and would otherwise generate a `CREATE TABLE`
+ * for a virtual table that already exists and is not one.
+ */
+export namespace Virtual {
+	/** fts5 over chat text, standalone rather than external-content: it has to outlive the events it indexes. */
+	export const chatSearch = sqliteTable('chatSearch', {
+		message: text('message').notNull(),
+		serverEventId: integer('serverEventId').notNull(),
+		playerId: text('playerId').notNull(),
+		matchId: integer('matchId').notNull(),
+		serverId: text('serverId').notNull(),
+		time: timestamp('time').notNull(),
+	})
 
-export const usernameSearch = sqliteTable('usernameSearch', {
-	username: text('username').notNull(),
-	usernameNoTag: text('usernameNoTag').notNull(),
-	eosId: text('eosId').notNull(),
-})
+	/** fts5 trigram over player names, so a substring needle of three or more characters is an index lookup. */
+	export const usernameSearch = sqliteTable('usernameSearch', {
+		username: text('username').notNull(),
+		usernameNoTag: text('usernameNoTag').notNull(),
+		eosId: text('eosId').notNull(),
+	})
+}
 
 // A history query a user chose to keep: the page's whole query state as one json value, so loading one is
 // just writing it back into the url. 'shared' rows are visible to every user; `retain` marks an events query

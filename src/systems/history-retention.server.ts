@@ -171,7 +171,7 @@ export async function gcOrphanRetainedEvents(ctx: C.Db): Promise<number> {
 		await DB.runTransaction(ctx, async (ctx) => {
 			await ctx.db().delete(Schema.playerEventIndex).where(E.inArray(Schema.playerEventIndex.serverEventId, batch))
 			// not awaited: run() on the better-sqlite3 driver is synchronous
-			ctx.db().run(ctx.db().delete(Schema.chatSearch).where(E.inArray(Schema.chatSearch.serverEventId, batch)).getSQL())
+			ctx.db().run(ctx.db().delete(Schema.Virtual.chatSearch).where(E.inArray(Schema.Virtual.chatSearch.serverEventId, batch)).getSQL())
 			await ctx.db().delete(Schema.retainedEvents).where(E.inArray(Schema.retainedEvents.serverEventId, batch))
 		})
 	}

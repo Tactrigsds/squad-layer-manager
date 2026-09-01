@@ -2180,7 +2180,7 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 		ctx.db().run(
 			ctx
 				.db()
-				.insert(Schema.chatSearch)
+				.insert(Schema.Virtual.chatSearch)
 				.values({ ...r, time: new Date(r.time) })
 				.getSQL(),
 		)

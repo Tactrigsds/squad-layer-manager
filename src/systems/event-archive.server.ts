@@ -312,11 +312,13 @@ export const pruneArchivedMatches = Instr.spanOp(
 					ctx.db().run(
 						ctx
 							.db()
-							.delete(Schema.chatSearch)
+							.delete(Schema.Virtual.chatSearch)
 							.where(
 								E.and(
-									E.inArray(Schema.chatSearch.matchId, batch),
-									keep ? E.sql`${Schema.chatSearch.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))` : undefined,
+									E.inArray(Schema.Virtual.chatSearch.matchId, batch),
+									keep
+										? E.sql`${Schema.Virtual.chatSearch.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))`
+										: undefined,
 								),
 							)
 							.getSQL(),
