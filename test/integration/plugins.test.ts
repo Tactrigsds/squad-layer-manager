@@ -69,7 +69,7 @@ async function endMatchDecided(winnerTeamId: number) {
 
 // DISABLED: the plugin host's rpc bridge fails these ("plugin rpc nextEvent failed: err:unknown-rpc"), and it
 // does so identically at 57953246, before the history-engine work on this branch. Re-enable with that fix.
-describe.skip('plugin host', () => {
+describe('plugin host', () => {
 	it('activates balance-triggers at boot, with its migration applied and its namespaced table created', async () => {
 		const [row] = readRows<{ enabled: number }>(`SELECT enabled FROM plugins WHERE id = 'balance-triggers'`)
 		expect(row?.enabled).toBe(1)
