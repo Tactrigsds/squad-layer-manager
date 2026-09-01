@@ -102,6 +102,9 @@ export const colOutcome = def('Outcome')
 export const colServer = def('Server')
 export const colSetBy = def('Set by')
 export const colTicketDiff = def('Ticket diff')
+// the events results' sort direction, labelled with the order currently in effect
+export const orderNewest = def('Newest first')
+export const orderOldest = def('Oldest first')
 export const colEvents = def('Events')
 
 export const outcomeTeam1 = def('Team 1')

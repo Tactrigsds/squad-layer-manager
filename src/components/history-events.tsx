@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
 import React from 'react'
 
 import * as RC from '@/components/feed/render-context'
@@ -20,7 +21,14 @@ import { tr } from '@/systems/messages.client'
 type QueryRes = Awaited<ReturnType<typeof RPC.orpc.history.query.call>>
 type EventsPage = Extract<QueryRes, { code: 'ok'; type: 'events' }>
 
-export default function HistoryEvents(props: { query: HQ.Query; showTotal?: boolean; className?: string }) {
+export default function HistoryEvents(props: {
+	query: HQ.Query
+	showTotal?: boolean
+	className?: string
+	// re-runs the query from the other end of the range. Omitted where the caller has no way to run one (the
+	// player details window shows a fixed slice), which is also what hides the control.
+	onReorder?: (order: 'newest' | 'oldest') => void
+}) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const render = React.useMemo(() => ({ displayTeamsNormalized, locale: I18n.getAmbientLocale() }), [displayTeamsNormalized])
 
@@ -73,9 +81,12 @@ export default function HistoryEvents(props: { query: HQ.Query; showTotal?: bool
 					{tr.text(HistoryMsgs.unrecognisedLayers(first.data.unrecognisedLayerMatches))}
 				</div>
 			)}
-			{(props.showTotal ?? true) && total !== undefined && (
-				<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(total))}</div>
-			)}
+			<div className="flex items-center gap-2">
+				{(props.showTotal ?? true) && total !== undefined && (
+					<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(total))}</div>
+				)}
+				{props.onReorder && <OrderToggle order={props.query.order ?? 'newest'} onReorder={props.onReorder} />}
+			</div>
 			{first.data?.code === 'ok' && rows.length === 0 && (
 				<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.noResults())}</div>
 			)}
@@ -88,6 +99,23 @@ export default function HistoryEvents(props: { query: HQ.Query; showTotal?: bool
 				)}
 			</div>
 		</div>
+	)
+}
+
+// Labelled with the order in effect rather than the one it switches to: unlike a mode switch, this reads as
+// a description of what is on screen, and the arrow says which way it runs.
+function OrderToggle(props: { order: 'newest' | 'oldest'; onReorder: (order: 'newest' | 'oldest') => void }) {
+	const newest = props.order === 'newest'
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			className="h-6 px-2 text-xs font-normal text-muted-foreground"
+			onClick={() => props.onReorder(newest ? 'oldest' : 'newest')}
+		>
+			{newest ? <Icons.ArrowDown className="mr-1 h-3 w-3" /> : <Icons.ArrowUp className="mr-1 h-3 w-3" />}
+			{tr.text(newest ? HistoryMsgs.orderNewest() : HistoryMsgs.orderOldest())}
+		</Button>
 	)
 }
 

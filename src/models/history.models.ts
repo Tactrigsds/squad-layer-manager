@@ -269,6 +269,11 @@ const QueryFieldsSchema = z.object({
 	player: z.string().optional(),
 	user: z.string().optional(),
 
+	// events only: which end of the range the page starts from. A bound rather than a filter, so it sits
+	// outside the tree like the others and means the same thing in both modes. Absent means newest, which
+	// keeps it out of the url of every query that does not care.
+	order: z.enum(['newest', 'oldest']).optional(),
+
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),

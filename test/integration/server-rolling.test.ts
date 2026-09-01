@@ -459,6 +459,44 @@ describe('the event archive', () => {
 		expect(nobody.total).toBe(0)
 	})
 
+	// Oldest-first is the exact reverse of newest-first, so every cursor comparison is mirrored rather than
+	// reused. Paging past a page boundary in both directions is what exercises the seam.
+	//
+	// Asserted on the times and on id uniqueness rather than on the two id sequences being reverses of each
+	// other: replay folds events (a WARNS_AGGREGATED absorbs several, a collapsed event folds under the app
+	// event that caused it), so which entry stands for a hit depends on what else landed on the page.
+	it('pages events from either end of the range, in exactly reversed order', async () => {
+		const pageEvents = async (order: 'newest' | 'oldest') => {
+			const out: { id: string; time: number }[] = []
+			let cursor: { time: number; serverEventId?: number; appEventId?: string } | undefined
+			// two pages is enough to cross a boundary, and bounds the test on a busy database
+			for (let page = 0; page < 2; page++) {
+				const res = await client.history.query({ query: { type: 'events', order }, cursor, format: 'wire' })
+				if (res.code !== 'ok' || res.type !== 'events') throw new Error(`expected an events page, got ${res.code}`)
+				for (const event of CHAT.Wire.decode(res.events!)) out.push({ id: String(event.id), time: event.time })
+				if (!res.nextCursor) break
+				cursor = res.nextCursor
+			}
+			return out
+		}
+
+		const newest = await pageEvents('newest')
+		const oldest = await pageEvents('oldest')
+		expect(newest.length).toBeGreaterThan(0)
+		expect(oldest.length).toBeGreaterThan(0)
+
+		// a cursor that overlaps or skips at the seam shows up as a repeat or a gap in the run
+		expect(new Set(newest.map((e) => e.id)).size).toBe(newest.length)
+		expect(new Set(oldest.map((e) => e.id)).size).toBe(oldest.length)
+
+		const times = (run: { time: number }[]) => run.map((e) => e.time)
+		expect(times(newest)).toEqual([...times(newest)].sort((a, b) => b - a))
+		expect(times(oldest)).toEqual([...times(oldest)].sort((a, b) => a - b))
+
+		// and they run from opposite ends: the oldest-first run starts no later than the newest-first run ends
+		expect(oldest[0].time).toBeLessThanOrEqual(newest[newest.length - 1].time)
+	})
+
 	// A match-layer node is rewritten to a match-ids node before it reaches the engine (see history-resolve),
 	// and every compiler has to know that kind. Nothing else covers the advanced editor's layer node.
 	it('runs an advanced query whose layer node resolved to match ids', async () => {

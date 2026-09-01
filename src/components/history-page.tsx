@@ -187,7 +187,7 @@ function CopyLinkButton() {
 function Results(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 	switch (props.query.type) {
 		case 'events':
-			return <HistoryEvents query={props.query} />
+			return <HistoryEvents query={props.query} onReorder={(order) => props.onRun({ ...props.query, order })} />
 		case 'players':
 			return <PlayersResults query={props.query} onRun={props.onRun} />
 		case 'matches':

@@ -52,6 +52,11 @@ export type EventHit = { matchId: number; time: Date } & (
 // The page cursor is a position in the merge, so it names which family it sits in.
 export type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
 
+// Newest first is the default. Oldest first is the exact reverse of that sequence rather than an order of
+// its own -- so within a millisecond app events come first and ids ascend -- which is what lets every cursor
+// comparison below be the mirror of its counterpart instead of a second set of rules.
+export type EventOrder = 'newest' | 'oldest'
+
 // The total order the two sources merge into: newest first, server events before app events within a
 // millisecond, then descending id. Arbitrary but total, which is all a cursor needs.
 function hitRank(hit: { serverEventId?: number }): number {
@@ -65,6 +70,10 @@ function compareHits(a: EventHit, b: EventHit): number {
 	if (byRank !== 0) return byRank
 	if (a.serverEventId !== undefined && b.serverEventId !== undefined) return b.serverEventId - a.serverEventId
 	return (b.appEventId ?? '').localeCompare(a.appEventId ?? '')
+}
+
+function comparator(order: EventOrder) {
+	return order === 'newest' ? compareHits : (a: EventHit, b: EventHit) => -compareHits(a, b)
 }
 
 // A single positive player constraint under the root `and` also constrains which index rows can produce
@@ -91,18 +100,19 @@ export function playerAnchor(root: HQ.Node, art: ResolvedArtifacts): string[] | 
  */
 export async function queryEventHits(
 	ctx: C.Db & CS.AbortSignal,
-	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number; order: EventOrder },
 ): Promise<EventHit[]> {
 	const [serverHits, appHits] = await Promise.all([queryServerEventHits(ctx, opts), queryAppEventHits(ctx, opts)])
-	return [...serverHits, ...appHits].sort(compareHits).slice(0, opts.pageSize)
+	return [...serverHits, ...appHits].sort(comparator(opts.order)).slice(0, opts.pageSize)
 }
 
 async function queryServerEventHits(
 	ctx: C.Db & CS.AbortSignal,
-	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number; order: EventOrder },
 ): Promise<EventHit[]> {
 	const anchor = playerAnchor(opts.node, opts.art)
 	const cursor = opts.cursor
+	const newest = opts.order === 'newest'
 	const rows = await ctx
 		.db()
 		.select({ serverEventId: pei.serverEventId, matchId: pei.matchId, time: pei.time })
@@ -113,26 +123,33 @@ async function queryServerEventHits(
 				E.ne(pei.assocType, GAME_PARTICIPANT),
 				eventBoundsCond(opts.bounds),
 				compileEventCond(opts.node, opts.art),
-				// a cursor sitting on an app event has already passed every server event of that millisecond,
-				// since server events sort first within one
+				// Newest first, a cursor sitting on an app event has already passed every server event of that
+				// millisecond, since server events sort first within one. Oldest first reverses the sequence, so
+				// app events come first within a millisecond and none of that millisecond's server events are
+				// passed yet -- hence the inclusive bound on that side.
 				cursor === undefined
 					? undefined
 					: cursor.serverEventId === undefined
-						? sql`${pei.time} < ${cursor.time}`
-						: sql`(${pei.time} < ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} < ${cursor.serverEventId}))`,
+						? newest
+							? sql`${pei.time} < ${cursor.time}`
+							: sql`${pei.time} >= ${cursor.time}`
+						: newest
+							? sql`(${pei.time} < ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} < ${cursor.serverEventId}))`
+							: sql`(${pei.time} > ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} > ${cursor.serverEventId}))`,
 			),
 		)
 		.groupBy(pei.serverEventId)
-		.orderBy(E.desc(pei.time), E.desc(pei.serverEventId))
+		.orderBy(...(newest ? [E.desc(pei.time), E.desc(pei.serverEventId)] : [E.asc(pei.time), E.asc(pei.serverEventId)]))
 		.limit(opts.pageSize)
 	return rows
 }
 
 async function queryAppEventHits(
 	ctx: C.Db & CS.AbortSignal,
-	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number; order: EventOrder },
 ): Promise<EventHit[]> {
 	const cursor = opts.cursor
+	const newest = opts.order === 'newest'
 	const rows = await ctx
 		.db()
 		.select({ appEventId: ae.id, matchId: ae.matchId, time: ae.time })
@@ -141,16 +158,19 @@ async function queryAppEventHits(
 			E.and(
 				appEventBoundsCond(opts.bounds),
 				compileAppEventCond(opts.node, opts.art),
-				// the mirror of the server side: a cursor on a server event has not yet passed any app event of
-				// the same millisecond
+				// the mirror of the server side, in both directions
 				cursor === undefined
 					? undefined
 					: cursor.appEventId === undefined
-						? sql`${ae.time} <= ${cursor.time}`
-						: sql`(${ae.time} < ${cursor.time} OR (${ae.time} = ${cursor.time} AND ${ae.id} < ${cursor.appEventId}))`,
+						? newest
+							? sql`${ae.time} <= ${cursor.time}`
+							: sql`${ae.time} > ${cursor.time}`
+						: newest
+							? sql`(${ae.time} < ${cursor.time} OR (${ae.time} = ${cursor.time} AND ${ae.id} < ${cursor.appEventId}))`
+							: sql`(${ae.time} > ${cursor.time} OR (${ae.time} = ${cursor.time} AND ${ae.id} > ${cursor.appEventId}))`,
 			),
 		)
-		.orderBy(E.desc(ae.time), E.desc(ae.id))
+		.orderBy(...(newest ? [E.desc(ae.time), E.desc(ae.id)] : [E.asc(ae.time), E.asc(ae.id)]))
 		.limit(opts.pageSize)
 	// appEventBoundsCond keeps only rows with a match, so the null is unreachable; narrowing rather than casting
 	return rows.flatMap((r) => (r.matchId === null ? [] : [{ appEventId: r.appEventId, matchId: r.matchId, time: r.time }]))
@@ -256,6 +276,7 @@ export type EngineRequest =
 			bounds: Bounds
 			cursor?: EventCursor
 			pageSize: number
+			order: EventOrder
 			// count is a second full scan, so it is only asked for on the first page
 			withTotal?: boolean
 	  }
@@ -302,7 +323,7 @@ export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRe
 	switch (req.kind) {
 		case 'events': {
 			const opts = { node: req.node, art, bounds: req.bounds }
-			const hits = await queryEventHits(ctx, { ...opts, cursor: req.cursor, pageSize: req.pageSize })
+			const hits = await queryEventHits(ctx, { ...opts, cursor: req.cursor, pageSize: req.pageSize, order: req.order })
 			const total = req.withTotal ? await countEventHits(ctx, opts) : undefined
 			return { code: 'ok', kind: 'events', hits, total }
 		}

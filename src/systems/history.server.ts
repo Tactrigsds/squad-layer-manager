@@ -211,6 +211,7 @@ export const router = {
 
 			switch (input.query.type) {
 				case 'events': {
+					const order = input.query.order ?? 'newest'
 					const res = await dispatch(ctx, {
 						kind: 'events',
 						node,
@@ -218,10 +219,11 @@ export const router = {
 						cursor: input.cursor,
 						pageSize: HQ.PAGE_SIZES.events,
 						withTotal: !input.cursor,
+						order,
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, res.hits, input.render, input.format, input.includeMatchBoundaries)
+					const page = await assembleEventPage(ctx, res.hits, input.render, input.format, input.includeMatchBoundaries, order)
 					const last = res.hits.at(-1)
 					const nextCursor =
 						res.hits.length === HQ.PAGE_SIZES.events && last
@@ -399,6 +401,7 @@ async function assembleEventPage(
 	render: RenderOpts,
 	format: 'html' | 'wire',
 	includeMatchBoundaries = false,
+	order: HistoryWorker.EventOrder = 'newest',
 ) {
 	if (hits.length === 0) return { rowsHtml: [] as string[], events: null as CHAT.Wire.Batch | null, matches: [] as MH.MatchDetails[] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
@@ -432,8 +435,8 @@ async function assembleEventPage(
 			}),
 		)
 	}
-	// newest first, matching the page order: each further page stacks downward into the past
-	events.sort((a, b) => b.time - a.time)
+	// the same direction the hits were paged in, so each further page stacks on in reading order
+	events.sort((a, b) => (order === 'newest' ? b.time - a.time : a.time - b.time))
 	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
 	const revived = await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true })
 	if (format === 'wire') return { rowsHtml: [] as string[], events: CHAT.Wire.encode(revived), matches }
