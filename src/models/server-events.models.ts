@@ -6,19 +6,12 @@ import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
+import { type EventMeta, iterAssocLayers, iterAssocValues, type LayerAssocKind, meta } from '@/models/event-meta.models'
 import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 
-import {
-	type ActionSource,
-	ActionSourceSchema,
-	type Base,
-	BaseSchema,
-	type EventMeta,
-	iterAssocValues,
-	meta,
-} from './server-events-base.models'
+import { type ActionSource, ActionSourceSchema, type Base, BaseSchema } from './server-events-base.models'
 
 // The player instantiation the extractors are written against: an event reaches them either straight off the
 // wire (a full SM.Player) or read back from the db (an SM.PlayerId), and every extractor must accept both.
@@ -31,7 +24,7 @@ export type MapSet = {
 	// RCON_CONNECTED branch of processPendingEvent. It is not an action, and nobody is its actor.
 	source?: ActionSource | { type: 'layer-queue'; itemId: string } | { type: 'observed' }
 } & Base
-export const MAP_SET_META = meta<MapSet>()
+export const MAP_SET_META = meta<MapSet>({ layers: [{ kind: 'set', get: (e) => e.layerId }] })
 
 // Squad's own vote (AdminEnableVoting), not SLM's. Whatever it resolves to overwrites the next layer SLM set, so
 // SLM stops writing the rotation for the rest of the match.
@@ -65,6 +58,7 @@ export type NewGame = {
 export const NEW_GAME_META = meta<NewGame>({
 	players: [{ assocType: 'game-participant', get: (e) => e.state?.players }],
 	squads: [{ get: (e) => e.state?.squads }],
+	layers: [{ kind: 'played', get: (e) => e.layerId }],
 })
 
 // Whether a NEW_GAME marks a roll that happened while this server was watching, and so is a boundary that held
@@ -140,6 +134,7 @@ export type RoundEnded = {
 } & Base
 export const ROUND_ENDED_META = meta<RoundEnded>({
 	players: [{ assocType: 'player', get: (e) => (e.action?.source.type === 'player' ? e.action.source.playerIds.eos : undefined) }],
+	layers: [{ kind: 'set', get: (e) => (e.action?.type === 'AdminChangeLayer' ? e.action.layerId : undefined) }],
 })
 
 export type PlayerConnected<P = SM.Player> = {
@@ -637,6 +632,10 @@ export function fromEventRows(ctx: CS.Log, rows: SchemaModels.ServerEvent[]): Ev
 // checked against its own event type, which is where a mistake would otherwise go unnoticed.
 function metaOf(event: Event<AnyPlayer>): EventMeta<Event<AnyPlayer>> {
 	return EVENT_META[event.type] as EventMeta<Event<AnyPlayer>>
+}
+
+export function* iterAssocLayerIds(event: Event<AnyPlayer>): Generator<readonly [L.LayerId, LayerAssocKind]> {
+	yield* iterAssocLayers(metaOf(event), event)
 }
 
 export function* iterAssocPlayers(event: Event<SM.PlayerId | SM.Player>) {
