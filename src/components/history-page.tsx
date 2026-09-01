@@ -88,14 +88,6 @@ export default function HistoryPage(props: HistoryPageProps) {
 					active={draft.type}
 					setActive={switchType}
 				/>
-				<TabsList
-					options={[
-						{ value: 'basic', label: tr.text(HistoryMsgs.modeBasic()) },
-						{ value: 'advanced', label: tr.text(HistoryMsgs.modeAdvanced()) },
-					]}
-					active={draft.mode}
-					setActive={(mode) => HistoryFrame.Actions.setMode(props.stores, mode)}
-				/>
 				{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
 				<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
 					{draft.mode === 'basic' ? (
@@ -121,6 +113,14 @@ export default function HistoryPage(props: HistoryPageProps) {
 
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
+					<TabsList
+						options={[
+							{ value: 'basic', label: tr.text(HistoryMsgs.modeBasic()) },
+							{ value: 'advanced', label: tr.text(HistoryMsgs.modeAdvanced()) },
+						]}
+						active={draft.mode}
+						setActive={(mode) => HistoryFrame.Actions.setMode(props.stores, mode)}
+					/>
 					<div className="grow" />
 					<RecentMenu onRun={props.onRun} />
 					<SavedMenu onRun={props.onRun} />
