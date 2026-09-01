@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as CHAT from '@/models/chat.models'
 
 import { LAYERS } from '../harness/arrange'
 import { matchOrdinal } from '../harness/inspect'
@@ -302,6 +303,26 @@ describe('the event archive', () => {
 		expect(offMap.code).toBe('ok')
 		if (offMap.code !== 'ok' || offMap.type !== 'events') return
 		expect(onMap.total! + offMap.total!).toBe(allEvents.total)
+	})
+
+	// The player details window interleaves a player's history with the live match's events and punctuates it
+	// by match, so it asks the engine for the events themselves rather than for rendered rows.
+	it('returns wire-encoded events, with match boundaries, for callers that interleave them', async () => {
+		const res = await client.history.query({ query: { player: 'archive_subject' }, format: 'wire', includeMatchBoundaries: true })
+		expect(res.code).toBe('ok')
+		if (res.code !== 'ok' || res.type !== 'events') return
+		// the html path is what the results feed uses; a wire caller gets events instead of rows, not both
+		expect(res.rowsHtml).toEqual([])
+		expect(res.events).not.toBeNull()
+		const events = CHAT.Wire.decode(res.events!)
+		expect(events.length).toBeGreaterThan(0)
+		expect(events.some((e) => e.type === 'CHAT_MESSAGE')).toBe(true)
+		// no player filter selects a NEW_GAME, so its presence is the boundary option doing its job
+		expect(events.some((e) => e.type === 'NEW_GAME')).toBe(true)
+
+		const without = await client.history.query({ query: { player: 'archive_subject' }, format: 'wire' })
+		if (without.code !== 'ok' || without.type !== 'events') return
+		expect(CHAT.Wire.decode(without.events!).some((e) => e.type === 'NEW_GAME')).toBe(false)
 	})
 
 	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.

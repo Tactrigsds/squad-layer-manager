@@ -189,6 +189,13 @@ export const router = {
 				cursor: CursorSchema.optional(),
 				page: z.number().int().nonnegative().prefault(0),
 				render: RenderSchema.prefault({}),
+				// events only. 'html' is the default because a results feed only displays what it gets; 'wire'
+				// is for a caller that has to do something with the events themselves, like interleave them
+				// with live ones (the player details window).
+				format: z.enum(['html', 'wire']).prefault('html'),
+				// keep the match-boundary events of the matches on the page, even though no filter selected
+				// them. A slice of one player's history reads as a flat run of events without them.
+				includeMatchBoundaries: z.boolean().prefault(false),
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
@@ -208,7 +215,7 @@ export const router = {
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, res.hits, input.render)
+					const page = await assembleEventPage(ctx, res.hits, input.render, input.format, input.includeMatchBoundaries)
 					const last = res.hits.at(-1)
 					const nextCursor =
 						res.hits.length === HQ.PAGE_SIZES.events && last
@@ -385,8 +392,14 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 // events. The rows go out as rendered html rather than event data: the same builders the live feed uses run
 // here against a shadow dom, the client inserts the strings and holds them behind content-visibility, and
 // interactivity is all attributes resolved against the client's scope (see feed/render-context.ts).
-async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryWorker.EventHit[], render: RenderOpts) {
-	if (hits.length === 0) return { rowsHtml: [] as string[], matches: [] as MH.MatchDetails[] }
+async function assembleEventPage(
+	ctx: C.OrpcBase,
+	hits: HistoryWorker.EventHit[],
+	render: RenderOpts,
+	format: 'html' | 'wire',
+	includeMatchBoundaries = false,
+) {
+	if (hits.length === 0) return { rowsHtml: [] as string[], events: null as CHAT.Wire.Batch | null, matches: [] as MH.MatchDetails[] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
 	const matchRows = await ctx.db().select().from(Schema.matchHistory).where(E.inArray(Schema.matchHistory.id, matchIds))
 
@@ -403,13 +416,16 @@ async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryWorker.EventHit[]
 		const serverCtx = { ...ctx, serverId, matchEventsCache: MatchEventsCache.initMatchEventsCacheContext() }
 		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(serverCtx, ...ids)
 		// app events replay into the same buffer and carry string ids; the index covers server events only
-		events.push(...enriched.filter((e) => typeof e.id === 'number' && wanted.has(e.id)))
+		events.push(
+			...enriched.filter((e) => (typeof e.id === 'number' && wanted.has(e.id)) || (includeMatchBoundaries && e.type === 'NEW_GAME')),
+		)
 	}
 	// newest first, matching the page order: each further page stacks downward into the past
 	events.sort((a, b) => b.time - a.time)
 	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
 	const revived = await reviveNoops(ctx, events)
-	return { rowsHtml: renderEventRows(revived, matches, render), matches }
+	if (format === 'wire') return { rowsHtml: [] as string[], events: CHAT.Wire.encode(revived), matches }
+	return { rowsHtml: renderEventRows(revived, matches, render), events: null, matches }
 }
 
 // Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a

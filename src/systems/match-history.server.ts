@@ -3,7 +3,7 @@ import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
-import * as SchemaModels from '$root/drizzle/schema.models'
+import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
 import type * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -335,70 +335,6 @@ export const matchHistoryRouter = {
 	// The current match is deliberately excluded: the client already has its events live via the chat feed. Pagination
 	// counts player-specific events (NEW_GAME/RESET have no player association so they don't count toward pageSize), but
 	// is aligned to match boundaries so pages never overlap. `cursor` is an exclusive upper-bound matchId.
-	getPlayerEvents: orpcBase
-		.input(
-			z.object({
-				serverId: z.string(),
-				playerId: z.string(),
-				cursor: z.number().optional(),
-				pageSize: z.number().positive().default(100),
-			}),
-		)
-		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
-			if (ctxRes.code !== 'ok') return ctxRes
-			const ctx = ctxRes.ctx
-			const currentMatch = await getCurrentMatch(ctx)
-			const playerId = input.playerId
-
-			const historicalMatchIds = ctx.matchHistory.recentMatches
-				.filter((m) => m.historyEntryId !== currentMatch?.historyEntryId)
-				.map((m) => m.historyEntryId)
-			if (historicalMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
-
-			// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
-			const matchCountRows = await ctx
-				.db()
-				.select({ matchId: Schema.playerEventIndex.matchId, count: E.count() })
-				.from(Schema.playerEventIndex)
-				.where(
-					E.and(
-						E.eq(Schema.playerEventIndex.playerId, playerId),
-						E.ne(Schema.playerEventIndex.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
-						E.inArray(Schema.playerEventIndex.matchId, historicalMatchIds),
-					),
-				)
-				.groupBy(Schema.playerEventIndex.matchId)
-
-			// most-recent match first (matchId is monotonic with recency)
-			const matchesWithEvents = matchCountRows.map((r) => ({ matchId: r.matchId, count: r.count })).sort((a, b) => b.matchId - a.matchId)
-
-			let index = input.cursor === undefined ? 0 : matchesWithEvents.findIndex((m) => m.matchId < input.cursor!)
-			if (index === -1) index = matchesWithEvents.length
-
-			const includedMatchIds: number[] = []
-			let count = 0
-			for (; index < matchesWithEvents.length; index++) {
-				const m = matchesWithEvents[index]
-				includedMatchIds.push(m.matchId)
-				count += m.count
-				if (count >= input.pageSize) {
-					index++
-					break
-				}
-			}
-			if (includedMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
-
-			const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
-
-			// enriched here, not on the client: this is a slice of each match rather than the whole of it, and a slice
-			// carries no roster to replay against
-			const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, ...includedMatchIds)
-			const events = enriched.filter((e) => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)).sort((a, b) => a.time - b.time)
-
-			return { events: CHAT.Wire.encode(events), nextCursor }
-		}),
-
 	getSquadDetails: orpcBase
 		.input(
 			z.object({

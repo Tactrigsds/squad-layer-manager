@@ -211,12 +211,15 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 		),
 	)
 
-	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events.
-	// gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
-	const historicalEvents = React.useMemo(
-		() => (historyRequested ? (eventsQuery.data?.pages ?? []) : []).slice().reverse().flatMap(decodePageEvents),
-		[historyRequested, eventsQuery.data?.pages],
-	)
+	// Pages arrive newest-first and so do the events within one, so a single reverse over the flattened list
+	// puts them in chronological order, ahead of the live current-match events. The current match is dropped
+	// here rather than asked for: it is already held live above, and the engine has no reason to omit it.
+	// Gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
+	const historicalEvents = React.useMemo(() => {
+		const pages = historyRequested ? (eventsQuery.data?.pages ?? []) : []
+		const events = pages.flatMap(decodePageEvents).reverse()
+		return currentMatch ? events.filter((e) => e.matchId !== currentMatch.historyEntryId) : events
+	}, [historyRequested, eventsQuery.data?.pages, currentMatch])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
@@ -569,27 +572,37 @@ function useElapsed(since: number | null): string | null {
 // marker for any gap larger than this threshold within the same day.
 const TIME_JUMP_THRESHOLD_MS = 15 * 60 * 1000
 
-type PlayerEventsPage = Awaited<ReturnType<typeof RPC.orpc.matchHistory.getPlayerEvents.call>>
+type PlayerEventsPage = Awaited<ReturnType<typeof RPC.orpc.history.query.call>>
 
 // Cached on the page object because fetching another page re-derives the whole list, and a page's events never
 // change once fetched.
 const decodedPages = new WeakMap<object, CHAT.EventEnriched[]>()
 function decodePageEvents(page: PlayerEventsPage): CHAT.EventEnriched[] {
-	const loaded = RPC.selectLoaded(page)
-	if (!loaded) return []
-	let events = decodedPages.get(loaded)
+	if (page.code !== 'ok' || page.type !== 'events' || !page.events) return []
+	let events = decodedPages.get(page)
 	if (!events) {
-		events = CHAT.Wire.decode(loaded.events)
-		decodedPages.set(loaded, events)
+		events = CHAT.Wire.decode(page.events)
+		decodedPages.set(page, events)
 	}
 	return events
 }
 
+type EventCursor = { time: number; serverEventId: number }
+
+// This player's history, from the same engine the history page runs on -- so it reaches past the recent-match
+// window this window used to be limited to. Asked for as events rather than as rendered rows: they are
+// interleaved with the live match's own events and punctuated by match, which needs the events themselves.
 function playerEventsInfiniteOptions(serverId: string, playerId: string) {
-	return RPC.orpc.matchHistory.getPlayerEvents.infiniteOptions({
-		input: (cursor: number | undefined) => ({ serverId, playerId, cursor }),
-		initialPageParam: undefined as number | undefined,
-		getNextPageParam: (lastPage) => RPC.selectLoaded(lastPage)?.nextCursor,
+	return RPC.orpc.history.query.infiniteOptions({
+		input: (cursor: EventCursor | undefined) => ({
+			query: { ...HQ.DEFAULT_QUERY, type: 'events' as const, server: serverId, player: playerId },
+			cursor,
+			format: 'wire' as const,
+			// the feed shows a match-boundary row between matches, which no player filter would select
+			includeMatchBoundaries: true,
+		}),
+		initialPageParam: undefined as EventCursor | undefined,
+		getNextPageParam: (lastPage) => (lastPage.code === 'ok' && lastPage.type === 'events' ? lastPage.nextCursor : undefined),
 		// a finished match's events never change, so a repeated hover preload costs nothing and the click that follows
 		// one renders from the cache instead of refetching
 		staleTime: 60_000,
