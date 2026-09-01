@@ -21,7 +21,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as HistoryQuery from '@/systems/history-query.server'
+import * as HistoryQuery from '@/systems/history-query.shared'
 import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as HistoryRetention from '@/systems/history-retention.server'
@@ -31,7 +31,8 @@ import * as Rbac from '@/systems/rbac.server'
 // The history page's server half. A query request is: authorize and resolve on the main thread
 // (history-resolve.server.ts), then dispatch the resolved tree to the query engine on a worker thread with
 // its own read-only db connection, so a heavy scan never stalls the event loop the rcon and websockets live
-// on. If the worker is unavailable the same engine call runs in-process instead.
+// on. A query that arrives with no worker to run it fails: running it here instead would put the scan on
+// exactly the loop the worker exists to protect, and one crashed worker would quietly degrade the whole app.
 
 const module = initModule('history')
 let log!: CS.Logger
@@ -44,14 +45,37 @@ let ENV!: ReturnType<typeof envBuilder>
 
 let worker: Worker | undefined
 let nextSeq = 1
+let shuttingDown = false
+let rebootAttempts = 0
+let rebootTimer: ReturnType<typeof setTimeout> | undefined
 const pending = new Map<
 	number,
-	{ resolve: (res: HistoryQuery.EngineResponse | HistoryQuery.QueryError) => void; reject: (err: unknown) => void }
+	{ resolve: (res: HistoryWorker.EngineResponse | HistoryQuery.QueryError) => void; reject: (err: unknown) => void }
 >()
+
+const REBOOT_DELAYS = [1_000, 5_000, 30_000]
 
 function failPending(err: unknown) {
 	for (const p of pending.values()) p.reject(err)
 	pending.clear()
+}
+
+// A dead worker means no history queries at all, so it is brought back rather than left down until a restart.
+// Backed off and capped: a worker that cannot open the db fails the same way every time.
+function scheduleReboot() {
+	if (shuttingDown || worker || rebootTimer) return
+	const delay = REBOOT_DELAYS[Math.min(rebootAttempts, REBOOT_DELAYS.length - 1)]
+	rebootAttempts++
+	rebootTimer = setTimeout(() => {
+		rebootTimer = undefined
+		try {
+			bootWorker()
+		} catch (err) {
+			log.error(err, 'history query worker failed to boot; retrying')
+			scheduleReboot()
+		}
+	}, delay)
+	rebootTimer.unref()
 }
 
 function bootWorker() {
@@ -64,6 +88,8 @@ function bootWorker() {
 		execArgv: isTs ? ['--import', 'tsx'] : undefined,
 	})
 	w.on('message', (msg: HistoryWorker.Response) => {
+		// the first answer proves this worker works, so a later crash starts its backoff from the top
+		rebootAttempts = 0
 		const p = pending.get(msg.seq)
 		if (!p) return
 		pending.delete(msg.seq)
@@ -71,13 +97,15 @@ function bootWorker() {
 		else p.resolve(msg.res!)
 	})
 	w.on('error', (err) => {
-		log.error(err, 'history query worker failed; queries fall back in-process')
+		log.error(err, 'history query worker failed')
 		if (worker === w) worker = undefined
 		failPending(err)
+		scheduleReboot()
 	})
 	w.on('exit', () => {
 		if (worker === w) worker = undefined
 		failPending(new Error('history query worker exited'))
+		scheduleReboot()
 	})
 	// the worker must never hold the process open
 	w.unref()
@@ -90,18 +118,22 @@ export function setup() {
 	try {
 		bootWorker()
 	} catch (err) {
-		log.error(err, 'history query worker failed to boot; queries run in-process')
+		// not fatal: SLM managing live servers should not die because the history engine cannot start
+		log.error(err, 'history query worker failed to boot; history queries are unavailable until it does')
+		scheduleReboot()
 	}
 	CleanupSys.register(async () => {
+		shuttingDown = true
+		if (rebootTimer) clearTimeout(rebootTimer)
 		await worker?.terminate()
 	})
 }
 
 async function dispatch(
-	ctx: C.Db & CS.AbortSignal,
-	req: HistoryQuery.EngineRequest,
-): Promise<HistoryQuery.EngineResponse | HistoryQuery.QueryError> {
-	if (!worker) return await HistoryQuery.runEngineRequest(ctx, req)
+	ctx: CS.AbortSignal,
+	req: HistoryWorker.EngineRequest,
+): Promise<HistoryWorker.EngineResponse | HistoryQuery.QueryError> {
+	if (!worker) return { code: 'err:engine-unavailable', message: 'the history query engine is not running' }
 	const seq = nextSeq++
 	// an aborted caller just stops waiting: the scan itself is synchronous sqlite and cannot be interrupted
 	const onAbort = () => {
@@ -353,7 +385,7 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 // events. The rows go out as rendered html rather than event data: the same builders the live feed uses run
 // here against a shadow dom, the client inserts the strings and holds them behind content-visibility, and
 // interactivity is all attributes resolved against the client's scope (see feed/render-context.ts).
-async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryQuery.EventHit[], render: RenderOpts) {
+async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryWorker.EventHit[], render: RenderOpts) {
 	if (hits.length === 0) return { rowsHtml: [] as string[], matches: [] as MH.MatchDetails[] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
 	const matchRows = await ctx.db().select().from(Schema.matchHistory).where(E.inArray(Schema.matchHistory.id, matchIds))

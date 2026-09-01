@@ -11,7 +11,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import * as EventArchive from '@/systems/event-archive.server'
-import * as HistoryQuery from '@/systems/history-query.server'
+import * as HistoryQuery from '@/systems/history-query.shared'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 
 // The retention sieve: as pruning is about to drop a match's events, every saved query marked `retain` is
