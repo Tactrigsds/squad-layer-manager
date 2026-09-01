@@ -47,7 +47,9 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 	const shown = groups.flatMap((g) => g.fields.map((f) => f.key))
 
 	return (
-		<div className="flex flex-col gap-3">
+		// trimmed trigger padding, as the layer filter menu does: the rail's control column is narrow enough
+		// that the default padding costs more of a value's label than the label is worth
+		<div className="flex flex-col gap-3 [&_button[role=combobox]]:px-2">
 			<ScopeBlock draft={draft} set={set} />
 			{groups.map((group) => (
 				<section key={group.group} className="flex flex-col gap-1">
@@ -83,8 +85,8 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 			<Field label={tr.text(HistoryMsgs.fieldServer())} canClear={!!draft.servers?.length} onClear={() => set({ servers: undefined })}>
 				<ServerSelect draft={draft} set={set} />
 			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear}>
-				<TimeRange draft={draft} set={set} custom={time.custom} setCustom={time.setCustom} />
+			<Field label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear} stacked={time.showCustom}>
+				<TimeRange draft={draft} set={set} showCustom={time.showCustom} setCustom={time.setCustom} />
 			</Field>
 			<Field label={tr.text(HistoryMsgs.fieldPlayer())} canClear={!!draft.players?.length} onClear={() => set({ players: undefined })}>
 				<PlayerPicker values={draft.players ?? []} onSelect={(players) => set({ players: players.length > 0 ? players : undefined })} />
@@ -116,8 +118,14 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 			>
 				<ServerSelect draft={draft} set={set} />
 			</Field>
-			<Field className="w-max" label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear}>
-				<TimeRange draft={draft} set={set} custom={time.custom} setCustom={time.setCustom} />
+			<Field
+				className="w-72"
+				label={tr.text(HistoryMsgs.fieldTime())}
+				canClear={time.isSet}
+				onClear={time.clear}
+				stacked={time.showCustom}
+			>
+				<TimeRange draft={draft} set={set} showCustom={time.showCustom} setCustom={time.setCustom} />
 			</Field>
 		</div>
 	)
@@ -130,6 +138,9 @@ function useTimeRange(props: { draft: HQ.Query; set: Set }) {
 	return {
 		custom,
 		setCustom,
+		// a datetime-local input will not render under ~158px, which is more than a row's control column has,
+		// so the row stacks when the two of them are showing
+		showCustom: custom || (props.draft.from !== undefined && !matchedPreset(props.draft)),
 		isSet: props.draft.from !== undefined || props.draft.to !== undefined,
 		clear: () => {
 			setCustom(false)
@@ -165,23 +176,50 @@ function ServerSelect(props: { draft: HQ.Query; set: Set }) {
  *
  * A div rather than a label: a label wrapping the clear would fire the control when the clear was clicked.
  */
-function Field(props: { label: string; className?: string; canClear?: boolean; onClear?: () => void; children: React.ReactNode }) {
+function Field(props: {
+	label: string
+	className?: string
+	canClear?: boolean
+	onClear?: () => void
+	// label above the control instead of beside it, for a control with no usable narrow form
+	stacked?: boolean
+	children: React.ReactNode
+}) {
+	const clear = props.onClear && (
+		<Button
+			variant="ghost"
+			size="icon"
+			className="h-6 w-6 shrink-0"
+			disabled={props.canClear === false}
+			title={tr.text(HistoryMsgs.clearFilter())}
+			onClick={props.onClear}
+		>
+			<Icons.Trash className="h-3.5 w-3.5" />
+		</Button>
+	)
+	// titled because the longest labels ("Ticket difference") still do not fit the rail's width
+	const label = (
+		<span className={cn('shrink-0 truncate', !props.stacked && 'w-20')} title={props.label}>
+			{props.label}
+		</span>
+	)
+
+	if (props.stacked) {
+		return (
+			<div className={cn('flex flex-col gap-1 text-xs text-muted-foreground', props.className)}>
+				<div className="flex items-center justify-between gap-2">
+					{label}
+					{clear}
+				</div>
+				<div className="min-w-0">{props.children}</div>
+			</div>
+		)
+	}
 	return (
 		<div className={cn('flex items-center gap-2 text-xs text-muted-foreground', props.className)}>
-			<span className="w-16 shrink-0 truncate">{props.label}</span>
+			{label}
 			<span className="min-w-0 flex-1">{props.children}</span>
-			{props.onClear && (
-				<Button
-					variant="ghost"
-					size="icon"
-					className="h-6 w-6 shrink-0"
-					disabled={props.canClear === false}
-					title={tr.text(HistoryMsgs.clearFilter())}
-					onClick={props.onClear}
-				>
-					<Icons.Trash className="h-3.5 w-3.5" />
-				</Button>
-			)}
+			{clear}
 		</div>
 	)
 }
@@ -194,24 +232,23 @@ const PRESETS = [
 
 // A preset resolves to absolute bounds at pick time rather than staying relative: the query is a url that is
 // also saved and shared, and a saved "last 7 days" would answer a different question every time it was run.
-function TimeRange(props: { draft: HQ.Query; set: Set; custom: boolean; setCustom: (custom: boolean) => void }) {
-	const { draft, set, custom, setCustom } = props
-	const showCustom = custom || (draft.from !== undefined && !matchedPreset(draft))
+function TimeRange(props: { draft: HQ.Query; set: Set; showCustom: boolean; setCustom: (custom: boolean) => void }) {
+	const { draft, set, setCustom, showCustom } = props
 
 	if (showCustom) {
 		return (
-			<div className="flex items-center gap-1">
-				<Input
+			<div className="flex min-w-0 flex-col gap-1">
+				<BoundInput
 					type="datetime-local"
-					className="h-7 w-max text-xs"
+					label={tr.text(HistoryMsgs.rangeFrom())}
 					defaultValue={toDatetimeLocal(draft.from)}
-					onChange={(e) => set({ from: e.target.value === '' ? undefined : new Date(e.target.value).getTime() })}
+					onChange={(value) => set({ from: value === '' ? undefined : new Date(value).getTime() })}
 				/>
-				<Input
+				<BoundInput
 					type="datetime-local"
-					className="h-7 w-max text-xs"
+					label={tr.text(HistoryMsgs.rangeTo())}
 					defaultValue={toDatetimeLocal(draft.to)}
-					onChange={(e) => set({ to: e.target.value === '' ? undefined : new Date(e.target.value).getTime() })}
+					onChange={(value) => set({ to: value === '' ? undefined : new Date(value).getTime() })}
 				/>
 			</div>
 		)
@@ -230,7 +267,7 @@ function TimeRange(props: { draft: HQ.Query; set: Set; custom: boolean; setCusto
 				set(preset ? { from: Date.now() - preset.ms, to: undefined } : { from: undefined, to: undefined })
 			}}
 		>
-			<SelectTrigger className="h-7 w-max text-xs">
+			<SelectTrigger className="h-7 w-full text-xs">
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
@@ -386,7 +423,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			return (
 				<ComboBoxMulti
 					title={fieldLabel(field.key)}
-					className="w-72"
+					className="w-full"
 					values={draft.types ?? []}
 					options={control.options as string[]}
 					onSelect={(update) => {
@@ -400,7 +437,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				<ComboBox
 					title={fieldLabel(field.key)}
 					allowEmpty
-					className="w-52"
+					className="w-full"
 					value={draft[field.key as 'variant' | 'outcome' | 'setBy']}
 					options={control.options as string[]}
 					onSelect={(v) => {
@@ -412,7 +449,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			return (
 				<Input
 					autoFocus
-					className="h-7 w-52 text-xs"
+					className="h-7 w-full text-xs"
 					defaultValue={(draft[field.key as 'chat' | 'damageSource'] as string | undefined) ?? ''}
 					onChange={(e) => set({ [field.key]: e.target.value || undefined })}
 				/>
@@ -422,7 +459,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				<ComboBox
 					title={fieldLabel(field.key)}
 					allowEmpty
-					className="w-52"
+					className="w-full"
 					value={draft[field.key as 'map' | 'gamemode' | 'faction']}
 					options={L.StaticLayerComponents[control.part] as unknown as string[]}
 					onSelect={(v) => {
@@ -445,14 +482,14 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					autoFocus
 					type="number"
 					min={1}
-					className="h-7 w-24 text-xs"
+					className="h-7 w-full text-xs"
 					defaultValue={draft.minMatches ?? ''}
 					onChange={(e) => set({ minMatches: e.target.value === '' ? undefined : Number(e.target.value) })}
 				/>
 			)
 		case 'number-range':
 			return (
-				<div className="flex items-center gap-1">
+				<div className="flex min-w-0 items-end gap-1">
 					<NumberBound
 						label={tr.text(HistoryMsgs.rangeFrom())}
 						value={draft.ticketDiffMin}
@@ -472,14 +509,26 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 
 function NumberBound(props: { label: string; value: number | undefined; onChange: (value: number | undefined) => void }) {
 	return (
-		<label className="flex flex-col gap-0.5 text-2xs text-muted-foreground">
+		<BoundInput
+			type="number"
+			label={props.label}
+			defaultValue={props.value === undefined ? '' : String(props.value)}
+			onChange={(value) => props.onChange(value === '' ? undefined : Number(value))}
+		/>
+	)
+}
+
+// one bound of a range, captioned, sized by whatever row it lands in
+function BoundInput(props: { type: 'number' | 'datetime-local'; label: string; defaultValue: string; onChange: (value: string) => void }) {
+	return (
+		<label className="flex min-w-0 flex-1 flex-col gap-0.5 text-2xs text-muted-foreground">
 			{props.label}
 			<Input
-				type="number"
+				type={props.type}
 				min={0}
-				className="h-7 w-20 text-xs"
-				defaultValue={props.value ?? ''}
-				onChange={(e) => props.onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+				className="h-7 w-full min-w-0 text-xs"
+				defaultValue={props.defaultValue}
+				onChange={(e) => props.onChange(e.target.value)}
 			/>
 		</label>
 	)
