@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import ComboBox from '@/components/combo-box/combo-box'
+import { StringEqConfig, StringInConfig } from '@/components/filter-card'
 import { Button } from '@/components/ui/button'
 import {
 	DropdownMenu,
@@ -20,6 +21,7 @@ import * as HistoryMsgs from '@/messages/history.messages'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
+import type * as LC from '@/models/layer-columns'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -226,6 +228,11 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 			;(n as F.EditableCompNode).args[1] = { type: 'values', values }
 		})
 
+	// The layer dimensions have real pickers elsewhere in the app -- options, groupings (a faction's alliance,
+	// a map's collection) and per-value icons -- and a list of a few hundred layer ids is unusable without
+	// them. Everything else keeps the plain list: server ids are short, and damage sources are free text.
+	const lcColumn = layerColumnFor(def)
+
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 	const enumOptions: readonly string[] | undefined = (() => {
 		if (def.domain.kind === 'enum') return def.domain.options
@@ -263,6 +270,19 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 		)
 	}
 
+	if (node.type === 'in' && lcColumn) {
+		return (
+			<StringInConfig
+				column={lcColumn}
+				className="w-64"
+				values={values.filter((v): v is string => typeof v === 'string')}
+				setValues={(update) => {
+					const current = values.filter((v): v is string => typeof v === 'string')
+					setValues(typeof update === 'function' ? (update(current) as string[]) : (update as string[]))
+				}}
+			/>
+		)
+	}
 	if (node.type === 'in' && enumOptions) {
 		return (
 			<DropdownMenu>
@@ -306,6 +326,17 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 	}
 
 	// scalar operators
+	if (lcColumn) {
+		const value = values[0]
+		return (
+			<StringEqConfig
+				column={lcColumn}
+				className="w-48"
+				value={typeof value === 'string' ? value : undefined}
+				setValue={(v) => setScalar(1, v ?? undefined)}
+			/>
+		)
+	}
 	if (enumOptions) {
 		const value = values[0]
 		return (
@@ -343,6 +374,25 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 			onChange={(e) => setScalar(1, e.target.value === '' ? undefined : e.target.value)}
 		/>
 	)
+}
+
+// the layer-columns column a history layer dimension picks its values from. Faction and unit read off team
+// one's column: the value set is the same on either side, and the filter matches both (see LAYER_COLUMN_KEYS).
+function layerColumnFor(def: HQ.ColumnDef): LC.GroupByColumn | undefined {
+	switch (def.key) {
+		case 'layer.layer':
+			return 'Layer'
+		case 'layer.map':
+			return 'Map'
+		case 'layer.gamemode':
+			return 'Gamemode'
+		case 'layer.faction':
+			return 'Faction_1'
+		case 'layer.unit':
+			return 'Unit_1'
+		default:
+			return undefined
+	}
 }
 
 function toDatetimeLocal(value: F.Value | undefined): string {

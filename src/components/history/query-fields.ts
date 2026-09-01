@@ -30,7 +30,9 @@ export type FieldControl =
 	| { kind: 'multi-enum'; options: readonly string[] }
 	| { kind: 'enum'; options: readonly string[] }
 	| { kind: 'text' }
-	| { kind: 'layer-part'; part: 'maps' | 'gamemodes' | 'factions' }
+	// the layer dimension this field picks a value from, named as the layer-columns vocabulary names it, so
+	// the editor can reuse the pickers the rest of the app uses (options, groupings, icons)
+	| { kind: 'layer-part'; column: 'Map' | 'Gamemode' | 'Faction_1' }
 	| { kind: 'saved-filter' }
 	| { kind: 'number' }
 	| { kind: 'number-range' }
@@ -51,9 +53,9 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	outcome: { key: 'outcome', group: 'match', control: { kind: 'enum', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
 	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range' } },
-	map: { key: 'map', group: 'layer', control: { kind: 'layer-part', part: 'maps' } },
-	gamemode: { key: 'gamemode', group: 'layer', control: { kind: 'layer-part', part: 'gamemodes' } },
-	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', part: 'factions' } },
+	map: { key: 'map', group: 'layer', control: { kind: 'layer-part', column: 'Map' } },
+	gamemode: { key: 'gamemode', group: 'layer', control: { kind: 'layer-part', column: 'Gamemode' } },
+	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', column: 'Faction_1' } },
 	layer: { key: 'layer', group: 'layer', control: { kind: 'saved-filter' } },
 	minMatches: { key: 'minMatches', group: 'players', control: { kind: 'number' }, onlyFor: ['players'] },
 }

@@ -1675,7 +1675,7 @@ export function StringEqConfig<T extends string | null>(props: {
 	)
 }
 
-function StringInConfig(props: {
+export function StringInConfig(props: {
 	values: (string | null)[]
 	column: string | undefined
 	allowedValues?: (string | null)[]

@@ -5,6 +5,7 @@ import React from 'react'
 import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
+import { StringEqConfig } from '@/components/filter-card'
 import { LayerFilterPicker } from '@/components/history-advanced-editor'
 import * as QF from '@/components/history/query-fields'
 import { Button } from '@/components/ui/button'
@@ -23,7 +24,6 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import type * as HQ from '@/models/history.models'
-import * as L from '@/models/layer'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -455,16 +455,15 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				/>
 			)
 		case 'layer-part':
+			// the app's own layer picker rather than a bare list of strings: it carries the groupings (a faction's
+			// alliance, a map's collection) and the per-value icons, and a search over a few hundred layer values
+			// needs them
 			return (
-				<ComboBox
-					title={fieldLabel(field.key)}
-					allowEmpty
+				<StringEqConfig
+					column={control.column}
 					className="w-full"
 					value={draft[field.key as 'map' | 'gamemode' | 'faction']}
-					options={L.StaticLayerComponents[control.part] as unknown as string[]}
-					onSelect={(v) => {
-						set({ [field.key]: v ?? undefined })
-					}}
+					setValue={(v) => set({ [field.key]: v ?? undefined })}
 				/>
 			)
 		case 'saved-filter':
