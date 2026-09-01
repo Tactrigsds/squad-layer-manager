@@ -10,14 +10,16 @@ import HistoryQueryBar, { HistoryQueryBounds } from '@/components/history-query-
 import * as HistoryTemplates from '@/components/history/templates'
 import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as HistoryFrame from '@/frames/history.frame'
+import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
@@ -46,10 +48,18 @@ function okOf<T extends OkRes['type']>(res: QueryRes | undefined, type: T): Extr
 // both modifiers run (see onKeyDown); this is only which one to show
 const RUN_MODIFIER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '\u2318' : 'Ctrl'
 
+// the saved query the page is working on: what Save updates rather than duplicates
+type SavedAs = { id: string; name: string; visibility: 'private' | 'shared' }
+
 export default function HistoryPage(props: HistoryPageProps) {
 	const draft = Zus.useStore(props.stores.history, (s) => s.draft)
 	const canRun = Zus.useStore(props.stores.history, HistoryFrame.Sel.canRun)
-	const [saveOpen, setSaveOpen] = React.useState(false)
+	const [savedAs, setSavedAs] = React.useState<SavedAs | null>(null)
+	// a query arriving from anywhere but the user's own editing is a different query, so it saves as its own
+	const runFresh = (query: HQ.Query) => {
+		setSavedAs(null)
+		props.onRun(query)
+	}
 
 	const run = () => {
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
@@ -138,11 +148,15 @@ export default function HistoryPage(props: HistoryPageProps) {
 					/>
 					{draft.mode === 'advanced' && modeToggle}
 					<div className="grow" />
-					<RecentMenu onRun={props.onRun} />
-					<SavedMenu onRun={props.onRun} />
-					<Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
-						{tr.text(HistoryMsgs.save())}
-					</Button>
+					<RecentMenu onRun={runFresh} />
+					<SavedMenu
+						onRun={runFresh}
+						onLoadOwn={(saved, query) => {
+							setSavedAs(saved)
+							props.onRun(query)
+						}}
+					/>
+					<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
 					<CopyLinkButton />
 					{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
 				</div>
@@ -169,7 +183,6 @@ export default function HistoryPage(props: HistoryPageProps) {
 					</div>
 				</RailResizer>
 			)}
-			<SaveDialog stores={props.stores} open={saveOpen} onOpenChange={setSaveOpen} />
 		</div>
 	)
 }
@@ -480,7 +493,7 @@ function describeQuery(query: HQ.Query): string {
 	return parts.join(' · ')
 }
 
-function SavedMenu(props: { onRun: (query: HQ.Query) => void }) {
+function SavedMenu(props: { onRun: (query: HQ.Query) => void; onLoadOwn: (saved: SavedAs, query: HQ.Query) => void }) {
 	const saved = useQuery(HistoryClient.savedQueriesBase())
 	const me = UsersClient.useLoggedInUser()
 	const deleteQuery = HistoryClient.useDeleteSavedQuery()
@@ -499,7 +512,15 @@ function SavedMenu(props: { onRun: (query: HQ.Query) => void }) {
 					const mine = me !== undefined && query.ownerId === me.discordId
 					return (
 						<div key={query.id} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent">
-							<button type="button" className="grow truncate text-left" onClick={() => props.onRun(query.query)}>
+							<button
+								type="button"
+								className="grow truncate text-left"
+								onClick={() =>
+									mine
+										? props.onLoadOwn({ id: query.id, name: query.name, visibility: query.visibility }, query.query)
+										: props.onRun(query.query)
+								}
+							>
 								<span className="font-medium">{query.name}</span>
 								{!mine && query.ownerName && (
 									<span className="ml-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
@@ -524,16 +545,96 @@ function SavedMenu(props: { onRun: (query: HQ.Query) => void }) {
 	)
 }
 
-function SaveDialog(props: { stores: HistoryFrame.KeyProp; open: boolean; onOpenChange: (open: boolean) => void }) {
+/**
+ * Save, as a split button once the page is working on a saved query the user owns.
+ *
+ * The association is the page's, not the url's: a saved query loads by navigating, so nothing distinguishes
+ * it from any other query once it has loaded, and a reload starts over on plain Save.
+ */
+function SaveControl(props: { stores: HistoryFrame.KeyProp; savedAs: SavedAs | null; setSavedAs: (saved: SavedAs | null) => void }) {
+	const save = HistoryClient.useSaveQuery()
+	const [dialogOpen, setDialogOpen] = React.useState(false)
+	const savedAs = props.savedAs
+
+	const update = () => {
+		if (!savedAs) return
+		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
+		save.mutate(
+			{ id: savedAs.id, name: savedAs.name, visibility: savedAs.visibility, query: HistoryFrame.Sel.builtQuery(state) },
+			{
+				onSuccess: (res) => {
+					if (res.code !== 'ok') {
+						// gone or no longer ours: fall back to plain Save rather than leaving a button that cannot work
+						props.setSavedAs(null)
+						toast.error(...tr.toast(HistoryMsgs.saveFailed(res.code)))
+						return
+					}
+					toast(...tr.toast(HistoryMsgs.queryUpdated(savedAs.name)))
+				},
+			},
+		)
+	}
+
+	return (
+		<>
+			{savedAs ? (
+				<ButtonGroup>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={save.isPending}
+						onClick={update}
+						title={tr.text(HistoryMsgs.updateQuery(savedAs.name))}
+					>
+						{tr.text(HistoryMsgs.update())}
+					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant="outline" size="sm" className="px-1" aria-label={tr.text(HistoryMsgs.moreSaveOptions())}>
+								<Icons.ChevronDown className="h-3 w-3" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuItem onSelect={() => setDialogOpen(true)}>{tr.text(HistoryMsgs.saveAsNew())}</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</ButtonGroup>
+			) : (
+				<Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+					{tr.text(HistoryMsgs.save())}
+				</Button>
+			)}
+			<SaveDialog stores={props.stores} open={dialogOpen} onOpenChange={setDialogOpen} onSaved={props.setSavedAs} />
+		</>
+	)
+}
+
+function SaveDialog(props: {
+	stores: HistoryFrame.KeyProp
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	onSaved: (saved: SavedAs) => void
+}) {
 	const save = HistoryClient.useSaveQuery()
 	const [name, setName] = React.useState('')
 	const [shared, setShared] = React.useState(false)
 
 	const submit = () => {
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
+		const visibility = shared ? 'shared' : ('private' as const)
 		save.mutate(
-			{ name: name.trim(), visibility: shared ? 'shared' : 'private', query: HistoryFrame.Sel.builtQuery(state) },
-			{ onSuccess: () => props.onOpenChange(false) },
+			{ name: name.trim(), visibility, query: HistoryFrame.Sel.builtQuery(state) },
+			{
+				onSuccess: (res) => {
+					if (res.code !== 'ok') {
+						toast.error(...tr.toast(HistoryMsgs.saveFailed(res.code)))
+						return
+					}
+					// the new query is now the one the page is working on, so the next save updates it
+					props.onSaved({ id: res.id, name: name.trim(), visibility })
+					props.onOpenChange(false)
+				},
+			},
 		)
 	}
 

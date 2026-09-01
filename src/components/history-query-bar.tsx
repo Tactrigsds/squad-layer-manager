@@ -431,6 +431,9 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					values={draft.types ?? []}
 					options={ETO.EVENT_TYPE_OPTIONS}
 					groupings={ETO.eventTypeGroupings()}
+					// sections rather than a badge on each of sixty rows, and a chip that spends its width on the
+					// type rather than on the family
+					renderGroupPrefix={false}
 					onSelect={(update) => {
 						const next = typeof update === 'function' ? update(draft.types ?? []) : update
 						set({ types: next as HQ.Query['types'] })

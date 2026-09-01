@@ -262,18 +262,19 @@ export function groupRuns<T extends string | null>(
 	options: ComboBoxOption<T>[],
 	grouping: ResolvedGrouping | undefined,
 	suppressHeadings = false,
-): { heading?: string; options: ComboBoxOption<T>[] }[] {
+): { key?: string; heading?: string; options: ComboBoxOption<T>[] }[] {
 	if (suppressHeadings || !grouping) return [{ options }]
 	const headingOf = (option: ComboBoxOption<T>) => (excluded(option) ? undefined : groupOf(option, grouping.key))
 	const headings = new Set(options.map(headingOf))
 	headings.delete(undefined)
 	if (headings.size < 2) return [{ options }]
-	const runs: { heading?: string; options: ComboBoxOption<T>[] }[] = []
+	const labelOf = (key: string) => grouping.groups.find((group) => group.key === key)?.label ?? key
+	const runs: { key?: string; heading?: string; options: ComboBoxOption<T>[] }[] = []
 	for (const option of options) {
-		const heading = headingOf(option)
+		const key = headingOf(option)
 		const last = runs[runs.length - 1]
-		if (last && last.heading === heading) last.options.push(option)
-		else runs.push({ heading, options: [option] })
+		if (last && last.key === key) last.options.push(option)
+		else runs.push({ key, heading: key == null ? undefined : labelOf(key), options: [option] })
 	}
 	return runs
 }
