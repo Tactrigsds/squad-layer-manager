@@ -58,7 +58,6 @@ export const timeLast30d = def('Last 30 days')
 export const timeCustom = def('Custom range')
 
 export const addFilter = def('Filter')
-export const advancedInMainColumn = def('Building the query tree on the right.')
 export const groupScope = def('Scope')
 export const groupEvents = def('Event')
 export const groupMatch = def('Match')
