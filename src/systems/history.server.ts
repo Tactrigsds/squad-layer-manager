@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import { renderRow } from '@/components/feed/render'
-import type * as RC from '@/components/feed/render-context'
+import * as RC from '@/components/feed/render-context'
 import { createId } from '@/lib/id'
 import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
@@ -489,9 +489,11 @@ function renderEventRows(
 		...labels,
 	}
 	// safe to set-and-restore without a scope: the render loop below is synchronous, so nothing else can
-	// read the ambient locale while it is ours
+	// read the ambient locale while it is ours. Same for the timestamp format: results span days and servers,
+	// so a row's time on its own does not place it, unlike in a feed of one match.
 	const prevLocale = I18n.getAmbientLocale()
 	I18n.setAmbientLocale(render.locale)
+	const prevFull = RC.setFullTimestamps(true)
 	try {
 		const out: string[] = []
 		for (const event of events) {
@@ -501,5 +503,6 @@ function renderEventRows(
 		return out
 	} finally {
 		I18n.setAmbientLocale(prevLocale)
+		RC.setFullTimestamps(prevFull)
 	}
 }

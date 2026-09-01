@@ -42,6 +42,24 @@ export type RenderCtx = {
 	pluginName: (pluginId: string) => string | undefined
 }
 
+// Whether a row's timestamp carries its date as well as its time. Ambient rather than a prop or a ctx field,
+// like the render locale: every row draws its time through one atom, and the alternative is threading a flag
+// through every template that renders an EventLine. Only ever set around a synchronous render pass.
+//
+// The history page's results want it (they span days and servers); the live feed and the player window,
+// which are one match or one recent slice, do not.
+let fullTimestamps = false
+
+export function setFullTimestamps(value: boolean): boolean {
+	const previous = fullTimestamps
+	fullTimestamps = value
+	return previous
+}
+
+export function usingFullTimestamps(): boolean {
+	return fullTimestamps
+}
+
 const scopes = new Map<string, RenderCtx>()
 
 export function register(ctx: RenderCtx) {

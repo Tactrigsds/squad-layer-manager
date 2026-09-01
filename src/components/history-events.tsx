@@ -27,7 +27,7 @@ export default function HistoryEvents(props: { query: HQ.Query; showTotal?: bool
 	const key = React.useMemo(() => JSON.stringify([props.query, render]), [props.query, render])
 	const [extra, setExtra] = React.useState<{ key: string; pages: EventsPage[] }>({ key, pages: [] })
 	if (extra.key !== key) setExtra({ key, pages: [] })
-	const first = useQuery(HistoryClient.queryPageBase({ query: props.query, render }))
+	const first = useQuery(HistoryClient.queryPageBase({ query: props.query, render, includeMatchBoundaries: true }))
 
 	const okPages = React.useMemo(() => {
 		const pages: EventsPage[] = []
@@ -48,7 +48,9 @@ export default function HistoryEvents(props: { query: HQ.Query; showTotal?: bool
 		if (!nextCursor) return
 		setLoadingMore(true)
 		try {
-			const res = await RPC.queryClient.fetchQuery(HistoryClient.queryPageBase({ query: props.query, cursor: nextCursor, render }))
+			const res = await RPC.queryClient.fetchQuery(
+				HistoryClient.queryPageBase({ query: props.query, cursor: nextCursor, render, includeMatchBoundaries: true }),
+			)
 			setExtra((prev) => (prev.key === key && res.code === 'ok' ? { key, pages: [...prev.pages, res as EventsPage] } : prev))
 		} finally {
 			setLoadingMore(false)

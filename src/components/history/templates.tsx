@@ -50,6 +50,15 @@ function outcomeText(details: MH.MatchDetails): string {
 	}
 }
 
+// unsigned, matching the match.ticketDiff column the filter compiles to: which side won is the outcome's
+// question, and this one is only ever asked as "a blowout" or "a close game"
+function ticketDiffText(details: MH.MatchDetails): string {
+	if (details.status !== 'post-game') return ''
+	const outcome = details.outcome
+	if (outcome.type !== 'team1' && outcome.type !== 'team2') return ''
+	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
+}
+
 export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean }) {
 	const { details } = props
 	const time = details.startTime ?? (details.status === 'post-game' && details.endTime !== 'unknown' ? details.endTime : undefined)
@@ -66,6 +75,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 				/>
 			</td>
 			<td className={CELL}>{outcomeText(details)}</td>
+			<td className={CELL}>{ticketDiffText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
 		</tr>
 	)

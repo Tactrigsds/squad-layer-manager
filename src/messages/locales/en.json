@@ -1565,6 +1565,7 @@
 	"This tutorial runs on a <strong>sandbox</strong> server, so you can experiment without affecting your real servers.": "This tutorial runs on a <strong>sandbox</strong> server, so you can experiment without affecting your real servers.",
 	"This will immediately move all queued players to their assigned teams.": "This will immediately move all queued players to their assigned teams.",
 	"This window holds everything else known about the layer:\n<ul>\n<li>the factions for each team</li>\n<li>the special characteristics of each faction</li>\n<li>the vehicles each team fields</li>\n</ul>": "This window holds everything else known about the layer:\n<ul>\n<li>the factions for each team</li>\n<li>the special characteristics of each faction</li>\n<li>the vehicles each team fields</li>\n</ul>",
+	"Ticket diff": "Ticket diff",
 	"Ticket difference": "Ticket difference",
 	"Time": "Time",
 	"Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}": "Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}",

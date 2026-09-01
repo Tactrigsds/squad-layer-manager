@@ -317,6 +317,7 @@ function MatchesResults(props: { query: HQ.Query }) {
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colServer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colOutcome())}</th>
+							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTicketDiff())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
 						</tr>
 					</thead>

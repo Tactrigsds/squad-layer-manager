@@ -9,6 +9,7 @@ export type QueryPageInput = {
 	page?: number
 	// events rows are rendered server-side, so the viewer's display settings ride along
 	render?: { displayTeamsNormalized: boolean; locale: string }
+	includeMatchBoundaries?: boolean
 }
 
 export const queryPageBase = (input: QueryPageInput) =>

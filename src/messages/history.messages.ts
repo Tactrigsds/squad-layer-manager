@@ -101,6 +101,8 @@ export const colLayer = def('Layer')
 export const colOutcome = def('Outcome')
 export const colServer = def('Server')
 export const colSetBy = def('Set by')
+export const colTicketDiff = def('Ticket diff')
+export const colEvents = def('Events')
 
 export const outcomeTeam1 = def('Team 1')
 export const outcomeTeam2 = def('Team 2')
