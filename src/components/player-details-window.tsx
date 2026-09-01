@@ -217,8 +217,17 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	// Gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
 	const historicalEvents = React.useMemo(() => {
 		const pages = historyRequested ? (eventsQuery.data?.pages ?? []) : []
-		const events = pages.flatMap(decodePageEvents).reverse()
-		return currentMatch ? events.filter((e) => e.matchId !== currentMatch.historyEntryId) : events
+		const seen = new Set<CHAT.EventEnriched['id']>()
+		const events: CHAT.EventEnriched[] = []
+		for (const event of pages.flatMap(decodePageEvents).reverse()) {
+			// a match's boundary event rides along on every page that touches that match, so a match whose
+			// events span a page boundary would otherwise contribute two of them
+			if (seen.has(event.id)) continue
+			seen.add(event.id)
+			if (currentMatch && event.matchId === currentMatch.historyEntryId) continue
+			events.push(event)
+		}
+		return events
 	}, [historyRequested, eventsQuery.data?.pages, currentMatch])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
