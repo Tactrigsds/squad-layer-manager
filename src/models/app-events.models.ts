@@ -494,6 +494,7 @@ export const APP_EVENT_META = {
 	PLAYER_FLAGS_UPDATED: EM.meta<PlayerFlagsUpdated>({ players: [{ assocType: 'player', get: (e) => e.playerId }] }),
 	TEAMSWAPS_UPDATED: EM.meta<TeamswapsUpdated>({
 		players: [{ assocType: 'player', get: (e) => summarizeTeamswapChanges(e).map((c) => c.playerId) }],
+		users: [{ get: (e) => summarizeTeamswapChanges(e).map((c) => (c.kind === 'added' ? c.byUserId : undefined)) }],
 	}),
 	SWITCH_REQUESTS_FULFILLED: EM.meta<SwitchRequestsFulfilled>({
 		players: [{ assocType: 'player', get: (e) => [...e.targets, e.movedConnector] }],
@@ -514,6 +515,10 @@ export const APP_EVENT_META = {
 	// Gorodok queued" answer with every save it sat through
 	QUEUE_UPDATED: EM.meta<QueueUpdated>({
 		layers: [{ kind: 'queued', get: (e) => summarizeQueueChanges(e).flatMap((c) => c.layerIds) }],
+		users: [
+			{ get: (e) => summarizeQueueChanges(e).map((c) => (c.actor.type === 'slm-user' ? c.actor.userId : undefined)) },
+			{ get: (e) => e.save?.overrodeEditors },
+		],
 	}),
 	SQUAD_RENAMED: EM.meta<SquadRenamed>(),
 	FOG_OF_WAR_TOGGLED: EM.meta<FogOfWarToggled>(),
@@ -555,6 +560,15 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 
 export function* iterAssocLayerIds(e: AppEvent): Generator<readonly [L.LayerId, EM.LayerAssocKind]> {
 	yield* EM.iterAssocLayers(metaOf(e), e)
+}
+
+export function* iterAssocUserIds(e: AppEvent): Generator<USR.UserId> {
+	// the actor is on the envelope rather than in any payload, so it is yielded here instead of being declared
+	// identically on all 36 metas
+	if (e.actor.type === 'slm-user') yield e.actor.userId
+	for (const userMeta of metaOf(e).users) {
+		yield* EM.iterAssocValues(userMeta.get(e))
+	}
 }
 
 // What actually drove a QUEUE_UPDATED. A save the queue made for itself -- drawing the next layer, applying a vote

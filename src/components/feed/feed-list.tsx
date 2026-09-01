@@ -6,8 +6,9 @@ import * as CHAT from '@/models/chat.models'
 import type * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as PluginsClient from '@/systems/plugins.client'
 
-import { AppEventEntry } from '../server-event'
+import { PluginEventRow } from '../server-event'
 import * as RC from './render-context'
 import { Row } from './rows'
 import { renderStatic } from './static-render'
@@ -18,8 +19,25 @@ type AppEvent = Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
 type Built = {
 	event: CHAT.EventEnriched
 	node: Node | null
-	// an app event keeps its react component; the node is the placeholder that component portals into
+	// a plugin's own rendering is arbitrary react registered in the browser, so it cannot be walked to dom like
+	// every other row; the node is the placeholder its component portals into. Every other app event is a
+	// template (see app-event-rows.tsx).
 	appEvent: AppEvent | null
+}
+
+// whether this row has to keep a react component of its own
+function pluginRendered(event: CHAT.EventEnriched): AppEvent | null {
+	if (event.type !== 'APP_EVENT' || event.appEvent.type !== 'PLUGIN_EVENT') return null
+	const appEvent = event.appEvent
+	const rendering = PluginsClient.getEventRendering(appEvent.pluginId, {
+		name: appEvent.name,
+		payload: appEvent.payload,
+		message: appEvent.message,
+		time: appEvent.time,
+		serverId: appEvent.serverId,
+		matchId: appEvent.matchId,
+	})
+	return rendering ? event : null
 }
 
 function sameAppEvents(a: Built[], b: Built[]) {
@@ -55,7 +73,7 @@ function collectFacts(map: Map<string, PG.PlayerFactsSource>, event: CHAT.EventE
  * differs and rebuilds from there. Everything before it is left alone, which is what keeps an append cheap.
  */
 export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: SquadServerFrame.KeyProp }) {
-	const ctx = useRenderCtx(props.stores)
+	const ctx = useRenderCtx(props.stores, props.events)
 	const hostRef = React.useRef<HTMLDivElement | null>(null)
 	const builtRef = React.useRef<{ ctx: RC.RenderCtx | null; rows: Built[] }>({ ctx: null, rows: [] })
 	const factsRef = React.useRef(new Map<string, PG.PlayerFactsSource>())
@@ -88,7 +106,7 @@ export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: S
 		const fragment = document.createDocumentFragment()
 		for (let i = shared; i < next.length; i++) {
 			const event = next[i]
-			const appEvent = event.type === 'APP_EVENT' ? event : null
+			const appEvent = pluginRendered(event)
 			const node = appEvent ? document.createElement('div') : renderStatic(React.createElement(Row, { ctx, event }))
 			if (node instanceof HTMLDetailsElement && opened.has(event.id)) node.open = true
 			if (node) fragment.appendChild(node)
@@ -120,7 +138,7 @@ export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: S
 				className="contents [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
 			/>
 			{appEvents.map((row) =>
-				createPortal(<AppEventEntry event={row.appEvent!} stores={props.stores} />, row.node as Element, String(row.event.id)),
+				createPortal(<PluginEventRow ctx={ctx} event={row.appEvent!} />, row.node as Element, String(row.event.id)),
 			)}
 		</>
 	)

@@ -10,6 +10,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as MH from '@/models/match-history.models'
 import type * as PG from '@/models/player-groupings.models'
 import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 
 export const SCOPE_ATTR = 'data-dom-scope'
 
@@ -34,6 +35,11 @@ export type RenderCtx = {
 	latestMatch: MH.MatchDetails | undefined
 	currentMatch: MH.MatchDetails | undefined
 	groupColor: (playerId: string, player: PG.PlayerFactsSource | undefined) => string | null
+	// The display names an app event's actor resolves to. Looked up through the ctx rather than by a hook, so the
+	// app-event templates stay inert and serialize on the server like every other row. A name the caller cannot
+	// resolve comes back undefined and the template falls back to naming the actor generically.
+	userLabel: (userId: USR.UserId) => string | undefined
+	pluginName: (pluginId: string) => string | undefined
 }
 
 const scopes = new Map<string, RenderCtx>()

@@ -2,9 +2,11 @@ import React from 'react'
 
 import * as Interactions from '@/components/feed/interactions'
 import * as RC from '@/components/feed/render-context'
+import { useActorLabels } from '@/components/feed/use-actor-labels'
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
+import type * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import { BaseZIndexContext } from '@/models/zindex'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
@@ -19,11 +21,12 @@ const NO_FRAME_STORES = {} as SquadServerFrame.KeyProp
  * interactions resolve their server frame from its match, minted on first use for servers that have a live
  * managed instance.
  */
-export function useHistoryRenderCtx(matches: MH.MatchDetails[]): RC.RenderCtx {
+export function useHistoryRenderCtx(matches: MH.MatchDetails[], events?: readonly CHAT.EventEnriched[] | null): RC.RenderCtx {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const zIndexBase = React.useContext(BaseZIndexContext)
 	const scopeId = React.useMemo(() => RC.newScopeId(), [])
+	const actorLabels = useActorLabels(events)
 
 	const ctx = React.useMemo<RC.RenderCtx>(() => {
 		const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
@@ -52,8 +55,9 @@ export function useHistoryRenderCtx(matches: MH.MatchDetails[]): RC.RenderCtx {
 			latestMatch: undefined,
 			currentMatch: undefined,
 			groupColor: () => null,
+			...actorLabels,
 		}
-	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings])
+	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()

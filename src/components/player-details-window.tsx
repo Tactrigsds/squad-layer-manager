@@ -176,7 +176,6 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 }
 
 function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: NonNullable<PlayerDetailsWindowProps['stores']> }) {
-	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const { data } = useQuery(
@@ -230,6 +229,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 		return events
 	}, [historyRequested, eventsQuery.data?.pages, currentMatch])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
+	const feedCtx = useRenderCtx(stores, allEvents)
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
 	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
@@ -373,7 +373,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							{filteredEvents.map((e, i) => (
 								<React.Fragment key={e.id}>
 									<EventSeparator time={e.time} prevTime={i > 0 ? filteredEvents[i - 1].time : null} />
-									<ServerEvent event={e} ctx={feedCtx} stores={stores} />
+									<ServerEvent event={e} ctx={feedCtx} />
 								</React.Fragment>
 							))}
 						</div>

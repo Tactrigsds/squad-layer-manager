@@ -18,6 +18,7 @@ import * as I18n from '@/messages/i18n'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 
+import { AppEventRow } from './app-event-rows'
 import * as Atoms from './atoms'
 import { Icon } from './icons'
 import type * as RC from './render-context'
@@ -407,15 +408,16 @@ function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, {
 }
 
 /**
- * One feed row, or null when the event draws nothing. App events return null: live react draws those.
+ * One feed row, or null when the event draws nothing.
  *
  * A results context asks for a placeholder instead of nothing (see RenderCtx.placeholderUndrawn): the live
  * feed leaves roster bookkeeping undrawn on purpose, but a query that matched such an event has to show it,
  * or the result count disagrees with what is on screen.
  */
 export function Row({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched }): React.ReactNode {
+	if (event.type === 'APP_EVENT') return <AppEventRow ctx={ctx} event={event} />
 	const drawn = drawRow({ ctx, event })
-	if (drawn !== null || !ctx.placeholderUndrawn || event.type === 'APP_EVENT') return drawn
+	if (drawn !== null || !ctx.placeholderUndrawn) return drawn
 	return <UndrawnRow event={event} />
 }
 

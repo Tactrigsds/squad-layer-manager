@@ -1,6 +1,7 @@
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import type * as L from '@/models/layer'
 import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 
 // What an event is about, declared beside the event's own type. Both families use this: server events
 // (server-events.models.ts) and app events (app-events.models.ts). The write path indexes off these, so adding
@@ -26,6 +27,8 @@ export type EventMeta<E> = {
 	// squads carry either the whole object (which registers the squad) or just its uniqueId (which references one)
 	squads: { get: (event: E) => AssocValues<SM.UniqueSquad | number> }[]
 	layers: { kind: LayerAssocKind; get: (event: E) => AssocValues<L.LayerId> }[]
+	// SLM users the event attributes work to, beyond whoever performed it. Only app events have these.
+	users: { get: (event: E) => AssocValues<USR.UserId> }[]
 }
 
 export function* iterAssocValues<T>(values: AssocValues<T>): Generator<T> {
@@ -44,6 +47,7 @@ export function meta<E>(opts?: Partial<EventMeta<E>>): EventMeta<E> {
 		players: opts?.players ?? [],
 		squads: opts?.squads ?? [],
 		layers: opts?.layers ?? [],
+		users: opts?.users ?? [],
 	}
 }
 
