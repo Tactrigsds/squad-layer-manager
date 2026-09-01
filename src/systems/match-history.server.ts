@@ -25,6 +25,7 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 
@@ -354,7 +355,7 @@ export const matchHistoryRouter = {
 			// the whole match is replayed and then filtered, rather than the squad's events being selected out
 			// first: a slice replays against a partial roster, and the match is already the unit everything else
 			// reads and caches.
-			const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, squadRow.matchId)
+			const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, Settings.GLOBAL_SETTINGS.chat, squadRow.matchId)
 
 			return {
 				squad: squadRow,

@@ -422,7 +422,8 @@ export function Row({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnrich
 // The event as its type and its payload, for the types the feed has no rendering for. A native disclosure, so
 // it stays inert: no handler, and it works the same server-rendered, walked to dom, or in a react tree.
 function UndrawnRow({ event }: { event: CHAT.EventEnriched }) {
-	const type = event.type === 'NOOP' ? event.originalEvent.type : event.type
+	// a NOOP's placeholder names the event it stands for, and why it drew nothing
+	const type = event.type === 'NOOP' ? `${event.originalEvent.type} \u00b7 ${event.cause}` : event.type
 	return (
 		<Atoms.EventLine time={event.time} icon={<Icon name="Dot" className="h-4 w-4 text-muted-foreground shrink-0" />}>
 			<details className="min-w-0">

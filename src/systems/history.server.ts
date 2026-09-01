@@ -27,6 +27,7 @@ import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as HistoryRetention from '@/systems/history-retention.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Settings from '@/systems/settings.server'
 
 // The history page's server half. A query request is: authorize and resolve on the main thread
 // (history-resolve.server.ts), then dispatch the resolved tree to the query engine on a worker thread with
@@ -414,7 +415,7 @@ async function assembleEventPage(
 	const events: CHAT.EventEnriched[] = []
 	for (const [serverId, ids] of byServer) {
 		const serverCtx = { ...ctx, serverId, matchEventsCache: MatchEventsCache.initMatchEventsCacheContext() }
-		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(serverCtx, ...ids)
+		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(serverCtx, Settings.GLOBAL_SETTINGS.chat, ...ids)
 		// app events replay into the same buffer and carry string ids; the index covers server events only
 		events.push(
 			...enriched.filter((e) => (typeof e.id === 'number' && wanted.has(e.id)) || (includeMatchBoundaries && e.type === 'NEW_GAME')),
@@ -431,13 +432,18 @@ async function assembleEventPage(
 // Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a
 // match that only survives as retained rows. The hit is still a result, so it is revived: the raw event with
 // minimal players (name from the players table, no team or squad) put back on the fields interpolation reads.
+//
+// A suppressed event is not revived. It is still a hit -- the index has no idea a pattern matches it -- so it
+// goes through as the NOOP it is and the renderer stands a placeholder in for it, rather than being dropped
+// (which would leave the page short of its own result count) or revived (which would undo the suppression).
 async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promise<CHAT.EventEnriched[]> {
 	const playerFieldsOf = (type: string) =>
 		(CHAT.Wire.FIELDS as Record<string, { players?: readonly string[]; playerLists?: readonly string[] }>)[type]
+	const revivable = (e: CHAT.EventEnriched): e is CHAT.NoopEvent => e.type === 'NOOP' && e.cause === 'unresolved'
 
 	const missing = new Set<string>()
 	for (const event of events) {
-		if (event.type !== 'NOOP') continue
+		if (!revivable(event)) continue
 		const original = event.originalEvent as unknown as Record<string, unknown>
 		const fields = playerFieldsOf(event.originalEvent.type)
 		for (const key of fields?.players ?? []) {
@@ -449,7 +455,7 @@ async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promi
 			}
 		}
 	}
-	if (missing.size === 0) return events.filter((e) => e.type !== 'NOOP')
+	if (missing.size === 0) return events.filter((e) => !revivable(e))
 
 	const nameRows = await ctx
 		.db()
@@ -472,7 +478,7 @@ async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promi
 
 	const out: CHAT.EventEnriched[] = []
 	for (const event of events) {
-		if (event.type !== 'NOOP') {
+		if (!revivable(event)) {
 			out.push(event)
 			continue
 		}

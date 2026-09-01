@@ -118,16 +118,20 @@ export const getFeedEventsForMatches = Instr.spanOp(
  * events and lets the client replay them.
  *
  * Each match replays from an empty roster, so its entries never resolve against another match's players.
+ *
+ * `opts` is the same interpolation config the client passes, and must be, or the two replays of one match disagree:
+ * the suppression patterns drop entries, so omitting them here shows events the live feed never did. Taken as a
+ * parameter rather than read from the settings module, which imports this one back.
  */
 export const getEnrichedEventsForMatches = Instr.spanOp(
 	'getEnrichedEventsForMatches',
 	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, ..._matches: number[]) => {
+	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, opts: CHAT.InterpolationOptions, ..._matches: number[]) => {
 		const byMatch = await getFeedEventsForMatches(ctx, ..._matches)
 		const enriched: CHAT.EventEnriched[] = []
 		for (const events of byMatch.values()) {
 			const state = CHAT.getInitialChatState()
-			for (const event of events) CHAT.handleEvent(state, event)
+			for (const event of events) CHAT.handleEvent(state, event, opts)
 			enriched.push(...state.eventBuffer)
 		}
 		return enriched

@@ -196,9 +196,15 @@ export type EventEnriched =
 	| SE.PlayerWounded<SM.Player>
 	| AggregatedWarns
 
+// Why the event drew nothing. 'unresolved' is a replay that could not name the event's players (see
+// reviveNoops); 'suppressed' is a configured pattern deliberately keeping it out of the feed. Readers that
+// stand something in for a dropped event have to tell the two apart.
+export type NoopCause = 'unresolved' | 'suppressed'
+
 export type NoopEvent = {
 	type: 'NOOP'
 	reason: string
+	cause: NoopCause
 	id: number
 	time: number
 	matchId: number
@@ -716,7 +722,7 @@ function testPatterns(patterns: string[], text: string): boolean {
 	return compiled.some((pattern) => pattern.test(text))
 }
 
-type InterpolationOptions = {
+export type InterpolationOptions = {
 	warnSuppressionPatterns?: string[]
 	broadcastSuppressionPatterns?: string[]
 }
@@ -942,7 +948,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 
 		case 'PLAYER_WARNED': {
 			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
-				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
+				return noop(`Warn reason ${event.reason} matches warn suppression pattern`, 'suppressed')
 			}
 			const player = state.players.get(event.player)
 			if (!player) {
@@ -995,7 +1001,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (event.from) {
 				if (event.from === 'RCON' || event.from === 'unknown') {
 					if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
-						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
+						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`, 'suppressed')
 					}
 					return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 				}
@@ -1062,10 +1068,11 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		default:
 			assertNever(event)
 	}
-	function noop(reason: string) {
+	function noop(reason: string, cause: NoopCause = 'unresolved') {
 		return {
 			type: 'NOOP' as const,
 			reason,
+			cause,
 			id: event.id,
 			time: event.time,
 			matchId: event.matchId,
