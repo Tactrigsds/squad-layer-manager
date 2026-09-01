@@ -27,7 +27,8 @@ export type FieldGroup = 'events' | 'match' | 'layer' | 'players'
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
-	| { kind: 'multi-enum'; options: readonly string[] }
+	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
+	| { kind: 'event-types' }
 	| { kind: 'enum'; options: readonly string[] }
 	| { kind: 'text' }
 	// the layer dimension this field picks a value from, named as the layer-columns vocabulary names it, so
@@ -46,7 +47,7 @@ export type FieldDef = {
 }
 
 export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
-	types: { key: 'types', group: 'events', control: { kind: 'multi-enum', options: HQ.EVENT_TYPES } },
+	types: { key: 'types', group: 'events', control: { kind: 'event-types' } },
 	variant: { key: 'variant', group: 'events', control: { kind: 'enum', options: HQ.EVENT_VARIANTS } },
 	damageSource: { key: 'damageSource', group: 'events', control: { kind: 'text' } },
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },

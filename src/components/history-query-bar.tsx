@@ -7,6 +7,7 @@ import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
 import { StringEqConfig } from '@/components/filter-card'
 import { LayerFilterPicker } from '@/components/history-advanced-editor'
+import * as ETO from '@/components/history/event-type-options'
 import * as QF from '@/components/history/query-fields'
 import { Button } from '@/components/ui/button'
 import {
@@ -420,7 +421,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 	const { field, draft, set } = props
 	const control = field.control
 	switch (control.kind) {
-		case 'multi-enum':
+		case 'event-types':
 			return (
 				<ComboBoxMulti
 					title={fieldLabel(field.key)}
@@ -428,7 +429,8 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					className="w-full"
 					chipDisplay
 					values={draft.types ?? []}
-					options={control.options as string[]}
+					options={ETO.EVENT_TYPE_OPTIONS}
+					groupings={ETO.eventTypeGroupings()}
 					onSelect={(update) => {
 						const next = typeof update === 'function' ? update(draft.types ?? []) : update
 						set({ types: next as HQ.Query['types'] })

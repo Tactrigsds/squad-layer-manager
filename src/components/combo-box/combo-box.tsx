@@ -86,8 +86,9 @@ export interface ComboBoxOption<T> {
 	chipLabel?: string
 	// the group this option belongs to per grouping key; see the `groupings` prop. Drives which controls list
 	// it and, for the first grouping, the prefix it carries. Excluded (disabled/sortLast) options keep sorting
-	// to the back regardless of group.
-	groups?: Record<string, string>
+	// to the back regardless of group. A list means the option belongs to every one of those groups, and its
+	// first entry is the one that orders, heads and prefixes it.
+	groups?: Record<string, string | readonly string[]>
 }
 
 // cmdk owns the highlight (it follows both the pointer and arrow keys), so we read it rather than tracking

@@ -44,6 +44,21 @@ export type ColumnDef = { key: ColumnKey; displayName: string; domain: ColumnDom
 // matches both: "show me the warns" wants the admin's action and the warn the server recorded for it.
 export const EVENT_TYPES = [...new Set([...SERVER_EVENT_TYPE.options, ...APP_EVENT_TYPE.options])].sort()
 
+export const EVENT_FAMILIES = ['server', 'app'] as const
+export type EventFamily = (typeof EVENT_FAMILIES)[number]
+
+const SERVER_EVENT_NAMES: ReadonlySet<string> = new Set(SERVER_EVENT_TYPE.options)
+const APP_EVENT_NAMES: ReadonlySet<string> = new Set(APP_EVENT_TYPE.options)
+
+// which families raise a type. Two for the shared names, and a picker has to show those under either family
+// rather than pick one, since selecting the name really does match both.
+export function eventTypeFamilies(type: string): EventFamily[] {
+	const families: EventFamily[] = []
+	if (SERVER_EVENT_NAMES.has(type)) families.push('server')
+	if (APP_EVENT_NAMES.has(type)) families.push('app')
+	return families
+}
+
 export const COLUMN_DEFS = {
 	time: { key: 'time', displayName: 'Time', domain: { kind: 'timestamp' } },
 	eventId: { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
