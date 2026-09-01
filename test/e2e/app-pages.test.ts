@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
-import { indexedChatMatches } from '../harness/inspect'
+import { indexedEventsFor, searchableChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
@@ -273,13 +273,19 @@ const HISTORY_NEEDLE = 'zqhistoryneedle'
 // Seeded once for the file, and waited for in the index rather than on screen: the page runs its query on
 // load and holds the result, so arriving before the event is indexed shows an empty page that never fills.
 async function seedHistory(app: AppFixture) {
-	if (indexedChatMatches(app, HISTORY_NEEDLE) > 0) return
+	if (searchableChatMatches(app, HISTORY_NEEDLE) > 0) return
 	const talker =
 		app.emu.world.playerList().find((p) => p.name === HISTORY_TALKER) ??
 		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_TALKER}`, teamId: 1 }))
+	// the join first, on its own: an event whose player the app has not persisted yet is dropped from the
+	// event index rather than queued, and the drop is permanent
+	await app.waitFor(() => indexedEventsFor(app, talker.eos) > 0 || undefined, {
+		label: 'the seeded player to reach the history index',
+		timeoutMs: 30_000,
+	})
 	app.emu.world.chat(talker, 'ChatAll', `${HISTORY_NEEDLE} said something`)
-	await app.waitFor(() => indexedChatMatches(app, HISTORY_NEEDLE) > 0 || undefined, {
-		label: 'the seeded chat message to reach the history index',
+	await app.waitFor(() => searchableChatMatches(app, HISTORY_NEEDLE) > 0 || undefined, {
+		label: 'the seeded chat message to become searchable',
 		timeoutMs: 30_000,
 	})
 }
