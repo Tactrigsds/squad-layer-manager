@@ -13,11 +13,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import * as HistoryFrame from '@/frames/history.frame'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
+import * as L from '@/models/layer'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -227,8 +229,26 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 	const enumOptions: readonly string[] | undefined = (() => {
 		if (def.domain.kind === 'enum') return def.domain.options
-		if (def.domain.kind === 'dynamic-enum' && def.domain.source === 'servers') return servers?.map((s) => s.id) ?? []
-		return undefined
+		if (def.domain.kind !== 'dynamic-enum') return undefined
+		switch (def.domain.source) {
+			case 'servers':
+				return servers?.map((s) => s.id) ?? []
+			case 'layers':
+				return L.StaticLayerComponents.layers
+			case 'maps':
+				return L.StaticLayerComponents.maps
+			case 'gamemodes':
+				return L.StaticLayerComponents.gamemodes
+			case 'factions':
+				return L.StaticLayerComponents.factions
+			case 'units':
+				return L.StaticLayerComponents.units
+			// thousands of interned blueprint names, and a query usually knows the one it wants: free text
+			case 'damageSources':
+				return undefined
+			default:
+				assertNever(def.domain.source)
+		}
 	})()
 
 	const values = compValues(node)

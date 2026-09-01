@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
+import * as L from '@/models/layer'
 import * as SE from '@/models/server-events.models'
 import type * as C from '@/server/context'
 
@@ -70,6 +71,10 @@ export type ResolvedArtifacts = {
 	playerSets: Map<HQ.Node, string[]>
 	playerValues: Map<HQ.Node, string[]>
 	damageSourceIds: Map<HQ.Node, number[]>
+	// the layer ids a layer-part predicate selects. Held as ids rather than as the matches that played them:
+	// the id is what every table already carries, and there are a few hundred of them against any number of
+	// matches, so `layerId IN (...)` reaches the same rows through matchHistory's own index.
+	layerSets: Map<HQ.Node, string[]>
 }
 
 const STEAM64_RE = /^7656\d{13}$/
@@ -120,6 +125,58 @@ export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<st
 	return rows.map((r) => r.eosId)
 }
 
+type PlayedLayer = { layerId: string; layer: L.UnvalidatedLayer }
+
+/**
+ * The distinct layers played in range, parsed. Bounded by what was actually played (a few hundred ids on the
+ * largest install) rather than by the combinatorial layer universe, so this is a scan of matchHistory's
+ * layerId index and a parse per distinct id.
+ */
+async function playedLayers(ctx: C.Db & CS.AbortSignal, bounds: Bounds): Promise<PlayedLayer[]> {
+	const rows = await ctx.db().selectDistinct({ layerId: mh.layerId }).from(mh).where(matchBoundsCond(bounds))
+	const out: PlayedLayer[] = []
+	for (const { layerId } of rows) {
+		// an id whose abbreviations this build no longer knows simply has no parts to match on, the same way a
+		// layer retired from the artifact does. It still answers layer.layer, which toLayer recovers from a
+		// RAW: id's own text.
+		try {
+			out.push({ layerId, layer: L.toLayer(layerId) })
+		} catch {
+			continue
+		}
+	}
+	return out
+}
+
+// what a layer column reads off one parsed layer. Faction and unit are two-valued on purpose: the predicate
+// asks whether a side played it, not which slot it occupied (see LAYER_COLUMN_KEYS).
+function layerColumnValues(column: HQ.LayerColumnKey, layer: L.UnvalidatedLayer): (F.Value | undefined)[] {
+	switch (column) {
+		case 'layer.layer':
+			return [layer.Layer]
+		case 'layer.map':
+			return [layer.Map]
+		case 'layer.gamemode':
+			return [layer.Gamemode]
+		case 'layer.faction':
+			return [layer.Faction_1, layer.Faction_2]
+		case 'layer.unit':
+			return [layer.Unit_1, layer.Unit_2]
+		default:
+			assertNever(column)
+	}
+}
+
+// the positive set: negation belongs to whichever engine consumes the artifact, so that a layer predicate
+// negates with the same not-true semantics as every other leaf
+function layerIdsMatching(comp: F.CompNode, column: HQ.LayerColumnKey, played: PlayedLayer[]): string[] {
+	const ids: string[] = []
+	for (const { layerId, layer } of played) {
+		if (layerColumnValues(column, layer).some((value) => evalCompValue(comp, value))) ids.push(layerId)
+	}
+	return ids
+}
+
 function compValueList(node: F.CompNode): F.Value[] {
 	switch (node.type) {
 		case 'eq':
@@ -150,7 +207,10 @@ export async function resolveArtifacts(
 		playerSets: new Map(),
 		playerValues: new Map(),
 		damageSourceIds: new Map(),
+		layerSets: new Map(),
 	}
+	// resolved on first use and shared by every layer node in the tree
+	let played: PlayedLayer[] | undefined
 	if (depth > MAX_SUBQUERY_DEPTH) return { code: 'err:invalid-query', message: 'sub-queries nested too deeply' }
 
 	for (const node of HQ.walkNodes(root)) {
@@ -208,6 +268,10 @@ export async function resolveArtifacts(
 		if (column === 'player') {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			artifacts.playerValues.set(node, await resolvePlayerRefs(ctx, refs))
+		}
+		if (HQ.isLayerColumn(column)) {
+			played ??= await playedLayers(ctx, bounds)
+			artifacts.layerSets.set(node, layerIdsMatching(comp, column, played))
 		}
 		if (column === 'event.damageSource') {
 			const names = compValueList(comp).filter((v): v is string => typeof v === 'string')
@@ -398,6 +462,18 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			return compileComp(comp, sql`(SELECT outcome FROM matchHistory WHERE id = ${pei.matchId})`, id)
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT setByType FROM matchHistory WHERE id = ${pei.matchId})`, id)
+		case 'layer.layer':
+		case 'layer.map':
+		case 'layer.gamemode':
+		case 'layer.faction':
+		case 'layer.unit': {
+			const layerIds = art.layerSets.get(node) ?? []
+			const cond =
+				layerIds.length === 0
+					? sql`0 = 1`
+					: sql`${pei.matchId} IN (SELECT id FROM matchHistory WHERE ${inJsonSet(sql`layerId`, layerIds)})`
+			return comp.neg ? negate(cond) : cond
+		}
 		default:
 			assertNever(column)
 	}
@@ -444,6 +520,15 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			const cond = sql`${mh.id} IN (SELECT matchId FROM chatSearch WHERE chatSearch MATCH ${needle})`
 			return comp.neg ? negate(cond) : cond
 		}
+		case 'layer.layer':
+		case 'layer.map':
+		case 'layer.gamemode':
+		case 'layer.faction':
+		case 'layer.unit': {
+			const layerIds = art.layerSets.get(node) ?? []
+			const cond = layerIds.length === 0 ? sql`0 = 1` : inJsonSet(mh.layerId, layerIds)
+			return comp.neg ? negate(cond) : cond
+		}
 		// event-valued leaves: the match contains a matching event
 		case 'eventId':
 		case 'player':
@@ -469,33 +554,33 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 export type EvalEventCtx = {
 	event: SE.Event
 	row: SchemaModels.ServerEvent
-	match: Pick<SchemaModels.MatchHistory, 'id' | 'serverId' | 'outcome' | 'setByType'>
+	match: Pick<SchemaModels.MatchHistory, 'id' | 'serverId' | 'outcome' | 'setByType' | 'layerId'>
 }
 
-function evalComp(comp: F.CompNode, actual: F.Value | undefined): boolean {
+/** The comparison against one value, before negation. Also what resolves a layer predicate over parsed ids. */
+function evalCompValue(comp: F.CompNode, actual: F.Value | undefined): boolean {
 	const value = actual ?? null
-	let result: boolean
+	const values = compValueList(comp)
 	switch (comp.type) {
 		case 'eq':
-			result = value === (compValueList(comp)[0] ?? null)
-			break
+			return value === (values[0] ?? null)
 		case 'in':
-			result = compValueList(comp).includes(value)
-			break
+			return values.includes(value)
 		case 'lt':
-			result = typeof value === 'number' && typeof compValueList(comp)[0] === 'number' && value < (compValueList(comp)[0] as number)
-			break
+			return typeof value === 'number' && typeof values[0] === 'number' && value < values[0]
 		case 'gt':
-			result = typeof value === 'number' && typeof compValueList(comp)[0] === 'number' && value > (compValueList(comp)[0] as number)
-			break
+			return typeof value === 'number' && typeof values[0] === 'number' && value > values[0]
 		case 'inrange': {
-			const [lo, hi] = compValueList(comp)
-			result = typeof value === 'number' && typeof lo === 'number' && typeof hi === 'number' && value >= lo && value <= hi
-			break
+			const [lo, hi] = values
+			return typeof value === 'number' && typeof lo === 'number' && typeof hi === 'number' && value >= lo && value <= hi
 		}
 		default:
 			assertNever(comp)
 	}
+}
+
+function evalComp(comp: F.CompNode, actual: F.Value | undefined): boolean {
+	const result = evalCompValue(comp, actual)
 	return comp.neg ? !result : result
 }
 
@@ -562,6 +647,14 @@ export function evalEventNode(node: HQ.Node, art: ResolvedArtifacts, ectx: EvalE
 			return evalComp(comp, ectx.match.outcome)
 		case 'match.setBy':
 			return evalComp(comp, ectx.match.setByType)
+		case 'layer.layer':
+		case 'layer.map':
+		case 'layer.gamemode':
+		case 'layer.faction':
+		case 'layer.unit': {
+			const result = (art.layerSets.get(node) ?? []).includes(ectx.match.layerId)
+			return comp.neg ? !result : result
+		}
 		default:
 			assertNever(column)
 	}

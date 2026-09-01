@@ -26,6 +26,7 @@ import {
 	resolveNamedPlayerIds,
 	resolvePlayerRefs,
 } from '@/systems/history-query.shared'
+import * as LayerData from '@/systems/layer-data.server'
 
 // The history query engine, on its own thread so a heavy scan never stalls the main event loop (which is also
 // the rcon and websocket loop; better-sqlite3 is synchronous). It opens its own read-only connection: WAL lets
@@ -282,9 +283,15 @@ const db = drizzle(driver)
 
 const ctx = { ...CS.init(), db: () => db, signal: new AbortController().signal }
 
+// layer predicates read their parts out of the layer id, so this thread needs the components the
+// abbreviations index into. Not the layer engine's wasm artifact, which stays on the main thread: a
+// match-layer node is resolved to match ids before it is ever dispatched here.
+const componentsLoaded = LayerData.loadComponents()
+
 parentPort!.on('message', ({ seq, req }: Request) => {
 	void (async (): Promise<Response> => {
 		try {
+			await componentsLoaded
 			return { seq, res: await runEngineRequest(ctx, req) }
 		} catch (err) {
 			const e = err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) }

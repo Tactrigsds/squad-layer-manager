@@ -88,6 +88,7 @@ async function sieveRetainedEvents(ctx: C.Db & CS.AbortSignal, matchIds: number[
 			serverId: Schema.matchHistory.serverId,
 			outcome: Schema.matchHistory.outcome,
 			setByType: Schema.matchHistory.setByType,
+			layerId: Schema.matchHistory.layerId,
 		})
 		.from(Schema.matchHistory)
 		.where(E.inArray(Schema.matchHistory.id, matchIds))

@@ -25,12 +25,15 @@ export type ColumnDomain =
 	| { kind: 'timestamp' }
 	| { kind: 'number' }
 	| { kind: 'enum'; options: readonly string[] }
-	// options come from a table, resolved where a db (or a fetched list) is at hand
-	| { kind: 'dynamic-enum'; source: 'damageSources' | 'servers' }
+	// options come from a table or the layer components, resolved where those are at hand
+	| { kind: 'dynamic-enum'; source: DynamicEnumSource }
 	// a player reference: an eos id, or a steam64 the engine resolves to one
 	| { kind: 'player' }
 	// free text; `eq` reads as "contains" (fts MATCH for chat)
 	| { kind: 'text' }
+
+export const DYNAMIC_ENUM_SOURCES = ['damageSources', 'servers', 'layers', 'maps', 'gamemodes', 'factions', 'units'] as const
+export type DynamicEnumSource = (typeof DYNAMIC_ENUM_SOURCES)[number]
 
 export type ColumnDef = { key: ColumnKey; displayName: string; domain: ColumnDomain }
 
@@ -49,7 +52,25 @@ export const COLUMN_DEFS = {
 	'chat.message': { key: 'chat.message', displayName: 'Chat text', domain: { kind: 'text' } },
 	'match.outcome': { key: 'match.outcome', displayName: 'Match outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
 	'match.setBy': { key: 'match.setBy', displayName: 'Layer set by', domain: { kind: 'enum', options: SET_BY_TYPES } },
+	// The layer played, by part. Every one of these is read off the layer id (L.toLayer), never off a join:
+	// the id spells out map, gamemode and both sides, so the engine resolves them by parsing the few hundred
+	// distinct ids in range rather than by asking the layer engine, which it has no artifact for.
+	'layer.layer': { key: 'layer.layer', displayName: 'Layer', domain: { kind: 'dynamic-enum', source: 'layers' } },
+	'layer.map': { key: 'layer.map', displayName: 'Map', domain: { kind: 'dynamic-enum', source: 'maps' } },
+	'layer.gamemode': { key: 'layer.gamemode', displayName: 'Gamemode', domain: { kind: 'dynamic-enum', source: 'gamemodes' } },
+	'layer.faction': { key: 'layer.faction', displayName: 'Faction', domain: { kind: 'dynamic-enum', source: 'factions' } },
+	'layer.unit': { key: 'layer.unit', displayName: 'Unit', domain: { kind: 'dynamic-enum', source: 'units' } },
 } as const satisfies Record<string, { key: string; displayName: string; domain: ColumnDomain }>
+
+// Faction and unit are matched against both sides at once: historically "was RGF in this match" is the
+// question worth asking, where "was RGF specifically team 1" is close to meaningless, since the slot a side
+// occupies flips between consecutive matches. A matchup is two predicates in an `and`.
+export const LAYER_COLUMN_KEYS = ['layer.layer', 'layer.map', 'layer.gamemode', 'layer.faction', 'layer.unit'] as const
+export type LayerColumnKey = (typeof LAYER_COLUMN_KEYS)[number]
+
+export function isLayerColumn(key: string): key is LayerColumnKey {
+	return (LAYER_COLUMN_KEYS as readonly string[]).includes(key)
+}
 
 export type ColumnKey = keyof typeof COLUMN_DEFS
 export const COLUMN_KEYS = Object.keys(COLUMN_DEFS) as ColumnKey[]
@@ -229,6 +250,9 @@ export const QuerySchema = z.object({
 	damageSource: z.string().optional(),
 	chat: z.string().optional(),
 	layer: F.FilterNodeSchema.optional(),
+	map: z.string().optional(),
+	gamemode: z.string().optional(),
+	faction: z.string().optional(),
 	outcome: z.enum(MATCH_OUTCOMES).optional(),
 	setBy: z.enum(SET_BY_TYPES).optional(),
 	name: z.string().optional(),
@@ -267,6 +291,9 @@ export function queryFilterNode(query: Query): Node {
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
 	if (query.chat) children.push(comp('chat.message', [query.chat]))
 	if (query.layer) children.push({ type: 'match-layer', neg: false, filter: query.layer })
+	if (query.map) children.push(comp('layer.map', [query.map]))
+	if (query.gamemode) children.push(comp('layer.gamemode', [query.gamemode]))
+	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.outcome) children.push(comp('match.outcome', [query.outcome]))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	return { type: 'and', children }

@@ -222,6 +222,88 @@ describe('the event archive', () => {
 		expect(events.total).toBeGreaterThan(0)
 	})
 
+	// The layer parts come out of the layer id via L.toLayer, not out of matchHistory's denormalized columns:
+	// the id spells them out, so the engine needs no join and no layer engine artifact to filter on them.
+	it('filters by the parts of the layer played, on both the matches and the events anchors', async () => {
+		const all = await client.history.query({ query: { type: 'matches' } })
+		const gorodok = await client.history.query({ query: { type: 'matches', map: 'Gorodok' } })
+		expect(all.code).toBe('ok')
+		expect(gorodok.code).toBe('ok')
+		if (all.code !== 'ok' || all.type !== 'matches') return
+		if (gorodok.code !== 'ok' || gorodok.type !== 'matches') return
+		expect(gorodok.total).toBeGreaterThan(0)
+		expect(gorodok.matches.every((m) => m.layerId.startsWith('GD-'))).toBe(true)
+
+		// negation has to keep the rows a positive filter drops rather than propagating a null through the
+		// compare, so the two halves partition the whole
+		const notGorodok = await client.history.query({
+			query: {
+				type: 'matches',
+				mode: 'advanced',
+				q: {
+					type: 'eq',
+					neg: true,
+					args: [
+						{ type: 'column', column: 'layer.map' },
+						{ type: 'value', value: 'Gorodok' },
+					],
+				},
+			},
+		})
+		expect(notGorodok.code).toBe('ok')
+		if (notGorodok.code !== 'ok' || notGorodok.type !== 'matches') return
+		expect(gorodok.total + notGorodok.total).toBe(all.total)
+		expect(notGorodok.matches.every((m) => !m.layerId.startsWith('GD-'))).toBe(true)
+
+		// a faction matches whichever side played it, since the slot a side occupies flips between matches
+		const rgf = await client.history.query({ query: { type: 'matches', faction: 'RGF' } })
+		expect(rgf.code).toBe('ok')
+		if (rgf.code !== 'ok' || rgf.type !== 'matches') return
+		expect(rgf.total).toBeGreaterThan(0)
+
+		// The same predicate on the events anchor, which reaches matchHistory through the event's match. The
+		// map is read out of the db rather than assumed: which match holds the events depends on where the
+		// queue had rolled to by the time the earlier tests ran.
+		const db = app.readDb()
+		let indexedMap: string
+		try {
+			const row = db
+				.prepare(
+					`SELECT m.layerMap AS map FROM playerEventIndex i JOIN matchHistory m ON m.id = i.matchId
+					 WHERE m.layerMap IS NOT NULL LIMIT 1`,
+				)
+				.get() as { map: string } | undefined
+			if (!row) throw new Error('no indexed event belongs to a match with resolved layer parts')
+			indexedMap = row.map
+		} finally {
+			db.close()
+		}
+
+		const allEvents = await client.history.query({ query: {} })
+		const onMap = await client.history.query({ query: { map: indexedMap } })
+		expect(onMap.code).toBe('ok')
+		if (allEvents.code !== 'ok' || allEvents.type !== 'events') return
+		if (onMap.code !== 'ok' || onMap.type !== 'events') return
+		expect(onMap.total).toBeGreaterThan(0)
+
+		const offMap = await client.history.query({
+			query: {
+				mode: 'advanced',
+				q: {
+					type: 'eq',
+					neg: true,
+					args: [
+						{ type: 'column', column: 'layer.map' },
+						{ type: 'value', value: indexedMap },
+					],
+				},
+			},
+		})
+		expect(offMap.code).toBe('ok')
+		if (offMap.code !== 'ok' || offMap.type !== 'events') return
+		expect(onMap.total! + offMap.total!).toBe(allEvents.total)
+	})
+
 	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.
 	it('a retention rule sieves its events out of a pruned match; everything else is dropped', async () => {
 		const saved = await client.history.save({

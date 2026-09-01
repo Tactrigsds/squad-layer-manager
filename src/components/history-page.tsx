@@ -3,6 +3,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { SERVER_EVENT_TYPE } from '$root/drizzle/enums'
+import ComboBox from '@/components/combo-box/combo-box'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor, { LayerFilterPicker } from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
@@ -20,6 +21,7 @@ import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as HQ from '@/models/history.models'
+import * as L from '@/models/layer'
 import type * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
@@ -316,6 +318,32 @@ function BasicFields(props: { draft: HQ.Query; set: (patch: Partial<HQ.Query>) =
 					</Field>
 				</>
 			)}
+			{/* the layer a match played, by part. A saved filter answers the questions these cannot (matchups,
+			    extra columns, pool membership), so both are offered rather than one standing in for the other */}
+			<Field label={tr.text(HistoryMsgs.fieldMap())}>
+				<LayerPartPicker
+					title={tr.text(HistoryMsgs.fieldMap())}
+					options={L.StaticLayerComponents.maps}
+					value={draft.map}
+					onSelect={(map) => set({ map })}
+				/>
+			</Field>
+			<Field label={tr.text(HistoryMsgs.fieldGamemode())}>
+				<LayerPartPicker
+					title={tr.text(HistoryMsgs.fieldGamemode())}
+					options={L.StaticLayerComponents.gamemodes}
+					value={draft.gamemode}
+					onSelect={(gamemode) => set({ gamemode })}
+				/>
+			</Field>
+			<Field label={tr.text(HistoryMsgs.fieldFaction())}>
+				<LayerPartPicker
+					title={tr.text(HistoryMsgs.fieldFaction())}
+					options={L.StaticLayerComponents.factions}
+					value={draft.faction}
+					onSelect={(faction) => set({ faction })}
+				/>
+			</Field>
 			<Field label={tr.text(HistoryMsgs.fieldLayer())}>
 				<LayerFilterPicker
 					value={draft.layer?.type === 'included-in' ? draft.layer.filterId : undefined}
@@ -323,6 +351,25 @@ function BasicFields(props: { draft: HQ.Query; set: (patch: Partial<HQ.Query>) =
 				/>
 			</Field>
 		</>
+	)
+}
+
+function LayerPartPicker(props: {
+	title: string
+	options: readonly string[]
+	value: string | undefined
+	onSelect: (v: string | undefined) => void
+}) {
+	const options = React.useMemo(() => props.options.map((option) => ({ value: option, label: option })), [props.options])
+	return (
+		<ComboBox
+			title={props.title}
+			placeholder={tr.text(HistoryMsgs.anyOption())}
+			allowEmpty
+			value={props.value}
+			options={options}
+			onSelect={(v) => props.onSelect(v ?? undefined)}
+		/>
 	)
 }
 
@@ -512,6 +559,9 @@ function describeQuery(query: HQ.Query): string {
 	if (query.player) parts.push(query.player)
 	if (query.chat) parts.push(`"${query.chat}"`)
 	if (query.types && query.types.length > 0) parts.push(query.types.join(', '))
+	for (const part of [query.map, query.gamemode, query.faction]) {
+		if (part) parts.push(part)
+	}
 	if (query.mode === 'advanced') parts.push(tr.text(HistoryMsgs.modeAdvanced()).toLowerCase())
 	return parts.join(' · ')
 }
