@@ -33,7 +33,12 @@ const MAX_SUBQUERY_DEPTH = 3
 
 export const pei = Schema.playerEventIndex
 export const ae = Schema.appEvents
+export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
+export const cs = Schema.chatSearch
+export const us = Schema.usernameSearch
+export const se = Schema.serverEvents
+export const am = Schema.archivedMatches
 
 export type QueryError =
 	| { code: 'err:invalid-query'; message: string }
@@ -110,7 +115,7 @@ export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<st
 		const rows = ctx
 			.db()
 			.all<{ eosId: string }>(
-				sql`SELECT eosId FROM usernameSearch WHERE usernameSearch MATCH ${`"${trimmed.replaceAll('"', '""')}"`} LIMIT ${MAX_NAME_MATCHES}`,
+				sql`SELECT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${`"${trimmed.replaceAll('"', '""')}"`} LIMIT ${MAX_NAME_MATCHES}`,
 			)
 		return rows.map((r) => r.eosId)
 	}
@@ -334,10 +339,10 @@ export function matchBoundsCond(bounds: Bounds): E.SQL | undefined {
 		const lo = bounds.idMin ?? 0
 		const hi = bounds.idMax ?? Number.MAX_SAFE_INTEGER
 		idRange = sql`(
-			${mh.id} IN (SELECT DISTINCT matchId FROM serverEvents WHERE id BETWEEN ${lo} AND ${hi})
+			${mh.id} IN (SELECT DISTINCT ${se.matchId} FROM ${se} WHERE ${se.id} BETWEEN ${lo} AND ${hi})
 			OR ${mh.id} IN (
-				SELECT matchId FROM archivedMatches
-				WHERE (maxEventId IS NULL OR maxEventId >= ${lo}) AND (minEventId IS NULL OR minEventId <= ${hi})
+				SELECT ${am.matchId} FROM ${am}
+				WHERE (${am.maxEventId} IS NULL OR ${am.maxEventId} >= ${lo}) AND (${am.minEventId} IS NULL OR ${am.minEventId} <= ${hi})
 			)
 		)`
 	}
@@ -443,7 +448,7 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 				const cond =
 					playerIds.length === 0
 						? sql`0 = 1`
-						: sql`${pei.serverEventId} IN (SELECT serverEventId FROM playerEventIndex WHERE ${inJsonSet(sql`playerId`, playerIds)})`
+						: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${inJsonSet(pei.playerId, playerIds)})`
 				return node.neg ? negate(cond) : cond
 			}
 			default:
@@ -477,19 +482,19 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			const cond =
 				playerIds.length === 0
 					? sql`0 = 1`
-					: sql`${pei.serverEventId} IN (SELECT serverEventId FROM playerEventIndex WHERE ${inJsonSet(sql`playerId`, playerIds)})`
+					: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${inJsonSet(pei.playerId, playerIds)})`
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
-			const cond = sql`${pei.serverEventId} IN (SELECT serverEventId FROM chatSearch WHERE chatSearch MATCH ${needle})`
+			const cond = sql`${pei.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'match.outcome':
-			return compileComp(comp, sql`(SELECT outcome FROM matchHistory WHERE id = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'match.setBy':
-			return compileComp(comp, sql`(SELECT setByType FROM matchHistory WHERE id = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'layer.layer':
 		case 'layer.map':
 		case 'layer.gamemode':
@@ -499,7 +504,7 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			const cond =
 				layerIds.length === 0
 					? sql`0 = 1`
-					: sql`${pei.matchId} IN (SELECT id FROM matchHistory WHERE ${inJsonSet(sql`layerId`, layerIds)})`
+					: sql`${pei.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.layerId, layerIds)})`
 			return comp.neg ? negate(cond) : cond
 		}
 		default:
@@ -559,9 +564,9 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'match.outcome':
-			return compileComp(comp, sql`(SELECT outcome FROM matchHistory WHERE id = ${ae.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
-			return compileComp(comp, sql`(SELECT setByType FROM matchHistory WHERE id = ${ae.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'layer.layer':
 		case 'layer.map':
 		case 'layer.gamemode':
@@ -569,9 +574,7 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 		case 'layer.unit': {
 			const layerIds = art.layerSets.get(node) ?? []
 			const cond =
-				layerIds.length === 0
-					? sql`0 = 1`
-					: sql`${ae.matchId} IN (SELECT id FROM matchHistory WHERE ${inJsonSet(sql`layerId`, layerIds)})`
+				layerIds.length === 0 ? sql`0 = 1` : sql`${ae.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.layerId, layerIds)})`
 			return comp.neg ? negate(cond) : cond
 		}
 		// server-event dimensions an app event has no counterpart for
@@ -586,7 +589,7 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 }
 
 function appEventPlayerCond(playerIds: string[]): E.SQL {
-	return sql`${ae.id} IN (SELECT appEventId FROM appEventAssociations WHERE dimension = 'player' AND ${inJsonSet(sql`value`, playerIds)})`
+	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'player' AND ${inJsonSet(aea.value, playerIds)})`
 }
 
 /**
@@ -618,7 +621,7 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 				const cond =
 					playerIds.length === 0
 						? sql`0 = 1`
-						: sql`${mh.id} IN (SELECT DISTINCT matchId FROM playerEventIndex WHERE ${inJsonSet(sql`playerId`, playerIds)})`
+						: sql`${mh.id} IN (SELECT DISTINCT ${pei.matchId} FROM ${pei} WHERE ${inJsonSet(pei.playerId, playerIds)})`
 				return node.neg ? negate(cond) : cond
 			}
 			default:
@@ -639,7 +642,7 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
-			const cond = sql`${mh.id} IN (SELECT matchId FROM chatSearch WHERE chatSearch MATCH ${needle})`
+			const cond = sql`${mh.id} IN (SELECT ${cs.matchId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'layer.layer':
@@ -660,8 +663,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			const inner = E.and(eventBoundsCond({ ...bounds, serverIds: undefined }), compileEventCond(node, art))
 			const appInner = E.and(appEventBoundsCond({ ...bounds, serverIds: undefined }), compileAppEventCond(node, art))
 			const cond = E.or(
-				sql`${mh.id} IN (SELECT DISTINCT matchId FROM playerEventIndex ${inner ? sql`WHERE ${inner}` : sql``})`,
-				sql`${mh.id} IN (SELECT DISTINCT matchId FROM appEvents ${appInner ? sql`WHERE ${appInner}` : sql``})`,
+				sql`${mh.id} IN (SELECT DISTINCT ${pei.matchId} FROM ${pei} ${inner ? sql`WHERE ${inner}` : sql``})`,
+				sql`${mh.id} IN (SELECT DISTINCT ${ae.matchId} FROM ${ae} ${appInner ? sql`WHERE ${appInner}` : sql``})`,
 			) as E.SQL
 			return comp.neg ? negate(cond) : cond
 		}

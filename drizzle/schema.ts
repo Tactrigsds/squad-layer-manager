@@ -292,6 +292,27 @@ export const archivedMatches = sqliteTable(
 	}),
 )
 
+// The two fts5 indexes, declared for reference only.
+//
+// Their DDL lives in the migrations (0106, 0108) because drizzle cannot express a virtual table, and neither is
+// ever read through the query builder -- an fts5 search is a MATCH, which only the sql template can say. They
+// are here so a query naming one names these objects rather than a bare string, which is what makes every use
+// of a table or column findable.
+export const chatSearch = sqliteTable('chatSearch', {
+	message: text('message').notNull(),
+	serverEventId: integer('serverEventId').notNull(),
+	playerId: text('playerId').notNull(),
+	matchId: integer('matchId').notNull(),
+	serverId: text('serverId').notNull(),
+	time: timestamp('time').notNull(),
+})
+
+export const usernameSearch = sqliteTable('usernameSearch', {
+	username: text('username').notNull(),
+	usernameNoTag: text('usernameNoTag').notNull(),
+	eosId: text('eosId').notNull(),
+})
+
 // A history query a user chose to keep: the page's whole query state as one json value, so loading one is
 // just writing it back into the url. 'shared' rows are visible to every user; `retain` marks an events query
 // as a retention rule (see retainedEvents).

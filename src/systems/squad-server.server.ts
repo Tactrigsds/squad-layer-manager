@@ -2173,12 +2173,16 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 	}
 
 	// chat text goes into the standalone fts index at insert time, so it survives the compaction that
-	// deletes the event it came from. Raw sql because fts5 is a virtual table drizzle cannot model; not
-	// awaited because run() on the better-sqlite3 driver executes synchronously and returns no thenable.
+	// deletes the event it came from. Not awaited because run() on the better-sqlite3 driver executes
+	// synchronously and returns no thenable.
 	if (rows.chatSearchRow) {
 		const r = rows.chatSearchRow
 		ctx.db().run(
-			sql`INSERT INTO chatSearch (message, serverEventId, playerId, matchId, serverId, time) VALUES (${r.message}, ${r.serverEventId}, ${r.playerId}, ${r.matchId}, ${r.serverId}, ${r.time})`,
+			ctx
+				.db()
+				.insert(Schema.chatSearch)
+				.values({ ...r, time: new Date(r.time) })
+				.getSQL(),
 		)
 	}
 

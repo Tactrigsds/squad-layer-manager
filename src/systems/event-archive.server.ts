@@ -310,9 +310,16 @@ export const pruneArchivedMatches = Instr.spanOp(
 						)
 					// not awaited: run() on the better-sqlite3 driver is synchronous (see the insert in squad-server)
 					ctx.db().run(
-						keep
-							? E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch} AND serverEventId NOT IN (SELECT value FROM json_each(${keep}))`
-							: E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`,
+						ctx
+							.db()
+							.delete(Schema.chatSearch)
+							.where(
+								E.and(
+									E.inArray(Schema.chatSearch.matchId, batch),
+									keep ? E.sql`${Schema.chatSearch.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))` : undefined,
+								),
+							)
+							.getSQL(),
 					)
 					await ctx.db().delete(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, batch))
 				})
