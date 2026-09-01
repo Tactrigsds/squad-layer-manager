@@ -6,6 +6,7 @@ import React from 'react'
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import { DiscordMemberSelect } from '@/components/discord-picker'
 import EventFilterSelect from '@/components/event-filter-select'
+import HistoryEvents from '@/components/history-events'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as HQ from '@/models/history.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -77,18 +79,103 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	defaultHeight: 660,
 	getId: (props) => props.playerId,
 	loadAsync: async ({ props }) => {
-		const serverId = props.stores.squadServer.serverId
-		await Promise.all([
-			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
+		const prefetches: Promise<unknown>[] = [
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
 			),
-		])
+		]
+		if (props.stores) {
+			const serverId = props.stores.squadServer.serverId
+			prefetches.push(
+				RPC.queryClient.fetchQuery(
+					RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } }),
+				),
+			)
+		} else {
+			prefetches.push(RPC.queryClient.fetchQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId: props.playerId } })))
+		}
+		await Promise.all(prefetches)
 	},
 })
 
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
-	const feedCtx = useRenderCtx(stores)
+	if (!stores) return <FramelessPlayerDetails playerId={playerId} />
+	return <FramedPlayerDetails playerId={playerId} stores={stores} />
+}
+
+// The window without a live server behind it: who the player is and their recorded history, from the same
+// engine the history page queries. Everything that acts on a server (warns, menus, live status) needs the
+// framed variant.
+function FramelessPlayerDetails({ playerId }: { playerId: string }) {
+	const { data: info } = useQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId } }))
+	const username = info?.code === 'ok' ? info.username : undefined
+	const steamId = info?.code === 'ok' ? (info.steamId ?? undefined) : undefined
+	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	const orgFlags = useOrgFlags()
+	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
+	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
+	const groupColor = usePlayerGroupColor(playerId, undefined)
+	const steam = steamId ?? profile?.playerIds.steam
+	const eventsQuery = React.useMemo((): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId] }), [playerId])
+
+	return (
+		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
+			<DraggableWindowDragBar>
+				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
+					{username ?? tr.text(SM_Msgs.playerDetailsTitle())}
+				</DraggableWindowTitle>
+				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
+				<PlayerBmRefreshButton playerId={playerId} />
+				<PlayerFlagsButton playerId={playerId} />
+				<DraggableWindowPinToggle />
+				<DraggableWindowClose />
+			</DraggableWindowDragBar>
+			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+				<PlayerTimeoutStatus playerId={playerId} />
+				<div className="flex flex-col">
+					<div className="inline-flex gap-2 items-baseline">
+						{username && <CopyIdButton kind="username" id={username} />}
+						{steam && <CopyIdButton kind="steam" id={steam} />}
+					</div>
+					<div className="inline-flex gap-1 items-baseline">
+						<CopyIdButton kind="eos" id={playerId} />
+					</div>
+				</div>
+				<div className="flex items-center gap-2 text-muted-foreground">
+					{steam ? (
+						<>
+							<ExtLink href={`https://steamcommunity.com/profiles/${steam}`}>{SM_Msgs.linkNames.steam}</ExtLink>
+							<ExtLink href={`https://communitybanlist.com/search/${steam}`}>{SM_Msgs.linkNames.cbl}</ExtLink>
+							<ExtLink href={`https://mysquadstats.com/search/${steam}#vanillaStats`}>{SM_Msgs.linkNames.mySquadStats}</ExtLink>
+						</>
+					) : (
+						<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
+					)}
+					<ExtLink
+						href={
+							profile
+								? profile.profileUrl
+								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+						}
+					>
+						{SM_Msgs.linkNames.battlemetrics}
+					</ExtLink>
+					{!!profile?.hoursPlayed && (
+						<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
+					)}
+				</div>
+				<PlayerDiscordLink steamId={steam} />
+			</div>
+			<Separator />
+			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
+				<h3>{tr.text(CHAT_Msgs.activityTitle())}</h3>
+				<HistoryEvents query={eventsQuery} showTotal={false} className="flex min-h-0 flex-1 flex-col gap-1" />
+			</div>
+		</div>
+	)
+}
+
+function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: NonNullable<PlayerDetailsWindowProps['stores']> }) {
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const { data } = useQuery(
@@ -123,13 +210,26 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		),
 	)
 
-	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events.
-	// gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
-	const historicalEvents = React.useMemo(
-		() => (historyRequested ? (eventsQuery.data?.pages ?? []) : []).slice().reverse().flatMap(decodePageEvents),
-		[historyRequested, eventsQuery.data?.pages],
-	)
+	// Pages arrive newest-first and so do the events within one, so a single reverse over the flattened list
+	// puts them in chronological order, ahead of the live current-match events. The current match is dropped
+	// here rather than asked for: it is already held live above, and the engine has no reason to omit it.
+	// Gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
+	const historicalEvents = React.useMemo(() => {
+		const pages = historyRequested ? (eventsQuery.data?.pages ?? []) : []
+		const seen = new Set<CHAT.EventEnriched['id']>()
+		const events: CHAT.EventEnriched[] = []
+		for (const event of pages.flatMap(decodePageEvents).reverse()) {
+			// a match's boundary event rides along on every page that touches that match, so a match whose
+			// events span a page boundary would otherwise contribute two of them
+			if (seen.has(event.id)) continue
+			seen.add(event.id)
+			if (currentMatch && event.matchId === currentMatch.historyEntryId) continue
+			events.push(event)
+		}
+		return events
+	}, [historyRequested, eventsQuery.data?.pages, currentMatch])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
+	const feedCtx = useRenderCtx(stores, allEvents)
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
 	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
@@ -273,7 +373,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							{filteredEvents.map((e, i) => (
 								<React.Fragment key={e.id}>
 									<EventSeparator time={e.time} prevTime={i > 0 ? filteredEvents[i - 1].time : null} />
-									<ServerEvent event={e} ctx={feedCtx} stores={stores} />
+									<ServerEvent event={e} ctx={feedCtx} />
 								</React.Fragment>
 							))}
 						</div>
@@ -481,27 +581,37 @@ function useElapsed(since: number | null): string | null {
 // marker for any gap larger than this threshold within the same day.
 const TIME_JUMP_THRESHOLD_MS = 15 * 60 * 1000
 
-type PlayerEventsPage = Awaited<ReturnType<typeof RPC.orpc.matchHistory.getPlayerEvents.call>>
+type PlayerEventsPage = Awaited<ReturnType<typeof RPC.orpc.history.query.call>>
 
 // Cached on the page object because fetching another page re-derives the whole list, and a page's events never
 // change once fetched.
 const decodedPages = new WeakMap<object, CHAT.EventEnriched[]>()
 function decodePageEvents(page: PlayerEventsPage): CHAT.EventEnriched[] {
-	const loaded = RPC.selectLoaded(page)
-	if (!loaded) return []
-	let events = decodedPages.get(loaded)
+	if (page.code !== 'ok' || page.type !== 'events' || !page.events) return []
+	let events = decodedPages.get(page)
 	if (!events) {
-		events = CHAT.Wire.decode(loaded.events)
-		decodedPages.set(loaded, events)
+		events = CHAT.Wire.decode(page.events)
+		decodedPages.set(page, events)
 	}
 	return events
 }
 
+type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
+
+// This player's history, from the same engine the history page runs on -- so it reaches past the recent-match
+// window this window used to be limited to. Asked for as events rather than as rendered rows: they are
+// interleaved with the live match's own events and punctuated by match, which needs the events themselves.
 function playerEventsInfiniteOptions(serverId: string, playerId: string) {
-	return RPC.orpc.matchHistory.getPlayerEvents.infiniteOptions({
-		input: (cursor: number | undefined) => ({ serverId, playerId, cursor }),
-		initialPageParam: undefined as number | undefined,
-		getNextPageParam: (lastPage) => RPC.selectLoaded(lastPage)?.nextCursor,
+	return RPC.orpc.history.query.infiniteOptions({
+		input: (cursor: EventCursor | undefined) => ({
+			query: { ...HQ.DEFAULT_QUERY, type: 'events' as const, server: serverId, player: playerId },
+			cursor,
+			format: 'wire' as const,
+			// the feed shows a match-boundary row between matches, which no player filter would select
+			includeMatchBoundaries: true,
+		}),
+		initialPageParam: undefined as EventCursor | undefined,
+		getNextPageParam: (lastPage) => (lastPage.code === 'ok' && lastPage.type === 'events' ? lastPage.nextCursor : undefined),
 		// a finished match's events never change, so a repeated hover preload costs nothing and the click that follows
 		// one renders from the cache instead of refetching
 		staleTime: 60_000,

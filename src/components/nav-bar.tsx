@@ -256,6 +256,9 @@ export default function NavBar() {
 							))}
 						<NavLink to="/commands">{tr.text(APP_Msgs.navCommands())}</NavLink>
 						<NavLink to="/filters">{tr.text(APP_Msgs.navFilters())}</NavLink>
+						<NavLink to="/history" search={{ type: 'events', mode: 'basic' }}>
+							{tr.text(APP_Msgs.navHistory())}
+						</NavLink>
 						<NavLink to="/tutorials">{tr.text(APP_Msgs.navTutorials())}</NavLink>
 						{showSettingsLink && <NavLink to="/settings">{tr.text(APP_Msgs.navSettings())}</NavLink>}
 						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>
@@ -468,6 +471,11 @@ function MobileNavMenu(props: {
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild className="cursor-pointer">
 					<TSR.Link to="/filters">{tr.text(APP_Msgs.navFilters())}</TSR.Link>
+				</DropdownMenuItem>
+				<DropdownMenuItem asChild className="cursor-pointer">
+					<TSR.Link to="/history" search={{ type: 'events', mode: 'basic' }}>
+						{tr.text(APP_Msgs.navHistory())}
+					</TSR.Link>
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild className="cursor-pointer">
 					<TSR.Link to="/tutorials">{tr.text(APP_Msgs.navTutorials())}</TSR.Link>

@@ -7,7 +7,6 @@ import type * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 
 import * as Atoms from './feed/atoms'
-import { useDomContent } from './feed/dom-content'
 import LayerInfoDialog from './layer-info'
 
 void import('./layer-info')
@@ -43,23 +42,24 @@ export default function ShortLayerName({
 }) {
 	const allowShowInfo = _allowShowInfo ?? true
 	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
-	const content = React.useMemo(
-		() =>
-			Atoms.shortLayerNameContent({
-				layerId,
-				teamParity,
-				backfillLayerId,
-				matchDescriptors,
-				normalized: normalized ?? globalNormalized,
-			}),
-		[layerId, teamParity, backfillLayerId, matchDescriptors, normalized, globalNormalized],
+	const content = (
+		<Atoms.ShortLayerNameContent
+			layerId={layerId}
+			teamParity={teamParity}
+			backfillLayerId={backfillLayerId}
+			matchDescriptors={matchDescriptors}
+			normalized={normalized ?? globalNormalized}
+		/>
 	)
-	const hostRef = useDomContent<HTMLSpanElement>(content, ref)
 
 	// an unparseable layer id is its own display, with nothing to break into parts and nothing to look up
-	if (typeof content === 'string') return content
+	if (!L.toLayer(layerId).Layer) return content
 
-	const host = <span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={hostRef} />
+	const host = (
+		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
+			{content}
+		</span>
+	)
 	if (!allowShowInfo || !L.isKnownLayer(layerId)) return host
 	return (
 		<LayerInfoDialog layerId={layerId}>

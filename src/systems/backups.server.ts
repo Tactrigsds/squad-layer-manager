@@ -16,7 +16,6 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as EventArchive from '@/systems/event-archive.server'
 
 const module = initModule('backups')
 let log!: CS.Logger
@@ -52,11 +51,10 @@ async function run() {
 	}
 	const sftp = getSftpTarget()
 	log.info(
-		'automatic backups every %s to %s%s, event history retention: %s',
+		'automatic backups every %s to %s%s',
 		ZodUtils.formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
 		ENV.BACKUPS_DIR,
 		sftp ? ` (uploading to ${sftp.username}@${sftp.host}:${ENV.BACKUP_SFTP_DIR})` : '',
-		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : ZodUtils.formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
 	)
 	await runBackupLoop(ENV.AUTOMATIC_BACKUPS_PERIODIC, ctx)
 }
@@ -170,12 +168,9 @@ async function getLastBackupTime(ctx: C.Db) {
 	return Math.min(loggedAt, writtenAt)
 }
 
-// prunes stale event history, then snapshots the db and (if configured) ships it offsite. The prune runs first so
-// the snapshot is of the pruned db -- a backup taken before it would carry the rows we just decided to drop, which
-// would make the prune pointless the moment the backup is restored.
+// snapshots the db and (if configured) ships it offsite.
 export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const startedAt = Date.now()
-	const pruned = await pruneEventHistory(ctx)
 
 	const fileName = DbBackup.fileName(ENV.DB_PATH, 'periodic', DB.readBuildStamp()?.gitSha)
 	const destPath = path.join(ENV.BACKUPS_DIR, fileName)
@@ -208,20 +203,8 @@ export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db 
 			reason: 'periodic',
 			durationMs: Date.now() - startedAt,
 			uploaded,
-			pruned,
 		}),
 	)
-})
-
-// Retention deletes what compaction has already packed: an archived match older than the cutoff, along with
-// the player-index entries pointing into it. The matchHistory rows themselves stay -- they're small, and
-// they're what the balance and repeat rules are computed from.
-//
-// Matches inside the recent window are never archived in the first place, so they can't be reached from here.
-const pruneEventHistory = Instr.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
-	const retention = ENV.EVENT_HISTORY_RETENTION_PERIOD
-	if (retention === undefined) return undefined
-	return await EventArchive.pruneArchivedMatches(ctx, { retention })
 })
 
 function getSftpTarget() {

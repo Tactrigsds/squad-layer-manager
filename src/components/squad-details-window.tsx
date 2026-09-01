@@ -71,7 +71,6 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 })
 
 function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) {
-	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -122,6 +121,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		if (!squadMessagesOnly) return events
 		return events.filter((e) => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId)))
 	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
+	const feedCtx = useRenderCtx(stores, allEvents)
 
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 
@@ -217,7 +217,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 									</div>
 								)}
 								{allEvents.map((e) => (
-									<ServerEvent key={e.id} event={e} ctx={feedCtx} stores={stores} />
+									<ServerEvent key={e.id} event={e} ctx={feedCtx} />
 								))}
 							</div>
 						</ScrollArea>

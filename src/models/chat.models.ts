@@ -196,9 +196,15 @@ export type EventEnriched =
 	| SE.PlayerWounded<SM.Player>
 	| AggregatedWarns
 
+// Why the event drew nothing. 'unresolved' is a replay that could not name the event's players (see
+// reviveNoops); 'suppressed' is a configured pattern deliberately keeping it out of the feed. Readers that
+// stand something in for a dropped event have to tell the two apart.
+export type NoopCause = 'unresolved' | 'suppressed'
+
 export type NoopEvent = {
 	type: 'NOOP'
 	reason: string
+	cause: NoopCause
 	id: number
 	time: number
 	matchId: number
@@ -295,7 +301,8 @@ export namespace Wire {
 	}
 
 	// Exhaustive over the union so a new event type has to declare what it embeds, even if that is nothing.
-	const FIELDS = {
+	// Exported for the history results revival of NOOPed events, which puts players back on the same fields.
+	export const FIELDS = {
 		CHAT_MESSAGE: { players: ['player'] },
 		ADMIN_BROADCAST: { players: ['player'] },
 		PLAYER_CONNECTED: { players: ['player'] },
@@ -715,7 +722,7 @@ function testPatterns(patterns: string[], text: string): boolean {
 	return compiled.some((pattern) => pattern.test(text))
 }
 
-type InterpolationOptions = {
+export type InterpolationOptions = {
 	warnSuppressionPatterns?: string[]
 	broadcastSuppressionPatterns?: string[]
 }
@@ -941,7 +948,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 
 		case 'PLAYER_WARNED': {
 			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
-				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
+				return noop(`Warn reason ${event.reason} matches warn suppression pattern`, 'suppressed')
 			}
 			const player = state.players.get(event.player)
 			if (!player) {
@@ -994,7 +1001,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (event.from) {
 				if (event.from === 'RCON' || event.from === 'unknown') {
 					if (testPatterns(opts?.broadcastSuppressionPatterns ?? [], event.message)) {
-						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`)
+						return noop(`Broadcast message ${event.message} matches broadcast suppression pattern`, 'suppressed')
 					}
 					return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 				}
@@ -1061,10 +1068,11 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		default:
 			assertNever(event)
 	}
-	function noop(reason: string) {
+	function noop(reason: string, cause: NoopCause = 'unresolved') {
 		return {
 			type: 'NOOP' as const,
 			reason,
+			cause,
 			id: event.id,
 			time: event.time,
 			matchId: event.matchId,
@@ -1292,4 +1300,21 @@ export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.Pla
 
 export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
 	return events.filter((event) => hasAssocPlayer(event, playerId))
+}
+
+/**
+ * The storage event ids a feed entry stands for: its own, plus the ids of the entries replay folded into it.
+ *
+ * Replay restructures the buffer rather than just enriching it -- a server event attributed to an app event
+ * collapses under that app event, a burst of matching warns merges into one entry -- so an event that matched a
+ * query is not necessarily a top-level entry afterwards. This maps a hit back to the row that actually shows it.
+ * Driven by Wire.FIELDS, whose `nested` already names every field holding folded-in entries.
+ */
+export function* iterContainedEventIds(event: EventEnriched): Generator<number> {
+	if (typeof event.id === 'number') yield event.id
+	const fields = (Wire.FIELDS as Record<string, { nested?: readonly string[] }>)[event.type]
+	for (const key of fields?.nested ?? []) {
+		const nested = (event as unknown as Record<string, EventEnriched[] | undefined>)[key]
+		for (const child of nested ?? []) yield* iterContainedEventIds(child)
+	}
 }

@@ -16,10 +16,10 @@ import * as Commands from '@/systems/commands.server'
 import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
 import * as EventArchive from '@/systems/event-archive.server'
-import * as EventSearch from '@/systems/event-search.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
@@ -123,7 +123,7 @@ await Instr.spanOp('main', { module }, async () => {
 	// starts its own background loop; nothing else depends on it, but it needs the db open
 	Backups.setup()
 	EventArchive.setup()
-	EventSearch.setup()
+	History.setup()
 	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off
@@ -144,6 +144,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	// migration 0109's other half: sql cannot evaluate the extractors the index is built from
+	await AppEventsSys.backfillAppEventIndex(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
 	// both before SquadServer.setup: it boots a managed server per registered server, and the seeded sandbox has to be

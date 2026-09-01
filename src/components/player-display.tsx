@@ -1,10 +1,7 @@
-import React from 'react'
-
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as SM from '@/models/squad.models'
 
 import * as Atoms from './feed/atoms'
-import { useDomContent } from './feed/dom-content'
 import { SCOPE_ATTR } from './feed/render-context'
 import { useRenderCtx } from './feed/use-render-ctx'
 
@@ -25,17 +22,25 @@ export interface PlayerDisplayProps {
 /**
  * A player's name, with their badges, team and squad.
  *
- * The markup and every interaction on it are Atoms.playerDisplay's; this mounts them. The activity feed builds the
- * same thing without going through react at all, which is the point -- a feed names hundreds of players, and this
- * component costs a context menu, a window preloader and a battlemetrics subscription each.
+ * The markup and every interaction on it are Atoms.PlayerDisplay's; this supplies the scope. The activity feed
+ * renders the same template to strings without any per-name react at all, which is the point -- a feed names
+ * hundreds of players, and this component costs a battlemetrics subscription each.
  */
 export function PlayerDisplay(props: PlayerDisplayProps) {
 	const ctx = useRenderCtx(props.stores)
 	const { player, showTeam, showSquad, showRole, className, matchId, disableContextMenu } = props
-	const node = React.useMemo(
-		() => Atoms.playerDisplay(ctx, { player, showTeam, showSquad, showRole, className, matchId, disableContextMenu }),
-		[ctx, player, showTeam, showSquad, showRole, className, matchId, disableContextMenu],
+	return (
+		<span className="contents" {...{ [SCOPE_ATTR]: ctx.scopeId }}>
+			<Atoms.PlayerDisplay
+				ctx={ctx}
+				player={player}
+				showTeam={showTeam}
+				showSquad={showSquad}
+				showRole={showRole}
+				className={className}
+				matchId={matchId}
+				disableContextMenu={disableContextMenu}
+			/>
+		</span>
 	)
-	const ref = useDomContent<HTMLSpanElement>(node)
-	return <span ref={ref} className="contents" {...{ [SCOPE_ATTR]: ctx.scopeId }} />
 }
