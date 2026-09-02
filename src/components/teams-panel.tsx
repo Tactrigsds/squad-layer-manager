@@ -44,6 +44,7 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 
+import * as RC from './feed/render-context'
 import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'
@@ -728,7 +729,7 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 			return (
-				<span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
+				<span className="inline-flex items-center gap-1">
 					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
 					<SwitchRequestIcon playerId={SM.PlayerIds.getPlayerId(row.original.ids)} teamId={row.original.teamId} stores={meta.stores} />
 					{row.original.inAdminCam && (
@@ -1126,9 +1127,12 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 			return next
 		})
 	}
-	// clicking anywhere on the header row toggles the whole squad's selection (interactive children like
-	// the squad-details button and checkbox stop propagation so they keep their own behavior)
-	const toggleAll = () => toggle(!allSelected)
+	// clicking anywhere on the header row toggles the whole squad's selection, except on the squad name, which
+	// opens its window, and the checkbox, which stops propagation to keep its own behavior
+	const toggleAll = (e: React.MouseEvent) => {
+		if (RC.opensWindow(e.target)) return
+		toggle(!allSelected)
+	}
 	const { squad, creatorName, faction, totalSize } = props.info
 	const shownCount = props.playerIds.length
 	const checkbox = (
@@ -1143,9 +1147,7 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 	const labelContent = (
 		<>
 			{squad ? (
-				<span onClick={(e) => e.stopPropagation()}>
-					<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
-				</span>
+				<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
 			) : (
 				<span className="font-semibold">{tr.text(SM_Msgs.unassignedSquad())}</span>
 			)}
@@ -1266,7 +1268,10 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 							savedSwaps.has(row.id) ? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50' : undefined,
 						)}
 						data-state={row.getIsSelected() ? 'selected' : undefined}
-						onClick={() => row.toggleSelected()}
+						onClick={(e) => {
+							if (RC.opensWindow(e.target)) return
+							row.toggleSelected()
+						}}
 						onMouseDown={(e) => {
 							if (e.button !== 0) return
 							mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
