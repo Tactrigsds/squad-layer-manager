@@ -11,7 +11,8 @@ import { stateExtensions, updateSchema } from 'codemirror-json-schema'
 import { yamlCompletion, yamlSchemaHover } from 'codemirror-json-schema/yaml'
 import type { JSONSchema7 } from 'json-schema'
 import { dracula } from 'thememirror'
-import { z } from 'zod'
+
+import { z } from './zod.ts'
 
 export { EditorState, EditorView, updateSchema }
 export type { Extension }

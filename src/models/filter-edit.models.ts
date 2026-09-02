@@ -2,7 +2,6 @@
 // the server holds authoritatively. Draft-and-save, like the layer queue -- ops build the draft, `save`
 // persists it, and a draft nobody is left editing is discarded rather than committed.
 import type { MutexInterface } from 'async-mutex'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
@@ -11,6 +10,7 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as USR from '@/models/users.models'

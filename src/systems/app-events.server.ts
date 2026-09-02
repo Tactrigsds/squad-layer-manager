@@ -1,8 +1,8 @@
 import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as USR from '@/models/users.models'

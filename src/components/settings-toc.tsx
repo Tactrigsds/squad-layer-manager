@@ -1,6 +1,5 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { z } from 'zod'
 
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
@@ -11,6 +10,7 @@ import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'

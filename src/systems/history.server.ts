@@ -1,12 +1,12 @@
 import * as E from 'drizzle-orm'
 import { Worker } from 'node:worker_threads'
-import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import { renderRow } from '@/components/feed/render'
 import * as RC from '@/components/feed/render-context'
 import { createId } from '@/lib/id'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as I18n from '@/messages/i18n'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'

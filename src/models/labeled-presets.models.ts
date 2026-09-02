@@ -1,5 +1,4 @@
-import { z } from 'zod'
-
+import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 
 // shared shape for admin-configurable presets addressable from in-game chat (admin action reasons).

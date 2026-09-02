@@ -1,11 +1,10 @@
-import { z } from 'zod'
-
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference

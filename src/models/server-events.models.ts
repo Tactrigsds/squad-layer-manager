@@ -1,9 +1,9 @@
 import superjson from 'superjson'
-import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
+import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import { type EventMeta, iterAssocLayers, iterAssocValues, type LayerAssocKind, meta } from '@/models/event-meta.models'

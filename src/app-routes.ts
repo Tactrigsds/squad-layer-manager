@@ -1,9 +1,9 @@
 // NOTE: we can't import anything here that would require a path alias, even recursively because it's used in vite.config.ts
 
 import Cookie from 'cookie'
-import { z } from 'zod'
 
 import * as Arr from './lib/array-utils.ts'
+import { z } from './lib/zod.ts'
 
 type GenericRouteDefinition = {
 	id: string

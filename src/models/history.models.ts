@@ -1,7 +1,6 @@
-import { z } from 'zod'
-
 import { APP_EVENT_TYPE, SERVER_EVENT_TYPE } from '$root/drizzle/enums'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as CHAT from '@/models/chat.models'
 import * as F from '@/models/filter.models'
 import * as SM from '@/models/squad.models'

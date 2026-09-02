@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 
 // What a squad server is doing, as the server itself sees it, plus what SLM is doing to reach it. Four channels
 // rather than one stream because they answer different questions: what SLM asked of it (rcon), what the game
