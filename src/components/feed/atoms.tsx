@@ -56,13 +56,17 @@ export function EventTime(props: { time: number }) {
 }
 
 // Which match a row came from, drawn only where the ambient says the feed spans matches -- so a dashboard
-// feed of one match is unchanged. Beside the time rather than inside its button, which is the tooltip's
-// trigger, and here rather than in EventLine because a chat row builds its own line and skips that.
-// See RC.setRowMatchId for why it is not a prop.
+// feed of one match is unchanged. Beside the time rather than inside its button, and here rather than in
+// EventLine because a chat row builds its own line and skips that. See RC.setRowMatchId for why it is not a
+// prop. A button because its tooltip can be clicked open, which is how its layer link is reached.
 function RowMatchId() {
 	const matchId = RC.currentRowMatchId()
 	if (matchId === undefined) return null
-	return <span className="text-muted-foreground/60 font-mono text-2xs shrink-0">#{matchId}</span>
+	return (
+		<button type="button" className="shrink-0" data-state="closed" {...{ [RC.TIP_MATCH_ATTR]: matchId }}>
+			<span className="text-muted-foreground/60 font-mono text-2xs">#{matchId}</span>
+		</button>
+	)
 }
 
 // -------- layers --------

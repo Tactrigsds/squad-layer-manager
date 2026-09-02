@@ -126,7 +126,11 @@ export type WindowTarget = {
 	preload?: boolean
 }
 
-export type TipContent = { heading?: string; text: string }
+export type TipContent =
+	| { kind: 'text'; heading?: string; text: string }
+	// the match a row belongs to. Resolved from the scope's own page of matches when the tooltip opens, rather
+	// than written onto every row: the page already holds them (see TIP_MATCH_ATTR).
+	| { kind: 'match'; details: MH.MatchDetails }
 
 export type Attrs = Record<string, string | number | undefined>
 
@@ -140,6 +144,8 @@ export const TIP_ATTR = 'data-dom-tip'
 export const TIP_HEADING_ATTR = 'data-dom-tip-heading'
 /** an epoch the tooltip formats when it opens, so 600 rows don't each pay for a timezone-qualified timestamp */
 export const TIP_TIME_ATTR = 'data-dom-tip-time'
+/** a match id the tooltip looks up through the scope, which already holds the page's matches */
+export const TIP_MATCH_ATTR = 'data-dom-tip-match'
 /** shift-clicking one selects every admin, ctrl-shift every admin on either side */
 export const ADMIN_BADGE_ATTR = 'data-dom-admin-badge'
 /** a name whose colour follows the active player grouping, recoloured in place rather than rebuilt */

@@ -38,11 +38,11 @@ export const us = Schema.Virtual.usernameSearch
 
 // abs(team1 - team2) over the match row, null while either side's tickets are unrecorded (an unfinished or
 // pre-outcome match), which every comparison then reads as not-true rather than as zero
-const ticketDiffOf = (row: typeof mh) => sql`abs(${row.team1Tickets} - ${row.team2Tickets})`
+export const ticketDiffOf = (row: typeof mh) => sql`abs(${row.team1Tickets} - ${row.team2Tickets})`
 
 // whole minutes from start to end, null until the app has seen both, which every comparison reads as
 // not-true. A match in progress therefore never matches a length filter, which is the honest answer.
-const durationOf = (row: typeof mh) => sql`(${row.endTime} - ${row.startTime}) / 60000`
+export const durationOf = (row: typeof mh) => sql`(${row.endTime} - ${row.startTime}) / 60000`
 export const se = Schema.serverEvents
 export const am = Schema.archivedMatches
 

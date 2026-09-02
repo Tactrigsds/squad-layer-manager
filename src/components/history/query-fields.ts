@@ -17,7 +17,7 @@ export type FieldKey =
 	| 'chat'
 	| 'channel'
 	| 'matchId'
-	| 'outcome'
+	| 'outcomes'
 	| 'setBy'
 	| 'ticketDiff'
 	| 'duration'
@@ -38,6 +38,9 @@ export type FieldControl =
 	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
 	| { kind: 'event-types' }
 	| { kind: 'enum'; options: readonly string[] }
+	// the same list, picked several at a time. Names its query field because the key is the plural and the
+	// control has to read the list off it
+	| { kind: 'enum-multi'; field: 'outcomes'; options: readonly string[] }
 	| { kind: 'text' }
 	// the layer dimension this field picks a value from, named as the layer-columns vocabulary names it, so
 	// the editor can reuse the pickers the rest of the app uses (options, groupings, icons)
@@ -66,7 +69,7 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },
 	channel: { key: 'channel', group: 'events', control: { kind: 'enum', options: HQ.CHAT_CHANNELS } },
 	matchId: { key: 'matchId', group: 'match', control: { kind: 'number', field: 'matchId', min: 1 } },
-	outcome: { key: 'outcome', group: 'match', control: { kind: 'enum', options: HQ.MATCH_OUTCOMES } },
+	outcomes: { key: 'outcomes', group: 'match', control: { kind: 'enum-multi', field: 'outcomes', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
 	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range', min: 'ticketDiffMin', max: 'ticketDiffMax' } },
 	duration: {
@@ -93,7 +96,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
 	events: ['feed', 'types', 'chat'],
 	players: ['minMatches', 'types'],
-	matches: ['outcome', 'map', 'ticketDiff', 'duration'],
+	matches: ['outcomes', 'map', 'ticketDiff', 'duration'],
 }
 
 /**
@@ -122,7 +125,7 @@ export function visibleFields(query: HQ.Query, extra: readonly FieldKey[] = []):
 export function isSet(query: HQ.Query, key: FieldKey): boolean {
 	const control = FIELD_DEFS[key].control
 	if (control.kind === 'number-range') return query[control.min] !== undefined || query[control.max] !== undefined
-	if (key === 'types') return (query.types?.length ?? 0) > 0
+	if (key === 'types' || key === 'outcomes') return (query[key]?.length ?? 0) > 0
 	// every field but the ranges names its own query field, which is what Extract picks out here
 	return query[key as Extract<FieldKey, keyof HQ.Query>] !== undefined
 }

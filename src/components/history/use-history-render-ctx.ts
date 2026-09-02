@@ -26,12 +26,16 @@ export function useHistoryRenderCtx(
 	opts?: {
 		events?: readonly CHAT.EventEnriched[] | null
 		loadRowEvents?: RC.RenderCtx['loadRowEvents']
+		// Matches that arrive after the ctx was built, from a row's own events page. Looked up through a stable
+		// callback rather than held in state: filling a panel would otherwise re-render the results, and the
+		// dom rows are rebuilt on every render, which wipes the panel being filled.
+		lateMatch?: (matchId: number) => MH.MatchDetails | undefined
 		// the one server every row came from, where the query named exactly one. A players result has no match
 		// per row, so this is the only thing that can give its rows a frame to act on.
 		serverId?: string
 	},
 ): RC.RenderCtx {
-	const { events, loadRowEvents, serverId } = opts ?? {}
+	const { events, loadRowEvents, lateMatch, serverId } = opts ?? {}
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const zIndexBase = React.useContext(BaseZIndexContext)
@@ -39,7 +43,8 @@ export function useHistoryRenderCtx(
 	const actorLabels = useActorLabels(events)
 
 	const ctx = React.useMemo<RC.RenderCtx>(() => {
-		const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
+		const listed = new Map(matches.map((m) => [m.historyEntryId, m]))
+		const byId = { get: (id: number) => listed.get(id) ?? lateMatch?.(id) }
 		const perServer = new Map<string, SquadServerFrame.KeyProp | null>()
 		// minted on first use rather than up front: setting a frame up during render is a side effect, and
 		// most scopes never have an interaction that needs one
@@ -73,7 +78,7 @@ export function useHistoryRenderCtx(
 			loadRowEvents,
 			...actorLabels,
 		}
-	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents, serverId])
+	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents, lateMatch, serverId])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()
