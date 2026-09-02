@@ -512,21 +512,25 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					onChange={(e) => set({ minMatches: e.target.value === '' ? undefined : Number(e.target.value) })}
 				/>
 			)
-		case 'number-range':
+		case 'number-range': {
+			// the unit rides the bound captions rather than the field label, which the rail's narrow label
+			// column truncates
+			const caption = (bound: string) => (control.unit ? `${bound} (${control.unit})` : bound)
 			return (
 				<div className="flex min-w-0 items-end gap-1">
 					<NumberBound
-						label={tr.text(HistoryMsgs.rangeFrom())}
-						value={draft.ticketDiffMin}
-						onChange={(ticketDiffMin) => set({ ticketDiffMin })}
+						label={caption(tr.text(HistoryMsgs.rangeFrom()))}
+						value={draft[control.min]}
+						onChange={(value) => set({ [control.min]: value })}
 					/>
 					<NumberBound
-						label={tr.text(HistoryMsgs.rangeTo())}
-						value={draft.ticketDiffMax}
-						onChange={(ticketDiffMax) => set({ ticketDiffMax })}
+						label={caption(tr.text(HistoryMsgs.rangeTo()))}
+						value={draft[control.max]}
+						onChange={(value) => set({ [control.max]: value })}
 					/>
 				</div>
 			)
+		}
 		default:
 			assertNever(control)
 	}
@@ -592,6 +596,8 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldSetBy())
 		case 'ticketDiff':
 			return tr.text(HistoryMsgs.fieldTicketDiff())
+		case 'duration':
+			return tr.text(HistoryMsgs.fieldDuration())
 		case 'map':
 			return tr.text(HistoryMsgs.fieldMap())
 		case 'gamemode':

@@ -387,6 +387,18 @@ test.describe('history page', () => {
 		await expect(table.locator('tr[data-dom-row-events-panel]:not([hidden])')).toHaveCount(0)
 	})
 
+	// Length is a derived column, not a stored one, so it is worth checking the bound reaches the sql at all.
+	test('filters matches by how long they ran', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=matches'))
+		const total = page.getByText(/^\d+ results?$/)
+		await expect(total).toBeVisible({ timeout: 30_000 })
+		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
+
+		// longer than anything this app has played, so the filter has to empty the results
+		await page.goto(historyUrl(app, 'type=matches&durationMin=100000'))
+		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+	})
+
 	test('clear all empties every field the rail is holding', async ({ app, page }) => {
 		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&servers=%5B%22${app.serverId}%22%5D`))
 		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })

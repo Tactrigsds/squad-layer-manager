@@ -119,7 +119,14 @@ function ticketDiffText(details: MH.MatchDetails): string {
 	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
 }
 
-export const MATCH_ROW_COLUMNS = 8
+// whole minutes, floored to agree with the filter, which divides the two epochs in sql. Blank for a match
+// still running or one whose end the app never saw, which is also what the filter can never match.
+function durationText(details: MH.MatchDetails): string {
+	if (details.status !== 'post-game' || details.endTime === 'unknown' || !details.startTime) return ''
+	return String(Math.floor((details.endTime.getTime() - details.startTime.getTime()) / 60_000))
+}
+
+export const MATCH_ROW_COLUMNS = 9
 
 export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
 	const { details } = props
@@ -138,6 +145,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			</td>
 			<td className={CELL}>{outcomeText(details)}</td>
 			<td className={CELL}>{ticketDiffText(details)}</td>
+			<td className={CELL}>{durationText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
 		</ExpandableRow>
 	)
