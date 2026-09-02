@@ -1,4 +1,5 @@
-import { test as base } from '@playwright/test'
+import { test as base, type TestInfo } from '@playwright/test'
+import fs from 'node:fs'
 
 import * as FB from '@/models/filter-builders'
 
@@ -45,8 +46,9 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 
 	// Asking for this is what boots the shared app, so a file whose tests each build their own never pays for
 	// one -- which is most of them, and every one of them used to boot a second app it never touched.
-	app: async ({ workerApp }, use) => {
+	app: async ({ workerApp }, use, testInfo) => {
 		await use(workerApp)
+		await attachAppLog(testInfo, workerApp)
 	},
 
 	// a private app + emulator for one test. Costs a boot (~10s), so reach for it only when the test
@@ -57,9 +59,26 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		const app = await createAppFixture()
 		testInfo.setTimeout(testInfo.timeout + 120_000)
 		await use(app)
+		await attachAppLog(testInfo, app)
 		await app.dispose()
 	},
 })
+
+// A failure whose cause is server side leaves nothing in the report: a playwright assertion timing out says
+// only what it could not see, and the app's log lives in a temp dir the run throws away. The tail is the last
+// few minutes of it, which on a shared app spans a handful of tests and on a fresh one is the whole thing.
+const LOG_TAIL_LINES = 400
+
+async function attachAppLog(testInfo: TestInfo, app: AppFixture) {
+	if (testInfo.status === testInfo.expectedStatus) return
+	if (!fs.existsSync(app.logFile)) return
+	const tail = fs.readFileSync(app.logFile, 'utf8').split('\n').slice(-LOG_TAIL_LINES).join('\n')
+	// written into the test's own output dir rather than attached as a body: ci uploads that directory, and
+	// an inline attachment only ever reaches the html report, which it does not keep
+	const out = testInfo.outputPath('app.log')
+	fs.writeFileSync(out, tail)
+	await testInfo.attach('app.log', { path: out, contentType: 'text/plain' })
+}
 
 // For the files whose tests all drive the shared app: every page starts on it, logged in as the seeded admin.
 // A file opts in by importing this instead of `test`, rather than each test asking for `app`, because a test
