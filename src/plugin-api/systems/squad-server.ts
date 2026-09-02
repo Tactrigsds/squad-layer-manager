@@ -24,3 +24,5 @@ export async function endMatch(ctx: PluginsSys.ServerCtx<any>) {
 export function events$(ctx: SQS.Ctx & CS.ServerId): Rx.Observable<SE.Event> {
 	return ctx.server.event$.pipe(Rx.map(([_otel, event]) => event))
 }
+
+export { getCurrTeams } from '@/systems/squad-server.server'
