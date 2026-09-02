@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
-import type * as HQ from '@/models/history.models'
+import * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
@@ -91,7 +91,7 @@ export default function HistoryEvents(props: {
 				<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.noResults())}</div>
 			)}
 			<div className="min-h-0 overflow-y-auto">
-				<SsrRows rows={rows} matches={matches} />
+				<SsrRows rows={rows} matches={matches} serverId={HQ.soleServerId(props.query)} />
 				{nextCursor && (
 					<Button variant="outline" size="sm" className="my-2" disabled={loadingMore} onClick={() => void loadMore()}>
 						{tr.text(HistoryMsgs.loadMore())}
@@ -122,8 +122,8 @@ function OrderToggle(props: { order: 'newest' | 'oldest'; onReorder: (order: 'ne
 // All rows live in the dom at once, deliberately: content-visibility keeps offscreen ones unrendered, so
 // appending a page costs its parse and nothing else. Append-only between resets, so open disclosures and
 // scroll position survive loading more.
-function SsrRows(props: { rows: string[]; matches: MH.MatchDetails[] }) {
-	const ctx = useHistoryRenderCtx(props.matches)
+function SsrRows(props: { rows: string[]; matches: MH.MatchDetails[]; serverId?: string }) {
+	const ctx = useHistoryRenderCtx(props.matches, { serverId: props.serverId })
 	const hostRef = React.useRef<HTMLDivElement | null>(null)
 	const renderedRef = React.useRef<{ count: number; first: string | undefined }>({ count: 0, first: undefined })
 

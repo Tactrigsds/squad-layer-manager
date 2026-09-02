@@ -360,7 +360,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 		},
 		[query, displayTeamsNormalized],
 	)
-	return useHistoryRenderCtx(matches, null, loadRowEvents)
+	return useHistoryRenderCtx(matches, { loadRowEvents, serverId: HQ.soleServerId(query) })
 }
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'
@@ -439,6 +439,7 @@ function MatchesResults(props: { query: HQ.Query }) {
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colOutcome())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTicketDiff())}</th>
+							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colDuration())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
 							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>

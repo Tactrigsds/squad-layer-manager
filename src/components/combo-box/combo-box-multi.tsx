@@ -28,6 +28,7 @@ import {
 	normalizeOptions,
 	optionsInSelection,
 	resolveGroupings,
+	searchKeywords,
 	selectableCount,
 } from './options.ts'
 
@@ -485,7 +486,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 													<CommandItem
 														key={option.value}
 														value={option.value === null ? NULL : option.value}
-														keywords={option.keywords}
+														keywords={searchKeywords(option)}
 														onMouseEnter={() => showDescription(option.value)}
 														onMouseLeave={hideDescription}
 														disabled={
