@@ -3,11 +3,17 @@ import { clients, manifests } from 'virtual:slm-dev-plugins'
 import type { BuiltinClientPlugin } from '@/systems/plugins.client'
 
 import balanceTriggers from './balance-triggers/plugin.ts'
+import teamkillWarns from './teamkill-warns/plugin.ts'
 
 // The client-safe half of the builtin registry: manifests plus lazy client entries. Server/migration
 // entries live in builtins.server.ts so the client bundle never sees them. Only plugins shipped in this
 // repo belong here; a packaged plugin is found in PLUGINS_DIR at runtime and registers nothing.
-const SHIPPED: BuiltinClientPlugin[] = [{ manifest: balanceTriggers, client: () => import('./balance-triggers/client.tsx') }]
+// A plugin with no client half still belongs here: the config editor renders from the manifest, and a
+// builtin has no manifestEntry for the client to fetch one from.
+const SHIPPED: BuiltinClientPlugin[] = [
+	{ manifest: balanceTriggers, client: () => import('./balance-triggers/client.tsx') },
+	{ manifest: teamkillWarns },
+]
 
 export const BUILTIN_PLUGIN_CLIENTS: BuiltinClientPlugin[] = [...SHIPPED, ...discoverSourceClients()]
 

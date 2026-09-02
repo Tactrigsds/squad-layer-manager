@@ -230,5 +230,5 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'warnAll',
 		'warnAllAdmins',
 	],
-	'slm/systems/squad-server': ['endMatch', 'events$'],
+	'slm/systems/squad-server': ['endMatch', 'events$', 'getCurrTeams', 'peekCurrentMatch'],
 }

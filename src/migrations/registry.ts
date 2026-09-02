@@ -63,6 +63,7 @@ import * as m0108 from './0108_username_search'
 import * as m0109 from './0109_app_event_index'
 import * as m0110 from './0110_app_event_user_dimension'
 import * as m0111 from './0111_chat_channel_index'
+import * as m0112 from './0112_teamkill_warns_plugin'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -113,4 +114,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0109_app_event_index', up: m0109.up },
 	{ name: '0110_app_event_user_dimension', up: m0110.up },
 	{ name: '0111_chat_channel_index', up: m0111.up },
+	{ name: '0112_teamkill_warns_plugin', up: m0112.up },
 ]
