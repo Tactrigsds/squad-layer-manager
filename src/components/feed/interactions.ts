@@ -25,7 +25,9 @@ const INTENT_DELAY = 150
 // Both payloads outlive their overlay closing: radix keeps content mounted through the exit animation, and an
 // overlay whose content went blank halfway through the fade reads as a glitch.
 type OverlayState = {
-	menu: { target: RC.MenuTarget; stores: SquadServerFrame.KeyProp; zIndexBase: number } | null
+	// stores are absent where the scope has no frame to offer, which the menu's own options answer for: the
+	// layer target never wanted one, and a player's menu falls back to what is true off any server
+	menu: { target: RC.MenuTarget; stores: SquadServerFrame.KeyProp | undefined; zIndexBase: number } | null
 	tip: { content: RC.TipContent; rect: DOMRect; zIndexBase: number } | null
 	tipOpen: boolean
 }
@@ -128,8 +130,8 @@ function onContextMenu(event: MouseEvent) {
 	const target = RC.menuTargetOf(element)
 	const ctx = RC.scopeOf(element)
 	const stores = storesAt(element)
-	// the menu's options all act on a server frame, so no frame means the browser's own menu
-	if (!target || !ctx || !stores) return
+	// a squad only exists on a server, so its menu has nothing to say without one
+	if (!target || !ctx || (target.kind === 'squad' && !stores)) return
 	event.preventDefault()
 	OverlayStore.setState({ menu: { target, stores, zIndexBase: ctx.zIndexBase } })
 	// radix's own trigger is what knows how to place and open the menu, and all it reads off the event is the
