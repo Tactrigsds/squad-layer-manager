@@ -438,9 +438,9 @@ test.describe('history page', () => {
 		await expect(page.getByRole('menuitem', { name: 'Show details' })).toBeVisible({ timeout: 20_000 })
 	})
 
-	// A players result spans servers, so its rows have no frame to act through and the menu falls back to
-	// what is true of the player off any server.
-	test('right-clicking a player row offers the frameless actions only', async ({ app, page }) => {
+	// An entry the menu cannot serve is left out rather than greyed, so what it offers depends on whether
+	// there is a live player behind it. A players result that names no one server has no frame at all.
+	test('a player row menu drops what it cannot serve, and keeps what it can', async ({ app, page }) => {
 		await page.goto(historyUrl(app, `type=players&name=${HISTORY_TALKER}`))
 		const table = page.getByRole('table', { name: 'Player results' })
 		const row = table.getByRole('row').filter({ hasText: HISTORY_TALKER })
@@ -449,6 +449,15 @@ test.describe('history page', () => {
 
 		await expect(page.getByRole('menuitem', { name: 'Copy', exact: true })).toBeVisible({ timeout: 20_000 })
 		await expect(page.getByRole('menuitem', { name: 'Kick' })).toHaveCount(0)
+		await page.keyboard.press('Escape')
+
+		// the same row scoped to the one server the seeded player is still connected to: now there is a live
+		// player behind the menu, so the actions that need one come back
+		await page.goto(historyUrl(app, `type=players&name=${HISTORY_TALKER}&servers=%5B%22${app.serverId}%22%5D`))
+		const scopedRow = page.getByRole('table', { name: 'Player results' }).getByRole('row').filter({ hasText: HISTORY_TALKER })
+		await expect(scopedRow).toBeVisible({ timeout: 30_000 })
+		await scopedRow.click({ button: 'right' })
+		await expect(page.getByRole('menuitem', { name: 'Kick' })).toBeVisible({ timeout: 20_000 })
 	})
 
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save
