@@ -1679,6 +1679,16 @@ export function getCurrTeams(ctx: SQS.Ctx) {
 	return ctx.server.eventState.currTeams
 }
 
+/**
+ * The current match as the event state knows it, without taking matchHistory.mtx. Null until the first
+ * sync establishes one. Prefer this over MatchHistory.getCurrentMatch anywhere a stall is worse than a
+ * stale read: while rcon is down that mutex is held for the whole reconnect ladder.
+ */
+export function peekCurrentMatch(ctx: SQS.Ctx) {
+	const current = ctx.server.eventState.currentMatch
+	return current === 'PENDING' ? null : current
+}
+
 // maps a GUI/chat user id (or an automated marker) to an app-event actor, resolving in-game (steam) senders against
 // the current teams. Shared by the vote/teamswap attribution paths.
 export function actorFromUser(ctx: SQS.Ctx, source: USR.GuiOrChatUserId | 'autostart' | undefined | null): AppEvents.Actor {

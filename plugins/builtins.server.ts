@@ -21,7 +21,7 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
 	{
 		manifest: teamkillWarns,
 		server: () => import('./teamkill-warns/server.ts'),
-		hasClient: true,
+		hasClient: false,
 	},
 ]
 
