@@ -17,6 +17,11 @@ Each setting has a _GUI_ / _YAML_ toggle, so you can also edit it as YAML. Setti
 change sit in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
 them, and navigating to one opens the disclosure it sits in.
 
+Any setting or section can carry a comment, for the next person to read why it is set the way it is. Hover the
+setting's name and click the comment icon beside the link icon. In YAML mode a comment is an ordinary `#` line
+directly above the setting, and a comment written in either mode shows up in the other. Comments are saved together
+with your other changes.
+
 ### 1. Admin lists
 
 The admin list settings are under _Permissions & Roles_.

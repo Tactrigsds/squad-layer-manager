@@ -15,6 +15,7 @@ import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { ListEditor } from '@/components/list-editor.tsx'
 import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
+import { RichText } from '@/components/rich-text'
 import { ServerMultiSelect, ServerSelect } from '@/components/server-select'
 import { serverOptionsFor } from '@/components/server-select.helpers.ts'
 import { StickyGroup } from '@/components/sticky-group'
@@ -36,7 +37,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
+import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
@@ -2309,7 +2310,9 @@ function enumerateGrantPaths(node: Node, prefix = ''): string[] {
 
 let cachedGlobalGrantPaths: string[] | undefined
 function globalGrantPathOptions(): string[] {
-	cachedGlobalGrantPaths ??= enumerateGrantPaths(z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }))
+	cachedGlobalGrantPaths ??= enumerateGrantPaths(
+		z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }),
+	).filter((p) => p !== SETTINGS.COMMENTS_KEY)
 	return cachedGlobalGrantPaths
 }
 
@@ -2318,7 +2321,7 @@ let cachedServerGrantPaths: string[] | undefined
 function serverGrantPathOptions(): string[] {
 	cachedServerGrantPaths ??= enumerateGrantPaths(
 		z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }),
-	).filter((p) => p !== 'connections' && !p.startsWith('connections.'))
+	).filter((p) => p !== 'connections' && !p.startsWith('connections.') && p !== SETTINGS.COMMENTS_KEY)
 	return cachedServerGrantPaths
 }
 
@@ -4228,6 +4231,186 @@ function CommandsPageCrossLink({ path }: { path: Path }) {
 	)
 }
 
+// -------- comments --------
+
+// the comment on the setting at `pathStr`, read off the root document (see SETTINGS.COMMENTS_KEY)
+function useSettingComment(root$: ValueState, pathStr: string): string | undefined {
+	const comment$ = React.useMemo(
+		() => mapValue(root$, (v: any) => v?.[SETTINGS.COMMENTS_KEY]?.[pathStr] as string | undefined),
+		[root$, pathStr],
+	)
+	return useFieldValue(comment$)
+}
+
+type CommentProps = {
+	root$: ValueState
+	rootOnChange: (next: any) => void
+	pathStr: string
+	writable: boolean
+	editing: boolean
+	setEditing: (editing: boolean) => void
+	// where the textarea puts its caret when editing opens: the character that was clicked, or the end of the text
+	caretRef: React.RefObject<number | null>
+}
+
+// a field's comment affordances, or null where the form has no root document to keep them on (tests)
+function useCommentProps(pathStr: string, writable: boolean): CommentProps | null {
+	const root$ = React.useContext(RootValueContext)
+	const rootOnChange = React.useContext(RootOnChangeContext)
+	const [editing, setEditing] = React.useState(false)
+	const caretRef = React.useRef<number | null>(null)
+	if (!root$ || !rootOnChange) return null
+	return { root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }
+}
+
+// the collapsed preview squeezes each whitespace run to one space, so a caret placed in it has to be walked back to
+// the original text. Returns the preview alongside the original index each of its characters came from.
+function flattenWhitespace(text: string): { flat: string; origIndex: number[] } {
+	let flat = ''
+	const origIndex: number[] = []
+	let inRun = false
+	for (let i = 0; i < text.length; i++) {
+		const ws = /\s/.test(text[i])
+		if (ws && inRun) continue
+		flat += ws ? ' ' : text[i]
+		origIndex.push(i)
+		inRun = ws
+	}
+	return { flat, origIndex }
+}
+
+// the character offset of a click inside `container`, counted over its text nodes in document order (the link anchors
+// RichText renders included). Null when the click landed on no text.
+function textOffsetAtPoint(container: HTMLElement, x: number, y: number): number | null {
+	const doc = container.ownerDocument
+	let node: globalThis.Node | null = null
+	let offset = 0
+	if (doc.caretPositionFromPoint) {
+		const pos = doc.caretPositionFromPoint(x, y)
+		if (pos) [node, offset] = [pos.offsetNode, pos.offset]
+	} else if (doc.caretRangeFromPoint) {
+		const range = doc.caretRangeFromPoint(x, y)
+		if (range) [node, offset] = [range.startContainer, range.startOffset]
+	}
+	if (!node || !container.contains(node)) return null
+	const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+	let total = 0
+	for (let cur = walker.nextNode(); cur; cur = walker.nextNode()) {
+		if (cur === node) return total + offset
+		total += cur.textContent?.length ?? 0
+	}
+	return null
+}
+
+// how much of a comment survives the collapsed view. whitespace is flattened first so the preview is one line
+// regardless of how the comment was written
+const COMMENT_PREVIEW_LENGTH = 160
+
+// The comment block under a field's name: the text while displayed, a textarea while editing. Edits go straight into
+// the root document, so a comment is staged and saved with the rest of the draft. Mirrors the filter editor's NodeComment.
+function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }: CommentProps) {
+	const comment = useSettingComment(root$, pathStr)
+	const [expanded, setExpanded] = React.useState(false)
+	const setComment = React.useCallback(
+		(text: string) => rootOnChange(SETTINGS.withSettingComment(root$.getValue(), pathStr, text)),
+		[root$, rootOnChange, pathStr],
+	)
+	const setCommentDebounced = useDebounced({ delay: DEBOUNCE_MS, onChange: setComment })
+
+	if (editing) {
+		return (
+			<Textarea
+				aria-label={tr.text(SETTINGS_Msgs.settingComment())}
+				autoFocus
+				rows={3}
+				maxLength={SETTINGS.SETTING_COMMENT_MAX_LENGTH}
+				placeholder={tr.text(SETTINGS_Msgs.commentPlaceholder())}
+				defaultValue={comment ?? ''}
+				className="my-1 text-xs"
+				onFocus={(e) => {
+					const at = caretRef.current ?? e.currentTarget.value.length
+					e.currentTarget.setSelectionRange(at, at)
+				}}
+				onChange={(e) => setCommentDebounced(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === 'Escape') e.currentTarget.blur()
+				}}
+				onBlur={(e) => {
+					setComment(e.target.value)
+					setEditing(false)
+				}}
+			/>
+		)
+	}
+
+	if (!comment) return null
+
+	const { flat: flattened, origIndex } = flattenWhitespace(comment)
+	const truncated = flattened.length > COMMENT_PREVIEW_LENGTH
+	const collapsed = truncated && !expanded
+	// clicking into the text opens the editor with the caret under the click, as a plain textarea would. Links keep
+	// their own click (RichText stops it propagating), and so does the more/less toggle.
+	const editAtClick = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (!writable) return
+		const offset = textOffsetAtPoint(e.currentTarget, e.clientX, e.clientY)
+		caretRef.current = offset === null ? null : collapsed ? (origIndex[offset] ?? comment.length) : offset
+		setEditing(true)
+	}
+	return (
+		<div
+			className={cn('my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground', writable && 'cursor-text')}
+			onClick={editAtClick}
+		>
+			<RichText
+				text={collapsed ? flattened : comment}
+				maxLength={collapsed ? COMMENT_PREVIEW_LENGTH : undefined}
+				className={cn('min-w-0', collapsed && 'whitespace-normal')}
+			/>
+			{truncated && (
+				<button
+					type="button"
+					className="shrink-0 underline"
+					onClick={(e) => {
+						e.stopPropagation()
+						setExpanded((v) => !v)
+					}}
+				>
+					{expanded ? tr.text(SETTINGS_Msgs.showLess()) : tr.text(SETTINGS_Msgs.showMore())}
+				</button>
+			)}
+		</div>
+	)
+}
+
+// sits in the field's hover-revealed icon row beside AnchorLink. A field that has a comment keeps the icon showing, so
+// the comment reads as something that can be edited.
+function CommentButton({ root$, pathStr, editing, setEditing, caretRef }: CommentProps) {
+	const hasComment = !!useSettingComment(root$, pathStr)
+	const label = hasComment ? tr.text(SETTINGS_Msgs.editComment()) : tr.text(SETTINGS_Msgs.addComment())
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					aria-label={label}
+					aria-pressed={editing}
+					className={cn(
+						'shrink-0 transition-opacity focus-visible:opacity-100',
+						hasComment ? 'text-primary' : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100',
+					)}
+					onClick={() => {
+						caretRef.current = null
+						setEditing(!editing)
+					}}
+				>
+					<Icons.MessageSquareText className="h-3 w-3" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
+	)
+}
+
 // -------- advanced disclosure --------
 
 // The collapsed tail of a section: the fields most installs never touch (see settings-groups.ts). `paths` are the
@@ -4331,6 +4514,7 @@ function LocalYamlField({
 	schema,
 	label,
 	domId,
+	path,
 	value$,
 	reset$,
 	onChange,
@@ -4339,15 +4523,30 @@ function LocalYamlField({
 	label: string
 	// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
 	domId: string
+	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 }) {
-	const [seed, setSeed] = React.useState(() => ({ value: value$.getValue(), nonce: 0 }))
-	useReset(reset$, () => setSeed((prev) => ({ value: value$.getValue(), nonce: prev.nonce + 1 })))
+	const root$ = React.useContext(RootValueContext)
+	const rootOnChange = React.useContext(RootOnChangeContext)
+	const pathStr = path.join('.')
+	// Every comment lives on the root document. The ones under this subtree ride into the editor keyed relative to it,
+	// so they render as `#` lines, and come back out to the root in the same write as the subtree value.
+	const seedValue = () => {
+		const value = value$.getValue()
+		if (!root$ || !Obj.isPlainObject(value)) return value
+		const comments = SETTINGS.subtreeComments(root$.getValue()?.[SETTINGS.COMMENTS_KEY], pathStr)
+		return Object.keys(comments).length > 0 ? { ...value, [SETTINGS.COMMENTS_KEY]: comments } : value
+	}
+	const [seed, setSeed] = React.useState(() => ({ value: seedValue(), nonce: 0 }))
+	useReset(reset$, () => setSeed((prev) => ({ value: seedValue(), nonce: prev.nonce + 1 })))
 	const onValidChange = (v: unknown) => {
 		if (v === null) return
-		onChange(toInputShape(schema, v))
+		if (!root$ || !rootOnChange || !Obj.isPlainObject(v)) return onChange(toInputShape(schema, v))
+		const comments = (v[SETTINGS.COMMENTS_KEY] ?? {}) as SETTINGS.SettingsComments
+		const root = setAtPath(root$.getValue(), path, toInputShape(schema, Obj.exclude(v, [SETTINGS.COMMENTS_KEY])))
+		rootOnChange(SETTINGS.withSubtreeComments(root, pathStr, comments))
 	}
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
 	// would be a surprise. This component only exists while the field is in YAML mode, so the ref resets on reopen.
@@ -4362,6 +4561,7 @@ function LocalYamlField({
 			<SchemaYamlEditor
 				key={seed.nonce}
 				schema={schema}
+				commentsKey={SETTINGS.COMMENTS_KEY}
 				value={seed.value}
 				onValidChange={onValidChange}
 				onReady={onReady}
@@ -4404,6 +4604,7 @@ function SectionField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
+	const commentProps = useCommentProps(pathStr, writable)
 	return (
 		<fieldset
 			id={domId}
@@ -4426,8 +4627,10 @@ function SectionField({
 						/>
 					</span>
 					<AnchorLink domId={domId} />
+					{commentProps && writable && <CommentButton {...commentProps} />}
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
+				{commentProps && <SettingComment {...commentProps} />}
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{/* oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here */}
 				{SectionExtra && <SectionExtra />}
@@ -4437,6 +4640,7 @@ function SectionField({
 						schema={jsonSchema}
 						label={settingLabel(path, name)}
 						domId={domId}
+						path={path}
 						value$={value$}
 						reset$={reset$}
 						onChange={onChange}
@@ -4481,6 +4685,7 @@ function LeafField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
+	const commentProps = useCommentProps(pathStr, writable)
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
@@ -4522,9 +4727,11 @@ function LeafField({
 					)}
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
+					{commentProps && writable && <CommentButton {...commentProps} />}
 					<CommandsPageCrossLink path={path} />
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
+				{commentProps && <SettingComment {...commentProps} />}
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
 			</div>
@@ -4535,6 +4742,7 @@ function LeafField({
 						schema={jsonSchema}
 						label={settingLabel(path, name)}
 						domId={domId}
+						path={path}
 						value$={value$}
 						reset$={reset$}
 						onChange={onChange}
@@ -4567,7 +4775,7 @@ function Field({
 	const onChange = (v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v })
 	// keys managed inline by a sibling editor render no field of their own (e.g. defaultPrefix, chosen via the
 	// "default" markers in the allowedPrefixes editor)
-	if (path.length === 1 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(name)) return null
+	if (path.length === 1 && HIDDEN_SETTINGS_KEYS.has(name)) return null
 	const { inner } = stripNullable(node)
 	const hasOverride = !!overrideFor(path, node)
 	const isSection =

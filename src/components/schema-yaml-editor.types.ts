@@ -15,6 +15,10 @@ export interface SchemaYamlEditorProps<TOut, TIn = TOut> {
 	value: TIn
 	// called (debounced) whenever the editor's contents change; null while the contents don't parse as YAML or fail schema validation
 	onValidChange: (value: TOut | null) => void
+	// When set, `value[commentsKey]` is a map of dotted path to comment text. It renders as `#` lines directly above the
+	// key at each path rather than as a property, and reads back the same way into what onValidChange receives. The
+	// schema never sees the map. See Yaml.stringifyDocWithComments.
+	commentsKey?: string
 	label?: string
 	minHeightPx?: number
 	// rendered in the editor's own header row, so it stays reachable in fullscreen (where the editor covers the page)

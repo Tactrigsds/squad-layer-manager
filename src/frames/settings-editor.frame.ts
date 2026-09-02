@@ -3,6 +3,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
+import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
 import { toast } from '@/lib/toast'
 import type { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
@@ -264,6 +265,26 @@ export namespace Sel {
 		return { newServerCreated, anyDirty }
 	}
 
+	// the anchor ids of every setting the drafts carry a comment on, plus each ancestor section and group, so the TOC
+	// can mark the way down to a comment. Sorted, so unchanged sets compare equal by value.
+	export function commentedAnchorIds(...states: SettingsEditor[]): string[] {
+		const ids = new Set<string>()
+		for (const s of states) {
+			if (s.kind === 'new-server') continue
+			const prefix = idPrefix(s)
+			const comments: Record<string, string> | undefined = s.draft?.[SETTINGS.COMMENTS_KEY]
+			for (const path of Object.keys(comments ?? {})) {
+				const segs = path.split('.')
+				for (let i = 1; i <= segs.length; i++) ids.add(prefix + segs.slice(0, i).join('.'))
+				if (s.kind === 'global') {
+					const group = GLOBAL_SETTINGS_GROUPS.find((g) => !g.passthrough && g.keys.includes(segs[0]))
+					if (group) ids.add(`${prefix}group:${group.slug}`)
+				}
+			}
+		}
+		return Array.from(ids).sort()
+	}
+
 	// the per-section editor modes the table of contents keys off: a YAML-mode section renders no per-field anchors,
 	// so it collapses to a single leaf there
 	export function tocModes(...states: SettingsEditor[]) {
@@ -285,12 +306,14 @@ export namespace Sel {
 
 // changed paths outside the user's write grant: the client-side mirror of the server's enforcement (see
 // settings.server.ts). Kept out of frame state because it depends on the (possibly role-simulated) client perms.
+// A comment change is checked, and reported, at the setting it annotates.
 export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission[]): string[] {
 	if (state.kind === 'new-server') return NO_PATHS
+	const changed = Array.from(new Set(state.changes.map((c) => SETTINGS.settingPathForChange(c.path))))
 	if (state.kind === 'global') {
 		const access = RBAC.globalSettingsWriteAccess(perms)
 		if (access.kind === 'all') return NO_PATHS
-		return state.changes.map((c) => c.path).filter((p) => !RBAC.settingsPathAllowed(access, p))
+		return changed.filter((p) => !RBAC.settingsPathAllowed(access, p))
 	}
 	// connections paths are gated by write-sensitive, not by path grants; a sensitive user's connection edits are always
 	// allowed (and connections can't appear in the diff at all without it, since they're redacted on read)
@@ -298,7 +321,7 @@ export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission
 	if (write.kind === 'all') return NO_PATHS
 	const sensitive = RBAC.canWriteSensitiveServerSettings(perms, state.serverId!, RBAC.NO_SCOPED_SERVERS)
 	const isConnection = (p: string) => p === 'connections' || p.startsWith('connections.')
-	const paths = state.changes.map((c) => c.path).filter((p) => !(sensitive && isConnection(p)))
+	const paths = changed.filter((p) => !(sensitive && isConnection(p)))
 	if (write.kind === 'none') return paths
 	return paths.filter((p) => !isConnection(p)).filter((p) => !RBAC.settingsPathAllowed(write, p))
 }

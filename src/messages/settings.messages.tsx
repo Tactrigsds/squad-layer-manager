@@ -384,6 +384,18 @@ export const notPermittedToModifySetting = def('You are not permitted to modify 
 
 export const linkToSetting = def('Link to this setting')
 
+// -------- comments --------
+
+export const addComment = def('Add comment')
+export const editComment = def('Edit comment')
+export const settingComment = def('Setting comment')
+export const commentPlaceholder = def('Comment. Links are clickable.')
+export const showMore = def('more')
+export const showLess = def('less')
+// tags a change-list row whose path is a comment rather than the setting it annotates
+export const commentChange = def('comment')
+export const commentedMarker = def('Has comments')
+
 export const advanced = def('Advanced')
 
 // a longer explanation folded behind a `?`, so compact editors can drop their inline descriptions
