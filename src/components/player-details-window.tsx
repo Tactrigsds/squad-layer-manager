@@ -116,7 +116,13 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const groupColor = usePlayerGroupColor(playerId, undefined)
 	const steam = steamId ?? profile?.playerIds.steam
-	const eventsQuery = React.useMemo((): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId] }), [playerId])
+	// the same secondary filter the framed window has, applied in sql rather than over a rendered feed. ALL is
+	// the absence of the filter, so it goes as undefined rather than as a preset matching everything.
+	const [feed, setFeed] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
+	const eventsQuery = React.useMemo(
+		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'ALL' ? undefined : feed }),
+		[playerId, feed],
+	)
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -168,7 +174,11 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 			</div>
 			<Separator />
 			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
-				<h3>{tr.text(CHAT_Msgs.activityTitle())}</h3>
+				<div className="inline-flex items-baseline gap-1 justify-between w-full">
+					<h3 className="inline">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+					{/* no selectedOnly: this window has no teams panel selection to restrict against */}
+					<EventFilterSelect variant="ghost" value={feed} onValueChange={setFeed} />
+				</div>
 				<HistoryEvents query={eventsQuery} showTotal={false} className="flex min-h-0 flex-1 flex-col gap-1" />
 			</div>
 		</div>

@@ -10,6 +10,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as CHAT from '@/models/chat.models'
 import { tr } from '@/systems/messages.client'
@@ -23,6 +24,8 @@ export default function EventFilterSelect(props: {
 	selectedOnly?: boolean
 	onSelectedOnlyChange?: (value: boolean) => void
 	variant?: 'default' | 'outline' | 'ghost' | 'link'
+	// for a container whose other controls are sized to it, rather than the feed toolbar's compact default
+	className?: string
 	open?: boolean
 	onOpenChange?: (open: boolean) => void
 }) {
@@ -31,7 +34,7 @@ export default function EventFilterSelect(props: {
 	return (
 		<DropdownMenu open={props.open} onOpenChange={props.onOpenChange}>
 			<DropdownMenuTrigger asChild>
-				<Button variant={props?.variant ?? 'outline'} size="sm" className="h-8 gap-2">
+				<Button variant={props?.variant ?? 'outline'} size="sm" className={cn('h-8 gap-2', props.className)}>
 					<Icons.Filter className="h-4 w-4" />
 					<span className="text-xs">{tr.text(labels[props.value])}</span>
 					<Icons.ChevronDown className="h-3 w-3 ml-1" />

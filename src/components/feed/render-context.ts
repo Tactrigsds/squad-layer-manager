@@ -64,6 +64,22 @@ export function usingFullTimestamps(): boolean {
 	return fullTimestamps
 }
 
+// The match a row belongs to, drawn beside its time where a feed's rows span several of them. Ambient for
+// the same reason the timestamp format is: every row draws its time through one atom, and reaching that atom
+// with a per-row field means threading it through all 86 EventLine call sites. Only ever set around a
+// synchronous render of one row (see renderEventRows).
+let rowMatchId: number | undefined
+
+export function setRowMatchId(matchId: number | undefined): number | undefined {
+	const previous = rowMatchId
+	rowMatchId = matchId
+	return previous
+}
+
+export function currentRowMatchId(): number | undefined {
+	return rowMatchId
+}
+
 const scopes = new Map<string, RenderCtx>()
 
 export function register(ctx: RenderCtx) {
@@ -94,6 +110,9 @@ export function newScopeId() {
 export type MenuTarget =
 	| { kind: 'player'; playerId: SM.PlayerId }
 	| { kind: 'squad'; squad: Pick<SM.Squad, 'squadId' | 'squadName' | 'teamId'> & { uniqueId?: number } }
+	// the layer a row is about, and the match it was played in where the row has one. Acts on neither a
+	// server nor a roster, so it is the one target that opens with no frame at all.
+	| { kind: 'layer'; layerIds: string[]; historyEntryIds?: number[] }
 
 export type WindowTarget = {
 	windowId: string

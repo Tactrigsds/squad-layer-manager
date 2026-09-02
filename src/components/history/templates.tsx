@@ -20,6 +20,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeS
 // centring them against the whole expansion
 const CELL = 'px-2 py-1 align-top whitespace-nowrap'
 const NUM_CELL = `${CELL} text-right tabular-nums`
+const ID_CELL = `${CELL} font-mono text-muted-foreground`
 
 /**
  * A results row and the panel that shows the events behind its count.
@@ -28,11 +29,14 @@ const NUM_CELL = `${CELL} text-right tabular-nums`
  * anything inside a cell makes that cell's column grow to fit them. Rendered hidden and inert -- the row
  * names itself with a key, and interactions.ts fills and reveals the panel (see ROW_EVENTS_ATTR).
  */
-function ExpandableRow(props: { rowKey: string; count: number; columns: number; children: React.ReactNode }) {
+function ExpandableRow(props: { rowKey: string; count: number; columns: number; menu: RC.MenuTarget; children: React.ReactNode }) {
+	// the whole row rather than the name in it: every cell of a results row is about the same subject, so
+	// there is nowhere in one where the row's menu is the wrong answer
+	const menu = RC.menuAttrs(props.menu)
 	// no events, no panel: a chevron that opens an empty tray is worse than no chevron
 	if (props.count === 0) {
 		return (
-			<tr className="border-b border-border hover:bg-accent/30 text-xs">
+			<tr className="border-b border-border hover:bg-accent/30 text-xs" {...menu}>
 				<td className={`${CELL} w-6 text-muted-foreground`} />
 				{props.children}
 				<td className={NUM_CELL}>0</td>
@@ -43,6 +47,7 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 		<>
 			<tr
 				className="border-b border-border hover:bg-accent/30 text-xs cursor-pointer [&[data-open]_.chevron]:rotate-90"
+				{...menu}
 				{...{ [RC.ROW_EVENTS_ATTR]: props.rowKey }}
 			>
 				<td className={`${CELL} w-6 text-muted-foreground`}>
@@ -61,15 +66,20 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 }
 
 // chevron, the row's own columns, then the events count: PLAYER_ROW_COLUMNS counts all three groups
-export const PLAYER_ROW_COLUMNS = 9
+export const PLAYER_ROW_COLUMNS = 8
 
 export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	const { row } = props
 	return (
-		<ExpandableRow rowKey={`player:${row.playerId}`} count={row.events} columns={PLAYER_ROW_COLUMNS}>
+		<ExpandableRow
+			rowKey={`player:${row.playerId}`}
+			count={row.events}
+			columns={PLAYER_ROW_COLUMNS}
+			menu={{ kind: 'player', playerId: row.playerId }}
+		>
 			<td className={CELL}>
-				{/* the same two interactions the feed's player names carry, minus the group colour: a results
-				    row spans servers and matches, so there is no roster to colour it against */}
+				{/* what the feed's player names open, minus the group colour: a results row spans servers and
+				    matches, so there is no roster to colour it against. The menu is on the row */}
 				<button
 					type="button"
 					className="font-medium hover:underline"
@@ -79,16 +89,13 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 						frame: 'attach',
 						preload: true,
 					})}
-					{...RC.menuAttrs({ kind: 'player', playerId: row.playerId })}
 				>
 					{row.username ?? row.playerId}
 				</button>
-				{row.steamId && <span className="text-muted-foreground ml-2">{row.steamId}</span>}
 			</td>
+			<td className={ID_CELL}>{row.steamId ?? ''}</td>
+			<td className={ID_CELL}>{row.playerId}</td>
 			<td className={NUM_CELL}>{row.matches}</td>
-			<td className={NUM_CELL}>{row.kills}</td>
-			<td className={NUM_CELL}>{row.deaths}</td>
-			<td className={NUM_CELL}>{row.teamkills}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
 			<td className={CELL}>{dateTime.format(row.lastSeen)}</td>
 		</ExpandableRow>
@@ -132,7 +139,12 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 	const { details } = props
 	const time = details.startTime ?? (details.status === 'post-game' && details.endTime !== 'unknown' ? details.endTime : undefined)
 	return (
-		<ExpandableRow rowKey={`match:${details.historyEntryId}`} count={props.events} columns={MATCH_ROW_COLUMNS}>
+		<ExpandableRow
+			rowKey={`match:${details.historyEntryId}`}
+			count={props.events}
+			columns={MATCH_ROW_COLUMNS}
+			menu={{ kind: 'layer', layerIds: [details.layerId], historyEntryIds: [details.historyEntryId] }}
+		>
 			<td className={CELL}>{time ? dateTime.format(time) : ''}</td>
 			<td className={CELL}>{details.serverId}</td>
 			<td className="px-2 py-1 align-top">

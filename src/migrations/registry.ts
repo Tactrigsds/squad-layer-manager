@@ -62,6 +62,7 @@ import * as m0107 from './0107_history_queries'
 import * as m0108 from './0108_username_search'
 import * as m0109 from './0109_app_event_index'
 import * as m0110 from './0110_app_event_user_dimension'
+import * as m0111 from './0111_chat_channel_index'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -111,4 +112,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0108_username_search', up: m0108.up },
 	{ name: '0109_app_event_index', up: m0109.up },
 	{ name: '0110_app_event_user_dimension', up: m0110.up },
+	{ name: '0111_chat_channel_index', up: m0111.up },
 ]
