@@ -6,6 +6,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
+import * as EM from '@/models/event-meta.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as MH from '@/models/match-history.models'
@@ -209,9 +210,8 @@ export type AppStarted = z.infer<typeof AppStartedSchema>
 export const AppRestartedSchema = event('APP_RESTARTED', versionShape)
 export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
-// a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken, whether it
-// made it to the configured offsite target, and what the event-history prune that ran alongside it deleted -- the one
-// place in the app that destroys history, so it needs to be accounted for.
+// a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken and whether
+// it made it to the configured offsite target.
 export const BackupCreatedSchema = event('BACKUP_CREATED', {
 	fileName: z.string(),
 	sizeBytes: z.number(),
@@ -222,8 +222,6 @@ export const BackupCreatedSchema = event('BACKUP_CREATED', {
 	durationMs: z.number().optional(),
 	// absent when no sftp target is configured; false when the upload failed (the local backup still exists)
 	uploaded: z.boolean().optional(),
-	// the prune that ran before the snapshot was taken. absent when event-history retention is disabled.
-	pruned: z.object({ events: z.number(), matches: z.number() }).optional(),
 })
 export type BackupCreated = z.infer<typeof BackupCreatedSchema>
 
@@ -467,52 +465,95 @@ export function isFeedVisible(event: AppEvent): boolean {
 
 export type AppEventType = AppEvent['type']
 
+// What each app event is about, in the same extractor form the server events use (see event-meta.models.ts).
+// Players here are the event's subjects -- targets, a disbanded squad's members -- never its actor, which is a
+// column of its own.
+export const APP_EVENT_META = {
+	PLAYER_WARNED: EM.meta<PlayerWarned>({ players: [{ assocType: 'player', get: (e) => e.targets }] }),
+	PLAYER_REMOVED_FROM_SQUAD: EM.meta<PlayerRemovedFromSquad>({ players: [{ assocType: 'player', get: (e) => e.targets }] }),
+	TEAM_CHANGE_FORCED: EM.meta<TeamChangeForced>({ players: [{ assocType: 'player', get: (e) => e.targets }] }),
+	PLAYER_KILLED: EM.meta<PlayerKilled>({ players: [{ assocType: 'player', get: (e) => e.targets }] }),
+	PLAYER_KICKED: EM.meta<PlayerKicked>({ players: [{ assocType: 'player', get: (e) => e.targets }] }),
+	SQUAD_DISBANDED: EM.meta<SquadDisbanded>({ players: [{ assocType: 'player', get: (e) => e.members }] }),
+	COMMANDER_DEMOTED: EM.meta<CommanderDemoted>({ players: [{ assocType: 'player', get: (e) => e.target }] }),
+	PLAYER_TIMED_OUT: EM.meta<PlayerTimedOut>({ players: [{ assocType: 'player', get: (e) => e.target }] }),
+	TIMEOUT_CANCELLED: EM.meta<TimeoutCancelled>({ players: [{ assocType: 'player', get: (e) => e.target }] }),
+	PLAYER_FLAGS_UPDATED: EM.meta<PlayerFlagsUpdated>({ players: [{ assocType: 'player', get: (e) => e.playerId }] }),
+	TEAMSWAPS_UPDATED: EM.meta<TeamswapsUpdated>({
+		players: [{ assocType: 'player', get: (e) => summarizeTeamswapChanges(e).map((c) => c.playerId) }],
+		users: [{ get: (e) => summarizeTeamswapChanges(e).map((c) => (c.kind === 'added' ? c.byUserId : undefined)) }],
+	}),
+	SWITCH_REQUESTS_FULFILLED: EM.meta<SwitchRequestsFulfilled>({
+		players: [{ assocType: 'player', get: (e) => [...e.targets, e.movedConnector] }],
+	}),
+	MAP_SET: EM.meta<MapSet>({
+		players: [{ assocType: 'player', get: (e) => (e.overrode?.type === 'player' ? e.overrode.playerId : undefined) }],
+		layers: [{ kind: 'set', get: (e) => e.layerId }],
+	}),
+	VOTE_STARTED: EM.meta<VoteStarted>({ layers: [{ kind: 'offered', get: (e) => e.choices }] }),
+	VOTE_ENDED: EM.meta<VoteEnded>({
+		layers: [
+			{ kind: 'set', get: (e) => e.winnerLayerId },
+			{ kind: 'offered', get: (e) => e.tally?.map((t) => t.layerId) },
+		],
+	}),
+	LAYER_REQUEST_CONSUMED: EM.meta<LayerRequestConsumed>({ layers: [{ kind: 'queued', get: (e) => e.layerId }] }),
+	// the net change, not the whole list: re-indexing every queued layer on every save would make "when was
+	// Gorodok queued" answer with every save it sat through
+	QUEUE_UPDATED: EM.meta<QueueUpdated>({
+		layers: [{ kind: 'queued', get: (e) => summarizeQueueChanges(e).flatMap((c) => c.layerIds) }],
+		users: [
+			{ get: (e) => summarizeQueueChanges(e).map((c) => (c.actor.type === 'slm-user' ? c.actor.userId : undefined)) },
+			{ get: (e) => e.save?.overrodeEditors },
+		],
+	}),
+	SQUAD_RENAMED: EM.meta<SquadRenamed>(),
+	FOG_OF_WAR_TOGGLED: EM.meta<FogOfWarToggled>(),
+	BROADCAST_SENT: EM.meta<BroadcastSent>(),
+	MATCH_ENDED: EM.meta<MatchEnded>(),
+	VOTE_ABORTED: EM.meta<VoteAborted>(),
+	LAYER_REQUEST_ADDED: EM.meta<LayerRequestAdded>(),
+	LAYER_REQUEST_REMOVED: EM.meta<LayerRequestRemoved>(),
+	SETTINGS_UPDATED: EM.meta<SettingsUpdated>(),
+	SERVER_REGISTRY_CHANGED: EM.meta<ServerRegistryChanged>(),
+	FILTER_CHANGED: EM.meta<FilterChanged>(),
+	FILTER_CONTRIBUTOR_CHANGED: EM.meta<FilterContributorChanged>(),
+	USER_ACCOUNT_CHANGED: EM.meta<UserAccountChanged>(),
+	APP_STARTED: EM.meta<AppStarted>(),
+	APP_RESTARTED: EM.meta<AppRestarted>(),
+	BACKUP_CREATED: EM.meta<BackupCreated>(),
+	PLUGIN_EVENT: EM.meta<PluginEvent>(),
+	PLUGIN_DATA_PURGED: EM.meta<PluginDataPurged>(),
+	MATCH_LAYERS_RECONCILED: EM.meta<MatchLayersReconciled>(),
+	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
+	// its own event does not have fails here
+} satisfies { [K in AppEventType]: EM.EventMeta<Extract<AppEvent, { type: K }>> }
+
+function metaOf(e: AppEvent): EM.EventMeta<AppEvent> {
+	return APP_EVENT_META[e.type] as EM.EventMeta<AppEvent>
+}
+
 // the players involved in an app event (targets, or a disbanded squad's members) as eos ids
 export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
-	switch (e.type) {
-		case 'PLAYER_WARNED':
-		case 'PLAYER_REMOVED_FROM_SQUAD':
-		case 'TEAM_CHANGE_FORCED':
-		case 'PLAYER_KILLED':
-		case 'PLAYER_KICKED':
-			return e.targets
-		case 'SQUAD_DISBANDED':
-			return e.members
-		case 'COMMANDER_DEMOTED':
-		case 'PLAYER_TIMED_OUT':
-		case 'TIMEOUT_CANCELLED':
-			return [e.target]
-		case 'SQUAD_RENAMED':
-		case 'FOG_OF_WAR_TOGGLED':
-		case 'BROADCAST_SENT':
-		case 'MATCH_ENDED':
-		case 'VOTE_STARTED':
-		case 'VOTE_ENDED':
-		case 'VOTE_ABORTED':
-		case 'QUEUE_UPDATED':
-		case 'LAYER_REQUEST_ADDED':
-		case 'LAYER_REQUEST_REMOVED':
-		case 'LAYER_REQUEST_CONSUMED':
-		case 'SETTINGS_UPDATED':
-		case 'SERVER_REGISTRY_CHANGED':
-		case 'FILTER_CHANGED':
-		case 'FILTER_CONTRIBUTOR_CHANGED':
-		case 'USER_ACCOUNT_CHANGED':
-		case 'APP_STARTED':
-		case 'APP_RESTARTED':
-		case 'BACKUP_CREATED':
-		case 'PLUGIN_EVENT':
-		case 'PLUGIN_DATA_PURGED':
-		case 'MATCH_LAYERS_RECONCILED':
-			return []
-		case 'PLAYER_FLAGS_UPDATED':
-			return [e.playerId]
-		case 'TEAMSWAPS_UPDATED':
-			return summarizeTeamswapChanges(e).map((c) => c.playerId)
-		case 'SWITCH_REQUESTS_FULFILLED':
-			return e.movedConnector ? [...e.targets, e.movedConnector] : e.targets
-		case 'MAP_SET':
-			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
+	const ids: SM.PlayerId[] = []
+	for (const playerMeta of metaOf(e).players) {
+		for (const player of EM.iterAssocValues(playerMeta.get(e))) {
+			ids.push(typeof player === 'object' ? SM.PlayerIds.getPlayerId(player.ids) : player)
+		}
+	}
+	return ids
+}
+
+export function* iterAssocLayerIds(e: AppEvent): Generator<readonly [L.LayerId, EM.LayerAssocKind]> {
+	yield* EM.iterAssocLayers(metaOf(e), e)
+}
+
+export function* iterAssocUserIds(e: AppEvent): Generator<USR.UserId> {
+	// the actor is on the envelope rather than in any payload, so it is yielded here instead of being declared
+	// identically on all 36 metas
+	if (e.actor.type === 'slm-user') yield e.actor.userId
+	for (const userMeta of metaOf(e).users) {
+		yield* EM.iterAssocValues(userMeta.get(e))
 	}
 }
 
@@ -782,9 +823,35 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 		matchId,
 		causeId,
 		instanceId,
+		feedVisible: isFeedVisible(e),
 		version: CURRENT_APP_EVENT_VERSION,
 		data: superjson.serialize(redacted) as any,
 	}
+}
+
+/**
+ * The association rows an app event contributes, one per value its metas name.
+ *
+ * The same walk for every dimension, so adding one is an extractor on the meta rather than a branch here.
+ */
+export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociation[] {
+	const rows: SchemaModels.NewAppEventAssociation[] = []
+	const time = new Date(e.time)
+	for (const playerMeta of metaOf(e).players) {
+		for (const player of EM.iterAssocValues(playerMeta.get(e))) {
+			const value = typeof player === 'object' ? SM.PlayerIds.getPlayerId(player.ids) : player
+			rows.push({ dimension: 'player', value, time, appEventId: e.id, role: playerMeta.assocType })
+		}
+	}
+	for (const [layerId, kind] of iterAssocLayerIds(e)) {
+		rows.push({ dimension: 'layer', value: layerId, time, appEventId: e.id, role: kind })
+	}
+	// one role, unlike the other dimensions: iterAssocUserIds already folds the actor in with the users an
+	// event attributes to, and no query has yet wanted to tell those apart
+	for (const userId of iterAssocUserIds(e)) {
+		rows.push({ dimension: 'user', value: userId.toString(), time, appEventId: e.id, role: 'involved' })
+	}
+	return rows
 }
 
 // reconstructs an app event from a row and validates the payload blob against its schema. returns null (rather than

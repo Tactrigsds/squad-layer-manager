@@ -113,11 +113,16 @@ export const appEvents = sqliteTable(
 		causeId: text('causeId'),
 		// the SLM process (otel service.instance.id) that emitted this event
 		instanceId: text('instanceId'),
+		// queryable projection of AppEvents.isFeedVisible: whether this event is worth a feed line at all, as
+		// against being audit-log-only. The history page searches events the feed draws, so it filters on this
+		// rather than re-deriving the predicate per row. Null on rows recorded before the backfill ran.
+		feedVisible: boolean('feedVisible'),
 		version: integer('version').default(1),
 		data: json('data').notNull(),
 	},
 	(table) => ({
 		appEventTypeIndex: index('appEventTypeIndex').on(table.type),
+		appEventFeedVisibleIndex: index('appEventFeedVisibleIndex').on(table.feedVisible, table.time),
 		appEventTimeIndex: index('appEventTimeIndex').on(table.time),
 		appEventServerIdIndex: index('appEventServerIdIndex').on(table.serverId),
 		appEventMatchIdIndex: index('appEventMatchIdIndex').on(table.matchId),
@@ -214,12 +219,39 @@ export const playerEventIndex = sqliteTable(
 		variant: text('variant'),
 	},
 	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
-	// narrows to one contiguous range and a match filter is applied within it; the only matchId-driven query is
-	// retention, which deletes a whole server's stale set in one statement and can afford the scan. On a
-	// WITHOUT ROWID table a secondary index carries the entire pk, so that one index measured 26MB against the
-	// table's own 42MB on the largest install -- more than a third of the cost, for nothing.
+	// narrows to one contiguous range and a match filter is applied within it. On a WITHOUT ROWID table a
+	// secondary index carries the entire pk, so that one index measured 26MB against the table's own 42MB on
+	// the largest install -- more than a third of the cost, for nothing.
 	(table) => ({
 		pk: primaryKey({ columns: [table.playerId, table.time, table.serverEventId, table.assocType] }),
+	}),
+)
+
+// What an app event is about, one row per value: the players it names, the layers it names. Generic over the
+// dimension rather than a table per kind, because both have the same query shape and the write path is one walk
+// over the event's meta (see event-meta.models.ts) -- a third dimension is an extractor and a new `dimension`
+// value rather than another migration.
+//
+// The asymmetry with playerEventIndex is deliberate and is about size: that table carries millions of rows and
+// earns a dedicated, tuned shape, where every app event ever recorded is a few thousand.
+export const appEventAssociations = sqliteTable(
+	'appEventAssociations',
+	{
+		// 'player' | 'layer'
+		dimension: text('dimension').notNull(),
+		// an eos id or a layer id, per the dimension
+		value: text('value').notNull(),
+		// denormalized from appEvents so one subject's trail is a contiguous pk range rather than a join then a sort
+		time: timestamp('time').notNull(),
+		appEventId: text('appEventId')
+			.notNull()
+			.references(() => appEvents.id, { onDelete: 'cascade' }),
+		// how the event relates to the value: a ServerEventPlayerAssocType, or an EM.LayerAssocKind
+		role: text('role').notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.dimension, table.value, table.time, table.appEventId, table.role] }),
+		appEventAssociationsEventIdIndex: index('appEventAssociationsEventIdIndex').on(table.appEventId),
 	}),
 )
 
@@ -243,6 +275,10 @@ export const archivedMatches = sqliteTable(
 			.notNull()
 			.references(() => servers.id, { onDelete: 'cascade' }),
 		eventCount: integer('eventCount').notNull(),
+		// the id range packed inside `events`, so an id-bounded query can prune at match granularity without
+		// unpacking. Null on rows packed before the columns existed.
+		minEventId: integer('minEventId'),
+		maxEventId: integer('maxEventId'),
 		// how `events` is encoded, so a later codec can be introduced without rewriting what is already packed
 		encoding: text('encoding').notNull(),
 		events: blob('events').notNull(),
@@ -252,6 +288,67 @@ export const archivedMatches = sqliteTable(
 	},
 	(table) => ({
 		serverIdIndex: index('archivedMatchesServerIdIndex').on(table.serverId),
+	}),
+)
+
+/**
+ * Virtual tables, declared for reference only. Namespaced so a reader can tell at the use site that these are
+ * not ordinary tables, because three things about them are different:
+ *
+ *  - Their DDL is in the migrations, not here. Drizzle cannot express `CREATE VIRTUAL TABLE`, so these
+ *    declarations describe a table drizzle did not create and must never be asked to.
+ *  - They have no rowid of their own, no constraints and no indexes. A declaration below says a column exists
+ *    and what it holds, and nothing more.
+ *  - Searching one is a `MATCH` against the table name, which the query builder has no way to say. Reads go
+ *    through a `sql` template; only the writes are builder calls.
+ *
+ * They are declared at all so a query naming one names this object rather than a bare string, which is what
+ * makes every use of a table or column findable. The namespace is also what keeps them out of drizzle-kit's
+ * reach: it scans this module's top-level exports for tables, and would otherwise generate a `CREATE TABLE`
+ * for a virtual table that already exists and is not one.
+ */
+export namespace Virtual {
+	/** fts5 over chat text, standalone rather than external-content: it has to outlive the events it indexes. */
+	export const chatSearch = sqliteTable('chatSearch', {
+		message: text('message').notNull(),
+		serverEventId: integer('serverEventId').notNull(),
+		playerId: text('playerId').notNull(),
+		matchId: integer('matchId').notNull(),
+		serverId: text('serverId').notNull(),
+		time: timestamp('time').notNull(),
+	})
+
+	/** fts5 trigram over player names, so a substring needle of three or more characters is an index lookup. */
+	export const usernameSearch = sqliteTable('usernameSearch', {
+		username: text('username').notNull(),
+		usernameNoTag: text('usernameNoTag').notNull(),
+		eosId: text('eosId').notNull(),
+	})
+}
+
+// A history query a user chose to keep: the page's whole query state as one json value, so loading one is
+// just writing it back into the url. 'shared' rows are visible to every user.
+export const savedQueries = sqliteTable(
+	'savedQueries',
+	{
+		id: text('id').primaryKey(),
+		name: text('name').notNull(),
+		ownerId: bigintText('ownerId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		visibility: text('visibility', { enum: ['private', 'shared'] })
+			.notNull()
+			.default('private'),
+		query: json('query').notNull(),
+		createdAt: timestamp('createdAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+		updatedAt: timestamp('updatedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		savedQueriesOwnerIndex: index('savedQueriesOwnerIndex').on(table.ownerId),
 	}),
 )
 

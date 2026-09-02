@@ -7,10 +7,18 @@
 
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
+import * as HistoryMsgs from '@/messages/history.messages'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 
-import * as Atoms from './atoms'
+import { formatFullTime } from './format'
 import * as RC from './render-context'
+
+// the windows a row can open, registered before any click can ask for one. Loaded here rather than in the
+// (isomorphic) builders: registration only means anything where windows exist.
+void import('@/components/player-details-window')
+void import('@/components/squad-details-window')
+void import('@/components/layer-info')
 
 const INTENT_DELAY = 150
 
@@ -55,12 +63,48 @@ function clearIntent() {
 	intentElement = null
 }
 
+// The squad-server frame behind an element, resolved from its scope: per-match on scopes whose rows span
+// servers (the history page), else the scope's own. Undefined when the scope has none to offer.
+function storesAt(element: Element): SquadServerFrame.KeyProp | undefined {
+	const scope = RC.scopeOf(element)
+	if (!scope) return undefined
+	const perMatch = scope.storesForMatch?.(RC.matchIdOf(element))
+	if (perMatch) return perMatch
+	return scope.stores.squadServer ? scope.stores : undefined
+}
+
+// the props a window target opens with: its serialized arg, plus the scope's frame per the target's mode
+function windowProps(element: Element, target: RC.WindowTarget): Record<string, unknown> | undefined {
+	if (!target.frame) return target.arg
+	const stores = storesAt(element)
+	if (stores) return { ...target.arg, stores }
+	return target.frame === 'require' ? undefined : target.arg
+}
+
 function onClick(event: MouseEvent) {
+	// "load more" before the row itself, since the button sits inside the row's own panel
+	const more = elementAt(event, RC.ROW_EVENTS_MORE_ATTR)
+	if (more) {
+		const row = more.closest(`[${RC.ROW_EVENTS_ATTR}]`) ?? more.closest('tbody')?.querySelector(`[${RC.ROW_EVENTS_ATTR}]`)
+		const panel = more.closest(`[${RC.ROW_EVENTS_PANEL_ATTR}]`)
+		const owner = panel?.previousElementSibling
+		if (owner?.hasAttribute(RC.ROW_EVENTS_ATTR)) fillRowEvents(owner, true)
+		else if (row) fillRowEvents(row, true)
+		return
+	}
+	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
+	if (rowEvents) {
+		toggleRowEvents(rowEvents)
+		return
+	}
+
 	const element = elementAt(event, RC.WINDOW_ATTR)
 	if (!element) return
 	const target = RC.windowTargetOf(element)
 	if (!target) return
-	DraggableWindowStore.getState().openWindow(target.windowId, target.windowProps, element as HTMLElement, outletOf(element))
+	const props = windowProps(element, target)
+	if (!props) return
+	DraggableWindowStore.getState().openWindow(target.windowId, props, element as HTMLElement, outletOf(element))
 }
 
 // shift-clicking an admin badge selects every admin on that player's team; ctrl too, and it selects both sides
@@ -69,9 +113,11 @@ function onClickCapture(event: MouseEvent) {
 	const element = elementAt(event, RC.ADMIN_BADGE_ATTR)
 	const badge = element && RC.adminBadgeOf(element)
 	if (!badge) return
+	const stores = storesAt(element)
+	if (!stores) return
 	event.preventDefault()
 	event.stopPropagation()
-	SquadServerFrame.Actions.selectAllAdmins(badge.stores, event.ctrlKey ? undefined : (badge.teamId ?? undefined))
+	SquadServerFrame.Actions.selectAllAdmins(stores, event.ctrlKey ? undefined : (badge.teamId ?? undefined))
 }
 
 // -------- context menu --------
@@ -81,9 +127,11 @@ function onContextMenu(event: MouseEvent) {
 	if (!element || !menuAnchor) return
 	const target = RC.menuTargetOf(element)
 	const ctx = RC.scopeOf(element)
-	if (!target || !ctx) return
+	const stores = storesAt(element)
+	// the menu's options all act on a server frame, so no frame means the browser's own menu
+	if (!target || !ctx || !stores) return
 	event.preventDefault()
-	OverlayStore.setState({ menu: { target, stores: ctx.stores, zIndexBase: ctx.zIndexBase } })
+	OverlayStore.setState({ menu: { target, stores, zIndexBase: ctx.zIndexBase } })
 	// radix's own trigger is what knows how to place and open the menu, and all it reads off the event is the
 	// point. Re-firing at the parked trigger gets its placement, its focus handling and its dismissal for free.
 	menuAnchor.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: event.clientX, clientY: event.clientY }))
@@ -95,7 +143,7 @@ function tipContentOf(element: Element): RC.TipContent | null {
 	const time = element.getAttribute(RC.TIP_TIME_ATTR)
 	// deliberately not formatted until now: a timezone-qualified timestamp per row is most of what a feed's
 	// timestamps cost, and only the one being hovered is ever read
-	if (time !== null) return { text: Atoms.formatFullTime(Number(time)) }
+	if (time !== null) return { text: formatFullTime(Number(time)) }
 	const text = element.getAttribute(RC.TIP_ATTR)
 	if (text === null) return null
 	return { text, heading: element.getAttribute(RC.TIP_HEADING_ATTR) ?? undefined }
@@ -129,16 +177,104 @@ function onPointerOver(event: PointerEvent) {
 	if (tip) showTip(tip)
 	else closeTip()
 
+	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
+	if (rowEvents) fillRowEvents(rowEvents)
+
 	const opener = elementAt(event, RC.WINDOW_ATTR)
 	if (opener === intentElement) return
 	clearIntent()
-	if (!opener || !RC.windowTargetOf(opener)?.preload) return
+	const openerTarget = opener ? RC.windowTargetOf(opener) : undefined
+	if (!opener || !openerTarget?.preload || !windowProps(opener, openerTarget)) return
 	intentElement = opener
 	intentTimer = setTimeout(() => {
 		const target = RC.windowTargetOf(opener)
-		if (target) DraggableWindowStore.getState().preloadWindow(target.windowId, target.windowProps, outletOf(opener))
+		const props = target && windowProps(opener, target)
+		if (target && props) DraggableWindowStore.getState().preloadWindow(target.windowId, props, outletOf(opener))
 		clearIntent()
 	}, INTENT_DELAY)
+}
+
+// -------- a results row's own events --------
+
+function panelOf(row: Element) {
+	const next = row.nextElementSibling
+	return next?.hasAttribute(RC.ROW_EVENTS_PANEL_ATTR) ? next : null
+}
+
+/**
+ * Fetches one page of a row's events into its panel.
+ *
+ * Driven by hover as well as by opening the row, so the first page is usually already there by the time it
+ * is opened. Idempotent for that first page: whichever fires first claims the row, and the other finds it
+ * claimed. `more` resumes from the cursor the last page left behind.
+ */
+function fillRowEvents(row: Element, more = false) {
+	if (!more && row.hasAttribute(RC.ROW_EVENTS_DONE_ATTR)) return
+	const key = row.getAttribute(RC.ROW_EVENTS_ATTR)
+	const slot = panelOf(row)?.querySelector(`[${RC.ROW_EVENTS_SLOT_ATTR}]`)
+	const ctx = RC.scopeOf(row)
+	if (!key || !slot || !ctx?.loadRowEvents) return
+
+	const parked = row.getAttribute(RC.ROW_EVENTS_CURSOR_ATTR)
+	if (more && !parked) return
+	// claimed before the await, so a second hover during the fetch does not start another
+	row.setAttribute(RC.ROW_EVENTS_DONE_ATTR, '')
+	row.removeAttribute(RC.ROW_EVENTS_CURSOR_ATTR)
+	const cursor = more && parked ? (JSON.parse(parked) as unknown) : undefined
+	slot.querySelector(`[${RC.ROW_EVENTS_MORE_ATTR}]`)?.remove()
+	// a row opened before its hover finished, or opened without one at all (touch, keyboard), would otherwise
+	// show an empty tray for as long as the fetch takes
+	setStatus(slot, tr.text(HistoryMsgs.eventsLoading()))
+
+	void ctx
+		.loadRowEvents(key, cursor)
+		.then((page) => {
+			setStatus(slot, null)
+			slot.insertAdjacentHTML('beforeend', page.rows.join(''))
+			if (page.nextCursor === undefined) return
+			row.setAttribute(RC.ROW_EVENTS_CURSOR_ATTR, JSON.stringify(page.nextCursor))
+			const button = document.createElement('button')
+			button.type = 'button'
+			button.setAttribute(RC.ROW_EVENTS_MORE_ATTR, '')
+			button.className = 'self-start px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground'
+			button.textContent = tr.text(HistoryMsgs.loadMore())
+			slot.append(button)
+		})
+		.catch(() => {
+			// says so rather than leaving the tray blank, and lets another open retry
+			setStatus(slot, tr.text(HistoryMsgs.eventsFailed()))
+			row.removeAttribute(RC.ROW_EVENTS_DONE_ATTR)
+		})
+}
+
+// one status line per slot, replaced or cleared in place, so it never stacks up over several pages
+function setStatus(slot: Element, text: string | null) {
+	let line = slot.querySelector(`[${RC.ROW_EVENTS_STATUS_ATTR}]`)
+	if (text === null) {
+		line?.remove()
+		return
+	}
+	if (!line) {
+		line = document.createElement('div')
+		line.setAttribute(RC.ROW_EVENTS_STATUS_ATTR, '')
+		line.className = 'px-1 py-0.5 text-xs text-muted-foreground'
+		slot.append(line)
+	}
+	line.textContent = text
+}
+
+function toggleRowEvents(row: Element) {
+	const panel = panelOf(row)
+	if (!panel) return
+	const opening = panel.hasAttribute('hidden')
+	if (opening) {
+		panel.removeAttribute('hidden')
+		row.setAttribute(RC.ROW_OPEN_ATTR, '')
+		fillRowEvents(row)
+	} else {
+		panel.setAttribute('hidden', '')
+		row.removeAttribute(RC.ROW_OPEN_ATTR)
+	}
 }
 
 function onFocusIn(event: FocusEvent) {

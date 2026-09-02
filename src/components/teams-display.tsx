@@ -9,7 +9,6 @@ import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import * as Atoms from './feed/atoms'
-import { useDomContent } from './feed/dom-content'
 
 export function getTeamsDisplay(
 	partialLayer: L.UnvalidatedLayer | L.LayerId,
@@ -53,23 +52,19 @@ export function TeamFactionDisplay(props: {
 }) {
 	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const { className, parity, layer, team, includeUnits, showAltTeamIndicator, leadWithTeamName, extraStyles, normalized } = props
-	const node = React.useMemo(
-		() =>
-			Atoms.teamFactionDisplay({
-				className,
-				parity,
-				layer,
-				team,
-				includeUnits,
-				showAltTeamIndicator,
-				leadWithTeamName,
-				extraStyles,
-				normalized: normalized ?? globalNormalized,
-			}),
-		[className, parity, layer, team, includeUnits, showAltTeamIndicator, leadWithTeamName, extraStyles, normalized, globalNormalized],
+	return (
+		<Atoms.TeamFactionDisplay
+			className={className}
+			parity={parity}
+			layer={layer}
+			team={team}
+			includeUnits={includeUnits}
+			showAltTeamIndicator={showAltTeamIndicator}
+			leadWithTeamName={leadWithTeamName}
+			extraStyles={extraStyles}
+			normalized={normalized ?? globalNormalized}
+		/>
 	)
-	const ref = useDomContent<HTMLSpanElement>(node)
-	return <span ref={ref} className="contents" />
 }
 
 export function MatchTeamDisplay(props: {

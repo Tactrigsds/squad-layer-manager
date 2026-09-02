@@ -55,8 +55,10 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	onSelect?: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
 	restrictValueSize?: boolean
-	// render the selection as wrapping chips in the trigger instead of one ellipsis-clipped line. with
-	// restrictValueSize the chip area caps its height and scrolls; otherwise it grows with the selection.
+	// How the selection reads in the trigger: chips wrapping onto as many rows as they need, growing the
+	// trigger (or, with restrictValueSize, capping its height and scrolling), against one ellipsis-clipped
+	// line. Off by default, because a trigger that grows with its selection is wrong wherever it sits in a
+	// toolbar of fixed height -- a column picker naming fifteen columns, say.
 	chipDisplay?: boolean
 	selectOnClose?: boolean
 	reset?: boolean | T[]
@@ -291,20 +293,25 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					)}
 				>
 					{showChips ? (
-						<span className="flex grow flex-wrap items-center gap-1">
+						// min-w-0 on both the strip and each chip: a flex item defaults to min-width:auto and so
+						// refuses to shrink below its content, which is what let a chip whose label is wider than
+						// the trigger overflow it instead of truncating inside it
+						<span className="flex min-w-0 grow flex-wrap items-center gap-1">
 							{displayValues.map((value) => {
 								const option = optionsByValue.get(value)
 								const label = option ? (option.chipLabel ?? option.label ?? option.value) : value
 								return (
 									<span
 										key={value === null ? NULL : value}
-										className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
+										className="inline-flex min-w-0 max-w-full items-center overflow-hidden rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
 									>
-										<PrefixedLabel
-											prefix={selectedPrefix(option)}
-											label={label === null ? DisplayHelpers.NULL_DISPLAY : label}
-											render={prefixRenderer}
-										/>
+										<span className="truncate">
+											<PrefixedLabel
+												prefix={selectedPrefix(option)}
+												label={label === null ? DisplayHelpers.NULL_DISPLAY : label}
+												render={prefixRenderer}
+											/>
+										</span>
 									</span>
 								)
 							})}

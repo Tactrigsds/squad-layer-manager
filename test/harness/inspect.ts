@@ -74,6 +74,38 @@ export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	}
 }
 
+// how many chat messages a history search over this text will find. The fts index joined to the event index
+// the query anchors on, because the two are written separately and only their intersection is reachable: an
+// event whose player the app has not persisted yet is dropped from the event index and never retried, while
+// its text lands in the fts index regardless.
+export function searchableChatMatches(app: AppFixture, needle: string): number {
+	const db = app.readDb()
+	try {
+		const row = db
+			.prepare(
+				`SELECT count(*) AS n FROM playerEventIndex
+				 WHERE serverEventId IN (SELECT serverEventId FROM chatSearch WHERE chatSearch MATCH ?)`,
+			)
+			.get(needle) as { n: number }
+		return row.n
+	} finally {
+		db.close()
+	}
+}
+
+// how many of a player's events reached the history index. Zero until the app has persisted the player, so
+// this is what says an arranged join has landed and the player's later events will be indexed rather than
+// dropped.
+export function indexedEventsFor(app: AppFixture, eosId: string): number {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT count(*) AS n FROM playerEventIndex WHERE playerId = ?`).get(eosId) as { n: number }
+		return row.n
+	} finally {
+		db.close()
+	}
+}
+
 // every AdminWarn the app addressed to this player, in order. Warns name their target by eos or steam id.
 export function warnsTo(app: AppFixture, player: Pick<EmuPlayer, 'eos' | 'steam'>): string[] {
 	return app.emu.rcon.commandLog
