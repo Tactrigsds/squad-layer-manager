@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { APP_EVENT_TYPE, SERVER_EVENT_TYPE } from '$root/drizzle/enums'
 import { assertNever } from '@/lib/type-guards'
+import * as CHAT from '@/models/chat.models'
 import * as F from '@/models/filter.models'
 
 // The history page's query model. A query is one flat object -- exactly the page's url search params -- and
@@ -292,6 +293,8 @@ const QueryFieldsSchema = z.object({
 	order: z.enum(['newest', 'oldest']).optional(),
 
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
+	// the activity feed's secondary filter, as a shortcut over event type. Absent means ALL (see feedFilterNode)
+	feed: CHAT.SECONDARY_FILTER_STATE.optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
 	chat: z.string().optional(),
@@ -363,6 +366,55 @@ function rangeNodes(column: string, min: number | undefined, max: number | undef
 	return []
 }
 
+const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
+const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
+// the in-game counterparts of an admin's actions, which the audit trail records from the other side
+const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
+
+const NOT_TEAMKILL: F.CompNode = {
+	type: 'eq',
+	neg: true,
+	args: [
+		{ type: 'column', column: 'event.variant' },
+		{ type: 'value', value: 'teamkill' },
+	],
+}
+
+/**
+ * The activity feed's secondary filter as a node, so the history page offers the same six views.
+ *
+ * Not the same predicate. The feed decides per event with the whole object in hand, where the only columns
+ * indexed here are the type and a kill's variant: `ADMIN` cannot tell an admin-channel message from any
+ * other, and reads as the audit trail plus the admin actions the server reported. `DEFAULT` and `KILLFEED`
+ * are exact.
+ */
+export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefined {
+	switch (feed) {
+		case 'ALL':
+			return undefined
+		case 'DEFAULT':
+			return {
+				type: 'nor',
+				children: [
+					{ type: 'and', children: [comp('event.type', KILL_TYPES), NOT_TEAMKILL] },
+					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
+				],
+			}
+		case 'CHAT':
+			return comp('event.type', ['CHAT_MESSAGE', 'ADMIN_BROADCAST', 'BROADCAST_SENT', 'PLAYER_WARNED'])
+		// the audit trail. MAP_SET needs no mention: it is one of the names both families raise, so naming it
+		// as an app event already matches the server event too (see EVENT_TYPES)
+		case 'SLM_EVENTS':
+			return comp('event.type', APP_EVENT_TYPE.options)
+		case 'ADMIN':
+			return comp('event.type', [...new Set([...APP_EVENT_TYPE.options, 'ADMIN_BROADCAST', ...ADMIN_ACTION_TYPES])])
+		case 'KILLFEED':
+			return comp('event.type', KILL_TYPES)
+		default:
+			assertNever(feed)
+	}
+}
+
 /**
  * The one tree the server compiles: basic mode's fields assembled into an `and` block, or advanced mode's
  * tree as-is. Also what "switch to advanced" seeds the editor with. The bounds (server/from/to/idMin/idMax)
@@ -376,6 +428,10 @@ export function queryFilterNode(query: Query): Node {
 	if (query.players?.length && query.type !== 'players') children.push(comp('player', query.players))
 	if (query.users?.length) children.push(comp('user', query.users))
 	if (query.types && query.types.length > 0) children.push(comp('event.type', query.types))
+	if (query.feed) {
+		const node = feedFilterNode(query.feed)
+		if (node) children.push(node)
+	}
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
 	if (query.chat) children.push(comp('chat.message', [query.chat]))
