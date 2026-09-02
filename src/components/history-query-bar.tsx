@@ -24,6 +24,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as HQ from '@/models/history.models'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
@@ -44,6 +45,9 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
 	// fields "+ Filter" has added that hold no value yet, so nothing else can infer they should be listed
 	const [extra, setExtra] = React.useState<readonly QF.FieldKey[]>([])
+	// bumped by "clear all", which remounts the scope block: its time row holds a "custom range" flag that
+	// nothing in the query can express, so clearing the bounds alone would leave the empty inputs showing
+	const [generation, setGeneration] = React.useState(0)
 	const groups = QF.visibleFields(draft, extra)
 	const shown = groups.flatMap((g) => g.fields.map((f) => f.key))
 
@@ -51,7 +55,7 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 		// trimmed trigger padding, as the layer filter menu does: the rail's control column is narrow enough
 		// that the default padding costs more of a value's label than the label is worth
 		<div className="flex flex-col gap-3 [&_button[role=combobox]]:px-2">
-			<ScopeBlock draft={draft} set={set} />
+			<ScopeBlock key={generation} draft={draft} set={set} />
 			{groups.map((group) => (
 				<section key={group.group} className="flex flex-col gap-1">
 					<GroupHeading>{groupLabel(group.group)}</GroupHeading>
@@ -67,6 +71,20 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 				</section>
 			))}
 			<AddFilterMenu draft={draft} shown={shown} onPick={(key) => setExtra((prev) => [...prev, key])} />
+			<Button
+				variant="secondary"
+				size="sm"
+				className="h-7 text-xs"
+				disabled={!QF.anyFieldSet(draft)}
+				onClick={() => {
+					set(QF.clearAllPatch())
+					setExtra([])
+					setGeneration((prev) => prev + 1)
+				}}
+			>
+				<Icons.Trash className="mr-1 h-3 w-3" />
+				{tr.text(UI_Msgs.clearAll())}
+			</Button>
 		</div>
 	)
 }

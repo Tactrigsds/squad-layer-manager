@@ -10,6 +10,7 @@ import * as Atoms from '@/components/feed/atoms'
 import * as RC from '@/components/feed/render-context'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 
@@ -67,7 +68,21 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	return (
 		<ExpandableRow rowKey={`player:${row.playerId}`} count={row.events} columns={PLAYER_ROW_COLUMNS}>
 			<td className={CELL}>
-				<span className="font-medium">{row.username ?? row.playerId}</span>
+				{/* the same two interactions the feed's player names carry, minus the group colour: a results
+				    row spans servers and matches, so there is no roster to colour it against */}
+				<button
+					type="button"
+					className="font-medium hover:underline"
+					{...RC.windowAttrs({
+						windowId: WINDOW_ID.enum['player-details'],
+						arg: { playerId: row.playerId },
+						frame: 'attach',
+						preload: true,
+					})}
+					{...RC.menuAttrs({ kind: 'player', playerId: row.playerId })}
+				>
+					{row.username ?? row.playerId}
+				</button>
 				{row.steamId && <span className="text-muted-foreground ml-2">{row.steamId}</span>}
 			</td>
 			<td className={NUM_CELL}>{row.matches}</td>

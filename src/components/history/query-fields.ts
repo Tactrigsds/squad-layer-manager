@@ -116,6 +116,25 @@ export function clearPatch(key: FieldKey): Partial<HQ.Query> {
 	return { [key]: undefined }
 }
 
+/**
+ * Every field the rail edits, cleared: the scope block as well as the optional ones.
+ *
+ * Leaves the result type, the mode, the sort and the advanced tree alone. Those say how the results are read
+ * rather than what is being asked for, and an advanced query's tree is cleared by editing it.
+ */
+export function clearAllPatch(): Partial<HQ.Query> {
+	const patch: Partial<HQ.Query> = { servers: undefined, from: undefined, to: undefined, players: undefined, users: undefined }
+	for (const key of Object.keys(FIELD_DEFS) as FieldKey[]) Object.assign(patch, clearPatch(key))
+	return patch
+}
+
+/** Whether anything the clear would take off is set. */
+export function anyFieldSet(query: HQ.Query): boolean {
+	if (query.servers?.length || query.players?.length || query.users?.length) return true
+	if (query.from !== undefined || query.to !== undefined) return true
+	return (Object.keys(FIELD_DEFS) as FieldKey[]).some((key) => isSet(query, key))
+}
+
 /** The fields the "+ Filter" menu offers: everything applicable that the rail is not already showing. */
 export function addableGroups(query: HQ.Query, shown: readonly FieldKey[]): { group: FieldGroup; fields: FieldDef[] }[] {
 	const out: { group: FieldGroup; fields: FieldDef[] }[] = []

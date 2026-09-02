@@ -18,14 +18,20 @@ const NO_FRAME_STORES = {} as SquadServerFrame.KeyProp
 
 /**
  * A render ctx for feed rows outside any server dashboard: matches come from the query result, and a row's
- * interactions resolve their server frame from its match, minted on first use for servers that have a live
- * managed instance.
+ * interactions resolve their server frame from its match, falling back to `serverId` for a row that has no
+ * match of its own. Frames are minted on first use, for servers that have a live managed instance.
  */
 export function useHistoryRenderCtx(
 	matches: MH.MatchDetails[],
-	events?: readonly CHAT.EventEnriched[] | null,
-	loadRowEvents?: RC.RenderCtx['loadRowEvents'],
+	opts?: {
+		events?: readonly CHAT.EventEnriched[] | null
+		loadRowEvents?: RC.RenderCtx['loadRowEvents']
+		// the one server every row came from, where the query named exactly one. A players result has no match
+		// per row, so this is the only thing that can give its rows a frame to act on.
+		serverId?: string
+	},
 ): RC.RenderCtx {
+	const { events, loadRowEvents, serverId } = opts ?? {}
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const zIndexBase = React.useContext(BaseZIndexContext)
@@ -35,18 +41,23 @@ export function useHistoryRenderCtx(
 	const ctx = React.useMemo<RC.RenderCtx>(() => {
 		const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
 		const perServer = new Map<string, SquadServerFrame.KeyProp | null>()
-		const storesForMatch = (matchId: number | null | undefined) => {
-			const match = matchId === null || matchId === undefined ? undefined : byId.get(matchId)
-			if (!match) return undefined
-			let entry = perServer.get(match.serverId)
+		// minted on first use rather than up front: setting a frame up during render is a side effect, and
+		// most scopes never have an interaction that needs one
+		const frameFor = (id: string | undefined) => {
+			if (!id) return undefined
+			let entry = perServer.get(id)
 			if (entry === undefined) {
-				const server = settings?.servers.find((s) => s.id === match.serverId)
+				const server = settings?.servers.find((s) => s.id === id)
 				entry = SettingsClient.isServerUsable(server)
-					? { squadServer: frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(match.serverId)) }
+					? { squadServer: frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(id)) }
 					: null
-				perServer.set(match.serverId, entry)
+				perServer.set(id, entry)
 			}
 			return entry ?? undefined
+		}
+		const storesForMatch = (matchId: number | null | undefined) => {
+			const match = matchId === null || matchId === undefined ? undefined : byId.get(matchId)
+			return frameFor(match?.serverId ?? serverId)
 		}
 		return {
 			scopeId,
@@ -62,7 +73,7 @@ export function useHistoryRenderCtx(
 			loadRowEvents,
 			...actorLabels,
 		}
-	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents])
+	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents, serverId])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()
