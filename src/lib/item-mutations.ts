@@ -57,6 +57,20 @@ export function initMutations<T extends string = string>(): Mutations<T> {
 	}
 }
 
+export function cloneMutations<T extends string>(mutations: Mutations<T>): Mutations<T> {
+	return {
+		added: new Set(mutations.added),
+		removed: new Set(mutations.removed),
+		moved: new Set(mutations.moved),
+		edited: new Set(mutations.edited),
+	}
+}
+
+export function mutationsEqual(a: Mutations, b: Mutations): boolean {
+	if (a === b) return true
+	return (Object.keys(a) as MutType[]).every((type) => a[type].size === b[type].size && [...a[type]].every((id) => b[type].has(id)))
+}
+
 export function hasMutations(mutations: Mutations) {
 	return Math.max(...Object.values(mutations).map((set) => set.size)) > 0
 }
