@@ -1,6 +1,4 @@
 import './index.css'
-// zod JIT: only schemas constructed after this import are compiled, so keep it at the top.
-import 'zod/compile'
 
 import * as TSR from '@tanstack/react-router'
 import { enableMapSet } from 'immer'

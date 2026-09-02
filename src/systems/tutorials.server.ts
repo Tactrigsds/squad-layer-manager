@@ -1,10 +1,10 @@
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
+import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'

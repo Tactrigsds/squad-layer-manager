@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
 
 import * as SETTINGS from '@/models/settings.models'
 
 import * as ZodUtils from './zod-utils'
+import { z } from './zod.ts'
 
 // ZodUtils.schemaAtPath walks zod's internals to find the schema at a path, which is what lets the settings form hand a subtree
 // its own editor. These pin the wrapper shapes it has to see through -- a zod upgrade that renames them would otherwise

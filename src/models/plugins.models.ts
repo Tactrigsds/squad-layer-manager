@@ -1,6 +1,6 @@
 import * as D from 'drizzle-orm/sqlite-core'
-import { z } from 'zod'
 
+import { z } from '@/lib/zod'
 import * as CMD from '@/models/command.models'
 import type * as RBAC from '@/rbac.models'
 import type { MigrationDriver } from '@/server/migrate'

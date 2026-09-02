@@ -1,9 +1,8 @@
-import { z } from 'zod'
-
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 
 import type { StrKeys } from './types'
+import { z } from './zod.ts'
 
 /**
  * Type-level utilities from fp-ts patterns

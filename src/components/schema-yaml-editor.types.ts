@@ -1,5 +1,6 @@
 import type React from 'react'
-import type { z } from 'zod'
+
+import type { z } from '@/lib/zod'
 
 export type SchemaYamlEditorHandle = {
 	format: () => void

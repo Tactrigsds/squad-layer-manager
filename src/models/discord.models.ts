@@ -1,6 +1,6 @@
 import type * as D from 'discord.js'
-import { z } from 'zod'
 
+import { z } from '@/lib/zod'
 import * as EMO from '@/models/emoji.models'
 
 export const CDN_BASE = 'https://cdn.discordapp.com'

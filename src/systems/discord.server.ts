@@ -1,8 +1,8 @@
 import * as D from 'discord.js'
-import { z } from 'zod'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { formatVersion } from '@/lib/versioning.ts'
+import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'

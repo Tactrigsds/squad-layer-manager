@@ -1,6 +1,3 @@
-// zod JIT: only schemas constructed after this import are compiled, so keep it at the top.
-import 'zod/compile'
-
 import * as Cli from '@/systems/cli.server'
 import { sdk as otelSdk, setupOtel } from '@/systems/otel.server'
 

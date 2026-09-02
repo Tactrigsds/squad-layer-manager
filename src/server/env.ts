@@ -2,10 +2,10 @@ import * as dotenv from 'dotenv'
 import * as Crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { z } from 'zod'
 
 import * as Paths from '../../paths.ts'
 import * as ZodUtils from '../lib/zod-utils.ts'
+import { z } from '../lib/zod.ts'
 import * as Cli from '../systems/cli.server.ts'
 
 // how a var is written into the example env files, which are regenerated from this file on every dev boot

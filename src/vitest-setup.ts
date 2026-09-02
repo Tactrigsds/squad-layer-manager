@@ -1,6 +1,3 @@
-// match production: tests exercise the compiled schemas, not the interpreted ones.
-import 'zod/compile'
-
 import fs from 'node:fs'
 
 import * as L from '@/models/layer'
