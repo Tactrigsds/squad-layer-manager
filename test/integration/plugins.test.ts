@@ -12,6 +12,10 @@ import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/or
 // rpc stream, and deactivation over oRPC. The disable step kills the plugin's subscriptions, so it is
 // last. Two RAAS layers in the queue give the trigger two same-session matches to fire on; the seed
 // layer the emulator boots on is a session breaker and never counts.
+//
+// teamkill-warns rides along as the second subject, for the one thing balance-triggers cannot show: it
+// is enabled here with an empty enabledServers, so every warn it sends proves the host contract that a
+// config edit reaches an already-running plugin without a restart.
 
 const ADMIN_STEAM_ID = '76561198000000001'
 
@@ -127,6 +131,37 @@ describe('plugin host', () => {
 		expect(first).toMatchObject({ code: 'ok' })
 		const events = (first as { code: 'ok'; data: { events: { triggerId: string }[] } }).data.events
 		expect(events.some((e) => e.triggerId === '150x2')).toBe(true)
+	})
+
+	it('teamkill-warns picks up enabledServers and template edits without restarting', async () => {
+		const victim = app.emu.world.connectPlayer(makePlayer({ name: ' tk_victim', teamId: 1 }))
+		const attacker = app.emu.world.connectPlayer(makePlayer({ name: ' tk_attacker', teamId: 1 }))
+		await app.waitForRosterSync()
+
+		// activated with no servers configured, so the subscription it warns from predates every edit below
+		expect(await client.plugins.setEnabled({ pluginId: 'teamkill-warns', enabled: true })).toMatchObject({
+			code: 'ok',
+			status: 'active',
+		})
+		await client.plugins.updateConfig({
+			pluginId: 'teamkill-warns',
+			config: { enabledServers: [app.serverId], template: 'ALPHA {{attacker}} / {{weapon}}' },
+		})
+
+		app.emu.world.woundPlayer(victim, attacker, 'BP_M4_M68')
+		await app.waitFor(() => warnsTo(app, victim).find((w) => w.includes('ALPHA')), {
+			label: 'the teamkill warn, on a server added to enabledServers after activation',
+		})
+		expect(warnsTo(app, victim).join('\n')).toContain('ALPHA tk_attacker / BP_M4_M68')
+
+		await client.plugins.updateConfig({
+			pluginId: 'teamkill-warns',
+			config: { enabledServers: [app.serverId], template: 'BRAVO {{attacker}}' },
+		})
+		app.emu.world.woundPlayer(victim, attacker, 'BP_M4_M68')
+		await app.waitFor(() => warnsTo(app, victim).find((w) => w.includes('BRAVO')), {
+			label: 'the teamkill warn rendered from the edited template',
+		})
 	})
 
 	it('disabling over oRPC deactivates the plugin and stops evaluation', async () => {
