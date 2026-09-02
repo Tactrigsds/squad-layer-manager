@@ -121,6 +121,22 @@ test.describe('admin actions from the teams panel', () => {
 		expect(swapee.teamId).not.toBe(startingTeam)
 	})
 
+	// the name is a delegated window opener (see components/feed/interactions.ts): its click is only handled
+	// once it reaches the document, so any row handler that swallowed it would leave the name inert
+	test("clicking a name opens that player's details window", async ({ page }) => {
+		const panel = page.getByRole('tabpanel', { name: /^Teams/ })
+
+		const row = panel.getByRole('row', { name: /sq_member/ })
+		await expect(row).toBeVisible({ timeout: 20_000 })
+		await row.getByRole('button', { name: 'sq_member' }).click()
+
+		const window = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /sq_member/ }) })
+		await expect(window).toBeVisible({ timeout: 20_000 })
+		// the row's own click handler toggles selection, and it has to stay out of this one
+		await expect(row.getByRole('checkbox').first()).not.toBeChecked()
+		await window.getByRole('button', { name: 'Close window' }).click()
+	})
+
 	test('a required reason holds the kick dialog shut until one is picked', async ({ page }) => {
 		const panel = page.getByRole('tabpanel', { name: /^Teams/ })
 
