@@ -10,10 +10,13 @@ import * as HQ from '@/models/history.models'
 // "+ Filter" menu leads with.
 
 export type FieldKey =
+	| 'feed'
 	| 'types'
 	| 'variant'
 	| 'damageSource'
 	| 'chat'
+	| 'channel'
+	| 'matchId'
 	| 'outcome'
 	| 'setBy'
 	| 'ticketDiff'
@@ -30,6 +33,8 @@ export type RangeBoundKey = 'ticketDiffMin' | 'ticketDiffMax' | 'durationMin' | 
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
+	// the activity feed's secondary filter, the same control and the same six options (see feedFilterNode)
+	| { kind: 'feed' }
 	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
 	| { kind: 'event-types' }
 	| { kind: 'enum'; options: readonly string[] }
@@ -38,7 +43,8 @@ export type FieldControl =
 	// the editor can reuse the pickers the rest of the app uses (options, groupings, icons)
 	| { kind: 'layer-part'; column: 'Map' | 'Gamemode' | 'Faction_1' }
 	| { kind: 'saved-filter' }
-	| { kind: 'number' }
+	// names its query field for the same reason the range does: the control is no longer one-of-a-kind
+	| { kind: 'number'; field: 'minMatches' | 'matchId'; min?: number }
 	// a pair of query fields edited as one row, named here because the field's own key is neither of them
 	| { kind: 'number-range'; min: RangeBoundKey; max: RangeBoundKey; unit?: string }
 
@@ -51,10 +57,15 @@ export type FieldDef = {
 }
 
 export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
+	// events only: on a matches or players query an event-type condition reads as "containing such an event",
+	// which turns DEFAULT's exclusions into "matches where nobody died", meaning nothing
+	feed: { key: 'feed', group: 'events', control: { kind: 'feed' }, onlyFor: ['events'] },
 	types: { key: 'types', group: 'events', control: { kind: 'event-types' } },
 	variant: { key: 'variant', group: 'events', control: { kind: 'enum', options: HQ.EVENT_VARIANTS } },
 	damageSource: { key: 'damageSource', group: 'events', control: { kind: 'text' } },
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },
+	channel: { key: 'channel', group: 'events', control: { kind: 'enum', options: HQ.CHAT_CHANNELS } },
+	matchId: { key: 'matchId', group: 'match', control: { kind: 'number', field: 'matchId', min: 1 } },
 	outcome: { key: 'outcome', group: 'match', control: { kind: 'enum', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
 	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range', min: 'ticketDiffMin', max: 'ticketDiffMax' } },
@@ -67,7 +78,7 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	gamemode: { key: 'gamemode', group: 'layer', control: { kind: 'layer-part', column: 'Gamemode' } },
 	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', column: 'Faction_1' } },
 	layer: { key: 'layer', group: 'layer', control: { kind: 'saved-filter' } },
-	minMatches: { key: 'minMatches', group: 'players', control: { kind: 'number' }, onlyFor: ['players'] },
+	minMatches: { key: 'minMatches', group: 'players', control: { kind: 'number', field: 'minMatches', min: 1 }, onlyFor: ['players'] },
 }
 
 const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
@@ -80,7 +91,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 // usually about. Not a capability boundary -- every other field is one "+ Filter" away, and a field carried
 // in from another result type stays visible while it holds a value (see visibleFields).
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
-	events: ['types', 'chat'],
+	events: ['feed', 'types', 'chat'],
 	players: ['minMatches', 'types'],
 	matches: ['outcome', 'map', 'ticketDiff', 'duration'],
 }
@@ -130,14 +141,21 @@ export function clearPatch(key: FieldKey): Partial<HQ.Query> {
  * rather than what is being asked for, and an advanced query's tree is cleared by editing it.
  */
 export function clearAllPatch(): Partial<HQ.Query> {
-	const patch: Partial<HQ.Query> = { servers: undefined, from: undefined, to: undefined, players: undefined, users: undefined }
+	const patch: Partial<HQ.Query> = {
+		servers: undefined,
+		from: undefined,
+		to: undefined,
+		players: undefined,
+		playerRole: undefined,
+		users: undefined,
+	}
 	for (const key of Object.keys(FIELD_DEFS) as FieldKey[]) Object.assign(patch, clearPatch(key))
 	return patch
 }
 
 /** Whether anything the clear would take off is set. */
 export function anyFieldSet(query: HQ.Query): boolean {
-	if (query.servers?.length || query.players?.length || query.users?.length) return true
+	if (query.servers?.length || query.players?.length || query.users?.length || query.playerRole) return true
 	if (query.from !== undefined || query.to !== undefined) return true
 	return (Object.keys(FIELD_DEFS) as FieldKey[]).some((key) => isSet(query, key))
 }

@@ -2013,6 +2013,7 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 			// the schema for why the projection does not. Resolved to a damageSources row by insertAssociationRows.
 			damageSource: 'weapon' in event ? event.weapon : null,
 			variant: 'variant' in event ? event.variant : null,
+			channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
 		})
 	}
 

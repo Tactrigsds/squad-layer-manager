@@ -502,6 +502,9 @@ function renderEventRows(
 	try {
 		const out: string[] = []
 		for (const event of events) {
+			// per row rather than per pass: results span matches, and which one a row is from is the thing a
+			// timestamp alone does not say
+			RC.setRowMatchId(event.matchId ?? undefined)
 			const html = renderRow(rctx, event)
 			if (html !== '') out.push(html)
 		}
@@ -509,5 +512,6 @@ function renderEventRows(
 	} finally {
 		I18n.setAmbientLocale(prevLocale)
 		RC.setFullTimestamps(prevFull)
+		RC.setRowMatchId(undefined)
 	}
 }

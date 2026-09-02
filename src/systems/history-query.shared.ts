@@ -334,7 +334,7 @@ export async function resolveArtifacts(
 		if (!column || !HQ.getColumnDef(column)) {
 			return { code: 'err:invalid-query', message: `unknown column ${column ?? '(none)'}` }
 		}
-		if (column === 'player') {
+		if (HQ.isPlayerColumn(column)) {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			artifacts.playerValues.set(node, await resolvePlayerRefs(ctx, refs))
 		}
@@ -544,20 +544,25 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			const cond = parts.length === 0 ? sql`0 = 1` : (E.or(...parts) as E.SQL)
 			return comp.neg ? negate(cond) : cond
 		}
-		case 'player': {
-			const playerIds = art.playerValues.get(node) ?? []
-			const cond =
-				playerIds.length === 0
-					? sql`0 = 1`
-					: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${inJsonSet(pei.playerId, playerIds)})`
-			return comp.neg ? negate(cond) : cond
-		}
+		case 'player':
+			return eventPlayerCond(comp, art.playerValues.get(node) ?? [])
+		// the same predicate narrowed to one end of the kill. Row-scoped inside the subselect on purpose: an
+		// assocType compared against the outer row would match the attacker's row of an event the victim named,
+		// which is the opposite of what was asked
+		case 'event.attacker':
+			return eventPlayerCond(comp, art.playerValues.get(node) ?? [], 'attacker')
+		case 'event.victim':
+			return eventPlayerCond(comp, art.playerValues.get(node) ?? [], 'victim')
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
 			const cond = sql`${pei.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
 			return comp.neg ? negate(cond) : cond
 		}
+		case 'chat.channel':
+			return compileComp(comp, pei.channel, id)
+		case 'match.id':
+			return compileComp(comp, pei.matchId, id)
 		case 'match.outcome':
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'match.setBy':
@@ -585,6 +590,17 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 		default:
 			assertNever(column)
 	}
+}
+
+// "an event this player is named in", optionally only where they are named as one end of a kill. Per-event,
+// not per-row: an event's rows differ by player, so the condition has to hold for the event as a whole.
+function eventPlayerCond(comp: F.CompNode, playerIds: string[], assocType?: HQ.PlayerRole): E.SQL {
+	const assoc = assocType === undefined ? sql`` : sql`${pei.assocType} = ${assocType} AND `
+	const cond =
+		playerIds.length === 0
+			? sql`0 = 1`
+			: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${assoc}${inJsonSet(pei.playerId, playerIds)})`
+	return comp.neg ? negate(cond) : cond
 }
 
 /**
@@ -643,6 +659,8 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			const cond = userIds.length === 0 ? sql`0 = 1` : appEventUserCond(userIds)
 			return comp.neg ? negate(cond) : cond
 		}
+		case 'match.id':
+			return compileComp(comp, ae.matchId, id)
 		case 'match.outcome':
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
@@ -666,6 +684,9 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 		case 'event.variant':
 		case 'event.damageSource':
 		case 'chat.message':
+		case 'chat.channel':
+		case 'event.attacker':
+		case 'event.victim':
 			return comp.neg ? negate(sql`0 = 1`) : sql`0 = 1`
 		default:
 			assertNever(column)
@@ -721,6 +742,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 	switch (column) {
 		case 'time':
 			return compileComp(comp, matchTime, id)
+		case 'match.id':
+			return compileComp(comp, mh.id, id)
 		case 'match.outcome':
 			return compileComp(comp, mh.outcome, id)
 		case 'match.setBy':
@@ -752,7 +775,10 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'user':
 		case 'event.type':
 		case 'event.variant':
-		case 'event.damageSource': {
+		case 'event.damageSource':
+		case 'chat.channel':
+		case 'event.attacker':
+		case 'event.victim': {
 			const inner = E.and(eventBoundsCond({ ...bounds, serverIds: undefined }), compileEventCond(node, art))
 			const appInner = E.and(appEventBoundsCond({ ...bounds, serverIds: undefined }), compileAppEventCond(node, art))
 			const cond = E.or(

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -89,12 +90,18 @@ export default function HistoryPage(props: HistoryPageProps) {
 	// a result-type switch is a view switch, so it runs immediately -- unless the draft cannot run, in which
 	// case it is still a switch of what is being built, and the results say so rather than answering the
 	// previous type (see canRun below)
+	const [switchingTo, setSwitchingTo] = React.useState<HQ.ResultType | null>(null)
 	const switchType = (type: HQ.ResultType) => {
 		set({ type })
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
-		if (!HistoryFrame.Sel.canRun(state)) return
+		if (!HistoryFrame.Sel.canRun(state)) {
+			setSwitchingTo(null)
+			return
+		}
+		setSwitchingTo(type)
 		props.onRun({ ...HistoryFrame.Sel.builtQuery(state), type })
 	}
+	if (switchingTo !== null && (props.executed.type === switchingTo || draft.type !== switchingTo)) setSwitchingTo(null)
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
 	// a type switched while the draft could not run stays pending until Run catches the page up, so the
 	// results never answer a type other than the one the tabs name
@@ -174,9 +181,15 @@ export default function HistoryPage(props: HistoryPageProps) {
 				)}
 				{/* the results answer the executed query, so they are shown only while it is the type the tabs name */}
 				{resultsPending ? (
-					<div className="text-xs text-muted-foreground">
-						{tr.text(canRun ? HistoryMsgs.runToSeeResults() : HistoryMsgs.unfinishedFilter())}
-					</div>
+					// the switch runs on its own, so the gap before the url catches up is a load rather than a
+					// prompt to run, which is what it would otherwise read as
+					switchingTo !== null ? (
+						<ResultsLoading />
+					) : (
+						<div className="text-xs text-muted-foreground">
+							{tr.text(canRun ? HistoryMsgs.runToSeeResults() : HistoryMsgs.unfinishedFilter())}
+						</div>
+					)
 				) : (
 					<Results query={props.executed} onRun={props.onRun} />
 				)}
@@ -296,7 +309,7 @@ function usePagedQuery(query: HQ.Query) {
 	const [page, setPageState] = React.useState<{ key: string; page: number }>({ key, page: 0 })
 	if (page.key !== key) setPageState({ key, page: 0 })
 	const res = useQuery(HistoryClient.queryPageBase({ query, page: page.page }))
-	return { res: res.data, page: page.page, setPage: (next: number) => setPageState({ key, page: next }) }
+	return { res: res.data, loading: res.isPending, page: page.page, setPage: (next: number) => setPageState({ key, page: next }) }
 }
 
 function Pager(props: { page: number; pageSize: number; total: number | undefined; setPage: (page: number) => void }) {
@@ -365,8 +378,18 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'
 
+// Shown in place of the results, never around them: a table that is still empty and one whose query matched
+// nothing look the same, and the second is an answer.
+function ResultsLoading() {
+	return (
+		<div className="flex items-center justify-center py-8">
+			<Spinner className="size-5 text-muted-foreground" />
+		</div>
+	)
+}
+
 function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
-	const { res, page, setPage } = usePagedQuery(props.query)
+	const { res, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'players')
 	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
 	// the rows they open still name their match, which is all the feed row needs
@@ -389,16 +412,16 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 		<div className="flex min-h-0 flex-col gap-1">
 			<ResultNotices res={res} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
-			<div className="min-h-0 overflow-y-auto">
+			{loading && <ResultsLoading />}
+			<div className="min-h-0 overflow-y-auto" hidden={loading}>
 				<table aria-label={tr.text(HistoryMsgs.playerResults())} className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colPlayer())}</th>
+							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSteamId())}</th>
+							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colEosId())}</th>
 							{sortHeader('matches', tr.text(HistoryMsgs.colMatches()))}
-							{sortHeader('kills', tr.text(HistoryMsgs.colKills()))}
-							{sortHeader('deaths', tr.text(HistoryMsgs.colDeaths()))}
-							{sortHeader('teamkills', tr.text(HistoryMsgs.colTeamkills()))}
 							{sortHeader('chatMessages', tr.text(HistoryMsgs.colChat()))}
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
 							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
@@ -420,7 +443,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 const EMPTY_MATCHES: MH.MatchDetails[] = []
 
 function MatchesResults(props: { query: HQ.Query }) {
-	const { res, page, setPage } = usePagedQuery(props.query)
+	const { res, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'matches')
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
@@ -429,7 +452,8 @@ function MatchesResults(props: { query: HQ.Query }) {
 		<div className="flex min-h-0 flex-col gap-1">
 			<ResultNotices res={res} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
-			<div className="min-h-0 overflow-y-auto">
+			{loading && <ResultsLoading />}
+			<div className="min-h-0 overflow-y-auto" hidden={loading}>
 				<table aria-label={tr.text(HistoryMsgs.matchResults())} className="w-full border-collapse text-xs">
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">

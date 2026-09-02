@@ -5,6 +5,7 @@ import React from 'react'
 import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
+import EventFilterSelect from '@/components/event-filter-select'
 import { StringEqConfig } from '@/components/filter-card'
 import { LayerFilterPicker } from '@/components/history-advanced-editor'
 import * as ETO from '@/components/history/event-type-options'
@@ -25,7 +26,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
-import type * as HQ from '@/models/history.models'
+import * as HQ from '@/models/history.models'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -107,9 +108,31 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 			<Field label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear} stacked={time.showCustom}>
 				<TimeRange draft={draft} set={set} showCustom={time.showCustom} setCustom={time.setCustom} />
 			</Field>
-			<Field label={tr.text(HistoryMsgs.fieldPlayer())} canClear={!!draft.players?.length} onClear={() => set({ players: undefined })}>
+			<Field
+				label={tr.text(HistoryMsgs.fieldPlayer())}
+				canClear={!!draft.players?.length}
+				onClear={() => set({ players: undefined, playerRole: undefined })}
+			>
 				<PlayerPicker values={draft.players ?? []} onSelect={(players) => set({ players: players.length > 0 ? players : undefined })} />
 			</Field>
+			{/* only once there is a player to qualify: on its own it narrows nothing, so offering it would be a
+			    control that silently does nothing */}
+			{!!draft.players?.length && (
+				<Field
+					label={tr.text(HistoryMsgs.fieldPlayerRole())}
+					canClear={!!draft.playerRole}
+					onClear={() => set({ playerRole: undefined })}
+				>
+					<ComboBox
+						title={tr.text(HistoryMsgs.fieldPlayerRole())}
+						allowEmpty
+						className="w-full"
+						value={draft.playerRole}
+						options={HQ.PLAYER_ROLES as unknown as string[]}
+						onSelect={(role) => set({ playerRole: (role as HQ.PlayerRole | null) ?? undefined })}
+					/>
+				</Field>
+			)}
 			<Field label={tr.text(HistoryMsgs.fieldUser())} canClear={!!draft.users?.length} onClear={() => set({ users: undefined })}>
 				<UserPicker values={draft.users ?? []} onSelect={(users) => set({ users: users.length > 0 ? users : undefined })} />
 			</Field>
@@ -439,6 +462,15 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 	const { field, draft, set } = props
 	const control = field.control
 	switch (control.kind) {
+		case 'feed':
+			return (
+				<EventFilterSelect
+					className="h-7 w-full justify-between"
+					value={draft.feed ?? 'ALL'}
+					// ALL is the absence of the filter, so it stays out of the url rather than riding in it
+					onValueChange={(value) => set({ feed: value === 'ALL' ? undefined : value })}
+				/>
+			)
 		case 'event-types':
 			return (
 				<ComboBoxMulti
@@ -464,7 +496,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					title={fieldLabel(field.key)}
 					allowEmpty
 					className="w-full"
-					value={draft[field.key as 'variant' | 'outcome' | 'setBy']}
+					value={draft[field.key as 'variant' | 'outcome' | 'setBy' | 'channel']}
 					options={control.options as string[]}
 					onSelect={(v) => {
 						set({ [field.key]: v ?? undefined })
@@ -506,10 +538,10 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				<Input
 					autoFocus
 					type="number"
-					min={1}
+					min={control.min}
 					className="h-7 w-full text-xs"
-					defaultValue={draft.minMatches ?? ''}
-					onChange={(e) => set({ minMatches: e.target.value === '' ? undefined : Number(e.target.value) })}
+					defaultValue={draft[control.field] ?? ''}
+					onChange={(e) => set({ [control.field]: e.target.value === '' ? undefined : Number(e.target.value) })}
 				/>
 			)
 		case 'number-range': {
@@ -582,6 +614,8 @@ function groupLabel(group: QF.FieldGroup): string {
 
 function fieldLabel(key: QF.FieldKey): string {
 	switch (key) {
+		case 'feed':
+			return tr.text(HistoryMsgs.fieldFeed())
 		case 'types':
 			return tr.text(HistoryMsgs.fieldEventTypes())
 		case 'variant':
@@ -590,6 +624,8 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldDamageSource())
 		case 'chat':
 			return tr.text(HistoryMsgs.fieldChat())
+		case 'channel':
+			return tr.text(HistoryMsgs.fieldChannel())
 		case 'outcome':
 			return tr.text(HistoryMsgs.fieldOutcome())
 		case 'setBy':
@@ -606,6 +642,8 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldFaction())
 		case 'layer':
 			return tr.text(HistoryMsgs.fieldLayer())
+		case 'matchId':
+			return tr.text(HistoryMsgs.fieldMatchId())
 		case 'minMatches':
 			return tr.text(HistoryMsgs.fieldMinMatches())
 		default:
