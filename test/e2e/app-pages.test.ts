@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
-import { indexedEventsFor, searchableChatMatches } from '../harness/inspect'
+import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
@@ -290,6 +290,32 @@ async function seedHistory(app: AppFixture) {
 	})
 }
 
+const HISTORY_SHOOTER = 'e2e_history_shooter'
+
+// One kill, so a query can ask which end of it a player was on. Seeded separately from the chat because it
+// needs a second player, and waited for on the attacker's own index rows: the shooter's connect is indexed
+// before the kill is, so counting all their events would pass too early.
+async function seedKill(app: AppFixture): Promise<{ attacker: string; victim: string }> {
+	const victim =
+		app.emu.world.playerList().find((p) => p.name === HISTORY_TALKER) ??
+		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_TALKER}`, teamId: 1 }))
+	const attacker =
+		app.emu.world.playerList().find((p) => p.name === HISTORY_SHOOTER) ??
+		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_SHOOTER}`, teamId: 2 }))
+	if (indexedKillsFor(app, attacker.eos, 'attacker') === 0) {
+		await app.waitFor(() => indexedEventsFor(app, attacker.eos) > 0 || undefined, {
+			label: 'the shooter to reach the history index',
+			timeoutMs: 30_000,
+		})
+		app.emu.world.killPlayer(victim, attacker)
+		await app.waitFor(() => indexedKillsFor(app, attacker.eos, 'attacker') > 0 || undefined, {
+			label: 'the seeded kill to reach the history index',
+			timeoutMs: 30_000,
+		})
+	}
+	return { attacker: attacker.eos, victim: victim.eos }
+}
+
 // appended, not passed as part of the path: loginUrl adds its own `?login=`, so a path that already carries
 // a query string ends up with the second one folded into the last value
 const historyUrl = (app: AppFixture, search: string) => `${app.loginUrl(app.adminUser, '/history')}&${search}`
@@ -422,6 +448,60 @@ test.describe('history page', () => {
 
 		// a chat message is not part of the audit trail, so the same query under SLM Events matches nothing
 		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&feed=SLM_EVENTS`))
+		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+	})
+
+	// The channel is written into the index as the message is recorded, so this covers the whole path: the
+	// event's channel reaching the column, and the column reaching the sql.
+	test('filters chat by the channel it was sent to', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&channel=ChatAll`))
+		const results = page.getByRole('region', { name: 'Event results' })
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+
+		// the seeded message went to all chat, so asking for the admin channel has to miss it
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&channel=ChatAdmin`))
+		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+	})
+
+	// `player` matches an event the player is named in at all, which for a kill is both ends of it. The role
+	// qualifier is the only thing that tells the two apart, and getting it wrong reads as working: a row-scoped
+	// assocType would match the attacker's row of the victim's own death.
+	test('tells a kill apart by which end of it a player was on', async ({ app, page }) => {
+		const { attacker, victim } = await seedKill(app)
+		const kills = (eos: string, role: 'attacker' | 'victim') =>
+			historyUrl(app, `type=events&types=%5B%22PLAYER_DIED%22%5D&players=%5B%22${eos}%22%5D&playerRole=${role}`)
+		const total = page.getByText(/^\d+ results?$/)
+
+		await page.goto(kills(attacker, 'attacker'))
+		await expect(total).toBeVisible({ timeout: 30_000 })
+		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
+
+		// the same player, the other end: they did the killing, so they were nobody's victim
+		await page.goto(kills(attacker, 'victim'))
+		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+
+		await page.goto(kills(victim, 'victim'))
+		await expect(total).toBeVisible({ timeout: 30_000 })
+		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
+	})
+
+	// The id is on every row, which is what makes the filter usable: you read one off a row and ask for it.
+	test('shows the match id on every event row, and filters by it', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+		const results = page.getByRole('region', { name: 'Event results' })
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+
+		const tag = results.getByText(/^#\d+$/).first()
+		await expect(tag).toBeVisible()
+		const matchId = Number.parseInt((await tag.innerText()).slice(1), 10)
+		expect(matchId).toBeGreaterThan(0)
+
+		// the same events, asked for by the id their rows carry
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=${matchId}`))
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+
+		// no match has this id, so nothing can be from it
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=999999`))
 		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
 	})
 

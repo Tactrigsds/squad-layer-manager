@@ -4,6 +4,7 @@ import { APP_EVENT_TYPE, SERVER_EVENT_TYPE } from '$root/drizzle/enums'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT from '@/models/chat.models'
 import * as F from '@/models/filter.models'
+import * as SM from '@/models/squad.models'
 
 // The history page's query model. A query is one flat object -- exactly the page's url search params -- and
 // everything (saving, sharing, recents) stores or replays that object. Basic mode's fields and advanced
@@ -19,6 +20,11 @@ export type ResultType = (typeof RESULT_TYPES)[number]
 export const MATCH_OUTCOMES = ['team1', 'team2', 'draw'] as const
 export const SET_BY_TYPES = ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin'] as const
 export const EVENT_VARIANTS = ['normal', 'suicide', 'teamkill'] as const
+export const CHAT_CHANNELS = SM.CHAT_CHANNEL_TYPE.options
+
+// the two ends of a kill, as the index records them (playerEventIndex.assocType)
+export const PLAYER_ROLES = ['attacker', 'victim'] as const
+export type PlayerRole = (typeof PLAYER_ROLES)[number]
 
 // -------- vocabulary --------
 
@@ -76,7 +82,15 @@ export const COLUMN_DEFS = {
 		displayName: 'Damage source',
 		domain: { kind: 'dynamic-enum', source: 'damageSources' },
 	},
+	// Who a kill was between. `player` matches an event the player is named in at all, which for a kill is
+	// both ends of it; these two say which end. Only PLAYER_DIED and PLAYER_WOUNDED record the distinction.
+	'event.attacker': { key: 'event.attacker', displayName: 'Attacker', domain: { kind: 'player' } },
+	'event.victim': { key: 'event.victim', displayName: 'Victim', domain: { kind: 'player' } },
 	'chat.message': { key: 'chat.message', displayName: 'Chat text', domain: { kind: 'text' } },
+	// which chat a message went to. Only CHAT_MESSAGE has one, so this reads as false against everything else
+	'chat.channel': { key: 'chat.channel', displayName: 'Chat channel', domain: { kind: 'enum', options: CHAT_CHANNELS } },
+	// the match's own id, which every results row shows, so a row can be taken back to the match it came from
+	'match.id': { key: 'match.id', displayName: 'Match id', domain: { kind: 'number' } },
 	'match.outcome': { key: 'match.outcome', displayName: 'Match outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
 	'match.setBy': { key: 'match.setBy', displayName: 'Layer set by', domain: { kind: 'enum', options: SET_BY_TYPES } },
 	// how lopsided the match was, as the winner's remaining tickets over the loser's. Unsigned, because which
@@ -102,6 +116,13 @@ export type LayerColumnKey = (typeof LAYER_COLUMN_KEYS)[number]
 
 export function isLayerColumn(key: string): key is LayerColumnKey {
 	return (LAYER_COLUMN_KEYS as readonly string[]).includes(key)
+}
+
+const PLAYER_COLUMN_KEYS = ['player', 'event.attacker', 'event.victim'] as const
+
+/** Columns whose values are player references, and so need resolving before the tree can compile. */
+export function isPlayerColumn(key: string): key is (typeof PLAYER_COLUMN_KEYS)[number] {
+	return (PLAYER_COLUMN_KEYS as readonly string[]).includes(key)
 }
 
 export type ColumnKey = keyof typeof COLUMN_DEFS
@@ -279,6 +300,8 @@ const QueryFieldsSchema = z.object({
 
 	// basic mode's fields, one url param each so a basic query reads as a url
 	players: z.array(z.string()).optional(),
+	// which end of a kill the players above have to be on. Absent means either, which is every other event too
+	playerRole: z.enum(PLAYER_ROLES).optional(),
 	users: z.array(z.string()).optional(),
 
 	// Superseded by the three lists above, and only ever read on the way in: every saved query and every
@@ -298,6 +321,7 @@ const QueryFieldsSchema = z.object({
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
 	chat: z.string().optional(),
+	channel: z.enum(CHAT_CHANNELS).optional(),
 	layer: F.FilterNodeSchema.optional(),
 	map: z.string().optional(),
 	gamemode: z.string().optional(),
@@ -311,6 +335,7 @@ const QueryFieldsSchema = z.object({
 	durationMin: z.number().int().nonnegative().optional(),
 	durationMax: z.number().int().nonnegative().optional(),
 	name: z.string().optional(),
+	matchId: z.number().int().positive().optional(),
 	minMatches: z.number().int().positive().optional(),
 
 	sort: z.object({ column: z.enum(PLAYER_SORT_COLUMNS), dir: z.enum(['asc', 'desc']) }).optional(),
@@ -383,10 +408,9 @@ const NOT_TEAMKILL: F.CompNode = {
 /**
  * The activity feed's secondary filter as a node, so the history page offers the same six views.
  *
- * Not the same predicate. The feed decides per event with the whole object in hand, where the only columns
- * indexed here are the type and a kill's variant: `ADMIN` cannot tell an admin-channel message from any
- * other, and reads as the audit trail plus the admin actions the server reported. `DEFAULT` and `KILLFEED`
- * are exact.
+ * Not quite the same predicate. The feed decides per event with the whole object in hand, where this has only
+ * what the index carries: `ADMIN` picks up admin chat and the admin actions, but not the connects and
+ * disconnects the feed shows for admins, since whether a player was one is not indexed. The rest are exact.
  */
 export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefined {
 	switch (feed) {
@@ -407,7 +431,13 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 		case 'SLM_EVENTS':
 			return comp('event.type', APP_EVENT_TYPE.options)
 		case 'ADMIN':
-			return comp('event.type', [...new Set([...APP_EVENT_TYPE.options, 'ADMIN_BROADCAST', ...ADMIN_ACTION_TYPES])])
+			return {
+				type: 'or',
+				children: [
+					comp('event.type', [...new Set([...APP_EVENT_TYPE.options, 'ADMIN_BROADCAST', ...ADMIN_ACTION_TYPES])]),
+					{ type: 'and', children: [comp('event.type', ['CHAT_MESSAGE']), comp('chat.channel', ['ChatAdmin'])] },
+				],
+			}
 		case 'KILLFEED':
 			return comp('event.type', KILL_TYPES)
 		default:
@@ -425,7 +455,9 @@ export function queryFilterNode(query: Query): Node {
 	const children: Node[] = []
 	// `player` on the players result type filters which rows are shown, not which events are aggregated;
 	// the engine reads it from the query directly (see groupPlayerRefs)
-	if (query.players?.length && query.type !== 'players') children.push(comp('player', query.players))
+	if (query.players?.length && query.type !== 'players') {
+		children.push(comp(query.playerRole ? `event.${query.playerRole}` : 'player', query.players))
+	}
 	if (query.users?.length) children.push(comp('user', query.users))
 	if (query.types && query.types.length > 0) children.push(comp('event.type', query.types))
 	if (query.feed) {
@@ -435,10 +467,12 @@ export function queryFilterNode(query: Query): Node {
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
 	if (query.chat) children.push(comp('chat.message', [query.chat]))
+	if (query.channel) children.push(comp('chat.channel', [query.channel]))
 	if (query.layer) children.push({ type: 'match-layer', neg: false, filter: query.layer })
 	if (query.map) children.push(comp('layer.map', [query.map]))
 	if (query.gamemode) children.push(comp('layer.gamemode', [query.gamemode]))
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
+	if (query.matchId !== undefined) children.push(comp('match.id', [query.matchId]))
 	if (query.outcome) children.push(comp('match.outcome', [query.outcome]))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	children.push(...rangeNodes('match.ticketDiff', query.ticketDiffMin, query.ticketDiffMax))

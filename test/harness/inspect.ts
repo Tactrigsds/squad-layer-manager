@@ -106,6 +106,19 @@ export function indexedEventsFor(app: AppFixture, eosId: string): number {
 	}
 }
 
+// index rows naming this player at one end of a kill, which is what an attacker/victim filter reads
+export function indexedKillsFor(app: AppFixture, eosId: string, assocType: 'attacker' | 'victim'): number {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT count(*) AS n FROM playerEventIndex WHERE playerId = ? AND assocType = ?`).get(eosId, assocType) as {
+			n: number
+		}
+		return row.n
+	} finally {
+		db.close()
+	}
+}
+
 // every AdminWarn the app addressed to this player, in order. Warns name their target by eos or steam id.
 export function warnsTo(app: AppFixture, player: Pick<EmuPlayer, 'eos' | 'steam'>): string[] {
 	return app.emu.rcon.commandLog

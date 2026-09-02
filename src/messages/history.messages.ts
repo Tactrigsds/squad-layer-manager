@@ -51,6 +51,10 @@ export const eventFamilyBoth = def('Both')
 export const noLayerFilter = def('No layer filter')
 // the activity feed's secondary filter, named here for what it is for rather than for where it came from
 export const fieldFeed = def('Quick filter')
+// qualifies the player field: which end of a kill they have to be on
+export const fieldPlayerRole = def('Involved as')
+export const fieldChannel = def('Chat channel')
+export const fieldMatchId = def('Match id')
 export const fieldTicketDiff = def('Ticket difference')
 export const fieldDuration = def('Match length')
 export const fieldTime = def('Time')
