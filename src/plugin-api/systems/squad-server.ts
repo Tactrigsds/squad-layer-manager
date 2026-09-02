@@ -1,5 +1,5 @@
 /**
- * The managed server itself: its live event stream, and ending a match.
+ * The managed server itself: its live event stream, its current roster and match, and ending a match.
  *
  * `endMatch` is here rather than on slm/systems/squad-rcon because a bare rcon end produces an
  * unattributed round end. The host emits the MATCH_ENDED and arms the expectation for it, which is also
@@ -24,3 +24,5 @@ export async function endMatch(ctx: PluginsSys.ServerCtx<any>) {
 export function events$(ctx: SQS.Ctx & CS.ServerId): Rx.Observable<SE.Event> {
 	return ctx.server.event$.pipe(Rx.map(([_otel, event]) => event))
 }
+
+export { getCurrTeams, peekCurrentMatch } from '@/systems/squad-server.server'
