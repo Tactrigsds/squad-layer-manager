@@ -261,6 +261,32 @@ plainTest.describe('settings page', () => {
 		await mode.getByRole('button', { name: 'GUI', exact: true }).click()
 		await expect(expander).toHaveCount(1)
 	})
+
+	// A comment is part of the settings document: written under a field in the GUI, it rides through the YAML editor
+	// as a `#` line and is saved with the rest of the changes. Last in the group, since it leaves a saved comment behind.
+	plainTest('a comment written under a setting survives the YAML editor and a save', async ({ app, page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+
+		const field = page.locator('[id="setting:requireReasonFor"]')
+		await expect(field).toBeVisible({ timeout: 20_000 })
+		// either label: a repeat of this test against the same app finds the comment it saved last time
+		await field.getByRole('button', { name: /Add comment|Edit comment/ }).click()
+		const box = page.getByRole('textbox', { name: 'Setting comment' })
+		await box.fill('agreed with the head admins, see https://example.com/notes')
+		await box.blur()
+		await expect(field.getByRole('link', { name: 'https://example.com/notes' })).toBeVisible()
+
+		// Format re-serializes the buffer, so the comment has to be read back out of its `#` line for the save to carry it
+		const mode = page.getByRole('group', { name: 'Global settings editor mode' })
+		await mode.getByRole('button', { name: 'YAML', exact: true }).click()
+		await page.getByRole('button', { name: 'Format' }).click()
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
+		await expect(page.getByText('Settings saved')).toBeVisible()
+
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+		await expect(page.locator('[id="setting:requireReasonFor"]')).toContainText('agreed with the head admins', { timeout: 20_000 })
+	})
 })
 
 // The history page, against the events this app has recorded for itself. Its whole query lives in the url,

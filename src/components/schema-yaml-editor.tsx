@@ -10,12 +10,48 @@ import * as Rx from '@/lib/rxjs'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import * as Yaml from '@/lib/yaml'
+import type { z } from '@/lib/zod'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
 import type { SchemaYamlEditorProps } from './schema-yaml-editor.types'
 import YamlCompactSwitch from './yaml-compact-switch'
+
+// When the editor renders comments (see `commentsKey`), the map is split off the value before the schema sees it and put
+// back on the parsed result: the `#` lines it lives in are no part of the schema.
+type Split = { obj: unknown; comments?: Yaml.PathComments }
+
+function splitComments(value: unknown, commentsKey: string | undefined): Split {
+	if (!commentsKey || !Obj.isPlainObject(value)) return { obj: value }
+	const { [commentsKey]: comments, ...obj } = value
+	return { obj, comments: (comments as Yaml.PathComments | undefined) ?? {} }
+}
+
+function parseText(text: string, commentsKey: string | undefined): Split {
+	if (!commentsKey) return { obj: Yaml.parse(text) }
+	const { value, comments } = Yaml.parseWithComments(text)
+	return { obj: value, comments }
+}
+
+function stringifySplit(split: Split, commentsKey: string | undefined, compact: boolean): string {
+	if (!commentsKey) return Yaml.stringifyDoc(split.obj, compact)
+	return Yaml.stringifyDocWithComments(split.obj, split.comments ?? {}, compact)
+}
+
+function validate<TOut>(
+	schema: z.ZodType<TOut, any>,
+	split: Split,
+	commentsKey: string | undefined,
+): { success: true; data: TOut } | { success: false; issues: z.core.$ZodIssue[] } {
+	const res = schema.safeParse(split.obj)
+	if (!res.success) return { success: false, issues: res.error.issues }
+	if (!commentsKey || !split.comments || !Obj.isPlainObject(res.data)) return { success: true, data: res.data }
+	// a `comments:` map typed into the buffer by hand is superseded by the `#` lines
+	const { [commentsKey]: _literal, ...rest } = res.data
+	const data = Object.keys(split.comments).length > 0 ? { ...rest, [commentsKey]: split.comments } : rest
+	return { success: true, data: data as TOut }
+}
 
 export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEditorProps<TOut, TIn>) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
@@ -37,11 +73,13 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 	onValidChangeRef.current = props.onValidChange
 	const onReadyRef = React.useRef(props.onReady)
 	onReadyRef.current = props.onReady
+	const commentsKeyRef = React.useRef(props.commentsKey)
+	commentsKeyRef.current = props.commentsKey
 
 	const onChange = React.useCallback((value: string) => {
-		let obj: any
+		let split: Split
 		try {
-			obj = Yaml.parse(value)
+			split = parseText(value, commentsKeyRef.current)
 		} catch (err) {
 			// a YAMLParseError message already carries the line, column and a code frame
 			setErrorText(err instanceof Error ? err.message : String(err))
@@ -51,9 +89,9 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 			return
 		}
 		setParsable(true)
-		const res = schemaRef.current.safeParse(obj)
+		const res = validate(schemaRef.current, split, commentsKeyRef.current)
 		if (!res.success) {
-			setErrorText(Yaml.stringifyDoc(res.error.issues))
+			setErrorText(Yaml.stringifyDoc(res.issues))
 			lastValidRef.current = null
 			onValidChangeRef.current(null)
 			return
@@ -71,10 +109,14 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 
 	// -------- setup editor, handle change events --------
 	React.useEffect(() => {
+		const commentsKey = commentsKeyRef.current
 		const schemaJson = CM.toJsonSchema(schemaRef.current)
+		// the comments render as `#` lines, so completion and hover must not offer the key they are stored under
+		const schemaProps = (schemaJson as { properties?: Record<string, unknown> } | undefined)?.properties
+		if (commentsKey && schemaProps) delete schemaProps[commentsKey]
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: Yaml.stringifyDoc(lastSyncedValueRef.current, compactRef.current),
+			doc: stringifySplit(splitComments(lastSyncedValueRef.current, commentsKey), commentsKey, compactRef.current),
 			extensions: [
 				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
@@ -84,8 +126,8 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 		})
 		viewRef.current = view
 
-		const initialParseRes = schemaRef.current.safeParse(lastSyncedValueRef.current)
-		lastValidRef.current = initialParseRes.success ? initialParseRes.data : null
+		const initialRes = validate(schemaRef.current, splitComments(lastSyncedValueRef.current, commentsKey), commentsKey)
+		lastValidRef.current = initialRes.success ? initialRes.data : null
 		onReadyRef.current?.()
 
 		// remeasure when returning to a hidden tab, matching the old resize-on-visibility behavior
@@ -104,9 +146,11 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 	React.useEffect(() => {
 		if (Obj.deepEqual(lastSyncedValueRef.current, props.value) && lastValidRef.current !== null) return
 		lastSyncedValueRef.current = props.value
-		const parseRes = schemaRef.current.safeParse(props.value)
-		lastValidRef.current = parseRes.success ? parseRes.data : null
-		if (viewRef.current) CM.setDoc(viewRef.current, Yaml.stringifyDoc(props.value, compactRef.current))
+		const commentsKey = commentsKeyRef.current
+		const res = validate(schemaRef.current, splitComments(props.value, commentsKey), commentsKey)
+		lastValidRef.current = res.success ? res.data : null
+		if (viewRef.current)
+			CM.setDoc(viewRef.current, stringifySplit(splitComments(props.value, commentsKey), commentsKey, compactRef.current))
 		setErrorText('')
 	}, [props.value])
 
@@ -127,26 +171,30 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 		setCompact(next)
 		const view = viewRef.current
 		if (!view) return
-		CM.setDoc(view, Yaml.stringifyDoc(Yaml.parse(view.state.doc.toString()), next))
+		const commentsKey = commentsKeyRef.current
+		CM.setDoc(view, stringifySplit(parseText(view.state.doc.toString(), commentsKey), commentsKey, next))
 	}
 
 	React.useImperativeHandle(props.ref, () => ({
 		format: () => {
 			const view = viewRef.current!
-			let obj: any
+			const commentsKey = commentsKeyRef.current
+			let split: Split
 			try {
-				obj = Yaml.parse(view.state.doc.toString())
+				split = parseText(view.state.doc.toString(), commentsKey)
 			} catch {
 				return
 			}
-			CM.setDoc(view, Yaml.stringifyDoc(obj, compactRef.current))
+			CM.setDoc(view, stringifySplit(split, commentsKey, compactRef.current))
 		},
 		focus: () => viewRef.current!.focus(),
 		reset: () => {
 			const view = viewRef.current!
-			const parseRes = schemaRef.current.safeParse(lastSyncedValueRef.current)
-			lastValidRef.current = parseRes.success ? parseRes.data : null
-			CM.setDoc(view, Yaml.stringifyDoc(lastSyncedValueRef.current, compactRef.current))
+			const commentsKey = commentsKeyRef.current
+			const split = splitComments(lastSyncedValueRef.current, commentsKey)
+			const res = validate(schemaRef.current, split, commentsKey)
+			lastValidRef.current = res.success ? res.data : null
+			CM.setDoc(view, stringifySplit(split, commentsKey, compactRef.current))
 			setErrorText('')
 			onValidChangeRef.current(lastValidRef.current)
 		},
