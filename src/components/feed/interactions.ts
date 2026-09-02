@@ -92,19 +92,19 @@ function onClick(event: MouseEvent) {
 		else if (row) fillRowEvents(row, true)
 		return
 	}
-	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
-	if (rowEvents) {
-		toggleRowEvents(rowEvents)
+	// The opener before the row: a results row carries its key on the whole <tr>, so every target inside one
+	// -- a layer name, a player name -- is also inside the disclosure, and taking the row first meant those
+	// only ever expanded it.
+	const element = elementAt(event, RC.WINDOW_ATTR)
+	const target = element && RC.windowTargetOf(element)
+	const props = element && target && windowProps(element, target)
+	if (element && target && props) {
+		DraggableWindowStore.getState().openWindow(target.windowId, props, element as HTMLElement, outletOf(element))
 		return
 	}
 
-	const element = elementAt(event, RC.WINDOW_ATTR)
-	if (!element) return
-	const target = RC.windowTargetOf(element)
-	if (!target) return
-	const props = windowProps(element, target)
-	if (!props) return
-	DraggableWindowStore.getState().openWindow(target.windowId, props, element as HTMLElement, outletOf(element))
+	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
+	if (rowEvents) toggleRowEvents(rowEvents)
 }
 
 // shift-clicking an admin badge selects every admin on that player's team; ctrl too, and it selects both sides

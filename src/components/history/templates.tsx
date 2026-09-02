@@ -10,6 +10,7 @@ import * as Atoms from '@/components/feed/atoms'
 import * as RC from '@/components/feed/render-context'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 
@@ -67,7 +68,21 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	return (
 		<ExpandableRow rowKey={`player:${row.playerId}`} count={row.events} columns={PLAYER_ROW_COLUMNS}>
 			<td className={CELL}>
-				<span className="font-medium">{row.username ?? row.playerId}</span>
+				{/* the same two interactions the feed's player names carry, minus the group colour: a results
+				    row spans servers and matches, so there is no roster to colour it against */}
+				<button
+					type="button"
+					className="font-medium hover:underline"
+					{...RC.windowAttrs({
+						windowId: WINDOW_ID.enum['player-details'],
+						arg: { playerId: row.playerId },
+						frame: 'attach',
+						preload: true,
+					})}
+					{...RC.menuAttrs({ kind: 'player', playerId: row.playerId })}
+				>
+					{row.username ?? row.playerId}
+				</button>
 				{row.steamId && <span className="text-muted-foreground ml-2">{row.steamId}</span>}
 			</td>
 			<td className={NUM_CELL}>{row.matches}</td>
@@ -104,7 +119,14 @@ function ticketDiffText(details: MH.MatchDetails): string {
 	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
 }
 
-export const MATCH_ROW_COLUMNS = 8
+// whole minutes, floored to agree with the filter, which divides the two epochs in sql. Blank for a match
+// still running or one whose end the app never saw, which is also what the filter can never match.
+function durationText(details: MH.MatchDetails): string {
+	if (details.status !== 'post-game' || details.endTime === 'unknown' || !details.startTime) return ''
+	return String(Math.floor((details.endTime.getTime() - details.startTime.getTime()) / 60_000))
+}
+
+export const MATCH_ROW_COLUMNS = 9
 
 export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
 	const { details } = props
@@ -123,6 +145,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			</td>
 			<td className={CELL}>{outcomeText(details)}</td>
 			<td className={CELL}>{ticketDiffText(details)}</td>
+			<td className={CELL}>{durationText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
 		</ExpandableRow>
 	)

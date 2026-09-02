@@ -81,6 +81,8 @@ export const COLUMN_DEFS = {
 	// how lopsided the match was, as the winner's remaining tickets over the loser's. Unsigned, because which
 	// side won is `match.outcome`'s question; this one is only ever asked as "a blowout" or "a close game".
 	'match.ticketDiff': { key: 'match.ticketDiff', displayName: 'Ticket difference', domain: { kind: 'number' } },
+	// whole minutes from start to end, so a match still running or one the app never saw end has none
+	'match.duration': { key: 'match.duration', displayName: 'Match length', domain: { kind: 'number' } },
 	// The layer played, by part. Every one of these is read off the layer id (L.toLayer), never off a join:
 	// the id spells out map, gamemode and both sides, so the engine resolves them by parsing the few hundred
 	// distinct ids in range rather than by asking the layer engine, which it has no artifact for.
@@ -302,6 +304,9 @@ const QueryFieldsSchema = z.object({
 	// bounds on match.ticketDiff. Either alone reads as "a blowout" / "a close game"; both make a band
 	ticketDiffMin: z.number().int().nonnegative().optional(),
 	ticketDiffMax: z.number().int().nonnegative().optional(),
+	// bounds on match.duration, in whole minutes
+	durationMin: z.number().int().nonnegative().optional(),
+	durationMax: z.number().int().nonnegative().optional(),
 	name: z.string().optional(),
 	minMatches: z.number().int().positive().optional(),
 
@@ -332,6 +337,12 @@ export type Query = z.infer<typeof QuerySchema>
 
 export const DEFAULT_QUERY: Query = QuerySchema.parse({})
 
+// The one server every result can only have come from, where the query names exactly one. What lets a row
+// with no match of its own still offer the interactions that act on a server.
+export function soleServerId(query: Query): string | undefined {
+	return query.servers?.length === 1 ? query.servers[0] : undefined
+}
+
 // -------- normalization --------
 
 function comp(column: ColumnKey, values: (string | number)[]): F.CompNode {
@@ -342,9 +353,8 @@ function comp(column: ColumnKey, values: (string | number)[]): F.CompNode {
 
 // `gt`/`lt` are strict, so an inclusive bound is expressed as the neighbouring integer. A pair becomes one
 // `inrange` rather than two comparisons, which is what the advanced editor shows when the mode is switched.
-function ticketDiffNodes(query: Query): Node[] {
-	const subject: F.ColumnArg = { type: 'column', column: 'match.ticketDiff' }
-	const { ticketDiffMin: min, ticketDiffMax: max } = query
+function rangeNodes(column: string, min: number | undefined, max: number | undefined): Node[] {
+	const subject: F.ColumnArg = { type: 'column', column }
 	if (min !== undefined && max !== undefined) {
 		return [{ type: 'inrange', neg: false, args: [subject, { type: 'value', value: min }, { type: 'value', value: max }] }]
 	}
@@ -375,7 +385,8 @@ export function queryFilterNode(query: Query): Node {
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.outcome) children.push(comp('match.outcome', [query.outcome]))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
-	children.push(...ticketDiffNodes(query))
+	children.push(...rangeNodes('match.ticketDiff', query.ticketDiffMin, query.ticketDiffMax))
+	children.push(...rangeNodes('match.duration', query.durationMin, query.durationMax))
 	return { type: 'and', children }
 }
 

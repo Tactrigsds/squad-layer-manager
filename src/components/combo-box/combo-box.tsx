@@ -28,6 +28,7 @@ import {
 	normalizeOptions,
 	optionsInSelection,
 	resolveGroupings,
+	searchKeywords,
 	selectableCount,
 } from './options.ts'
 
@@ -373,7 +374,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 											<CommandItem
 												key={option.value}
 												value={option.value ?? undefined}
-												keywords={option.keywords}
+												keywords={searchKeywords(option)}
 												disabled={option.disabled}
 												onSelect={() => {
 													if (option.disabled) return

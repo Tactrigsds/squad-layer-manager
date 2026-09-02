@@ -20,6 +20,18 @@ export function descriptionTitle<T extends string | null>(option: ComboBoxOption
 	return option.chipLabel ?? option.value
 }
 
+// What the search matches an option on. cmdk scores an item by its `value`, which in most of our lists is
+// an id nobody sees (an eos id, a discord id, a server key), so the visible label has to be handed over
+// explicitly or the list searches something other than what it shows.
+export function searchKeywords<T extends string | null>(option: ComboBoxOption<T>): string[] | undefined {
+	const labels: string[] = []
+	for (const label of [option.label, option.chipLabel]) {
+		if (typeof label === 'string' && label !== option.value && !labels.includes(label)) labels.push(label)
+	}
+	if (labels.length === 0) return option.keywords
+	return option.keywords ? [...option.keywords, ...labels] : labels
+}
+
 // the options carrying a description, keyed the way cmdk reports its highlighted item
 export function descriptionsByItemKey<T extends string | null>(options: ComboBoxOption<T>[]): Map<string, ComboBoxOption<T>> {
 	const map = new Map<string, ComboBoxOption<T>>()
