@@ -18,7 +18,6 @@ export type SyncedEvent = {
 	// for the client this means that we're up-to-date with the server and we can start displaying the events
 	type: 'SYNCED'
 	time: number
-	matchId: number
 }
 
 // tells client that we should reset the state

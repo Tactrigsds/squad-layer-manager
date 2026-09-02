@@ -815,7 +815,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	swapNow: async (h, args) => {
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', h.ctx.tr.text(CMD_Msgs.playerNotOnTeam(target.ids.username)))
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const toTeam = swapDestination(currentMatch, target.teamId, args.toTeam)
 		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
 		if (MH.getNormedTeamId(target.teamId, currentMatch.ordinal) === toTeam) {
@@ -837,7 +837,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	swapNext: async (h, args) => {
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', h.ctx.tr.text(CMD_Msgs.playerNotOnTeam(target.ids.username)))
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const toTeam = swapDestination(currentMatch, target.teamId, args.toTeam)
 		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
 		if (MH.getNormedTeamId(target.teamId, currentMatch.ordinal) === toTeam) {
@@ -866,7 +866,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	swapSquadNow: async (h, args) => {
 		const { squad, players, teamId } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const toTeam = swapDestination(currentMatch, teamId, args.toTeam)
 		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
 		// the squad's members are all on its team, so it is either entirely at the destination already or entirely away
@@ -891,7 +891,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	swapSquadNext: async (h, args) => {
 		const { squad, players, teamId } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const toTeam = swapDestination(currentMatch, teamId, args.toTeam)
 		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
 		if (MH.getNormedTeamId(teamId, currentMatch.ordinal) === toTeam) {
@@ -919,7 +919,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	swaps: async (h) => {
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const layer = L.toLayer(currentMatch.layerId)
 		const swaps = h.ctx.teamswaps.session.state.savedSwaps
 
@@ -1175,7 +1175,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		// squad warns carry the same @Squad tag the web squad warn box prepends
 		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
 		await SquadServer.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
-		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const squadLabel = SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, args.squad.teamId))
 		await h.reply(CMD_Msgs.warnedSquad(squadLabel, message))
 		return { code: 'ok' }

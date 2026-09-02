@@ -54,7 +54,7 @@ export function initMatchHistoryContext(event$: SQS.Ctx.Payload['event$'], clean
 			Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
 			Instr.durableSub('onRoundEnded', { module }, async ([evtCtx, e], signal) => {
 				const ctx = SquadServer.eventCtx(evtCtx, signal)
-				if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
+				if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx))?.historyEntryId) return
 				await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
 			}),
 		)
@@ -151,8 +151,8 @@ export const loadState = Instr.spanOp(
 )
 
 // Otherwise nothing populates match history until rcon connects and syncs, and a server whose rcon never connects
-// has none for its whole life -- while the managed server is live from initialization and every reader of
-// getCurrentMatch assumes a current match exists.
+// has none for its whole life, while the managed server is live from initialization. It still can: this only loads
+// what the db already holds, which for a server that has never recorded a match is nothing.
 export const initState = Instr.spanOp(
 	'initState',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
@@ -186,10 +186,21 @@ export const getCurrentMatch = Instr.spanOp(
 		levels: { event: 'trace' },
 		mutexes: (ctx) => ctx.matchHistory.mtx,
 	},
-	async (ctx: MH.Ctx & CS.AbortSignal) => {
+	async (ctx: MH.Ctx & CS.AbortSignal): Promise<MH.MatchDetails | undefined> => {
 		return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
 	},
 )
+
+/**
+ * The current match, where its absence is a bug rather than a state to handle: a caller reached only from a live
+ * match (an rcon event, an in-game command, an action against players), or one that has just written the row
+ * itself. Anything that can run before the first match is recorded takes getCurrentMatch and handles undefined.
+ */
+export async function requireCurrentMatch(ctx: MH.Ctx & CS.AbortSignal) {
+	const match = await getCurrentMatch(ctx)
+	if (!match) throw new Error(`No match recorded for server ${ctx.serverId}`)
+	return match
+}
 
 /** Looks only in the recent window, not the database: null for anything older than it holds. */
 export const getMatchById = Instr.spanOp(
@@ -367,7 +378,7 @@ export const addNewCurrentMatch = Instr.spanOp(
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 		})
 
-		return { code: 'ok' as const, match: await getCurrentMatch(ctx) }
+		return { code: 'ok' as const, match: await requireCurrentMatch(ctx) }
 	},
 )
 
@@ -457,7 +468,7 @@ export const syncWithCurrentLayer = Instr.spanOp(
 			await loadState(ctx)
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)
 			{
-				const currentMatch = await getCurrentMatch(ctx)
+				const currentMatch = await requireCurrentMatch(ctx)
 				log.info('loaded new current match %s, %d', currentMatch.layerId, currentMatch.historyEntryId)
 				return { pushedNewMatch: true, currentMatch }
 			}
