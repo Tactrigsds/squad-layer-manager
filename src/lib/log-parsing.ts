@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { withThrown } from './error'
+import { z } from './zod.ts'
 
 export type LogMatcher<S extends EventSchema = EventSchema> = {
 	regex: RegExp

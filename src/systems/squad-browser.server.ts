@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { FixedSizeMap } from '@/lib/lru-map'
+import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'

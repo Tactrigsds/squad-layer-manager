@@ -1,5 +1,4 @@
 import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
@@ -7,6 +6,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as LTag from '@/models/layer-tags.models'

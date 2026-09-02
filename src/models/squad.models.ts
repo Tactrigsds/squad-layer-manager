@@ -1,5 +1,4 @@
 import * as dateFns from 'date-fns'
-import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
@@ -8,6 +7,7 @@ import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/lo
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as Str from '@/lib/string-utils'
+import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'

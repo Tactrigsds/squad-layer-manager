@@ -81,6 +81,20 @@
 		"@typescript-eslint/no-floating-promises": "error",
 		"react/no-array-index-key": "warn",
 
+		// src/lib/zod.ts installs zod's JIT compiler as a side effect, so every schema in the app has to be built
+		// from that module. Bare 'zod' survives only in plugins/, where the specifier is the API contract.
+		"eslint/no-restricted-imports": [
+			"error",
+			{
+				"paths": [
+					{
+						"name": "zod",
+						"message": "import from '@/lib/zod' instead"
+					}
+				]
+			}
+		],
+
 		// misc
 		"import/no-cycle": "off",
 
@@ -143,6 +157,13 @@
 			"files": ["*.test.ts"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off"
+			}
+		},
+		{
+			// a plugin's bare 'zod' resolves to the app's own instance, through the importmap in index.html
+			"files": ["plugins/**", "test/fixtures/plugin-*/**", "src/lib/zod.ts"],
+			"rules": {
+				"eslint/no-restricted-imports": "off"
 			}
 		},
 		{

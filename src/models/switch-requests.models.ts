@@ -3,10 +3,10 @@
 // each side), by the same population rule as the instant path, or by moving a just-connected player aside to make
 // room. It resets every game. The planner here is pure; execution lives in systems/switch-requests.server.ts.
 import type { MutexInterface } from 'async-mutex'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import type { IsolatedSubject } from '@/lib/isolated-subject'
+import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import * as SM from '@/models/squad.models'
 

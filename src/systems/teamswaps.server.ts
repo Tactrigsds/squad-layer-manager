@@ -1,5 +1,4 @@
 import { Mutex } from 'async-mutex'
-import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
 import { withThrownAsync } from '@/lib/error'
@@ -9,6 +8,7 @@ import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'

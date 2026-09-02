@@ -1,11 +1,11 @@
 import type { VisibilityState } from '@tanstack/react-table'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import * as Gen from '@/lib/generator-utils'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
