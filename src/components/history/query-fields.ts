@@ -17,6 +17,7 @@ export type FieldKey =
 	| 'outcome'
 	| 'setBy'
 	| 'ticketDiff'
+	| 'duration'
 	| 'map'
 	| 'gamemode'
 	| 'faction'
@@ -24,6 +25,8 @@ export type FieldKey =
 	| 'minMatches'
 
 export type FieldGroup = 'events' | 'match' | 'layer' | 'players'
+
+export type RangeBoundKey = 'ticketDiffMin' | 'ticketDiffMax' | 'durationMin' | 'durationMax'
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
@@ -36,7 +39,8 @@ export type FieldControl =
 	| { kind: 'layer-part'; column: 'Map' | 'Gamemode' | 'Faction_1' }
 	| { kind: 'saved-filter' }
 	| { kind: 'number' }
-	| { kind: 'number-range' }
+	// a pair of query fields edited as one row, named here because the field's own key is neither of them
+	| { kind: 'number-range'; min: RangeBoundKey; max: RangeBoundKey; unit?: string }
 
 export type FieldDef = {
 	key: FieldKey
@@ -53,7 +57,12 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },
 	outcome: { key: 'outcome', group: 'match', control: { kind: 'enum', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
-	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range' } },
+	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range', min: 'ticketDiffMin', max: 'ticketDiffMax' } },
+	duration: {
+		key: 'duration',
+		group: 'match',
+		control: { kind: 'number-range', min: 'durationMin', max: 'durationMax', unit: 'min' },
+	},
 	map: { key: 'map', group: 'layer', control: { kind: 'layer-part', column: 'Map' } },
 	gamemode: { key: 'gamemode', group: 'layer', control: { kind: 'layer-part', column: 'Gamemode' } },
 	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', column: 'Faction_1' } },
@@ -73,7 +82,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
 	events: ['types', 'chat'],
 	players: ['minMatches', 'types'],
-	matches: ['outcome', 'map', 'ticketDiff'],
+	matches: ['outcome', 'map', 'ticketDiff', 'duration'],
 }
 
 /**
@@ -100,19 +109,17 @@ export function visibleFields(query: HQ.Query, extra: readonly FieldKey[] = []):
 
 /** Whether the query carries a value for this field, which is what decides if it has a chip. */
 export function isSet(query: HQ.Query, key: FieldKey): boolean {
-	switch (key) {
-		case 'types':
-			return (query.types?.length ?? 0) > 0
-		case 'ticketDiff':
-			return query.ticketDiffMin !== undefined || query.ticketDiffMax !== undefined
-		default:
-			return query[key] !== undefined
-	}
+	const control = FIELD_DEFS[key].control
+	if (control.kind === 'number-range') return query[control.min] !== undefined || query[control.max] !== undefined
+	if (key === 'types') return (query.types?.length ?? 0) > 0
+	// every field but the ranges names its own query field, which is what Extract picks out here
+	return query[key as Extract<FieldKey, keyof HQ.Query>] !== undefined
 }
 
-/** Clearing a chip. `ticketDiff` owns two query fields, so it cannot just be keyed by its own name. */
+/** Clearing a chip. A range field owns two query fields, so it cannot just be keyed by its own name. */
 export function clearPatch(key: FieldKey): Partial<HQ.Query> {
-	if (key === 'ticketDiff') return { ticketDiffMin: undefined, ticketDiffMax: undefined }
+	const control = FIELD_DEFS[key].control
+	if (control.kind === 'number-range') return { [control.min]: undefined, [control.max]: undefined }
 	return { [key]: undefined }
 }
 
