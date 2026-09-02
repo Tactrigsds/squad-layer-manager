@@ -4246,17 +4246,60 @@ type CommentProps = {
 	root$: ValueState
 	rootOnChange: (next: any) => void
 	pathStr: string
+	writable: boolean
 	editing: boolean
 	setEditing: (editing: boolean) => void
+	// where the textarea puts its caret when editing opens: the character that was clicked, or the end of the text
+	caretRef: React.RefObject<number | null>
 }
 
 // a field's comment affordances, or null where the form has no root document to keep them on (tests)
-function useCommentProps(pathStr: string): CommentProps | null {
+function useCommentProps(pathStr: string, writable: boolean): CommentProps | null {
 	const root$ = React.useContext(RootValueContext)
 	const rootOnChange = React.useContext(RootOnChangeContext)
 	const [editing, setEditing] = React.useState(false)
+	const caretRef = React.useRef<number | null>(null)
 	if (!root$ || !rootOnChange) return null
-	return { root$, rootOnChange, pathStr, editing, setEditing }
+	return { root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }
+}
+
+// the collapsed preview squeezes each whitespace run to one space, so a caret placed in it has to be walked back to
+// the original text. Returns the preview alongside the original index each of its characters came from.
+function flattenWhitespace(text: string): { flat: string; origIndex: number[] } {
+	let flat = ''
+	const origIndex: number[] = []
+	let inRun = false
+	for (let i = 0; i < text.length; i++) {
+		const ws = /\s/.test(text[i])
+		if (ws && inRun) continue
+		flat += ws ? ' ' : text[i]
+		origIndex.push(i)
+		inRun = ws
+	}
+	return { flat, origIndex }
+}
+
+// the character offset of a click inside `container`, counted over its text nodes in document order (the link anchors
+// RichText renders included). Null when the click landed on no text.
+function textOffsetAtPoint(container: HTMLElement, x: number, y: number): number | null {
+	const doc = container.ownerDocument
+	let node: globalThis.Node | null = null
+	let offset = 0
+	if (doc.caretPositionFromPoint) {
+		const pos = doc.caretPositionFromPoint(x, y)
+		if (pos) [node, offset] = [pos.offsetNode, pos.offset]
+	} else if (doc.caretRangeFromPoint) {
+		const range = doc.caretRangeFromPoint(x, y)
+		if (range) [node, offset] = [range.startContainer, range.startOffset]
+	}
+	if (!node || !container.contains(node)) return null
+	const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+	let total = 0
+	for (let cur = walker.nextNode(); cur; cur = walker.nextNode()) {
+		if (cur === node) return total + offset
+		total += cur.textContent?.length ?? 0
+	}
+	return null
 }
 
 // how much of a comment survives the collapsed view. whitespace is flattened first so the preview is one line
@@ -4265,7 +4308,7 @@ const COMMENT_PREVIEW_LENGTH = 160
 
 // The comment block under a field's name: the text while displayed, a textarea while editing. Edits go straight into
 // the root document, so a comment is staged and saved with the rest of the draft. Mirrors the filter editor's NodeComment.
-function SettingComment({ root$, rootOnChange, pathStr, editing, setEditing }: CommentProps) {
+function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }: CommentProps) {
 	const comment = useSettingComment(root$, pathStr)
 	const [expanded, setExpanded] = React.useState(false)
 	const setComment = React.useCallback(
@@ -4284,6 +4327,10 @@ function SettingComment({ root$, rootOnChange, pathStr, editing, setEditing }: C
 				placeholder={tr.text(SETTINGS_Msgs.commentPlaceholder())}
 				defaultValue={comment ?? ''}
 				className="my-1 text-xs"
+				onFocus={(e) => {
+					const at = caretRef.current ?? e.currentTarget.value.length
+					e.currentTarget.setSelectionRange(at, at)
+				}}
 				onChange={(e) => setCommentDebounced(e.target.value)}
 				onKeyDown={(e) => {
 					if (e.key === 'Escape') e.currentTarget.blur()
@@ -4298,18 +4345,36 @@ function SettingComment({ root$, rootOnChange, pathStr, editing, setEditing }: C
 
 	if (!comment) return null
 
-	const flattened = comment.replace(/\s+/g, ' ')
+	const { flat: flattened, origIndex } = flattenWhitespace(comment)
 	const truncated = flattened.length > COMMENT_PREVIEW_LENGTH
 	const collapsed = truncated && !expanded
+	// clicking into the text opens the editor with the caret under the click, as a plain textarea would. Links keep
+	// their own click (RichText stops it propagating), and so does the more/less toggle.
+	const editAtClick = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (!writable) return
+		const offset = textOffsetAtPoint(e.currentTarget, e.clientX, e.clientY)
+		caretRef.current = offset === null ? null : collapsed ? (origIndex[offset] ?? comment.length) : offset
+		setEditing(true)
+	}
 	return (
-		<div className="my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground">
+		<div
+			className={cn('my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground', writable && 'cursor-text')}
+			onClick={editAtClick}
+		>
 			<RichText
 				text={collapsed ? flattened : comment}
 				maxLength={collapsed ? COMMENT_PREVIEW_LENGTH : undefined}
 				className={cn('min-w-0', collapsed && 'whitespace-normal')}
 			/>
 			{truncated && (
-				<button type="button" className="shrink-0 underline" onClick={() => setExpanded((v) => !v)}>
+				<button
+					type="button"
+					className="shrink-0 underline"
+					onClick={(e) => {
+						e.stopPropagation()
+						setExpanded((v) => !v)
+					}}
+				>
 					{expanded ? tr.text(SETTINGS_Msgs.showLess()) : tr.text(SETTINGS_Msgs.showMore())}
 				</button>
 			)}
@@ -4319,7 +4384,7 @@ function SettingComment({ root$, rootOnChange, pathStr, editing, setEditing }: C
 
 // sits in the field's hover-revealed icon row beside AnchorLink. A field that has a comment keeps the icon showing, so
 // the comment reads as something that can be edited.
-function CommentButton({ root$, pathStr, editing, setEditing }: CommentProps) {
+function CommentButton({ root$, pathStr, editing, setEditing, caretRef }: CommentProps) {
 	const hasComment = !!useSettingComment(root$, pathStr)
 	const label = hasComment ? tr.text(SETTINGS_Msgs.editComment()) : tr.text(SETTINGS_Msgs.addComment())
 	return (
@@ -4333,7 +4398,10 @@ function CommentButton({ root$, pathStr, editing, setEditing }: CommentProps) {
 						'shrink-0 transition-opacity focus-visible:opacity-100',
 						hasComment ? 'text-primary' : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100',
 					)}
-					onClick={() => setEditing(!editing)}
+					onClick={() => {
+						caretRef.current = null
+						setEditing(!editing)
+					}}
 				>
 					<Icons.MessageSquareText className="h-3 w-3" />
 				</button>
@@ -4536,7 +4604,7 @@ function SectionField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
-	const commentProps = useCommentProps(pathStr)
+	const commentProps = useCommentProps(pathStr, writable)
 	return (
 		<fieldset
 			id={domId}
@@ -4617,7 +4685,7 @@ function LeafField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
-	const commentProps = useCommentProps(pathStr)
+	const commentProps = useCommentProps(pathStr, writable)
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
