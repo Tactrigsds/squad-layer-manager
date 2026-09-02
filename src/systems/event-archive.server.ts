@@ -3,7 +3,6 @@ import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Arr from '@/lib/array-utils'
 import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as EA from '@/models/event-archive.models'
@@ -50,10 +49,6 @@ async function runCompactionLoop() {
 // how many matches one pass will pack, so a long-idle install catches up over several passes rather than
 // spending minutes in one. Each match costs a few ms of compression plus a short write transaction.
 const COMPACT_BATCH = 200
-
-// how many matches one retention transaction drops. Each is a scan of the two tables with no matchId index,
-// so bigger is cheaper -- bounded only to keep the write lock short.
-const PRUNE_BATCH = 500
 
 // The ordinal below which matches may leave the hot table, or undefined while the server has not yet played
 // enough of them for any to be eligible.
@@ -149,13 +144,18 @@ export const compactAgedMatches = Instr.spanOp(
 				const blob = await EA.pack(rows)
 
 				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx.db().insert(Schema.archivedMatches).values({
-						matchId,
-						serverId,
-						eventCount: rows.length,
-						encoding: EA.ENCODING,
-						events: blob,
-					})
+					await ctx
+						.db()
+						.insert(Schema.archivedMatches)
+						.values({
+							matchId,
+							serverId,
+							eventCount: rows.length,
+							minEventId: rows[0].id,
+							maxEventId: rows[rows.length - 1].id,
+							encoding: EA.ENCODING,
+							events: blob,
+						})
 					await ctx.db().delete(Schema.serverEvents).where(E.eq(Schema.serverEvents.matchId, matchId))
 				})
 
@@ -216,63 +216,5 @@ export const loadMatchEvents = Instr.spanOp(
 		}
 
 		return byMatch
-	},
-)
-
-/**
- * Drops archived matches that fell past the retention period, with the index entries and chat text that point
- * into them.
- * The matchHistory rows stay: they are small, and they are what the balance and repeat rules read.
- *
- * This is the second half of the event lifecycle -- compaction moves a match from hot to archived, and this
- * moves it from archived to gone. Only ever deletes what compaction has already packed, so an install with
- * retention set still keeps every match hot for its window first.
- */
-export const pruneArchivedMatches = Instr.spanOp(
-	'pruneArchivedMatches',
-	{ module },
-	async (ctx: C.Db & CS.AbortSignal, opts: { retention: number }) => {
-		const cutoff = Date.now() - opts.retention
-		const minHotMatches = ENV.EVENT_ARCHIVE_MIN_HOT_MATCHES
-		const serverIds = await ctx.db().selectDistinct({ serverId: Schema.matchHistory.serverId }).from(Schema.matchHistory)
-
-		let matches = 0
-		let events = 0
-		for (const { serverId } of serverIds) {
-			ctx.signal.throwIfAborted()
-
-			const floor = await hotFloorOrdinal(ctx, serverId, minHotMatches)
-			if (floor === undefined) continue
-
-			const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-			const stale = await ctx
-				.db()
-				.select({ matchId: Schema.archivedMatches.matchId, eventCount: Schema.archivedMatches.eventCount })
-				.from(Schema.archivedMatches)
-				.innerJoin(Schema.matchHistory, E.eq(Schema.matchHistory.id, Schema.archivedMatches.matchId))
-				.where(E.and(E.eq(Schema.matchHistory.serverId, serverId), E.lt(Schema.matchHistory.ordinal, floor), E.lt(matchTime, cutoff)))
-			if (stale.length === 0) continue
-
-			// Both deletes below scan a table that has no index on matchId -- by design in each case (see the
-			// note on playerEventIndex, and fts5's UNINDEXED columns). So each runs ONCE for the server's whole
-			// stale set rather than once per match, which is what keeps pruning linear rather than quadratic.
-			const staleIds = stale.map((s) => s.matchId)
-			for (const batch of Arr.paged(staleIds, PRUNE_BATCH)) {
-				ctx.signal.throwIfAborted()
-				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx.db().delete(Schema.playerEventIndex).where(E.inArray(Schema.playerEventIndex.matchId, batch))
-					// not awaited: run() on the better-sqlite3 driver is synchronous (see the insert in squad-server)
-					ctx.db().run(E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`)
-					await ctx.db().delete(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, batch))
-				})
-				await Timers.setImmediate(undefined, { signal: ctx.signal })
-			}
-			matches += stale.length
-			for (const s of stale) events += s.eventCount
-
-			log.info('pruned %d archived matches on server %s', stale.length, serverId)
-		}
-
-		return { matches, events }
 	},
 )

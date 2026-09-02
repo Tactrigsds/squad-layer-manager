@@ -185,19 +185,7 @@ optional, and it is what a bad upgrade is rolled back from. Periodic backups are
 Backups can also be uploaded to an SFTP destination. See [backups and restoring](backups.md) for that, for what the
 filenames mean, and for putting one back with `restore.sh`.
 
-#### 3.8. Event history retention
-
-`EVENT_HISTORY_RETENTION_PERIOD` is unset by default, which keeps everything. Set it to a duration (e.g. `90d`) and
-old server events (chat, kills, connects) are pruned as part of each backup run, which is what keeps the database
-from growing without bound. Events are deleted for matches older than the retention
-period, except that the 100 most recent matches per server are always kept regardless of age, because the app loads
-them at startup. Match records themselves are never deleted, only their events, and neither is the audit log. The
-prune runs before the snapshot, so a backup never carries rows that were just dropped.
-
-The first prune after turning this on clears the whole accumulated backlog, and is much larger than the ones that
-follow.
-
-#### 3.9. Telemetry
+#### 3.8. Telemetry
 
 Detailed logs and telemetry are available via grafana at `http://localhost:3001`, which you may also want to expose
 to the internet. Change the default admin password before doing so. Three dashboards come preconfigured for
@@ -210,7 +198,7 @@ If you do not want any telemetry, set `OTEL_ENABLED=false` and comment out or de
 `victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before
 starting the app.
 
-#### 3.10. Starting SLM
+#### 3.9. Starting SLM
 
 With docker installed and running, and a public url for the server, start it up:
 
@@ -225,7 +213,7 @@ app`.
 
 Once the app is running you can sign in with discord OAuth, and move on to [configuring SLM](configuring.md).
 
-#### 3.11. Upgrading
+#### 3.10. Upgrading
 
 ```sh
 docker compose pull && docker compose up -d

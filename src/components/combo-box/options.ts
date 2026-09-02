@@ -96,8 +96,17 @@ export function resolveGroupings(groupings?: readonly ComboBoxGroupingDef[]): Re
 	}))
 }
 
+// every group of one grouping the option belongs to. Membership is usually single, but a value that
+// genuinely sits in two (an event type both families raise) has to show under either narrowing.
+export function groupsOf<T extends string | null>(option: ComboBoxOption<T>, grouping: string): readonly string[] {
+	const group = option.groups?.[grouping]
+	if (group == null) return []
+	return typeof group === 'string' ? [group] : group
+}
+
+// the group that orders, heads and prefixes the option: the first it belongs to
 export function groupOf<T extends string | null>(option: ComboBoxOption<T>, grouping: string): string | undefined {
-	return option.groups?.[grouping]
+	return groupsOf(option, grouping)[0]
 }
 
 // options that sort to the back wherever they belong, so counting them would advertise groups that lead
@@ -160,9 +169,8 @@ export function normalizeOptions<T extends string | null>(
 export function liveGroups<T extends string | null>(options: ComboBoxOption<T>[], grouping: ResolvedGrouping): ResolvedGroup[] {
 	const present = new Set<string>()
 	for (const option of options) {
-		const group = groupOf(option, grouping.key)
-		if (excluded(option) || group == null) continue
-		present.add(group)
+		if (excluded(option)) continue
+		for (const group of groupsOf(option, grouping.key)) present.add(group)
 	}
 	const declared = grouping.groups.filter((group) => present.has(group.key))
 	const undeclared = [...present]
@@ -212,7 +220,7 @@ export function optionsInSelection<T extends string | null>(
 ): ComboBoxOption<T>[] {
 	const active = Object.entries(selection).filter(([key, group]) => key !== except && group !== ALL_GROUPS)
 	if (active.length === 0) return options
-	return options.filter((option) => active.every(([key, group]) => groupOf(option, key) === group))
+	return options.filter((option) => active.every(([key, group]) => groupsOf(option, key).includes(group)))
 }
 
 // how many options a selection leaves, counted the same way the per-group counts are so the "all" row and
@@ -230,9 +238,7 @@ export function groupCounts<T extends string | null>(
 	const counts = new Map<string, number>()
 	for (const option of optionsInSelection(options, selection, grouping.key)) {
 		if (excluded(option)) continue
-		const group = groupOf(option, grouping.key)
-		if (group == null) continue
-		counts.set(group, (counts.get(group) ?? 0) + 1)
+		for (const group of groupsOf(option, grouping.key)) counts.set(group, (counts.get(group) ?? 0) + 1)
 	}
 	return counts
 }
@@ -256,18 +262,19 @@ export function groupRuns<T extends string | null>(
 	options: ComboBoxOption<T>[],
 	grouping: ResolvedGrouping | undefined,
 	suppressHeadings = false,
-): { heading?: string; options: ComboBoxOption<T>[] }[] {
+): { key?: string; heading?: string; options: ComboBoxOption<T>[] }[] {
 	if (suppressHeadings || !grouping) return [{ options }]
 	const headingOf = (option: ComboBoxOption<T>) => (excluded(option) ? undefined : groupOf(option, grouping.key))
 	const headings = new Set(options.map(headingOf))
 	headings.delete(undefined)
 	if (headings.size < 2) return [{ options }]
-	const runs: { heading?: string; options: ComboBoxOption<T>[] }[] = []
+	const labelOf = (key: string) => grouping.groups.find((group) => group.key === key)?.label ?? key
+	const runs: { key?: string; heading?: string; options: ComboBoxOption<T>[] }[] = []
 	for (const option of options) {
-		const heading = headingOf(option)
+		const key = headingOf(option)
 		const last = runs[runs.length - 1]
-		if (last && last.heading === heading) last.options.push(option)
-		else runs.push({ heading, options: [option] })
+		if (last && last.key === key) last.options.push(option)
+		else runs.push({ key, heading: key == null ? undefined : labelOf(key), options: [option] })
 	}
 	return runs
 }

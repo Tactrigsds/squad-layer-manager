@@ -58,6 +58,10 @@ import * as m0103 from './0103_drop_unique_emojis_constraint'
 import * as m0104 from './0104_plugin_system'
 import * as m0105 from './0105_queue_item_plugin_source'
 import * as m0106 from './0106_event_archive'
+import * as m0107 from './0107_history_queries'
+import * as m0108 from './0108_username_search'
+import * as m0109 from './0109_app_event_index'
+import * as m0110 from './0110_app_event_user_dimension'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -103,4 +107,8 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0104_plugin_system', up: m0104.up },
 	{ name: '0105_queue_item_plugin_source', up: m0105.up },
 	{ name: '0106_event_archive', up: m0106.up },
+	{ name: '0107_history_queries', up: m0107.up },
+	{ name: '0108_username_search', up: m0108.up },
+	{ name: '0109_app_event_index', up: m0109.up },
+	{ name: '0110_app_event_user_dimension', up: m0110.up },
 ]

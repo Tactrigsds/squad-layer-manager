@@ -41,6 +41,12 @@ export async function resolveLayerQueryCtx<Ctx extends MH.Ctx & LQ.Ctx>(ctx: Ctx
 	}
 }
 
+// for evaluating anonymous filters against explicit layer ids, with no queue or match-history attachment
+// (getLayersOutOfPool only reads the engine and the filter entities)
+export async function resolveAnonLayerQueryCtx<Ctx extends object>(ctx: Ctx): Promise<Ctx & LayerQueries.QueryCtx> {
+	return { ...ctx, ...(await resolveLayerEngineContext()), filters: FilterEntity.state.filters }
+}
+
 export async function resolveLayerItemsState(ctx: MH.Ctx & LQ.Ctx & CS.AbortSignal): Promise<LQY.LayerItemsState> {
 	return LQY.resolveLayerItemsState(LayerQueue.getSavedQueue(ctx), await MatchHistory.getRecentMatches(ctx))
 }
