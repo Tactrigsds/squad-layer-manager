@@ -60,6 +60,35 @@ export const contextMenuSlots: MenuSlots = {
 	SubContent: ContextMenuSubContent,
 }
 
+// An entry that cannot be served at all -- no live player behind the menu, no squad, no swap queued -- is
+// left out rather than greyed. A permission denial is not that: the entry stays, disabled, so its tooltip can
+// say which permission is missing.
+type MenuEntry = React.ReactElement | false | null | undefined
+
+function present(entries: MenuEntry[]): React.ReactElement[] {
+	return entries.filter((entry): entry is React.ReactElement => !!entry)
+}
+
+type MenuSection = { key: string; items: MenuEntry[] }
+
+// Separators go between the sections that still have entries, so dropping a whole section leaves no rule
+// behind and no two rules in a row.
+function MenuSections({ sections, Separator }: { sections: MenuSection[]; Separator: MenuSlots['Separator'] }) {
+	const filled = sections.map((section) => ({ ...section, items: present(section.items) })).filter((section) => section.items.length > 0)
+	return (
+		<>
+			{filled.map((section, index) => (
+				<React.Fragment key={section.key}>
+					{index > 0 && <Separator />}
+					{section.items}
+				</React.Fragment>
+			))}
+		</>
+	)
+}
+
+const DESTRUCTIVE_ITEM = 'bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600'
+
 type PlayerLinkIds = {
 	eos: SM.PlayerId
 	username?: string
@@ -148,12 +177,15 @@ function OpenLinksSubView({ players, slots }: { players: PlayerLinkIds[]; slots:
 		{ label: SM_Msgs.linkNames.mySquadStats, urls: steamIds.map((id) => `https://mysquadstats.com/search/${id}#vanillaStats`) },
 		{ label: SM_Msgs.linkNames.battlemetrics, urls: bmUrls },
 	]
+	// a link nobody in the selection has an id for is dropped, and with every link dropped the submenu goes too
+	const available = links.filter(({ urls }) => urls.length > 0)
+	if (available.length === 0) return null
 	return (
 		<Sub>
 			<SubTrigger>{tr.text(SM_Msgs.openLinks())}</SubTrigger>
 			<SubContent>
-				{links.map(({ label, urls }) => (
-					<Item key={label} disabled={urls.length === 0} onClick={() => openAll(urls)}>
+				{available.map(({ label, urls }) => (
+					<Item key={label} onClick={() => openAll(urls)}>
 						{label}
 						{partialCountSuffix(urls.length, players.length)}
 					</Item>
@@ -194,12 +226,14 @@ function CopyIdsSubView({ players, slots }: { players: PlayerLinkIds[]; slots: M
 		void navigator.clipboard.writeText(values.join('\n'))
 		toast(...tr.toast(SM_Msgs.copiedToClipboard(label, values.length)))
 	}
+	const available = ids.filter(({ values }) => values.length > 0)
+	if (available.length === 0) return null
 	return (
 		<Sub>
 			<SubTrigger>{tr.text(SM_Msgs.copyIds())}</SubTrigger>
 			<SubContent>
-				{ids.map(({ label, values }) => (
-					<Item key={label} disabled={values.length === 0} onClick={() => copyAll(label, values)}>
+				{available.map(({ label, values }) => (
+					<Item key={label} onClick={() => copyAll(label, values)}>
 						{label}
 						{players.length > 1 ? 's' : ''}
 						{partialCountSuffix(values.length, players.length)}
@@ -279,11 +313,19 @@ export function PlayerMenuItems(props: {
 // is, which is the same everywhere.
 function FramelessPlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
 	return (
-		<>
-			<FramelessOpenLinksSub playerId={playerId} slots={slots} />
-			<FramelessCopyIdsSub playerId={playerId} slots={slots} />
-			<PlayerFlagsMenuItem slots={slots} playerId={playerId} />
-		</>
+		<MenuSections
+			Separator={slots.Separator}
+			sections={[
+				{
+					key: 'identity',
+					items: [
+						<FramelessOpenLinksSub key="links" playerId={playerId} slots={slots} />,
+						<FramelessCopyIdsSub key="ids" playerId={playerId} slots={slots} />,
+						<PlayerFlagsMenuItem key="flags" slots={slots} playerId={playerId} />,
+					],
+				},
+			]}
+		/>
 	)
 }
 
@@ -665,51 +707,53 @@ function FramedPlayerMenuItems({
 	const isOnServer = playerInfo !== null
 	const inSquad = isOnServer && playerInfo.squadId !== null
 
-	// Renders the flat list of select-type items for a given scope: 'team' selects only the
-	// clicked player's team, 'all' selects across both teams. The Squad item only appears under
-	// 'team' since a squad belongs to a single team.
-	function selectItems(scope: 'team' | 'all') {
+	// The select-type items for a given scope: 'team' selects only the clicked player's team, 'all' selects
+	// across both teams. The Squad item only appears under 'team' since a squad belongs to a single team.
+	function selectItems(scope: 'team' | 'all'): React.ReactElement[] {
 		const teamId = scope === 'team' ? (playerInfo?.teamId ?? undefined) : undefined
-		const teamMissing = scope === 'team' && playerInfo?.teamId == null
+		if (scope === 'team' && playerInfo?.teamId == null) return []
 		const sc = (pair: { team: string; all: string }) => (scope === 'team' ? pair.team : pair.all)
-		return (
-			<>
-				{scope === 'team' && (
-					<Item
-						disabled={!inSquad}
-						onClick={() => {
-							TSWClient.Actions.ensureViewingTeams(serverId)
-							SquadServerFrame.Actions.selectSquad(stores, playerId)
-						}}
-					>
-						{tr.text(SM_Msgs.selectSquad(playerInfo?.squadName ?? undefined))}
-						<ContextMenuShortcut>{SM_Msgs.shortcuts.squadCell.team}</ContextMenuShortcut>
-					</Item>
-				)}
+		return present([
+			scope === 'team' && inSquad && (
 				<Item
-					disabled={playerInfo?.role == null || teamMissing}
+					key="squad"
+					onClick={() => {
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerFrame.Actions.selectSquad(stores, playerId)
+					}}
+				>
+					{tr.text(SM_Msgs.selectSquad(playerInfo?.squadName ?? undefined))}
+					<ContextMenuShortcut>{SM_Msgs.shortcuts.squadCell.team}</ContextMenuShortcut>
+				</Item>
+			),
+			playerInfo?.role != null && (
+				<Item
+					key="role"
 					onClick={() => {
 						if (playerInfo?.role == null) return
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
 					}}
 				>
-					{tr.text(SM_Msgs.selectRole(playerInfo?.role ?? undefined))}
+					{tr.text(SM_Msgs.selectRole(playerInfo.role))}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.roleCell)}</ContextMenuShortcut>
 				</Item>
+			),
+			group != null && (
 				<Item
-					disabled={group == null || teamMissing}
+					key="group"
 					onClick={() => {
-						if (group == null) return
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectGroup(stores, group, teamId)
 					}}
 				>
-					{tr.text(SM_Msgs.selectGroup(group ?? undefined))}
+					{tr.text(SM_Msgs.selectGroup(group))}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.groupCell)}</ContextMenuShortcut>
 				</Item>
+			),
+			playerInfo?.isLeader && (
 				<Item
-					disabled={!playerInfo?.isLeader || teamMissing}
+					key="leaders"
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectAllSquadLeaders(stores, teamId)
@@ -717,8 +761,10 @@ function FramedPlayerMenuItems({
 				>
 					{tr.text(SM_Msgs.selectSquadLeaders())}
 				</Item>
+			),
+			playerInfo?.isAdmin && (
 				<Item
-					disabled={!playerInfo?.isAdmin || teamMissing}
+					key="admins"
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectAllAdmins(stores, teamId)
@@ -727,8 +773,10 @@ function FramedPlayerMenuItems({
 					{tr.text(SM_Msgs.selectAdmins())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.adminBadge)}</ContextMenuShortcut>
 				</Item>
+			),
+			playerInfo?.inAdminCam && (
 				<Item
-					disabled={!playerInfo?.inAdminCam || teamMissing}
+					key="admin-cam"
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectAllInAdminCam(stores, teamId)
@@ -737,8 +785,10 @@ function FramedPlayerMenuItems({
 					{tr.text(SM_Msgs.selectInAdminCam())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.cameraIcon)}</ContextMenuShortcut>
 				</Item>
+			),
+			isOnServer && (
 				<Item
-					disabled={!isOnServer || teamMissing}
+					key="all-players"
 					onClick={() => {
 						TSWClient.Actions.ensureViewingTeams(serverId)
 						SquadServerFrame.Actions.selectAllTeamPlayers(stores, teamId)
@@ -747,112 +797,161 @@ function FramedPlayerMenuItems({
 					{tr.text(SM_Msgs.selectAllPlayers())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.selectAllBox)}</ContextMenuShortcut>
 				</Item>
-				<Item
-					disabled={teamMissing}
-					onClick={() => {
-						TSWClient.Actions.ensureViewingTeams(serverId)
-						SquadServerFrame.Actions.invertSelection(stores, teamId)
-					}}
-				>
-					{tr.text(SM_Msgs.invert())}
-					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.invertBox)}</ContextMenuShortcut>
-				</Item>
-			</>
+			),
+			<Item
+				key="invert"
+				onClick={() => {
+					TSWClient.Actions.ensureViewingTeams(serverId)
+					SquadServerFrame.Actions.invertSelection(stores, teamId)
+				}}
+			>
+				{tr.text(SM_Msgs.invert())}
+				<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.invertBox)}</ContextMenuShortcut>
+			</Item>,
+		])
+	}
+
+	function selectSub(key: string, label: string, scope: 'team' | 'all') {
+		const items = selectItems(scope)
+		if (items.length === 0) return null
+		return (
+			<Sub key={key}>
+				<SubTrigger>{label}</SubTrigger>
+				<SubContent>{items}</SubContent>
+			</Sub>
 		)
 	}
 
-	return (
-		<>
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={() => TSWClient.Actions.swapNext(stores, [playerId])} disabled={!!manageDenied || !otherTeam || !canQueue}>
-					{tr.text(SM_Msgs.swapNextLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<Separator />
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={swapNow}
-					disabled={!!manageDenied || !otherTeam || !canSwapNow}
-				>
-					{tr.text(SM_Msgs.swapNowLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={kill}
-					disabled={!!manageDenied || !otherTeam || !canSwapNow}
-				>
-					{tr.text(SM_Msgs.killLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={kickDenied}>
-				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={kick}
-					disabled={!!kickDenied || !isOnServer}
-				>
-					{tr.text(SM_Msgs.kickLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={timeoutDenied}>
-				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
-					onClick={timeout}
-					disabled={!!timeoutDenied || !isOnServer}
-				>
-					{tr.text(SM_Msgs.timeoutLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<Separator />
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])} disabled={!!manageDenied || !existingSwap}>
-					{tr.text(SM_Msgs.deleteSwapLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<Separator />
-			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={warnPreset} />}
-			<PlayerFlagsMenuItem slots={slots} playerId={playerId} />
-			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
-				{tr.text(SM_Msgs.copyTeleportCommand())}
-			</Item>
-			<Separator />
-			<PlayerOpenLinksSub playerIds={[playerId]} slots={slots} stores={stores} />
-			<PlayerCopyIdsSub playerIds={[playerId]} slots={slots} stores={stores} />
-			<Separator />
-			<Sub>
-				<SubTrigger disabled={!isOnServer}>{tr.text(SM_Msgs.selectFromTeam())}</SubTrigger>
-				<SubContent>{selectItems('team')}</SubContent>
-			</Sub>
-			<Sub>
-				<SubTrigger disabled={!isOnServer}>{tr.text(SM_Msgs.selectAll())}</SubTrigger>
-				<SubContent>{selectItems('all')}</SubContent>
-			</Sub>
-			<Separator />
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={removeFromSquad} disabled={!!manageDenied || !inSquad}>
-					{tr.text(SM_Msgs.removeFromSquadLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={disbandSquad} disabled={!!manageDenied || !inSquad}>
-					{tr.text(SM_Msgs.disbandSquadLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={resetSquadName} disabled={!!manageDenied || !inSquad}>
-					{tr.text(SM_Msgs.resetSquadNameLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-			<Separator />
-			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item onClick={demoteCommander} disabled={!!manageDenied || !playerInfo?.isCommander}>
-					{tr.text(SM_Msgs.demoteCommanderLabel())}
-				</Item>
-			</PermissionDeniedTooltip>
-		</>
-	)
+	const sections: MenuSection[] = [
+		{
+			key: 'swap-next',
+			items: [
+				otherTeam && (
+					<PermissionDeniedTooltip key="swap-next" denied={manageDenied}>
+						<Item onClick={() => TSWClient.Actions.swapNext(stores, [playerId])} disabled={!!manageDenied || !canQueue}>
+							{tr.text(SM_Msgs.swapNextLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+			],
+		},
+		{
+			key: 'destructive',
+			items: [
+				otherTeam && (
+					<PermissionDeniedTooltip key="swap-now" denied={manageDenied}>
+						<Item className={DESTRUCTIVE_ITEM} onClick={swapNow} disabled={!!manageDenied || !canSwapNow}>
+							{tr.text(SM_Msgs.swapNowLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+				otherTeam && (
+					<PermissionDeniedTooltip key="kill" denied={manageDenied}>
+						<Item className={DESTRUCTIVE_ITEM} onClick={kill} disabled={!!manageDenied || !canSwapNow}>
+							{tr.text(SM_Msgs.killLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+				isOnServer && (
+					<PermissionDeniedTooltip key="kick" denied={kickDenied}>
+						<Item className={DESTRUCTIVE_ITEM} onClick={kick} disabled={!!kickDenied}>
+							{tr.text(SM_Msgs.kickLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+				isOnServer && (
+					<PermissionDeniedTooltip key="timeout" denied={timeoutDenied}>
+						<Item className={DESTRUCTIVE_ITEM} onClick={timeout} disabled={!!timeoutDenied}>
+							{tr.text(SM_Msgs.timeoutLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+			],
+		},
+		{
+			key: 'swaps',
+			items: [
+				existingSwap && (
+					<PermissionDeniedTooltip key="delete-swap" denied={manageDenied}>
+						<Item onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])} disabled={!!manageDenied}>
+							{tr.text(SM_Msgs.deleteSwapLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+			],
+		},
+		{
+			key: 'player',
+			items: [
+				!omitWarn && isOnServer && (
+					<WarnReasonsSub key="warn" slots={slots} denied={warnDenied} onCustom={warn} onPreset={warnPreset} />
+				),
+				isOnServer && (
+					<Item key="teleport" onClick={copyTeleportCommand}>
+						{tr.text(SM_Msgs.copyTeleportCommand())}
+					</Item>
+				),
+			],
+		},
+		{
+			// the flags item rides here rather than in a section of its own: it renders nothing where
+			// battlemetrics is off, which a section counting its entries cannot see, and this one always has the
+			// two id subs to keep it from emptying
+			key: 'identity',
+			items: [
+				<PlayerOpenLinksSub key="links" playerIds={[playerId]} slots={slots} stores={stores} />,
+				<PlayerCopyIdsSub key="ids" playerIds={[playerId]} slots={slots} stores={stores} />,
+				<PlayerFlagsMenuItem key="flags" slots={slots} playerId={playerId} />,
+			],
+		},
+		{
+			key: 'select',
+			items: [
+				isOnServer && selectSub('from-team', tr.text(SM_Msgs.selectFromTeam()), 'team'),
+				isOnServer && selectSub('all', tr.text(SM_Msgs.selectAll()), 'all'),
+			],
+		},
+		{
+			key: 'squad',
+			items: [
+				inSquad && (
+					<PermissionDeniedTooltip key="remove-from-squad" denied={manageDenied}>
+						<Item onClick={removeFromSquad} disabled={!!manageDenied}>
+							{tr.text(SM_Msgs.removeFromSquadLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+				inSquad && (
+					<PermissionDeniedTooltip key="disband-squad" denied={manageDenied}>
+						<Item onClick={disbandSquad} disabled={!!manageDenied}>
+							{tr.text(SM_Msgs.disbandSquadLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+				inSquad && (
+					<PermissionDeniedTooltip key="reset-squad-name" denied={manageDenied}>
+						<Item onClick={resetSquadName} disabled={!!manageDenied}>
+							{tr.text(SM_Msgs.resetSquadNameLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+			],
+		},
+		{
+			key: 'commander',
+			items: [
+				playerInfo?.isCommander && (
+					<PermissionDeniedTooltip key="demote-commander" denied={manageDenied}>
+						<Item onClick={demoteCommander} disabled={!!manageDenied}>
+							{tr.text(SM_Msgs.demoteCommanderLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
+				),
+			],
+		},
+	]
+
+	return <MenuSections sections={sections} Separator={Separator} />
 }
 
 export default function PlayerContextMenuOptions({ playerId, stores }: { playerId: SM.PlayerId; stores?: SquadServerFrame.KeyProp }) {
