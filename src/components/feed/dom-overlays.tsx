@@ -4,6 +4,7 @@ import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext } from '@/models/zindex'
 import { DraggableWindowOutletContext } from '@/systems/draggable-window.client'
 
+import LayerContextMenuOptions from '../layer-context-menu-options'
 import PlayerContextMenuOptions from '../player-context-menu-options'
 import SquadContextMenuOptions from '../squad-context-menu-options'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../ui/context-menu'
@@ -44,7 +45,12 @@ function MenuOverlay() {
 					<ContextMenuTrigger ref={anchor} aria-hidden style={ANCHOR_STYLE} />
 					<ContextMenuContent>
 						{menu?.target.kind === 'player' && <PlayerContextMenuOptions playerId={menu.target.playerId} stores={menu.stores} />}
-						{menu?.target.kind === 'squad' && <SquadContextMenuOptions squad={menu.target.squad} stores={menu.stores} />}
+						{menu?.target.kind === 'squad' && menu.stores && (
+							<SquadContextMenuOptions squad={menu.target.squad} stores={menu.stores} />
+						)}
+						{menu?.target.kind === 'layer' && (
+							<LayerContextMenuOptions layerIds={menu.target.layerIds} historyEntryIds={menu.target.historyEntryIds} />
+						)}
 					</ContextMenuContent>
 				</ContextMenu>
 			</DraggableWindowOutletContext.Provider>

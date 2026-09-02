@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import React from 'react'
 
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -13,6 +14,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
+import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
@@ -71,7 +73,7 @@ function bmSearchUrl(eos: string) {
 	return `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${eos}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
 }
 
-function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.KeyProp): PlayerLinkIds[] {
+function useFramedPlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.KeyProp): PlayerLinkIds[] {
 	return Zus.useStore(
 		stores.squadServer,
 		BattlemetricsClient.playerBmData$,
@@ -92,6 +94,24 @@ function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.Key
 	)
 }
 
+// The same facts off any server: what the db recorded about the player, plus their battlemetrics profile.
+// One player rather than a list, because the frameless menu only ever opens on a single row.
+function useFramelessPlayerLinkIds(playerId: SM.PlayerId): PlayerLinkIds[] {
+	const { data: info } = useQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId } }))
+	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	return React.useMemo(() => {
+		const known = info?.code === 'ok' ? info : undefined
+		return [
+			{
+				eos: playerId,
+				username: known?.username ?? undefined,
+				steam: known?.steamId ?? bmData?.playerIds.steam,
+				bmProfileUrl: bmData?.profileUrl,
+			},
+		]
+	}, [playerId, info, bmData])
+}
+
 // appends "(n/total)" when only some of the selected players have the id backing an entry
 function partialCountSuffix(count: number, total: number) {
 	return total > 1 && count < total ? ` (${count}/${total})` : ''
@@ -106,8 +126,17 @@ export function PlayerOpenLinksSub({
 	slots: MenuSlots
 	stores: SquadServerFrame.KeyProp
 }) {
+	const players = useFramedPlayerLinkIds(playerIds, stores)
+	return <OpenLinksSubView players={players} slots={slots} />
+}
+
+function FramelessOpenLinksSub({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
+	const players = useFramelessPlayerLinkIds(playerId)
+	return <OpenLinksSubView players={players} slots={slots} />
+}
+
+function OpenLinksSubView({ players, slots }: { players: PlayerLinkIds[]; slots: MenuSlots }) {
 	const { Item, Sub, SubTrigger, SubContent } = slots
-	const players = usePlayerLinkIds(playerIds, stores)
 	const openAll = (urls: string[]) => {
 		for (const url of urls) window.open(url, '_blank', 'noopener,noreferrer')
 	}
@@ -143,8 +172,17 @@ export function PlayerCopyIdsSub({
 	slots: MenuSlots
 	stores: SquadServerFrame.KeyProp
 }) {
+	const players = useFramedPlayerLinkIds(playerIds, stores)
+	return <CopyIdsSubView players={players} slots={slots} />
+}
+
+function FramelessCopyIdsSub({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
+	const players = useFramelessPlayerLinkIds(playerId)
+	return <CopyIdsSubView players={players} slots={slots} />
+}
+
+function CopyIdsSubView({ players, slots }: { players: PlayerLinkIds[]; slots: MenuSlots }) {
 	const { Item, Sub, SubTrigger, SubContent } = slots
-	const players = usePlayerLinkIds(playerIds, stores)
 	const pickAll = (pick: (p: PlayerLinkIds) => string | undefined) => players.map(pick).filter((v): v is string => v != null)
 	const ids: { label: string; values: string[] }[] = [
 		{ label: SM_Msgs.idNames.username, values: pickAll((p) => p.username) },
@@ -163,7 +201,7 @@ export function PlayerCopyIdsSub({
 				{ids.map(({ label, values }) => (
 					<Item key={label} disabled={values.length === 0} onClick={() => copyAll(label, values)}>
 						{label}
-						{playerIds.length > 1 ? 's' : ''}
+						{players.length > 1 ? 's' : ''}
 						{partialCountSuffix(values.length, players.length)}
 					</Item>
 				))}
@@ -223,7 +261,33 @@ export function TimeoutDialogContent({
 	)
 }
 
-export function PlayerMenuItems({
+export function PlayerMenuItems(props: {
+	playerId: SM.PlayerId
+	slots: MenuSlots
+	// absent where the menu was opened somewhere no server frame reaches: a history results row, whose
+	// players span servers and matches. See FramelessPlayerMenuItems for what survives that.
+	stores?: SquadServerFrame.KeyProp
+	// hidden inside the player details window, which has its own warn box at the bottom
+	omitWarn?: boolean
+}) {
+	if (!props.stores) return <FramelessPlayerMenuItems playerId={props.playerId} slots={props.slots} />
+	return <FramedPlayerMenuItems {...props} stores={props.stores} />
+}
+
+// Off a server there is no roster to select against, no rcon to act through and no server to scope a
+// permission to, so every action the framed menu leads with is meaningless. What is left is who the player
+// is, which is the same everywhere.
+function FramelessPlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; slots: MenuSlots }) {
+	return (
+		<>
+			<FramelessOpenLinksSub playerId={playerId} slots={slots} />
+			<FramelessCopyIdsSub playerId={playerId} slots={slots} />
+			<PlayerFlagsMenuItem slots={slots} playerId={playerId} />
+		</>
+	)
+}
+
+function FramedPlayerMenuItems({
 	playerId,
 	slots,
 	stores,
@@ -232,7 +296,6 @@ export function PlayerMenuItems({
 	playerId: SM.PlayerId
 	slots: MenuSlots
 	stores: SquadServerFrame.KeyProp
-	// hidden inside the player details window, which has its own warn box at the bottom
 	omitWarn?: boolean
 }) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
@@ -792,6 +855,6 @@ export function PlayerMenuItems({
 	)
 }
 
-export default function PlayerContextMenuOptions({ playerId, stores }: { playerId: SM.PlayerId; stores: SquadServerFrame.KeyProp }) {
+export default function PlayerContextMenuOptions({ playerId, stores }: { playerId: SM.PlayerId; stores?: SquadServerFrame.KeyProp }) {
 	return <PlayerMenuItems playerId={playerId} slots={contextMenuSlots} stores={stores} />
 }

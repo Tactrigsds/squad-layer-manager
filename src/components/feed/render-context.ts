@@ -94,6 +94,9 @@ export function newScopeId() {
 export type MenuTarget =
 	| { kind: 'player'; playerId: SM.PlayerId }
 	| { kind: 'squad'; squad: Pick<SM.Squad, 'squadId' | 'squadName' | 'teamId'> & { uniqueId?: number } }
+	// the layer a row is about, and the match it was played in where the row has one. Acts on neither a
+	// server nor a roster, so it is the one target that opens with no frame at all.
+	| { kind: 'layer'; layerIds: string[]; historyEntryIds?: number[] }
 
 export type WindowTarget = {
 	windowId: string
