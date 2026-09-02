@@ -1,5 +1,4 @@
 import * as Im from 'immer'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
@@ -10,6 +9,7 @@ import * as ODSM from '@/lib/odsm'
 import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import type { DistributiveOmit } from '@/lib/types'
+import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'

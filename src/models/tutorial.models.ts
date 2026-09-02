@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 
 // Mirrors sandbox.models.ts: schemas and metas only, so this stays importable from the client.
 // The executor (setup and stages) is src/systems/tutorials.server.ts.

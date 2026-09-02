@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import * as z from 'zod'
+
+import * as z from '@/lib/zod'
 
 import * as FB from './filter-builders'
 import * as FR from './filter-references.models'

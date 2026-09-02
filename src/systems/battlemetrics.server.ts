@@ -1,10 +1,10 @@
 import * as Otel from '@opentelemetry/api'
-import { z } from 'zod'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
+import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'

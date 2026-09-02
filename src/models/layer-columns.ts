@@ -1,10 +1,10 @@
 import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import type * as SLL from '@/models/squad-layer-list.models'
 import * as VEH from '@/models/vehicles.models'

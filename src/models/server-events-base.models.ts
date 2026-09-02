@@ -1,5 +1,4 @@
-import { z } from 'zod'
-
+import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as SM from '@/models/squad.models'
 

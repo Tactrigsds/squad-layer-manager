@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { createId } from '@/lib/id'
+import { z } from '@/lib/zod'
 import * as USR from '@/models/users.models'
 
 // Freeform notes on a layer item. A note belongs to whoever wrote it: nobody else can reword or drop it without

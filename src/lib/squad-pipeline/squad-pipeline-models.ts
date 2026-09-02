@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod.ts'
 
 // Enum definitions
 export const GameModeSchema = z.enum([

@@ -1,5 +1,4 @@
-import { z } from 'zod'
-
+import { z } from '@/lib/zod'
 import type * as SM from '@/models/squad.models'
 
 // The scenario verbs a sandbox server understands, defined once for all three front ends: the repl inside

@@ -1,11 +1,11 @@
 import * as E from 'drizzle-orm'
 import { unionAll } from 'drizzle-orm/sqlite-core'
-import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { objKeys } from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SETTINGS from '@/models/settings.models'

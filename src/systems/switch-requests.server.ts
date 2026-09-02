@@ -4,12 +4,12 @@
 // mid-match keeps it; it resets on every roll.
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'

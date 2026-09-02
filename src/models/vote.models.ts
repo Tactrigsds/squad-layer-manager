@@ -1,11 +1,11 @@
 import type { MutexInterface } from 'async-mutex'
-import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
+import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'

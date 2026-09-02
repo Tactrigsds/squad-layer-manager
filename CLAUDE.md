@@ -41,12 +41,13 @@ namespace must be consistent and unique across the app, except for special cases
 context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules and
 packages. The lib vocabulary is in docs/architecture.md under "Namespace imports everywhere".
 
-Never import rxjs, zustand or react-rxjs directly. Each is reached through its wrapper in `src/lib` (`Rx`, `Zus`,
-`ReactRx`), which re-exports the package alongside our own additions. Import other packages directly, since a
-wrapper that adds nothing is just indirection.
+Never import rxjs, zustand, react-rxjs or zod directly. Each is reached through its wrapper in `src/lib` (`Rx`,
+`Zus`, `ReactRx`, `@/lib/zod`), which re-exports the package alongside our own additions. Import other packages
+directly, since a wrapper that adds nothing is just indirection.
 
-Plugins under `plugins/` are the exception for rxjs: they import it directly, because `slm/lib/rxjs-ext` carries
-only our additions and rxjs is not part of the slm API contract.
+Plugins under `plugins/` are the exception for rxjs, because `slm/lib/rxjs-ext` carries only our additions and
+rxjs is not part of the slm API contract, and for zod, whose bare specifier is part of that contract and resolves
+to the app's own instance through the importmap in index.html.
 
 # Comments
 

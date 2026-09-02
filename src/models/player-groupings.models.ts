@@ -1,6 +1,5 @@
-import { z } from 'zod'
-
 import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import type * as BM from '@/models/battlemetrics.models'
 import type * as SM from '@/models/squad.models'
 

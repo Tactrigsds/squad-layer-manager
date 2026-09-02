@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from './zod.ts'
 
 export const PercentageSchema = z.number().min(0).max(100).meta({ description: 'A percentage value between 0 and 100' })
 
