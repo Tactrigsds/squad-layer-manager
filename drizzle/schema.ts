@@ -217,6 +217,10 @@ export const playerEventIndex = sqliteTable(
 		// 'normal' | 'suicide' | 'teamkill'. Three values, so not worth interning, and a dashboard filtering on
 		// `variant = 'teamkill'` should not have to join to find out what a number means.
 		variant: text('variant'),
+		// Which chat a CHAT_MESSAGE went to, null on every other type. Inline text for the same reason as
+		// variant, and last on purpose: sqlite trims a record at its final non-null column, so a column only
+		// chat rows fill costs nothing on the combat rows this table is mostly made of.
+		channel: text('channel'),
 	},
 	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
 	// narrows to one contiguous range and a match filter is applied within it. On a WITHOUT ROWID table a

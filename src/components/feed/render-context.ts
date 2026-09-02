@@ -64,6 +64,22 @@ export function usingFullTimestamps(): boolean {
 	return fullTimestamps
 }
 
+// The match a row belongs to, drawn beside its time where a feed's rows span several of them. Ambient for
+// the same reason the timestamp format is: every row draws its time through one atom, and reaching that atom
+// with a per-row field means threading it through all 86 EventLine call sites. Only ever set around a
+// synchronous render of one row (see renderEventRows).
+let rowMatchId: number | undefined
+
+export function setRowMatchId(matchId: number | undefined): number | undefined {
+	const previous = rowMatchId
+	rowMatchId = matchId
+	return previous
+}
+
+export function currentRowMatchId(): number | undefined {
+	return rowMatchId
+}
+
 const scopes = new Map<string, RenderCtx>()
 
 export function register(ctx: RenderCtx) {
