@@ -363,11 +363,42 @@ test.describe('history page', () => {
 		const row = table.getByRole('row').filter({ hasText: HISTORY_TALKER })
 		await expect(row).toBeVisible({ timeout: 30_000 })
 
-		await row.click()
+		// the count cell, not the row: the player's name is its own target and opens their details instead
+		await row.getByRole('cell').last().click()
 		// the panel is the row's sibling, revealed and filled once the events come back
 		const panel = table.locator('tr[data-dom-row-events-panel]:not([hidden])')
 		await expect(panel).toBeVisible({ timeout: 20_000 })
 		await expect(panel.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 20_000 })
+	})
+
+	// A results row carries the disclosure on the whole <tr>, so anything interactive inside one was reached
+	// second and never at all: a layer name only ever expanded the row it sat in.
+	test('a layer name in a match row opens the layer rather than the row', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=matches'))
+		const table = page.getByRole('table', { name: 'Match results' })
+		await expect(table).toBeVisible({ timeout: 30_000 })
+
+		const opener = table.locator('button[data-dom-window="layer-info"]').first()
+		await expect(opener).toBeVisible({ timeout: 30_000 })
+		await opener.click()
+
+		// the layer window is the only thing on this page that draws one
+		await expect(page.getByRole('button', { name: 'Close window' })).toBeVisible({ timeout: 20_000 })
+		await expect(table.locator('tr[data-dom-row-events-panel]:not([hidden])')).toHaveCount(0)
+	})
+
+	test('clear all empties every field the rail is holding', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&servers=%5B%22${app.serverId}%22%5D`))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+
+		const clear = page.getByRole('button', { name: 'Clear All', exact: true })
+		await expect(clear).toBeEnabled()
+		await clear.click()
+		await expect(clear).toBeDisabled()
+
+		// the draft is cleared, not the executed query: running is what takes it to the url
+		await page.getByRole('button', { name: 'Run', exact: true }).click()
+		await expect(page).not.toHaveURL(new RegExp(HISTORY_NEEDLE))
 	})
 
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save

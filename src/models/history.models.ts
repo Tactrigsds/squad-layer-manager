@@ -332,6 +332,12 @@ export type Query = z.infer<typeof QuerySchema>
 
 export const DEFAULT_QUERY: Query = QuerySchema.parse({})
 
+// The one server every result can only have come from, where the query names exactly one. What lets a row
+// with no match of its own still offer the interactions that act on a server.
+export function soleServerId(query: Query): string | undefined {
+	return query.servers?.length === 1 ? query.servers[0] : undefined
+}
+
 // -------- normalization --------
 
 function comp(column: ColumnKey, values: (string | number)[]): F.CompNode {

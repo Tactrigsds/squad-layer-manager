@@ -360,7 +360,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 		},
 		[query, displayTeamsNormalized],
 	)
-	return useHistoryRenderCtx(matches, null, loadRowEvents)
+	return useHistoryRenderCtx(matches, { loadRowEvents, serverId: HQ.soleServerId(query) })
 }
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'
