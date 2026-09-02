@@ -188,7 +188,7 @@ async function persist(ctx: PassCtx) {
 		: {
 				requests: state.requests,
 				disconnected: [...state.disconnectedThisMatch],
-				matchHistoryEntryId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				matchHistoryEntryId: (await MatchHistory.requireCurrentMatch(ctx)).historyEntryId,
 			}
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		await SquadServer.updateServerState(ctx, { switchRequests: saved }, { type: 'system', event: 'switch-requests-saved' })
@@ -277,7 +277,7 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 			type: 'SWITCH_REQUESTS_FULFILLED',
 			actor: opts?.actor ?? { type: 'system' },
 			serverId: ctx.serverId,
-			matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+			matchId: (await MatchHistory.requireCurrentMatch(ctx)).historyEntryId,
 			causeId: null,
 			targets: planned.fulfilled,
 			movedConnector,
@@ -436,7 +436,7 @@ export const switchNow = Instr.spanOp(
 			type: 'SWITCH_REQUESTS_FULFILLED',
 			actor,
 			serverId: ctx.serverId,
-			matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+			matchId: (await MatchHistory.requireCurrentMatch(ctx)).historyEntryId,
 			causeId: null,
 			targets: [playerId],
 		})

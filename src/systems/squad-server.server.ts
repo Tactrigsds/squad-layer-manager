@@ -184,7 +184,7 @@ export const orpcRouter = {
 					return {
 						code: 'ok',
 						data: {
-							currentLayer: L.toLayer(currentMatch.layerId),
+							currentLayer: currentMatch ? L.toLayer(currentMatch.layerId) : null,
 							nextLayer: statusRes.code === 'ok' ? statusRes.data.nextLayer : null,
 							currentMatch,
 						},
@@ -246,7 +246,6 @@ export const orpcRouter = {
 					const sync: CHAT.SyncedEvent = {
 						type: 'SYNCED' as const,
 						time: Date.now(),
-						matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
 					}
 
 					let allEvents: SE.Event[] = ctx.server.emittedEvents
@@ -317,7 +316,7 @@ export const orpcRouter = {
 				type: 'FOG_OF_WAR_TOGGLED',
 				actor: { type: 'slm-user', userId: ctx.user.discordId },
 				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 				causeId: null,
 				enabled: !input.disabled,
 			}),
@@ -339,7 +338,7 @@ export const orpcRouter = {
 		const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx)
 		if (serverInfoRes.code !== 'ok') return serverInfoRes
 		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-		const browserRes = await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name, currentMatch.historyEntryId)
+		const browserRes = await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name, currentMatch?.historyEntryId ?? null)
 		if (browserRes.code === 'ok') return browserRes
 
 		const steamRes = await getSteamJoinLink(ctx)
@@ -395,7 +394,10 @@ export const orpcRouter = {
 			let adminNotifyDescription: string | undefined
 			if (input.taggedSquad) {
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-				const squadLabel = SM.squadAdminLabel(input.taggedSquad, MH.getTeamFaction(currentMatch, input.taggedSquad.teamId))
+				const squadLabel = SM.squadAdminLabel(
+					input.taggedSquad,
+					currentMatch && MH.getTeamFaction(currentMatch, input.taggedSquad.teamId),
+				)
 				adminNotifyDescription = `warned ${squadLabel}: ${tagged}`
 			}
 			await warnPlayers(
@@ -1026,8 +1028,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				Instr.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
 					const ctx = resolveCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 					const time = Date.now()
-					let layerStatus: SM.LayersStatusResExt | undefined
-					let layersData: SM.LayersStatusExt | undefined
+					let layerStatus: SM.LayerStatusRes | undefined
+					let layersData: SM.LayersStatus | undefined
 					if (connected) {
 						Users.invalidatePendingSteamLinkCodes()
 						layerStatus = await ctx.squadRcon.layersStatus.get({ ...ctx, rcon })
@@ -1272,7 +1274,7 @@ export async function kickPlayersAction(
 		type: 'PLAYER_KICKED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		targets,
 		reason,
@@ -1337,7 +1339,7 @@ export async function endMatchAction(
 		type: 'MATCH_ENDED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+		matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 		causeId: null,
 	})
 	await emitAppEvent(ctx, matchEnded)
@@ -1374,7 +1376,7 @@ export async function warnPlayers(
 		type: 'PLAYER_WARNED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		message: reason,
 		targets,
@@ -1457,7 +1459,7 @@ export async function disbandSquadAction(
 		type: 'SQUAD_DISBANDED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		teamId,
 		squadId,
@@ -1480,7 +1482,7 @@ export async function disbandSquadAction(
 		)
 	}
 	// name the squad + faction consistently with squad warns (e.g. "disbanded Squad1 (PLA)")
-	const squadLabel = squad ? SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, teamId)) : `Squad${squadId}`
+	const squadLabel = squad ? SM.squadAdminLabel(squad, currentMatch && MH.getTeamFaction(currentMatch, teamId)) : `Squad${squadId}`
 	await notifyAdminsOfWebAction(ctx, appEvent, `disbanded ${squadLabel}${reason?.label ? ` for ${reason.label}` : ''}`)
 }
 
@@ -1497,7 +1499,7 @@ export async function removePlayersFromSquad(
 		type: 'PLAYER_REMOVED_FROM_SQUAD',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		targets,
 		reason,
@@ -1530,7 +1532,7 @@ export async function forceTeamChangeAppEvent(
 		type: 'TEAM_CHANGE_FORCED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		targets,
 	})
@@ -1572,7 +1574,7 @@ export async function killPlayersAppEvent(
 		type: 'PLAYER_KILLED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		targets,
 		reason,
@@ -1614,7 +1616,7 @@ export async function renameSquadAction(
 		type: 'SQUAD_RENAMED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		teamId,
 		squadId,
@@ -1640,7 +1642,7 @@ export async function demoteCommanderAction(
 		type: 'COMMANDER_DEMOTED',
 		actor,
 		serverId: ctx.serverId,
-		matchId: currentMatch.historyEntryId,
+		matchId: currentMatch?.historyEntryId ?? null,
 		causeId: null,
 		target: playerId,
 		reason,

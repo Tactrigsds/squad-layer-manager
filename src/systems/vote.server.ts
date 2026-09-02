@@ -173,11 +173,11 @@ export const syncVoteStateWithQueueState = Instr.spanOp(
 			!nextUpItem.endingVoteState &&
 			nextUpItem &&
 			ctx.vote.state?.itemId !== nextUpItem.itemId &&
-			currentMatch.status !== 'post-game' &&
-			(!currentMatch.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
+			currentMatch?.status !== 'post-game' &&
+			(!currentMatch?.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
 		) {
 			let autostartTime: Date | undefined
-			if (currentMatch.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
+			if (currentMatch?.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
 				const startTime = dateFns.addMilliseconds(currentMatch.startTime, ctx.serverSettings.settings.vote.autoStartVoteDelay)
 				if (dateFns.isFuture(startTime)) autostartTime = startTime
 				else autostartTime = dateFns.addMinutes(new Date(), 5)
@@ -240,7 +240,7 @@ export const startVote = Instr.spanOp(
 			return statusRes
 		}
 		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-		if (currentMatch.status === 'post-game') {
+		if (currentMatch?.status === 'post-game') {
 			return { code: 'err:vote-not-allowed' as const, msg: ctx.tr.text(V_Msgs.start.noVoteInPostGame()) }
 		}
 
@@ -320,7 +320,7 @@ export const startVote = Instr.spanOp(
 				type: 'VOTE_STARTED',
 				actor: SquadServer.actorFromUser(ctx, opts.initiator),
 				serverId: ctx.serverId,
-				matchId: currentMatch.historyEntryId,
+				matchId: currentMatch?.historyEntryId ?? null,
 				causeId: null,
 				choiceCount: item.choices.length,
 				choices: item.choices.map((choice) => choice.layerId),
@@ -448,7 +448,7 @@ export const abortVote = Instr.spanOp(
 				type: 'VOTE_ABORTED',
 				actor: SquadServer.actorFromUser(ctx, opts.aborter),
 				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 				causeId: null,
 			}),
 		)
@@ -655,7 +655,7 @@ export const endVote = Instr.spanOp(
 				type: 'VOTE_ENDED',
 				actor: SquadServer.actorFromUser(ctx, opts.reason === 'ended-early' ? opts.endedBy : undefined),
 				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 				causeId: null,
 				reason: opts.reason,
 				winnerLayerId: endingVoteState.code === 'ended:winner' ? listItem.layerId : null,

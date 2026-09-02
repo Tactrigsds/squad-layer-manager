@@ -525,7 +525,7 @@ const dispatchOp = Instr.spanOp(
 							// common path no target is team-less here. As a safety net for other dispatch paths (e.g. a manual
 							// swap issued mid-staging), skip a team-less target rather than throwing: we can't faithfully
 							// place a player who has no team yet, and a later poll's PLAYER_CHANGED_TEAM will reconcile them.
-							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+							const currentMatch = await MatchHistory.requireCurrentMatch(ctx)
 							const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
 							log.info('players: %o', teamsRes.players)
@@ -647,7 +647,7 @@ const dispatchOp = Instr.spanOp(
 					}
 
 					case 'save': {
-						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+						const currentMatch = await MatchHistory.requireCurrentMatch(ctx)
 						const saved = se.swaps.size > 0 ? { swaps: se.swaps, matchHistoryEntryId: currentMatch.historyEntryId } : null
 						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 							await SquadServer.updateServerState(ctx, { teamswaps: saved }, { type: 'system', event: 'teamswaps-saved' })
