@@ -1,3 +1,6 @@
+// zod JIT: only schemas constructed after this import are compiled, so keep it at the top.
+import 'zod/compile'
+
 import DatabaseConstructor from 'better-sqlite3'
 import * as E from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
