@@ -27,13 +27,65 @@ import * as RBAC from '@/rbac.models'
 // which discord entities it's assigned to. Consolidating per-role (rather than five parallel role-keyed maps) makes the
 // "a role must be defined to be referenced" invariant structural, so the schema no longer has to police it.
 // dotted path into a settings document, e.g. "vote.voteDuration" or just "vote" for the whole section
-const SettingsGrantPathSchema = z
-	.string()
-	.trim()
-	.min(1)
-	.regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
-		error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
-	})
+const DOTTED_SETTINGS_PATH = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/
+const SettingsGrantPathSchema = z.string().trim().min(1).regex(DOTTED_SETTINGS_PATH, {
+	error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
+})
+
+// ============================== comments ==============================
+
+// Freeform prose on any setting, keyed by its dotted path (a leaf, or a section for the whole subtree). Lives inside
+// the settings document, so a comment is staged, diffed, saved and audited exactly like the value it annotates. The
+// GUI shows it under the field's name; the YAML editor renders it as `#` lines above the key and reads it back from
+// there. Absent rather than empty when there are none, so a document without comments has no `comments` key at all.
+export const COMMENTS_KEY = 'comments'
+export const SETTING_COMMENT_MAX_LENGTH = 1200
+export const SettingCommentSchema = z.string().trim().min(1).max(SETTING_COMMENT_MAX_LENGTH)
+export const SettingsCommentsSchema = z.record(z.string().regex(DOTTED_SETTINGS_PATH), SettingCommentSchema)
+export type SettingsComments = z.infer<typeof SettingsCommentsSchema>
+
+type Commentable = { [COMMENTS_KEY]?: SettingsComments }
+
+// copy-on-write. A cleared comment leaves no key behind, and an emptied map no `comments` key.
+export function withSettingComment<T extends Commentable>(settings: T, path: string, comment: string | null): T {
+	const trimmed = comment?.trim() || null
+	const prev = settings.comments ?? {}
+	if ((prev[path] ?? null) === trimmed) return settings
+	const next = { ...prev }
+	if (trimmed === null) delete next[path]
+	else next[path] = trimmed
+	return withComments(settings, next)
+}
+
+function withComments<T extends Commentable>(settings: T, comments: SettingsComments): T {
+	if (Object.keys(comments).length === 0) return Obj.exclude(settings, [COMMENTS_KEY]) as T
+	return { ...settings, comments }
+}
+
+// The comments strictly below `path`, re-keyed relative to it: what a YAML editor over that subtree renders. The
+// subtree's own comment stays out, since the editor's document root has no key to hang it on.
+export function subtreeComments(comments: SettingsComments | undefined, path: string): SettingsComments {
+	const out: SettingsComments = {}
+	for (const [p, text] of Object.entries(comments ?? {})) {
+		if (p.startsWith(path + '.')) out[p.slice(path.length + 1)] = text
+	}
+	return out
+}
+
+export function withSubtreeComments<T extends Commentable>(settings: T, path: string, relative: SettingsComments): T {
+	const next: SettingsComments = {}
+	for (const [p, text] of Object.entries(settings.comments ?? {})) {
+		if (!p.startsWith(path + '.')) next[p] = text
+	}
+	for (const [p, text] of Object.entries(relative)) next[`${path}.${p}`] = text
+	if (Obj.deepEqual(next, settings.comments ?? {})) return settings
+	return withComments(settings, next)
+}
+
+// a comment is authorized like the setting it annotates, so a change under `comments.` is checked at that path
+export function settingPathForChange(path: string): string {
+	return path.startsWith(COMMENTS_KEY + '.') ? path.slice(COMMENTS_KEY.length + 1) : path
+}
 
 // discord ids are kept as strings here (ParsableBigInt) so they round-trip cleanly through the JSON settings editor /
 // settings GUI; rbac.server converts them to bigint at the boundary
@@ -197,12 +249,13 @@ export const RbacSettingsSchema = z
 	.prefault(() => defaultRbacSettings())
 
 // hoisted so the RbacSettingsSchema refine above can call them at parse time (the schemas are declared further down)
+// comments are excluded from both: they're annotations on the grantable settings, authorized through those
 export function globalSettingsTopLevelKeys(): string[] {
-	return Object.keys(GlobalSettingsSchema.shape)
+	return Object.keys(GlobalSettingsSchema.shape).filter((k) => k !== COMMENTS_KEY)
 }
 // connections are deliberately excluded: they're only reachable via server-settings:write-sensitive, never a path grant
 export function serverSettingsGrantableTopLevelKeys(): string[] {
-	return Object.keys(ServerSettingsSchema.shape).filter((k) => k !== 'connections')
+	return Object.keys(ServerSettingsSchema.shape).filter((k) => k !== 'connections' && k !== COMMENTS_KEY)
 }
 
 export type RbacSettings = z.infer<typeof RbacSettingsSchema>
@@ -427,6 +480,7 @@ export const GlobalSettingsSchema = z
 			"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick " +
 				'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
 		),
+		comments: SettingsCommentsSchema.optional(),
 	})
 	.superRefine((val, ctx) => {
 		const allowedPrefixes = val.allowedPrefixes ?? [{ prefix: CMD.DEFAULT_PREFIX, replyToUnknown: true }]
@@ -1001,6 +1055,7 @@ export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 			'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and ' +
 			"handles both, so the RCON password lives in the agent's config rather than here.",
 	),
+	comments: SettingsCommentsSchema.optional(),
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
@@ -1199,7 +1254,7 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 }
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
-	return Obj.exclude(settings, ['connections'])
+	return Obj.exclude(settings, ['connections', COMMENTS_KEY])
 }
 
 export function dottedSettingsPath(path: string | (string | number)[]): string {
@@ -1215,7 +1270,7 @@ export namespace Grants {
 	}
 
 	export function writeGlobalSettingsPaths(paths: (SettingsPath | string)[]) {
-		const dottedPaths = paths.map(dottedSettingsPath)
+		const dottedPaths = paths.map(dottedSettingsPath).map(settingPathForChange)
 		return RBAC.permReq('all', [
 			(perms) => {
 				const access = RBAC.globalSettingsWriteAccess(perms)
@@ -1227,7 +1282,7 @@ export namespace Grants {
 	}
 
 	export function writeServerSettingsPaths(serverId: string, paths: (SettingsPath | string)[]) {
-		const dottedPaths = paths.map(dottedSettingsPath)
+		const dottedPaths = paths.map(dottedSettingsPath).map(settingPathForChange)
 		const isSensitive = (p: string) => p === 'connections' || p.startsWith('connections.')
 		const nonSensitivePaths = dottedPaths.filter((p) => !isSensitive(p))
 		const hasSensitivePaths = dottedPaths.some(isSensitive)

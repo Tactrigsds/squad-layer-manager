@@ -834,6 +834,7 @@ function ServerSettingsSection({
 							<SchemaYamlEditor
 								ref={editorRef}
 								schema={schema}
+								commentsKey={SETTINGS.COMMENTS_KEY}
 								value={draft}
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
@@ -948,6 +949,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							<SchemaYamlEditor
 								ref={editorRef}
 								schema={SETTINGS.ServerSettingsSchema}
+								commentsKey={SETTINGS.COMMENTS_KEY}
 								value={draft}
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
@@ -1069,6 +1071,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							<SchemaYamlEditor
 								ref={editorRef}
 								schema={SETTINGS.GlobalSettingsSchema}
+								commentsKey={SETTINGS.COMMENTS_KEY}
 								value={draft}
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}

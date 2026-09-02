@@ -7,10 +7,10 @@
 // would just repeat the name.
 export type SettingsGroup = { slug: string; label: string; keys: string[]; passthrough?: true }
 
-// top-level global-settings keys that render no field of their own in the GUI (they're managed inline by a sibling
-// editor), so neither the form nor the TOC should emit a row/anchor for them. `defaultPrefix` is chosen via the
-// "default" markers in the allowedPrefixes editor.
-export const HIDDEN_GLOBAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix'])
+// top-level keys that render no field of their own in the GUI, so neither the form nor the TOC emits a row/anchor for
+// them. `defaultPrefix` is chosen via the "default" markers in the allowedPrefixes editor; `comments` (SETTINGS.COMMENTS_KEY)
+// is shown under each setting it annotates. Applies to every settings form.
+export const HIDDEN_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix', 'comments'])
 
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
