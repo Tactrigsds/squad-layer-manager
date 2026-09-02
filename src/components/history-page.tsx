@@ -291,14 +291,11 @@ function Results(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 	}
 }
 
-function ResultNotices(props: { res: QueryRes | undefined }) {
+function ResultNotices(props: { res: QueryRes | undefined; error?: unknown }) {
 	const res = props.res
-	if (!res) return null
-	if (res.code !== 'ok') {
-		const message = 'message' in res && typeof res.message === 'string' ? `${res.code}: ${res.message}` : res.code
-		return <div className="text-xs text-destructive">{tr.text(HistoryMsgs.queryFailed(message))}</div>
-	}
-	if (res.unrecognisedLayerMatches > 0) {
+	const failure = HistoryClient.queryFailure(res, props.error)
+	if (failure) return <div className="text-xs text-destructive">{tr.text(HistoryMsgs.queryFailed(failure))}</div>
+	if (res?.code === 'ok' && res.unrecognisedLayerMatches > 0) {
 		return <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.unrecognisedLayers(res.unrecognisedLayerMatches))}</div>
 	}
 	return null
@@ -309,7 +306,13 @@ function usePagedQuery(query: HQ.Query) {
 	const [page, setPageState] = React.useState<{ key: string; page: number }>({ key, page: 0 })
 	if (page.key !== key) setPageState({ key, page: 0 })
 	const res = useQuery(HistoryClient.queryPageBase({ query, page: page.page }))
-	return { res: res.data, loading: res.isPending, page: page.page, setPage: (next: number) => setPageState({ key, page: next }) }
+	return {
+		res: res.data,
+		error: res.error,
+		loading: res.isPending,
+		page: page.page,
+		setPage: (next: number) => setPageState({ key, page: next }),
+	}
 }
 
 function Pager(props: { page: number; pageSize: number; total: number | undefined; setPage: (page: number) => void }) {
@@ -416,7 +419,7 @@ function ResultsLoading() {
 }
 
 function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
-	const { res, loading, page, setPage } = usePagedQuery(props.query)
+	const { res, error, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'players')
 	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
 	// the rows they open still name their match, which is all the feed row needs
@@ -435,7 +438,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 
 	return (
 		<div className="flex min-h-0 flex-col gap-1">
-			<ResultNotices res={res} />
+			<ResultNotices res={res} error={error} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>
@@ -468,7 +471,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 const EMPTY_MATCHES: MH.MatchDetails[] = []
 
 function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
-	const { res, loading, page, setPage } = usePagedQuery(props.query)
+	const { res, error, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'matches')
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
@@ -479,7 +482,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 
 	return (
 		<div className="flex min-h-0 flex-col gap-1">
-			<ResultNotices res={res} />
+			<ResultNotices res={res} error={error} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>

@@ -50,7 +50,7 @@ export default function HistoryEvents(props: {
 	const matches = React.useMemo(() => okPages.flatMap((page) => page.matches), [okPages])
 	const nextCursor = okPages.at(-1)?.nextCursor
 	const total = okPages[0]?.total
-	const failure = first.data && first.data.code !== 'ok' ? first.data : undefined
+	const failure = HistoryClient.queryFailure(first.data, first.error)
 
 	const [loadingMore, setLoadingMore] = React.useState(false)
 	const loadMore = async () => {
@@ -68,15 +68,7 @@ export default function HistoryEvents(props: {
 
 	return (
 		<div className={props.className ?? 'flex min-h-0 flex-col gap-1'}>
-			{failure && (
-				<div className="text-xs text-destructive">
-					{tr.text(
-						HistoryMsgs.queryFailed(
-							'message' in failure && typeof failure.message === 'string' ? `${failure.code}: ${failure.message}` : failure.code,
-						),
-					)}
-				</div>
-			)}
+			{failure && <div className="text-xs text-destructive">{tr.text(HistoryMsgs.queryFailed(failure))}</div>}
 			{first.data?.code === 'ok' && first.data.unrecognisedLayerMatches > 0 && (
 				<div className="text-xs text-muted-foreground">
 					{tr.text(HistoryMsgs.unrecognisedLayers(first.data.unrecognisedLayerMatches))}
