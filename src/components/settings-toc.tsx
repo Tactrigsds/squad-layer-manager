@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
@@ -51,9 +51,9 @@ function stripNullable(node: Node): Node {
 function buildChildren(node: Node, path: (string | number)[], idPrefix: string, access: RBAC.SettingsWriteAccess): TocNode[] {
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
-	// top-level keys managed inline by a sibling editor (e.g. defaultPrefix) render no field, so emit no TOC anchor either
+	// top-level keys that render no field (see HIDDEN_SETTINGS_KEYS) get no TOC anchor either
 	return Object.keys(props)
-		.filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key)))
+		.filter((key) => !(path.length === 0 && HIDDEN_SETTINGS_KEYS.has(key)))
 		.map((key): TocNode => {
 			const inner = stripNullable(props[key])
 			const childPath = [...path, key]
@@ -128,6 +128,7 @@ function TocItem({
 	forceOpen,
 	activeId,
 	showMarkers,
+	commentedIds,
 }: {
 	node: TocNode
 	depth: number
@@ -136,6 +137,7 @@ function TocItem({
 	forceOpen: boolean
 	activeId: string | null
 	showMarkers: boolean
+	commentedIds: ReadonlySet<string>
 }) {
 	const hasChildren = node.children.length > 0
 	const isOpen = forceOpen || expanded.has(node.id)
@@ -178,6 +180,14 @@ function TocItem({
 					<TooltipContent>{tr.text(SETTINGS_Msgs.writableMarker())}</TooltipContent>
 				</Tooltip>
 			)}
+			{commentedIds.has(node.id) && (
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Icons.MessageSquareText className="mr-1 h-3 w-3 shrink-0 text-muted-foreground" />
+					</TooltipTrigger>
+					<TooltipContent>{tr.text(SETTINGS_Msgs.commentedMarker())}</TooltipContent>
+				</Tooltip>
+			)}
 		</div>
 	)
 	const children = isOpen && hasChildren && (
@@ -192,6 +202,7 @@ function TocItem({
 					forceOpen={forceOpen}
 					activeId={activeId}
 					showMarkers={showMarkers}
+					commentedIds={commentedIds}
 				/>
 			))}
 		</ul>
@@ -275,6 +286,8 @@ export default function SettingsToc({
 	sectionKeys: SettingsEditorFrame.Key[]
 }) {
 	const { globalMode, serverModes, newServerMode, creatingServer } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.tocModes)
+	const commentedIdList = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.commentedAnchorIds)
+	const commentedIds = React.useMemo(() => new Set(commentedIdList), [commentedIdList])
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
 	const [focusedId, setFocusedId] = React.useState<string | null>(null)
@@ -504,6 +517,7 @@ export default function SettingsToc({
 								forceOpen={forceOpen}
 								activeId={highlightId}
 								showMarkers={showMarkers}
+								commentedIds={commentedIds}
 							/>
 						))}
 					</ul>

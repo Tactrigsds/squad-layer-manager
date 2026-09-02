@@ -9,6 +9,7 @@ import { formatChangeValue } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as SETTINGS from '@/models/settings.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -48,7 +49,10 @@ export function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
 		<div className="max-h-[50vh] space-y-2 overflow-y-auto text-sm">
 			{changes.map((c) => (
 				<div key={c.path} className="border-b pb-1.5 last:border-0">
-					<code className="text-xs text-muted-foreground">{c.path}</code>
+					<code className="text-xs text-muted-foreground">{SETTINGS.settingPathForChange(c.path)}</code>
+					{c.path.startsWith(SETTINGS.COMMENTS_KEY + '.') && (
+						<span className="ml-1 text-xs text-muted-foreground">({tr.text(SETTINGS_Msgs.commentChange())})</span>
+					)}
 					<div className="mt-0.5 flex flex-wrap items-center gap-2">
 						<span className="text-muted-foreground line-through break-all">{displaySettingValue(c.path, c.from)}</span>
 						<Icons.ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
