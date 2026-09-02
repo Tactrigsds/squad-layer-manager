@@ -238,7 +238,7 @@ export const router = {
 						bounds,
 						group: HQ.groupPlayerRefs(input.query),
 						minMatches: input.query.minMatches,
-						sort: input.query.sort ?? { column: 'matches', dir: 'desc' },
+						sort: HQ.playerSort(input.query),
 						limit: HQ.PAGE_SIZES.players,
 						offset: input.page * HQ.PAGE_SIZES.players,
 					})
@@ -251,6 +251,7 @@ export const router = {
 						kind: 'matches',
 						node,
 						bounds,
+						sort: HQ.matchSort(input.query),
 						limit: HQ.PAGE_SIZES.matches,
 						offset: input.page * HQ.PAGE_SIZES.matches,
 					})

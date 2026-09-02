@@ -540,6 +540,73 @@ test.describe('history page', () => {
 		await expect(page.getByRole('menuitem', { name: 'Kick' })).toBeVisible({ timeout: 20_000 })
 	})
 
+	// The badge is only worth drawing if it says what the match was. Its details come from the page's own
+	// result rather than a fetch, and the tooltip has to be pinnable for the link inside it to be reachable.
+	test('the match id badge says what the match was, and opens its layer', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+		const results = page.getByRole('region', { name: 'Event results' })
+		const badge = results
+			.getByRole('button')
+			.filter({ hasText: /^#\d+$/ })
+			.first()
+		await expect(badge).toBeVisible({ timeout: 30_000 })
+
+		await badge.hover()
+		const tip = page.getByRole('tooltip')
+		await expect(tip).toContainText(app.serverId, { timeout: 20_000 })
+
+		// clicking pins it, which is the only state where the pointer can reach its link
+		await badge.click()
+		await tip.getByRole('button', { name: 'Show details' }).click()
+		await expect(page.getByRole('button', { name: 'Close window' })).toBeVisible({ timeout: 20_000 })
+	})
+
+	// The field is a list now. A union rather than a single value is the whole point, and the old spelling has
+	// to keep answering, since every saved query and shared link written before this carries it.
+	test('filters matches by several outcomes at once', async ({ app, page }) => {
+		const total = page.getByText(/^\d+ results?$/)
+		const count = async (search: string) => {
+			await page.goto(historyUrl(app, search))
+			await expect(total).toBeVisible({ timeout: 30_000 })
+			return Number.parseInt(await total.innerText(), 10)
+		}
+
+		expect(await count('type=matches')).toBeGreaterThan(0)
+		const all = await count('type=matches&outcomes=%5B%22team1%22%2C%22team2%22%2C%22draw%22%5D')
+		const parts =
+			(await count('type=matches&outcomes=%5B%22team1%22%5D')) +
+			(await count('type=matches&outcomes=%5B%22team2%22%5D')) +
+			(await count('type=matches&outcomes=%5B%22draw%22%5D'))
+		expect(parts).toBe(all)
+
+		expect(await count('type=matches&outcome=team1')).toBe(await count('type=matches&outcomes=%5B%22team1%22%5D'))
+	})
+
+	// Ordered in sql, so what is asserted is the page the server picked rather than a reorder in the browser.
+	// Length is the derived one of the three; ticket difference compiles the same way.
+	test('sorts matches by length', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=matches'))
+		const table = page.getByRole('table', { name: 'Match results' })
+		await expect(table).toBeVisible({ timeout: 30_000 })
+
+		const header = table.getByRole('columnheader', { name: /Length/ })
+		const column = () => table.locator('tbody tr[data-dom-menu] td:nth-child(7)').allInnerTexts()
+		// a match with no recorded end has no length, and sql puts those last whichever way the rest runs
+		const check = (cells: string[], dir: 'asc' | 'desc') => {
+			const lengths = cells.filter((cell) => cell.trim() !== '').map(Number)
+			expect(cells.slice(0, lengths.length).every((cell) => cell.trim() !== '')).toBe(true)
+			expect(lengths).toEqual([...lengths].sort((a, b) => (dir === 'asc' ? a - b : b - a)))
+		}
+
+		await header.click()
+		await expect(header).toHaveAttribute('aria-sort', 'descending', { timeout: 20_000 })
+		check(await column(), 'desc')
+
+		await header.click()
+		await expect(header).toHaveAttribute('aria-sort', 'ascending', { timeout: 20_000 })
+		check(await column(), 'asc')
+	})
+
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save
 	// updates that one rather than duplicating it under a second name.
 	test('saves a query, then updates it in place', async ({ app, page }) => {

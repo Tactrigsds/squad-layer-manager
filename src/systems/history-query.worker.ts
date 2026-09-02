@@ -18,6 +18,7 @@ import {
 	compileAppEventCond,
 	compileEventCond,
 	compileMatchCond,
+	durationOf,
 	eventBoundsCond,
 	GAME_PARTICIPANT,
 	inJsonSet,
@@ -29,6 +30,7 @@ import {
 	resolveArtifacts,
 	resolveNamedPlayerIds,
 	resolvePlayerRefs,
+	ticketDiffOf,
 } from '@/systems/history-query.shared'
 import * as LayerData from '@/systems/layer-data.server'
 
@@ -312,18 +314,36 @@ export async function queryPlayerRows(
 	}
 }
 
+// The same expressions the length and ticket-difference filters compile to, so ordering by a column and
+// filtering on it cannot disagree.
+const MATCH_SORT_EXPRS: Record<HQ.MatchSortColumn, E.SQL> = {
+	time: matchTime,
+	duration: durationOf(mh),
+	ticketDiff: ticketDiffOf(mh),
+}
+
 export async function queryMatchRows(
 	ctx: C.Db & CS.AbortSignal,
-	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; limit: number; offset: number },
+	opts: {
+		node: HQ.Node
+		art: ResolvedArtifacts
+		bounds: Bounds
+		sort: { column: HQ.MatchSortColumn; dir: HQ.SortDir }
+		limit: number
+		offset: number
+	},
 ): Promise<{ rows: SchemaModels.MatchHistory[]; total: number; events: Record<string, number> }> {
 	const cond = E.and(matchBoundsCond(opts.bounds), compileMatchCond(opts.node, opts.art, opts.bounds))
 	const [{ count: total } = { count: 0 }] = await ctx.db().select({ count: E.count() }).from(mh).where(cond)
+	const sortExpr = MATCH_SORT_EXPRS[opts.sort.column]
 	const rows = await ctx
 		.db()
 		.select()
 		.from(mh)
 		.where(cond)
-		.orderBy(sql`${matchTime} DESC`, E.desc(mh.id))
+		// nulls last in both directions: a match still running has neither a length nor a ticket difference,
+		// and a page of blanks is not what "shortest first" was asking for
+		.orderBy(sql`${sortExpr} IS NULL`, opts.sort.dir === 'asc' ? E.asc(sortExpr) : E.desc(sortExpr), E.desc(mh.id))
 		.limit(opts.limit)
 		.offset(opts.offset)
 	const events = await eventCountsFor(
@@ -362,7 +382,14 @@ export type EngineRequest =
 			limit: number
 			offset: number
 	  }
-	| { kind: 'matches'; node: HQ.Node; bounds: Bounds; limit: number; offset: number }
+	| {
+			kind: 'matches'
+			node: HQ.Node
+			bounds: Bounds
+			sort: { column: HQ.MatchSortColumn; dir: HQ.SortDir }
+			limit: number
+			offset: number
+	  }
 
 export type EngineResponse =
 	| { code: 'ok'; kind: 'events'; hits: EventHit[]; total?: number }
@@ -422,6 +449,7 @@ export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRe
 				node: req.node,
 				art,
 				bounds: req.bounds,
+				sort: req.sort,
 				limit: req.limit,
 				offset: req.offset,
 			})

@@ -286,6 +286,11 @@ const EpochMs = z.number().int().nonnegative()
 export const PLAYER_SORT_COLUMNS = ['matches', 'kills', 'deaths', 'teamkills', 'chatMessages', 'lastSeen'] as const
 export type PlayerSortColumn = (typeof PLAYER_SORT_COLUMNS)[number]
 
+// The measures a match can be ordered by. Only the ones the engine can order in sql: the events count is
+// gathered per page, after the ordering has already decided which page that is.
+export const MATCH_SORT_COLUMNS = ['time', 'duration', 'ticketDiff'] as const
+export type MatchSortColumn = (typeof MATCH_SORT_COLUMNS)[number]
+
 const QueryFieldsSchema = z.object({
 	type: z.enum(RESULT_TYPES).prefault('events'),
 	mode: z.enum(['basic', 'advanced']).prefault('basic'),
@@ -303,11 +308,12 @@ const QueryFieldsSchema = z.object({
 	playerRole: z.enum(PLAYER_ROLES).optional(),
 	users: z.array(z.string()).optional(),
 
-	// Superseded by the three lists above, and only ever read on the way in: every saved query and every
-	// shared link written before they were lists still carries these, and folds into them (see foldSingles).
+	// Superseded by the lists above, and only ever read on the way in: every saved query and every shared
+	// link written before they were lists still carries these, and folds into them (see foldSingles).
 	server: z.string().optional(),
 	player: z.string().optional(),
 	user: z.string().optional(),
+	outcome: z.enum(MATCH_OUTCOMES).optional(),
 
 	// events only: which end of the range the page starts from. A bound rather than a filter, so it sits
 	// outside the tree like the others and means the same thing in both modes. Absent means newest, which
@@ -325,7 +331,7 @@ const QueryFieldsSchema = z.object({
 	map: z.string().optional(),
 	gamemode: z.string().optional(),
 	faction: z.string().optional(),
-	outcome: z.enum(MATCH_OUTCOMES).optional(),
+	outcomes: z.array(z.enum(MATCH_OUTCOMES)).optional(),
 	setBy: z.enum(SET_BY_TYPES).optional(),
 	// bounds on match.ticketDiff. Either alone reads as "a blowout" / "a close game"; both make a band
 	ticketDiffMin: z.number().int().nonnegative().optional(),
@@ -337,7 +343,9 @@ const QueryFieldsSchema = z.object({
 	matchId: z.number().int().positive().optional(),
 	minMatches: z.number().int().positive().optional(),
 
-	sort: z.object({ column: z.enum(PLAYER_SORT_COLUMNS), dir: z.enum(['asc', 'desc']) }).optional(),
+	// one field for all three tabs, read through playerSort/matchSort: the tabs are views over one query, so
+	// a sort set on one carries into the next and falls back where its column means nothing there
+	sort: z.object({ column: z.enum([...PLAYER_SORT_COLUMNS, ...MATCH_SORT_COLUMNS]), dir: z.enum(['asc', 'desc']) }).optional(),
 
 	// advanced mode's tree
 	q: NodeSchema.optional(),
@@ -349,14 +357,20 @@ const QueryFieldsSchema = z.object({
 type QueryFields = z.infer<typeof QueryFieldsSchema>
 // spelled out rather than inferred: an inferred transform return turns `servers?: string[]` into
 // `servers: string[] | undefined`, which makes every query literal have to name all three
-type FoldedQuery = Omit<QueryFields, 'server' | 'player' | 'user'>
+type FoldedQuery = Omit<QueryFields, 'server' | 'player' | 'user' | 'outcome'>
 
-function foldSingles({ server, player, user, ...rest }: QueryFields): FoldedQuery {
-	const fold = (list: string[] | undefined, single: string | undefined) => {
+function foldSingles({ server, player, user, outcome, ...rest }: QueryFields): FoldedQuery {
+	const fold = <T extends string>(list: T[] | undefined, single: T | undefined) => {
 		const merged = [...new Set([...(list ?? []), ...(single ? [single] : [])])]
 		return merged.length > 0 ? merged : undefined
 	}
-	return { ...rest, servers: fold(rest.servers, server), players: fold(rest.players, player), users: fold(rest.users, user) }
+	return {
+		...rest,
+		servers: fold(rest.servers, server),
+		players: fold(rest.players, player),
+		users: fold(rest.users, user),
+		outcomes: fold(rest.outcomes, outcome),
+	}
 }
 
 export const QuerySchema = QueryFieldsSchema.transform(foldSingles)
@@ -368,6 +382,26 @@ export const DEFAULT_QUERY: Query = QuerySchema.parse({})
 // with no match of its own still offer the interactions that act on a server.
 export function soleServerId(query: Query): string | undefined {
 	return query.servers?.length === 1 ? query.servers[0] : undefined
+}
+
+export type SortDir = 'asc' | 'desc'
+
+// The shared `sort` field read as one tab's sort. A column belonging to another tab falls back to this tab's
+// default rather than erroring: switching tabs carries the whole query across, sort included.
+export function playerSort(query: Query): { column: PlayerSortColumn; dir: SortDir } {
+	const sort = query.sort
+	if (sort && (PLAYER_SORT_COLUMNS as readonly string[]).includes(sort.column)) {
+		return { column: sort.column as PlayerSortColumn, dir: sort.dir }
+	}
+	return { column: 'matches', dir: 'desc' }
+}
+
+export function matchSort(query: Query): { column: MatchSortColumn; dir: SortDir } {
+	const sort = query.sort
+	if (sort && (MATCH_SORT_COLUMNS as readonly string[]).includes(sort.column)) {
+		return { column: sort.column as MatchSortColumn, dir: sort.dir }
+	}
+	return { column: 'time', dir: 'desc' }
 }
 
 // -------- normalization --------
@@ -472,7 +506,7 @@ export function queryFilterNode(query: Query): Node {
 	if (query.gamemode) children.push(comp('layer.gamemode', [query.gamemode]))
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.matchId !== undefined) children.push(comp('match.id', [query.matchId]))
-	if (query.outcome) children.push(comp('match.outcome', [query.outcome]))
+	if (query.outcomes?.length) children.push(comp('match.outcome', query.outcomes))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	children.push(...rangeNodes('match.ticketDiff', query.ticketDiffMin, query.ticketDiffMax))
 	children.push(...rangeNodes('match.duration', query.durationMin, query.durationMax))

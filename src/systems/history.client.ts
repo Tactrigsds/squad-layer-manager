@@ -18,6 +18,20 @@ export const queryPageBase = (input: QueryPageInput) =>
 		staleTime: 30_000,
 	})
 
+/**
+ * Why a results query has nothing to show, if anything.
+ *
+ * Both an error code the server returned and an error thrown on the way: a query that fails and renders
+ * nothing at all reads as one that is still loading, forever.
+ */
+export function queryFailure(res: { code: string; message?: unknown } | undefined, error: unknown): string | undefined {
+	if (error instanceof Error) return error.message
+	// react-query hands back whatever was thrown, which need not be an Error and need not stringify usefully
+	if (error) return typeof error === 'string' ? error : JSON.stringify(error)
+	if (!res || res.code === 'ok') return undefined
+	return typeof res.message === 'string' ? `${res.code}: ${res.message}` : res.code
+}
+
 export const savedQueriesBase = () =>
 	RPC.orpc.history.listSaved.queryOptions({
 		input: undefined,
