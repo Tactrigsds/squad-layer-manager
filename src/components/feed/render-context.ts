@@ -211,6 +211,12 @@ export function windowTargetOf(node: Element): WindowTarget | undefined {
 	}
 }
 
+// A window-opening click is only handled once it reaches the document (see interactions.ts), so an enclosing
+// row with a click handler of its own has to skip these rather than have the name stop propagation.
+export function opensWindow(target: EventTarget | null): boolean {
+	return target instanceof Element && target.closest(`[${WINDOW_ATTR}]`) !== null
+}
+
 export function matchIdOf(node: Element): number | undefined {
 	const raw = node.getAttribute(MATCH_ATTR)
 	if (raw === null) return undefined
