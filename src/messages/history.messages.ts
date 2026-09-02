@@ -96,6 +96,10 @@ export const noResults = def('No results')
 export const eventResults = def('Event results')
 export const playerResults = def('Player results')
 export const matchResults = def('Match results')
+
+// the tooltip on an event row's match id badge, which restates one match in a line
+export const matchTipMinutes = def((n: number) => t('{n} min', { n }))
+export const matchTipSetBy = def((source: string) => t('set by {source}', { source }))
 export const unfinishedFilter = def('Unfinished filter')
 export const runToSeeResults = def('Run to see these results')
 export const queryFailed = def((code: string) => t('Query failed: {code}', { code }))

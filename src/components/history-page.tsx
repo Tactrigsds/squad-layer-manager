@@ -287,18 +287,15 @@ function Results(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 		case 'players':
 			return <PlayersResults query={props.query} onRun={props.onRun} />
 		case 'matches':
-			return <MatchesResults query={props.query} />
+			return <MatchesResults query={props.query} onRun={props.onRun} />
 	}
 }
 
-function ResultNotices(props: { res: QueryRes | undefined }) {
+function ResultNotices(props: { res: QueryRes | undefined; error?: unknown }) {
 	const res = props.res
-	if (!res) return null
-	if (res.code !== 'ok') {
-		const message = 'message' in res && typeof res.message === 'string' ? `${res.code}: ${res.message}` : res.code
-		return <div className="text-xs text-destructive">{tr.text(HistoryMsgs.queryFailed(message))}</div>
-	}
-	if (res.unrecognisedLayerMatches > 0) {
+	const failure = HistoryClient.queryFailure(res, props.error)
+	if (failure) return <div className="text-xs text-destructive">{tr.text(HistoryMsgs.queryFailed(failure))}</div>
+	if (res?.code === 'ok' && res.unrecognisedLayerMatches > 0) {
 		return <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.unrecognisedLayers(res.unrecognisedLayerMatches))}</div>
 	}
 	return null
@@ -309,7 +306,13 @@ function usePagedQuery(query: HQ.Query) {
 	const [page, setPageState] = React.useState<{ key: string; page: number }>({ key, page: 0 })
 	if (page.key !== key) setPageState({ key, page: 0 })
 	const res = useQuery(HistoryClient.queryPageBase({ query, page: page.page }))
-	return { res: res.data, loading: res.isPending, page: page.page, setPage: (next: number) => setPageState({ key, page: next }) }
+	return {
+		res: res.data,
+		error: res.error,
+		loading: res.isPending,
+		page: page.page,
+		setPage: (next: number) => setPageState({ key, page: next }),
+	}
 }
 
 function Pager(props: { page: number; pageSize: number; total: number | undefined; setPage: (page: number) => void }) {
@@ -353,6 +356,10 @@ function DomRowsBody(props: { rows: React.ReactNode[]; scopeId?: string }) {
 // query the results answered, narrowed to that row, so what opens is a subset of what was counted.
 function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	// Matches the page never listed. A player's expanded events span every match they played, and their rows
+	// name theirs, so without keeping these a row's match id would have nothing behind it.
+	const lateMatches = React.useRef(new Map<number, MH.MatchDetails>())
+	const lateMatch = React.useCallback((matchId: number) => lateMatches.current.get(matchId), [])
 	const loadRowEvents = React.useCallback(
 		async (key: string, cursor?: unknown) => {
 			const separator = key.indexOf(':')
@@ -369,14 +376,37 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 				}),
 			)
 			if (res.code !== 'ok' || res.type !== 'events') throw new Error(res.code)
+			for (const match of res.matches) lateMatches.current.set(match.historyEntryId, match)
 			return { rows: res.rowsHtml, nextCursor: res.nextCursor }
 		},
 		[query, displayTeamsNormalized],
 	)
-	return useHistoryRenderCtx(matches, { loadRowEvents, serverId: HQ.soleServerId(query) })
+	return useHistoryRenderCtx(matches, { loadRowEvents, lateMatch, serverId: HQ.soleServerId(query) })
 }
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'
+
+// A column header that sorts. Clicking runs the query rather than only editing the draft: the results are
+// already on screen, so a header that waited for Run would read as dead.
+function SortHeader<C extends string>(props: {
+	column: C
+	label: string
+	sort: { column: C; dir: HQ.SortDir }
+	className?: string
+	onSort: (sort: { column: C; dir: HQ.SortDir }) => void
+}) {
+	const active = props.sort.column === props.column
+	return (
+		<th
+			className={`${HEADER_CELL} cursor-pointer select-none ${props.className ?? ''}`}
+			aria-sort={active ? (props.sort.dir === 'desc' ? 'descending' : 'ascending') : undefined}
+			onClick={() => props.onSort({ column: props.column, dir: active && props.sort.dir === 'desc' ? 'asc' : 'desc' })}
+		>
+			{props.label}
+			{active && (props.sort.dir === 'desc' ? ' ↓' : ' ↑')}
+		</th>
+	)
+}
 
 // Shown in place of the results, never around them: a table that is still empty and one whose query matched
 // nothing look the same, and the second is an answer.
@@ -389,28 +419,26 @@ function ResultsLoading() {
 }
 
 function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
-	const { res, loading, page, setPage } = usePagedQuery(props.query)
+	const { res, error, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'players')
 	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
 	// the rows they open still name their match, which is all the feed row needs
 	const rowCtx = useRowEvents(props.query, EMPTY_MATCHES)
-	const sort = props.query.sort ?? { column: 'matches' as const, dir: 'desc' as const }
-
+	const sort = HQ.playerSort(props.query)
 	const sortHeader = (column: HQ.PlayerSortColumn, label: string) => (
-		<th
-			className={`${HEADER_CELL} cursor-pointer select-none text-right`}
-			onClick={() =>
-				props.onRun({ ...props.query, sort: { column, dir: sort.column === column && sort.dir === 'desc' ? 'asc' : 'desc' } })
-			}
-		>
-			{label}
-			{sort.column === column && (sort.dir === 'desc' ? ' ↓' : ' ↑')}
-		</th>
+		<SortHeader
+			key={column}
+			column={column}
+			label={label}
+			sort={sort}
+			className="text-right"
+			onSort={(next) => props.onRun({ ...props.query, sort: next })}
+		/>
 	)
 
 	return (
 		<div className="flex min-h-0 flex-col gap-1">
-			<ResultNotices res={res} />
+			<ResultNotices res={res} error={error} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>
@@ -442,15 +470,19 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 
 const EMPTY_MATCHES: MH.MatchDetails[] = []
 
-function MatchesResults(props: { query: HQ.Query }) {
-	const { res, loading, page, setPage } = usePagedQuery(props.query)
+function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
+	const { res, error, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'matches')
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
+	const sort = HQ.matchSort(props.query)
+	const sortHeader = (column: HQ.MatchSortColumn, label: string) => (
+		<SortHeader key={column} column={column} label={label} sort={sort} onSort={(next) => props.onRun({ ...props.query, sort: next })} />
+	)
 
 	return (
 		<div className="flex min-h-0 flex-col gap-1">
-			<ResultNotices res={res} />
+			<ResultNotices res={res} error={error} />
 			{ok && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(ok.total))}</div>}
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>
@@ -458,12 +490,12 @@ function MatchesResults(props: { query: HQ.Query }) {
 					<thead className="sticky top-0 bg-background text-muted-foreground">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
-							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTime())}</th>
+							{sortHeader('time', tr.text(HistoryMsgs.colTime()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colServer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colOutcome())}</th>
-							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colTicketDiff())}</th>
-							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colDuration())}</th>
+							{sortHeader('ticketDiff', tr.text(HistoryMsgs.colTicketDiff()))}
+							{sortHeader('duration', tr.text(HistoryMsgs.colDuration()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
 							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>

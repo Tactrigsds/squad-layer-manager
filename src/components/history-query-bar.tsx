@@ -496,10 +496,25 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					title={fieldLabel(field.key)}
 					allowEmpty
 					className="w-full"
-					value={draft[field.key as 'variant' | 'outcome' | 'setBy' | 'channel']}
+					value={draft[field.key as 'variant' | 'setBy' | 'channel']}
 					options={control.options as string[]}
 					onSelect={(v) => {
 						set({ [field.key]: v ?? undefined })
+					}}
+				/>
+			)
+		case 'enum-multi':
+			return (
+				<ComboBoxMulti
+					title={fieldLabel(field.key)}
+					emptyLabel={tr.text(HistoryMsgs.anyOption())}
+					className="w-full"
+					chipDisplay
+					values={draft[control.field] ?? []}
+					options={control.options as string[]}
+					onSelect={(update) => {
+						const next = typeof update === 'function' ? update(draft[control.field] ?? []) : update
+						set({ [control.field]: next.length > 0 ? (next as HQ.Query['outcomes']) : undefined })
 					}}
 				/>
 			)
@@ -626,7 +641,7 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldChat())
 		case 'channel':
 			return tr.text(HistoryMsgs.fieldChannel())
-		case 'outcome':
+		case 'outcomes':
 			return tr.text(HistoryMsgs.fieldOutcome())
 		case 'setBy':
 			return tr.text(HistoryMsgs.fieldSetBy())

@@ -2,14 +2,16 @@ import * as React from 'react'
 
 import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext } from '@/models/zindex'
+import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import { DraggableWindowOutletContext } from '@/systems/draggable-window.client'
 
 import LayerContextMenuOptions from '../layer-context-menu-options'
 import PlayerContextMenuOptions from '../player-context-menu-options'
 import SquadContextMenuOptions from '../squad-context-menu-options'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../ui/context-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { TrackingTooltip } from '../ui/tracking-tooltip'
 import * as Interactions from './interactions'
+import MatchTip from './match-tip'
 
 // off the page and out of the way of the pointer; the menu's placement comes from the event point radix reads off
 // the re-fired contextmenu, and the tooltip's from the rect written onto this node
@@ -62,42 +64,49 @@ function MenuOverlay() {
 // only case that would differ, and one there opening into the page rather than into the window is the better answer
 const OUTLET = { outletKey: 'default' }
 
+/**
+ * The one tooltip every dom-built row shares.
+ *
+ * Follows the pointer rather than anchoring, and opens with no delay: a feed's hover targets are a timestamp
+ * and a three-character id badge, which is what TrackingTooltip is for. Pinning is what makes the match
+ * tooltip's layer link reachable; interactions.ts owns when that happens.
+ */
 function TipOverlay() {
 	const tip = Zus.useStore(Interactions.OverlayStore, (s) => s.tip)
 	const open = Zus.useStore(Interactions.OverlayStore, (s) => s.tipOpen)
-	const rect = tip?.rect
+	const anchor = Zus.useStore(Interactions.OverlayStore, (s) => s.tipAnchor)
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const nodeRef = React.useRef<HTMLDivElement | null>(null)
+
+	React.useEffect(() => {
+		Interactions.setTipContentNode(nodeRef.current)
+	})
+
+	let content: React.ReactNode = null
+	if (open && tip?.content.kind === 'match') {
+		content = <MatchTip details={tip.content.details} displayTeamsNormalized={displayTeamsNormalized} />
+	} else if (open && tip?.content.kind === 'text') {
+		content = tip.content.heading ? (
+			<div>
+				<div className="font-semibold">{tip.content.heading}</div>
+				<div className="text-muted-foreground mt-1">{tip.content.text}</div>
+			</div>
+		) : (
+			tip.content.text
+		)
+	}
 
 	return (
 		<BaseZIndexContext.Provider value={tip?.zIndexBase ?? 0}>
-			<Tooltip open={open} onOpenChange={(next) => !next && Interactions.closeTip()}>
-				<TooltipTrigger asChild>
-					<span
-						aria-hidden
-						style={
-							rect
-								? {
-										position: 'fixed',
-										left: rect.left,
-										top: rect.top,
-										width: rect.width,
-										height: rect.height,
-										pointerEvents: 'none',
-									}
-								: ANCHOR_STYLE
-						}
-					/>
-				</TooltipTrigger>
-				<TooltipContent className="pointer-events-none">
-					{tip?.content.heading ? (
-						<div className="text-xs">
-							<div className="font-semibold">{tip.content.heading}</div>
-							<div className="text-muted-foreground mt-1">{tip.content.text}</div>
-						</div>
-					) : (
-						tip?.content.text
-					)}
-				</TooltipContent>
-			</Tooltip>
+			<TrackingTooltip
+				content={content}
+				nodeRef={nodeRef}
+				anchor={anchor}
+				interactive={anchor !== null}
+				// a match restates a whole layer, both sides included, which the default tooltip width folds
+				// onto four lines
+				className={tip?.content.kind === 'match' ? 'max-w-lg' : undefined}
+			/>
 		</BaseZIndexContext.Provider>
 	)
 }
