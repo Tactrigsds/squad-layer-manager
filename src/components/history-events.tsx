@@ -5,6 +5,7 @@ import React from 'react'
 import * as RC from '@/components/feed/render-context'
 import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
@@ -90,7 +91,12 @@ export default function HistoryEvents(props: {
 			{first.data?.code === 'ok' && rows.length === 0 && (
 				<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.noResults())}</div>
 			)}
-			<div className="min-h-0 overflow-y-auto">
+			{first.isPending && (
+				<div className="flex items-center justify-center py-8">
+					<Spinner className="size-5 text-muted-foreground" />
+				</div>
+			)}
+			<div className="min-h-0 overflow-y-auto" hidden={first.isPending}>
 				<SsrRows rows={rows} matches={matches} serverId={HQ.soleServerId(props.query)} />
 				{nextCursor && (
 					<Button variant="outline" size="sm" className="my-2" disabled={loadingMore} onClick={() => void loadMore()}>

@@ -413,6 +413,44 @@ test.describe('history page', () => {
 		await expect(page).not.toHaveURL(new RegExp(HISTORY_NEEDLE))
 	})
 
+	// The activity feed's secondary filter, compiled to sql here rather than applied to an already-rendered
+	// feed, so the two can disagree with nothing failing.
+	test('the quick filter narrows the events by kind', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&feed=CHAT`))
+		const results = page.getByRole('region', { name: 'Event results' })
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+
+		// a chat message is not part of the audit trail, so the same query under SLM Events matches nothing
+		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&feed=SLM_EVENTS`))
+		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+	})
+
+	// A match row's menu acts on the layer that was played, which needs no server frame -- the delegated
+	// handler used to refuse to open any menu without one.
+	test('right-clicking a match row offers the layer actions', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=matches'))
+		const table = page.getByRole('table', { name: 'Match results' })
+		await expect(table).toBeVisible({ timeout: 30_000 })
+
+		const row = table.locator('tbody tr[data-dom-menu]').first()
+		await expect(row).toBeVisible({ timeout: 30_000 })
+		await row.click({ button: 'right' })
+		await expect(page.getByRole('menuitem', { name: 'Show details' })).toBeVisible({ timeout: 20_000 })
+	})
+
+	// A players result spans servers, so its rows have no frame to act through and the menu falls back to
+	// what is true of the player off any server.
+	test('right-clicking a player row offers the frameless actions only', async ({ app, page }) => {
+		await page.goto(historyUrl(app, `type=players&name=${HISTORY_TALKER}`))
+		const table = page.getByRole('table', { name: 'Player results' })
+		const row = table.getByRole('row').filter({ hasText: HISTORY_TALKER })
+		await expect(row).toBeVisible({ timeout: 30_000 })
+		await row.click({ button: 'right' })
+
+		await expect(page.getByRole('menuitem', { name: 'Copy', exact: true })).toBeVisible({ timeout: 20_000 })
+		await expect(page.getByRole('menuitem', { name: 'Kick' })).toHaveCount(0)
+	})
+
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save
 	// updates that one rather than duplicating it under a second name.
 	test('saves a query, then updates it in place', async ({ app, page }) => {

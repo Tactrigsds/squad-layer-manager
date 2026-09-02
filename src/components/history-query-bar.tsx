@@ -5,6 +5,7 @@ import React from 'react'
 import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
+import EventFilterSelect from '@/components/event-filter-select'
 import { StringEqConfig } from '@/components/filter-card'
 import { LayerFilterPicker } from '@/components/history-advanced-editor'
 import * as ETO from '@/components/history/event-type-options'
@@ -439,6 +440,15 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 	const { field, draft, set } = props
 	const control = field.control
 	switch (control.kind) {
+		case 'feed':
+			return (
+				<EventFilterSelect
+					className="h-7 w-full justify-between"
+					value={draft.feed ?? 'ALL'}
+					// ALL is the absence of the filter, so it stays out of the url rather than riding in it
+					onValueChange={(value) => set({ feed: value === 'ALL' ? undefined : value })}
+				/>
+			)
 		case 'event-types':
 			return (
 				<ComboBoxMulti
@@ -582,6 +592,8 @@ function groupLabel(group: QF.FieldGroup): string {
 
 function fieldLabel(key: QF.FieldKey): string {
 	switch (key) {
+		case 'feed':
+			return tr.text(HistoryMsgs.fieldFeed())
 		case 'types':
 			return tr.text(HistoryMsgs.fieldEventTypes())
 		case 'variant':

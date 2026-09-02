@@ -10,6 +10,7 @@ import * as HQ from '@/models/history.models'
 // "+ Filter" menu leads with.
 
 export type FieldKey =
+	| 'feed'
 	| 'types'
 	| 'variant'
 	| 'damageSource'
@@ -30,6 +31,8 @@ export type RangeBoundKey = 'ticketDiffMin' | 'ticketDiffMax' | 'durationMin' | 
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
+	// the activity feed's secondary filter, the same control and the same six options (see feedFilterNode)
+	| { kind: 'feed' }
 	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
 	| { kind: 'event-types' }
 	| { kind: 'enum'; options: readonly string[] }
@@ -51,6 +54,9 @@ export type FieldDef = {
 }
 
 export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
+	// events only: on a matches or players query an event-type condition reads as "containing such an event",
+	// which turns DEFAULT's exclusions into "matches where nobody died", meaning nothing
+	feed: { key: 'feed', group: 'events', control: { kind: 'feed' }, onlyFor: ['events'] },
 	types: { key: 'types', group: 'events', control: { kind: 'event-types' } },
 	variant: { key: 'variant', group: 'events', control: { kind: 'enum', options: HQ.EVENT_VARIANTS } },
 	damageSource: { key: 'damageSource', group: 'events', control: { kind: 'text' } },
@@ -80,7 +86,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 // usually about. Not a capability boundary -- every other field is one "+ Filter" away, and a field carried
 // in from another result type stays visible while it holds a value (see visibleFields).
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
-	events: ['types', 'chat'],
+	events: ['feed', 'types', 'chat'],
 	players: ['minMatches', 'types'],
 	matches: ['outcome', 'map', 'ticketDiff', 'duration'],
 }
