@@ -6,6 +6,7 @@
 // it rather than 803 and 628.
 
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as Flt from '@/lib/floating'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -28,11 +29,14 @@ type OverlayState = {
 	// stores are absent where the scope has no frame to offer, which the menu's own options answer for: the
 	// layer target never wanted one, and a player's menu falls back to what is true off any server
 	menu: { target: RC.MenuTarget; stores: SquadServerFrame.KeyProp | undefined; zIndexBase: number } | null
-	tip: { content: RC.TipContent; rect: DOMRect; zIndexBase: number } | null
+	tip: { content: RC.TipContent; zIndexBase: number } | null
 	tipOpen: boolean
+	// where a pinned tooltip is parked. Null means it follows the pointer, which also means the pointer
+	// cannot reach it (see the tooltip section).
+	tipAnchor: Flt.Point | null
 }
 
-export const OverlayStore = Zus.createStore<OverlayState>(() => ({ menu: null, tip: null, tipOpen: false }))
+export const OverlayStore = Zus.createStore<OverlayState>(() => ({ menu: null, tip: null, tipOpen: false, tipAnchor: null }))
 
 // The hidden trigger the overlay host parks for the context menu. Radix positions and opens a menu from its own
 // trigger, so rather than reimplement any of that, this one is re-fired at whatever the pointer is actually on
@@ -84,6 +88,16 @@ function windowProps(element: Element, target: RC.WindowTarget): Record<string, 
 }
 
 function onClick(event: MouseEvent) {
+	// the tooltip first: its trigger sits inside a row, and pinning it must not also open whatever the row does
+	const tip = tipTargetOf(event)
+	if (pinnedElement && !withinPinned(event.target)) closeTip()
+	if (tip) {
+		// a second click on the trigger dismisses, the same way the constraint indicators behave
+		if (pinnedElement === tip) closeTip()
+		else if (isInteractive(tipContentOf(tip, RC.scopeOf(tip)) ?? undefined)) pinTip(tip, { x: event.clientX, y: event.clientY })
+		return
+	}
+
 	// "load more" before the row itself, since the button sits inside the row's own panel
 	const more = elementAt(event, RC.ROW_EVENTS_MORE_ATTR)
 	if (more) {
@@ -140,43 +154,97 @@ function onContextMenu(event: MouseEvent) {
 }
 
 // -------- tooltip --------
+//
+// Follows the pointer and opens with no delay, the same behaviour the constraint indicators have (see
+// TrackingTooltip). Clicking a trigger pins the tooltip where the pointer is and lets the pointer reach it,
+// which is the only way to use content with a link in it: the match tooltip's is how its layer opens.
 
-function tipContentOf(element: Element): RC.TipContent | null {
+function tipContentOf(element: Element, ctx: RC.RenderCtx | undefined): RC.TipContent | null {
+	const matchId = element.getAttribute(RC.TIP_MATCH_ATTR)
+	// looked up rather than carried: the page that rendered these rows was handed their matches too, so the
+	// alternative is a copy of the same summary on every row of the match
+	if (matchId !== null) {
+		const details = ctx?.matchById(Number(matchId))
+		return details ? { kind: 'match', details } : null
+	}
 	const time = element.getAttribute(RC.TIP_TIME_ATTR)
 	// deliberately not formatted until now: a timezone-qualified timestamp per row is most of what a feed's
 	// timestamps cost, and only the one being hovered is ever read
-	if (time !== null) return { text: formatFullTime(Number(time)) }
+	if (time !== null) return { kind: 'text', text: formatFullTime(Number(time)) }
 	const text = element.getAttribute(RC.TIP_ATTR)
 	if (text === null) return null
-	return { text, heading: element.getAttribute(RC.TIP_HEADING_ATTR) ?? undefined }
+	return { kind: 'text', text, heading: element.getAttribute(RC.TIP_HEADING_ATTR) ?? undefined }
 }
 
 let tipElement: Element | null = null
+// the trigger of a pinned tooltip, which hovering elsewhere no longer replaces
+let pinnedElement: Element | null = null
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+// the pinned tooltip's own node, so the handlers can tell "the pointer is inside it" from "the pointer left"
+let tipContentNode: HTMLElement | null = null
+
+export function setTipContentNode(node: HTMLElement | null) {
+	tipContentNode = node
+}
+
+function cancelLeave() {
+	if (leaveTimer === null) return
+	clearTimeout(leaveTimer)
+	leaveTimer = null
+}
 
 export function closeTip() {
+	cancelLeave()
 	tipElement = null
-	if (OverlayStore.getState().tipOpen) OverlayStore.setState({ tipOpen: false })
+	pinnedElement = null
+	if (OverlayStore.getState().tipOpen) OverlayStore.setState({ tipOpen: false, tipAnchor: null })
 }
 
 function showTip(element: Element) {
 	if (element === tipElement) return
-	const content = tipContentOf(element)
+	const ctx = RC.scopeOf(element)
+	const content = tipContentOf(element, ctx)
 	if (!content) return
 	tipElement = element
-	const zIndexBase = RC.scopeOf(element)?.zIndexBase ?? 0
-	OverlayStore.setState({ tip: { content, rect: element.getBoundingClientRect(), zIndexBase }, tipOpen: true })
+	OverlayStore.setState({ tip: { content, zIndexBase: ctx?.zIndexBase ?? 0 }, tipOpen: true, tipAnchor: null })
 }
 
-const TIP_SELECTOR = `[${RC.TIP_ATTR}],[${RC.TIP_TIME_ATTR}]`
+// A pinned tooltip sits a short gap from the pointer, so moving onto it leaves both it and the trigger for a
+// frame or two. Same grace as useFollowTooltip, for the same reason.
+const LEAVE_GRACE_MS = 150
+
+function pinTip(element: Element, at: Flt.Point) {
+	showTip(element)
+	if (!OverlayStore.getState().tipOpen) return
+	cancelLeave()
+	pinnedElement = element
+	OverlayStore.setState({ tipAnchor: at })
+}
+
+// whether the tooltip's content can be clicked, which is what makes pinning it worth offering
+function isInteractive(content: RC.TipContent | undefined) {
+	return content?.kind === 'match'
+}
+
+const TIP_SELECTOR = `[${RC.TIP_ATTR}],[${RC.TIP_TIME_ATTR}],[${RC.TIP_MATCH_ATTR}]`
 
 function tipTargetOf(event: Event) {
 	const target = event.target
 	return target instanceof Element ? target.closest(TIP_SELECTOR) : null
 }
 
+function withinPinned(target: EventTarget | null) {
+	if (!(target instanceof Node)) return false
+	return !!tipContentNode?.contains(target) || !!pinnedElement?.contains(target)
+}
+
 function onPointerOver(event: PointerEvent) {
 	const tip = tipTargetOf(event)
-	if (tip) showTip(tip)
+	if (pinnedElement) {
+		// nothing else opens while one is pinned; it closes by leaving it, by pressing outside, or by escape
+		if (withinPinned(event.target)) cancelLeave()
+		else if (leaveTimer === null) leaveTimer = setTimeout(closeTip, LEAVE_GRACE_MS)
+	} else if (tip) showTip(tip)
 	else closeTip()
 
 	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
@@ -280,6 +348,7 @@ function toggleRowEvents(row: Element) {
 }
 
 function onFocusIn(event: FocusEvent) {
+	if (pinnedElement) return
 	const tip = tipTargetOf(event)
 	if (tip) showTip(tip)
 	else closeTip()
@@ -287,7 +356,11 @@ function onFocusIn(event: FocusEvent) {
 
 // focus leaving for nothing in particular fires no focusin, so the tooltip would otherwise stay behind
 function onFocusOut(event: FocusEvent) {
-	if (tipTargetOf(event) === tipElement) closeTip()
+	if (!pinnedElement && tipTargetOf(event) === tipElement) closeTip()
+}
+
+function onKeyDown(event: KeyboardEvent) {
+	if (event.key === 'Escape' && pinnedElement) closeTip()
 }
 
 // the anchor holds a rect captured at hover time, so a feed that scrolls out from under it would leave the tooltip
@@ -307,5 +380,6 @@ export function setup() {
 	document.addEventListener('pointerover', onPointerOver)
 	document.addEventListener('focusin', onFocusIn)
 	document.addEventListener('focusout', onFocusOut)
+	document.addEventListener('keydown', onKeyDown, true)
 	document.addEventListener('scroll', onScroll, { capture: true, passive: true })
 }

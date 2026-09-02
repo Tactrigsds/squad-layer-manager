@@ -7,9 +7,8 @@
 import React from 'react'
 
 import * as Atoms from '@/components/feed/atoms'
+import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
-import * as HistoryMsgs from '@/messages/history.messages'
-import * as I18n from '@/messages/i18n'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
@@ -102,42 +101,11 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	)
 }
 
-function outcomeText(details: MH.MatchDetails): string {
-	if (details.status !== 'post-game') return ''
-	const outcome = details.outcome
-	switch (outcome.type) {
-		case 'team1':
-			return `${I18n.ambient.text(HistoryMsgs.outcomeTeam1())} ${outcome.team1Tickets}:${outcome.team2Tickets}`
-		case 'team2':
-			return `${I18n.ambient.text(HistoryMsgs.outcomeTeam2())} ${outcome.team1Tickets}:${outcome.team2Tickets}`
-		case 'draw':
-			return I18n.ambient.text(HistoryMsgs.outcomeDraw())
-		case 'unknown':
-			return ''
-	}
-}
-
-// unsigned, matching the match.ticketDiff column the filter compiles to: which side won is the outcome's
-// question, and this one is only ever asked as "a blowout" or "a close game"
-function ticketDiffText(details: MH.MatchDetails): string {
-	if (details.status !== 'post-game') return ''
-	const outcome = details.outcome
-	if (outcome.type !== 'team1' && outcome.type !== 'team2') return ''
-	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
-}
-
-// whole minutes, floored to agree with the filter, which divides the two epochs in sql. Blank for a match
-// still running or one whose end the app never saw, which is also what the filter can never match.
-function durationText(details: MH.MatchDetails): string {
-	if (details.status !== 'post-game' || details.endTime === 'unknown' || !details.startTime) return ''
-	return String(Math.floor((details.endTime.getTime() - details.startTime.getTime()) / 60_000))
-}
-
 export const MATCH_ROW_COLUMNS = 9
 
 export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
 	const { details } = props
-	const time = details.startTime ?? (details.status === 'post-game' && details.endTime !== 'unknown' ? details.endTime : undefined)
+	const time = MatchSummary.matchTime(details)
 	return (
 		<ExpandableRow
 			rowKey={`match:${details.historyEntryId}`}
@@ -155,9 +123,9 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 					className="text-xs"
 				/>
 			</td>
-			<td className={CELL}>{outcomeText(details)}</td>
-			<td className={CELL}>{ticketDiffText(details)}</td>
-			<td className={CELL}>{durationText(details)}</td>
+			<td className={CELL}>{MatchSummary.outcomeText(details)}</td>
+			<td className={CELL}>{MatchSummary.ticketDiffText(details)}</td>
+			<td className={CELL}>{MatchSummary.durationText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
 		</ExpandableRow>
 	)
