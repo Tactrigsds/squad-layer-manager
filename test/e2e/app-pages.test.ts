@@ -276,6 +276,16 @@ plainTest.describe('settings page', () => {
 		await box.blur()
 		await expect(field.getByRole('link', { name: 'https://example.com/notes' })).toBeVisible()
 
+		// clicking into the comment reopens the editor with the caret where the click landed, not at the start
+		await field.getByText('agreed with the head admins').click({ position: { x: 40, y: 8 } })
+		const reopened = page.getByRole('textbox', { name: 'Setting comment' })
+		await expect(reopened).toBeVisible()
+		const caret = await reopened.evaluate((el: HTMLTextAreaElement) => el.selectionStart)
+		expect(caret).toBeGreaterThan(0)
+		expect(caret).toBeLessThan(20)
+		await reopened.press('Escape')
+		await expect(reopened).toBeHidden()
+
 		// Format re-serializes the buffer, so the comment has to be read back out of its `#` line for the save to carry it
 		const mode = page.getByRole('group', { name: 'Global settings editor mode' })
 		await mode.getByRole('button', { name: 'YAML', exact: true }).click()
