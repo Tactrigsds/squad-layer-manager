@@ -16,6 +16,7 @@ import * as Obj from '@/lib/object-utils'
 import { isNullOrUndef } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
@@ -63,9 +64,19 @@ function RowMatchId() {
 	const matchId = RC.currentRowMatchId()
 	if (matchId === undefined) return null
 	return (
-		<button type="button" className="shrink-0" data-state="closed" {...{ [RC.TIP_MATCH_ATTR]: matchId }}>
-			<span className="text-muted-foreground/60 font-mono text-2xs">#{matchId}</span>
-		</button>
+		<span className="inline-flex shrink-0 items-center gap-1">
+			<button type="button" data-state="closed" {...{ [RC.TIP_MATCH_ATTR]: matchId }}>
+				<span className="text-muted-foreground/60 font-mono text-2xs">#{matchId}</span>
+			</button>
+			<button
+				type="button"
+				className="text-muted-foreground/60 hover:text-foreground transition-colors"
+				title={I18n.ambient.text(HistoryMsgs.copyMatchId())}
+				{...RC.copyAttrs(String(matchId))}
+			>
+				<Icon name="Copy" className="h-3 w-3" />
+			</button>
+		</span>
 	)
 }
 
