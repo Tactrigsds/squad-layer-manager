@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -56,11 +57,6 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const draft = Zus.useStore(props.stores.history, (s) => s.draft)
 	const canRun = Zus.useStore(props.stores.history, HistoryFrame.Sel.canRun)
 	const [savedAs, setSavedAs] = React.useState<SavedAs | null>(null)
-	// a query arriving from anywhere but the user's own editing is a different query, so it saves as its own
-	const runFresh = (query: HQ.Query) => {
-		setSavedAs(null)
-		props.onRun(query)
-	}
 
 	const run = () => {
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
@@ -159,12 +155,11 @@ export default function HistoryPage(props: HistoryPageProps) {
 					/>
 					{draft.mode === 'advanced' && modeToggle}
 					<div className="grow" />
-					<RecentMenu onRun={runFresh} />
+					<RecentMenu onLoad={() => setSavedAs(null)} />
 					<SavedMenu
-						onRun={runFresh}
-						onLoadOwn={(saved, query) => {
+						onLoad={() => setSavedAs(null)}
+						onLoadOwn={(saved) => {
 							setSavedAs(saved)
-							props.onRun(query)
 						}}
 					/>
 					<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
@@ -520,7 +515,11 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 
 // -------- saved and recent queries --------
 
-function RecentMenu(props: { onRun: (query: HQ.Query) => void }) {
+function isPlainNavigationClick(e: React.MouseEvent<HTMLAnchorElement>) {
+	return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+}
+
+function RecentMenu(props: { onLoad: () => void }) {
 	const [recents, setRecents] = React.useState<HistoryClient.Recent[]>([])
 	return (
 		<DropdownMenu onOpenChange={(open) => open && setRecents(HistoryClient.loadRecents())}>
@@ -533,15 +532,18 @@ function RecentMenu(props: { onRun: (query: HQ.Query) => void }) {
 				{recents.length === 0 && (
 					<div className="px-2 py-1 text-xs text-muted-foreground">{tr.text(HistoryMsgs.noRecentQueries())}</div>
 				)}
-				{recents.map((recent, i) => (
-					<button
-						key={i}
-						type="button"
+				{recents.map((recent) => (
+					<TSR.Link
+						key={recent.at}
+						to="/history"
+						search={recent.query}
 						className="block w-full max-w-96 truncate px-2 py-1 text-left text-xs hover:bg-accent"
-						onClick={() => props.onRun(recent.query)}
+						onClick={(e) => {
+							if (isPlainNavigationClick(e)) props.onLoad()
+						}}
 					>
 						{describeQuery(recent.query)}
-					</button>
+					</TSR.Link>
 				))}
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -561,7 +563,7 @@ function describeQuery(query: HQ.Query): string {
 	return parts.join(' · ')
 }
 
-function SavedMenu(props: { onRun: (query: HQ.Query) => void; onLoadOwn: (saved: SavedAs, query: HQ.Query) => void }) {
+function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => void }) {
 	const saved = useQuery(HistoryClient.savedQueriesBase())
 	const me = UsersClient.useLoggedInUser()
 	const deleteQuery = HistoryClient.useDeleteSavedQuery()
@@ -580,20 +582,21 @@ function SavedMenu(props: { onRun: (query: HQ.Query) => void; onLoadOwn: (saved:
 					const mine = me !== undefined && query.ownerId === me.discordId
 					return (
 						<div key={query.id} className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-accent">
-							<button
-								type="button"
+							<TSR.Link
+								to="/history"
+								search={query.query}
 								className="grow truncate text-left"
-								onClick={() =>
-									mine
-										? props.onLoadOwn({ id: query.id, name: query.name, visibility: query.visibility }, query.query)
-										: props.onRun(query.query)
-								}
+								onClick={(e) => {
+									if (!isPlainNavigationClick(e)) return
+									if (mine) props.onLoadOwn({ id: query.id, name: query.name, visibility: query.visibility })
+									else props.onLoad()
+								}}
 							>
 								<span className="font-medium">{query.name}</span>
 								{!mine && query.ownerName && (
 									<span className="ml-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
 								)}
-							</button>
+							</TSR.Link>
 							{mine && (
 								<Button
 									variant="ghost"
