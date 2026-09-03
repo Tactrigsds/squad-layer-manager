@@ -47,6 +47,7 @@ google-credentials.json
 # everything the dev emulator owns (see docs/DEV_INSTANCES.md): the log it writes, the Admins.cfg the app
 # reads back, and anything else a scenario leaves behind
 /data/dev/
+/data/generated/
 
 # PLUGINS_DIR: what an install downloads, or what someone dropped in by hand. Runtime state either way.
 /data/plugins/

@@ -2,7 +2,7 @@ import * as childProcess from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-// Port slots for running many worktrees of this repo side by side. A worktree claims a slot once and
+// Port slots for running many development workspaces of this repo side by side. A checkout claims a slot once and
 // keeps it; every port that instance needs is derived from the slot number, so nothing has to be
 // discovered at runtime and a browser tab pointed at a worktree stays valid across restarts.
 //
@@ -30,7 +30,7 @@ export type Slot = {
 	worktree: string
 	name: string
 	ports: SlotPorts
-	// the username `instanceUrl` logs in as; resolved from the cloned database by `dev:db:clone`
+	// the username `instanceUrl` logs in as; resolved from the cloned database during provisioning
 	login?: string
 }
 
@@ -76,7 +76,7 @@ function writeRegistry(file: string, registry: Registry) {
 	fs.renameSync(tmp, file)
 }
 
-// Two `dev:init` runs racing would otherwise read the same registry and hand out the same slot. The lock is
+// Two provisioning runs racing would otherwise read the same registry and hand out the same slot. The lock is
 // held for a file read plus a write, so a holder older than this is a crashed process, not a slow one.
 const LOCK_STALE_MS = 10_000
 
@@ -141,7 +141,9 @@ export async function claimSlot(cwd = process.cwd()): Promise<Slot> {
 		let slot = 0
 		while (taken.has(slot)) slot++
 		if (slot >= MAX_SLOTS) {
-			throw new Error(`no free dev slots (all ${MAX_SLOTS} are claimed); release one with \`pnpm dev:slots --release\``)
+			throw new Error(
+				`no free dev slots (all ${MAX_SLOTS} are claimed); remove an unused checkout or release its entry from the slot registry`,
+			)
 		}
 
 		const entry: RegistryEntry = { slot, name: path.basename(worktree), claimedAt: new Date().toISOString() }
@@ -160,7 +162,7 @@ export function getSlot(cwd = process.cwd()): Slot | null {
 
 export function requireSlot(cwd = process.cwd()): Slot {
 	const slot = getSlot(cwd)
-	if (!slot) throw new Error(`this worktree has no dev slot; run \`pnpm dev:init\` first`)
+	if (!slot) throw new Error(`this workspace has no dev slot; run \`pnpm dev\` first`)
 	return slot
 }
 

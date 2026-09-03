@@ -99,24 +99,23 @@ Once a goal or feature is complete, run `pnpm run lint:fix` and fix all lint err
 
 Full details in docs/dev_instances.md.
 
-From a worktree, do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. Those belong to
-the main checkout, and an app you reach there is not running your changes. Each worktree runs its own instance
-instead, with its own database and an emulated squad server:
+Do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. A development workspace runs its
+own instance instead, with its own database and an emulated Squad server:
 
 ```sh
-pnpm dev:init     # once per worktree: claims a port slot, links .env, clones the db. Prints the url.
-pnpm dev          # the app, the client and the emulator. Prints the url again.
-pnpm -s dev:url   # just the url, for reporting
+pnpm dev          # provisions the workspace, then starts the app, client and emulator
+pnpm dev --url    # just the URL, for reporting
 pnpm emuctl help  # drive the emulated server: join, chat, end, cycle
 ```
 
-`pnpm dev` is long-lived, so an agent must start it as a tracked background job (`run_in_background`).
+`pnpm dev` works from any checkout, including one made by a Git worktree command or an agent. It is long-lived, so an
+agent must start it as a tracked background job (`run_in_background`).
 
-`pnpm -s dev:url` prints the one url the instance answers on, and it is the only one to hand anyone. Wait for the
+`pnpm dev --url` prints the one URL the instance answers on, and it is the only one to hand anyone. Wait for the
 port to answer before opening it: a request that lands during boot bounces into the real Discord oauth flow, which
 looks like the bypass is broken when it is not.
 
-Never point a worktree at a real squad server or the real battlemetrics org. `dev:init` deliberately scrubs those,
+Never point a development workspace at a real Squad server or the real BattleMetrics org. `pnpm dev` deliberately scrubs those,
 and re-adding them means an experiment drives production.
 
 # Pull requests

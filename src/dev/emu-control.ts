@@ -9,7 +9,7 @@ import type { DevAdminList } from './admin-list.ts'
 // The socket that carries scenario commands to the emulator host.
 //
 // The verbs themselves live in @/models/sandbox.models and run through src/emulator/verbs.ts, shared with the
-// app's sandbox window. This module is only the dev host's two front ends -- the repl inside `pnpm dev:emu` and
+// app's sandbox window. This module is only the dev host's two front ends -- the repl inside `pnpm dev --emu-only` and
 // the one-shot `pnpm emuctl` from any other terminal -- plus the transport between them.
 //
 // A unix socket rather than a port: it needs no slot allocation, it is unreachable from the network, and it
@@ -114,7 +114,7 @@ export function send(socketPath: string, args: string[]): Promise<Response> {
 		})
 		socket.on('error', (err) => {
 			if ((err as NodeJS.ErrnoException).code === 'ENOENT' || (err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-				reject(new Error('no emulator is running for this worktree -- start one with `pnpm dev:emu`'))
+				reject(new Error('no emulator is running for this workspace -- start one with `pnpm dev`'))
 				return
 			}
 			reject(err)

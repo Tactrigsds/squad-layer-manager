@@ -7,7 +7,7 @@ import * as DevInstance from '../dev/instance.ts'
 //   pnpm emuctl chat Alice '!vote 1'
 //   pnpm emuctl end 1
 //
-// `pnpm emuctl help` lists the commands. They are the same ones the repl in `pnpm dev:emu` takes, dispatched
+// `pnpm emuctl help` lists the commands. They are the same ones the repl in `pnpm dev --emu-only` takes, dispatched
 // against the same running world (src/dev/emu-control.ts).
 
 const args = process.argv.slice(2)

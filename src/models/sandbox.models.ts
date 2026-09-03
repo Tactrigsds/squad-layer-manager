@@ -2,7 +2,7 @@ import { z } from '@/lib/zod'
 import type * as SM from '@/models/squad.models'
 
 // The scenario verbs a sandbox server understands, defined once for all three front ends: the repl inside
-// `pnpm dev:emu`, the one-shot `pnpm emuctl`, and the sandbox window's oRPC router. A verb added here reaches
+// `pnpm dev --emu-only`, the one-shot `pnpm emuctl`, and the sandbox window's oRPC router. A verb added here reaches
 // all of them, and none of them can grow one the others lack.
 //
 // Schemas only, so this stays importable from the client. The executor is src/emulator/verbs.ts.

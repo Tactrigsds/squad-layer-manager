@@ -9,6 +9,7 @@ import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
 import * as AR from './src/app-routes.ts'
 import { BUILD_TARGET } from './src/browser-support.ts'
+import { extractMessages } from './src/scripts/messages-build.ts'
 import * as Env from './src/server/env.ts'
 
 Env.ensureEnvSetup()
@@ -42,10 +43,32 @@ function devSourcePlugins(): Plugin {
 	}
 }
 
+function messageCatalogues(): Plugin {
+	return {
+		name: 'slm:message-catalogues',
+		buildStart() {
+			extractMessages()
+		},
+		configureServer(server) {
+			server.watcher.add(['src/**/*.ts', 'src/**/*.tsx', 'src/messages/locales/*.json'])
+		},
+		handleHotUpdate({ file }) {
+			if (
+				!file.startsWith(path.resolve('src') + path.sep) ||
+				/\.test\.tsx?$/.test(file) ||
+				file.startsWith(path.resolve('src/scripts') + path.sep)
+			)
+				return
+			extractMessages()
+		},
+	}
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
 		devSourcePlugins(),
+		messageCatalogues(),
 		tanstackRouter({
 			target: 'react',
 		}),

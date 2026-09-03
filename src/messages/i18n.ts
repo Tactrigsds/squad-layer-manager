@@ -4,7 +4,7 @@ import * as ICU from '@/messages/icu'
 // messages.models is itself a type-only leaf, so this value import keeps i18n one too
 import * as Msgs from '@/models/messages.models'
 
-import compiledEnglish from './locales/en.compiled.json'
+import compiledEnglish from '../../data/generated/messages/en.compiled.json'
 
 // Where a message's text is resolved against a locale. Kept beside the vocabulary (models/messages.models.ts)
 // rather than inside it so the two stay separable, and kept an import leaf for the same reason that one is: models

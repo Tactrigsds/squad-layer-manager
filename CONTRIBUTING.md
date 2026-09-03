@@ -36,7 +36,6 @@ There is a devcontainer configured that reproduces a working environment on linu
 
 ```sh
 pnpm install
-pnpm run build:engine   # the layer engine is rust -> wasm and the wasm blob is not checked in
 pnpm exec playwright install chromium   # only needed if you want to run the e2e suite
 ```
 
@@ -44,32 +43,26 @@ pnpm exec playwright install chromium   # only needed if you want to run the e2e
 
 Copy [.env.example.dev](.env.example.dev) to `.env` and fill in the vars it leaves uncommented; the commented-out ones are optional and show the default they fall back to.
 
-## Running the App
+## Development workspace
 
 ```sh
-## Get the database ready
-pnpm run db:migrate
-
-## run the server
-
-pnpm run server:dev
-
-## in a separate terminal...
-pnpm run client:dev
+pnpm dev
 ```
 
-### Several at once
+`dev` provisions an isolated database, emulator and port slot when needed, then starts the app and client. It prints
+the only browser URL to use.
 
-To work on more than one change at a time, run each in its own git worktree as a self-contained instance --
-its own ports, database and emulated squad server, so no two contend for a real server or for 5173:
+To work on more than one change, create an optional Git worktree:
 
 ```sh
-pnpm dev:init   # once per worktree
-pnpm dev:emu    # the emulated squad server
-pnpm dev        # the app + client
+pnpm worktree new <name> # creates and provisions a workspace
+cd ~/projects/slm/<name>
+pnpm dev
 ```
 
-See [docs/dev_instances.md](docs/dev_instances.md).
+Any checkout location works, including one made by `git worktree add` or an agent. `pnpm dev --reset-data` replaces
+that checkout's isolated database. `pnpm dev --emu-only` runs only the emulator with its REPL. See
+[docs/dev_instances.md](docs/dev_instances.md).
 
 ## Tests
 

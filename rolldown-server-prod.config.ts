@@ -3,6 +3,7 @@ import path from 'node:path'
 import { defineConfig } from 'rolldown'
 
 import packageJson from './package.json'
+import { extractMessages } from './src/scripts/messages-build.ts'
 
 // Mainly just using rolldown through vite here. haven't explored using vite as a dev server, which we would need to do if we wanted to do any kind of transforms for the server code
 
@@ -26,6 +27,14 @@ externalModules.push(
 
 console.log('External modules (not bundled):', externalModules)
 export default defineConfig({
+	plugins: [
+		{
+			name: 'slm:message-catalogues',
+			buildStart() {
+				extractMessages()
+			},
+		},
+	],
 	input: {
 		'main-instrumented': 'src/server/main-instrumented.ts',
 		// the history query engine's worker thread; a sibling of the main chunk so history.server.ts can
