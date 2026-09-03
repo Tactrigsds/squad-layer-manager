@@ -13,6 +13,7 @@ import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import { tr } from '@/systems/messages.client'
 
+import { parseWithNodeComments, stringifyWithNodeComments } from './filter-text-editor.helpers'
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 import YamlCompactSwitch from './yaml-compact-switch'
 
@@ -35,7 +36,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		(value: string) => {
 			let obj: any
 			try {
-				obj = Yaml.parse(value)
+				obj = parseWithNodeComments(value)
 			} catch (err) {
 				// a YAMLParseError message already carries the line, column and a code frame
 				setErrorText(err instanceof Error ? err.message : String(err))
@@ -75,7 +76,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		lastEmittedRef.current = F.treeToFilterNode(getState().tree)
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: Yaml.stringifyDoc(lastEmittedRef.current, compactRef.current),
+			doc: stringifyWithNodeComments(lastEmittedRef.current, compactRef.current),
 			extensions: [
 				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
@@ -97,7 +98,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			// rewrite the buffer under the cursor, which YAML's significant indentation makes worse than it was in JSON.
 			if (Obj.deepEqual(node, lastEmittedRef.current)) return
 			lastEmittedRef.current = node
-			CM.setDoc(view, Yaml.stringifyDoc(node, compactRef.current))
+			CM.setDoc(view, stringifyWithNodeComments(node, compactRef.current))
 		})
 
 		return () => {
@@ -113,7 +114,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		setCompact(next)
 		const view = viewRef.current
 		if (!view) return
-		CM.setDoc(view, Yaml.stringifyDoc(Yaml.parse(view.state.doc.toString()), next))
+		CM.setDoc(view, stringifyWithNodeComments(parseWithNodeComments(view.state.doc.toString()), next))
 	}
 
 	React.useImperativeHandle(props.ref, () => ({
@@ -121,14 +122,14 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			const view = viewRef.current!
 			let obj: any
 			try {
-				obj = Yaml.parse(view.state.doc.toString())
+				obj = parseWithNodeComments(view.state.doc.toString())
 			} catch (err) {
 				if (err instanceof Error) {
 					toast.error(...tr.toast(F_Msgs.formatFailed(err.message)))
 				}
 				return
 			}
-			CM.setDoc(view, Yaml.stringifyDoc(obj, compactRef.current))
+			CM.setDoc(view, stringifyWithNodeComments(obj, compactRef.current))
 		},
 		focus: () => viewRef.current!.focus(),
 	}))
