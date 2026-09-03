@@ -94,7 +94,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 // usually about. Not a capability boundary -- every other field is one "+ Filter" away, and a field carried
 // in from another result type stays visible while it holds a value (see visibleFields).
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
-	events: ['feed', 'types', 'chat'],
+	events: ['feed', 'types', 'chat', 'matchId'],
 	players: ['minMatches', 'types'],
 	matches: ['outcomes', 'map', 'ticketDiff', 'duration'],
 }
