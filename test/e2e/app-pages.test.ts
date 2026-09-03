@@ -666,7 +666,7 @@ test.describe('history page', () => {
 		// what was saved is what the page was showing when it was updated
 		await page.goto(historyUrl(app, 'type=events'))
 		await page.getByRole('button', { name: 'Saved' }).click()
-		await page.getByRole('button', { name }).click()
+		await page.getByRole('link', { name }).click()
 		await expect(page).toHaveURL(/type=matches/)
 	})
 })
