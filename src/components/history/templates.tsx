@@ -7,11 +7,14 @@
 import React from 'react'
 
 import * as Atoms from '@/components/feed/atoms'
+import { Icon } from '@/components/feed/icons'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
+import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
+import { tr } from '@/systems/messages.client'
 
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -64,6 +67,22 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 	)
 }
 
+// the player details window's CopyIdButton, minus its hooks: the click and the "Copied!" feedback ride the
+// delegated handlers (see interactions.ts), and the kind label stays in the column header rather than the cell
+function CopyId(props: { kind: SM_Msgs.IdKind; id: string }) {
+	return (
+		<button
+			type="button"
+			className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+			title={tr.text(SM_Msgs.copyIdHint(props.kind))}
+			{...RC.copyAttrs(props.id)}
+		>
+			<span className="font-mono">{props.id}</span>
+			<Icon name="Copy" className="h-3 w-3" />
+		</button>
+	)
+}
+
 // chevron, the row's own columns, then the events count: PLAYER_ROW_COLUMNS counts all three groups
 export const PLAYER_ROW_COLUMNS = 8
 
@@ -92,8 +111,10 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 					{row.username ?? row.playerId}
 				</button>
 			</td>
-			<td className={ID_CELL}>{row.steamId ?? ''}</td>
-			<td className={ID_CELL}>{row.playerId}</td>
+			<td className={ID_CELL}>{row.steamId && <CopyId kind="steam" id={row.steamId} />}</td>
+			<td className={ID_CELL}>
+				<CopyId kind="eos" id={row.playerId} />
+			</td>
 			<td className={NUM_CELL}>{row.matches}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
 			<td className={CELL}>{dateTime.format(row.lastSeen)}</td>

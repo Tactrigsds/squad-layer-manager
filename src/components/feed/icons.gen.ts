@@ -20,6 +20,10 @@ export const SHAPES = {
 		'<line x1="2" x2="22" y1="2" y2="22"></line><path d="M7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16"></path><path d="M9.5 4h5L17 7h3a2 2 0 0 1 2 2v7.5"></path><path d="M14.121 15.121A3 3 0 1 1 9.88 10.88"></path>',
 	],
 	CheckCircle2: ['lucide lucide-circle-check', '<circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path>'],
+	Copy: [
+		'lucide lucide-copy',
+		'<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>',
+	],
 	CloudFog: [
 		'lucide lucide-cloud-fog',
 		'<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M16 17H7"></path><path d="M17 21H9"></path>',
