@@ -21,23 +21,24 @@ export const Route = createFileRoute('/_app/history')({
 	}),
 })
 
-// A bare visit lands scoped to the default server, since a cross-server search is rarely the question and
-// the whole history is the expensive one. Only a bare visit: a shared link, a saved query, or a search the
-// user has already narrowed all carry their own server (or deliberately none), and are left alone.
-function useDefaultServerRedirect(search: HQ.Query) {
+// A bare visit lands scoped to the default server and on the DEFAULT quick filter, since a cross-server
+// search over every event kind is rarely the question and the whole history is the expensive one. Only a
+// bare visit: a shared link, a saved query, or a search the user has already narrowed all carry their own
+// scope (or deliberately none), and are left alone.
+function useBareVisitDefaults(search: HQ.Query) {
 	const navigate = useNavigate()
 	const defaultServer = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers.find((server) => server.defaultServer)?.id)
 	const bare = search.servers === undefined && JSON.stringify(search) === JSON.stringify(HQ.DEFAULT_QUERY)
 	React.useEffect(() => {
 		if (!bare || !defaultServer) return
-		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer] }, replace: true })
+		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer], feed: 'DEFAULT' }, replace: true })
 	}, [bare, defaultServer, navigate])
 }
 
 function RouteComponent() {
 	const search = Route.useSearch()
 	const navigate = useNavigate()
-	useDefaultServerRedirect(search)
+	useBareVisitDefaults(search)
 	// re-serialized because the router hands back null-prototype objects, which the frame manager's
 	// deep-equal over instance keys chokes on
 	const input = React.useMemo(() => ({ initial: JSON.parse(JSON.stringify(search)) as HQ.Query }), [search])
