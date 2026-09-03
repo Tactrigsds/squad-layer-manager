@@ -1,8 +1,8 @@
 // `yaml` itself, plus the renderer the text-mode editors format with.
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the whole `yaml`
 // package, which we don't want in the initial/route chunk.
-import type { Scalar, YAMLMap, YAMLSeq } from 'yaml'
-import { Document, isMap, isScalar, parseDocument, visit } from 'yaml'
+import type { Node, YAMLMap, YAMLSeq } from 'yaml'
+import { Document, isMap, isNode, isScalar, isSeq, parseDocument, visit } from 'yaml'
 
 export * from 'yaml'
 
@@ -16,17 +16,16 @@ export function stringifyDoc(value: unknown, compact = true): string {
 	return render(new Document(value, { aliasDuplicateObjects: false }), compact)
 }
 
-// Comments keyed by dotted path into `value`, rendered as `#` lines directly above the key at that path and read back
-// from there by parseWithComments. Only map keys are addressable: a comment above a list item has no path the settings
-// GUI can anchor, so it is not read back.
+// Comments keyed by dotted path into `value`, rendered as `#` lines directly above the key or list item at that path
+// and read back from there by parseWithComments. A list item's segment is its index.
 export type PathComments = Record<string, string>
 
 export function stringifyDocWithComments(value: unknown, comments: PathComments, compact = true): string {
 	const doc = new Document(value, { aliasDuplicateObjects: false })
 	for (const [path, text] of Object.entries(comments)) {
-		// a comment on a key that no longer exists has nowhere to render, so it drops out of the document here
-		const key = keyAtPath(doc.contents, path.split('.'))
-		if (key) key.commentBefore = encodeComment(text)
+		// a comment on a path that no longer exists has nowhere to render, so it drops out of the document here
+		const target = commentTargetAtPath(doc.contents, path.split('.'))
+		if (target) target.commentBefore = encodeComment(text)
 	}
 	return render(doc, compact)
 }
@@ -50,36 +49,62 @@ function render(doc: Document, compact: boolean): string {
 }
 
 function collapseIfShort(_key: unknown, node: YAMLMap | YAMLSeq) {
+	// the node's own comment renders on the line above it either way, so it neither blocks the flow form nor counts
+	// against its width -- unlike a comment further down, which only block form has a line for
+	const own = node.commentBefore
+	node.commentBefore = null
 	const flow = new Document(node).toString({ lineWidth: 0, collectionStyle: 'flow' }).trim()
+	node.commentBefore = own
 	// a newline survives flow style only for a block scalar or a comment, neither of which can be inlined at all
 	if (flow.length > FLOW_WIDTH || flow.includes('\n')) return
 	node.flow = true
 	return visit.SKIP
 }
 
-function keyAtPath(node: unknown, path: string[]): Scalar | undefined {
+// the node a comment at `path` renders above: a map entry's key, or a sequence item itself
+function commentTargetAtPath(node: unknown, path: string[]): Node | undefined {
 	let cur = node
-	let key: Scalar | undefined
+	let target: Node | undefined
 	for (const seg of path) {
-		if (!isMap(cur)) return undefined
-		const pair = cur.items.find((p) => isScalar(p.key) && String(p.key.value) === seg)
-		if (!pair) return undefined
-		key = pair.key as Scalar
-		cur = pair.value
+		if (isMap(cur)) {
+			const pair = cur.items.find((p) => isScalar(p.key) && String(p.key.value) === seg)
+			if (!pair || !isNode(pair.key)) return undefined
+			target = pair.key
+			cur = pair.value
+		} else if (isSeq(cur)) {
+			const item = cur.items[Number(seg)]
+			if (!isNode(item)) return undefined
+			target = item
+			cur = item
+		} else return undefined
 	}
-	return key
+	return target
 }
 
-function collectComments(node: unknown, path: string[], out: PathComments) {
-	if (!isMap(node)) return
-	node.items.forEach((pair, i) => {
-		if (!isScalar(pair.key)) return
-		const keyPath = [...path, String(pair.key.value)]
-		// the comment above a nested map's first entry parses onto the map rather than onto that entry's key
-		const raw = [i === 0 ? node.commentBefore : null, pair.key.commentBefore].filter((c) => c != null).join('\n')
+// `ownConsumed` is set where the caller already took this node's commentBefore for itself: a sequence item's comment
+// parses onto the item, which for a map item is the same slot the comment above its first entry lands in.
+function collectComments(node: unknown, path: string[], out: PathComments, ownConsumed = false) {
+	const leading = !ownConsumed && isNode(node) ? node.commentBefore : null
+	if (isMap(node)) {
+		node.items.forEach((pair, i) => {
+			if (!isScalar(pair.key)) return
+			const keyPath = [...path, String(pair.key.value)]
+			// the comment above a nested map's first entry parses onto the map rather than onto that entry's key
+			const raw = [i === 0 ? leading : null, pair.key.commentBefore].filter((c) => c != null).join('\n')
+			const text = decodeComment(raw)
+			if (text) out[keyPath.join('.')] = text
+			collectComments(pair.value, keyPath, out)
+		})
+		return
+	}
+	if (!isSeq(node)) return
+	node.items.forEach((item, i) => {
+		if (!isNode(item)) return
+		const itemPath = [...path, String(i)]
+		const raw = [i === 0 ? leading : null, item.commentBefore].filter((c) => c != null).join('\n')
 		const text = decodeComment(raw)
-		if (text) out[keyPath.join('.')] = text
-		collectComments(pair.value, keyPath, out)
+		if (text) out[itemPath.join('.')] = text
+		collectComments(item, itemPath, out, true)
 	})
 }
 

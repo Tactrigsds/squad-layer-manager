@@ -355,7 +355,8 @@ It uses _all of_, so a layer has to meet every one of:
 
 Switch a filter between _Builder_ and _Text_. The text view edits the expression as text, which is easier for
 changes the builder makes you do a line at a time, such as changing how the conditions nest. _Reformat_ tidies the
-text up.
+text up. A line's comment shows up there as a `#` line above it, and a `#` line written there becomes the comment
+on the line below.
 
 #### 8.2. Pool configuration
 
