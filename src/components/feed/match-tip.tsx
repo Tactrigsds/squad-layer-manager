@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 
 import * as Atoms from '@/components/feed/atoms'
 import * as MatchSummary from '@/components/feed/match-summary'
+import { toast } from '@/lib/toast'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
@@ -28,6 +29,10 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 
 	const result = [outcome, duration && tr.text(HistoryMsgs.matchTipMinutes(Number(duration)))].filter(Boolean)
 	const meta = [details.serverId, time && dateTime.format(time), tr.text(HistoryMsgs.matchTipSetBy(details.layerSource.type))]
+	const copyMatchId = () => {
+		void navigator.clipboard.writeText(String(details.historyEntryId))
+		toast(...tr.toast(HistoryMsgs.matchIdCopied()))
+	}
 
 	return (
 		<div className="flex flex-col gap-0.5">
@@ -41,6 +46,14 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 					className="font-semibold"
 				/>
 				<span className="font-mono text-muted-foreground">#{details.historyEntryId}</span>
+				<button
+					type="button"
+					className="text-muted-foreground hover:text-foreground transition-colors"
+					title={tr.text(HistoryMsgs.copyMatchId())}
+					onClick={copyMatchId}
+				>
+					<Icons.Copy className="h-3 w-3" />
+				</button>
 				<button
 					type="button"
 					className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground hover:text-foreground"
