@@ -382,6 +382,28 @@ test.describe('the filter text editor', () => {
 		await expect(compact).toBeEnabled()
 	})
 
+	test('carries a node comment between the buffer and the tree as a # line', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		await editor.fill(
+			'type: and\nchildren:\n  # why this rule exists\n  - { type: eq, neg: false, args: [ { type: column, column: Gamemode }, { type: value, value: AAS } ] }',
+		)
+		await expect(editor).toContainText('why this rule exists')
+
+		// the builder reads the tree, so the comment is on the node rather than in the buffer alone
+		await page.getByRole('button', { name: 'Builder', exact: true }).click()
+		await expect(page.getByText('why this rule exists').first()).toBeVisible()
+
+		// and back the other way: above the node, with the node itself left in its compact form
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+		await expect(editor).toContainText('# why this rule exists')
+		await expect(editor).toContainText('{ type: eq')
+		await expect(editor).not.toContainText('comment:')
+	})
+
 	test('tab indents by two spaces instead of leaving the editor', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
 		await page.getByRole('button', { name: 'Text', exact: true }).click()
