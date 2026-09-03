@@ -117,7 +117,8 @@ export const setupInstance = Instr.spanOp(
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 
 							const voteState = baseCtx.vote.state
-							if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
+							// no match recorded means rcon has never synced, so there is no one in game to warn anyway
+							if (baseCtx.server.serverRolling$.value || !currentMatch || currentMatch.status === 'post-game') return
 							if (
 								LL.isVoteItem(serverState.layerQueue[0]) &&
 								voteState?.code === 'ready' &&

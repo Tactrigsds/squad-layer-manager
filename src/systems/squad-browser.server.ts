@@ -52,11 +52,11 @@ const cache = new FixedSizeMap<string, { res: JoinLinkRes; expiresAt: number }>(
 // The link points at a steam lobby the server tears down when it rolls, so a cached one outlives its match
 // however much of its TTL is left. Keying on the match retires it at the roll and leaves the TTL to cover the
 // rest (a restart inside one match, say).
-function cacheKey(serverName: string, matchId: number) {
+function cacheKey(serverName: string, matchId: number | null) {
 	return `${matchId}\u0000${serverName}`
 }
 
-export async function getJoinLink(ctx: CS.Ctx & CS.AbortSignal, serverName: string, matchId: number): Promise<JoinLinkRes> {
+export async function getJoinLink(ctx: CS.Ctx & CS.AbortSignal, serverName: string, matchId: number | null): Promise<JoinLinkRes> {
 	if (!isEnabled()) return { code: 'err:disabled' }
 
 	const key = cacheKey(serverName, matchId)

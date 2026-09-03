@@ -34,6 +34,7 @@ beforeAll(async () => {
 			settings.queue.mainPool.poolFilter = { filterId: 'pool-only', mode: 'include' }
 		},
 		users: [DASHBOARD_ONLY, CONSOLE_READER],
+		unreachableServer: true,
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
 			settings.rbac.roles['dashboard-only'] = role(['site:authorized', 'squad-server:view'], { users: [DASHBOARD_ONLY] })
@@ -164,4 +165,36 @@ describe('serverConsole.watch', () => {
 
 		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
 	})
+})
+
+// A server whose rcon has never connected has no match in its history. Both of these streams read the current match
+// on subscribe, so before they handled its absence each died with a 500 for the whole client and neither retried: no
+// filter or repeat indicators on any queue row, and an empty chat feed. Every other fixture seeds a match before a
+// client connects, which is what hid it. Both are asserted in one test because the layer status can only answer once
+// rcon has exhausted its retries, which takes most of the run time.
+describe('a server with no recorded match', () => {
+	it('still streams its layer status and its chat events', async () => {
+		const serverId = app.unreachableServerId!
+		const untilLoaded = async <T>(call: () => Promise<T | null>, label: string) => await app.waitFor(call, { label, timeoutMs: 90_000 })
+
+		const [status, events] = await Promise.all([
+			untilLoaded(async () => {
+				const res = await firstYield((signal) => adminClient.squadServer.watchLayersStatus({ serverId }, { signal }), {
+					label: 'the layers status',
+					timeoutMs: 40_000,
+				})
+				return res.code === 'ok' ? res : null
+			}, 'the layers status'),
+			untilLoaded(async () => {
+				const res = await firstYield((signal) => adminClient.squadServer.watchChatEvents({ serverId }, { signal }), {
+					label: 'the chat backlog',
+				})
+				return Array.isArray(res) ? res : null
+			}, 'the chat backlog'),
+		])
+
+		expect(status.data.currentLayer).toBeNull()
+		expect(status.data.currentMatch).toBeUndefined()
+		expect(events.map((e) => e.type)).toContain('SYNCED')
+	}, 120_000)
 })

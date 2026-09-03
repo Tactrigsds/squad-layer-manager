@@ -55,7 +55,11 @@ export type ServerInfo = {
 	maxQueueLength?: number
 }
 
-export type LayersStatusExt = LayersStatus & {
+// currentLayer here is SLM's record of what is playing -- the current match -- rather than the rcon read, so it is
+// null until the first match is recorded. nextLayer still comes from rcon.
+export type LayersStatusExt = {
+	currentLayer: L.UnvalidatedLayer | null
+	nextLayer: L.UnvalidatedLayer | null
 	currentMatch?: MH.MatchDetails
 }
 

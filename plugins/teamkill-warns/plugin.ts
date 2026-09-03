@@ -7,7 +7,7 @@ export default definePlugin({
 	id: 'teamkill-warns',
 	name: 'Teamkill Warns',
 	version: '1.0.0',
-	apiVersion: '^0.5.1',
+	apiVersion: '^0.6',
 	description: "Warns players when they've been teamkilled",
 	configSchema: z.object({
 		enabledServers: Fields.serverIds().prefault([]).describe('Servers to enable teamkill warns for'),
