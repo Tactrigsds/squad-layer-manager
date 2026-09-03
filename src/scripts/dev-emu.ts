@@ -9,8 +9,8 @@ import * as Slots from '../dev/slots.ts'
 import { BmServer } from '../emulator/bm-server.ts'
 import { Emulator } from '../emulator/index.ts'
 
-// The emulated squad server this worktree's app talks to, plus the stub battlemetrics api, as a long-lived
-// process. `pnpm dev:emu`.
+// The emulated Squad server this workspace's app talks to, plus the stub BattleMetrics API, as a long-lived
+// process. `pnpm dev --emu-only`.
 //
 // Deliberately not hosted inside the app: `pnpm server:dev` runs under `tsx watch` and restarts on every
 // edit, which would take the emulated world -- players, squads, match state, log history -- down with it. As

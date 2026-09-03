@@ -509,18 +509,18 @@ closure. The targets are `text`, `toast`, `richText`, `confirm`, `warn` and `bro
 has something sensible to say on, and the compiler rejects the others.
 
 Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical
-but whose translations differ are told apart by a `context`, which is part of the key and never rendered. Catalogues
-live in `src/messages/locales/`.
+but whose translations differ are told apart by a `context`, which is part of the key and never rendered. The English
+template and translations live in `src/messages/locales/`. Generated compiled catalogues live outside source control.
 
-**Patterns are compiled, not parsed.** `pnpm i18n:extract` resolves each pattern's structure ahead of time into
-`<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to its
+**Patterns are compiled, not parsed.** The development and build hooks resolve each pattern's structure ahead of time
+into `<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to its
 own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
 at runtime: holding a parsed AST and its formatter per message cost 2.4 MB against 170 KB for the compiled form.
 
 The consequence to know about: **a message interpolates its arguments only if the extractor saw it.** One defined
 where the extractor does not read, a test file for instance, renders its pattern verbatim until it registers a
-compiled form of its own. `pnpm i18n:lint` holds that guarantee across `src`, and the unit suite fails when a
-catalogue on disk no longer matches the source.
+compiled form of its own. `pnpm i18n:lint` holds that guarantee across `src`, and the unit suite validates the
+generated catalogue.
 
 English is not registered the way other locales are. `@/messages/i18n` carries it built in, so no boot path can miss
 it, and value formatting (`{n, number}`, `{d, date}`) is rejected at build time: format the value at the call site

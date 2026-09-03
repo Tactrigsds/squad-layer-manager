@@ -7,7 +7,7 @@ import { def, rt } from '@/models/messages.models'
 import { compile } from '@/scripts/compile-messages'
 
 // A message defined in a test file is not extracted, so the runtime has no compiled form for it and would render
-// its pattern verbatim. Registering one here is what `pnpm i18n:extract` does for every message in src.
+// its pattern verbatim. The catalogue generator does this for every message in src.
 function english(...patterns: string[]) {
 	I18n.registerCatalogue(I18n.DEFAULT_LOCALE, Object.fromEntries(patterns.map((p) => [p, compile(p)])))
 }

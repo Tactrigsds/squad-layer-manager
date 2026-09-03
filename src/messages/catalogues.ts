@@ -6,11 +6,11 @@
 // English is not here: it is the source language, and @/messages/i18n carries its compiled form built in, so no
 // boot path can miss it.
 //
-// To add a locale: `pnpm i18n:extract`, copy locales/en.json to locales/<tag>.json, translate it, run
-// `pnpm i18n:extract` again to compile the translation, then import and register the compiled file here.
+// To add a locale: copy locales/en.json to locales/<tag>.json, translate it, then import and register
+// data/generated/messages/<tag>.compiled.json here.
 //
 //   import * as I18n from '@/messages/i18n'
-//   import de from './locales/de.compiled.json'
+//   import de from '../../data/generated/messages/de.compiled.json'
 //   I18n.registerCatalogue('de', de)
 
 export function register() {}

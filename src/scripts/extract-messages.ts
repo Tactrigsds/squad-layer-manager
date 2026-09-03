@@ -6,7 +6,7 @@ import type * as ICU from '@/messages/icu'
 import { compile, UnsupportedPatternError } from '@/scripts/compile-messages'
 
 // Collects every translatable message into a catalogue template, keyed the way the runtime keys them: by the
-// message's own English, plus a context where two messages share one. Run with `pnpm i18n:extract`.
+// message's own English, plus a context where two messages share one. Build hooks run this before they load a catalogue.
 //
 // `pnpm i18n:lint` runs the same visitor as a check instead, and fails on two things. First, a message is only
 // translatable when its source is written at the call site, so a t/rt call whose first argument is not a string
@@ -19,12 +19,19 @@ import { compile, UnsupportedPatternError } from '@/scripts/compile-messages'
 // remaining conversion work stays visible rather than looking like an empty catalogue.
 
 const SRC_DIR = 'src'
-const OUT_DIR = 'src/messages/locales'
+const LOCALES_DIR = 'src/messages/locales'
+const OUT_DIR = 'data/generated/messages'
+const EN_TEMPLATE_PATH = path.join(LOCALES_DIR, 'en.json')
 const COMPILED_SUFFIX = '.compiled.json'
 
 function serialize(value: unknown, minify: boolean) {
 	if (minify) return JSON.stringify(value) + '\n'
 	return JSON.stringify(value, null, '\t') + '\n'
+}
+
+function writeIfChanged(file: string, content: string) {
+	if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return
+	fs.writeFileSync(file, content)
 }
 
 // the message vocabulary modules and the functions of each that take a source string first
@@ -33,6 +40,7 @@ const MSG_MODULES: Record<string, string[]> = {
 }
 
 const mode = process.argv[2] === 'lint' ? 'lint' : 'extract'
+const quiet = process.argv.includes('--quiet')
 
 type Entry = { source: string; context?: string; icu: boolean; from: string }
 // `at` is a source location for a message the extractor cannot read, and the message's own key for one it can
@@ -251,13 +259,13 @@ function describeKey(key: string) {
 	return JSON.stringify(key.length > 60 ? key.slice(0, 60) + '...' : key)
 }
 
-const catalogueFiles = fs.existsSync(OUT_DIR)
-	? fs.readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && !f.endsWith(COMPILED_SUFFIX) && f !== 'en.json')
+const catalogueFiles = fs.existsSync(LOCALES_DIR)
+	? fs.readdirSync(LOCALES_DIR).filter((f) => f.endsWith('.json') && !f.endsWith(COMPILED_SUFFIX) && f !== 'en.json')
 	: []
 const compiled: Record<string, Record<string, ICU.Entry>> = { en: compileCatalogue(template, true) }
 for (const file of catalogueFiles) {
 	const locale = path.basename(file, '.json')
-	compiled[locale] = compileCatalogue(JSON.parse(fs.readFileSync(path.join(OUT_DIR, file), 'utf8')), false)
+	compiled[locale] = compileCatalogue(JSON.parse(fs.readFileSync(path.join(LOCALES_DIR, file), 'utf8')), false)
 }
 
 if (mode === 'lint') {
@@ -266,48 +274,62 @@ if (mode === 'lint') {
 		console.log(`\n${diagnostics.length} messages are not extractable or do not compile`)
 		process.exit(1)
 	}
-	// content, not bytes: oxfmt reformats these after they are written, and its layout is the better one
-	const stale = ['en.json', ...Object.keys(compiled).map((l) => l + COMPILED_SUFFIX)].filter((f) => {
-		const at = path.join(OUT_DIR, f)
-		if (!fs.existsSync(at)) return true
-		const want = f === 'en.json' ? template : compiled[path.basename(f, COMPILED_SUFFIX)]
-		return JSON.stringify(JSON.parse(fs.readFileSync(at, 'utf8'))) !== JSON.stringify(want)
+	const translationIssues = catalogueFiles.flatMap((file) => {
+		const catalogue: Record<string, string> = JSON.parse(fs.readFileSync(path.join(LOCALES_DIR, file), 'utf8'))
+		const locale = path.basename(file, '.json')
+		return [
+			...Object.keys(catalogue)
+				.filter((key) => !(key in template))
+				.map((key) => `${locale}: no source message for ${JSON.stringify(key)}`),
+			...Object.keys(template)
+				.filter((key) => !(key in catalogue))
+				.map((key) => `${locale}: no translation for ${JSON.stringify(key)}`),
+		]
 	})
-	for (const f of stale) console.log(`${path.join(OUT_DIR, f)} is out of date`)
-	if (stale.length) {
-		console.log(`\nrun \`pnpm i18n:extract\``)
+	for (const issue of translationIssues) console.log(issue)
+	if (translationIssues.length) {
+		console.log(`\n${translationIssues.length} translation entries do not match the source`)
+		process.exit(1)
+	}
+	if (
+		!fs.existsSync(EN_TEMPLATE_PATH) ||
+		JSON.stringify(JSON.parse(fs.readFileSync(EN_TEMPLATE_PATH, 'utf8'))) !== JSON.stringify(template)
+	) {
+		console.log(`${EN_TEMPLATE_PATH} is out of date`)
 		process.exit(1)
 	}
 	for (const m of malformed) console.log(`ICU cannot parse ${m}; it renders verbatim`)
-	console.log('all message sources are extractable, compile, and their catalogues are up to date')
+	console.log('all message sources are extractable, compile, and their translations match')
 	process.exit(0)
 }
 
 const collisions = [...byKey].filter(([, group]) => group.length > 1 && new Set(group.map((e) => e.from)).size > 1)
 
 fs.mkdirSync(OUT_DIR, { recursive: true })
-fs.writeFileSync(path.join(OUT_DIR, 'en.json'), serialize(template, false))
+writeIfChanged(EN_TEMPLATE_PATH, serialize(template, false))
 for (const [locale, catalogue] of Object.entries(compiled)) {
-	fs.writeFileSync(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue, true))
+	writeIfChanged(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue, true))
 }
 
 const existing = catalogueFiles
-console.log(`extracted ${entries.length} translatable messages into ${byKey.size} keys`)
-console.log(`  ${entries.filter((e) => e.icu).length} take arguments, ${entries.filter((e) => !e.icu).length} do not`)
-console.log(`  ${untranslated} strings inside a message body are still built in JavaScript`)
-for (const d of diagnostics) console.log(`  does not compile: ${d.at}  ${d.message}`)
-for (const m of malformed) console.log(`  ICU cannot parse ${m}; it renders verbatim`)
+if (!quiet) {
+	console.log(`extracted ${entries.length} translatable messages into ${byKey.size} keys`)
+	console.log(`  ${entries.filter((e) => e.icu).length} take arguments, ${entries.filter((e) => !e.icu).length} do not`)
+	console.log(`  ${untranslated} strings inside a message body are still built in JavaScript`)
+	for (const d of diagnostics) console.log(`  does not compile: ${d.at}  ${d.message}`)
+	for (const m of malformed) console.log(`  ICU cannot parse ${m}; it renders verbatim`)
 
-for (const [key, group] of collisions) {
-	console.log(`  shared key ${JSON.stringify(key)}: ${group.map((e) => e.from).join(', ')}`)
-}
-if (collisions.length) console.log(`  ${collisions.length} keys are shared; give one a context if their translations differ`)
+	for (const [key, group] of collisions) {
+		console.log(`  shared key ${JSON.stringify(key)}: ${group.map((e) => e.from).join(', ')}`)
+	}
+	if (collisions.length) console.log(`  ${collisions.length} keys are shared; give one a context if their translations differ`)
 
-for (const file of existing) {
-	const locale = path.basename(file, '.json')
-	const catalogue: Record<string, string> = JSON.parse(fs.readFileSync(path.join(OUT_DIR, file), 'utf8'))
-	const orphaned = Object.keys(catalogue).filter((k) => !(k in template))
-	const missing = Object.keys(template).filter((k) => !(k in catalogue))
-	console.log(`${locale}: ${missing.length} untranslated, ${orphaned.length} no longer in the source`)
-	for (const key of orphaned) console.log(`  orphaned: ${JSON.stringify(key)}`)
+	for (const file of existing) {
+		const locale = path.basename(file, '.json')
+		const catalogue: Record<string, string> = JSON.parse(fs.readFileSync(path.join(LOCALES_DIR, file), 'utf8'))
+		const orphaned = Object.keys(catalogue).filter((k) => !(k in template))
+		const missing = Object.keys(template).filter((k) => !(k in catalogue))
+		console.log(`${locale}: ${missing.length} untranslated, ${orphaned.length} no longer in the source`)
+		for (const key of orphaned) console.log(`  orphaned: ${JSON.stringify(key)}`)
+	}
 }

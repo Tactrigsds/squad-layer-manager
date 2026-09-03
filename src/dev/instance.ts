@@ -14,6 +14,7 @@ import type * as Slots from './slots.ts'
 
 // Everything the emulator host owns lives here, so a worktree can be reset by deleting one directory.
 export const DEV_DIR = path.join(Paths.DATA, 'dev')
+export const DEV_DB_PATH = path.join(DEV_DIR, 'db.sqlite3')
 export const SQUAD_LOG_PATH = path.join(DEV_DIR, 'SquadGame.log')
 export const ADMINS_CFG_PATH = path.join(DEV_DIR, 'Admins.cfg')
 export const EMULATOR_LOG_PATH = path.join(DEV_DIR, 'emulator.log')
@@ -48,6 +49,7 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 		HOST: '127.0.0.1',
 		CLIENT_PORT: String(slot.ports.client),
 		ORIGIN: `http://localhost:${slot.ports.client}`,
+		DB_PATH: DEV_DB_PATH,
 
 		// A dev instance never reaches discord: the oauth callback is built from ORIGIN, so real login would
 		// need every slot's port registered as a redirect uri on the discord app. The bypass logs in as any

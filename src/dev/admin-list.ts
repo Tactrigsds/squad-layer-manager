@@ -7,7 +7,7 @@ import type * as Verbs from '../emulator/verbs.ts'
 import { ADMINS_CFG_PATH } from './instance.ts'
 
 // The dev host's admin list: the same emulated Admins.cfg the sandbox keeps in memory, except this one is written
-// to the file the worktree's app reads back through its `local` admin list source. So `pnpm emuctl set-player-groups`
+// to the file the workspace's app reads back through its `local` admin list source. So `pnpm emuctl set-player-groups`
 // works here too.
 //
 // The default player names are listed in their groups before anyone connects, which is what makes a `bulk-join`
@@ -20,7 +20,7 @@ export type DevAdminList = NonNullable<Verbs.SandboxHost['adminList']> & {
 
 export function createAdminList(args: {
 	players: () => Map<string, EmuPlayer>
-	// steam ids passed to `pnpm dev:emu --admins`, for players the emulator did not name
+	// steam ids passed to `pnpm dev --emu-only --admins`, for players the emulator did not name
 	extraAdminSteamIds?: readonly string[]
 }): DevAdminList {
 	const list = SB.initAdminList()

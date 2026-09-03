@@ -143,7 +143,7 @@ function BlockEditor(
 			{node.children.length > 0 && (
 				<div className={cn('ml-1.5 flex flex-col gap-1 border-l-2 pl-2', depthColors[depth % depthColors.length])}>
 					{node.children.map((child, i) => (
-						<NodeEditor key={i} stores={props.stores} node={child} path={[...path, i]} depth={depth + 1} />
+						<NodeEditor key={[...path, i].join('/')} stores={props.stores} node={child} path={[...path, i]} depth={depth + 1} />
 					))}
 				</div>
 			)}

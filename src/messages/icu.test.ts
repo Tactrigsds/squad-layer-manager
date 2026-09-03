@@ -33,7 +33,7 @@ const PATTERNS = [
 ]
 
 const source: Record<string, string> = JSON.parse(fs.readFileSync('src/messages/locales/en.json', 'utf8'))
-const compiled: Record<string, ICU.Entry> = JSON.parse(fs.readFileSync('src/messages/locales/en.compiled.json', 'utf8'))
+const compiled: Record<string, ICU.Entry> = JSON.parse(fs.readFileSync('data/generated/messages/en.compiled.json', 'utf8'))
 
 // The values a pattern needs, read off its compiled form. Each argument gets every value that reaches a different
 // branch, so a round of renders covers every branch of every message.
@@ -125,9 +125,7 @@ describe.each(LOCALES)('%s', (locale) => {
 	})
 })
 
-// The compiled catalogue is what the runtime reads, so a stale one silently renders yesterday's copy. Run here
-// rather than left to whoever remembers `pnpm i18n:lint`, because the pre-push hook runs the unit suite.
-test('the catalogues on disk match the messages in src', () => {
+test('the translations match the messages in src', () => {
 	expect(() => execFileSync('pnpm', ['-s', 'i18n:lint'], { encoding: 'utf8', stdio: 'pipe' })).not.toThrow()
 })
 

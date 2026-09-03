@@ -213,16 +213,16 @@ function dispatch() {
 			console.log(result.created ? `created ${result.path} on ${result.branch} (from ${result.base})` : `${result.path} already exists`)
 			if (setup) {
 				install(result.path)
-				run('pnpm', ['dev:init'], result.path)
+				run('pnpm', ['dev', '--url'], result.path)
 				console.log(`\ncd ${result.path}`)
 			} else {
 				ensureArtifacts(result.path)
-				console.log(`\nnext: cd ${result.path} && pnpm dev:init`)
+				console.log(`\nnext: cd ${result.path} && pnpm dev`)
 			}
 			break
 		}
 
-		// What `dev:init` calls, so the artifact list lives in one place. Provisioning a dev instance is slow
+		// What the dev workspace provisioner calls, so the artifact list lives in one place. Provisioning is slow
 		// and interactive enough to wait on a build when the main checkout has nothing to copy.
 		case 'ensure-artifacts':
 			ensureArtifacts(git(['rev-parse', '--show-toplevel'], cwd), { build: true, force: rest.includes('--force') })
@@ -258,9 +258,7 @@ function dispatch() {
 				}
 				const running = processesUnder(entry.path)
 				if (running > 0) {
-					console.log(
-						`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev, dev:emu) and re-run`,
-					)
+					console.log(`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev) and re-run`)
 					continue
 				}
 				if (!apply) {
@@ -280,7 +278,7 @@ function dispatch() {
 		default:
 			console.log(`worktrees live in ${WORKTREE_ROOT} (override with SLM_WORKTREE_ROOT)
 
-  pnpm worktree new <name>      create one, install, provision its dev instance
+  pnpm worktree new <name>      create one, install dependencies and provision it
   pnpm worktree ls              every worktree of this repo
   pnpm worktree migrate         relocate worktrees still under .claude/worktrees (--apply to do it)
   pnpm worktree root            print the worktree root`)
