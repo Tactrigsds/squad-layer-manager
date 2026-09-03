@@ -183,6 +183,10 @@ export type AppFixtureOptions = {
 	// scoped servers to seed, each an enabled in-process sandbox owned by a user. A scoped server is delivered to and
 	// usable by only its owner (see ServerVisibility), which is what these exercise.
 	scopedServers?: { id: string; displayName?: string; owner: TestUser }[]
+	// an enabled server whose rcon points at nothing. Its managed server runs, but rcon never connects, so it never
+	// syncs a current match -- the state a freshly added production server is in, and the one every other fixture
+	// arranges away by seeding a match before the client connects.
+	unreachableServer?: boolean | { id?: string }
 }
 
 export type AppFixture = {
@@ -201,6 +205,8 @@ export type AppFixture = {
 	squadLogPath: string
 	// the second server, when `secondServer` asked for one: its id and its own emulator
 	second: { serverId: string; displayName: string; emu: Emulator } | null
+	// the id of the `unreachableServer`, when one was asked for
+	unreachableServerId: string | null
 	// the Admins.cfg the app reads as a local admin list source; rewrite it to change who is an admin
 	adminsCfgPath: string
 	child: childProcess.ChildProcess | null
@@ -381,6 +387,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const secondId = secondOpts?.id ?? 'emu-server-2'
 	const secondDisplayName = secondOpts?.displayName ?? 'Second Emulated Server'
 	const secondEmu = secondOpts ? await new Emulator(emulatorOpts).start() : null
+	const unreachableOpts = opts.unreachableServer === true ? {} : opts.unreachableServer || null
+	const unreachableId = unreachableOpts?.id ?? 'unreachable-server'
 	const bm = new BmServer()
 	const bmPort = await bm.listen()
 
@@ -481,6 +489,30 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				layerQueue: [],
 				backburner: [],
 				settings: secondSettings,
+			}),
+		)
+	}
+
+	if (unreachableOpts) {
+		const unreachableSettings = SETTINGS.ServerSettingsSchema.parse({
+			connections: {
+				type: 'local',
+				logFile: path.join(tmpDir, 'SquadGameUnreachable.log'),
+				// port 1 is reserved and never listened on, so the connect fails immediately and keeps failing
+				rcon: { host: '127.0.0.1', port: 1, password: 'nope' },
+			},
+		})
+		applyTestServerTimings(unreachableSettings)
+		fs.writeFileSync(path.join(tmpDir, 'SquadGameUnreachable.log'), '')
+		await db.insert(Schema.servers).values(
+			superjsonify(Schema.servers, {
+				id: unreachableId,
+				displayName: 'Unreachable Server',
+				enabled: true,
+				defaultServer: false,
+				layerQueue: [],
+				backburner: [],
+				settings: unreachableSettings,
 			}),
 		)
 	}
@@ -752,6 +784,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		logFile,
 		squadLogPath,
 		second: secondEmu ? { serverId: secondId, displayName: secondDisplayName, emu: secondEmu } : null,
+		unreachableServerId: unreachableOpts ? unreachableId : null,
 		adminsCfgPath,
 		child,
 		adminUser: ADMIN_USER,
