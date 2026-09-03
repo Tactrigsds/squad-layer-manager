@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
+import * as Obj from '@/lib/object-utils'
 import type * as ODSM from '@/lib/odsm'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as LTag from '@/models/layer-tags.models'
 import * as SLL from '@/models/shared-layer-list'
 
 const USER = 5n
@@ -272,5 +274,120 @@ describe('rejections', () => {
 			apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 42 }),
 		)
 		expect(rejection.code).toBe('op-skipped')
+	})
+})
+
+// ODSM replays the reducer against the optimistic, synced and authoritative base states, and those share their
+// items with each other. Mutating anything reachable from the state the reducer was handed corrupts all three
+// at once, and the symptom surfaces as divergence somewhere else entirely -- so these tests are about what the
+// reducer leaves alone, not about what it changes.
+describe('copy-on-write', () => {
+	const TAG = LTag.createTagId('meta')
+	const OTHER_TAG = LTag.createTagId('inf')
+	const NOTE_ID = 'note0001'
+
+	function singleItem(): LL.SingleItem {
+		return {
+			type: 'single-list-item',
+			itemId: 'item001',
+			layerId: L.DEFAULT_LAYER_ID,
+			source: { type: 'manual', userId: USER },
+			tags: [TAG],
+			tagsSetBy: { [TAG]: USER },
+			notes: [{ id: NOTE_ID, author: USER, text: 'a note' }],
+		}
+	}
+
+	function voteItem(): LL.VoteItem {
+		const choices: LL.SingleItem[] = [
+			{ type: 'single-list-item', itemId: 'vote001c0', layerId: L.DEFAULT_LAYER_ID, source: { type: 'generated' } },
+			{ type: 'single-list-item', itemId: 'vote001c1', layerId: OTHER_LAYER_ID, source: { type: 'generated' } },
+		]
+		return { type: 'vote-list-item', itemId: 'vote001', layerId: choices[0].layerId, choices, source: { type: 'generated' } }
+	}
+
+	function baseState() {
+		return SLL.createNewState([singleItem(), voteItem()], [bbItem('a'), bbItem('b', USER, 'Fallujah')])
+	}
+
+	function queueProps(state: SLL.State) {
+		return { opId: `op-${counter++}`, userId: USER, editWindowSeqId: state.editWindowSeqId }
+	}
+
+	const EVERY_OP: Array<(state: SLL.State) => SLL.Operation> = [
+		(s) => ({ op: 'add', items: [queueItem()], index: { outerIndex: 0, innerIndex: null }, ...queueProps(s) }),
+		// into the vote's choices, so the parent item is rebuilt on both the removal and the insertion
+		(s) => ({
+			op: 'move',
+			itemId: 'item001',
+			newFirstItemId: 'newfirst01',
+			cursor: { type: 'item-relative', itemId: 'vote001c0', position: 'after' },
+			...queueProps(s),
+		}),
+		// out of the vote, collapsing it back to a single item
+		(s) => ({ op: 'move', itemId: 'vote001c1', newFirstItemId: 'newfirst02', cursor: { type: 'start' }, ...queueProps(s) }),
+		(s) => ({ op: 'swap-factions', itemId: 'vote001', ...queueProps(s) }),
+		(s) => ({ op: 'swap-factions', itemId: 'vote001c0', ...queueProps(s) }),
+		(s) => ({ op: 'edit-layer', itemId: 'vote001c0', newLayerId: OTHER_LAYER_ID, ...queueProps(s) }),
+		(s) => ({ op: 'add-tag', itemId: 'item001', tagId: OTHER_TAG, ...queueProps(s) }),
+		(s) => ({ op: 'remove-tag', itemId: 'item001', tagId: TAG, ...queueProps(s) }),
+		(s) => ({ op: 'add-note', itemId: 'vote001c0', noteId: 'note0002', text: 'another', ...queueProps(s) }),
+		(s) => ({ op: 'edit-note', itemId: 'item001', noteId: NOTE_ID, text: 'reworded', ...queueProps(s) }),
+		(s) => ({ op: 'delete-note', itemId: 'item001', noteId: NOTE_ID, ...queueProps(s) }),
+		(s) => ({ op: 'clone', itemId: 'vote001', ...queueProps(s) }),
+		(s) => ({ op: 'configure-vote', itemId: 'vote001', config: { duration: 60_000 }, ...queueProps(s) }),
+		(s) => ({ op: 'delete', itemId: 'vote001c0', ...queueProps(s) }),
+		(s) => ({ op: 'clear', itemIds: ['item001'], ...queueProps(s) }),
+		(s) => ({ op: 'save', ...queueProps(s) }),
+		(s) => ({ op: 'reset-to-saved', ...queueProps(s) }),
+		() => ({ op: 'shift-first-saved-layer', opId: `op-${counter++}` }),
+		() => ({
+			op: 'unshift-first-saved-layer',
+			opId: `op-${counter++}`,
+			layerId: OTHER_LAYER_ID,
+			itemSource: { type: 'gameserver' },
+			itemId: 'unshift001',
+		}),
+		() => ({ op: 'set-vote-result', opId: `op-${counter++}`, voteItemId: 'vote001', result: null }),
+		() => ({ op: 'queue-item-generated', opId: `op-${counter++}`, item: queueItem(), consumedBackburnerItemIds: ['a'] }),
+		() => ({ op: 'backburner-add', item: bbItem('c'), ...draftProps() }),
+		() => ({ op: 'backburner-update', itemId: 'a', filter: FB.and([FB.eq('Gamemode', 'RAAS')]), ...draftProps() }),
+		() => ({ op: 'backburner-remove', itemIds: ['a'], ...draftProps() }),
+		() => ({ op: 'backburner-reorder', itemId: 'b', newIndex: 0, ...draftProps() }),
+		() => ({ op: 'backburner-combine', targetItemId: 'a', sourceItemId: 'b', ...draftProps() }),
+		() => ({ op: 'backburner-write-saved', opId: `op-${counter++}`, write: { kind: 'remove', itemIds: ['a'] } }),
+		() => ({ op: 'backburner-save', ...draftProps() }),
+		() => ({ op: 'backburner-reset', ...draftProps() }),
+	]
+
+	it('leaves the state it was given untouched', () => {
+		for (const build of EVERY_OP) {
+			const state = baseState()
+			const before = Obj.deepClone(state)
+			const op = build(state)
+			// an op the reducer edits its way into rejecting must not have left anything behind either
+			try {
+				apply(state, op)
+			} catch {}
+			expect(state, `after ${op.op}`).toEqual(before)
+		}
+	})
+
+	it('shares what the op left alone', () => {
+		const state = baseState()
+		const next = apply(state, { op: 'add-tag', itemId: 'item001', tagId: OTHER_TAG, ...queueProps(state) }).state
+		expect(next.savedList).toBe(state.savedList)
+		expect(next.backburner).toBe(state.backburner)
+		expect(next.list[1]).toBe(state.list[1])
+		expect(next.list[0]).not.toBe(state.list[0])
+	})
+
+	it('hands back the base collections an op never touched', () => {
+		const state = baseState()
+		const next = apply(state, { op: 'backburner-reorder', itemId: 'b', newIndex: 0, ...draftProps() }).state
+		expect(next.list).toBe(state.list)
+		expect(next.savedList).toBe(state.savedList)
+		expect(next.mutations).toBe(state.mutations)
+		expect(next.savedBackburner).toBe(state.savedBackburner)
 	})
 })

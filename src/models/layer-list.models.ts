@@ -183,6 +183,10 @@ export function toIndex(list: List, cursorOrIndex: CursorOrIndex): ItemIndex {
 
 export const ListSchema = z.array(ItemSchema)
 
+// The array is a mutable working copy belonging to whoever holds it. Everything reachable from it -- items,
+// their `choices` arrays, notes, tags -- is immutable and shared freely between lists, so the helpers below
+// splice and assign into the array, and edit an item by replacing it. Fork with `[...list]` before handing a
+// list to any of them.
 export type List = z.infer<typeof ListSchema>
 
 // ============================================================================
@@ -450,6 +454,31 @@ export function mergeItems(newFirstItemId: ItemId, ...items: Item[]): Item | und
 	}
 }
 
+// Writes `next` into the slot at `index`. Replacing a vote choice replaces its parent too, since the parent's
+// `choices` array is immutable and its `layerId` mirrors whichever choice is currently chosen.
+export function replaceItem(list: List, index: ItemIndex, next: Item) {
+	if (index.innerIndex === null) {
+		list[index.outerIndex] = next
+		return
+	}
+	const parent = list[index.outerIndex]
+	if (!isVoteItem(parent)) throw new Error('Cannot replace a vote choice on a non-vote item')
+	if (next.type !== 'single-list-item') throw new Error('A vote choice must be a single item')
+	const choices = [...parent.choices]
+	choices[index.innerIndex] = next
+	list[index.outerIndex] = withChosenLayerId({ ...parent, choices })
+}
+
+// `update` returns undefined to leave the list alone; the returned boolean is whether anything moved.
+function updateItemById(list: List, itemId: ItemId, update: (item: Item) => Item | undefined): boolean {
+	const res = findItemById(list, itemId)
+	if (!res) return false
+	const next = update(res.item)
+	if (!next || next === res.item) return false
+	replaceItem(list, res.index, next)
+	return true
+}
+
 export function addItemsDeterministic(list: List, source: Source, index: ItemIndex, ...items: Item[]) {
 	for (const item of items) {
 		if (!item.itemId) throw new Error('Item ID is required')
@@ -504,7 +533,6 @@ export function moveItem(
 	if (indexesEqual(targetIndex, movedIndex)) return { merged: false, modified: false }
 
 	const targetItem = resolveItemForIndex(list, targetIndex)
-	const targetItemParent = targetItem ? findParentItem(list, targetItem.itemId) : undefined
 
 	splice(list, movedIndex, 1, { type: 'single-list-item', itemId: '__placeholder__', layerId: L.DEFAULT_LAYER_ID, source })
 
@@ -516,11 +544,7 @@ export function moveItem(
 		splice(list, targetIndex, 1, mergedItem)
 		merged = mergedItem.itemId
 	} else {
-		const movedAndModifiedItem: Item = { ...movedItem, source }
-		splice(list, targetIndex, 0, movedAndModifiedItem)
-		if (targetItemParent && isVoteItem(targetItemParent)) {
-			setCorrectChosenLayerIdInPlace(targetItemParent)
-		}
+		splice(list, targetIndex, 0, { ...movedItem, source })
 		merged = false
 	}
 	const { index: placeholderIndex } = findItemById(list, '__placeholder__')!
@@ -530,12 +554,10 @@ export function moveItem(
 }
 
 export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L.LayerId) {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item) return
-	const parentVoteItem = findParentItem(list, itemId)
-	item.source = source
-	item.layerId = layerId
-	if (parentVoteItem) setCorrectChosenLayerIdInPlace(parentVoteItem)
+	updateItemById(list, itemId, (item) => {
+		if (item.layerId === layerId && Obj.deepEqual(item.source, source)) return undefined
+		return { ...item, source, layerId }
+	})
 }
 
 // stamps the tags chosen in a dialog's footer onto everything it created. A vote item holds no tags of its own, so its
@@ -562,55 +584,60 @@ export function withTagAttribution<T extends NewItem>(items: T[], source: Source
 // time rather than a whole list, so two people tagging the same item concurrently don't overwrite each other. Each
 // returns whether anything actually changed, so the caller can skip marking the item edited.
 export function addTag(list: List, itemId: ItemId, tagId: LTag.TagId, setBy?: USR.UserId): boolean {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item || item.type !== 'single-list-item') return false
-	if (item.tags?.includes(tagId)) return false
-	item.tags = [...(item.tags ?? []), tagId]
-	const attribution = LTag.attribute(item.tagsSetBy, item.tags, setBy)
-	if (attribution) item.tagsSetBy = attribution
-	return true
+	return updateItemById(list, itemId, (item) => {
+		if (item.type !== 'single-list-item') return undefined
+		if (item.tags?.includes(tagId)) return undefined
+		const tags = [...(item.tags ?? []), tagId]
+		const attribution = LTag.attribute(item.tagsSetBy, tags, setBy)
+		return attribution ? { ...item, tags, tagsSetBy: attribution } : { ...item, tags }
+	})
 }
 
 export function removeTag(list: List, itemId: ItemId, tagId: LTag.TagId): boolean {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item || item.type !== 'single-list-item' || !item.tags) return false
-	const remaining = item.tags.filter((id) => id !== tagId)
-	if (remaining.length === item.tags.length) return false
-	if (remaining.length === 0) delete item.tags
-	else item.tags = remaining
-	const attribution = LTag.attribute(item.tagsSetBy, remaining)
-	if (attribution) item.tagsSetBy = attribution
-	else delete item.tagsSetBy
-	return true
+	return updateItemById(list, itemId, (item) => {
+		if (item.type !== 'single-list-item' || !item.tags) return undefined
+		const remaining = item.tags.filter((id) => id !== tagId)
+		if (remaining.length === item.tags.length) return undefined
+		const { tags: _tags, tagsSetBy: _tagsSetBy, ...rest } = item
+		const attribution = LTag.attribute(item.tagsSetBy, remaining)
+		return {
+			...rest,
+			...(remaining.length > 0 ? { tags: remaining } : {}),
+			...(attribution ? { tagsSetBy: attribution } : {}),
+		}
+	})
 }
 
 // notes, like tags, belong to layer items only. Each returns whether anything changed so the caller can skip marking
 // the item edited.
 export function addNote(list: List, itemId: ItemId, note: LNote.Note): boolean {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item || item.type !== 'single-list-item') return false
-	if (item.notes?.some((existing) => existing.id === note.id)) return false
-	item.notes = [...(item.notes ?? []), note]
-	return true
+	return updateItemById(list, itemId, (item) => {
+		if (item.type !== 'single-list-item') return undefined
+		if (item.notes?.some((existing) => existing.id === note.id)) return undefined
+		return { ...item, notes: [...(item.notes ?? []), note] }
+	})
 }
 
 export function editNote(list: List, itemId: ItemId, noteId: LNote.NoteId, text: string): boolean {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item || item.type !== 'single-list-item' || !item.notes) return false
-	const note = item.notes.find((note) => note.id === noteId)
-	if (!note || note.text === text) return false
-	item.notes = item.notes.map((note) => (note.id === noteId ? { ...note, text } : note))
-	return true
+	return updateItemById(list, itemId, (item) => {
+		if (item.type !== 'single-list-item' || !item.notes) return undefined
+		const existing = item.notes.find((note) => note.id === noteId)
+		if (!existing || existing.text === text) return undefined
+		return { ...item, notes: item.notes.map((note) => (note.id === noteId ? { ...note, text } : note)) }
+	})
 }
 
 export function deleteNote(list: List, itemId: ItemId, noteId: LNote.NoteId): boolean {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item || item.type !== 'single-list-item' || !item.notes) return false
-	const remaining = item.notes.filter((note) => note.id !== noteId)
-	if (remaining.length === item.notes.length) return false
-	if (remaining.length === 0) delete item.notes
-	else item.notes = remaining
-	return true
+	return updateItemById(list, itemId, (item) => {
+		if (item.type !== 'single-list-item' || !item.notes) return undefined
+		const remaining = item.notes.filter((note) => note.id !== noteId)
+		if (remaining.length === item.notes.length) return undefined
+		if (remaining.length === 0) {
+			const { notes: _notes, ...rest } = item
+			return rest
+		}
+		return { ...item, notes: remaining }
+	})
 }
 
 export function findNote(list: List, itemId: ItemId, noteId: LNote.NoteId): LNote.Note | undefined {
@@ -653,24 +680,21 @@ export function cloneAndInsertItem(list: List, itemId: ItemId, source: Source): 
 }
 
 export function configureVote(list: List, source: Source, itemId: ItemId, config?: Partial<V.AdvancedVoteConfig> | null) {
-	const { item } = Obj.destrNullable(findItemById(list, itemId))
-	if (!item) return
-	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
-	if (config === null) {
-		item.voteConfig = { source }
-		return
-	} else if (config) {
-		item.voteConfig = { ...(item.voteConfig ?? {}), ...config, source }
-	}
+	updateItemById(list, itemId, (item) => {
+		if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
+		if (config === null) return { ...item, voteConfig: { source } }
+		if (config) return { ...item, voteConfig: { ...(item.voteConfig ?? {}), ...config, source } }
+		return undefined
+	})
 }
 
 export function createVoteOutOfItem(list: List, source: Source, itemId: ItemId, newFirstItemId: ItemId, addedChoices: Item[]) {
 	const { index, item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || !index) return
 	if (isParentVoteItem(item)) return
-	const voteItem = mergeItems(newFirstItemId, item, ...addedChoices)
-	if (!voteItem) return
-	voteItem.source = source
+	const merged = mergeItems(newFirstItemId, item, ...addedChoices)
+	if (!merged) return
+	const voteItem: Item = { ...merged, source }
 	splice(list, index, 1, voteItem)
 	return voteItem.itemId
 }
@@ -685,21 +709,24 @@ export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex
 		const newItems = Gen.map(iterItems(...items), (res) => res.item)
 
 		const singleItems = Gen.filter(newItems, (item) => item.type === 'single-list-item') as Generator<SingleItem>
-		parentItem.choices.splice(index.innerIndex, deleteCount, ...singleItems)
-		if (parentItem.choices.length === 0) {
+		const choices = [...parentItem.choices]
+		choices.splice(index.innerIndex, deleteCount, ...singleItems)
+		if (choices.length === 0) {
 			list.splice(index.outerIndex, 1)
+			return
 		}
-		if (parentItem.choices.length === 1) {
-			// only one choice left, just make this a regular item
-			const regularItem: SingleItem = {
+		if (choices.length === 1) {
+			// only one choice left, so this becomes a regular item. It keeps the vote's id and position, which
+			// everything holding a reference to it (locks, mutations, cursors) is addressing it by.
+			list[index.outerIndex] = {
 				type: 'single-list-item',
 				itemId: parentItem.itemId,
-				layerId: parentItem.layerId,
+				layerId: choices[0].layerId,
 				source: parentItem.source,
 			}
-			list.splice(index.outerIndex, 1, regularItem)
+			return
 		}
-		setCorrectChosenLayerIdInPlace(parentItem)
+		list[index.outerIndex] = withChosenLayerId({ ...parentItem, choices })
 	} else {
 		list.splice(index.outerIndex, deleteCount, ...items)
 	}
@@ -716,35 +743,27 @@ export function getChosenItem(voteItem: VoteItem) {
 	return voteItem.choices[0]
 }
 
-export function setEndingVoteStateInPlace(voteItem: VoteItem, state: V.EndingVoteState | null) {
-	if (state) {
-		voteItem.endingVoteState = state
-	} else {
-		delete voteItem.endingVoteState
-	}
-	setCorrectChosenLayerIdInPlace(voteItem)
+export function withEndingVoteState(voteItem: VoteItem, state: V.EndingVoteState | null): VoteItem {
+	const { endingVoteState: _dropped, ...rest } = voteItem
+	return withChosenLayerId(state ? { ...rest, endingVoteState: state } : rest)
 }
 
-export function setCorrectChosenLayerIdInPlace(item: VoteItem) {
-	if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
-		const winnerItem = findItemById(item.choices, item.endingVoteState.winnerId)
-		if (winnerItem) {
-			item.layerId = winnerItem.item.layerId
-		}
-	} else {
-		item.layerId = item.choices[0].layerId
-	}
-	return item
+// a vote item's layerId mirrors whichever choice is currently chosen, so it is re-derived every time the
+// choices or the vote result move
+export function withChosenLayerId(item: VoteItem): VoteItem {
+	const chosen = getChosenItem(item)
+	if (!chosen || chosen.layerId === item.layerId) return item
+	return { ...item, layerId: chosen.layerId }
 }
 
 // if layers are placed/edited before the generated layer then we should update the generated layer's attribution, indicating that the editor has taken responsibility for preventing issues with the new layer sequence.
 export function changeGeneratedLayerAttributionInPlace(layerList: List, mutations: ItemMut.Mutations, userId: bigint) {
 	let afterModified = false
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
-	for (const { item } of iterItems(...layerList)) {
+	for (const { item, index } of iterItems(layerList)) {
 		if (item.source.type === 'generated') {
 			if (afterModified) {
-				item.source = { type: 'manual', userId }
+				replaceItem(layerList, index, { ...item, source: { type: 'manual', userId } })
 				ItemMut.tryApplyMutation('edited', item.itemId, mutations)
 			}
 		} else if (!afterModified && allModifiedItems.has(item.itemId)) {
@@ -753,29 +772,28 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	}
 }
 
-export function swapFactionsInPlace(list: List, id: ItemId, newSource?: Source): boolean {
-	const { item: existingItem } = Obj.destrNullable(findItemById(list, id))
-	if (!existingItem) return false
-	const layer = L.swapFactions(existingItem.layerId)
-	if (!layer) return false
-
-	existingItem.layerId = layer.id
-	existingItem.source = newSource ?? existingItem.source
-	if (isVoteItem(existingItem)) {
-		const updatedChoices = Obj.deepClone(existingItem.choices)
-		for (const choice of updatedChoices) {
-			const success = swapFactionsInPlace(existingItem.choices, choice.itemId, newSource)
-			if (!success) return false
-		}
-		existingItem.choices = updatedChoices
-	} else {
-		const parentVoteItem = findParentItem(list, existingItem.itemId)
-		if (parentVoteItem && getChosenItem(parentVoteItem).itemId === existingItem.itemId) {
-			parentVoteItem.layerId = layer.id
-		}
-	}
-
+// all-or-nothing: a vote item whose choices don't all have a mirror matchup is left exactly as it was
+export function swapFactions(list: List, id: ItemId, newSource?: Source): boolean {
+	const res = findItemById(list, id)
+	if (!res) return false
+	const swapped = swapItemFactions(res.item, newSource)
+	if (!swapped) return false
+	replaceItem(list, res.index, swapped)
 	return true
+}
+
+function swapItemFactions<T extends Item>(item: T, newSource?: Source): T | undefined {
+	const layer = L.swapFactions(item.layerId)
+	if (!layer) return undefined
+	const swapped = { ...item, layerId: layer.id, source: newSource ?? item.source }
+	if (!isVoteItem(swapped)) return swapped
+	const choices: SingleItem[] = []
+	for (const choice of swapped.choices) {
+		const swappedChoice = swapItemFactions(choice, newSource)
+		if (!swappedChoice) return undefined
+		choices.push(swappedChoice)
+	}
+	return withChosenLayerId({ ...swapped, choices }) as T
 }
 
 export function isLocallyLastIndex(itemId: ItemId, list: SparseItem[]) {
