@@ -1,3 +1,4 @@
+import * as Arr from '@/lib/array-utils'
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
@@ -302,9 +303,8 @@ export type State = {
 	requestingGeneratedQueueItem: boolean
 	lastSaveOpId: null | string
 	// the layer backburner (in-game "layer requests"), sharing this session so ops can atomically span both
-	// collections. draft vs saved works like the queue's list/savedList; modified detection is by deep equality
-	// (the reducer deep-clones state, so reference identity does not survive a batch). Its editing session is
-	// separate from the queue's, so it gates its draft ops with its own window counter
+	// collections. draft vs saved works like the queue's list/savedList. Its editing session is separate from
+	// the queue's, so it gates its draft ops with its own window counter
 	backburner: BB.BackburnerItem[]
 	savedBackburner: BB.BackburnerItem[]
 	backburnerEditWindowSeqId: number
@@ -371,7 +371,15 @@ export function createOpId(): string {
 }
 
 export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, ops, _prevOps) => {
-	const state = Obj.deepClone(oldState)
+	// Copy-on-write. The four collections are forked so ops can splice them, but nothing inside them is ever
+	// mutated: ODSM replays this reducer against the optimistic, synced and authoritative base states, which
+	// share their items with each other, so one missed copy corrupts all of them at once.
+	const state: State = {
+		...oldState,
+		list: [...oldState.list],
+		savedList: [...oldState.savedList],
+		mutations: ItemMut.cloneMutations(oldState.mutations),
+	}
 	const sideEffects: SideEffect[] = []
 	const emit = (se: SideEffect) => sideEffects.push(se)
 	// ops in a batch are dependent, so a single skipped op rejects the whole batch (RejectedError)
@@ -381,31 +389,50 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 		emit({ code: 'op-outcome', op, success })
 		if (!success) throw new ODSM.RejectedError<Rejection>({ code: 'op-skipped', op }, { message: `operation ${op.op} skipped` })
 	}
-	const result = LL.ListSchema.safeParse(state.list)
-	if (!result.success) {
-		throw new ODSM.RejectedError<Rejection>(
-			{ code: 'invalid-list', error: result.error },
-			{
-				message: 'list failed schema validation',
-				cause: result.error,
-			},
-		)
-	}
-	const savedResult = LL.ListSchema.safeParse(state.savedList)
-	if (!savedResult.success) {
-		throw new ODSM.RejectedError<Rejection>(
-			{ code: 'invalid-saved-list', error: savedResult.error },
-			{
-				message: 'savedList failed schema validation',
-				cause: savedResult.error,
-			},
-		)
-	}
+	reshare(oldState, state)
+	validateList(state.list, oldState.list, 'invalid-list', 'list')
+	validateList(state.savedList, oldState.savedList, 'invalid-saved-list', 'savedList')
 	emit({ code: 'complete', opId: ops.at(-1)?.opId ?? '' })
 	return [state, sideEffects]
 }
 
-// returns whether the op was applied (as opposed to skipped)
+// ListSchema is a plain array of ItemSchema, and no item is ever mutated, so an item still shared with the base
+// list was parsed by whichever batch produced it -- or, for the first batch, by the ServerStateSchema.parse that
+// read it out of the db. Only the items whose reference moved need re-parsing, which at 20 queue items is the
+// difference between 300us per op and 15us.
+function validateList(next: LL.List, base: LL.List, code: 'invalid-list' | 'invalid-saved-list', label: string) {
+	if (next === base) return
+	const alreadyValid = new Set<LL.Item>(base)
+	for (const item of next) {
+		if (alreadyValid.has(item)) continue
+		const result = LL.ItemSchema.safeParse(item)
+		if (!result.success) {
+			throw new ODSM.RejectedError<Rejection>(
+				{ code, error: result.error },
+				{ message: `${label} failed schema validation`, cause: result.error },
+			)
+		}
+	}
+}
+
+// the reducer forks all four collections up front, so an op that left one alone still produced a different
+// array. Handing back the base's own reference is what lets a selector reading `list` skip the render.
+function reshare(base: State, next: State) {
+	if (Arr.shallowEquals(next.list, base.list)) next.list = base.list
+	if (Arr.shallowEquals(next.savedList, base.savedList)) next.savedList = base.savedList
+	if (Arr.shallowEquals(next.backburner, base.backburner)) next.backburner = base.backburner
+	if (Arr.shallowEquals(next.savedBackburner, base.savedBackburner)) next.savedBackburner = base.savedBackburner
+	if (ItemMut.mutationsEqual(next.mutations, base.mutations)) next.mutations = base.mutations
+}
+
+// a draft and its saved baseline share every item they have in common, so the answer is normally settled by
+// pointer compares. The deep walk is the fallback for edits that cancelled each other out.
+function contentEqual<T>(a: T[], b: T[]): boolean {
+	return Arr.shallowEquals(a, b) || Obj.deepEqual(a, b)
+}
+
+// Splices and reassigns `session`'s collections, so it needs a session the caller owns -- the reducer's fork.
+// What is inside them stays untouched. Returns whether the op was applied (as opposed to skipped).
 export function applyOperation(session: State, newOp: Operation, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
 	const opWindowSeqId = (newOp as { editWindowSeqId?: number })?.editWindowSeqId
 	const currentWindowSeqId = isBackburnerOp(newOp) ? session.backburnerEditWindowSeqId : session.editWindowSeqId
@@ -445,14 +472,14 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'shift-first-saved-layer': {
-			const prevList = Obj.deepClone(session.savedList)
+			const prevList = [...session.savedList]
 			LL.splice(session.savedList, { outerIndex: 0, innerIndex: null }, 1)
 			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
 
 		case 'unshift-first-saved-layer': {
-			const prevList = Obj.deepClone(session.savedList)
+			const prevList = [...session.savedList]
 			LL.addItemsDeterministic(
 				session.savedList,
 				newOp.itemSource,
@@ -469,10 +496,10 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'set-vote-result': {
-			const { item: voteItem } = Obj.destrNullable(LL.findItemById(session.savedList, newOp.voteItemId))
-			if (!voteItem || !LL.isParentVoteItem(voteItem)) return false
-			const prevList = Obj.deepClone(session.savedList)
-			LL.setEndingVoteStateInPlace(voteItem, newOp.result)
+			const res = LL.findItemById(session.savedList, newOp.voteItemId)
+			if (!res || !LL.isParentVoteItem(res.item)) return false
+			const prevList = [...session.savedList]
+			LL.replaceItem(session.savedList, res.index, LL.withEndingVoteState(res.item, newOp.result))
 			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
@@ -514,15 +541,13 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'swap-factions': {
-			const { index, item } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
-			if (!index || !item) break
-			const originalLayerId = item.layerId
-			const swapped = LL.swapFactionsInPlace(list, item.itemId, source)
-			if (!swapped) break
+			const { item: before } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
+			if (!before) break
+			if (!LL.swapFactions(list, newOp.itemId, source)) break
+			const { item: after } = Obj.destrNullable(LL.findItemById(list, newOp.itemId))
 
 			// maybe mirror matchups will be a thing at some point who knows
-			if (L.layersEqual(item.layerId, originalLayerId)) break
-			LL.splice(list, index, 1, item)
+			if (!after || L.layersEqual(after.layerId, before.layerId)) break
 			ItemMut.tryApplyMutation('edited', [newOp.itemId], mutations)
 			if (mutations && source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
@@ -621,7 +646,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 			// suppresses the abandoned-draft discard. this guard lives here (not in saveList) because in-place
 			// system ops -- rolls, vote results -- mutate savedList before saving, so they can't be compared
 			// inside saveList; they always save.
-			const queueChanged = !Obj.deepEqual(session.list, session.savedList)
+			const queueChanged = !contentEqual(session.list, session.savedList)
 			if (queueChanged) {
 				saveList(session, newOp, session.list, onSideEffect)
 			} else {
@@ -640,7 +665,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 
 		case 'reset-to-saved':
 		case 'discard-abandoned-queue-edits': {
-			session.list = Obj.deepClone(session.savedList)
+			session.list = [...session.savedList]
 			closeEditWindow(session)
 			break
 		}
@@ -751,9 +776,9 @@ function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEff
 		}
 
 		case 'backburner-save': {
-			if (Obj.deepEqual(session.backburner, session.savedBackburner)) break
+			if (contentEqual(session.backburner, session.savedBackburner)) break
 			const prevItems = session.savedBackburner
-			session.savedBackburner = Obj.deepClone(session.backburner)
+			session.savedBackburner = [...session.backburner]
 			session.backburnerEditWindowSeqId++
 			onSideEffect?.({
 				code: 'request-backburner-save',
@@ -768,7 +793,7 @@ function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEff
 
 		case 'backburner-reset':
 		case 'discard-abandoned-request-edits': {
-			session.backburner = Obj.deepClone(session.savedBackburner)
+			session.backburner = [...session.savedBackburner]
 			session.backburnerEditWindowSeqId++
 			break
 		}
@@ -820,8 +845,10 @@ function saveList(
 		onSideEffect?.({ code: 'request-queue-item-generation' })
 		return
 	}
-	session.list = list === session.list && list !== session.savedList ? list : Obj.deepClone(list)
-	session.savedList = list === session.savedList && list !== session.list ? list : Obj.deepClone(list)
+	// two arrays over the same items rather than one shared one, so a later op splicing the draft can't reach
+	// into the baseline it was saved against
+	session.list = [...list]
+	session.savedList = [...list]
 	onSideEffect?.({ code: 'request-list-save', list: session.savedList, prevList, opId: op.opId, lastSaveOpId: session.lastSaveOpId })
 }
 
@@ -833,12 +860,7 @@ function closeEditWindow(session: State) {
 }
 
 export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutations): ItemMut.Mutations {
-	const result: ItemMut.Mutations = {
-		added: new Set(base.added),
-		removed: new Set(base.removed),
-		moved: new Set(base.moved),
-		edited: new Set(base.edited),
-	}
+	const result = ItemMut.cloneMutations(base)
 	for (const id of additions.added) ItemMut.tryApplyMutation('added', id, result)
 	for (const id of additions.removed) ItemMut.tryApplyMutation('removed', id, result)
 	for (const id of additions.moved) ItemMut.tryApplyMutation('moved', id, result)
@@ -848,15 +870,15 @@ export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutat
 
 export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[]): State {
 	return {
-		list: list ? Obj.deepClone(list) : [],
+		list: list ? [...list] : [],
 		editWindowSeqId: 0,
 		saving: false,
 		mutations: ItemMut.initMutations(),
-		savedList: list ? Obj.deepClone(list) : [],
+		savedList: list ? [...list] : [],
 		requestingGeneratedQueueItem: false,
 		lastSaveOpId: null,
-		backburner: backburner ? Obj.deepClone(backburner) : [],
-		savedBackburner: backburner ? Obj.deepClone(backburner) : [],
+		backburner: backburner ? [...backburner] : [],
+		savedBackburner: backburner ? [...backburner] : [],
 		backburnerEditWindowSeqId: 0,
 	}
 }
@@ -865,10 +887,8 @@ export function hasMutations(session: State): boolean {
 	return ItemMut.hasMutations(session.mutations)
 }
 
-// the reducer deep-clones state, so the backburner draft has no reference identity to compare against its
-// saved copy -- modified-ness is a value comparison
 export function hasBackburnerMutations(session: State): boolean {
-	return !Obj.deepEqual(session.backburner, session.savedBackburner)
+	return !contentEqual(session.backburner, session.savedBackburner)
 }
 
 // `in` rather than a cast: the op union only carries editWindowSeqId/userId on the client-issued ops, and
