@@ -9,6 +9,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Flt from '@/lib/floating'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 
@@ -108,6 +109,16 @@ function onClick(event: MouseEvent) {
 		else if (row) fillRowEvents(row, true)
 		return
 	}
+	const copy = elementAt(event, RC.COPY_ATTR)
+	if (copy) {
+		const id = copy.getAttribute(RC.COPY_ATTR)
+		if (id) {
+			void navigator.clipboard.writeText(id)
+			showCopied(copy, { x: event.clientX, y: event.clientY })
+		}
+		return
+	}
+
 	// The opener before the row: a results row carries its key on the whole <tr>, so every target inside one
 	// -- a layer name, a player name -- is also inside the disclosure, and taking the row first meant those
 	// only ever expanded it.
@@ -195,18 +206,41 @@ function cancelLeave() {
 
 export function closeTip() {
 	cancelLeave()
+	clearCopied()
 	tipElement = null
 	pinnedElement = null
 	if (OverlayStore.getState().tipOpen) OverlayStore.setState({ tipOpen: false, tipAnchor: null })
 }
 
 function showTip(element: Element) {
+	// a real tooltip supersedes the copy feedback, and the feedback's timer must not take it down with it
+	clearCopied()
 	if (element === tipElement) return
 	const ctx = RC.scopeOf(element)
 	const content = tipContentOf(element, ctx)
 	if (!content) return
 	tipElement = element
 	OverlayStore.setState({ tip: { content, zIndexBase: ctx?.zIndexBase ?? 0 }, tipOpen: true, tipAnchor: null })
+}
+
+// the "Copied!" feedback, through the same overlay a tooltip uses: parked at the click and gone shortly after
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearCopied() {
+	if (copiedTimer === null) return
+	clearTimeout(copiedTimer)
+	copiedTimer = null
+}
+
+function showCopied(element: Element, at: Flt.Point) {
+	closeTip()
+	tipElement = element
+	OverlayStore.setState({
+		tip: { content: { kind: 'text', text: tr.text(SM_Msgs.copiedFeedback()) }, zIndexBase: RC.scopeOf(element)?.zIndexBase ?? 0 },
+		tipOpen: true,
+		tipAnchor: at,
+	})
+	copiedTimer = setTimeout(closeTip, 1500)
 }
 
 // A pinned tooltip sits a short gap from the pointer, so moving onto it leaves both it and the trigger for a
@@ -245,7 +279,8 @@ function onPointerOver(event: PointerEvent) {
 		if (withinPinned(event.target)) cancelLeave()
 		else if (leaveTimer === null) leaveTimer = setTimeout(closeTip, LEAVE_GRACE_MS)
 	} else if (tip) showTip(tip)
-	else closeTip()
+	// the copy feedback rides out pointer movement and leaves on its own timer
+	else if (copiedTimer === null) closeTip()
 
 	const rowEvents = elementAt(event, RC.ROW_EVENTS_ATTR)
 	if (rowEvents) fillRowEvents(rowEvents)

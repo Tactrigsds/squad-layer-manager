@@ -20,6 +20,7 @@ const USED = [
 	'Camera',
 	'CameraOff',
 	'CheckCircle2',
+	'Copy',
 	'CloudFog',
 	'Crown',
 	'Dot',
