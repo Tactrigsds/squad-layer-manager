@@ -35,3 +35,27 @@ describe('Yaml path comments', () => {
 		expect(Yaml.parseWithComments(text).comments).toEqual({ locale: 'kept' })
 	})
 })
+
+// The filter text mirror puts a node's comment above the node, which is a sequence item wherever the node is not the
+// root. The item keeps its compact form: the comment sits on the line above, not inside it.
+describe('Yaml comments on sequence items', () => {
+	const value = {
+		type: 'and',
+		children: [
+			{ type: 'eq', column: 'Layer' },
+			{ type: 'or', children: [{ type: 'eq', column: 'Map' }] },
+		],
+	}
+
+	it('renders a comment above its item and reads it back, at any depth', () => {
+		const comments = { 'children.0': 'why this rule exists', 'children.1.children.0': 'and this one' }
+		const text = Yaml.stringifyDocWithComments(value, comments)
+		expect(text).toContain('# why this rule exists\n  - { type: eq, column: Layer }')
+		expect(Yaml.parseWithComments(text)).toEqual({ value, comments })
+	})
+
+	it('reads a hand-written comment above a later item, and one above a key inside an item', () => {
+		const text = 'type: and\nchildren:\n  - { type: eq }\n  # second\n  - type: or\n    # inner\n    children: []\n'
+		expect(Yaml.parseWithComments(text).comments).toEqual({ 'children.1': 'second', 'children.1.children': 'inner' })
+	})
+})
