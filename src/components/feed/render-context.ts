@@ -150,6 +150,8 @@ export const TIP_MATCH_ATTR = 'data-dom-tip-match'
 export const ADMIN_BADGE_ATTR = 'data-dom-admin-badge'
 /** a name whose colour follows the active player grouping, recoloured in place rather than rebuilt */
 export const PLAYER_ATTR = 'data-dom-player'
+/** an id the element copies to the clipboard on click, answered with transient feedback */
+export const COPY_ATTR = 'data-dom-copy'
 
 // A results row that can show the events behind its own number, as `player:<eosId>` or `match:<id>`.
 //
@@ -199,6 +201,10 @@ export function adminBadgeAttrs(badge: AdminBadge): Attrs {
 
 export function colourAttrs(playerId: SM.PlayerId): Attrs {
 	return { [PLAYER_ATTR]: playerId }
+}
+
+export function copyAttrs(id: string): Attrs {
+	return { [COPY_ATTR]: id }
 }
 
 export function adminBadgeOf(node: Element): AdminBadge | undefined {

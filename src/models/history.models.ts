@@ -428,6 +428,8 @@ const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
+// roster bookkeeping rather than anything a player did; only ALL shows them
+const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED']
 
 const NOT_TEAMKILL: F.CompNode = {
 	type: 'eq',
@@ -455,6 +457,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				children: [
 					{ type: 'and', children: [comp('event.type', KILL_TYPES), NOT_TEAMKILL] },
 					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
+					comp('event.type', BOOKKEEPING_TYPES),
 				],
 			}
 		case 'CHAT':
