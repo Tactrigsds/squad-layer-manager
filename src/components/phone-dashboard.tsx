@@ -30,9 +30,15 @@ type Screen = SquadServerClient.DashboardTab
  * Below 640px the dashboard is one panel at a time: the same panels as the desktop layout, behind a bottom tab
  * bar. The current layer rides in a strip under the top bar on every screen but Matches, which already shows it
  * as the highlighted history row.
+ *
+ * A screen mounts on its first visit and then stays, hidden with `display: none`: the activity feed builds every
+ * row of the match on mount, which is most of a second on a phone, and a hidden feed only appends.
  */
 export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const screen = SquadServerClient.useDashboardTab()
+	const [visited, setVisited] = React.useState<Screen[]>([screen])
+	if (!visited.includes(screen)) setVisited([...visited, screen])
+	const show = (s: Screen) => (screen === s ? undefined : { display: 'none' })
 	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
 	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
 	const serverId = props.stores.squadServer.serverId
@@ -42,8 +48,8 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 		<div className="flex h-full w-full flex-col min-h-0">
 			{screen !== 'matches' && <CurrentLayerStrip stores={props.stores} />}
 			<div className="flex flex-col flex-1 min-h-0 p-2 gap-2">
-				{screen === 'matches' && (
-					<ScrollArea className="flex-1 min-h-0">
+				{visited.includes('matches') && (
+					<ScrollArea className="flex-1 min-h-0" style={show('matches')}>
 						<div className="flex flex-col gap-2">
 							<Card className="@container">
 								<MatchHistoryPanelContent stores={props.stores} />
@@ -55,8 +61,8 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 						</div>
 					</ScrollArea>
 				)}
-				{screen === 'queue' && (
-					<div className="fd-tabbody flex flex-col flex-1 min-h-0">
+				{visited.includes('queue') && (
+					<div className="fd-tabbody flex flex-col flex-1 min-h-0" style={show('queue')}>
 						<PresenceRow>
 							<UserPresencePanel
 								stores={props.stores}
@@ -84,8 +90,8 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 						</ScrollArea>
 					</div>
 				)}
-				{screen === 'teams' && (
-					<div className="fd-tabbody flex flex-col flex-1 min-h-0">
+				{visited.includes('teams') && (
+					<div className="fd-tabbody flex flex-col flex-1 min-h-0" style={show('teams')}>
 						<PresenceRow>
 							<UserPresencePanel
 								stores={props.stores}
@@ -105,8 +111,8 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 						</ScrollArea>
 					</div>
 				)}
-				{screen === 'activity' && (
-					<div className="flex flex-1 min-h-0">
+				{visited.includes('activity') && (
+					<div className="flex flex-1 min-h-0" style={show('activity')}>
 						<ServerActivityPanel stores={props.stores} />
 					</div>
 				)}
