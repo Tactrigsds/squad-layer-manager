@@ -310,12 +310,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'GENERATING_VOTE'}
 			preload="intent"
 			render={Button}
-			className={idleHidden}
-			size="sm"
+			className={cn(idleHidden, isMobile && 'w-9')}
+			size={isMobile ? 'icon-sm' : 'sm'}
+			title={isMobile ? tr.text(LL_Msgs.genVote()) : undefined}
+			aria-label={tr.text(LL_Msgs.genVote())}
 			disabled={!isEditing}
 		>
 			<Icons.Vote />
-			{tr.text(LL_Msgs.genVote())}
+			{!isMobile && tr.text(LL_Msgs.genVote())}
 		</StartActivityInteraction>
 	)
 	const pasteRotationButton = (
@@ -325,12 +327,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'PASTE_ROTATION'}
 			preload="intent"
 			render={Button}
-			className={idleHidden}
-			size="sm"
+			className={cn(idleHidden, isMobile && 'w-9')}
+			size={isMobile ? 'icon-sm' : 'sm'}
+			title={isMobile ? tr.text(LL_Msgs.pasteRotationTitle()) : undefined}
+			aria-label={tr.text(LL_Msgs.pasteRotationTitle())}
 			disabled={!isEditing}
 		>
 			<Icons.FileText />
-			<span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>
+			{!isMobile && <span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>}
 		</StartActivityInteraction>
 	)
 	const resetButton = (
@@ -446,15 +450,16 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	if (isMobile) {
 		return (
 			<div className="flex flex-col gap-1 grow group" data-status={status}>
-				<div className="flex items-center gap-1 justify-end">
-					{props.phone && <QueueHeaderBadges className="mr-auto" stores={props.stores} />}
-					{genVoteButton}
-					{pasteRotationButton}
-					{resetButton}
-				</div>
+				{props.phone && <QueueHeaderBadges className="justify-end" stores={props.stores} />}
 				<div className="flex items-center gap-1">
 					{clearButton}
 					{addLayersButton}
+					{/* two small buttons make one touch-height control */}
+					<div className={cn('flex flex-col', idleHidden)}>
+						{genVoteButton}
+						{pasteRotationButton}
+					</div>
+					{resetButton}
 					{stateControls}
 					{settingsButton}
 				</div>
