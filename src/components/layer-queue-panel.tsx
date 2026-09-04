@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
+import * as Browser from '@/lib/browser'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
@@ -200,6 +201,8 @@ type QueueControlPanelProps = {
 	showWarnings: boolean
 	setShowWarnings: (showWarnings: boolean) => void
 	stores: SquadServerFrame.KeyProp
+	// the phone header has no title, so the queue's badges ride on the control rows instead
+	phone: boolean
 }
 
 function QueueControlPanel(props: QueueControlPanelProps) {
@@ -443,10 +446,15 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	if (isMobile) {
 		return (
 			<div className="flex flex-col gap-1 grow group" data-status={status}>
-				<div className={cn('flex items-center gap-1 justify-end', idleHidden)}>
-					{genVoteButton}
-					{pasteRotationButton}
-					{resetButton}
+				<div className="flex items-center gap-1 justify-end empty:hidden">
+					{props.phone && <QueueHeaderBadges className="mr-auto" stores={props.stores} />}
+					{isEditing && (
+						<>
+							{genVoteButton}
+							{pasteRotationButton}
+							{resetButton}
+						</>
+					)}
 				</div>
 				<div className="flex items-center gap-1">
 					{/* grouped for the touch-sized controls, so the row reads at one height */}
@@ -477,13 +485,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 }
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const {
-		isModified,
-		queueLength,
-		maxQueueSize,
-		mutations: queueMutations,
-	} = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.queueHeader)
 	const headerRef = React.useRef<HTMLDivElement>(null)
+	// the tab bar already names the queue on a phone, so the header there is just the controls
+	const phone = Browser.useIsSmallViewport()
 
 	const warnings = useQueueWarnings(props.stores)
 	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
@@ -500,45 +504,18 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 			/>
 			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel', props.className)}>
 				<span className="flex flex-wrap items-center gap-2 w-full">
-					<span className="flex items-center gap-2 whitespace-nowrap">
-						<span className="flex items-center gap-1.5">
+					{!phone && (
+						<span className="flex items-center gap-2 whitespace-nowrap">
 							<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
-							{isModified && (
-								<span
-									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-									className="font-mono text-2xs text-text-3 data-[limitreached=true]:text-danger"
-								>
-									{queueLength} / {maxQueueSize}
-								</span>
-							)}
+							<QueueHeaderBadges stores={props.stores} />
 						</span>
-						<span className="flex gap-1">
-							{[
-								{ variant: 'added', size: queueMutations.added.size, label: 'added', icon: Icons.Plus },
-								{ variant: 'edited', size: queueMutations.edited.size, label: 'edited', icon: Icons.Pencil },
-								{ variant: 'moved', size: queueMutations.moved.size, label: 'moved', icon: Icons.ArrowUpDown },
-								{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed', icon: Icons.Trash },
-							]
-								.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
-								.map((item) => (
-									<Badge
-										key={item.label}
-										variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
-										data-visible={item.size > 0}
-										className="data-[visible=false]:hidden font-mono"
-										title={`${item.size} ${item.label}`}
-									>
-										<item.icon className="size-2.5" />
-										{item.size}
-									</Badge>
-								))}
-						</span>
-					</span>
+					)}
 					<QueueControlPanel
 						warnings={warnings ?? null}
 						showWarnings={showWarnings}
 						setShowWarnings={setShowWarnings}
 						stores={props.stores}
+						phone={phone}
 					/>
 				</span>
 			</div>
@@ -548,6 +525,48 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				</div>
 			</StickyGroup>
 		</>
+	)
+}
+
+// The unsaved state of the queue: its size against the limit, and what kind of edits are pending.
+function QueueHeaderBadges(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
+	const {
+		isModified,
+		queueLength,
+		maxQueueSize,
+		mutations: queueMutations,
+	} = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.queueHeader)
+	if (!isModified) return null
+	return (
+		<span className={cn('flex items-center gap-2 whitespace-nowrap', props.className)}>
+			<span
+				data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+				className="font-mono text-2xs text-text-3 data-[limitreached=true]:text-danger"
+			>
+				{queueLength} / {maxQueueSize}
+			</span>
+			<span className="flex gap-1">
+				{[
+					{ variant: 'added', size: queueMutations.added.size, label: 'added', icon: Icons.Plus },
+					{ variant: 'edited', size: queueMutations.edited.size, label: 'edited', icon: Icons.Pencil },
+					{ variant: 'moved', size: queueMutations.moved.size, label: 'moved', icon: Icons.ArrowUpDown },
+					{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed', icon: Icons.Trash },
+				]
+					.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
+					.map((item) => (
+						<Badge
+							key={item.label}
+							variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
+							data-visible={item.size > 0}
+							className="data-[visible=false]:hidden font-mono"
+							title={`${item.size} ${item.label}`}
+						>
+							<item.icon className="size-2.5" />
+							{item.size}
+						</Badge>
+					))}
+			</span>
+		</span>
 	)
 }
 
