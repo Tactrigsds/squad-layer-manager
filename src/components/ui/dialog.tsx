@@ -60,10 +60,10 @@ const DialogContent = React.forwardRef<
 				data-phone={phone || undefined}
 				className={cn(
 					'fd-dlg fixed flex flex-col gap-2 p-2.5 w-full max-w-lg',
-					phone
-						? 'inset-0 max-w-none rounded-none border-0 max-h-none overflow-y-auto'
-						: 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-h-[calc(100vh-32px)]',
+					!phone && 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-h-[calc(100vh-32px)]',
 					className,
+					// after the caller's classes: a phone dialog fills the screen whatever width it asked for
+					phone && 'inset-0 max-w-none rounded-none border-0 max-h-none overflow-y-auto',
 				)}
 				style={zIndexStyle}
 				{...props}

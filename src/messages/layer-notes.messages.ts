@@ -4,6 +4,9 @@ import { def } from '@/models/messages.models'
 
 export const addNote = def('Add note')
 
+// menu entry that opens the add dialog
+export const addNoteItem = def('Add note...')
+
 // the same affordance, shrunk to fit inline beside a queue item that has no notes yet
 export const addNoteInline = def('add note')
 
