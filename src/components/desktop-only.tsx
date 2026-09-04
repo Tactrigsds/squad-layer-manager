@@ -35,7 +35,7 @@ export default function DesktopOnly() {
 	}
 
 	return (
-		<div className="flex h-full w-full flex-col -m-2">
+		<div className="flex h-full w-full flex-col">
 			<div className="flex flex-1 flex-col items-center justify-center gap-2.5 p-6 text-center">
 				<Icons.AppWindow className="size-7 text-text-3" />
 				<div className="font-bold text-base">{tr.text(APP_Msgs.desktopOnlyTitle(title))}</div>

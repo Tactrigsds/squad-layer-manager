@@ -39,7 +39,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 	const badges: Partial<Record<Screen, number>> = { queue: queueLength, teams: playerCount }
 
 	return (
-		<div className="flex h-full w-full flex-col min-h-0 -m-2">
+		<div className="flex h-full w-full flex-col min-h-0">
 			{screen !== 'matches' && <CurrentLayerStrip stores={props.stores} />}
 			<div className="flex flex-col flex-1 min-h-0 p-2 gap-2">
 				{screen === 'matches' && (
