@@ -75,7 +75,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 								className="min-w-0"
 							/>
 						</PresenceRow>
-						<ScrollArea className="flex-1 min-h-0">
+						<ScrollArea orientation="vertical" className="flex-1 min-h-0">
 							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
 							<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId }} />

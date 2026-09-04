@@ -614,9 +614,10 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					ref={dragProps.ref}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item grid grid-cols-[26px_16px_minmax(0,1fr)_auto] gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
+						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
 						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
 						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
+						isMobile ? 'grid-cols-[16px_minmax(0,1fr)_auto]' : 'grid-cols-[26px_16px_minmax(0,1fr)_auto]',
 					)}
 					data-mutation={displayedMutation}
 					data-tour={isTourSeqRow ? 'queue-item' : undefined}
@@ -624,7 +625,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span data-mobile={isMobile} className="text-right font-mono text-text-3 data-[mobile=true]:invisible">
+					<span data-mobile={isMobile} className="text-right font-mono text-text-3 data-[mobile=true]:hidden">
 						{LL.getItemNumber(index)}
 					</span>
 					<button
@@ -639,7 +640,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</button>
 					<span
 						data-tour={isTourRow ? 'queue-item-display' : undefined}
-						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name]:flex-col data-[phone=true]:[&_.fd-layer-name]:items-start"
+						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name>*:first-child]:basis-full data-[phone=true]:[&_.fd-layer-name>svg]:hidden"
 						data-phone={isMobile || undefined}
 					>
 						<LayerDisplay

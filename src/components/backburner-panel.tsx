@@ -183,7 +183,7 @@ export default function BackburnerPanel(props: StoresProp) {
 
 	return (
 		<div ref={panelDrop.ref} className={cn('mx-2 mt-1 border-t border-line pt-1.5', showDropHint && 'ring-2 ring-inset ring-pri/50')}>
-			<div className="flex items-center gap-2 h-(--ctl) whitespace-nowrap">
+			<div className="flex flex-wrap items-center gap-2 min-h-(--ctl)">
 				<span className="fd-cond font-bold text-base flex items-center gap-1.5">
 					{tr.text(BB_Msgs.heading(items.length))}
 					{modified && <Badge variant="outline">{tr.text(BB_Msgs.unsavedBadge())}</Badge>}

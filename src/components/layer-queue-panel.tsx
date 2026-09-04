@@ -10,6 +10,7 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
@@ -203,6 +204,9 @@ type QueueControlPanelProps = {
 
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { showWarnings, setShowWarnings } = props
+	const isMobile = useIsMobile()
+	// on a phone the row wraps, so idle controls leave rather than hold their place
+	const idleHidden = isMobile ? 'not-group-data-[status=editing]:hidden' : 'not-group-data-[status=editing]:invisible'
 	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
@@ -255,13 +259,16 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 
 	return (
 		<div className="flex flex-col gap-1 grow">
-			<div className="flex items-center gap-1 justify-end group" data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}>
+			<div
+				className="flex flex-wrap items-center gap-1 justify-end group"
+				data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}
+			>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							data-tour="queue-clear"
 							disabled={!isEditing}
-							className="not-group-data-[status=editing]:invisible"
+							className={idleHidden}
 							variant="ghost"
 							size="icon-sm"
 							onClick={() => clear()}
@@ -284,7 +291,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 					preload="intent"
 					render={Button}
-					className="not-group-data-[status=editing]:invisible"
+					className={idleHidden}
 					size="sm"
 					disabled={!isEditing}
 				>
@@ -301,7 +308,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'GENERATING_VOTE'}
 					preload="intent"
 					render={Button}
-					className="not-group-data-[status=editing]:invisible"
+					className={idleHidden}
 					size="sm"
 					disabled={!isEditing}
 				>
@@ -314,7 +321,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'PASTE_ROTATION'}
 					preload="intent"
 					render={Button}
-					className="not-group-data-[status=editing]:invisible"
+					className={idleHidden}
 					size="sm"
 					disabled={!isEditing}
 				>
@@ -329,7 +336,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 							disabled={!isModified}
 							onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
 							variant="ghost"
-							className="col-start-1 row-start-1 not-group-data-[status=editing]:invisible"
+							className={cn('col-start-1 row-start-1', idleHidden)}
 						>
 							<Icons.Undo />
 						</Button>
@@ -339,7 +346,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</TooltipContent>
 				</Tooltip>
 				{/*<Separator orientation="vertical" />*/}
-				<div className="grid">
+				<div className="grid items-center">
 					<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
 						<span className="fd-spin" />
 						<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
@@ -451,9 +458,9 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				setShowWarnings={setShowWarnings}
 				stores={props.stores}
 			/>
-			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel whitespace-nowrap', props.className)}>
-				<span className="flex items-center gap-2 w-full">
-					<span className="flex items-center gap-2">
+			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel', props.className)}>
+				<span className="flex flex-wrap items-center gap-2 w-full">
+					<span className="flex items-center gap-2 whitespace-nowrap">
 						<span className="flex items-center gap-1.5">
 							<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
 							{isModified && (

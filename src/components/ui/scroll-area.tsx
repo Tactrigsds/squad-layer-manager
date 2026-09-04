@@ -13,7 +13,16 @@ const ScrollArea = React.forwardRef<
 >(({ className, children, orientation = 'both', ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.SCROLLBAR)
 	return (
-		<ScrollAreaPrimitive.Root ref={ref} className={cn('relative overflow-hidden', className)} {...props}>
+		<ScrollAreaPrimitive.Root
+			ref={ref}
+			className={cn(
+				'relative overflow-hidden',
+				// radix lays the content out as a table so it can grow past the viewport; a vertical-only area wants it to shrink to the viewport instead
+				orientation === 'vertical' && '[&_[data-radix-scroll-area-viewport]>div]:block!',
+				className,
+			)}
+			{...props}
+		>
 			<ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">{children}</ScrollAreaPrimitive.Viewport>
 			{orientation !== 'horizontal' && <ScrollBar orientation="vertical" />}
 			{orientation !== 'vertical' && <ScrollBar orientation="horizontal" />}
