@@ -24,7 +24,7 @@ import TeamsPanel from './teams-panel.tsx'
 import { Timer } from './timer.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
-type Screen = SquadServerClient.PhoneScreen
+type Screen = SquadServerClient.DashboardTab
 
 /**
  * Below 640px the dashboard is one panel at a time: the same panels as the desktop layout, behind a bottom tab
@@ -32,7 +32,7 @@ type Screen = SquadServerClient.PhoneScreen
  * as the highlighted history row.
  */
 export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp }) {
-	const screen = Zus.useStore(SquadServerClient.DashboardTabStore, (s) => s.phoneScreen)
+	const screen = SquadServerClient.useDashboardTab()
 	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
 	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
 	const serverId = props.stores.squadServer.serverId
@@ -111,7 +111,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 					</div>
 				)}
 			</div>
-			<PhoneTabBar active={screen} badges={badges} onSelect={SquadServerClient.DashboardTabActions.setPhoneScreen} />
+			<PhoneTabBar active={screen} badges={badges} onSelect={SquadServerClient.DashboardTabActions.setTab} />
 		</div>
 	)
 }

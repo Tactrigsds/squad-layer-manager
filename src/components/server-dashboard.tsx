@@ -2,7 +2,6 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useIsDesktopSize, useIsSmallViewport, useIsUltrawide } from '@/lib/browser.ts'
-import * as Zus from '@/lib/zustand'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
@@ -20,7 +19,7 @@ import ServerActivityPanel from './server-activity-panel.tsx'
  *   >= 2100    three columns: history + breakdown, the tabs, Server Activity
  */
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
-	const activeTab = Zus.useStore(SquadServerClient.DashboardTabStore, (s) => s.activeTab)
+	const activeTab = SquadServerClient.dashboardSide(SquadServerClient.useDashboardTab())
 	const isDesktop = useIsDesktopSize()
 	const isUltrawide = useIsUltrawide()
 	const isPhone = useIsSmallViewport()
@@ -29,7 +28,7 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 	// tab, so bring it forward (harmless in desktop, where both panels are always visible)
 	WarnChat.useWarnFocusRequest(
 		(t) => t.kind === 'server-activity',
-		() => SquadServerClient.DashboardTabActions.setActiveTab('secondary'),
+		() => SquadServerClient.DashboardTabActions.setSide('secondary'),
 	)
 
 	if (isPhone) return <PhoneDashboard stores={props.stores} />

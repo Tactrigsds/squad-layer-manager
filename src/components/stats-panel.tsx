@@ -176,7 +176,7 @@ function TeamBreakdown(props: {
 					}
 					ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
 					// on a single-column layout the teams panel is behind a tab of its own
-					SquadServerClient.DashboardTabActions.setActiveTab('layers')
+					SquadServerClient.DashboardTabActions.setTab('teams')
 				}
 
 	const renderTooltip = (datum: Chart.Datum) => {

@@ -28,9 +28,8 @@ export default function DesktopOnly() {
 	const title = PAGE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1]() ?? tr.text(APP_Msgs.productName())
 	const selectedServerId = Zus.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
 
-	const goToServer = (screen?: SquadServerClient.PhoneScreen) => {
-		if (screen) SquadServerClient.DashboardTabActions.setPhoneScreen(screen)
-		if (selectedServerId) void navigate({ to: '/servers/$serverId', params: { serverId: selectedServerId } })
+	const goToServer = (tab?: SquadServerClient.DashboardTab) => {
+		if (selectedServerId) void navigate({ to: '/servers/$serverId', params: { serverId: selectedServerId }, search: { tab } })
 		else void navigate({ to: '/servers' })
 	}
 

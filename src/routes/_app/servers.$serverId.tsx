@@ -1,4 +1,4 @@
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router'
 import React from 'react'
 
 import RecommendedTutorialsDialog from '@/components/recommended-tutorials-dialog'
@@ -23,6 +23,10 @@ import * as UPClient from '@/systems/user-presence.client'
 
 export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
+	validateSearch: (search): { tab?: SquadServerClient.DashboardTab } => {
+		const tab = ClientOnlySettings.DASHBOARD_TABS.find((t) => t === search.tab)
+		return tab ? { tab } : {}
+	},
 
 	loader: async ({ params }) => {
 		const settings = await SettingsClient.fetchSettings()
@@ -61,11 +65,26 @@ function RouteComponent() {
 	React.useEffect(() => {
 		SquadServerClient.SelectedServerActions.setSelectedServer(serverId)
 	}, [serverId])
+	useDashboardTabMemory(serverId)
 	return (
 		<ReactRx.Subscribe source$={SquadServerClient.serverAvailability$(serverId)}>
 			<ServerRoute serverId={serverId} />
 		</ReactRx.Subscribe>
 	)
+}
+
+// The tab shown is remembered, and a visit without one lands on it, with the url replaced to say so: every dashboard
+// entry in the history then names its tab, so back from a later switch returns to this one rather than to whatever
+// is current. Desktop widths show every panel at once and leave the url alone.
+function useDashboardTabMemory(serverId: string) {
+	const navigate = useNavigate()
+	const tab = Route.useSearch().tab
+	const stored = Zus.useStore(ClientOnlySettings.Store, (s) => s.dashboardTab)
+	const isDesktop = Browser.useIsDesktopSize()
+	React.useEffect(() => {
+		if (tab !== undefined) ClientOnlySettings.Actions.setDashboardTab(tab)
+		else if (!isDesktop) void navigate({ to: '/servers/$serverId', params: { serverId }, search: { tab: stored }, replace: true })
+	}, [tab, stored, isDesktop, serverId, navigate])
 }
 
 function ServerRoute({ serverId }: { serverId: string }) {

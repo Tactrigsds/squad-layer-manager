@@ -5,7 +5,7 @@ import * as APP_Msgs from '@/messages/app.messages'
 import { tr } from '@/systems/messages.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
 
-type Screen = SquadServerClient.PhoneScreen
+type Screen = SquadServerClient.DashboardTab
 
 const SCREENS: { value: Screen; icon: React.ComponentType<{ className?: string }>; label: () => string }[] = [
 	{ value: 'matches', icon: Icons.History, label: () => tr.text(APP_Msgs.phoneMatches()) },

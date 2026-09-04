@@ -72,7 +72,7 @@ export default function NavBar() {
 	const isDesktop = useIsDesktopSize()
 	const isMedium = useIsMediumViewport()
 	const isSmall = useIsSmallViewport()
-	const activeDashboardTab = Zus.useStore(SquadServerClient.DashboardTabStore, (s) => s.activeTab)
+	const activeDashboardTab = SquadServerClient.dashboardSide(SquadServerClient.useDashboardTab())
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop && !isSmall
 
@@ -334,7 +334,7 @@ export default function NavBar() {
 						{ value: 'secondary', label: 'Server Activity' },
 					]}
 					active={activeDashboardTab}
-					setActive={SquadServerClient.DashboardTabActions.setActiveTab}
+					setActive={SquadServerClient.DashboardTabActions.setSide}
 				/>
 			)}
 			{inlineLinks.map((link) => (
