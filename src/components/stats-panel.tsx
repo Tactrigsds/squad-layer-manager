@@ -174,7 +174,7 @@ function TeamBreakdown(props: {
 						const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
 						TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
 					}
-					ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
+					SquadServerClient.PrimaryPanelActions.showTeams()
 					// on a single-column layout the teams panel is behind a tab of its own
 					SquadServerClient.DashboardTabActions.setTab('teams')
 				}

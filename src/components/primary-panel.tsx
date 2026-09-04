@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -10,12 +10,14 @@ import * as APP_Msgs from '@/messages/app.messages'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
 import { IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import { PluginSlot } from './plugin-slot.tsx'
 import StatsPanel from './stats-panel.tsx'
+import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
@@ -23,7 +25,7 @@ type PanelTab = 'queue' | 'teams'
 
 // stable ids so each tab and its panel can point at each other (aria-controls / aria-labelledby)
 const tabId = (value: string) => `primary-panel-tab-${value}`
-const tabPanelId = (value: string) => `primary-panel-panel-${value}`
+const tabPanelId = (value: string) => (value === 'teams' ? SquadServerClient.TEAMS_PANEL_ELEMENT_ID : `primary-panel-panel-${value}`)
 
 function TabBar<T extends string>({
 	tabs,
@@ -67,7 +69,8 @@ function TabBar<T extends string>({
 /**
  * Match History, the Teams Breakdown and the Queue / Teams tabs. `part` picks which of those this instance
  * renders: the two-column dashboard stacks them all in one column, the three-column one splits history and
- * breakdown from the tabs.
+ * breakdown from the tabs. `stacked` shows the queue and the teams at once, one above the other, instead of
+ * behind tabs.
  */
 export default function PrimaryPanel(props: {
 	stores: SquadServerFrame.KeyProp
@@ -75,6 +78,7 @@ export default function PrimaryPanel(props: {
 	// whether the breakdown sits here (the single-column layout keeps it with Server Activity instead)
 	withStats?: boolean
 	statsWide?: boolean
+	stacked?: boolean
 }) {
 	const part = props.part ?? 'all'
 	return (
@@ -92,13 +96,14 @@ export default function PrimaryPanel(props: {
 					)}
 				</>
 			)}
-			{part !== 'history' && <QueueTeamsTabs stores={props.stores} />}
+			{part !== 'history' && <QueueTeamsTabs stores={props.stores} stacked={props.stacked} />}
 		</div>
 	)
 }
 
-export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; className?: string }) {
+export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; className?: string; stacked?: boolean }) {
 	const serverId = props.stores.squadServer.serverId
+	const stacked = props.stacked ?? false
 	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
 	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
 	const tab: PanelTab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
@@ -118,6 +123,7 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 	const scrolledTabRef = React.useRef(tab)
 
 	React.useEffect(() => {
+		if (stacked) return
 		const viewport = scrollRootRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
 		if (!viewport) return
 		const onScroll = () => {
@@ -125,52 +131,110 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 		}
 		viewport.addEventListener('scroll', onScroll, { passive: true })
 		return () => viewport.removeEventListener('scroll', onScroll)
-	}, [])
+	}, [stacked])
 
 	React.useLayoutEffect(() => {
+		if (stacked) return
 		scrolledTabRef.current = tab
 		const viewport = scrollRootRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
 		if (!viewport) return
 		viewport.scrollTop = scrollPositions.current[tab]
-	}, [tab])
+	}, [tab, stacked])
 
-	const presence = (
+	const teamsTitleRef = React.useRef<HTMLDivElement>(null)
+
+	const queuePresence = (
+		<UserPresencePanel
+			stores={props.stores}
+			sourcePresenceFn={sortEditingPresence}
+			matchActivity={(root) =>
+				UP.Trans.viewingQueue(serverId).match(root) ||
+				UP.Trans.editingQueue(serverId).match(root) ||
+				UP.Trans.editingLayerRequests(serverId).match(root)
+			}
+			matchActivityForStatusText={(root) =>
+				UP.Trans.editingQueue(serverId).match(root) ||
+				UP.Trans.editingLayerRequests(serverId).match(root) ||
+				UP.Trans.viewingQueue(serverId).match(root)
+			}
+			event$={queueEvent$}
+			transitionMessages={[
+				{
+					matchActivity: (root) => UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
+					leaveMessage: tr.text(APP_Msgs.finishedEditing()),
+				},
+			]}
+			className="min-w-0"
+		/>
+	)
+	const teamsPresence = (
+		<UserPresencePanel
+			stores={props.stores}
+			sourcePresenceFn={sortEditingPresence}
+			matchActivity={(root) => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
+			matchActivityForStatusText={(root) =>
+				UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
+			}
+			event$={teamswapEvent$}
+			className="min-w-0"
+		/>
+	)
+
+	const queueContent = (
 		<>
-			<UserPresencePanel
-				stores={props.stores}
-				sourcePresenceFn={sortEditingPresence}
-				matchActivity={(root) =>
-					UP.Trans.viewingQueue(serverId).match(root) ||
-					UP.Trans.editingQueue(serverId).match(root) ||
-					UP.Trans.editingLayerRequests(serverId).match(root)
-				}
-				matchActivityForStatusText={(root) =>
-					UP.Trans.editingQueue(serverId).match(root) ||
-					UP.Trans.editingLayerRequests(serverId).match(root) ||
-					UP.Trans.viewingQueue(serverId).match(root)
-				}
-				event$={queueEvent$}
-				transitionMessages={[
-					{
-						matchActivity: (root) =>
-							UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
-						leaveMessage: tr.text(APP_Msgs.finishedEditing()),
-					},
-				]}
-				className="min-w-0"
-			/>
-			<UserPresencePanel
-				stores={props.stores}
-				sourcePresenceFn={sortEditingPresence}
-				matchActivity={(root) => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
-				matchActivityForStatusText={(root) =>
-					UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
-				}
-				event$={teamswapEvent$}
-				className="min-w-0"
-			/>
+			<IngameVoteAlert stores={props.stores} />
+			<SlmUpdatesDisabledAlert stores={props.stores} />
+			<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId }} />
+			{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
+			<div data-tour="queue-panel">
+				<QueuePanelContent stores={props.stores} />
+			</div>
+			<BackburnerPanel stores={props.stores} />
 		</>
 	)
+
+	if (stacked) {
+		// Two panels in one scroller. Presence follows the section last touched (see viewedPrimaryPanel$);
+		// capture-phase React handlers see clicks inside portals too, so a player dialog counts as the teams.
+		const touch = (section: ClientOnlySettings.PrimaryPanelTab) => () =>
+			SquadServerClient.PrimaryPanelActions.touchStackedSection(section)
+		return (
+			<ScrollArea ref={scrollRootRef} className={cn('flex-1 min-h-0', props.className)}>
+				<div className="flex flex-col gap-2.5">
+					<Card
+						role="region"
+						aria-labelledby={tabId('queue')}
+						onPointerDownCapture={touch('VIEWING_QUEUE')}
+						onFocusCapture={touch('VIEWING_QUEUE')}
+					>
+						<CardHeader>
+							<CardTitle id={tabId('queue')} data-tour="queue-editors">
+								{tr.text(APP_Msgs.queueTab(queueLength))}
+							</CardTitle>
+							<span className="ml-auto flex min-w-0 items-center gap-2">{queuePresence}</span>
+						</CardHeader>
+						{queueContent}
+					</Card>
+					<Card
+						id={tabPanelId('teams')}
+						role="region"
+						aria-labelledby={tabId('teams')}
+						onPointerDownCapture={touch('VIEWING_TEAMS')}
+						onFocusCapture={touch('VIEWING_TEAMS')}
+					>
+						{/* the title stays on screen while the tables scroll under it; the teams panel's own header stacks below */}
+						<StickyGroup stickyRef={teamsTitleRef}>
+							<CardHeader ref={teamsTitleRef}>
+								<CardTitle id={tabId('teams')}>{tr.text(APP_Msgs.teamsTab(playerCount))}</CardTitle>
+								<span className="ml-auto flex min-w-0 items-center gap-2">{teamsPresence}</span>
+							</CardHeader>
+							<TeamsPanel stores={props.stores} />
+						</StickyGroup>
+					</Card>
+				</div>
+			</ScrollArea>
+		)
+	}
 
 	return (
 		<div className={cn('flex flex-col flex-1 min-h-0 min-w-0', props.className)}>
@@ -181,7 +245,12 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 				]}
 				value={tab}
 				onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
-				trailing={presence}
+				trailing={
+					<>
+						{queuePresence}
+						{teamsPresence}
+					</>
+				}
 			/>
 			<div className="fd-tabbody flex flex-col flex-1 min-h-0 relative">
 				<ScrollArea ref={scrollRootRef} className="flex-1 min-h-0">
@@ -196,14 +265,7 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 							aria-labelledby={tabId('queue')}
 							className={cn('[grid-area:1/1]', tab !== 'queue' && 'hidden')}
 						>
-							<IngameVoteAlert stores={props.stores} />
-							<SlmUpdatesDisabledAlert stores={props.stores} />
-							<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId }} />
-							{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
-							<div data-tour="queue-panel">
-								<QueuePanelContent stores={props.stores} />
-							</div>
-							<BackburnerPanel stores={props.stores} />
+							{queueContent}
 						</div>
 						<div
 							role="tabpanel"

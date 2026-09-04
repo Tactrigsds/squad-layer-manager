@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import type * as React from 'react'
 
+import * as Browser from '@/lib/browser'
 import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
@@ -248,6 +249,40 @@ export namespace DashboardTabActions {
 	export function setSide(side: DashboardSide) {
 		const last = ClientOnlySettings.Store.getState().dashboardTab
 		setTab(side === 'secondary' ? 'activity' : last === 'teams' ? 'teams' : 'queue')
+	}
+}
+
+// The three-column tier shows the queue and the teams at once, so there is no tab to report as the panel being
+// viewed. Presence then follows the section last interacted with, queue by default. That choice is never
+// persisted: a window that drops back below the tier reports the saved tab again.
+const StackedSectionStore = Zus.createStore<{ section: ClientOnlySettings.PrimaryPanelTab }>()(() => ({ section: 'VIEWING_QUEUE' }))
+
+export function viewedPrimaryPanel(): ClientOnlySettings.PrimaryPanelTab {
+	return window.matchMedia(Browser.ULTRAWIDE_QUERY).matches
+		? StackedSectionStore.getState().section
+		: ClientOnlySettings.Store.getState().primaryPanelTab
+}
+
+export const viewedPrimaryPanel$: Rx.Observable<ClientOnlySettings.PrimaryPanelTab> = Rx.merge(
+	Browser.mediaQueryChanged$(Browser.ULTRAWIDE_QUERY),
+	Zus.toObservable(StackedSectionStore),
+	Zus.toObservable(ClientOnlySettings.Store),
+).pipe(Rx.map(viewedPrimaryPanel), Rx.distinctUntilChanged())
+
+// the element holding the teams panel in either layout, so showTeams can scroll it into view
+export const TEAMS_PANEL_ELEMENT_ID = 'primary-panel-panel-teams'
+
+export namespace PrimaryPanelActions {
+	// a click or a focus landed in one of the stacked sections
+	export function touchStackedSection(section: ClientOnlySettings.PrimaryPanelTab) {
+		if (StackedSectionStore.getState().section !== section) StackedSectionStore.setState({ section })
+	}
+
+	// brings the teams on screen: the tab below the ultrawide tier, the stacked section above it
+	export function showTeams() {
+		ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
+		touchStackedSection('VIEWING_TEAMS')
+		document.getElementById(TEAMS_PANEL_ELEMENT_ID)?.scrollIntoView({ block: 'start' })
 	}
 }
 
