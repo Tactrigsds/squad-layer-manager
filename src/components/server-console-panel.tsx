@@ -27,22 +27,17 @@ function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?
 			return {
 				prefix: event.dir === 'recv' ? 'rcon <-' : 'rcon ->',
 				body: event.body,
-				tone: event.dir === 'recv' ? 'text-sky-600 dark:text-sky-400' : 'text-emerald-600 dark:text-emerald-400',
+				tone: event.dir === 'recv' ? 'text-info dark:text-info' : 'text-ok dark:text-ok',
 			}
 		case 'log':
 			return { prefix: 'log', body: event.line, tone: 'text-muted-foreground' }
 		case 'command':
-			return { prefix: `${event.channel} ${event.player}`, body: event.message, tone: 'text-amber-600 dark:text-amber-500' }
+			return { prefix: `${event.channel} ${event.player}`, body: event.message, tone: 'text-warn dark:text-warn' }
 		case 'slm':
 			return {
 				prefix: 'slm',
 				body: event.detail ? `${event.message} (${event.detail})` : event.message,
-				tone:
-					event.level === 'error'
-						? 'text-destructive'
-						: event.level === 'warn'
-							? 'text-amber-600 dark:text-amber-500'
-							: 'text-foreground',
+				tone: event.level === 'error' ? 'text-destructive' : event.level === 'warn' ? 'text-warn dark:text-warn' : 'text-foreground',
 			}
 		default:
 			assertNever(event)

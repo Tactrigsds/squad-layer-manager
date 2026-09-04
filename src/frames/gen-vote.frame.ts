@@ -3,6 +3,7 @@ import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 import * as Im from 'immer'
 
+import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as DH from '@/lib/display-helpers'
@@ -62,9 +63,11 @@ type Primary = {
 	voteConfig: Partial<V.AdvancedVoteConfig>
 	displayPropsManuallySet: boolean
 	result: Result | null
+	// the picker's constraint menu, applied to every choice on top of the pool; hidden until asked for
+	showAdvanced: boolean
 }
 
-type Store = Primary & AppliedFiltersPrt.Store & PoolCheckboxesPrt.Store
+type Store = Primary & AppliedFiltersPrt.Store & PoolCheckboxesPrt.Store & LayerFilterMenuPrt.Store & LayerFilterMenuPrt.Predicates
 
 function constraintsToDisplayProps(constraints: V.GenVote.ChoiceConstraintKey[]): DH.LayerDisplayProp[] | undefined {
 	const props: DH.LayerDisplayProp[] = []
@@ -107,7 +110,14 @@ const setup: Frame['setup'] = (args) => {
 		result: null,
 		includedConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
 		uniqueConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
+		showAdvanced: false,
 	} satisfies Primary)
+	set({
+		resetAllConstraints() {
+			LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
+		},
+	} satisfies LayerFilterMenuPrt.Predicates)
+	LayerFilterMenuPrt.initLayerFilterMenuStore({ ...args, input: { colConfig: args.input.colConfig, defaultFields: {} } })
 
 	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
 	// this its predicate is unset and pool filters never apply in the gen-vote dialog
@@ -135,7 +145,7 @@ export namespace Sel {
 			constraints: [...appliedConstraints, ...repeatRuleConstraints],
 			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
-		return base
+		return LQY.mergeBaseInputs(base, { constraints: LayerFilterMenuPrt.Sel.filterMenuConstraints(state) })
 	}
 
 	export function queryInput(state: Store, squadServer: SquadServerFrame.State | undefined, omitIndex: number): LQY.GenVote.Input {
@@ -157,6 +167,10 @@ export namespace Actions {
 
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor) {
 		store(stores).setState({ cursor })
+	}
+
+	export function setShowAdvanced(stores: KeyProp, showAdvanced: boolean) {
+		store(stores).setState({ showAdvanced })
 	}
 
 	export function setVoteConfig(stores: KeyProp, update: Partial<V.AdvancedVoteConfig>) {

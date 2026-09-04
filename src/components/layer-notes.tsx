@@ -8,6 +8,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { UserLabel } from '@/components/user-avatar'
+import * as Browser from '@/lib/browser'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
 import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import * as LNote from '@/models/layer-notes.models'
@@ -79,28 +80,42 @@ export function LayerNotes(props: {
 				<Icons.MessageSquarePlus className="h-3 w-3" />
 				{notes.length === 0 && <span>{tr.text(LNote_Msgs.addNoteInline())}</span>}
 			</Button>
-			<NoteDialog state={editing} onClose={() => setEditing(null)} onSubmit={submit} />
+			<LayerNoteDialog state={editing} onClose={() => setEditing(null)} onSubmit={submit} />
 		</span>
 	)
 }
 
 function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
+	// touch has no hover, so there a tap opens the card instead
+	const coarse = Browser.useCoarsePointer()
+	const body = (
+		<NoteBody serverId={props.serverId} note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
+	)
+	const text = (
+		<>
+			<AuthorName userId={props.note.author} />: <RichText text={props.note.text} className="whitespace-normal" />
+		</>
+	)
+	if (coarse) {
+		return (
+			<Popover>
+				<PopoverTrigger asChild>
+					<button type="button" className="select-none text-left text-xs text-muted-foreground">
+						{text}
+					</button>
+				</PopoverTrigger>
+				<PopoverContent align="start" className="w-72 space-y-2 p-3">
+					{body}
+				</PopoverContent>
+			</Popover>
+		)
+	}
 	return (
 		<HoverCard openDelay={200}>
 			<HoverCardTrigger asChild>
-				<span className="cursor-default select-none text-xs text-muted-foreground">
-					<AuthorName userId={props.note.author} />: <RichText text={props.note.text} className="whitespace-normal" />
-				</span>
+				<span className="cursor-default select-none text-xs text-muted-foreground">{text}</span>
 			</HoverCardTrigger>
-			<HoverCardContent className="w-72 space-y-2 p-3">
-				<NoteBody
-					serverId={props.serverId}
-					note={props.note}
-					disabled={props.disabled}
-					onEdit={props.onEdit}
-					onDelete={props.onDelete}
-				/>
-			</HoverCardContent>
+			<HoverCardContent className="w-72 space-y-2 p-3">{body}</HoverCardContent>
 		</HoverCard>
 	)
 }
@@ -164,7 +179,7 @@ function AuthorName(props: { userId: USR.UserId }) {
 	return <span className="font-medium text-foreground">{user?.displayName ?? tr.text(LNote_Msgs.unknownAuthor())}</span>
 }
 
-function NoteDialog(props: { state: Editing; onClose: () => void; onSubmit: (text: string) => void }) {
+export function LayerNoteDialog(props: { state: Editing; onClose: () => void; onSubmit: (text: string) => void }) {
 	return (
 		<Dialog open={props.state !== null} onOpenChange={(next) => !next && props.onClose()}>
 			<DialogContent className="max-w-md">{props.state && <NoteDialogBody {...props} state={props.state} />}</DialogContent>

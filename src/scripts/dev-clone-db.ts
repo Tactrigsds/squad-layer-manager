@@ -98,6 +98,7 @@ function snapshot() {
 	// write lock on the source, whatever it does next.
 	const src = new DatabaseConstructor(source, { readonly: true })
 	const tmp = `${dest}.clone-${process.pid}.tmp`
+	fs.mkdirSync(path.dirname(dest), { recursive: true })
 	fs.rmSync(tmp, { force: true })
 	try {
 		src.exec(`VACUUM INTO '${tmp.replaceAll("'", "''")}'`)

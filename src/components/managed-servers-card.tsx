@@ -27,7 +27,7 @@ export default function ManagedServersCard({ className }: { className?: string }
 						<Button variant="outline" className="w-full justify-start" size="lg" disabled={!usable}>
 							<Icons.Server className="mr-2 h-4 w-4" />
 							{server.displayName}
-							<Icons.Dot className={cn('ml-auto h-6 w-6', usable ? 'text-green-500' : 'text-red-500')} />
+							<Icons.Dot className={cn('ml-auto h-6 w-6', usable ? 'text-ok' : 'text-danger')} />
 						</Button>
 					)
 					// disabled/broken servers have no usable dashboard, so render a static button instead of a link

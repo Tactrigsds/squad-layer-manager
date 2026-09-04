@@ -198,3 +198,8 @@ export const addLayers = def('{count, plural, =0 {Add Layers} one {Add # Layer} 
 export const editLayerTitle = def('Edit Layer')
 
 export const submit = def('Submit')
+
+// the picker's mode switch and its phone submit button
+export const voteMode = def('Vote')
+export const setLayerMode = def('Set Layer')
+export const submitCount = def('Submit · {count} layers', (count: number) => ({ count }))

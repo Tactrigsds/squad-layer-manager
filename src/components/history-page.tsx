@@ -110,8 +110,8 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const modeToggle = (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<Button variant="outline" size="sm" onClick={() => HistoryFrame.Actions.setMode(props.stores, target)}>
-					<Icons.SlidersHorizontal className="mr-1 h-3 w-3" />
+				<Button size="sm" onClick={() => HistoryFrame.Actions.setMode(props.stores, target)}>
+					<Icons.SlidersHorizontal />
 					{tr.text(target === 'advanced' ? HistoryMsgs.modeAdvanced() : HistoryMsgs.modeBasic())}
 				</Button>
 			</TooltipTrigger>
@@ -121,7 +121,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const runButton = (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<Button size="sm" className="w-full" onClick={run}>
+				<Button size="sm" variant="primary" className="w-full" onClick={run}>
 					{tr.text(HistoryMsgs.run())}
 				</Button>
 			</TooltipTrigger>
@@ -141,7 +141,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
 		// w-full: without it the row sizes to its content, so widening the rail grows the page instead of
 		// taking the space from the results
-		<div className="flex h-full min-h-0 w-full gap-2 p-2">
+		<div className="flex h-full min-h-0 w-full gap-2.5">
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<TabsList
@@ -227,7 +227,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 					role="separator"
 					aria-orientation="vertical"
 					aria-label={tr.text(HistoryMsgs.resizeBuilder())}
-					className="-ml-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent transition-colors hover:bg-border"
+					className="-ml-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent hover:bg-line-soft"
 					onPointerDown={(e) => {
 						dragFrom.current = { x: e.clientX, width }
 						e.currentTarget.setPointerCapture(e.pointerId)
@@ -245,7 +245,9 @@ function RailResizer(props: { children: React.ReactNode }) {
 						HistoryClient.saveRailWidth(width)
 					}}
 				/>
-				<div className="flex min-w-0 flex-1 flex-col gap-2 border-l pl-2">{props.children}</div>
+				<div className="flex min-w-0 flex-1 flex-col gap-2 border-l border-line pl-2.5 shadow-[-1px_0_0_var(--line-soft)]">
+					{props.children}
+				</div>
 			</div>
 		</aside>
 	)
@@ -438,7 +440,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>
 				<table aria-label={tr.text(HistoryMsgs.playerResults())} className="w-full border-collapse text-xs">
-					<thead className="sticky top-0 bg-background text-muted-foreground">
+					<thead className="sticky top-0 bg-panel-hi text-text-2">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colPlayer())}</th>
@@ -482,7 +484,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 			{loading && <ResultsLoading />}
 			<div className="min-h-0 overflow-y-auto" hidden={loading}>
 				<table aria-label={tr.text(HistoryMsgs.matchResults())} className="w-full border-collapse text-xs">
-					<thead className="sticky top-0 bg-background text-muted-foreground">
+					<thead className="sticky top-0 bg-panel-hi text-text-2">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
 							{sortHeader('time', tr.text(HistoryMsgs.colTime()))}
@@ -524,7 +526,8 @@ function RecentMenu(props: { onLoad: () => void }) {
 	return (
 		<DropdownMenu onOpenChange={(open) => open && setRecents(HistoryClient.loadRecents())}>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline" size="sm">
+				<Button size="sm">
+					<Icons.History />
 					{tr.text(HistoryMsgs.recentQueries())}
 				</Button>
 			</DropdownMenuTrigger>
@@ -572,7 +575,8 @@ function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => v
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline" size="sm">
+				<Button size="sm">
+					<Icons.FolderOpen />
 					{tr.text(HistoryMsgs.savedQueries())}
 				</Button>
 			</DropdownMenuTrigger>
@@ -650,19 +654,14 @@ function SaveControl(props: { stores: HistoryFrame.KeyProp; savedAs: SavedAs | n
 		<>
 			{savedAs ? (
 				<ButtonGroup>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={save.isPending}
-						onClick={update}
-						title={tr.text(HistoryMsgs.updateQuery(savedAs.name))}
-					>
+					<Button size="sm" disabled={save.isPending} onClick={update} title={tr.text(HistoryMsgs.updateQuery(savedAs.name))}>
+						<Icons.Save />
 						{tr.text(HistoryMsgs.update())}
 					</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="outline" size="sm" className="px-1" aria-label={tr.text(HistoryMsgs.moreSaveOptions())}>
-								<Icons.ChevronDown className="h-3 w-3" />
+							<Button size="icon-sm" aria-label={tr.text(HistoryMsgs.moreSaveOptions())}>
+								<Icons.ChevronDown />
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
@@ -671,7 +670,8 @@ function SaveControl(props: { stores: HistoryFrame.KeyProp; savedAs: SavedAs | n
 					</DropdownMenu>
 				</ButtonGroup>
 			) : (
-				<Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+				<Button size="sm" onClick={() => setDialogOpen(true)}>
+					<Icons.Save />
 					{tr.text(HistoryMsgs.save())}
 				</Button>
 			)}
@@ -721,7 +721,7 @@ function SaveDialog(props: {
 					{tr.text(HistoryMsgs.visibilityShared())}
 				</label>
 				<DialogFooter>
-					<Button size="sm" disabled={name.trim() === '' || save.isPending} onClick={submit}>
+					<Button size="sm" variant="primary" disabled={name.trim() === '' || save.isPending} onClick={submit}>
 						{tr.text(HistoryMsgs.save())}
 					</Button>
 				</DialogFooter>

@@ -6,7 +6,6 @@ import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -24,7 +23,9 @@ import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
-export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) {
+// The Teams Breakdown panel. `wide` is the two-column dashboard's form: the legend rides in the title bar and the two
+// teams face each other as mirrored bars. Narrow stacks them, for a side column or a phone.
+export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wide?: boolean; className?: string }) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
 	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
@@ -52,108 +53,46 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.groupings,
 	)
+	const [legendSlot, setLegendSlot] = React.useState<HTMLElement | null>(null)
 
 	return (
-		<Card className="w-full">
-			<CardHeader className="flex flex-row items-center justify-between pb-3">
-				<CardTitle className="flex items-center gap-2">
-					<Icons.BarChart2 className="h-5 w-5" />
-					{tr.text(MH_Msgs.statsTitle())}
+		<Card className={cn('w-full', props.className)}>
+			<CardHeader className="whitespace-nowrap">
+				<CardTitle className="flex items-center gap-1.5 shrink-0">
+					<Icons.BarChart2 className="h-3.5 w-3.5" />
+					{tr.text(MH_Msgs.teamBreakdowns())}
 				</CardTitle>
+				{props.wide && <span ref={setLegendSlot} className="flex items-center min-w-0 overflow-hidden" />}
+				<span className="flex-1" />
 				{hasData && groupings.ids.length > 1 && (
-					<div className="flex gap-0.5">
+					<span className="flex gap-0.5">
 						{groupings.ids.map((groupingId) => (
 							<button
 								type="button"
 								key={groupingId}
 								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
-								className={cn(
-									'text-xs px-2 py-0.5 rounded',
-									groupings.active === groupingId
-										? 'bg-primary text-primary-foreground'
-										: 'text-muted-foreground hover:text-foreground',
-								)}
+								className="fd-pill"
+								data-state={groupings.active === groupingId ? 'on' : 'off'}
 							>
 								{groupingId}
 							</button>
 						))}
-					</div>
+					</span>
 				)}
+				<BreakdownHelp interactive={selectedMatchOrdinal === null} />
 			</CardHeader>
-			<CardContent>
+			<CardContent className="px-2.5 py-1.5">
 				{!hasData ? (
-					<div className="text-muted-foreground text-sm text-center py-4">{tr.text(MH_Msgs.noChartData())}</div>
+					<div className="text-text-3 text-sm text-center py-3">{tr.text(MH_Msgs.noChartData())}</div>
 				) : (
-					<div className="w-full flex flex-col gap-2">
-						<TeamBreakdown stores={props.stores} historicalEvents={historicalEvents} />
-						<CombatStats stores={props.stores} historicalEvents={historicalEvents} />
-					</div>
+					<>
+						{!props.wide && <div ref={setLegendSlot} className="flex items-center mb-1" />}
+						<TeamBreakdown stores={props.stores} historicalEvents={historicalEvents} wide={!!props.wide} legendPortal={legendSlot} />
+					</>
 				)}
 			</CardContent>
 		</Card>
 	)
-}
-
-function CombatStats(props: { stores: SquadServerFrame.KeyProp; historicalEvents: CHAT.EventEnriched[] | null }) {
-	const squadServer = props.stores.squadServer!
-	const serverId = squadServer.serverId
-	const teams = Zus.useStore_Susp(
-		squadServer,
-		MatchHistoryClient.currentMatch$(serverId),
-		MatchHistoryClient.recentMatches$(serverId),
-		ClientOnlySettings.Store,
-		StatsModels.Sel.teams,
-	)
-	const stats = Zus.useStore_Susp(
-		squadServer,
-		MatchHistoryClient.currentMatch$(serverId),
-		MatchHistoryClient.recentMatches$(serverId),
-		ClientOnlySettings.Store,
-		StatsModels.Sel.combatStats(props.historicalEvents),
-	)
-	if (!stats) return null
-
-	return (
-		<div className="flex flex-wrap gap-x-6 gap-y-1 text-xs px-1">
-			<RatioGroup
-				label={tr.text(MH_Msgs.kdRatio())}
-				teams={teams}
-				ratios={[stats.team1.kd, stats.team2.kd]}
-				describe={(ratio) => tr.text(MH_Msgs.kdBreakdown(ratio.numerator, ratio.denominator))}
-			/>
-			<RatioGroup
-				label={tr.text(MH_Msgs.woundRatio())}
-				teams={teams}
-				ratios={[stats.team1.wounds, stats.team2.wounds]}
-				describe={(ratio) => tr.text(MH_Msgs.woundBreakdown(ratio.numerator, ratio.denominator))}
-			/>
-		</div>
-	)
-}
-
-function RatioGroup(props: {
-	label: string
-	teams: readonly [StatsModels.TeamDisplay, StatsModels.TeamDisplay]
-	ratios: readonly [StatsModels.Ratio, StatsModels.Ratio]
-	describe: (ratio: StatsModels.Ratio) => string
-}) {
-	const [hovered, setHovered] = React.useState<number | null>(null)
-	return (
-		<div className="flex items-center gap-2 shrink-0" onPointerLeave={() => setHovered(null)}>
-			<span className="text-muted-foreground">{props.label}</span>
-			{props.teams.map((team, i) => (
-				<span key={team.label} className="flex items-center gap-1 cursor-default" onPointerEnter={() => setHovered(i)}>
-					<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team.color }}></span>
-					{team.label}: <span className="font-mono font-semibold">{formatRatio(props.ratios[i])}</span>
-				</span>
-			))}
-			<TrackingTooltip content={hovered === null ? null : props.describe(props.ratios[hovered])} />
-		</div>
-	)
-}
-
-function formatRatio(ratio: StatsModels.Ratio) {
-	return ratio.value === null ? '∞' : ratio.value.toFixed(2)
 }
 
 // what the chart is and what clicking it does, out of the way of the segment tooltips that would otherwise repeat
@@ -162,14 +101,14 @@ function BreakdownHelp(props: { interactive: boolean }) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<button type="button" className="ml-auto text-muted-foreground hover:text-foreground" aria-label={tr.text(SM_Msgs.help())}>
-					<Icons.CircleHelp className="h-3.5 w-3.5" />
+				<button type="button" className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm" aria-label={tr.text(SM_Msgs.help())}>
+					<Icons.CircleHelp />
 				</button>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-xs space-y-1.5">
 				<p>{tr.text(props.interactive ? MH_Msgs.breakdownDescription() : MH_Msgs.breakdownDescriptionHistorical())}</p>
 				{props.interactive && (
-					<ul className="text-muted-foreground">
+					<ul className="text-text-2">
 						<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
 						<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
 						<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
@@ -180,7 +119,12 @@ function BreakdownHelp(props: { interactive: boolean }) {
 	)
 }
 
-function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEvents: CHAT.EventEnriched[] | null }) {
+function TeamBreakdown(props: {
+	stores: SquadServerFrame.KeyProp
+	historicalEvents: CHAT.EventEnriched[] | null
+	wide: boolean
+	legendPortal: HTMLElement | null
+}) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
 	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
@@ -196,6 +140,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.breakdown(props.historicalEvents),
 	)
+	const teams = Zus.useStore_Susp(squadServer, currentMatch$, recentMatches$, ClientOnlySettings.Store, StatsModels.Sel.teams)
 	if (!breakdown) return null
 
 	// series a real player on the server actually matched; the rest still exist in the grouping config but would
@@ -231,7 +176,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 					}
 					ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
 					// on a single-column layout the teams panel is behind a tab of its own
-					SquadServerClient.DashboardTabActions.setActiveTab('layers')
+					SquadServerClient.DashboardTabActions.setTab('teams')
 				}
 
 	const renderTooltip = (datum: Chart.Datum) => {
@@ -246,7 +191,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 						<span className="font-semibold">{series.label}</span>: {datum.value}
 					</span>
 				</span>
-				{members.length > 0 && <span className="text-muted-foreground">{members.map((member) => member.name).join(', ')}</span>}
+				{members.length > 0 && <span className="text-text-2">{members.map((member) => member.name).join(', ')}</span>}
 			</div>
 		)
 	}
@@ -273,9 +218,9 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 						<button
 							type="button"
 							aria-label={tr.text(MH_Msgs.breakdownUnmatchedGroups(unmatchedSeries.length))}
-							className="text-muted-foreground hover:text-foreground"
+							className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm"
 						>
-							<Icons.Ellipsis className="h-3.5 w-3.5" />
+							<Icons.Ellipsis />
 						</button>
 					</PopoverTrigger>
 				</TooltipTrigger>
@@ -298,13 +243,53 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 		<StackedBarChart
 			rows={chartRows}
 			series={chartSeries}
+			rowColors={teams.map((team) => team.color)}
+			sideBySide={props.wide}
+			legendPortal={props.legendPortal}
 			ariaLabel={tr.text(MH_Msgs.teamBreakdowns())}
 			renderTooltip={renderTooltip}
 			renderLegendTooltip={renderLegendTooltip}
 			onSegmentClick={onSegmentClick}
-			legendLeading={<span className="text-xs text-muted-foreground shrink-0">{tr.text(MH_Msgs.teamBreakdowns())}</span>}
 			legendExtra={unmatchedGroupsButton}
-			legendTrailing={<BreakdownHelp interactive={selectedMatchOrdinal === null} />}
 		/>
+	)
+}
+
+// Kills of the favoured team over the other's, for the match the panels are showing: one number, pointing at the
+// team it favours. Historical matches count from their stored events, the live one from the buffer.
+export function DisplayedMatchKd(props: { stores: SquadServerFrame.KeyProp; leftIsTeam1: boolean; className?: string }) {
+	const squadServer = props.stores.squadServer!
+	const serverId = squadServer.serverId
+	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
+	const historicalEvents = historicalEventsQuery.data?.events ?? null
+	const stats = Zus.useStore_Susp(
+		squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettings.Store,
+		StatsModels.Sel.combatStats(historicalEvents),
+	)
+	if (!stats) return null
+	const kills1 = stats.team1.kd.numerator
+	const kills2 = stats.team2.kd.numerator
+	if (kills1 === 0 && kills2 === 0) return null
+	const [left, right] = props.leftIsTeam1 ? [kills1, kills2] : [kills2, kills1]
+	const favoursLeft = left >= right
+	const [hi, lo] = favoursLeft ? [left, right] : [right, left]
+	const value = lo === 0 ? '∞' : (hi / lo).toFixed(2)
+	const title = tr.text(MH_Msgs.kdBreakdown(hi, lo))
+	return (
+		<span
+			title={title}
+			className={cn(
+				'inline-flex items-center gap-px h-4 px-1 rounded-sm bg-white/6 font-mono text-[11px] text-text-2 [&_svg]:size-2.5 [&_svg]:text-text-3',
+				props.className,
+			)}
+		>
+			{favoursLeft && <Icons.ChevronLeft />}
+			{value}
+			{!favoursLeft && <Icons.ChevronRight />}
+		</span>
 	)
 }

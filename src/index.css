@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './theme.css';
+@import './foundry.css';
 
 @plugin 'tailwindcss-animate';
 
@@ -29,8 +30,27 @@
 	* {
 		@apply border-border;
 	}
+	html {
+		font-size: var(--fs);
+	}
 	body {
 		@apply bg-background text-foreground;
+		font-size: var(--fs);
+		line-height: 1.35;
+		font-variant-numeric: tabular-nums;
+	}
+	a {
+		text-underline-offset: 2px;
+	}
+	svg {
+		flex: none;
+	}
+	::selection {
+		background: rgba(224, 152, 58, 0.35);
+	}
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--ctl-bg) transparent;
 	}
 }
 

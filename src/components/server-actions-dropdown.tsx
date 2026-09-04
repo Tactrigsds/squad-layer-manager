@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import type { MenuSlots } from '@/components/player-context-menu-options'
@@ -45,7 +46,7 @@ function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
 	return new Error(tr.text(RBAC_Msgs.permissionDenied(res)))
 }
 
-const dropdownMenuSlots: MenuSlots = {
+export const dropdownMenuSlots: MenuSlots = {
 	Item: DropdownMenuItem,
 	Separator: DropdownMenuSeparator,
 	Sub: DropdownMenuSub,
@@ -53,13 +54,17 @@ const dropdownMenuSlots: MenuSlots = {
 	SubContent: DropdownMenuSubContent,
 }
 
-export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp }) {
+export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp; iconOnly?: boolean }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="secondary" size="sm">
-					{tr.text(SS_Msgs.serverActions())}
-				</Button>
+				{props.iconOnly ? (
+					<Button size="icon-sm" title={tr.text(SS_Msgs.serverActions())} aria-label={tr.text(SS_Msgs.serverActions())}>
+						<Icons.Server />
+					</Button>
+				) : (
+					<Button size="sm">{tr.text(SS_Msgs.serverActions())}</Button>
+				)}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>
 				<ServerActionMenuItems stores={props.stores} slots={dropdownMenuSlots} />
@@ -159,7 +164,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				<Item
 					disabled={!!endMatchDenied || !hasPlayers}
 					onClick={() => void endMatch()}
-					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600', !hasPlayers && 'flex flex-col')}
+					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-danger', !hasPlayers && 'flex flex-col')}
 				>
 					<span>{tr.text(SS_Msgs.endMatchLabel())}</span>
 					{!hasPlayers && <small>{tr.text(SS_Msgs.endMatchNeedsPlayers())}</small>}

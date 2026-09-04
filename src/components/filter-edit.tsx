@@ -672,27 +672,27 @@ const markdownComponents = {
 	ol: ({ ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className="list-decimal pl-6 py-2" />,
 	li: ({ ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className="my-1" />,
 	blockquote: ({ ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
-		<blockquote {...props} className={cn('border-l-4 border-gray-300 py-2 pl-4 italic', Typo.Blockquote)} />
+		<blockquote {...props} className={cn('border-l-4 border-line-soft py-2 pl-4 italic', Typo.Blockquote)} />
 	),
 	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
 		inline ? (
-			<code {...props} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-sm dark:bg-gray-800" />
+			<code {...props} className="rounded bg-panel-hi px-1 py-0.5 font-mono text-sm dark:bg-ground" />
 		) : (
-			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-gray-100 p-3 font-mono text-sm dark:bg-gray-800" />
+			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-panel-hi p-3 font-mono text-sm dark:bg-ground" />
 		),
 	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className={Typo.Link} />,
-	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-gray-300 dark:border-gray-700" />,
+	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-line-soft dark:border-gray-700" />,
 	img: ({ ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className="my-4 h-auto max-w-full rounded-md" />,
 	table: ({ ...props }: React.ComponentPropsWithoutRef<'table'>) => (
 		<div className="my-4 overflow-x-auto">
 			<table {...props} className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" />
 		</div>
 	),
-	thead: ({ ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className="bg-gray-100 dark:bg-gray-800" />,
+	thead: ({ ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className="bg-panel-hi dark:bg-ground" />,
 	tbody: ({ ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
 		<tbody {...props} className="divide-y divide-gray-200 dark:divide-gray-800" />
 	),
-	tr: ({ ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className="hover:bg-gray-50 dark:hover:bg-gray-900" />,
+	tr: ({ ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className="hover:bg-panel-hi dark:hover:bg-ground" />,
 	th: ({ ...props }: React.ComponentPropsWithoutRef<'th'>) => <th {...props} className="px-4 py-3 text-left text-sm font-semibold" />,
 	td: ({ ...props }: React.ComponentPropsWithoutRef<'td'>) => <td {...props} className="px-4 py-3 text-sm" />,
 }

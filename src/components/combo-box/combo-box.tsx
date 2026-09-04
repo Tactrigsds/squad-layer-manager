@@ -1,5 +1,5 @@
 import { useCommandState } from 'cmdk'
-import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown, LoaderCircle } from 'lucide-react'
 import React, { useCallback, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button.tsx'
@@ -274,15 +274,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						data-combobox-trigger=""
 						disabled={disabled}
 						ref={btnRef}
-						variant="outline"
+						size="sm"
 						role="combobox"
 						// the trigger's content is the current selection, which makes its name change as the
 						// user picks values. Name it after what it selects instead, so it stays addressable.
 						aria-label={props.title || undefined}
-						className={cn('w-[min] justify-between overflow-hidden', props.className)}
+						className={cn('fd-sel w-[min] justify-between overflow-hidden', props.className)}
 					>
 						<span className="truncate min-w-0">{selectedOptionDisplay}</span>
-						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+						<ChevronDown className="size-2.5! shrink-0" />
 					</Button>
 				)}
 			</PopoverTrigger>

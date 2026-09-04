@@ -16,8 +16,10 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { UserLabel } from '@/components/user-avatar'
+import * as Browser from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -109,52 +111,78 @@ function TagChip(props: {
 	onEdit: () => void
 }) {
 	const { tag } = props
+	// touch has no hover, so there a tap on the label opens the card instead
+	const coarse = Browser.useCoarsePointer()
+	const chip = (label: React.ReactNode) => (
+		<span
+			className="inline-flex items-center rounded-sm border px-1 text-xs leading-4"
+			style={{ borderColor: `${tag.color}80`, backgroundColor: `${tag.color}1a`, color: tag.color }}
+		>
+			{label}
+			<button
+				type="button"
+				title={tr.text(LTag_Msgs.removeTag(tag.label))}
+				disabled={props.disabled}
+				onClick={props.onRemove}
+				className="ml-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+			>
+				<Icons.X className="h-3 w-3" />
+			</button>
+		</span>
+	)
+	const card = (
+		<>
+			{tag.deleted ? (
+				<p className="text-xs text-muted-foreground">{tr.text(LTag_Msgs.deletedTag())}</p>
+			) : (
+				<>
+					<p className="text-sm font-medium" style={{ color: tag.color }}>
+						{tag.label}
+					</p>
+					<p className="text-xs text-muted-foreground">
+						{tag.description ? (
+							<RichText text={tag.description} />
+						) : (
+							<span className="italic">{tr.text(LTag_Msgs.noDescription())}</span>
+						)}
+					</p>
+					{props.canManage && (
+						<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
+							<Icons.Pencil className="mr-1 h-3 w-3" />
+							{tr.text(LTag_Msgs.editTag())}
+						</Button>
+					)}
+				</>
+			)}
+			{props.setBy !== undefined && <UserLabel userId={props.setBy} label={tr.text(LTag_Msgs.taggedBy())} />}
+		</>
+	)
+	if (coarse) {
+		return (
+			<Popover>
+				{chip(
+					<PopoverTrigger asChild>
+						<button type="button" className={cn('select-none', tag.deleted && 'line-through')}>
+							{tag.label}
+						</button>
+					</PopoverTrigger>,
+				)}
+				<PopoverContent align="start" className="w-64 space-y-2 p-3">
+					{card}
+				</PopoverContent>
+			</Popover>
+		)
+	}
 	// an interactive hover card rather than a Tooltip: the edit affordance lives inside it, and tooltips in this app are
 	// explicitly for non-interactive content (see ZI_OFFSETS.TOOLTIP)
 	return (
 		<HoverCard openDelay={200}>
-			<span
-				className="inline-flex items-center rounded-sm border px-1 text-xs leading-4"
-				style={{ borderColor: `${tag.color}80`, backgroundColor: `${tag.color}1a`, color: tag.color }}
-			>
+			{chip(
 				<HoverCardTrigger asChild>
 					<span className={cn('cursor-default select-none', tag.deleted && 'line-through')}>{tag.label}</span>
-				</HoverCardTrigger>
-				<button
-					type="button"
-					title={tr.text(LTag_Msgs.removeTag(tag.label))}
-					disabled={props.disabled}
-					onClick={props.onRemove}
-					className="ml-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-				>
-					<Icons.X className="h-3 w-3" />
-				</button>
-			</span>
-			<HoverCardContent className="w-64 space-y-2 p-3">
-				{tag.deleted ? (
-					<p className="text-xs text-muted-foreground">{tr.text(LTag_Msgs.deletedTag())}</p>
-				) : (
-					<>
-						<p className="text-sm font-medium" style={{ color: tag.color }}>
-							{tag.label}
-						</p>
-						<p className="text-xs text-muted-foreground">
-							{tag.description ? (
-								<RichText text={tag.description} />
-							) : (
-								<span className="italic">{tr.text(LTag_Msgs.noDescription())}</span>
-							)}
-						</p>
-						{props.canManage && (
-							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
-								<Icons.Pencil className="mr-1 h-3 w-3" />
-								{tr.text(LTag_Msgs.editTag())}
-							</Button>
-						)}
-					</>
-				)}
-				{props.setBy !== undefined && <UserLabel userId={props.setBy} label={tr.text(LTag_Msgs.taggedBy())} />}
-			</HoverCardContent>
+				</HoverCardTrigger>,
+			)}
+			<HoverCardContent className="w-64 space-y-2 p-3">{card}</HoverCardContent>
 		</HoverCard>
 	)
 }
@@ -217,7 +245,7 @@ function AddTagDropdown(props: {
 	)
 }
 
-function LayerTagDialog(props: { state: LTag.Tag | 'new' | null; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
+export function LayerTagDialog(props: { state: LTag.Tag | 'new' | null; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
 	const open = props.state !== null
 	// remounting per open is what regenerates the suggested colour for a new tag and reseeds the fields for an edit
 	return (

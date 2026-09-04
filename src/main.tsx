@@ -14,6 +14,7 @@ import * as LayerDataClient from '@/systems/layer-data.client'
 import * as MessagesClient from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as SiteMode from '@/systems/site-mode.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
@@ -36,6 +37,7 @@ await LayerDataClient.setup()
 	// one viewer per tab, so the locale is ambient; this reads their stored choice and falls back to the browser
 	MessagesClient.setup()
 	ThemeSys.setup()
+	SiteMode.setup()
 	ConfigClient.setup()
 	SquadServerClient.setup()
 	SettingsClient.setup()

@@ -33,18 +33,21 @@ const CHANNEL_CFG: Record<
 > = {
 	'warn-admins': {
 		icon: Icons.Shield,
-		triggerClass: 'border-admin/60 text-admin focus:ring-admin/50 [&_svg]:text-admin',
-		inputClass: 'border-admin/60 focus-visible:ring-admin/50',
+		triggerClass:
+			'text-admin [&_svg]:text-admin shadow-[inset_0_1px_0_var(--ctl-hi),inset_0_-1px_0_var(--ctl-lo),inset_0_0_0_1px_rgba(140,192,255,0.5)]',
+		inputClass: 'shadow-[inset_0_1px_2px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(140,192,255,0.5)]',
 	},
 	broadcast: {
 		icon: Icons.Megaphone,
-		triggerClass: 'border-yellow-500/60 text-yellow-500 focus:ring-yellow-500/50 [&_svg]:text-yellow-500',
-		inputClass: 'border-yellow-500/60 focus-visible:ring-yellow-500/50',
+		triggerClass:
+			'text-warn [&_svg]:text-warn shadow-[inset_0_1px_0_var(--ctl-hi),inset_0_-1px_0_var(--ctl-lo),inset_0_0_0_1px_rgba(232,194,74,0.5)]',
+		inputClass: 'shadow-[inset_0_1px_2px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(232,194,74,0.5)]',
 	},
 	'warn-selected': {
 		icon: Icons.AlertTriangle,
-		triggerClass: 'border-orange-500/60 text-orange-400 focus:ring-orange-500/50 [&_svg]:text-orange-400',
-		inputClass: 'border-orange-500/60 focus-visible:ring-orange-500/50',
+		triggerClass:
+			'text-pri-hi [&_svg]:text-pri-hi shadow-[inset_0_1px_0_var(--ctl-hi),inset_0_-1px_0_var(--ctl-lo),inset_0_0_0_1px_rgba(224,152,58,0.5)]',
+		inputClass: 'shadow-[inset_0_1px_2px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(224,152,58,0.5)]',
 	},
 }
 
@@ -158,51 +161,46 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					: tr.text(CHAT_Msgs.warnSelectedPlaceholder(selectedCount))
 
 	return (
-		<div className="flex items-stretch gap-1.5 pt-1 shrink-0">
-			<div className="flex flex-col justify-between gap-1 shrink-0">
-				<div className="flex items-center self-end gap-2">
+		<div className="flex items-stretch gap-1.5 pt-1.5 shrink-0">
+			<div className="flex flex-col justify-between gap-1 shrink-0 items-end">
+				<div className="flex items-center gap-2">
 					{channel === 'warn-selected' && (
 						<label
-							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+							className="flex items-center gap-1 text-xs text-text-3 whitespace-nowrap cursor-pointer"
 							title={tr.text(CHAT_Msgs.notifyAdminsHint())}
 						>
-							<Checkbox
-								checked={notifyAdminsChecked}
-								onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
-								className="h-3.5 w-3.5"
-							/>
+							<Checkbox checked={notifyAdminsChecked} onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)} />
 							{tr.text(CHAT_Msgs.notifyAdmins())}
 						</label>
 					)}
 					{username && (
 						<label
-							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+							className="flex items-center gap-1 text-xs text-text-3 whitespace-nowrap cursor-pointer"
 							title={tr.text(CHAT_Msgs.prefixNameHint())}
 						>
-							<Checkbox
-								checked={prefixName}
-								onCheckedChange={(checked: boolean) => setPrefixName(checked)}
-								className="h-3.5 w-3.5"
-							/>
+							<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} />
 							{username}:
 						</label>
 					)}
 				</div>
 				<Select value={channel} onValueChange={(v) => selectChannel(v as Channel)}>
 					<SelectTrigger
-						className={cn('h-7 w-auto min-w-[7rem] gap-1.5 px-2 text-xs shrink-0 [&>span]:whitespace-nowrap', cfg.triggerClass)}
+						className={cn(
+							'fd-btn fd-btn-sm w-auto min-w-24 gap-1.5 px-2 bg-ctl shrink-0 [&>span]:whitespace-nowrap [&>span]:overflow-visible',
+							cfg.triggerClass,
+						)}
 					>
-						<cfg.icon className="h-3.5 w-3.5 shrink-0" />
+						<cfg.icon className="size-3 shrink-0" />
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-admin whitespace-nowrap">
+						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-admin whitespace-nowrap">
 							{tr.text(CHAT_Msgs.warnAdminsChannel())}
 						</SelectItem>
-						<SelectItem value="broadcast" disabled={!!broadcastDenied} className="text-xs text-yellow-500 whitespace-nowrap">
+						<SelectItem value="broadcast" disabled={!!broadcastDenied} className="text-warn whitespace-nowrap">
 							{tr.text(CHAT_Msgs.broadcastChannel())}
 						</SelectItem>
-						<SelectItem value="warn-selected" disabled={!!warnDenied} className="text-xs text-orange-400 whitespace-nowrap">
+						<SelectItem value="warn-selected" disabled={!!warnDenied} className="text-pri-hi whitespace-nowrap">
 							{tr.text(CHAT_Msgs.warnSelectedChannel(selectedCount))}
 						</SelectItem>
 					</SelectContent>
@@ -221,7 +219,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				placeholder={placeholder}
 				disabled={!!channelDenied}
 				rows={2}
-				className={cn('min-h-0 h-auto text-xs flex-1 min-w-0 resize-none px-2 py-1', cfg.inputClass)}
+				className={cn('min-h-[38px] h-auto flex-1 min-w-0 resize-none px-2 py-1', cfg.inputClass)}
 			/>
 			{/* warn-admins is a free-form message to admins, with no preset codepath behind it */}
 			{channel !== 'warn-admins' && (
@@ -238,14 +236,13 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				/>
 			)}
 			<Button
-				size="sm"
-				variant="outline"
-				className={cn('h-auto self-stretch w-7 p-0 shrink-0', cfg.triggerClass)}
+				size="icon-sm"
+				className="h-auto self-stretch shrink-0"
 				onClick={() => void send()}
 				disabled={sendDisabled}
 				title={tr.text(CHAT_Msgs.sendHint())}
 			>
-				{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5" />}
+				{pending ? <span className="fd-spin" /> : <Icons.Send />}
 			</Button>
 		</div>
 	)

@@ -94,21 +94,35 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 	const options = addableFilters.map((filter) => ({ value: filter.id, label: <FilterEntityLabel filter={filter} /> }))
 
 	return (
-		<div data-tour="applied-filters" className="flex items-center gap-1">
+		<div data-tour="applied-filters" className="flex items-center gap-2 min-w-0">
+			<ComboBoxMulti
+				options={options}
+				values={extraFilterIds}
+				onSelect={(update) => AppliedFiltersPrt.Actions.selectExtraFilters(props.stores, update)}
+			>
+				<Button
+					title={tr.text(F_Msgs.editExtraFilters())}
+					aria-label={tr.text(F_Msgs.editExtraFilters())}
+					variant="ghost"
+					size="icon-sm"
+				>
+					<Icons.Edit />
+				</Button>
+			</ComboBoxMulti>
 			<Button
 				variant="ghost"
-				size="icon"
-				className="h-8 w-6 shrink-0 data-[canscroll=false]:hidden"
+				size="icon-sm"
+				className="shrink-0 data-[canscroll=false]:hidden"
 				data-canscroll={canScroll}
 				onClick={scrollLeft}
 				onDoubleClick={scrollToStart}
 				disabled={!canScrollLeft}
 				title={tr.text(F_Msgs.scrollLeft())}
 			>
-				<Icons.ChevronLeft className="h-4 w-4" />
+				<Icons.ChevronLeft />
 			</Button>
-			<ScrollArea ref={scrollRef} className="max-w-[55vw]">
-				<div className="flex flex-row gap-2 w-max">
+			<ScrollArea ref={scrollRef} className="max-w-[55vw] min-w-0">
+				<div className="flex flex-row gap-1 w-max">
 					{extraFilterIds.map((filterId) => {
 						return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 					})}
@@ -117,52 +131,33 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 			</ScrollArea>
 			<Button
 				variant="ghost"
-				size="icon"
-				className="h-8 w-6 shrink-0 data-[canscroll=false]:hidden"
+				size="icon-sm"
+				className="shrink-0 data-[canscroll=false]:hidden"
 				data-canscroll={canScroll}
 				onClick={scrollRight}
 				onDoubleClick={scrollToEnd}
 				disabled={!canScrollRight}
 				title={tr.text(F_Msgs.scrollRight())}
 			>
-				<Icons.ChevronRight className="h-4 w-4" />
+				<Icons.ChevronRight />
 			</Button>
-			<ComboBoxMulti
-				options={options}
-				values={extraFilterIds}
-				onSelect={(update) => AppliedFiltersPrt.Actions.selectExtraFilters(props.stores, update)}
-			>
-				{/* the label text only renders while there are no extras, so the name is pinned here rather than left to it */}
-				<Button
-					title={tr.text(F_Msgs.editExtraFilters())}
-					aria-label={tr.text(F_Msgs.editExtraFilters())}
-					variant="ghost"
-					size={extraFilterIds.length > 0 ? 'icon' : 'default'}
-				>
-					{extraFilterIds.length === 0 && (
-						<div className="text-sm text-muted-foreground px-2">{tr.text(F_Msgs.addExtraFilters())}</div>
-					)}
-					<Icons.Edit />
-				</Button>
-			</ComboBoxMulti>
-			<div className="flex flex-row gap-2 w-max">
+			<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
+			<div className="flex flex-row gap-1 w-max">
 				<PoolFilterCheckbox stores={props.stores} />
 				{selectableFilterIds.map((filterId) => {
 					return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 				})}
 			</div>
-			<div className="flex flex-row gap-2 w-max">
-				<Button
-					title={tr.text(F_Msgs.disableAllFilters())}
-					variant="ghost"
-					size="icon"
-					onClick={() => {
-						AppliedFiltersPrt.Actions.disableAllAppliedFilters(props.stores)
-					}}
-				>
-					<Icons.Trash2 className="h-4 w-4" />
-				</Button>
-			</div>
+			<Button
+				title={tr.text(F_Msgs.disableAllFilters())}
+				variant="ghost"
+				size="icon-sm"
+				onClick={() => {
+					AppliedFiltersPrt.Actions.disableAllAppliedFilters(props.stores)
+				}}
+			>
+				<Icons.Trash2 />
+			</Button>
 		</div>
 	)
 }
@@ -178,7 +173,6 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFram
 	const emoji = poolApplyAs === 'inverted' ? (filter.invertedEmoji ?? filter.emoji) : filter.emoji
 	return (
 		<TriStateCheckbox
-			variant="outline"
 			checked={poolApplyAs}
 			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
 			title={tr.text(SETTINGS_Msgs.poolStateTitles[poolApplyAs])}

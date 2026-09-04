@@ -17,13 +17,10 @@ function mapRuleSaved(app: Parameters<typeof savedPool>[0]) {
 	return savedPool(app).repeatRules.find((rule) => rule.field === 'Map')!
 }
 
-// A save pushes the settings back, which toasts, and the toast lands over the window's own save button. It
-// dismisses itself, but not while the pointer is on it -- and the pointer is exactly there, having just clicked
-// the button underneath. So consecutive saves move the pointer off first and then wait it out.
 async function saveSettings(page: Page) {
-	await page.mouse.move(10, 10)
-	await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15_000 })
-	await page.getByRole('button', { name: 'Save Changes' }).click()
+	const save = page.getByRole('button', { name: 'Save Changes' })
+	await expect(save).toBeEnabled()
+	await save.press('Enter')
 }
 
 test.describe('queue item constraints', () => {

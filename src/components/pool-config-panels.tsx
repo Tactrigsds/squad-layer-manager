@@ -159,7 +159,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						disabled={!poolFilter || !!api.writeDenied}
 					/>
 					<FilterEntitySelect
-						className="grow"
+						className="w-[260px]"
 						title={tr.text(SETTINGS_Msgs.poolFilter())}
 						filterId={poolFilter?.filterId ?? null}
 						onSelect={onSelect}
@@ -296,7 +296,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 								linkClassName="h-7 w-7"
 							>
 								<Button variant="ghost" disabled={!!api.writeDenied} className="h-7 grow justify-start gap-1 px-1 font-normal">
-									{emoji ? <EmojiDisplay size="sm" emoji={emoji} /> : <Icons.Filter className="h-4 w-4 text-orange-400" />}
+									{emoji ? <EmojiDisplay size="sm" emoji={emoji} /> : <Icons.Filter className="h-4 w-4 text-warn" />}
 									<span className="truncate">{entity.name}</span>
 									<Icons.ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 opacity-50" />
 								</Button>

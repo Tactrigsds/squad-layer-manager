@@ -13,7 +13,16 @@ const ScrollArea = React.forwardRef<
 >(({ className, children, orientation = 'both', ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.SCROLLBAR)
 	return (
-		<ScrollAreaPrimitive.Root ref={ref} className={cn('relative overflow-hidden', className)} {...props}>
+		<ScrollAreaPrimitive.Root
+			ref={ref}
+			className={cn(
+				'relative overflow-hidden',
+				// radix lays the content out as a table so it can grow past the viewport; a vertical-only area wants it to shrink to the viewport instead
+				orientation === 'vertical' && '[&_[data-radix-scroll-area-viewport]>div]:block!',
+				className,
+			)}
+			{...props}
+		>
 			<ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">{children}</ScrollAreaPrimitive.Viewport>
 			{orientation !== 'horizontal' && <ScrollBar orientation="vertical" />}
 			{orientation !== 'vertical' && <ScrollBar orientation="horizontal" />}
@@ -33,7 +42,7 @@ const ScrollBar = React.forwardRef<
 			ref={ref}
 			orientation={orientation}
 			className={cn(
-				'flex touch-none select-none transition-colors',
+				'flex touch-none select-none',
 				orientation === 'vertical' && 'h-full w-2.5 border-l border-l-transparent p-px',
 				orientation === 'horizontal' && 'h-2.5 flex-col border-t border-t-transparent p-px',
 				className,
@@ -41,7 +50,7 @@ const ScrollBar = React.forwardRef<
 			style={{ zIndex, ...style }}
 			{...props}
 		>
-			<ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-border" />
+			<ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-sm bg-ctl" />
 		</ScrollAreaPrimitive.ScrollAreaScrollbar>
 	)
 })

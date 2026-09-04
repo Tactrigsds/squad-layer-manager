@@ -352,7 +352,7 @@ export function SquadMenuItems({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={swapNow}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
@@ -361,7 +361,7 @@ export function SquadMenuItems({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={killSquad}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
@@ -370,7 +370,7 @@ export function SquadMenuItems({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
 				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={kickSquad}
 					disabled={!!kickDenied || squadPlayerIds.length === 0}
 				>
@@ -379,7 +379,7 @@ export function SquadMenuItems({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
 				<Item
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={timeoutSquad}
 					disabled={!!timeoutDenied || squadPlayerIds.length === 0}
 				>

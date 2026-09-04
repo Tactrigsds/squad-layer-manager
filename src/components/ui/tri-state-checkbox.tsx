@@ -28,7 +28,7 @@ const TriStateCheckbox = ({
 	...props
 }: TriStateCheckboxProps & { ref?: React.Ref<HTMLButtonElement> }) => {
 	// Default size based on whether children are provided
-	const defaultSize = children ? 'sm' : 'icon'
+	const defaultSize = children ? 'sm' : 'icon-sm'
 	const buttonSize = size ?? defaultSize
 
 	const cycleState = (currentState: TriState, skipInverted: boolean) => {
@@ -75,25 +75,14 @@ const TriStateCheckbox = ({
 			onTouchEnd={handleTouchEnd}
 			variant={variant}
 			size={buttonSize}
-			className={className}
+			className={cn('gap-1.5 font-normal', children && 'flex-row-reverse', className)}
 			title={tr.text(UI_Msgs.invertHint())}
 			{...props}
 		>
 			{children}
-			<div
-				className={cn(
-					'h-4 w-4 shrink-0 rounded-sm border border-primary shadow-sm transition-colors',
-					checked === 'regular' && 'bg-primary text-primary-foreground',
-					checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
-					checked === 'disabled' && 'bg-background',
-				)}
-			>
-				<span className="flex items-center justify-center">
-					{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
-					{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-3" />}
-					{/* Invisible icon to maintain consistent sizing */}
-					{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
-				</span>
+			<div className={cn('fd-cbx', checked === 'regular' && 'fd-cbx-on', checked === 'inverted' && 'fd-cbx-x fd-cbx-on')}>
+				{checked === 'regular' && <CheckIcon />}
+				{checked === 'inverted' && <X className="stroke-3" />}
 			</div>
 		</Button>
 	)
@@ -116,21 +105,11 @@ const TriStateCheckboxDisplay = ({
 			ref={ref}
 			role="img"
 			aria-label={checked === 'regular' ? 'checked' : checked === 'inverted' ? 'inverted' : 'disabled'}
-			className={cn(
-				'h-4 w-4 shrink-0 rounded-sm border border-primary shadow-sm transition-colors',
-				checked === 'regular' && 'bg-primary text-primary-foreground',
-				checked === 'inverted' && 'bg-destructive text-destructive-foreground border-destructive',
-				checked === 'disabled' && 'bg-background',
-				className,
-			)}
+			className={cn('fd-cbx', checked === 'regular' && 'fd-cbx-on', checked === 'inverted' && 'fd-cbx-x fd-cbx-on', className)}
 			{...props}
 		>
-			<span className="flex items-center justify-center">
-				{checked === 'regular' && <CheckIcon className="h-4 w-4" />}
-				{checked === 'inverted' && <X className="h-3.5 w-3.5 stroke-3" />}
-				{/* Invisible icon to maintain consistent sizing */}
-				{checked === 'disabled' && <CheckIcon className="h-4 w-4 invisible" />}
-			</span>
+			{checked === 'regular' && <CheckIcon />}
+			{checked === 'inverted' && <X className="stroke-3" />}
 		</div>
 	)
 }

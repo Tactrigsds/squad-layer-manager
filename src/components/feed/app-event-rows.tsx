@@ -86,15 +86,11 @@ function QueueChangeLine(props: { ctx: RC.RenderCtx; change: AppEvents.QueueChan
 			case 'edited':
 				return [
 					'~',
-					'text-amber-500',
+					'text-warn',
 					tr.richText(AppEvents_Msgs.queueItemEdited(who, <LayerNames ctx={ctx} layerIds={change.prevLayerIds} />, layers)),
 				]
 			case 'moved':
-				return [
-					'↕',
-					'text-indigo-400',
-					tr.richText(AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1)),
-				]
+				return ['↕', 'text-info', tr.richText(AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1))]
 			default:
 				assertNever(change)
 		}
@@ -182,7 +178,7 @@ function QueueUpdatedRow(props: {
 			)}
 		</>
 	)
-	const icon = <EventIcon name="ListOrdered" className="text-indigo-500" />
+	const icon = <EventIcon name="ListOrdered" className="text-info" />
 
 	if (changes.length === 0) {
 		return (
@@ -236,7 +232,7 @@ function TeamswapsUpdatedRow(props: {
 				: queued === 0
 					? tr.richText(AppEvents_Msgs.teamswapsCleared(actorLabel))
 					: tr.richText(AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued))
-	const icon = <EventIcon name="ArrowLeftRight" className="text-cyan-500" />
+	const icon = <EventIcon name="ArrowLeftRight" className="text-info" />
 
 	if (changes.length === 0 || matchId === null) {
 		return (
@@ -265,7 +261,7 @@ function TeamswapsUpdatedRow(props: {
 							: undefined
 					return (
 						<div key={`${change.kind}:${change.playerId}`} className="flex gap-2 items-baseline text-xs text-muted-foreground">
-							<span className={cn('font-mono shrink-0', change.kind === 'added' ? 'text-emerald-400' : 'text-rose-400')}>
+							<span className={cn('font-mono shrink-0', change.kind === 'added' ? 'text-ok' : 'text-repeat')}>
 								{change.kind === 'added' ? '+' : '−'}
 							</span>
 							<span className="grow min-w-0 wrap-anywhere">
@@ -332,7 +328,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			<details className={DETAILS_CLASS}>
 				<summary className={SUMMARY_CLASS}>
 					<Atoms.EventTime time={event.time} />
-					<EventIcon name="Users" className="text-red-500" />
+					<EventIcon name="Users" className="text-danger" />
 					<span className="grow min-w-0 wrap-anywhere">
 						{tr.richText(AppEvents_Msgs.squadDisbanded(actorLabel, appEvent.squadName, appEvent.teamId, appEvent.reason?.label, n))}
 					</span>
@@ -345,7 +341,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	// pure-audit / single-line entries with no target-count summary
 	if (appEvent.type === 'SQUAD_RENAMED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="PencilLine" className="text-cyan-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="PencilLine" className="text-info" />}>
 				{tr.richText(AppEvents_Msgs.squadRenamed(actorLabel, appEvent.squadName, appEvent.teamId))}
 			</Atoms.EventLine>
 		)
@@ -353,7 +349,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	if (appEvent.type === 'COMMANDER_DEMOTED') {
 		const target = event.targetPlayers[0]
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="ShieldOff" className="text-orange-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="ShieldOff" className="text-warn" />}>
 				{tr.richText(
 					AppEvents_Msgs.commanderDemoted(
 						actorLabel,
@@ -370,7 +366,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	}
 	if (appEvent.type === 'FOG_OF_WAR_TOGGLED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="CloudFog" className="text-slate-400" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="CloudFog" className="text-text-3" />}>
 				{tr.richText(AppEvents_Msgs.fogOfWarToggled(actorLabel, appEvent.enabled))}
 			</Atoms.EventLine>
 		)
@@ -379,7 +375,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	// broadcast is shown once, with its sender
 	if (appEvent.type === 'BROADCAST_SENT') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Megaphone" className="text-amber-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Megaphone" className="text-warn" />}>
 				{tr.richText(AppEvents_Msgs.broadcastSent(actorLabel, appEvent.message))}
 			</Atoms.EventLine>
 		)
@@ -387,7 +383,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	if (appEvent.type === 'PLAYER_TIMED_OUT') {
 		const target = event.targetPlayers[0]
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="UserX" className="text-red-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="UserX" className="text-danger" />}>
 				{tr.richText(
 					AppEvents_Msgs.playerTimedOut(
 						actorLabel,
@@ -406,7 +402,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	if (appEvent.type === 'TIMEOUT_CANCELLED') {
 		const target = event.targetPlayers[0]
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="UserCheck" className="text-green-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="UserCheck" className="text-ok" />}>
 				{tr.richText(
 					AppEvents_Msgs.timeoutCancelled(
 						actorLabel,
@@ -422,21 +418,21 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	}
 	if (appEvent.type === 'MATCH_ENDED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Flag" className="text-red-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Flag" className="text-danger" />}>
 				{tr.richText(AppEvents_Msgs.matchEnded(actorLabel))}
 			</Atoms.EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_STARTED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Vote" className="text-blue-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Vote" className="text-info" />}>
 				{tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))}
 			</Atoms.EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ENDED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="ListChecks" className="text-green-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="ListChecks" className="text-ok" />}>
 				{appEvent.reason === 'ended-early'
 					? tr.richText(AppEvents_Msgs.voteEndedEarly(actorLabel))
 					: tr.text(AppEvents_Msgs.voteEnded())}
@@ -452,7 +448,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	}
 	if (appEvent.type === 'VOTE_ABORTED') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Ban" className="text-red-500" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Ban" className="text-danger" />}>
 				{tr.richText(AppEvents_Msgs.voteAborted(actorLabel))}
 			</Atoms.EventLine>
 		)
@@ -467,7 +463,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		// audit-only (see AppEvents.isFeedVisible): its QUEUE_UPDATED already names the layer, so drawing this too
 		// would just repeat it. Only override sets are worth a line of their own.
 		if (appEvent.reason === 'queue-updated') return null
-		const icon = <EventIcon name="RefreshCw" className="text-amber-500" />
+		const icon = <EventIcon name="RefreshCw" className="text-warn" />
 		// nobody was seen setting the layer SLM is replacing -- it was already set when SLM connected
 		if (!appEvent.overrode || appEvent.overrode.type === 'unknown') {
 			return (
@@ -504,11 +500,11 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	if (appEvent.type === 'LAYER_REQUEST_ADDED' || appEvent.type === 'LAYER_REQUEST_REMOVED' || appEvent.type === 'LAYER_REQUEST_CONSUMED') {
 		const icon =
 			appEvent.type === 'LAYER_REQUEST_CONSUMED' ? (
-				<EventIcon name="CheckCircle2" className="text-green-500" />
+				<EventIcon name="CheckCircle2" className="text-ok" />
 			) : appEvent.type === 'LAYER_REQUEST_ADDED' ? (
-				<EventIcon name="ListPlus" className="text-blue-400" />
+				<EventIcon name="ListPlus" className="text-info" />
 			) : (
-				<EventIcon name="ListX" className="text-orange-500" />
+				<EventIcon name="ListX" className="text-warn" />
 			)
 		return (
 			<Atoms.EventLine time={event.time} icon={icon}>
@@ -521,7 +517,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	// generic line is the row, which is also what the audit log shows.
 	if (appEvent.type === 'PLUGIN_EVENT') {
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Puzzle" className="text-slate-400" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Puzzle" className="text-text-3" />}>
 				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
 			</Atoms.EventLine>
 		)
@@ -542,7 +538,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="ScrollText" className="text-slate-400" />}>
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="ScrollText" className="text-text-3" />}>
 				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
 			</Atoms.EventLine>
 		)
@@ -624,23 +620,23 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	let suffix: React.ReactNode
 	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
-		icon = <EventIcon name="UserMinus" className="text-orange-500" />
+		icon = <EventIcon name="UserMinus" className="text-warn" />
 		suffix = tr.text(AppEvents_Msgs.removedFromSquadSuffix(appEvent.reason?.label))
 	} else if (appEvent.type === 'PLAYER_KICKED') {
 		verb = 'kicked'
-		icon = <EventIcon name="UserX" className="text-red-500" />
+		icon = <EventIcon name="UserX" className="text-danger" />
 		suffix = appEvent.reason?.label ? tr.text(AppEvents_Msgs.forReasonSuffix(appEvent.reason.label)) : null
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
-		icon = <EventIcon name="Skull" className="text-red-500" />
+		icon = <EventIcon name="Skull" className="text-danger" />
 		suffix = appEvent.reason ? tr.text(AppEvents_Msgs.killReasonSuffix(appEvent.reason)) : null
 	} else if (appEvent.type === 'SWITCH_REQUESTS_FULFILLED') {
 		verb = 'swapped'
-		icon = <EventIcon name="ArrowLeftRight" className="text-amber-500" />
+		icon = <EventIcon name="ArrowLeftRight" className="text-warn" />
 		suffix = tr.text(AppEvents_Msgs.switchRequestFulfilledSuffix())
 	} else {
 		verb = 'swapped'
-		icon = <EventIcon name="ArrowLeftRight" className="text-blue-500" />
+		icon = <EventIcon name="ArrowLeftRight" className="text-info" />
 		suffix = tr.text(AppEvents_Msgs.swappedTeamsSuffix())
 	}
 

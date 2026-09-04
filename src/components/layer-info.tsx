@@ -4,6 +4,7 @@ import React, { useRef } from 'react'
 
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
+import * as Browser from '@/lib/browser'
 import * as DH from '@/lib/display-helpers.ts'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
@@ -44,6 +45,7 @@ type LayerInfoProps = {
 }
 
 type Tab = LayerInfoDialogClient.Tab
+type WindowTab = Tab | 'team1' | 'team2'
 
 type LayerInfoContentProps = {
 	// expected to be known layer id
@@ -53,6 +55,7 @@ type LayerInfoContentProps = {
 	hidePopoutButton?: boolean
 	hideTabs?: boolean
 	hideLayerName?: boolean
+	detailsTeam?: 1 | 2
 	close?: () => void
 }
 
@@ -88,44 +91,60 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 }
 
 function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
-	const [selectedTab, setTab] = useState_withGlobalHandle<LayerInfoDialogClient.Tab>(
-		TUT.TOUR_HANDLES.layerInfoTab,
-		initialTab || 'details',
-	)
+	const phone = Browser.useIsSmallViewport()
+	const [selectedTab, setTab] = useState_withGlobalHandle<WindowTab>(TUT.TOUR_HANDLES.layerInfoTab, initialTab || 'details')
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
+	const layer = L.toLayer(layerId)
 
 	let scores: LC.PartitionedScores | undefined
 	if (layerRes.data && cfg) {
-		const layer = layerRes.data as L.KnownLayer
-		scores = LC.partitionScores(layer, cfg)
+		scores = LC.partitionScores(layerRes.data as L.KnownLayer, cfg)
 	}
 
 	const hasScores = scores && Object.values(scores).some((type) => Object.values(type).some((score) => typeof score === 'number'))
 
 	// the scores tab has nothing to show for a layer without scores, so fall back rather than render it empty
-	const tab = !hasScores && selectedTab === 'scores' ? 'details' : selectedTab
+	const availableTab = !hasScores && selectedTab === 'scores' ? (phone ? 'team1' : 'details') : selectedTab
+	const tab: Tab = availableTab === 'scores' ? 'scores' : 'details'
+	const detailsTeam = availableTab === 'team2' ? 2 : 1
 
 	return (
 		<div data-tour="layer-details-window" className="min-w-0 min-h-0 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{DH.displayLayer(layerId)}</DraggableWindowTitle>
-				<span data-tour="layer-info-tabs">
-					<TabsList
-						options={[
-							{ value: 'details', label: 'Details' },
-							{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
-						]}
-						active={tab}
-						setActive={setTab}
-						className="h-7 ml-2"
-					/>
-				</span>
+				{!phone && (
+					<span data-tour="layer-info-tabs">
+						<TabsList
+							options={[
+								{ value: 'details', label: 'Details' },
+								{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+							]}
+							active={tab}
+							setActive={setTab}
+							className="h-7 ml-2"
+						/>
+					</span>
+				)}
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
+			{phone && (
+				<span data-tour="layer-info-tabs" className="border-b">
+					<TabsList
+						options={[
+							{ value: 'team1', label: `1 ${layer.Faction_1}` },
+							{ value: 'team2', label: `2 ${layer.Faction_2}` },
+							{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+						]}
+						active={availableTab === 'details' ? 'team1' : availableTab}
+						setActive={setTab}
+						className="w-full [&>button]:flex-1"
+					/>
+				</span>
+			)}
 			<div className="px-3 overflow-auto">
-				<LayerInfo layerId={layerId} tab={tab} setTab={setTab} hideTabs hideLayerName />
+				<LayerInfo layerId={layerId} tab={tab} setTab={setTab} detailsTeam={phone ? detailsTeam : undefined} hideTabs hideLayerName />
 			</div>
 		</div>
 	)
@@ -230,7 +249,7 @@ export function LayerInfo(props: LayerInfoContentProps) {
 					/>
 				)}
 			</div>
-			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
+			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} team={props.detailsTeam} />}
 			{activeTab === 'details' && !layerDetails && <div>{tr.text(L_Msgs.noDetails())}</div>}
 			{activeTab === 'scores' && hasScores && scores && layerDetails && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
 			{activeTab === 'scores' && !hasScores && <div>{tr.text(L_Msgs.noScores())}</div>}
@@ -240,9 +259,28 @@ export function LayerInfo(props: LayerInfoContentProps) {
 
 function LayerDetailsDisplay({
 	layerDetails,
+	team,
 }: {
 	layerDetails: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
+	team?: 1 | 2
 }) {
+	if (team) {
+		const index = team - 1
+		const unit = team === 1 ? layerDetails.team1 : layerDetails.team2
+		return (
+			<div className="space-y-3 border-b pb-3">
+				<TeamInfoOnly
+					title={tr.text(team === 1 ? L_Msgs.team1() : L_Msgs.team2())}
+					unit={unit}
+					faction={team === 1 ? layerDetails.layer.Faction_1 : layerDetails.layer.Faction_2}
+					role={layerDetails.layerConfig?.teams[index].role}
+					tickets={layerDetails.layerConfig?.teams[index].tickets}
+				/>
+				<VehiclesOnly title={tr.text(team === 1 ? L_Msgs.team1Vehicles() : L_Msgs.team2Vehicles())} unit={unit} />
+			</div>
+		)
+	}
+
 	return (
 		<div className="space-y-3 border-b pb-3">
 			{/* 2x2 Grid Layout */}
@@ -574,14 +612,14 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 					width={plotX(Math.abs(valueX - 0.5))}
 					height="8"
 					fill="currentColor"
-					className={`transition-all duration-200 ${diff > 0 ? 'text-blue-500' : 'text-red-500'}`}
+					className={`transition-all duration-200 ${diff > 0 ? 'text-info' : 'text-danger'}`}
 				/>
 				<circle
 					cx={plotX(valueX)}
 					cy="8"
 					r="5"
 					fill="currentColor"
-					className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
+					className={diff > 0 ? 'text-info' : diff < 0 ? 'text-[#ef7c7a]' : 'text-muted-foreground'}
 				/>
 			</HorizontalGauge>
 		</figure>
@@ -606,7 +644,7 @@ function ScoreGrid({
 	return (
 		<div className="grid gap-2">
 			<div className="flex justify-between text-xs font-medium">
-				<span className="text-blue-500">
+				<span className="text-info">
 					{tr.richText(
 						L_Msgs.teamScoreHeading(
 							tr.text(L_Msgs.team1()),
@@ -616,7 +654,7 @@ function ScoreGrid({
 						),
 					)}
 				</span>
-				<span className="text-red-500">
+				<span className="text-danger">
 					{tr.richText(
 						L_Msgs.teamScoreHeading(
 							tr.text(L_Msgs.team2()),
@@ -727,8 +765,8 @@ function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Sc
 					/>
 				)
 			})}
-			<ZScoreMarker score={team1Score} x="25%" className="text-blue-500" />
-			<ZScoreMarker score={team2Score} x="75%" className="text-red-500" />
+			<ZScoreMarker score={team1Score} x="25%" className="text-info" />
+			<ZScoreMarker score={team2Score} x="75%" className="text-danger" />
 		</svg>
 	)
 }
@@ -747,17 +785,17 @@ function ZScoreMarker({ score, x, className }: { score?: number; x: string; clas
 function ZScoreValues({ team1Score, team2Score, diff }: { team1Score?: number; team2Score?: number; diff: number }) {
 	return (
 		<div className="mt-0.5 flex items-baseline justify-between px-0.5 text-[10px] leading-tight">
-			<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="text-info">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 			<span className="font-light">
 				{tr.richText(
 					L_Msgs.scoreDiff(
-						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+						<span className={diff > 0 ? 'text-info' : diff < 0 ? 'text-danger' : 'text-muted-foreground'}>
 							{Math.abs(diff).toFixed(2)}
 						</span>,
 					),
 				)}
 			</span>
-			<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="text-danger">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 		</div>
 	)
 }

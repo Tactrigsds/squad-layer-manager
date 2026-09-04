@@ -75,9 +75,25 @@ export function useIsDesktopSize() {
 	return useMediaQuery('(min-width: 1280px)')
 }
 
-// true below the Tailwind `sm` breakpoint (640px) -- the width at which the navbar collapses its links into a hamburger
+// true below the `phone` breakpoint (640px): the phone layout, whatever the pointer
 export function useIsSmallViewport() {
 	return useMediaQuery('(max-width: 639.98px)')
+}
+
+// the nav bar keeps some page links inline from here up; below it they all fold into one menu
+export function useIsMediumViewport() {
+	return useMediaQuery('(min-width: 900px)')
+}
+
+// three-column dashboard tier
+export function useIsUltrawide() {
+	return useMediaQuery('(min-width: 2100px)')
+}
+
+// a coarse pointer: touch density for button groups, sheets instead of floating windows. Keyed off the pointer,
+// not the viewport, so tablets get it too
+export function useCoarsePointer() {
+	return useMediaQuery('(pointer: coarse)')
 }
 
 // The scrollable this wheel event is already going to move, if any: the first ancestor between the target and `root`

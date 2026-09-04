@@ -110,7 +110,7 @@ function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; cla
 								{entry.switching ? (
 									<Icons.LoaderCircle className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
 								) : (
-									<Icons.ArrowLeftRight className="h-3.5 w-3.5 text-amber-500" />
+									<Icons.ArrowLeftRight className="h-3.5 w-3.5 text-warn" />
 								)}
 							</Button>
 						</PermissionDeniedTooltip>

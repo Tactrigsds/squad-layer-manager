@@ -63,7 +63,7 @@ export function SimpleHeadlessDialogExample() {
 
 	return (
 		<div className="p-8">
-			<button type="button" onClick={() => setOpen(true)} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+			<button type="button" onClick={() => setOpen(true)} className="rounded bg-info px-4 py-2 text-white hover:bg-info">
 				Open Simple Dialog
 			</button>
 
@@ -78,15 +78,11 @@ export function SimpleHeadlessDialogExample() {
 						<button
 							type="button"
 							onClick={() => setOpen(false)}
-							className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+							className="rounded border border-line-soft px-3 py-2 text-sm hover:bg-panel-hi"
 						>
 							Cancel
 						</button>
-						<button
-							type="button"
-							onClick={handleConfirm}
-							className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
-						>
+						<button type="button" onClick={handleConfirm} className="rounded bg-ok px-3 py-2 text-sm text-white hover:bg-ok">
 							Confirm
 						</button>
 					</HeadlessDialogFooter>

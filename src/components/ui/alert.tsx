@@ -3,25 +3,20 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-const alertVariants = cva(
-	'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7',
-	{
-		variants: {
-			variant: {
-				default: 'bg-background text-foreground',
-				destructive:
-					'border-destructive/50 text-destructive dark:border-destructive dark:bg-destructive/10 dark:text-destructive-foreground [&>svg]:text-destructive dark:[&>svg]:text-destructive-foreground',
-				info: 'border-info/50 text-info dark:border-info [&>svg]:text-info',
-				warning: 'border-warning/50 text-warning dark:border-warning [&>svg]:text-warning',
-				'repeat-violation':
-					'border-repeat-violation/50 text-repeat-violation dark:border-repeat-violation [&>svg]:text-repeat-violation',
-			},
-		},
-		defaultVariants: {
-			variant: 'default',
+const alertVariants = cva('fd-alert relative w-full text-sm [&>svg]:row-span-2 [&:not(:has(>svg))]:grid-cols-1', {
+	variants: {
+		variant: {
+			default: '',
+			destructive: 'fd-alert-dng',
+			info: 'fd-alert-info',
+			warning: 'fd-alert-warn',
+			'repeat-violation': 'fd-alert-rep',
 		},
 	},
-)
+	defaultVariants: {
+		variant: 'default',
+	},
+})
 
 const Alert = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants>>(
 	({ className, variant, ...props }, ref) => (
@@ -31,12 +26,12 @@ const Alert = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEleme
 Alert.displayName = 'Alert'
 
 const AlertTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(({ className, ...props }, ref) => (
-	<h5 ref={ref} className={cn('mb-1 font-medium leading-none tracking-tight', className)} {...props} />
+	<h5 ref={ref} className={cn('font-semibold leading-tight', className)} {...props} />
 ))
 AlertTitle.displayName = 'AlertTitle'
 
 const AlertDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
-	({ className, ...props }, ref) => <div ref={ref} className={cn('text-sm [&_p]:leading-relaxed', className)} {...props} />,
+	({ className, ...props }, ref) => <div ref={ref} className={cn('text-xs text-text-2 [&_p]:leading-relaxed', className)} {...props} />,
 )
 AlertDescription.displayName = 'AlertDescription'
 

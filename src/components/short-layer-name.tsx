@@ -56,14 +56,14 @@ export default function ShortLayerName({
 	if (!L.toLayer(layerId).Layer) return content
 
 	const host = (
-		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
+		<span data-tour={tourId} className={cn('fd-layer-name inline-flex flex-wrap items-baseline', className)} ref={ref}>
 			{content}
 		</span>
 	)
 	if (!allowShowInfo || !L.isKnownLayer(layerId)) return host
 	return (
 		<LayerInfoDialog layerId={layerId}>
-			<button type="button" className="text-primary underline-offset-4 [&:hover>span]:underline">
+			<button type="button" className="text-left text-primary underline-offset-4 [&:hover>span]:underline">
 				{host}
 			</button>
 		</LayerInfoDialog>

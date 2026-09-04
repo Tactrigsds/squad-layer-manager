@@ -21,6 +21,7 @@ import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/reac
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import * as Browser from '@/lib/browser'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
 
@@ -149,6 +150,9 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const offset = definition.offset ?? 8
 	const collisionPadding = definition.collisionPadding ?? 16
 	const initialPosition = definition.initialPosition ?? 'below'
+	// On a phone a floating window has nowhere to float: it becomes a sheet pinned to the bottom edge, full
+	// width, scrolling inside. Dragging and resizing are off; the drag bar is just a title bar.
+	const phone = Browser.useIsSmallViewport()
 
 	// Helper to update DOM position directly
 	const applyPosition = React.useCallback((pos: { x: number; y: number }) => {
@@ -203,6 +207,11 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	// Calculate initial position once when content is measured
 	React.useLayoutEffect(() => {
 		if (positionRef.current !== null) return
+		if (phone) {
+			positionRef.current = { x: 0, y: 0 }
+			if (contentRef.current) contentRef.current.style.visibility = 'visible'
+			return
+		}
 
 		const content = contentRef.current
 		if (!content) return
@@ -225,6 +234,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 
 		applyPosition(pos)
 	}, [
+		phone,
 		windowState.anchorRect,
 		initialPosition,
 		offset,
@@ -303,7 +313,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	// Handle dragging
 	React.useEffect(() => {
 		const content = contentRef.current
-		if (!dragBarNode || !content) return
+		if (!dragBarNode || !content || phone) return
 
 		const handleMouseDown = (e: MouseEvent) => {
 			if (!positionRef.current) return
@@ -353,7 +363,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			document.removeEventListener('mousemove', handleMouseMove)
 			document.removeEventListener('mouseup', handleMouseUp)
 		}
-	}, [dragBarNode, bringToFront, applyPosition, setIsPinned])
+	}, [dragBarNode, bringToFront, applyPosition, setIsPinned, phone])
 
 	const handleMouseDown = React.useCallback(() => {
 		bringToFront()
@@ -438,8 +448,10 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
 				className={cn(
-					'fixed rounded-md border bg-popover text-popover-foreground shadow-lg outline-none invisible',
+					'fd-win fixed outline-none invisible',
 					definition.resizable && 'flex flex-col overflow-hidden',
+					phone &&
+						'inset-x-0 bottom-0 top-auto! left-0! flex max-h-[85vh] w-full! flex-col overflow-hidden rounded-b-none border-x-0 border-b-0',
 				)}
 				style={{ zIndex: effectiveZIndex }}
 			>
@@ -447,6 +459,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 					<Component {...windowState.props} />
 				</BaseZIndexContext.Provider>
 				{definition.resizable &&
+					!phone &&
 					RESIZE_HANDLES.map((h) => (
 						<div
 							key={h.dir}
@@ -532,13 +545,7 @@ export function DraggableWindowDragBar({ className, ref, ...props }: DraggableWi
 		[registerDragBar, ref],
 	)
 
-	return (
-		<div
-			ref={combinedRef}
-			className={cn('flex items-center gap-2 cursor-grab active:cursor-grabbing select-none px-3 py-2 border-b', className)}
-			{...props}
-		/>
-	)
+	return <div ref={combinedRef} className={cn('fd-win-h shrink-0', className)} {...props} />
 }
 
 interface DraggableWindowTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
@@ -546,7 +553,7 @@ interface DraggableWindowTitleProps extends React.HTMLAttributes<HTMLHeadingElem
 }
 
 export function DraggableWindowTitle({ className, ref, ...props }: DraggableWindowTitleProps) {
-	return <h3 ref={ref} className={cn('flex-1 text-sm font-medium', className)} {...props} />
+	return <h3 ref={ref} className={cn('fd-cond min-w-0 flex-1 truncate text-sm font-bold', className)} {...props} />
 }
 
 interface DraggableWindowPinToggleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -561,14 +568,11 @@ export function DraggableWindowPinToggle({ className, ref, ...props }: Draggable
 			ref={ref}
 			type="button"
 			onClick={() => setIsPinned(!isPinned)}
-			className={cn(
-				'rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-				className,
-			)}
+			className={cn('fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm', isPinned && 'text-pri-hi', className)}
 			aria-label={isPinned ? 'Unpin window' : 'Pin window'}
 			{...props}
 		>
-			{isPinned ? <DrawingPinFilledIcon className="h-4 w-4" /> : <DrawingPinIcon className="h-4 w-4" />}
+			{isPinned ? <DrawingPinFilledIcon /> : <DrawingPinIcon />}
 		</button>
 	)
 }
@@ -596,14 +600,11 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 			type="button"
 			data-window-control="close"
 			onClick={handleClick}
-			className={cn(
-				'rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-				className,
-			)}
+			className={cn('fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm', className)}
 			aria-label={tr.text(UI_Msgs.closeWindow())}
 			{...props}
 		>
-			<Cross2Icon className="h-4 w-4" />
+			<Cross2Icon />
 		</button>
 	)
 }

@@ -227,3 +227,13 @@ export const turnout = def(
 		hasPercentage: percentage != null ? 'yes' : 'no',
 	}),
 )
+
+// the generate dialog's constraint-key toggles read as filters without a label; the switch reveals the picker's
+// constraint menu
+export const varyBy = def('Vary by')
+export const showAdvanced = def('Show advanced')
+export const advancedBlurb = def('applied to every choice, on top of the pool')
+export const regenerateAll = def('Regenerate All')
+export const generate = def('Generate')
+export const enableUnique = def('Enable unique constraint')
+export const disableUnique = def('Disable unique constraint')

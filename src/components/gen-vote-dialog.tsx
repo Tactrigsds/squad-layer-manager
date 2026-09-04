@@ -4,8 +4,10 @@ import React from 'react'
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
 import AppliedFiltersPanel from '@/components/applied-filters-panel.tsx'
 import { StringEqConfig } from '@/components/filter-card'
+import LayerFilterMenu from '@/components/layer-filter-menu'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
 	HeadlessDialog,
 	HeadlessDialogContent,
@@ -13,12 +15,19 @@ import {
 	HeadlessDialogHeader,
 	HeadlessDialogTitle,
 } from '@/components/ui/headless-dialog'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as V_Msgs from '@/messages/vote.messages'
+import * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -31,7 +40,6 @@ import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import EditLayerDialog from './edit-layer-dialog'
 import { Alert, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
-import { ButtonGroup } from './ui/button-group'
 import TabsList from './ui/tabs-list'
 
 export type GenVoteDialogProps = Omit<GenVoteDialogContentProps, 'onClose'> & {
@@ -46,10 +54,18 @@ type GenVoteDialogContentProps = {
 	// Callers that don't already have a `genVote` frame instance must also supply `stores.squadServer`.
 	stores: Partial<GenVoteFrame.KeyProp> & SquadServerFrame.KeyProp
 	cursor?: LL.Cursor
+	// the tag control, rendered before Play Next / Play After
+	tagsControl?: React.ReactNode
 	onClose: () => void
 	onSubmit: (result: GenVoteFrame.Result, cursor?: LL.Cursor) => void
 }
 
+/**
+ * Same anatomy as before: the filters row, the constraint keys as include toggles with unique locks, Regenerate
+ * All, the numbered choices, Add Choice, and the vote display options with Play Next / After and Submit. Choices
+ * are rows rather than cards, and Show advanced reveals the picker's constraint menu above them. On a phone it is
+ * one column with the filters behind a button and the submit block pinned to the bottom.
+ */
 const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenVoteDialogContent(props) {
 	const [frameInput] = React.useState(() => {
 		if (props.stores.genVote) return undefined
@@ -63,6 +79,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
 	useFrameTeardownOnUnmount(frameKey, !props.stores.genVote)
 	const genVoteStores: GenVoteFrame.KeyProp = React.useMemo(() => ({ genVote: frameKey }), [frameKey])
+	const phone = Browser.useIsSmallViewport()
 
 	const {
 		choices,
@@ -74,6 +91,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		includedConstraints: includedConstraintKeys,
 		uniqueConstraints: uniqueConstraintKeys,
 		voteConfig,
+		showAdvanced,
 	} = Zus.useStore(
 		frameKey,
 		Zus.useShallow((s) => ({
@@ -86,7 +104,12 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			includedConstraints: s.includedConstraints,
 			uniqueConstraints: s.uniqueConstraints,
 			voteConfig: s.voteConfig,
+			showAdvanced: s.showAdvanced,
 		})),
+	)
+	const constraintCount = Zus.useStore(
+		frameKey,
+		(s) => Object.values(s.filterMenu.menuItems).filter((c) => F.editableCompHasValue(c)).length,
 	)
 
 	// Track which items are being regenerated (undefined = all, number = specific index)
@@ -94,6 +117,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	// Which choice is being manually edited via EditLayerDialog
 	const [editingChoiceIndex, setEditingChoiceIndex] = React.useState<number>()
+	const [filtersOpen, setFiltersOpen] = React.useState(false)
 
 	// the spinner it drives only means anything while a generation is in flight
 	const regeneratingIndex = generating ? requestedRegenIndex : undefined
@@ -150,7 +174,6 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	}
 
 	const handleSetVoteConfig = (config: Partial<V.AdvancedVoteConfig> | null) => {
-		console.log('setting config ', config)
 		if (config === null) {
 			// full reset: Actions.setVoteConfig merges onto existing state, so clear it out first via replace
 			Zus.resolveStore<GenVoteFrame.Types['state']>(frameKey).setState({ voteConfig: {} })
@@ -159,180 +182,308 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		}
 	}
 
+	const hasChoices = choices.some((c) => c.layerId)
+	const showAdvancedId = React.useId()
+
+	const varyBy = (
+		<div className="flex flex-wrap items-center gap-1.5">
+			<span className="text-text-3 mr-0.5">{tr.text(V_Msgs.varyBy())}</span>
+			{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => {
+				const included = includedConstraintKeys.includes(key)
+				const unique = uniqueConstraintKeys.includes(key)
+				return (
+					<span key={key} className="fd-grp">
+						<Button
+							size="sm"
+							variant={included ? 'default' : 'ghost'}
+							data-state={included ? 'on' : 'off'}
+							onClick={() => (included ? handleRemoveConstraint(key) : handleAddConstraint(key))}
+						>
+							{included ? <Icons.Minus /> : <Icons.Plus />}
+							{key}
+						</Button>
+						<Button
+							size="icon-sm"
+							variant={unique ? 'primary' : 'ghost'}
+							onClick={() => handleToggleUniqueConstraint(key)}
+							disabled={!included}
+							title={unique ? tr.text(V_Msgs.disableUnique()) : tr.text(V_Msgs.enableUnique())}
+						>
+							<Icons.Lock />
+						</Button>
+					</span>
+				)
+			})}
+		</div>
+	)
+	const regenButton = (
+		<Button
+			size={phone ? 'default' : 'sm'}
+			variant="primary"
+			className={cn(phone && 'h-[34px]')}
+			onClick={() => handleRegen()}
+			disabled={generating}
+		>
+			<Icons.RefreshCw className={regeneratingIndex === 'all' ? 'animate-spin' : ''} />
+			{hasChoices ? tr.text(V_Msgs.regenerateAll()) : tr.text(V_Msgs.generate())}
+		</Button>
+	)
+	const choiceRows = (
+		<ol className="fd-well list-none">
+			{choices.map((choice, index) => {
+				const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
+				const error = choiceErrors[index]
+				const layer = choice.layerId ? (
+					<span className="flex items-center gap-2 min-w-0 whitespace-nowrap overflow-hidden">
+						<ShortLayerName
+							layerId={choice.layerId}
+							matchDescriptors={constraints?.matchDescriptors}
+							className={cn(phone && 'flex-col items-start')}
+						/>
+						{constraints && (
+							<ConstraintEvalTooltip
+								matchDescriptors={constraints.matchDescriptors}
+								queriedConstraints={constraints.queriedConstraints}
+								itemParity={teamParity}
+								layerId={choice.layerId}
+							/>
+						)}
+					</span>
+				) : error ? (
+					<Alert variant="destructive" className="py-1">
+						<Icons.AlertCircle />
+						<AlertTitle>{error}</AlertTitle>
+					</Alert>
+				) : (
+					<span className="text-text-3">{tr.text(V_Msgs.noLayerSelected())}</span>
+				)
+				const constraintSelects = includedConstraintKeys.map((key) => (
+					<span key={key} className="inline-flex items-center gap-1.5">
+						<span className="text-xs text-text-2">{key}</span>
+						<ChoiceConstraintSelect
+							stores={genVoteStores}
+							constraintKey={key}
+							index={index}
+							value={choice.choiceConstraints[key] as string | undefined}
+						/>
+					</span>
+				))
+				const actions = (
+					<span className="fd-grp self-start">
+						<Button
+							size="icon-sm"
+							onClick={() => setEditingChoiceIndex(index)}
+							disabled={generating}
+							title={tr.text(V_Msgs.editChoice())}
+						>
+							<Icons.Pencil />
+						</Button>
+						<Button
+							size="icon-sm"
+							onClick={() => handleRegen(index)}
+							disabled={generating}
+							title={choice.layerId ? tr.text(V_Msgs.regenerateChoice()) : tr.text(V_Msgs.generateChoice())}
+						>
+							<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
+						</Button>
+						<Button
+							size="icon-sm"
+							onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
+							disabled={generating || choices.length <= 2}
+							title={tr.text(V_Msgs.removeChoice())}
+						>
+							<Icons.X />
+						</Button>
+					</span>
+				)
+				return (
+					// choices are positional slots tracked by index across the component (regeneratingIndex,
+					// editingChoiceIndex); regenerating a slot swaps its layerId but the slot identity is the index
+					<li
+						// oxlint-disable-next-line react/no-array-index-key
+						key={`choice-${index}`}
+						className={cn(
+							'grid items-center gap-2.5 border-t border-[#1f1f21] first:border-t-0 px-2',
+							phone
+								? 'grid-cols-[22px_minmax(0,1fr)_auto] py-1.5 items-start'
+								: 'grid-cols-[26px_minmax(0,1fr)_auto_auto] min-h-[calc(var(--row)+6px)]',
+						)}
+					>
+						<span className="text-right font-mono text-text-3">{index + 1}.</span>
+						{phone ? (
+							<span className="flex min-w-0 flex-col gap-1">
+								{layer}
+								<span className="flex flex-wrap items-center gap-1.5">{constraintSelects}</span>
+							</span>
+						) : (
+							<>
+								{layer}
+								<span className="flex items-center gap-2">{constraintSelects}</span>
+							</>
+						)}
+						{actions}
+					</li>
+				)
+			})}
+		</ol>
+	)
+	const addChoice = (
+		<Button
+			size="sm"
+			onClick={() => GenVoteFrame.Actions.addChoice(genVoteStores)}
+			disabled={generating}
+			title={tr.text(V_Msgs.addChoiceHint())}
+		>
+			<Icons.Plus />
+			{tr.text(V_Msgs.addChoice())}
+		</Button>
+	)
+	const modeSwitch = (
+		<TabsList
+			variant="seg"
+			options={[
+				{ label: tr.text(V_Msgs.playNext()), value: 'next' },
+				{ label: tr.text(V_Msgs.playAfter()), value: 'after' },
+			]}
+			active={cursor?.type === 'start' ? 'next' : 'after'}
+			setActive={() => {
+				const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
+				GenVoteFrame.Actions.setCursor(genVoteStores, newCursor)
+			}}
+		/>
+	)
+	const submitButton = (
+		<Button variant="primary" size="sm" className={cn(phone && 'h-[34px] w-full')} onClick={handleSubmit} disabled={!canSubmit}>
+			{tr.text(V_Msgs.submit())}
+		</Button>
+	)
+	const configEditor = (
+		<AdvancedVoteConfigEditor
+			stores={{ squadServer: props.stores.squadServer }}
+			config={voteConfig}
+			choices={choices.map((c) => c.layerId).filter((id): id is string => !!id)}
+			onChange={handleSetVoteConfig}
+			previewPlaceholder="Generate layers to see vote preview"
+			includeResetToDefault={false}
+		/>
+	)
+	const advanced = (
+		<div className="fd-well px-2.5 py-2">
+			<div className="mb-1 flex items-center justify-between">
+				<span className="fd-lbl-k">{tr.text(F_Msgs.constraints())}</span>
+				<span className="text-xs text-text-3">{tr.text(V_Msgs.advancedBlurb())}</span>
+			</div>
+			<LayerFilterMenu
+				stores={{ filterMenu: frameKey }}
+				className="grid grid-cols-2 gap-x-4 [&>button:last-child]:col-span-2 [&>button:last-child]:justify-self-end"
+			/>
+		</div>
+	)
+
 	return (
 		<>
-			{/*
-				w-max sizes the dialog to the longest choice row, so it jumps between draws. The floor is the width that
-				leaves the choices panel ~700px: 21rem for the config panel and its gap, 50px for p-6 and the border. Its
-				95vw is the same term as max-w, so the floor can never outgrow the cap.
-			*/}
-			<HeadlessDialogContent className="max-h-[95vh] w-max min-w-[min(calc(700px_+_21rem_+_50px),95vw)] max-w-[95vw] flex flex-col overflow-auto">
-				<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
-					<div className="flex items-center">
-						<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
-						{props.description && <HeadlessDialogDescription>{props.description}</HeadlessDialogDescription>}
-					</div>
-					<div className="flex justify-end items-center space-x-2">
-						<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
-						<AppliedFiltersPanel stores={{ squadServer: props.stores.squadServer, appliedFilters: frameKey }} />
-					</div>
+			<HeadlessDialogContent
+				className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] w-[1080px] max-w-[95vw]')}
+				showCloseButton={false}
+			>
+				<HeadlessDialogHeader className="m-0 flex-nowrap items-center pr-2 gap-2">
+					<HeadlessDialogTitle className="whitespace-nowrap">{props.title}</HeadlessDialogTitle>
+					{props.description && (
+						<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
+					)}
+					<span className="flex-1" />
+					{!phone && <kbd className="fd-kbd">Esc</kbd>}
+					<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
+						<Icons.X />
+					</Button>
 				</HeadlessDialogHeader>
-				<div>
-					<div className="flex gap-1 justify-between">
-						<div className="flex gap-1">
-							{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => (
-								<ButtonGroup key={key}>
-									<Button
-										size="sm"
-										variant={includedConstraintKeys.includes(key) ? 'secondary' : 'ghost'}
-										onClick={() =>
-											includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)
-										}
-									>
-										{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
-										{key}
-									</Button>
-									<Button
-										size="icon"
-										variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
-										onClick={() => handleToggleUniqueConstraint(key)}
-										disabled={!includedConstraintKeys.includes(key)}
-										title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
-									>
-										<Icons.Lock className="w-4 h-4" />
-									</Button>
-								</ButtonGroup>
-							))}
-						</div>
-						<Button size="sm" variant="default" onClick={() => handleRegen()} disabled={generating}>
-							<Icons.RefreshCw className={regeneratingIndex === 'all' ? 'animate-spin' : ''} />
-							{choices.some((c) => c.layerId) ? 'Regenerate All' : 'Generate'}
-						</Button>
-					</div>
-					<div className="flex gap-4">
-						<div className="flex flex-col gap-4 flex-1">
-							<ol className="flex flex-col gap-4 list-none">
-								{choices.map((choice, index) => {
-									const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
-									const error = choiceErrors[index]
-									return (
-										// choices are positional slots tracked by index across the component (regeneratingIndex,
-										// editingChoiceIndex); regenerating a slot swaps its layerId but the slot identity is the index
-										// oxlint-disable-next-line react/no-array-index-key
-										<li key={`choice-${index}`} className="flex flex-col gap-2 p-4 border rounded-lg">
-											<div className="flex items-center justify-between mb-2">
-												<div className="flex items-center gap-2">
-													<span className="font-semibold text-lg">{index + 1}.</span>
-													<div>
-														{choice.layerId ? (
-															<div className="flex gap-1 items-center text-sm">
-																<ShortLayerName layerId={choice.layerId} matchDescriptors={constraints?.matchDescriptors} />
-																{constraints && (
-																	<ConstraintEvalTooltip
-																		matchDescriptors={constraints.matchDescriptors}
-																		queriedConstraints={constraints.queriedConstraints}
-																		itemParity={teamParity}
-																		layerId={choice.layerId}
-																	/>
-																)}
-															</div>
-														) : error ? (
-															<Alert variant="destructive" className="py-2">
-																<Icons.AlertCircle className="h-4 w-4" />
-																<AlertTitle>{error}</AlertTitle>
-															</Alert>
-														) : (
-															<span className="text-muted-foreground">{tr.text(V_Msgs.noLayerSelected())}</span>
-														)}
-													</div>
-												</div>
-												<ButtonGroup>
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() => setEditingChoiceIndex(index)}
-														disabled={generating}
-														title={tr.text(V_Msgs.editChoice())}
-													>
-														<Icons.Pencil />
-													</Button>
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() => handleRegen(index)}
-														disabled={generating}
-														title={choice.layerId ? tr.text(V_Msgs.regenerateChoice()) : tr.text(V_Msgs.generateChoice())}
-													>
-														<Icons.RefreshCw
-															className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''}
-														/>
-													</Button>
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
-														disabled={generating || choices.length <= 2}
-														title={tr.text(V_Msgs.removeChoice())}
-													>
-														<Icons.X />
-													</Button>
-												</ButtonGroup>
-											</div>
-											<div className="flex flex-col gap-2">
-												{includedConstraintKeys.map((key) => (
-													<ChoiceConstraintSelect
-														stores={genVoteStores}
-														key={key}
-														constraintKey={key}
-														index={index}
-														value={choice.choiceConstraints[key] as string | undefined}
-													/>
-												))}
-											</div>
-										</li>
-									)
-								})}
-							</ol>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => GenVoteFrame.Actions.addChoice(genVoteStores)}
-								disabled={generating}
-								title={tr.text(V_Msgs.addChoiceHint())}
-								className="w-full"
-							>
-								<Icons.Plus />
-								{tr.text(V_Msgs.addChoice())}
-							</Button>
-						</div>
-						<div className="w-80 shrink-0 flex flex-col justify-between">
-							<AdvancedVoteConfigEditor
-								stores={{ squadServer: props.stores.squadServer }}
-								config={voteConfig}
-								choices={choices.map((c) => c.layerId).filter((id): id is string => !!id)}
-								onChange={handleSetVoteConfig}
-								previewPlaceholder="Generate layers to see vote preview"
-								includeResetToDefault={false}
+				{!phone && (
+					<div className="flex items-center gap-2 min-h-[calc(var(--ctl)+6px)] px-2.5 border-b border-line shadow-[inset_0_1px_0_var(--line-soft)] overflow-x-auto whitespace-nowrap">
+						<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
+						<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
+						<AppliedFiltersPanel stores={{ squadServer: props.stores.squadServer, appliedFilters: frameKey }} />
+						<span className="flex-1" />
+						<span className="flex items-center gap-1.5">
+							<Switch
+								id={showAdvancedId}
+								checked={showAdvanced}
+								onCheckedChange={(v) => GenVoteFrame.Actions.setShowAdvanced(genVoteStores, v)}
 							/>
-							<div className="self-end flex gap-1">
-								<TabsList
-									options={[
-										{ label: tr.text(V_Msgs.playNext()), value: 'next' },
-										{ label: tr.text(V_Msgs.playAfter()), value: 'after' },
-									]}
-									active={cursor?.type === 'start' ? 'next' : 'after'}
-									setActive={() => {
-										const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
-										GenVoteFrame.Actions.setCursor(genVoteStores, newCursor)
-									}}
-								/>
-								<Button onClick={handleSubmit} disabled={!canSubmit}>
-									{tr.text(V_Msgs.submit())}
-								</Button>
+							<Label htmlFor={showAdvancedId} className="fd-lbl-plain">
+								{tr.text(V_Msgs.showAdvanced())}
+							</Label>
+						</span>
+					</div>
+				)}
+				{!phone && (
+					<div className="flex min-h-0 flex-1 gap-3 p-2.5 overflow-auto">
+						<div className="flex min-w-0 flex-1 flex-col gap-2">
+							<div className="flex items-center gap-1.5 whitespace-nowrap">
+								{varyBy}
+								<span className="flex-1" />
+								{regenButton}
+							</div>
+							{showAdvanced && advanced}
+							{choiceRows}
+							{addChoice}
+						</div>
+						<div className="flex w-[300px] shrink-0 flex-col gap-2.5 border-l border-line pl-3 shadow-[-1px_0_0_var(--line-soft)]">
+							{configEditor}
+							<div className="flex-1" />
+							<div className="flex items-center justify-end gap-2 whitespace-nowrap">
+								{props.tagsControl}
+								{modeSwitch}
+								{submitButton}
 							</div>
 						</div>
 					</div>
-				</div>
+				)}
+				{phone && (
+					<>
+						<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-2">
+							<div className="flex items-center gap-1.5 overflow-x-auto">
+								<Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+									<Button className="h-[34px] shrink-0 px-3" onClick={() => setFiltersOpen(true)}>
+										<Icons.Filter />
+										{tr.text(F_Msgs.filtersButton())}
+										{constraintCount > 0 && <span className="fd-chip">{constraintCount}</span>}
+									</Button>
+									<DialogContent>
+										<DialogHeader>
+											<DialogTitle>{tr.text(F_Msgs.filtersButton())}</DialogTitle>
+										</DialogHeader>
+										<div className="flex flex-col gap-2 flex-1 min-h-0 overflow-auto">
+											<div className="flex flex-wrap items-center gap-1.5">
+												<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
+												<AppliedFiltersPanel stores={{ squadServer: props.stores.squadServer, appliedFilters: frameKey }} />
+											</div>
+											<LayerFilterMenu stores={{ filterMenu: frameKey }} />
+										</div>
+										<DialogFooter>
+											<Button variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
+												{tr.text(UI_Msgs.done())}
+											</Button>
+										</DialogFooter>
+									</DialogContent>
+								</Dialog>
+								<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
+							</div>
+							{varyBy}
+							{regenButton}
+							{choiceRows}
+							{addChoice}
+							<div className="mt-1">{configEditor}</div>
+						</div>
+						<div className="flex shrink-0 flex-col gap-1.5 border-t border-line bg-panel p-2 shadow-[inset_0_1px_0_var(--line-soft)]">
+							<div className="flex items-center justify-between gap-2">
+								{props.tagsControl}
+								<span className="flex-1" />
+								{modeSwitch}
+							</div>
+							{submitButton}
+						</div>
+					</>
+				)}
 			</HeadlessDialogContent>
 			{/*
 				Only mount while editing. EditLayerDialog is rendered as a sibling of this dialog rather than inside its
@@ -386,6 +537,7 @@ function ChoiceConstraintSelect(props: {
 	return (
 		<StringEqConfig
 			key={props.constraintKey}
+			className="w-[120px]"
 			column={column}
 			allowedValues={allowedValues}
 			value={props.value}
@@ -408,6 +560,7 @@ export default function GenVoteDialog(props: GenVoteDialogProps) {
 				description={props.description}
 				stores={props.stores}
 				cursor={props.cursor}
+				tagsControl={props.tagsControl}
 				onClose={onClose}
 				onSubmit={props.onSubmit}
 			/>

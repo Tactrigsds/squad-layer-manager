@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import * as TSR from '@tanstack/react-router'
 import type * as React from 'react'
 
 import type * as Cleanup from '@/lib/cleanup'
@@ -11,7 +12,9 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
+import { rootRouter } from '@/root-router'
 import * as Cookies from '@/systems/app-routes.client'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -215,15 +218,36 @@ export namespace SelectedServerActions {
 	}
 }
 
-export type DashboardTab = 'layers' | 'secondary'
+export type DashboardTab = ClientOnlySettings.DashboardTab
+// the single-column layout shows one of two sides; the phone's four tabs fold onto them
+export type DashboardSide = 'layers' | 'secondary'
 
-// active tab for the server dashboard's single-column layout. Lives here (rather than in the component) so the NavBar can
-// drive it -- in single-column mode the tab switcher replaces the "Server" nav item instead of rendering as its own cluster.
-export const DashboardTabStore = Zus.createStore<{ activeTab: DashboardTab }>(() => ({ activeTab: 'layers' }))
+export function dashboardSide(tab: DashboardTab): DashboardSide {
+	return tab === 'activity' ? 'secondary' : 'layers'
+}
+
+// The dashboard's tab is the route's `?tab=` search param, so a switch is a history entry and back returns to the
+// previous tab. A visit without one lands on the tab last shown (persisted client-side; the route keeps that in step
+// and replaces a bare url with it, see servers.$serverId.tsx). Read here rather than in the route so the NavBar,
+// which sits outside it, can drive the single-column switcher.
+export function useDashboardTab(): DashboardTab {
+	const fromUrl = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false, select: (m) => m.search.tab })
+	const stored = Zus.useStore(ClientOnlySettings.Store, (s) => s.dashboardTab)
+	return fromUrl ?? stored
+}
 
 export namespace DashboardTabActions {
-	export function setActiveTab(tab: DashboardTab) {
-		DashboardTabStore.setState({ activeTab: tab })
+	export function setTab(tab: DashboardTab) {
+		void rootRouter.navigate({
+			to: '/servers/$serverId',
+			params: { serverId: SelectedServerStore.getState().selectedServerId },
+			search: { tab },
+		})
+	}
+	// the layers side of the single-column layout is the queue unless the last pick was teams
+	export function setSide(side: DashboardSide) {
+		const last = ClientOnlySettings.Store.getState().dashboardTab
+		setTab(side === 'secondary' ? 'activity' : last === 'teams' ? 'teams' : 'queue')
 	}
 }
 

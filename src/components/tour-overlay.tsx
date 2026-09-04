@@ -386,7 +386,7 @@ function Card(props: {
 	const notReady = state.code === 'stage-not-ready'
 	const failed = state.code === 'stage-failed'
 	const staging = state.code === 'staging'
-	const accent = notReady || failed ? 'bg-amber-500' : 'bg-blue-600'
+	const accent = notReady || failed ? 'bg-warn' : 'bg-info'
 	const centered = anchorRect === null && spotRect === null
 
 	// the card's real size, so the placement math works off what the copy actually rendered to rather than a guess
@@ -400,7 +400,7 @@ function Card(props: {
 	return (
 		<div
 			ref={cardRef}
-			className="absolute w-max rounded-lg border border-zinc-700 bg-zinc-900 p-3.5 pt-4 text-zinc-100 shadow-2xl"
+			className="absolute w-max rounded-lg border border-line-soft bg-ground p-3.5 pt-4 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, card.w, card.h) }}
 		>
 			<div
@@ -408,26 +408,26 @@ function Card(props: {
 			>
 				{stepNo}
 			</div>
-			<div className="mb-0.5 text-[11px] text-zinc-500">
+			<div className="mb-0.5 text-[11px] text-text-3">
 				Step {stepNo} of {total}
 			</div>
-			<div className="mb-2.5 h-[3px] overflow-hidden rounded-full bg-zinc-800">
+			<div className="mb-2.5 h-[3px] overflow-hidden rounded-full bg-ground">
 				<div className={`h-full ${accent}`} style={{ width: `${(stepNo / Math.max(1, total)) * 100}%` }} />
 			</div>
-			<h3 className={`text-sm font-semibold ${notReady || failed ? 'text-amber-400' : ''}`}>
+			<h3 className={`text-sm font-semibold ${notReady || failed ? 'text-warn' : ''}`}>
 				{failed ? 'Something went wrong' : rendered.title}
 			</h3>
 			{/* a block, not a <p>: step copy marks its own paragraphs and lists, and the spacing rules here are what
 			    give an unmarked single-paragraph body and a multi-paragraph one the same top margin */}
 			<div
-				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-zinc-300 [&_a]:text-blue-400 [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4`}
+				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-text [&_a]:text-info [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4`}
 			>
 				{failed ? 'That step could not be set up. Retry, or exit the tutorial.' : notReady ? state.msg : rendered.body}
 			</div>
 			<div className="mt-3 flex items-center justify-between gap-2">
 				<button
 					type="button"
-					className="rounded px-1 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+					className="rounded px-1 py-1 text-xs text-text-3 hover:text-text"
 					onClick={() => void Tour.Actions.exit()}
 				>
 					Exit
@@ -460,19 +460,19 @@ function CardActions(props: {
 	const { state, isLast, staging, notReady, failed } = props
 	if (notReady || failed) {
 		return (
-			<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.reset()}>
+			<button type="button" className="rounded-md bg-info px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.reset()}>
 				Retry
 			</button>
 		)
 	}
 	if (staging) {
-		return <span className="px-1 text-xs text-zinc-500">Preparing…</span>
+		return <span className="px-1 text-xs text-text-3">Preparing…</span>
 	}
 	// the button belongs to the transition OUT of this step; the last step always finishes on a button
 	const showNext = isLast || Tour.transitionOutOf(state.scenarioId, state.stepIdx).type === 'next'
 	if (!showNext) return null
 	return (
-		<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
+		<button type="button" className="rounded-md bg-info px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
 			{isLast ? 'Finish' : 'Next'}
 		</button>
 	)
@@ -481,7 +481,7 @@ function CardActions(props: {
 // ---- the bottom-left navigation panel + table of contents ----
 
 const NAV_BTN =
-	'flex h-7 w-7 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-300'
+	'flex h-7 w-7 items-center justify-center rounded text-text hover:bg-ground hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text'
 
 function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStores }) {
 	const [tocOpen, setTocOpen] = React.useState(false)
@@ -493,13 +493,13 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 			<div
 				role="group"
 				aria-label="Tutorial navigation"
-				className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+				className="flex items-center gap-0.5 rounded-lg border border-line-soft bg-ground p-1 shadow-2xl"
 			>
 				<button
 					type="button"
 					title="Contents"
 					aria-label="Contents"
-					className={`${NAV_BTN} ${tocOpen ? 'bg-zinc-800 text-white' : ''}`}
+					className={`${NAV_BTN} ${tocOpen ? 'bg-ground text-white' : ''}`}
 					onClick={() => setTocOpen((open) => !open)}
 				>
 					<Icons.List className="h-4 w-4" />
@@ -553,14 +553,14 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 	return (
 		<nav
 			aria-label="Tutorial contents"
-			className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl"
+			className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-line-soft bg-ground shadow-2xl"
 		>
 			<input
 				type="search"
 				aria-label="Search steps"
 				placeholder="Search steps"
 				autoFocus
-				className="m-2 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+				className="m-2 rounded border border-line-soft bg-zinc-950 px-2 py-1 text-xs text-text placeholder:text-text-3 focus:outline-none"
 				onChange={(event) => setQuery(event.currentTarget.value)}
 			/>
 			<div className="max-h-[50vh] overflow-y-auto pb-1">
@@ -575,9 +575,9 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 								onPick()
 								void Tour.Actions.jump(i)
 							}}
-							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-xs hover:bg-zinc-800 ${current ? 'bg-zinc-800 text-white' : 'text-zinc-300'}`}
+							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-xs hover:bg-ground ${current ? 'bg-ground text-white' : 'text-text'}`}
 						>
-							<span className={`w-6 shrink-0 text-right font-mono text-[10px] ${current ? 'text-blue-400' : 'text-zinc-500'}`}>
+							<span className={`w-6 shrink-0 text-right font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>
 								{i + 1}
 							</span>
 							<span className="truncate">{title}</span>
@@ -592,15 +592,15 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 function DockedCard({ serverId }: { serverId: string }) {
 	return (
 		<div
-			className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2.5 rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-zinc-100 shadow-2xl"
+			className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto' }}
 		>
-			<div className="text-xs text-zinc-300">
+			<div className="text-xs text-text">
 				<span className="font-semibold text-white">Tutorial paused.</span> Return to the dashboard to continue where you left off.
 			</div>
 			<button
 				type="button"
-				className="whitespace-nowrap rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white"
+				className="whitespace-nowrap rounded-md bg-info px-2.5 py-1 text-xs text-white"
 				onClick={() => void rootRouter.navigate({ to: '/servers/$serverId', params: { serverId } })}
 			>
 				Back to dashboard

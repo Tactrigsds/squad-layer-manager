@@ -48,10 +48,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
 
 const depthColors = [
-	{ border: 'border-red-700 dark:border-red-700', background: 'bg-red-500 dark:bg-red-700' },
-	{ border: 'border-green-700 dark:border-green-700', background: 'bg-green-500 dark:bg-green-700' },
-	{ border: 'border-blue-700 dark:border-blue-700', background: 'bg-blue-500 dark:bg-blue-700' },
-	{ border: 'border-yellow-700 dark:border-yellow-700', background: 'bg-yellow-500 dark:bg-yellow-700' },
+	{ border: 'border-danger dark:border-danger', background: 'bg-danger dark:bg-red-700' },
+	{ border: 'border-ok dark:border-ok', background: 'bg-ok dark:bg-ok' },
+	{ border: 'border-info dark:border-info', background: 'bg-blue-500 dark:bg-info' },
+	{ border: 'border-warn dark:border-warn', background: 'bg-yellow-500 dark:bg-yellow-700' },
 ] satisfies { border: string; background: string }[]
 
 export type FilterCardProps = {
@@ -1050,6 +1050,11 @@ export function Comparison(props: {
 	// overrides the numeric value input's width wrapper (default w-[100px]); used to keep the compact
 	// filter menu's range inputs from stretching the whole value column
 	numericValueClassName?: string
+	// extra classes for the operator select, e.g. the compact filter menu's symbol-width one
+	operatorClassName?: string
+	// the filter menu labels its rows itself, and the matchup node's cells have no operator of their own
+	showColumn?: boolean
+	showOperator?: boolean
 	ref?: React.ForwardedRef<ComparisonHandle>
 	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
@@ -1166,7 +1171,7 @@ export function Comparison(props: {
 	}
 
 	const columnDef = optionsColumn ? LC.getColumnDef(optionsColumn, cfg) : undefined
-	const componentStyles = props.highlight ? 'bg-accent' : undefined
+	const componentStyles = props.highlight ? 'text-pri-hi' : undefined
 
 	const columnBox = columnEditable ? (
 		<ComboBox
@@ -1217,7 +1222,7 @@ export function Comparison(props: {
 	const codeBox = (
 		<ComboBox
 			allowEmpty={false}
-			className={cn(operatorSelectClass, componentStyles)}
+			className={cn(operatorSelectClass, componentStyles, props.operatorClassName)}
 			title={tr.text(F_Msgs.operatorPicker())}
 			value={F.compOpSelectionKey(node)}
 			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
@@ -1518,8 +1523,8 @@ export function Comparison(props: {
 	// infix order: subject, operator (in the middle), then value(s)
 	return (
 		<>
-			{columnBox}
-			{codeBox}
+			{props.showColumn !== false && columnBox}
+			{props.showOperator !== false && codeBox}
 			{valueBox}
 		</>
 	)
@@ -1639,7 +1644,7 @@ export function StringEqConfig<T extends string | null>(props: {
 						<span className="text-muted-foreground pointer-events-none">{value}</span>
 						<span title={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}>
 							<Icons.Unlock
-								className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-green-500 pointer-events-auto"
+								className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-ok pointer-events-auto"
 								onClick={() => {
 									onSetAllValuesAllowedRef.current?.()
 								}}

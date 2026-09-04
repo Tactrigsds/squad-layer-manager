@@ -87,7 +87,7 @@ function MenuSections({ sections, Separator }: { sections: MenuSection[]; Separa
 	)
 }
 
-const DESTRUCTIVE_ITEM = 'bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600'
+const DESTRUCTIVE_ITEM = 'bg-destructive text-destructive-foreground space-x-1 focus:bg-danger'
 
 type PlayerLinkIds = {
 	eos: SM.PlayerId

@@ -352,7 +352,7 @@ export default function PlayerBulkContextMenuOptions({
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={swapNow}
 					disabled={!!manageDenied || !canSwapNow}
 				>
@@ -361,7 +361,7 @@ export default function PlayerBulkContextMenuOptions({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={kill}
 					disabled={!!manageDenied || !canSwapNow}
 				>
@@ -370,7 +370,7 @@ export default function PlayerBulkContextMenuOptions({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
 				<ContextMenuItem
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={kick}
 					disabled={!!kickDenied || playerIds.length === 0}
 				>
@@ -379,7 +379,7 @@ export default function PlayerBulkContextMenuOptions({
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
 				<ContextMenuItem
-					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600"
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={timeout}
 					disabled={!!timeoutDenied || playerIds.length === 0}
 				>

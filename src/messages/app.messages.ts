@@ -114,6 +114,27 @@ export const layersDialogTitle = def('Layers')
 
 export const userMenu = def('User menu')
 
+// the nav bar's overflow menus: page links that no longer fit, and every page link once none fit
+export const navMore = def('More')
+export const navPages = def('Pages')
+export const navLinks = def('Links')
+export const switchServer = def('Switch server')
+
+// -------- the phone layout --------
+
+export const phoneMatches = def('Matches')
+export const phoneQueue = def('Queue')
+export const phoneTeams = def('Teams')
+export const phoneActivity = def('Activity')
+export const phoneHere = def('Here')
+export const switchToDesktopSite = def('Switch to desktop site')
+export const switchToMobileSite = def('Switch to mobile site')
+export const desktopOnlyTitle = def('{page} is only available on the desktop site', (page: string) => ({ page }))
+export const desktopOnlyBlurb = def(
+	'The phone layout covers the server dashboard, the layer picker and Generate Vote. Everything else opens as the desktop page, which you can pinch and pan.',
+)
+export const backToServer = def('Back to the server')
+
 export const logOut = def('Log Out')
 
 export const setNickname = def('Set Nickname')

@@ -62,7 +62,7 @@ function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 				</Badge>
 			)}
 			{props.perm.negating && (
-				<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
+				<Badge variant="outline" className="text-xs border-orange-500 text-warn">
 					{tr.text(RBAC_Msgs.negatingBadge())}
 				</Badge>
 			)}

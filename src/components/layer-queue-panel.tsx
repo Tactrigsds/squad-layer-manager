@@ -7,11 +7,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
-import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CardDescription } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import { useIsMobile } from '@/hooks/use-is-mobile.ts'
+import * as Browser from '@/lib/browser'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
@@ -85,8 +85,8 @@ function ValidationWarningsDisplay(props: {
 	return (
 		<>
 			{repeatWarnings.length > 0 && (
-				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-4 my-2 w-auto">
-					<Icons.AlertTriangle className="h-4 w-4" />
+				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-2 my-1.5 w-auto">
+					<Icons.AlertTriangle />
 					<AlertTitle>{tr.text(LL_Msgs.repeatsDetected())}</AlertTitle>
 					<AlertDescription>
 						{tr.text(LL_Msgs.repeatsBlurb())}
@@ -132,8 +132,8 @@ function ValidationWarningsDisplay(props: {
 				</Alert>
 			)}
 			{filterWarnings.size > 0 && (
-				<Alert data-tour="save-warnings" variant="warning" className="mx-4 my-2 w-auto">
-					<Icons.AlertTriangle className="h-4 w-4" />
+				<Alert data-tour="save-warnings" variant="warning" className="mx-2 my-1.5 w-auto">
+					<Icons.AlertTriangle />
 					<AlertTitle>{tr.text(LL_Msgs.filterWarnings())}</AlertTitle>
 					<AlertDescription>
 						{tr.text(LL_Msgs.filterWarningsBlurb())}
@@ -201,10 +201,15 @@ type QueueControlPanelProps = {
 	showWarnings: boolean
 	setShowWarnings: (showWarnings: boolean) => void
 	stores: SquadServerFrame.KeyProp
+	// the phone header has no title, so the queue's badges ride on the control rows instead
+	phone: boolean
 }
 
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { showWarnings, setShowWarnings } = props
+	const isMobile = useIsMobile()
+	// idle controls hold their place, so starting an edit moves nothing
+	const idleHidden = 'not-group-data-[status=editing]:invisible'
 	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
@@ -255,189 +260,232 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds })
 	}
 
+	const clearButton = (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					data-tour="queue-clear"
+					disabled={!isEditing}
+					className={cn(idleHidden, isMobile && 'fd-btn-touch')}
+					variant="ghost"
+					size="icon-sm"
+					onClick={() => clear()}
+				>
+					<Icons.Trash />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>{tr.text(LL_Msgs.clearQueue())}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+	const addLayersButton = (
+		<StartActivityInteraction
+			data-tour="queue-add"
+			loaderName="selectLayers"
+			createActivity={UP.createEditingQueueVariant({
+				_tag: 'leaf',
+				id: 'ADDING_ITEM',
+				opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
+			})}
+			matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
+			preload="intent"
+			render={Button}
+			className={cn(idleHidden, isMobile && 'fd-btn-touch')}
+			size="sm"
+			disabled={!isEditing}
+		>
+			<Icons.ListPlus />
+			<span>{tr.text(LL_Msgs.addLayers())}</span>
+		</StartActivityInteraction>
+	)
+	const genVoteButton = (
+		<StartActivityInteraction
+			loaderName="genVote"
+			createActivity={UP.createEditingQueueVariant({
+				_tag: 'leaf',
+				id: 'GENERATING_VOTE',
+				opts: { cursor: { type: 'start' } },
+			})}
+			matchKey={(key) => key.id === 'GENERATING_VOTE'}
+			preload="intent"
+			render={Button}
+			className={cn(idleHidden, isMobile && 'w-9')}
+			size={isMobile ? 'icon-sm' : 'sm'}
+			title={isMobile ? tr.text(LL_Msgs.genVote()) : undefined}
+			aria-label={tr.text(LL_Msgs.genVote())}
+			disabled={!isEditing}
+		>
+			<Icons.Vote />
+			{!isMobile && tr.text(LL_Msgs.genVote())}
+		</StartActivityInteraction>
+	)
+	const pasteRotationButton = (
+		<StartActivityInteraction
+			loaderName="pasteRotation"
+			createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
+			matchKey={(key) => key.id === 'PASTE_ROTATION'}
+			preload="intent"
+			render={Button}
+			className={cn(idleHidden, isMobile && 'w-9')}
+			size={isMobile ? 'icon-sm' : 'sm'}
+			title={isMobile ? tr.text(LL_Msgs.pasteRotationTitle()) : undefined}
+			aria-label={tr.text(LL_Msgs.pasteRotationTitle())}
+			disabled={!isEditing}
+		>
+			<Icons.FileText />
+			{!isMobile && <span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>}
+		</StartActivityInteraction>
+	)
+	const resetButton = (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					data-tour="queue-reset"
+					size="icon-sm"
+					disabled={!isModified}
+					onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
+					variant="ghost"
+					className={cn('col-start-1 row-start-1', idleHidden)}
+				>
+					<Icons.Undo />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>{tr.text(LL_Msgs.reset())}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+	const stateControls = (
+		<div className={cn('grid items-center', isMobile && 'ml-auto')}>
+			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
+				<span className="fd-spin" />
+				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
+			</div>
+			<PermissionDeniedTooltip denied={startEditingDenied}>
+				<Button
+					data-tour="queue-edit"
+					className={cn('col-start-2 row-start-1 invisible group-data-[status=idle]:visible', isMobile && 'fd-btn-touch')}
+					size="sm"
+					disabled={!!startEditingDenied}
+					onClick={() => setEditing(true)}
+				>
+					<Icons.Edit />
+					<span>{tr.text(LL_Msgs.startEditing())}</span>
+				</Button>
+			</PermissionDeniedTooltip>
+			{(() => {
+				const saveButtonGroup = (
+					<ButtonGroup>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									size="icon-sm"
+									variant={forceSave ? 'destructive' : 'default'}
+									// icon-only, so it needs a name of its own: the tooltip is not one
+									aria-label={tr.text(LL_Msgs.toggleForceSave())}
+									aria-pressed={forceSave}
+									data-tour="queue-force-save"
+									onClick={() => setForceSave(!forceSave)}
+								>
+									<Icons.Sword />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>{tr.text(LL_Msgs.toggleForceSaveHint())}</p>
+							</TooltipContent>
+						</Tooltip>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									data-tour="queue-save"
+									size="sm"
+									className="min-w-28"
+									variant={forceSave ? 'destructive' : 'primary'}
+									onClick={() => setEditing(false)}
+								>
+									<Icons.Save />
+									<span>
+										{forceSave
+											? 'Force Save'
+											: numEditors === 1 && isModified
+												? showWarnings
+													? 'Save Anyway'
+													: 'Save'
+												: showWarnings
+													? 'Finish Editing Anyway'
+													: 'Finish Editing'}
+									</span>
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>
+									{forceSave
+										? 'Save changes, even if others are still editing'
+										: isModified
+											? 'Save changes to the queue'
+											: 'Finish editing the queue'}
+								</p>
+							</TooltipContent>
+						</Tooltip>
+					</ButtonGroup>
+				)
+				return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
+			})()}
+		</div>
+	)
+	const settingsButton = (
+		<Button
+			data-tour="pool-settings"
+			size="icon-sm"
+			variant="ghost"
+			title={tr.text(LL_Msgs.poolConfiguration())}
+			onClick={(e) => openPoolConfig(e.currentTarget)}
+		>
+			<Icons.Settings />
+		</Button>
+	)
+	const status = committing ? 'saving' : !isEditing ? 'idle' : 'editing'
+
+	if (isMobile) {
+		return (
+			<div className="flex flex-col gap-1 grow group" data-status={status}>
+				{props.phone && <QueueHeaderBadges className="justify-end" stores={props.stores} />}
+				<div className="flex items-center gap-1">
+					{clearButton}
+					{addLayersButton}
+					{/* two small buttons make one touch-height control */}
+					<div className={cn('flex flex-col', idleHidden)}>
+						{genVoteButton}
+						{pasteRotationButton}
+					</div>
+					{resetButton}
+					{stateControls}
+					{settingsButton}
+				</div>
+			</div>
+		)
+	}
+
 	return (
 		<div className="flex flex-col gap-1 grow">
-			<div className="flex items-center gap-1 justify-end group" data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							data-tour="queue-clear"
-							disabled={!isEditing}
-							className="not-group-data-[status=editing]:invisible"
-							variant="secondary"
-							size="icon"
-							onClick={() => clear()}
-						>
-							<Icons.Trash />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>
-						<p>{tr.text(LL_Msgs.clearQueue())}</p>
-					</TooltipContent>
-				</Tooltip>
-				<StartActivityInteraction
-					data-tour="queue-add"
-					loaderName="selectLayers"
-					createActivity={UP.createEditingQueueVariant({
-						_tag: 'leaf',
-						id: 'ADDING_ITEM',
-						opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
-					})}
-					matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
-					preload="intent"
-					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
-					disabled={!isEditing}
-				>
-					<Icons.ListPlus />
-					<span>{tr.text(LL_Msgs.addLayers())}</span>
-				</StartActivityInteraction>
-				<StartActivityInteraction
-					loaderName="genVote"
-					createActivity={UP.createEditingQueueVariant({
-						_tag: 'leaf',
-						id: 'GENERATING_VOTE',
-						opts: { cursor: { type: 'start' } },
-					})}
-					matchKey={(key) => key.id === 'GENERATING_VOTE'}
-					preload="intent"
-					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
-					disabled={!isEditing}
-				>
-					<Icons.Vote />
-					{tr.text(LL_Msgs.genVote())}
-				</StartActivityInteraction>
-				<StartActivityInteraction
-					loaderName="pasteRotation"
-					createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
-					matchKey={(key) => key.id === 'PASTE_ROTATION'}
-					preload="intent"
-					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
-					disabled={!isEditing}
-				>
-					<Icons.FileText />
-					<span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>
-				</StartActivityInteraction>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							data-tour="queue-reset"
-							size="icon"
-							disabled={!isModified}
-							onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
-							variant="secondary"
-							className="col-start-1 row-start-1 not-group-data-[status=editing]:invisible"
-						>
-							<Icons.Undo />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>
-						<p>{tr.text(LL_Msgs.reset())}</p>
-					</TooltipContent>
-				</Tooltip>
-				{/*<Separator orientation="vertical" />*/}
-				<div className="grid">
-					<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
-						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
-						<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
-					</div>
-					<PermissionDeniedTooltip denied={startEditingDenied}>
-						<Button
-							data-tour="queue-edit"
-							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
-							variant="outline"
-							disabled={!!startEditingDenied}
-							onClick={() => setEditing(true)}
-						>
-							<Icons.Edit />
-							<span>{tr.text(LL_Msgs.startEditing())}</span>
-						</Button>
-					</PermissionDeniedTooltip>
-					{(() => {
-						const saveButtonGroup = (
-							<ButtonGroup>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											size="icon"
-											variant={forceSave ? 'destructive' : 'secondary'}
-											// icon-only, so it needs a name of its own: the tooltip is not one
-											aria-label={tr.text(LL_Msgs.toggleForceSave())}
-											aria-pressed={forceSave}
-											data-tour="queue-force-save"
-											onClick={() => setForceSave(!forceSave)}
-										>
-											<Icons.Sword />
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>{tr.text(LL_Msgs.toggleForceSaveHint())}</p>
-									</TooltipContent>
-								</Tooltip>
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											data-tour="queue-save"
-											className="min-w-37.5"
-											variant={forceSave ? 'destructive' : 'default'}
-											onClick={() => setEditing(false)}
-										>
-											<Icons.Save />
-											<span>
-												{forceSave
-													? 'Force Save'
-													: numEditors === 1 && isModified
-														? showWarnings
-															? 'Save Anyway'
-															: 'Save'
-														: showWarnings
-															? 'Finish Editing Anyway'
-															: 'Finish Editing'}
-											</span>
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent>
-										<p>
-											{forceSave
-												? 'Save changes, even if others are still editing'
-												: isModified
-													? 'Save changes to the queue'
-													: 'Finish editing the queue'}
-										</p>
-									</TooltipContent>
-								</Tooltip>
-							</ButtonGroup>
-						)
-						return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
-					})()}
-				</div>
-				<Button
-					data-tour="pool-settings"
-					size="icon"
-					variant="ghost"
-					title={tr.text(LL_Msgs.poolConfiguration())}
-					onClick={(e) => openPoolConfig(e.currentTarget)}
-				>
-					<Icons.Settings />
-				</Button>
+			<div className="flex flex-wrap items-center gap-1 justify-end group" data-status={status}>
+				{clearButton}
+				{addLayersButton}
+				{genVoteButton}
+				{pasteRotationButton}
+				{resetButton}
+				{stateControls}
+				{settingsButton}
 			</div>
 		</div>
 	)
 }
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const {
-		isModified,
-		queueLength,
-		maxQueueSize,
-		mutations: queueMutations,
-	} = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.queueHeader)
 	const headerRef = React.useRef<HTMLDivElement>(null)
+	// the tab bar already names the queue on a phone, so the header there is just the controls
+	const phone = Browser.useIsSmallViewport()
 
 	const warnings = useQueueWarnings(props.stores)
 	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
@@ -452,58 +500,71 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				setShowWarnings={setShowWarnings}
 				stores={props.stores}
 			/>
-			<CardHeader ref={headerRef} className={cn('flex flex-row items-center justify-between bg-background', props.className)}>
-				<span className="flex items-center space-x-1 w-full">
-					<span className="flex flex-col gap-0.5">
-						<span className="flex items-center space-x-1">
-							<CardTitle>{tr.text(LL_Msgs.upNext())}</CardTitle>
-							{isModified && (
-								<CardDescription
-									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-									className=" pl-1 data-[limitreached=true]:text-destructive flex gap-1 items-center"
-								>
-									<span>
-										{queueLength} / {maxQueueSize}
-									</span>
-								</CardDescription>
-							)}
+			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel', props.className)}>
+				<span className="flex flex-wrap items-center gap-2 w-full">
+					{!phone && (
+						<span className="flex items-center gap-2 whitespace-nowrap">
+							<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
+							<QueueHeaderBadges stores={props.stores} />
 						</span>
-						<span className="flex gap-1">
-							{[
-								{ variant: 'added', size: queueMutations.added.size, label: 'added', icon: Icons.Plus },
-								{ variant: 'edited', size: queueMutations.edited.size, label: 'edited', icon: Icons.Pencil },
-								{ variant: 'moved', size: queueMutations.moved.size, label: 'moved', icon: Icons.ArrowUpDown },
-								{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed', icon: Icons.Trash },
-							]
-								.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
-								.map((item) => (
-									<Badge
-										key={item.label}
-										variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
-										data-visible={item.size > 0}
-										className="data-[visible=false]:invisible font-mono font-semibold tracking-tight flex items-center gap-1"
-										title={`${item.size} ${item.label}`}
-									>
-										<item.icon className="h-3 w-3" />
-										{item.size}
-									</Badge>
-								))}
-						</span>
-					</span>
+					)}
 					<QueueControlPanel
 						warnings={warnings ?? null}
 						showWarnings={showWarnings}
 						setShowWarnings={setShowWarnings}
 						stores={props.stores}
+						phone={phone}
 					/>
 				</span>
-			</CardHeader>
+			</div>
 			<StickyGroup stickyRef={headerRef}>
-				<CardContent className="p-0 px-1">
+				<div className="fd-well mx-2 mb-2">
 					<LayerList stores={props.stores} />
-				</CardContent>
+				</div>
 			</StickyGroup>
 		</>
+	)
+}
+
+// The unsaved state of the queue: its size against the limit, and what kind of edits are pending.
+function QueueHeaderBadges(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
+	const {
+		isModified,
+		queueLength,
+		maxQueueSize,
+		mutations: queueMutations,
+	} = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.queueHeader)
+	if (!isModified) return null
+	return (
+		<span className={cn('flex items-center gap-2 whitespace-nowrap', props.className)}>
+			<span
+				data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
+				className="font-mono text-2xs text-text-3 data-[limitreached=true]:text-danger"
+			>
+				{queueLength} / {maxQueueSize}
+			</span>
+			<span className="flex gap-1">
+				{[
+					{ variant: 'added', size: queueMutations.added.size, label: 'added', icon: Icons.Plus },
+					{ variant: 'edited', size: queueMutations.edited.size, label: 'edited', icon: Icons.Pencil },
+					{ variant: 'moved', size: queueMutations.moved.size, label: 'moved', icon: Icons.ArrowUpDown },
+					{ variant: 'destructive', size: queueMutations.removed.size, label: 'removed', icon: Icons.Trash },
+				]
+					.sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0))
+					.map((item) => (
+						<Badge
+							key={item.label}
+							variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
+							data-visible={item.size > 0}
+							className="data-[visible=false]:hidden font-mono"
+							title={`${item.size} ${item.label}`}
+						>
+							<item.icon className="size-2.5" />
+							{item.size}
+						</Badge>
+					))}
+			</span>
+		</span>
 	)
 }
 
@@ -574,7 +635,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 				)}{' '}
 				<br />{' '}
 				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
-					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
+					<Button disabled={!!enableUpdatesDenied} size="sm" onClick={() => enableUpdates()}>
 						{tr.text(LL_Msgs.clickHere())}
 					</Button>
 				</PermissionDeniedTooltip>
