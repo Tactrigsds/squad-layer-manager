@@ -208,8 +208,8 @@ type QueueControlPanelProps = {
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { showWarnings, setShowWarnings } = props
 	const isMobile = useIsMobile()
-	// on a phone the row wraps, so idle controls leave rather than hold their place
-	const idleHidden = isMobile ? 'not-group-data-[status=editing]:hidden' : 'not-group-data-[status=editing]:invisible'
+	// idle controls hold their place, so starting an edit moves nothing
+	const idleHidden = 'not-group-data-[status=editing]:invisible'
 	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
@@ -266,7 +266,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Button
 					data-tour="queue-clear"
 					disabled={!isEditing}
-					className={idleHidden}
+					className={cn(idleHidden, isMobile && 'fd-btn-touch')}
 					variant="ghost"
 					size="icon-sm"
 					onClick={() => clear()}
@@ -291,7 +291,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 			preload="intent"
 			render={Button}
-			className={idleHidden}
+			className={cn(idleHidden, isMobile && 'fd-btn-touch')}
 			size="sm"
 			disabled={!isEditing}
 		>
@@ -361,7 +361,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			<PermissionDeniedTooltip denied={startEditingDenied}>
 				<Button
 					data-tour="queue-edit"
-					className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
+					className={cn('col-start-2 row-start-1 invisible group-data-[status=idle]:visible', isMobile && 'fd-btn-touch')}
 					size="sm"
 					disabled={!!startEditingDenied}
 					onClick={() => setEditing(true)}
@@ -446,22 +446,15 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	if (isMobile) {
 		return (
 			<div className="flex flex-col gap-1 grow group" data-status={status}>
-				<div className="flex items-center gap-1 justify-end empty:hidden">
+				<div className="flex items-center gap-1 justify-end">
 					{props.phone && <QueueHeaderBadges className="mr-auto" stores={props.stores} />}
-					{isEditing && (
-						<>
-							{genVoteButton}
-							{pasteRotationButton}
-							{resetButton}
-						</>
-					)}
+					{genVoteButton}
+					{pasteRotationButton}
+					{resetButton}
 				</div>
 				<div className="flex items-center gap-1">
-					{/* grouped for the touch-sized controls, so the row reads at one height */}
-					<ButtonGroup className={idleHidden}>
-						{clearButton}
-						{addLayersButton}
-					</ButtonGroup>
+					{clearButton}
+					{addLayersButton}
 					{stateControls}
 					{settingsButton}
 				</div>

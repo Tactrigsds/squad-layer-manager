@@ -237,24 +237,27 @@
 		position: relative;
 		z-index: 1;
 	}
-	/* Only button groups change on touch: three small targets sit flush nowhere else. Keyed off the pointer,
-	   not the viewport, so tablets get it too. */
+	/* Button groups grow on touch: three small targets sit flush nowhere else. `fd-btn-touch` gives a lone button
+	   the same size, for one that sits beside a group. Keyed off the pointer, not the viewport, so tablets get it too. */
 	@media (pointer: coarse) {
 		.fd-grp {
 			gap: 4px;
 		}
-		.fd-grp > .fd-btn {
+		.fd-grp > .fd-btn,
+		.fd-btn-touch {
 			height: 36px;
 			min-width: 40px;
 			padding: 0 10px;
 			margin-left: 0;
 			border-radius: 3px;
 		}
-		.fd-grp > .fd-btn.fd-btn-ico {
+		.fd-grp > .fd-btn.fd-btn-ico,
+		.fd-btn-ico.fd-btn-touch {
 			width: 40px;
 			padding: 0;
 		}
-		.fd-grp > .fd-btn svg {
+		.fd-grp > .fd-btn svg,
+		.fd-btn-touch svg {
 			width: 16px;
 			height: 16px;
 		}
