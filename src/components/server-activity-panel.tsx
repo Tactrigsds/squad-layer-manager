@@ -89,25 +89,19 @@ function ServerChatEvents(props: {
 
 	return (
 		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
-			<SubtreeFindBar stores={find.stores} className="absolute right-4 top-1" />
+			<SubtreeFindBar stores={find.stores} className="absolute right-3 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
-				<div
-					style={{ zIndex: loaderZIndex }}
-					className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center"
-				>
-					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
+					<span className="fd-spin size-6!" />
 				</div>
 			)}
 			{selectedMatchOrdinal !== null && props.isLoadingHistorical && (
-				<div
-					style={{ zIndex: loaderZIndex }}
-					className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center"
-				>
-					<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
+					<span className="fd-spin size-6!" />
 				</div>
 			)}
 			{selectedMatchOrdinal !== null && displayMatch && (
-				<div className="flex-shrink-0 text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
+				<div className="flex-shrink-0 text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] flex flex-wrap justify-center gap-x-1">
 					<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
 					<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
 					{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
@@ -115,12 +109,10 @@ function ServerChatEvents(props: {
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
-					{noPlayersSelected && (
-						<div className="text-muted-foreground text-sm text-center py-8">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>
-					)}
+				<div ref={eventsContainerRef} className="flex flex-col gap-px pr-3 min-h-0 w-full">
+					{noPlayersSelected && <div className="text-text-3 text-sm text-center py-6">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
-						<div className="text-muted-foreground text-sm text-center py-8">
+						<div className="text-text-3 text-sm text-center py-6">
 							{tr.text(CHAT_Msgs.noEventsYet(selectedMatchOrdinal === null ? 'current' : 'historical'))}
 						</div>
 					)}
@@ -144,12 +136,12 @@ function ServerChatEvents(props: {
 			{showScrollButton && (
 				<Button
 					onClick={() => scrollToBottom()}
-					variant="secondary"
+					size="sm"
 					style={{ zIndex: scrollToBottomZIndex }}
-					className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
+					className="absolute bottom-0 left-0 right-0 w-full"
 					title={tr.text(CHAT_Msgs.scrollToBottom())}
 				>
-					<Icons.ChevronDown className="h-4 w-4" />
+					<Icons.ChevronDown />
 					<span className="text-xs">
 						{newMessageCount > 0 ? tr.text(CHAT_Msgs.newEvents(newMessageCount)) : tr.text(CHAT_Msgs.scrollToBottom())}
 					</span>
@@ -176,39 +168,25 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 		tickRate == null || !tickRateThresholds
 			? undefined
 			: tickRate >= tickRateThresholds.good
-				? 'text-green-500'
+				? 'text-ok'
 				: tickRate >= tickRateThresholds.warning
-					? 'text-yellow-500'
-					: 'text-red-500'
+					? 'text-warn'
+					: 'text-danger'
 
+	const count = 'inline-flex items-center gap-[3px] font-mono font-normal text-xs text-text-3 whitespace-nowrap [&_svg]:size-3'
 	return (
-		<div className="inline-flex shrink-0 text-muted-foreground gap-x-2 items-center text-sm tabular-nums">
-			{/* online over queue while the panel is narrow, side by side once there is room */}
-			<div className="flex flex-col items-end leading-tight @[760px]:flex-row @[760px]:items-center @[760px]:gap-2">
-				<span
-					className="inline-flex items-center gap-1"
-					title={tr.text(CHAT_Msgs.playersOnline())}
-					aria-label={tr.text(CHAT_Msgs.playersOnline())}
-				>
-					<Icons.Users className="h-3.5 w-3.5" />
-					{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
-				</span>
-				<span
-					className="inline-flex items-center gap-1"
-					title={tr.text(CHAT_Msgs.playersInQueue())}
-					aria-label={tr.text(CHAT_Msgs.playersInQueue())}
-				>
-					<Icons.Hourglass className="h-3.5 w-3.5" />
-					{serverInfo.queueLength}/{serverInfo.maxQueueLength}
-				</span>
-			</div>
+		<div className="inline-flex shrink-0 gap-x-2 items-center">
+			<span className={count} title={tr.text(CHAT_Msgs.playersOnline())} aria-label={tr.text(CHAT_Msgs.playersOnline())}>
+				<Icons.Users />
+				{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
+			</span>
+			<span className={count} title={tr.text(CHAT_Msgs.playersInQueue())} aria-label={tr.text(CHAT_Msgs.playersInQueue())}>
+				<Icons.Hourglass />
+				{serverInfo.queueLength}/{serverInfo.maxQueueLength}
+			</span>
 			{tickRate != null && (
-				<span
-					className="inline-flex items-center gap-1"
-					title={tr.text(CHAT_Msgs.serverTickRate())}
-					aria-label={tr.text(CHAT_Msgs.serverTickRate())}
-				>
-					<Icons.Activity className="h-3.5 w-3.5" />
+				<span className={count} title={tr.text(CHAT_Msgs.serverTickRate())} aria-label={tr.text(CHAT_Msgs.serverTickRate())}>
+					<Icons.Activity />
 					<span className={tickRateColor}>{tickRate.toFixed(1)}</span>
 				</span>
 			)}
@@ -396,85 +374,69 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
 		// alone once the panel is narrow.
 		<Card role="region" aria-label={tr.text(CHAT_Msgs.activityTitle())} className="flex flex-col h-full min-h-0 w-full @container">
-			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center gap-2 pb-3">
-				<div className="flex min-w-0 items-center gap-1.5 @[640px]:gap-4">
-					<CardTitle className="flex items-center gap-2 whitespace-nowrap">
-						<Icons.Server className="h-5 w-5" />
-						<span className="hidden @[640px]:inline">{tr.text(CHAT_Msgs.activityTitle())}</span>
-					</CardTitle>
-					<ButtonGroup>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handlePrevious}
-							disabled={!canGoPrevious}
-							className="h-8 w-8 p-0"
-							title={tr.text(CHAT_Msgs.previousMatch())}
-						>
-							<Icons.ChevronLeft className="h-4 w-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleNext}
-							disabled={!canGoNext}
-							className="h-8 w-8 p-0"
-							title={tr.text(CHAT_Msgs.nextMatch())}
-						>
-							<Icons.ChevronRight className="h-4 w-4" />
-						</Button>
-						{selectedMatchOrdinal !== null && (
-							<Button
-								variant="default"
-								size="sm"
-								onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
-								className="h-8 px-2 whitespace-nowrap @[640px]:px-3 bg-green-500 hover:bg-green-600 text-white"
-								title={tr.text(CHAT_Msgs.returnToLiveTooltip())}
-							>
-								<Icons.Radio className="h-4 w-4 @[640px]:mr-1" />
-								<span className="hidden @[640px]:inline">{tr.text(CHAT_Msgs.returnToLive())}</span>
-							</Button>
-						)}
-					</ButtonGroup>
+			<CardHeader className="flex-shrink-0 whitespace-nowrap">
+				<CardTitle className="flex items-center gap-1.5">
+					<Icons.LayoutList className="size-3.5" />
+					<span className="hidden @[520px]:inline">{tr.text(CHAT_Msgs.activityTitle())}</span>
+				</CardTitle>
+				<ButtonGroup>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onClick={handlePrevious}
+						disabled={!canGoPrevious}
+						title={tr.text(CHAT_Msgs.previousMatch())}
+					>
+						<Icons.ChevronLeft />
+					</Button>
+					<Button variant="ghost" size="icon-sm" onClick={handleNext} disabled={!canGoNext} title={tr.text(CHAT_Msgs.nextMatch())}>
+						<Icons.ChevronRight />
+					</Button>
 					{selectedMatchOrdinal !== null && (
-						<ButtonGroup>
-							{(['feed', 'teams'] as const).map((view) => (
-								<Button
-									key={view}
-									variant={historicalView === view ? 'secondary' : 'ghost'}
-									size="sm"
-									aria-pressed={historicalView === view}
-									onClick={() => ChatPrt.Actions.setHistoricalView({ chat: stores.squadServer! }, view)}
-									className="h-8 px-2 @[640px]:px-3"
-								>
-									{view === 'feed' ? (
-										<Icons.List className="h-4 w-4 @[640px]:mr-1" />
-									) : (
-										<Icons.Users className="h-4 w-4 @[640px]:mr-1" />
-									)}
-									<span className="hidden @[640px]:inline">
-										{tr.text(view === 'feed' ? CHAT_Msgs.feedViewLabel() : CHAT_Msgs.teamsViewLabel())}
-									</span>
-								</Button>
-							))}
-						</ButtonGroup>
+						<Button
+							variant="ok"
+							size="sm"
+							onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
+							title={tr.text(CHAT_Msgs.returnToLiveTooltip())}
+						>
+							<Icons.Radio />
+							<span className="hidden @[520px]:inline">{tr.text(CHAT_Msgs.returnToLive())}</span>
+						</Button>
 					)}
-					<EventFilterSelect
-						value={eventFilterState}
-						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
-						selectedOnly={selectedOnly}
-						onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
-					/>
-				</div>
+				</ButtonGroup>
+				{selectedMatchOrdinal !== null && (
+					<ButtonGroup>
+						{(['feed', 'teams'] as const).map((view) => (
+							<Button
+								key={view}
+								size="sm"
+								aria-pressed={historicalView === view}
+								onClick={() => ChatPrt.Actions.setHistoricalView({ chat: stores.squadServer! }, view)}
+							>
+								{view === 'feed' ? <Icons.List /> : <Icons.Users />}
+								<span className="hidden @[520px]:inline">
+									{tr.text(view === 'feed' ? CHAT_Msgs.feedViewLabel() : CHAT_Msgs.teamsViewLabel())}
+								</span>
+							</Button>
+						))}
+					</ButtonGroup>
+				)}
+				<EventFilterSelect
+					value={eventFilterState}
+					onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
+					selectedOnly={selectedOnly}
+					onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
+				/>
+				<span className="flex-1" />
 				{/* live-only readouts, and the historical controls need their header room */}
 				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
+			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col p-2 pr-1.5 pb-2">
 				<div className="flex-1 min-h-0">
 					{selectedMatchOrdinal !== null && historicalView === 'teams' ? (
 						<div className="min-w-[350px] h-full flex flex-col">
 							{displayMatch && (
-								<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
+								<div className="text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] flex flex-wrap justify-center gap-x-1">
 									<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
 									<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
 									{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
@@ -482,7 +444,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 							)}
 							{historicalEventsQuery.isLoading ? (
 								<div className="flex-1 flex items-center justify-center">
-									<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+									<span className="fd-spin size-6!" />
 								</div>
 							) : (
 								<div className="flex-1 min-h-0 pt-2">

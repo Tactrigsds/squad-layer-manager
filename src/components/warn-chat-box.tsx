@@ -93,7 +93,7 @@ export default function WarnChatBox({
 	}
 
 	// orange "targeted warn" accent, matching ServerChatBox's warn-selected channel
-	const accent = 'border-orange-500/60 focus-visible:ring-orange-500/50'
+	const accent = 'border-orange-500/60 focus-visible:ring-pri/50'
 	const resolvedPlaceholder = warnDenied
 		? tr.text(CHAT_Msgs.missingPermission())
 		: noTargets
@@ -148,12 +148,12 @@ export default function WarnChatBox({
 						textareaRef.current?.focus()
 					}}
 					disabled={!!warnDenied}
-					className={cn('text-orange-400', accent)}
+					className={cn('text-warn', accent)}
 				/>
 				<Button
 					size="sm"
 					variant="outline"
-					className={cn('h-auto self-stretch w-7 p-0 shrink-0 text-orange-400', accent)}
+					className={cn('h-auto self-stretch w-7 p-0 shrink-0 text-warn', accent)}
 					onClick={() => void send()}
 					disabled={sendDisabled}
 					title={tr.text(CHAT_Msgs.sendWarningHint())}

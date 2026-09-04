@@ -207,7 +207,7 @@ function RouteComponent() {
 			<div className="flex h-full w-full max-w-6xl">
 				{/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
 				    would only eat the content column, which needs the width more -- its server sections are master-detail. */}
-				<aside className="w-52 md:w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
+				<aside className="w-52 md:w-56 shrink-0 overflow-hidden border-r border-line pr-2 shadow-[1px_0_0_var(--line-soft)]">
 					<SettingsToc
 						showServers={!manageServersDenied || servers.length > 0}
 						showGlobal={globalAccess.canRead}
@@ -224,7 +224,7 @@ function RouteComponent() {
 			    content height, making the whole app (navbar included) scroll away. */}
 				<main ref={mainRef} className="relative flex-1 min-w-0 overflow-y-auto">
 					{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
-					<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
+					<div className="mx-auto w-full max-w-[68rem] px-3 pb-2 space-y-4">
 						{/* Servers reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 						{(!manageServersDenied || servers.length > 0) && (
 							<div id="section:servers" className="scroll-mt-2 rounded-xl">
@@ -295,7 +295,7 @@ function AuditLogSection() {
 	return (
 		<Card>
 			<StickyGroup stickyRef={headerRef}>
-				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+				<CardHeader ref={headerRef} className="">
 					<CardTitle>{tr.text(AppEvents_Msgs.auditLog())}</CardTitle>
 					<CardDescription>{tr.text(AppEvents_Msgs.auditLogBlurb())}</CardDescription>
 				</CardHeader>
@@ -360,7 +360,7 @@ function YamlEditorToolbar({
 	return (
 		<>
 			{deniedPaths.length > 0 && (
-				<p className="min-w-0 truncate text-xs text-amber-500">
+				<p className="min-w-0 truncate text-xs text-warn">
 					{tr.text(SETTINGS_Msgs.notPermittedToModify())}{' '}
 					{deniedPaths.map((p) => (
 						<code key={p} className="mx-0.5">
@@ -770,7 +770,7 @@ function ServerSettingsSection({
 	return (
 		<Card>
 			<StickyGroup stickyRef={headerRef}>
-				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+				<CardHeader ref={headerRef} className="">
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
@@ -796,15 +796,11 @@ function ServerSettingsSection({
 								</p>
 							)}
 						</div>
-						<div
-							role="group"
-							aria-label={tr.text(SETTINGS_Msgs.serverEditorModeLabel())}
-							className="flex items-center rounded-md border p-0.5"
-						>
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+						<div role="group" aria-label={tr.text(SETTINGS_Msgs.serverEditorModeLabel())} className="fd-grp">
+							<Button size="sm" data-state={mode === 'gui' ? 'on' : 'off'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
-							<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+							<Button size="sm" data-state={mode === 'yaml' ? 'on' : 'off'} onClick={() => switchMode('yaml')}>
 								YAML
 							</Button>
 						</div>
@@ -877,28 +873,24 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 	return (
 		<Card>
 			<StickyGroup stickyRef={headerRef}>
-				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
+				<CardHeader ref={headerRef} className="">
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle>{tr.text(SETTINGS_Msgs.newManagedServer())}</CardTitle>
 							<CardDescription>{tr.text(SETTINGS_Msgs.newServerBlurb())}</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">
-							<div
-								role="group"
-								aria-label={tr.text(SETTINGS_Msgs.newServerEditorModeLabel())}
-								className="flex items-center rounded-md border p-0.5"
-							>
+							<div role="group" aria-label={tr.text(SETTINGS_Msgs.newServerEditorModeLabel())} className="fd-grp">
 								<Button
 									size="sm"
-									variant={mode === 'gui' ? 'secondary' : 'ghost'}
+									data-state={mode === 'gui' ? 'on' : 'off'}
 									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'gui')}
 								>
 									GUI
 								</Button>
 								<Button
 									size="sm"
-									variant={mode === 'yaml' ? 'secondary' : 'ghost'}
+									data-state={mode === 'yaml' ? 'on' : 'off'}
 									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'yaml')}
 								>
 									YAML
@@ -1015,7 +1007,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 	return (
 		<Card>
 			<StickyGroup stickyRef={cardHeaderRef}>
-				<CardHeader ref={cardHeaderRef} className="rounded-t-xl border-b bg-card">
+				<CardHeader ref={cardHeaderRef} className="">
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
@@ -1038,15 +1030,11 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								</p>
 							)}
 						</div>
-						<div
-							role="group"
-							aria-label={tr.text(SETTINGS_Msgs.globalEditorModeLabel())}
-							className="flex items-center rounded-md border p-0.5"
-						>
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+						<div role="group" aria-label={tr.text(SETTINGS_Msgs.globalEditorModeLabel())} className="fd-grp">
+							<Button size="sm" data-state={mode === 'gui' ? 'on' : 'off'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
-							<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+							<Button size="sm" data-state={mode === 'yaml' ? 'on' : 'off'} onClick={() => switchMode('yaml')}>
 								YAML
 							</Button>
 						</div>

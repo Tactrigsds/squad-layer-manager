@@ -143,7 +143,7 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 
 	return (
 		<>
-			<ul className="flex w-full flex-col">
+			<ul className="flex w-full flex-col [&>li]:border-t-0">
 				{queueItemIds.map((id) => (
 					<LayerListItem key={id} itemId={id} stores={props.stores} />
 				))}
@@ -244,6 +244,7 @@ function LoadedSelectLayersView({
 
 	const addLayersTabsList = (
 		<TabsList
+			variant="seg"
 			options={[
 				{ label: 'Play Next', value: 'next' },
 				{ label: 'Play After', value: 'after' },
@@ -296,6 +297,7 @@ function LoadedGenVoteView({
 		genVote: data.genVoteFrame,
 		squadServer: stores.squadServer,
 	}
+	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
 	const onSubmit = (result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
 		const source: LL.Source = {
@@ -303,7 +305,7 @@ function LoadedGenVoteView({
 			userId: UsersClient.loggedInUserId!,
 		}
 
-		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
+		const item = LL.withTags([LL.createVoteItem(result.choices, source, result.voteConfig)], pendingTags)[0]
 
 		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
 		let index: LL.ItemIndex
@@ -332,6 +334,13 @@ function LoadedGenVoteView({
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
+			tagsControl={
+				<LayerTags
+					tags={pendingTags}
+					onAdd={(tagId) => setPendingTags((prev) => [...prev, tagId])}
+					onRemove={(tagId) => setPendingTags((prev) => prev.filter((id) => id !== tagId))}
+				/>
+			}
 		/>
 	)
 }
@@ -605,7 +614,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					ref={dragProps.ref}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item flex data-[is-voting=true]:border-added data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background border-2 border-transparent data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md cursor-default data-[is-hovered=true]:outline-solid',
+						'group/single-item grid grid-cols-[26px_16px_minmax(0,1fr)_auto] gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
+						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
+						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
 					)}
 					data-mutation={displayedMutation}
 					data-tour={isTourSeqRow ? 'queue-item' : undefined}
@@ -613,21 +624,24 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span className="flex items-center">
-						<span data-mobile={isMobile} className="min-w-[4ch] text-right font-mono text-muted-foreground data-[mobile=true]:hidden">
-							{LL.getItemNumber(index)}
-						</span>
-						<Button
-							ref={dragProps.handleRef}
-							variant="ghost"
-							size="icon"
-							data-tour={isTourRow ? 'queue-reorder' : undefined}
-							{...editButtonProps('data-[can-edit=true]:cursor-grab')}
-						>
-							<Icons.GripVertical />
-						</Button>
+					<span data-mobile={isMobile} className="text-right font-mono text-text-3 data-[mobile=true]:invisible">
+						{LL.getItemNumber(index)}
 					</span>
-					<span data-tour={isTourRow ? 'queue-item-display' : undefined} className="rounded flex space-y-1 w-full flex-col">
+					<button
+						type="button"
+						ref={dragProps.handleRef}
+						data-tour={isTourRow ? 'queue-reorder' : undefined}
+						{...editButtonProps(
+							'flex size-4 items-center justify-center text-text-3 hover:text-text data-[can-edit=true]:cursor-grab disabled:opacity-40 [&_svg]:size-3.5',
+						)}
+					>
+						<Icons.GripVertical />
+					</button>
+					<span
+						data-tour={isTourRow ? 'queue-item-display' : undefined}
+						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name]:flex-col data-[phone=true]:[&_.fd-layer-name]:items-start"
+						data-phone={isMobile || undefined}
+					>
 						<LayerDisplay
 							stores={props.stores}
 							droppable={true}
@@ -684,51 +698,47 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							</span>
 						)}
 					</span>
-					{sourceDisplay && (
-						<>
-							<Separator orientation="vertical" />
-							<span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>
-						</>
-					)}
-					<StartActivityInteraction
-						loaderName="selectLayers"
-						createActivity={UP.createEditingQueueVariant(editActivity)}
-						matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
-						preload="viewport"
-						render={Button}
-						data-tour={isTourRow ? 'queue-item-edit' : undefined}
-						variant="ghost"
-						size="icon"
-						title={tr.text(LL_Msgs.editItem())}
-						disabled={!canEdit}
-					>
-						<Icons.Pencil />
-					</StartActivityInteraction>
-					<Button
-						variant="ghost"
-						size="icon"
-						data-tour={isTourRow ? 'queue-swap' : undefined}
-						title={tr.text(LL_Msgs.swapFactions())}
-						disabled={!canEdit || !L.swapFactions(item.layerId)}
-						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
-					>
-						<Icons.ArrowLeftRight />
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						data-tour={isTourRow ? 'queue-delete' : undefined}
-						title={tr.text(LL_Msgs.deleteItem())}
-						disabled={!canEdit}
-						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
-					>
-						<Icons.X />
-					</Button>
-					<ItemDropdown {...dropdownProps}>
-						<Button {...editButtonProps()} data-tour={isTourRow ? 'queue-item-menu' : undefined} variant="ghost" size="icon">
-							<Icons.EllipsisVertical />
-						</Button>
-					</ItemDropdown>
+					<span className="flex items-center gap-1.5">
+						{sourceDisplay && <span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>}
+						<span className={cn('fd-grp', isMobile && 'hidden')}>
+							<StartActivityInteraction
+								loaderName="selectLayers"
+								createActivity={UP.createEditingQueueVariant(editActivity)}
+								matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
+								preload="viewport"
+								render={Button}
+								data-tour={isTourRow ? 'queue-item-edit' : undefined}
+								size="icon-sm"
+								title={tr.text(LL_Msgs.editItem())}
+								disabled={!canEdit}
+							>
+								<Icons.Pencil />
+							</StartActivityInteraction>
+							<Button
+								size="icon-sm"
+								data-tour={isTourRow ? 'queue-swap' : undefined}
+								title={tr.text(LL_Msgs.swapFactions())}
+								disabled={!canEdit || !L.swapFactions(item.layerId)}
+								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
+							>
+								<Icons.ArrowLeftRight />
+							</Button>
+							<Button
+								size="icon-sm"
+								data-tour={isTourRow ? 'queue-delete' : undefined}
+								title={tr.text(LL_Msgs.deleteItem())}
+								disabled={!canEdit}
+								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+							>
+								<Icons.X />
+							</Button>
+						</span>
+						<ItemDropdown {...dropdownProps}>
+							<Button {...editButtonProps()} data-tour={isTourRow ? 'queue-item-menu' : undefined} variant="ghost" size="icon-sm">
+								<Icons.EllipsisVertical />
+							</Button>
+						</ItemDropdown>
+					</span>
 				</li>
 			</ItemContextMenu>
 			<QueueItemSeparator links={afterItemLinks} isAfterLast={isLocallyLast} disabled={!canEdit} />
@@ -996,7 +1006,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									</PermissionDeniedTooltip>
 									<PermissionDeniedTooltip denied={manageVoteDenied}>
 										<Button
-											{...manageVoteButtonProps({ className: 'text-green-500 disabled:text-foreground' })}
+											{...manageVoteButtonProps({ className: 'text-ok disabled:text-foreground' })}
 											variant="ghost"
 											size="icon"
 											onClick={() => startVote()}
@@ -1264,8 +1274,46 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 	}
 
 	const user = UsersClient.useLoggedInUser()
+	const isMobile = useIsMobile()
+	const editActivity = {
+		_tag: 'leaf' as const,
+		id: 'EDITING_ITEM' as const,
+		opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
+	}
 	return (
 		<>
+			{isMobile && (
+				<>
+					<Menu.Group>
+						<StartActivityInteraction
+							loaderName="selectLayers"
+							createActivity={UP.createEditingQueueVariant(editActivity)}
+							matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
+							preload="viewport"
+							render={Menu.Item}
+							disabled={!canEdit}
+						>
+							<Icons.Pencil />
+							{tr.text(LL_Msgs.editItem())}
+						</StartActivityInteraction>
+						<Menu.Item
+							disabled={!canEdit || !L.swapFactions(item.layerId)}
+							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
+						>
+							<Icons.ArrowLeftRight />
+							{tr.text(LL_Msgs.swapFactions())}
+						</Menu.Item>
+						<Menu.Item
+							disabled={!canEdit}
+							onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+						>
+							<Icons.X />
+							{tr.text(LL_Msgs.deleteItem())}
+						</Menu.Item>
+					</Menu.Group>
+					<Menu.Separator />
+				</>
+			)}
 			<Menu.Group>
 				<Menu.Item
 					disabled={!canEdit}
@@ -1330,8 +1378,8 @@ function QueueItemSeparator(props: {
 		<Separator
 			ref={ref}
 			className={cn(
-				'w-full min-w-0 bg-transparent data-[is-last=true]:invisible data-[is-over=true]:bg-accent',
-				expanded ? 'h-6' : 'h-2',
+				'w-full min-w-0 bg-transparent shadow-none data-[is-last=true]:invisible data-[is-over=true]:bg-pri',
+				expanded ? 'h-5' : 'h-0',
 			)} // data-is-last={props.isAfterLast && !isOver}
 			data-is-over={!disabled && isDropTarget}
 		/>

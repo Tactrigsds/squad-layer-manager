@@ -1,7 +1,42 @@
+/*
+  Foundry: the app's single dark theme. Warm greys, 1px #1a1a1b edges on every frame, one orange for the primary
+  action. Content sits in inset wells; anything pressable is raised (light top edge, dark bottom edge); passive
+  labels are flat.
+
+  Two token forms coexist on purpose. The shadcn-era names (--background, --primary, ...) stay HSL triplets so
+  `hsl(var(--x) / a)` keeps working at its existing call sites. The Foundry names (--ground, --panel, --pri, ...)
+  are plain colours, used directly by foundry.css and by the `text-text-2` style utilities.
+
+  Every dimension derives from four numbers: --fs (body size), --ctl (control height), --pad, --row. Compact is
+  the default; `data-density="legible"` on <html> raises all four.
+*/
 @theme {
-	--radius-lg: var(--radius);
-	--radius-md: calc(var(--radius) - 2px);
-	--radius-sm: calc(var(--radius) - 4px);
+	--font-sans: 'Barlow', 'Segoe UI', system-ui, sans-serif;
+	--font-cond: 'Roboto Condensed', 'Barlow', sans-serif;
+	--font-mono: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+
+	--text-2xs: calc(var(--fs) - 2px);
+	--text-2xs--line-height: 1.3;
+	--text-xs: calc(var(--fs) - 1px);
+	--text-xs--line-height: 1.35;
+	--text-sm: var(--fs);
+	--text-sm--line-height: 1.35;
+	--text-base: calc(var(--fs) + 1px);
+	--text-base--line-height: 1.4;
+	--text-lg: calc(var(--fs) + 3px);
+	--text-lg--line-height: 1.35;
+	--text-xl: calc(var(--fs) + 6px);
+	--text-xl--line-height: 1.3;
+	--text-2xl: calc(var(--fs) + 10px);
+	--text-2xl--line-height: 1.25;
+	--text-3xl: calc(var(--fs) + 16px);
+	--text-3xl--line-height: 1.2;
+
+	--radius-sm: 2px;
+	--radius-md: 3px;
+	--radius-lg: 3px;
+	--radius-xl: 4px;
+	--radius-2xl: 6px;
 
 	--color-background: hsl(var(--background));
 	--color-foreground: hsl(var(--foreground));
@@ -60,10 +95,37 @@
 	--color-chart-4: hsl(var(--chart-4));
 	--color-chart-5: hsl(var(--chart-5));
 
-	--animate-accordion-down: accordion-down 0.2s ease-out;
-	--animate-accordion-up: accordion-up 0.2s ease-out;
+	/* Foundry surfaces and text */
+	--color-ground: var(--ground);
+	--color-panel: var(--panel);
+	--color-panel-hi: var(--panel-hi);
+	--color-ctl: var(--ctl-bg);
+	--color-ctl-hi: var(--ctl-hi);
+	--color-ctl-lo: var(--ctl-lo);
+	--color-line: var(--line);
+	--color-line-soft: var(--line-soft);
+	--color-text: var(--text);
+	--color-text-2: var(--text-2);
+	--color-text-3: var(--text-3);
+	--color-pri: var(--pri);
+	--color-pri-hi: var(--pri-hi);
+	--color-pri-lo: var(--pri-lo);
+	--color-pri-text: var(--pri-text);
+	--color-ok: var(--ok);
+	--color-danger: var(--danger);
+	--color-warn: var(--warn);
+	--color-repeat: var(--repeat);
+	--color-team1: var(--team1);
+	--color-team2: var(--team2);
+	--color-teamA: var(--teamA);
+	--color-teamB: var(--teamB);
 
-	--breakpoint-dash-2col: 1400px;
+	--breakpoint-dash-2col: 1280px;
+	--breakpoint-dash-3col: 2100px;
+	--breakpoint-phone: 640px;
+
+	--animate-accordion-down: accordion-down 0.15s ease-out;
+	--animate-accordion-up: accordion-up 0.15s ease-out;
 
 	@keyframes accordion-down {
 		from {
@@ -85,89 +147,89 @@
 
 @layer base {
 	:root {
-		--background: 0 0% 100%;
-		--foreground: 240 10% 3.9%;
-		--card: 0 0% 100%;
-		--card-foreground: 240 10% 3.9%;
-		--popover: 0 0% 100%;
-		--popover-foreground: 240 10% 3.9%;
-		--primary: 240 5.9% 10%;
-		--primary-foreground: 0 0% 98%;
-		--secondary: 240 4.8% 95.9%;
-		--secondary-foreground: 240 5.9% 10%;
-		--muted: 240 4.8% 95.9%;
-		--muted-foreground: 240 3.8% 46.1%;
-		--accent: 240 4.8% 95.9%;
-		--accent-foreground: 240 5.9% 10%;
-		--destructive: 0 84.2% 60.2%;
-		--destructive-foreground: 0 0% 98%;
-		--info: 210 100% 50%;
+		--fs: 12px;
+		--ctl: 22px;
+		--pad: 4px;
+		--row: 26px;
+
+		--ground: #262628;
+		--panel: #333335;
+		--panel-hi: #3c3c3f;
+		--ctl-bg: #4d4d50;
+		--ctl-hi: #67676b;
+		--ctl-lo: #2b2b2d;
+		--line: #1a1a1b;
+		--line-soft: #46464a;
+		--text: #ebe8e2;
+		--text-2: #b9b5ad;
+		--text-3: #87837c;
+		--pri: #e0983a;
+		--pri-hi: #f5bd6c;
+		--pri-lo: #9a6217;
+		--pri-text: #241705;
+		--ok: #5fb76a;
+		--danger: #d2413f;
+		--info-c: #5b8def;
+		--warn: #e8c24a;
+		--admin-c: #8cc0ff;
+		--repeat: #e07ac0;
+		--team1: #3ec6b4;
+		--team2: #f28b5c;
+		--teamA: #a985f5;
+		--teamB: #52b8f0;
+
+		--background: 240 2.6% 15.3%;
+		--foreground: 40 18.4% 90.4%;
+		--card: 240 1.9% 20.4%;
+		--card-foreground: 40 18.4% 90.4%;
+		--popover: 240 2.4% 24.1%;
+		--popover-foreground: 40 18.4% 90.4%;
+		--primary: 34 72.8% 55.3%;
+		--primary-foreground: 34.8 75.6% 8%;
+		--secondary: 240 1.9% 30.8%;
+		--secondary-foreground: 40 18.4% 90.4%;
+		--muted: 240 2.4% 24.1%;
+		--muted-foreground: 40 7.9% 70.2%;
+		--accent: 240 1.9% 30.8%;
+		--accent-foreground: 40 18.4% 90.4%;
+		--destructive: 0.8 62% 53.5%;
+		--destructive-foreground: 0 0% 100%;
+		--info: 219.7 82.2% 64.7%;
 		--info-foreground: 0 0% 100%;
 		/* The admin blue: the shield on an admin player, the ChatAdmin feed colour, the chat box's admin target, and
-		   admin-only commands. Was rgb(147, 197, 253)/blue-300 copied by hand into three files. Same value in both
-		   themes, as the literals were. */
-		--admin: 211.7 96.4% 78.4%;
-		--border: 240 5.9% 90%;
-		--input: 240 5.9% 90%;
-		--ring: 240 10% 3.9%;
-		--moved: 210 70% 70%;
+		   admin-only commands. */
+		--admin: 212.9 100% 77.5%;
+		--border: 240 1.9% 10.4%;
+		--input: 240 1.9% 10.4%;
+		--ring: 35.5 87.3% 69.2%;
+		--moved: 219.7 82.2% 64.7%;
 		--moved-foreground: 0 0% 100%;
-		--edited: 30 70% 70%;
-		--edited-foreground: 0 0% 0%;
-		--warning: 30 100% 50%;
-		--warning-foreground: 0 0% 0%;
-		--repeat-violation: 330 90% 70%;
+		--edited: 45.6 77.5% 60%;
+		--edited-foreground: 34.8 75.6% 8%;
+		--warning: 45.6 77.5% 60%;
+		--warning-foreground: 34.8 75.6% 8%;
+		--repeat-violation: 318.8 62.2% 67.8%;
 		--repeat-violation-foreground: 0 0% 100%;
-		--added: 120 60% 50%;
-		--added-foreground: 0 0% 100%;
-		--deleted: 0 100% 50%;
+		--added: 127.5 37.9% 54.5%;
+		--added-foreground: 133.8 56.5% 9%;
+		--removed: 0.8 62% 53.5%;
+		--removed-foreground: 0 0% 100%;
+		--deleted: 0.8 62% 53.5%;
 		--deleted-foreground: 0 0% 100%;
-		--chart-1: 12 76% 61%;
-		--chart-2: 173 58% 39%;
-		--chart-3: 197 37% 24%;
-		--chart-4: 43 74% 66%;
-		--chart-5: 27 87% 67%;
-		--radius: 0.5rem;
+		--chart-1: 172.1 54.4% 51%;
+		--chart-2: 18.8 85.2% 65.5%;
+		--chart-3: 259.3 84.8% 74.1%;
+		--chart-4: 201.3 84% 63.1%;
+		--chart-5: 34 72.8% 55.3%;
+		--radius: 3px;
+
+		color-scheme: dark;
 	}
-	.dark {
-		--background: 240 10% 3.9%;
-		--foreground: 0 0% 98%;
-		--card: 240 10% 3.9%;
-		--card-foreground: 0 0% 98%;
-		--popover: 240 10% 3.9%;
-		--popover-foreground: 0 0% 98%;
-		--primary: 0 0% 98%;
-		--primary-foreground: 240 5.9% 10%;
-		--secondary: 240 3.7% 15.9%;
-		--secondary-foreground: 0 0% 98%;
-		--muted: 240 3.7% 15.9%;
-		--muted-foreground: 240 5% 64.9%;
-		--accent: 240 3.7% 15.9%;
-		--accent-foreground: 0 0% 98%;
-		--destructive: 0 62.8% 30.6%;
-		--destructive-foreground: 0 0% 98%;
-		--info: 210 100% 50%;
-		--info-foreground: 0 0% 100%;
-		--admin: 211.7 96.4% 78.4%;
-		--border: 240 3.7% 15.9%;
-		--input: 240 3.7% 15.9%;
-		--ring: 240 4.9% 83.9%;
-		--moved: 210 100% 60%;
-		--moved-foreground: 0 0% 100%;
-		--edited: 30 100% 30%;
-		--edited-foreground: 0 0% 100%;
-		--warning: 30 100% 50%;
-		--warning-foreground: 0 0% 0%;
-		--repeat-violation: 330 90% 70%;
-		--repeat-violation-foreground: 0 0% 100%;
-		--added: 120 100% 20%;
-		--added-foreground: 0 0% 100%;
-		--deleted: 0 100% 50%;
-		--deleted-foreground: 0 0% 100%;
-		--chart-1: 220 70% 50%;
-		--chart-2: 160 60% 45%;
-		--chart-3: 30 80% 55%;
-		--chart-4: 280 65% 60%;
-		--chart-5: 340 75% 55%;
+
+	:root[data-density='legible'] {
+		--fs: 14px;
+		--ctl: 28px;
+		--pad: 6px;
+		--row: 32px;
 	}
 }

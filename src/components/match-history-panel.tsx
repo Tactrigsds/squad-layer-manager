@@ -33,11 +33,12 @@ import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerContextMenuOptions from './layer-context-menu-options'
 import LayerSourceDisplay from './layer-source-display'
 import MapLayerDisplay from './map-layer-display'
+import { DisplayedMatchKd } from './stats-panel'
 import { Timer } from './timer'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
-const STD_PADDING = 'pl-4'
+const STD_PADDING = 'px-1.5'
 
 const MAX_PAGES = 30
 const MATCH_LIMIT = 8
@@ -172,75 +173,55 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	return (
 		<>
-			<CardHeader data-tour="match-history" className="flex flex-row justify-between items-start">
+			<CardHeader data-tour="match-history">
 				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
-				<div className="flex items-center gap-1">
-					<div className="flex items-center">
-						<Button variant="outline" size="sm" className="rounded-r-none px-2" onClick={goToLastPage} disabled={onLastPage}>
-							<Icons.ChevronsLeft className="h-4 w-4" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="rounded-l-none border-l-0 px-2"
-							onClick={goToNextPage}
-							disabled={onLastPage}
-						>
-							<Icons.ChevronLeft className="h-4 w-4" />
-						</Button>
-					</div>
-					<span className="text-sm font-mono min-w-[100px] text-center px-2">{getDateDisplayText()}</span>
-					<div className="flex items-center">
-						<Button variant="outline" size="sm" className="rounded-r-none px-2" onClick={goToPrevPage} disabled={onFirstPage}>
-							<Icons.ChevronRight className="h-4 w-4" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="rounded-l-none border-l-0 px-2"
-							onClick={goToFirstPage}
-							disabled={onFirstPage}
-						>
-							<Icons.ChevronsRight className="h-4 w-4" />
-						</Button>
-					</div>
-				</div>
+				<span className="flex-1" />
+				<span className="fd-grp">
+					<Button size="icon-sm" onClick={goToLastPage} disabled={onLastPage}>
+						<Icons.ChevronsLeft />
+					</Button>
+					<Button size="icon-sm" onClick={goToNextPage} disabled={onLastPage}>
+						<Icons.ChevronLeft />
+					</Button>
+				</span>
+				<span className="text-sm font-mono font-normal min-w-[90px] text-center">{getDateDisplayText()}</span>
+				<span className="fd-grp">
+					<Button size="icon-sm" onClick={goToPrevPage} disabled={onFirstPage}>
+						<Icons.ChevronRight />
+					</Button>
+					<Button size="icon-sm" onClick={goToFirstPage} disabled={onFirstPage}>
+						<Icons.ChevronsRight />
+					</Button>
+				</span>
 			</CardHeader>
-			<CardContent data-tour="match-history" className="px-1">
-				<Table>
+			<CardContent data-tour="match-history" className="p-0 pb-1">
+				<Table className="[&_th]:h-[calc(var(--row)-2px)] [&_td]:h-[calc(var(--row)-2px)]">
 					<TableHeader>
 						<TableRow className="font-medium">
-							<TableHead className="text-right px-0.5"></TableHead>
+							<TableHead className="w-[34px] text-right"></TableHead>
 							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}</TableHead>
 							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}</TableHead>
-							<TableHead className="text-center px-0.5" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
-								<div className="flex flex-row justify-end items-center">
-									<Icons.Flag />
-								</div>
+							<TableHead className="text-center w-14" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
+								<Icons.Flag className="inline size-3" />
 							</TableHead>
-							<TableHead className="hidden @[900px]:table-cell pr-0.5">
-								<span title={tr.text(MH_Msgs.setByColumn())}>
-									<Icons.User />
-								</span>
+							<TableHead className="hidden @[900px]:table-cell w-[30px] text-center" title={tr.text(MH_Msgs.setByColumn())}>
+								<Icons.User className="inline size-3" />
 							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
 						{currentEntries.length === 0 ? (
 							<TableRow>
-								<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden @[900px]:table-cell">
+								<TableCell colSpan={8} className="text-center text-text-3 h-16! hidden @[900px]:table-cell">
 									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
-								<TableCell
-									colSpan={7}
-									className="text-center text-muted-foreground py-8 hidden @[820px]:table-cell @[900px]:hidden"
-								>
+								<TableCell colSpan={7} className="text-center text-text-3 h-16! hidden @[820px]:table-cell @[900px]:hidden">
 									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
-								<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell @[820px]:hidden">
+								<TableCell colSpan={6} className="text-center text-text-3 h-16! table-cell @[820px]:hidden">
 									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
 							</TableRow>
@@ -248,13 +229,8 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<>
 								{hasMore && (
 									<TableRow>
-										<TableCell colSpan={8} className="text-center py-1">
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => setShowFullDay(!showFullDay)}
-												className="h-6 text-xs text-muted-foreground"
-											>
+										<TableCell colSpan={8} className="text-center">
+											<Button variant="ghost" size="sm" onClick={() => setShowFullDay(!showFullDay)} className="text-text-3">
 												{showFullDay ? 'Show less' : `Show ${currentEntries.length - MATCH_LIMIT} more`}
 											</Button>
 										</TableCell>
@@ -389,16 +365,12 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 			)
 		} else if (entry.status === 'post-game') {
 			statusBadge = (
-				<Badge variant="outline" className="flex items-center whitespace-nowrap">
-					<span>{tr.text(MH_Msgs.postGame())}</span>
+				<Badge variant="outline" className="whitespace-nowrap">
+					{tr.text(MH_Msgs.postGame())}
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
-			statusBadge = (
-				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
-					<span>{tr.text(MH_Msgs.inProgress())}</span>
-				</Badge>
-			)
+			statusBadge = <Badge className="whitespace-nowrap">{tr.text(MH_Msgs.inProgress())}</Badge>
 		}
 	}
 
@@ -422,9 +394,9 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 			}
 
 			outcomeDisp = (
-				<span className="text-sm">
-					{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
-					<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
+				<span className="font-mono">
+					{team1Tickets} <b className={team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team1Status}</b> -{' '}
+					<b className={team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team2Status}</b> {team2Tickets}
 				</span>
 			)
 		}
@@ -441,16 +413,12 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 
 	// Determine background color and hover state based on plugin decorations or current match
 	let bgColor = ''
-	let hoverColor = ''
 	if (isViewingThisMatch && entry.status === 'in-progress') {
-		bgColor = 'bg-green-500/20'
-		hoverColor = 'hover:bg-green-500/30'
+		bgColor = '[&>td]:bg-[rgba(95,183,106,0.16)]'
 	} else if (isViewingThisMatch) {
-		bgColor = 'bg-blue-500/10'
-		hoverColor = 'hover:bg-blue-500/20'
+		bgColor = '[&>td]:bg-[rgba(91,141,239,0.12)]'
 	} else if (rowTint) {
 		bgColor = TINT_DISPLAY[rowTint].bg
-		hoverColor = TINT_DISPLAY[rowTint].hoverBg
 	}
 
 	return (
@@ -469,27 +437,26 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 					onMouseLeave={handleMouseLeave}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs cursor-grab select-none',
+						'whitespace-nowrap data-[is-dragging=true]:outline-solid group cursor-grab select-none',
 						bgColor,
-						hoverColor,
 					)}
 				>
-					<TableCell className="font-mono text-xs relative text-right pl-2">
-						<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-2">
+					<TableCell className="font-mono text-xs relative text-right">
+						<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-1.5">
 							<Icons.GripVertical className="h-4 w-4" />
 						</div>
-						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center pr-2 gap-1">
-							{isViewingThisMatch && <Icons.Eye className="h-3 w-3 text-blue-500" />}
+						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center gap-0.5 text-text-3">
+							{isViewingThisMatch && <Icons.Eye className="size-[11px] text-[#6ea8ff]" />}
 							{entry.isCurrentMatch && entry.status === 'in-progress' ? (
-								<Icons.Play className="h-3 w-3 text-green-500" />
+								<Icons.Play className="size-[11px] text-ok" />
 							) : entry.isCurrentMatch && entry.status === 'post-game' ? (
-								<Icons.Check className="h-3 w-3" />
+								<Icons.Check className="size-[11px]" />
 							) : (
 								currentMatchOffset.toString()
 							)}
 						</div>
 					</TableCell>
-					<TableCell className="text-xs hidden @[820px]:table-cell pl-2 ">
+					<TableCell className="text-xs hidden @[820px]:table-cell">
 						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress' && (
 							<span className="font-mono font-light">
 								<Timer zeros start={entry.startTime.getTime()} />
@@ -499,7 +466,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 							<span className="font-mono font-light">
 								{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
 								{entry.endTime !== 'unknown' && (
-									<span className="text-muted-foreground flex flex-nowrap items-baseline">
+									<span className="text-text-3 flex flex-nowrap items-baseline">
 										+<Timer start={entry.endTime.getTime()} className="font-mono" />
 									</span>
 								)}
@@ -515,9 +482,17 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 					</TableCell>
 					<TableCell>{leftTeam}</TableCell>
 					<TableCell className="text-center">
-						<div className="flex flex-col items-center gap-1">
+						<div className="flex items-center justify-center gap-2">
 							{statusBadge}
 							{outcomeDisp}
+							{isViewingThisMatch && (
+								<React.Suspense fallback={null}>
+									<DisplayedMatchKd
+										stores={stores}
+										leftIsTeam1={!globalSettings.displayTeamsNormalized || entry.ordinal % 2 === 0}
+									/>
+								</React.Suspense>
+							)}
 						</div>
 					</TableCell>
 					<TableCell>{rightTeam}</TableCell>
@@ -527,20 +502,16 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 							{decorationsByTint.map(([tint, decos]) => (
 								<Tooltip key={tint} delayDuration={0}>
 									<TooltipTrigger asChild>
-										<Button variant="ghost" size="sm" className={`h-6 w-5 p-0 ${TINT_DISPLAY[tint].text}`}>
-											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4' })}
+										<Button variant="ghost" size="icon-sm" className={TINT_DISPLAY[tint].text}>
+											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'size-3' })}
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent
 										side="right"
-										className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
+										className="w-auto max-w-sm overflow-y-auto p-0 border-0 bg-transparent shadow-none flex flex-col gap-1"
 									>
 										{decos.map((deco) => (
-											<Alert
-												key={deco.regKey}
-												variant={TINT_DISPLAY[tint].variant}
-												className="w-full bg-background! rounded-none"
-											>
+											<Alert key={deco.regKey} variant={TINT_DISPLAY[tint].variant} className="w-full">
 												{deco.title && (
 													<AlertTitle className="flex items-center space-x-2">
 														{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 mr-2' })}
@@ -581,22 +552,17 @@ const TINT_DISPLAY = {
 	violation: {
 		icon: Icons.AlertOctagon,
 		variant: 'destructive',
-		text: 'text-red-500',
-		bg: 'bg-red-500/10',
-		hoverBg: 'hover:bg-red-500/20',
+		text: 'text-[#ef7c7a]',
+		bg: '[&>td]:bg-[rgba(210,65,63,0.10)]',
 	},
 	warn: {
 		icon: Icons.AlertTriangle,
 		variant: 'warning',
-		text: 'text-yellow-500',
-		bg: 'bg-yellow-500/10',
-		hoverBg: 'hover:bg-yellow-500/20',
+		text: 'text-warn',
+		bg: '[&>td]:bg-[rgba(224,180,58,0.08)]',
 	},
-	info: { icon: Icons.Info, variant: 'info', text: 'text-blue-500', bg: 'bg-blue-500/10', hoverBg: 'hover:bg-blue-500/20' },
-} satisfies Record<
-	PluginsClient.Tint,
-	{ icon: unknown; variant: 'destructive' | 'warning' | 'info'; text: string; bg: string; hoverBg: string }
->
+	info: { icon: Icons.Info, variant: 'info', text: 'text-info', bg: '[&>td]:bg-[rgba(91,141,239,0.08)]' },
+} satisfies Record<PluginsClient.Tint, { icon: unknown; variant: 'destructive' | 'warning' | 'info'; text: string; bg: string }>
 
 const TINT_PRIORITY: Record<PluginsClient.Tint, number> = { violation: 3, warn: 2, info: 1 }
 
@@ -634,7 +600,7 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 	return (
 		<span title={`${timeDifferenceText}${matchLengthText}`}>
 			{formattedStartTime}
-			<span className="text-muted-foreground">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
+			<span className="text-text-3">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
 		</span>
 	)
 }

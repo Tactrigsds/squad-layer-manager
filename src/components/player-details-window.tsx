@@ -276,7 +276,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				</DraggableWindowTitle>
 				{connectionStatus &&
 					(connectionStatus.status === 'online' ? (
-						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={tr.text(SM_Msgs.onlineFor(elapsed))} />
+						<span className="h-2 w-2 rounded-full bg-ok shrink-0" title={tr.text(SM_Msgs.onlineFor(elapsed))} />
 					) : (
 						<span
 							className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
@@ -541,8 +541,8 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 	const cancelMutation = TimeoutsClient.useCancelTimeoutMutation()
 	if (!timeout) return null
 	return (
-		<div className="flex items-center gap-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1">
-			<Icons.UserX className="h-3.5 w-3.5 text-red-500 shrink-0" />
+		<div className="flex items-center gap-2 rounded border border-danger bg-danger/10 px-2 py-1">
+			<Icons.UserX className="h-3.5 w-3.5 text-danger shrink-0" />
 			<span className="min-w-0 truncate">
 				{tr.text(SM_Msgs.timedOutUntil(dateFns.format(timeout.expiresAt, 'PPp'), timeout.reasonLabel ?? undefined))}
 			</span>
@@ -567,7 +567,7 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 
 function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
 	return (
-		<a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-400 hover:underline">
+		<a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-info hover:underline">
 			{children}
 			<Icons.ExternalLink className="h-2.5 w-2.5" />
 		</a>

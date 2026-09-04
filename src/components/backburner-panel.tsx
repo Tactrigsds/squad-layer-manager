@@ -4,7 +4,6 @@ import React from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -183,15 +182,14 @@ export default function BackburnerPanel(props: StoresProp) {
 	const showDropHint = dragging?.type === 'layer-item' && canRequest
 
 	return (
-		<div ref={panelDrop.ref} className={cn('rounded-md', showDropHint && 'ring-2 ring-inset ring-primary/50')}>
-			<Separator />
-			<CardHeader className="flex flex-row items-center justify-between space-y-0 py-3">
-				<CardTitle className="flex items-center gap-2 text-base">
+		<div ref={panelDrop.ref} className={cn('mx-2 mt-1 border-t border-line pt-1.5', showDropHint && 'ring-2 ring-inset ring-pri/50')}>
+			<div className="flex items-center gap-2 h-(--ctl) whitespace-nowrap">
+				<span className="fd-cond font-bold text-base flex items-center gap-1.5">
 					{tr.text(BB_Msgs.heading(items.length))}
 					{modified && <Badge variant="outline">{tr.text(BB_Msgs.unsavedBadge())}</Badge>}
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Icons.Info className="h-3.5 w-3.5 text-muted-foreground" />
+							<Icons.Info className="size-3 text-text-3" />
 						</TooltipTrigger>
 						<TooltipContent className="max-w-72">
 							<p>{tr.text(BB_Msgs.panelHelp())}</p>
@@ -202,7 +200,8 @@ export default function BackburnerPanel(props: StoresProp) {
 							</p>
 						</TooltipContent>
 					</Tooltip>
-				</CardTitle>
+				</span>
+				<span className="flex-1" />
 				<span className="flex items-center gap-1">
 					{canRequest &&
 						(isEditing ? (
@@ -211,49 +210,47 @@ export default function BackburnerPanel(props: StoresProp) {
 									<TooltipTrigger asChild>
 										<Button
 											variant="ghost"
-											size="icon"
-											className="h-7 w-7"
+											size="icon-sm"
 											disabled={!modified}
 											onClick={() => LayerQueuePrt.Actions.resetBackburner(queueKey)}
 										>
-											<Icons.Undo2 className="h-3.5 w-3.5" />
+											<Icons.Undo2 />
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>{tr.text(BB_Msgs.revertToSaved())}</TooltipContent>
 								</Tooltip>
-								<Button size="sm" variant="secondary" onClick={() => setEditorState({ open: true, itemId: null })}>
-									<Icons.ListPlus className="mr-1 h-4 w-4" />
+								<Button size="sm" onClick={() => setEditorState({ open: true, itemId: null })}>
+									<Icons.ListPlus />
 									{tr.text(BB_Msgs.requestLayer())}
 								</Button>
 								<ButtonGroup>
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<Button
-												size="icon"
-												className="h-8 w-8"
-												variant={forceSave ? 'destructive' : 'secondary'}
+												size="icon-sm"
+												variant={forceSave ? 'destructive' : 'default'}
 												onClick={() => setForceSave(!forceSave)}
 											>
-												<Icons.Sword className="h-3.5 w-3.5" />
+												<Icons.Sword />
 											</Button>
 										</TooltipTrigger>
 										<TooltipContent>{tr.text(BB_Msgs.toggleForceSaveHint())}</TooltipContent>
 									</Tooltip>
-									<Button size="sm" variant={forceSave ? 'destructive' : 'default'} onClick={handleFinishOrSave}>
+									<Button size="sm" variant={forceSave ? 'destructive' : 'primary'} onClick={handleFinishOrSave}>
 										{saveButtonLabel}
 									</Button>
 								</ButtonGroup>
 							</>
 						) : (
-							<Button size="sm" variant="outline" aria-label={tr.text(BB_Msgs.editRequests())} onClick={() => setIsEditing(true)}>
-								<Icons.Edit className="mr-1 h-3.5 w-3.5" />
+							<Button size="sm" aria-label={tr.text(BB_Msgs.editRequests())} onClick={() => setIsEditing(true)}>
+								<Icons.Edit />
 								{tr.text(BB_Msgs.startEditing())}
 							</Button>
 						))}
 				</span>
-			</CardHeader>
-			<CardContent className="pb-3">
-				{items.length === 0 && <span className="text-sm text-muted-foreground">{tr.text(BB_Msgs.noRequests())}</span>}
+			</div>
+			<div className={cn('fd-well mt-1.5 mb-2', items.length === 0 && 'px-2 py-1.5')}>
+				{items.length === 0 && <span className="text-sm text-text-3">{tr.text(BB_Msgs.noRequests())}</span>}
 				<ul>
 					{items.map((item, index) => (
 						<React.Fragment key={item.itemId}>
@@ -271,7 +268,7 @@ export default function BackburnerPanel(props: StoresProp) {
 						</React.Fragment>
 					))}
 				</ul>
-			</CardContent>
+			</div>
 			<BackburnerItemDialog
 				stores={props.stores}
 				open={editorState.open}
@@ -444,23 +441,23 @@ function BackburnerRow(
 			data-is-dragging={dragProps.isDragging}
 			data-mutation={displayedMutation}
 			className={cn(
-				'flex items-center gap-2 rounded-md border border-transparent px-1 py-1 text-sm data-[is-dragging=true]:opacity-50',
-				'data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited',
-				combineTarget && (props.combinable ? 'border-primary bg-primary/10' : 'border-destructive/50'),
+				'flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50',
+				'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
+				combineTarget && (props.combinable ? 'bg-pri/10 outline outline-1 outline-pri' : 'outline outline-1 outline-danger/50'),
 			)}
 		>
 			<button
 				type="button"
 				ref={dragProps.handleRef}
-				className={cn('cursor-grab text-muted-foreground', !canEdit && 'invisible')}
+				className={cn('flex size-4 items-center justify-center cursor-grab text-text-3 hover:text-text', !canEdit && 'invisible')}
 				disabled={!canEdit}
 			>
-				<Icons.GripVertical className="h-4 w-4" />
+				<Icons.GripVertical className="size-3.5" />
 			</button>
 			{props.satisfiable !== undefined && (
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<span className={cn('h-2 w-2 shrink-0 rounded-full', props.satisfiable ? 'bg-green-500' : 'bg-amber-500')} />
+						<span className={cn('size-[7px] shrink-0 rounded-full', props.satisfiable ? 'bg-ok' : 'bg-warn')} />
 					</TooltipTrigger>
 					<TooltipContent>
 						{props.satisfiable
@@ -472,18 +469,16 @@ function BackburnerRow(
 			<TemplateDisplay filter={item.filter} className="min-w-0 flex-1 truncate" />
 			<RequestOwner source={item.source} />
 			{(canEdit || props.canRequest) && (
-				<span className="flex items-center">
+				<span className="fd-grp">
 					{props.canRequest && (
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
-									size="icon"
-									variant="ghost"
-									className="h-7 w-7"
+									size="icon-sm"
 									aria-label={tr.text(BB_Msgs.cloneRequest())}
 									onClick={() => LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: item.filter })}
 								>
-									<Icons.Copy className="h-3.5 w-3.5" />
+									<Icons.Copy />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>{tr.text(BB_Msgs.cloneRequestHint())}</TooltipContent>
@@ -491,23 +486,15 @@ function BackburnerRow(
 					)}
 					{canEdit && (
 						<>
-							<Button
-								size="icon"
-								variant="ghost"
-								className="h-7 w-7"
-								aria-label={tr.text(BB_Msgs.editRequest())}
-								onClick={props.onEdit}
-							>
-								<Icons.Pencil className="h-3.5 w-3.5" />
+							<Button size="icon-sm" aria-label={tr.text(BB_Msgs.editRequest())} onClick={props.onEdit}>
+								<Icons.Pencil />
 							</Button>
 							<Button
-								size="icon"
-								variant="ghost"
-								className="h-7 w-7"
+								size="icon-sm"
 								aria-label={tr.text(BB_Msgs.removeRequest())}
 								onClick={() => LayerQueuePrt.Actions.removeBackburnerItems(queueKey, [props.itemId])}
 							>
-								<Icons.X className="h-3.5 w-3.5" />
+								<Icons.X />
 							</Button>
 						</>
 					)}
@@ -820,7 +807,7 @@ function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
 	const count = Zus.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
 	if (count === null) return null
 	return (
-		<span className={cn('mr-auto text-xs', count === 0 ? 'text-amber-500' : 'text-muted-foreground')}>
+		<span className={cn('mr-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
 			{count === 0 ? 'No layers in the pool match this request' : `${count} layer${count === 1 ? '' : 's'} match`}
 		</span>
 	)

@@ -164,7 +164,7 @@ const PresenceAvatar = React.forwardRef<
 				<span
 					className={cn(
 						'pointer-events-none absolute -bottom-1 -right-1 z-10 flex h-3 min-w-3 items-center justify-center rounded-full px-0.5 text-[8px] font-bold leading-none ring-1 ring-background',
-						badgeCurrent ? 'bg-green-600 text-white' : 'bg-primary text-primary-foreground',
+						badgeCurrent ? 'bg-ok text-white' : 'bg-primary text-primary-foreground',
 					)}
 				>
 					{badge}

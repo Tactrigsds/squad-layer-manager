@@ -407,3 +407,10 @@ export const repeatDescriptor = def((value: React.ReactNode, offset: React.React
 export const repeatShouldBeOver = def((within: React.ReactNode) => rt('Should be > {within}', { within }))
 
 export const repeatWithin = def((within: React.ReactNode) => rt('within {within}', { within }))
+
+// the filter menu's one node for both teams' alliance, faction and unit
+export const matchup = def('Matchup')
+
+// the picker's constraint rail, and the button that opens it on a phone
+export const constraints = def('Constraints')
+export const filtersButton = def('Filters')

@@ -1,4 +1,4 @@
-import { Check, CheckCheck, ChevronsUpDown, LoaderCircle, SquareCheck, Trash2, Undo2, X } from 'lucide-react'
+import { Check, CheckCheck, ChevronDown, LoaderCircle, SquareCheck, Trash2, Undo2, X } from 'lucide-react'
 import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -304,7 +304,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								return (
 									<span
 										key={value === null ? NULL : value}
-										className="inline-flex min-w-0 max-w-full items-center overflow-hidden rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
+										className="fd-tok h-4 min-w-0 max-w-full overflow-hidden px-1.5 text-2xs"
 									>
 										<span className="truncate">
 											<PrefixedLabel
@@ -325,7 +325,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					) : (
 						<span className="grow overflow-hidden text-ellipsis">{valuesDisplay}</span>
 					)}
-					<ChevronsUpDown className={cn('ml-2 h-4 w-4 shrink-0 opacity-50', showChips && 'mt-1 self-start')} />
+					<ChevronDown className={cn('size-2.5! shrink-0', showChips && 'mt-1 self-start')} />
 				</Button>
 			)}
 		</PopoverTrigger>

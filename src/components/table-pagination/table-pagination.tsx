@@ -72,27 +72,25 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 	const canGoNext = pageIndex < pageCount - 1
 
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex items-center gap-1">
 			<Button
-				variant="outline"
-				size="icon"
+				variant="ghost"
+				size="icon-sm"
 				onClick={handleFirst}
 				disabled={disabled || !canGoPrevious}
 				title={tr.text(UI_Msgs.firstPageHint())}
-				className="h-8 w-8"
 			>
-				<Icons.ChevronsLeft className="h-4 w-4" />
+				<Icons.ChevronsLeft />
 			</Button>
 
 			<Button
-				variant="outline"
-				size="icon"
+				variant="ghost"
+				size="icon-sm"
 				onClick={handlePrevious}
 				disabled={disabled || !canGoPrevious}
 				title={tr.text(UI_Msgs.previousPageShortHint())}
-				className="h-8 w-8"
 			>
-				<Icons.ChevronLeft className="h-4 w-4" />
+				<Icons.ChevronLeft />
 			</Button>
 
 			<div className="flex items-center gap-1 whitespace-nowrap">
@@ -106,32 +104,30 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 					onBlur={commit}
 					onKeyDown={handleInputKeyDown}
 					disabled={disabled}
-					className="h-8 w-16 text-center"
+					className="w-12 text-center"
 					aria-label={tr.text(UI_Msgs.pageNumber())}
 				/>
-				<span className="text-sm text-muted-foreground">/ {formatPageCount(pageCount)}</span>
+				<span className="text-sm text-text-2">/ {formatPageCount(pageCount)}</span>
 			</div>
 
 			<Button
-				variant="outline"
-				size="icon"
+				variant="ghost"
+				size="icon-sm"
 				onClick={handleNext}
 				disabled={disabled || !canGoNext}
 				title={tr.text(UI_Msgs.nextPageShortHint())}
-				className="h-8 w-8"
 			>
-				<Icons.ChevronRight className="h-4 w-4" />
+				<Icons.ChevronRight />
 			</Button>
 
 			<Button
-				variant="outline"
-				size="icon"
+				variant="ghost"
+				size="icon-sm"
 				onClick={handleLast}
 				disabled={disabled || !canGoNext}
 				title={tr.text(UI_Msgs.lastPageHint())}
-				className="h-8 w-8"
 			>
-				<Icons.ChevronsRight className="h-4 w-4" />
+				<Icons.ChevronsRight />
 			</Button>
 		</div>
 	)

@@ -7,8 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
-import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CardDescription } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
@@ -85,8 +83,8 @@ function ValidationWarningsDisplay(props: {
 	return (
 		<>
 			{repeatWarnings.length > 0 && (
-				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-4 my-2 w-auto">
-					<Icons.AlertTriangle className="h-4 w-4" />
+				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-2 my-1.5 w-auto">
+					<Icons.AlertTriangle />
 					<AlertTitle>{tr.text(LL_Msgs.repeatsDetected())}</AlertTitle>
 					<AlertDescription>
 						{tr.text(LL_Msgs.repeatsBlurb())}
@@ -132,8 +130,8 @@ function ValidationWarningsDisplay(props: {
 				</Alert>
 			)}
 			{filterWarnings.size > 0 && (
-				<Alert data-tour="save-warnings" variant="warning" className="mx-4 my-2 w-auto">
-					<Icons.AlertTriangle className="h-4 w-4" />
+				<Alert data-tour="save-warnings" variant="warning" className="mx-2 my-1.5 w-auto">
+					<Icons.AlertTriangle />
 					<AlertTitle>{tr.text(LL_Msgs.filterWarnings())}</AlertTitle>
 					<AlertDescription>
 						{tr.text(LL_Msgs.filterWarningsBlurb())}
@@ -264,8 +262,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 							data-tour="queue-clear"
 							disabled={!isEditing}
 							className="not-group-data-[status=editing]:invisible"
-							variant="secondary"
-							size="icon"
+							variant="ghost"
+							size="icon-sm"
 							onClick={() => clear()}
 						>
 							<Icons.Trash />
@@ -286,8 +284,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 					preload="intent"
 					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
+					className="not-group-data-[status=editing]:invisible"
+					size="sm"
 					disabled={!isEditing}
 				>
 					<Icons.ListPlus />
@@ -303,8 +301,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'GENERATING_VOTE'}
 					preload="intent"
 					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
+					className="not-group-data-[status=editing]:invisible"
+					size="sm"
 					disabled={!isEditing}
 				>
 					<Icons.Vote />
@@ -316,8 +314,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					matchKey={(key) => key.id === 'PASTE_ROTATION'}
 					preload="intent"
 					render={Button}
-					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
-					variant="secondary"
+					className="not-group-data-[status=editing]:invisible"
+					size="sm"
 					disabled={!isEditing}
 				>
 					<Icons.FileText />
@@ -327,10 +325,10 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					<TooltipTrigger asChild>
 						<Button
 							data-tour="queue-reset"
-							size="icon"
+							size="icon-sm"
 							disabled={!isModified}
 							onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
-							variant="secondary"
+							variant="ghost"
 							className="col-start-1 row-start-1 not-group-data-[status=editing]:invisible"
 						>
 							<Icons.Undo />
@@ -342,15 +340,15 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</Tooltip>
 				{/*<Separator orientation="vertical" />*/}
 				<div className="grid">
-					<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
-						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
+					<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
+						<span className="fd-spin" />
 						<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
 					</div>
 					<PermissionDeniedTooltip denied={startEditingDenied}>
 						<Button
 							data-tour="queue-edit"
 							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
-							variant="outline"
+							size="sm"
 							disabled={!!startEditingDenied}
 							onClick={() => setEditing(true)}
 						>
@@ -364,8 +362,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
-											size="icon"
-											variant={forceSave ? 'destructive' : 'secondary'}
+											size="icon-sm"
+											variant={forceSave ? 'destructive' : 'default'}
 											// icon-only, so it needs a name of its own: the tooltip is not one
 											aria-label={tr.text(LL_Msgs.toggleForceSave())}
 											aria-pressed={forceSave}
@@ -383,8 +381,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 									<TooltipTrigger asChild>
 										<Button
 											data-tour="queue-save"
-											className="min-w-37.5"
-											variant={forceSave ? 'destructive' : 'default'}
+											size="sm"
+											className="min-w-28"
+											variant={forceSave ? 'destructive' : 'primary'}
 											onClick={() => setEditing(false)}
 										>
 											<Icons.Save />
@@ -418,7 +417,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</div>
 				<Button
 					data-tour="pool-settings"
-					size="icon"
+					size="icon-sm"
 					variant="ghost"
 					title={tr.text(LL_Msgs.poolConfiguration())}
 					onClick={(e) => openPoolConfig(e.currentTarget)}
@@ -452,20 +451,18 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				setShowWarnings={setShowWarnings}
 				stores={props.stores}
 			/>
-			<CardHeader ref={headerRef} className={cn('flex flex-row items-center justify-between bg-background', props.className)}>
-				<span className="flex items-center space-x-1 w-full">
-					<span className="flex flex-col gap-0.5">
-						<span className="flex items-center space-x-1">
-							<CardTitle>{tr.text(LL_Msgs.upNext())}</CardTitle>
+			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel whitespace-nowrap', props.className)}>
+				<span className="flex items-center gap-2 w-full">
+					<span className="flex items-center gap-2">
+						<span className="flex items-center gap-1.5">
+							<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
 							{isModified && (
-								<CardDescription
+								<span
 									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
-									className=" pl-1 data-[limitreached=true]:text-destructive flex gap-1 items-center"
+									className="font-mono text-2xs text-text-3 data-[limitreached=true]:text-danger"
 								>
-									<span>
-										{queueLength} / {maxQueueSize}
-									</span>
-								</CardDescription>
+									{queueLength} / {maxQueueSize}
+								</span>
 							)}
 						</span>
 						<span className="flex gap-1">
@@ -481,10 +478,10 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 										key={item.label}
 										variant={item.variant as 'added' | 'edited' | 'moved' | 'destructive'}
 										data-visible={item.size > 0}
-										className="data-[visible=false]:invisible font-mono font-semibold tracking-tight flex items-center gap-1"
+										className="data-[visible=false]:hidden font-mono"
 										title={`${item.size} ${item.label}`}
 									>
-										<item.icon className="h-3 w-3" />
+										<item.icon className="size-2.5" />
 										{item.size}
 									</Badge>
 								))}
@@ -497,11 +494,11 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 						stores={props.stores}
 					/>
 				</span>
-			</CardHeader>
+			</div>
 			<StickyGroup stickyRef={headerRef}>
-				<CardContent className="p-0 px-1">
+				<div className="fd-well mx-2 mb-2">
 					<LayerList stores={props.stores} />
-				</CardContent>
+				</div>
 			</StickyGroup>
 		</>
 	)
@@ -574,7 +571,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 				)}{' '}
 				<br />{' '}
 				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
-					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
+					<Button disabled={!!enableUpdatesDenied} size="sm" onClick={() => enableUpdates()}>
 						{tr.text(LL_Msgs.clickHere())}
 					</Button>
 				</PermissionDeniedTooltip>

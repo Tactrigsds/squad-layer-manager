@@ -26,14 +26,15 @@ import type * as RC from './render-context'
 const tr = I18n.ambient
 
 const CHANNEL_STYLES = {
-	ChatAll: { color: 'white', gradientColor: 'rgba(255, 255, 255, 0.1)' },
-	ChatTeam: { color: 'rgb(59, 130, 246)', gradientColor: 'rgba(59, 130, 246, 0.1)' },
-	ChatSquad: { color: 'rgb(34, 197, 94)', gradientColor: 'rgba(34, 197, 94, 0.1)' },
-	ChatAdmin: { color: 'hsl(var(--admin))', gradientColor: 'hsl(var(--admin) / 0.1)' },
-	Broadcast: { color: 'rgb(234, 179, 8)', gradientColor: 'rgba(234, 179, 8, 0.1)' }, // yellow-500
+	ChatAll: { color: '#eeeeee', gradientColor: 'rgba(255, 255, 255, 0.08)' },
+	ChatTeam: { color: '#5b8def', gradientColor: 'rgba(91, 141, 239, 0.12)' },
+	ChatSquad: { color: '#5fb76a', gradientColor: 'rgba(95, 183, 106, 0.12)' },
+	ChatAdmin: { color: '#e6b422', gradientColor: 'rgba(230, 180, 34, 0.14)' },
+	Broadcast: { color: '#e8c24a', gradientColor: 'rgba(232, 194, 74, 0.12)' },
 } as const
 
-const MESSAGE_ROW_CLASS = 'flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline'
+const MESSAGE_ROW_CLASS =
+	'flex gap-1.5 py-[3px] pr-1.5 text-xs text-text w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline'
 
 function messageRowStyle(style: { color: string; gradientColor: string }): React.CSSProperties {
 	return { borderRightColor: style.color, backgroundImage: `linear-gradient(to left, ${style.gradientColor}, transparent)` }
@@ -118,8 +119,8 @@ function ChatMessage(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnrich
 	const fromDisplay = ((): React.ReactNode => {
 		if (event.type === 'ADMIN_BROADCAST') {
 			if (event.player) return <Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />
-			if (event.from === 'RCON') return <span className="text-red-400">{tr.text(CHAT_Msgs.broadcastFromRcon())}</span>
-			if (event.from === 'unknown') return <span className="text-yellow-400/60">{tr.text(CHAT_Msgs.broadcastFromUnknown())}</span>
+			if (event.from === 'RCON') return <span className="text-[#ef7c7a]">{tr.text(CHAT_Msgs.broadcastFromRcon())}</span>
+			if (event.from === 'unknown') return <span className="text-warn/60">{tr.text(CHAT_Msgs.broadcastFromUnknown())}</span>
 			return null
 		}
 		return (
@@ -150,7 +151,7 @@ function ChatMessage(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnrich
 function WarnsAggregated(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'WARNS_AGGREGATED' }> }) {
 	const { ctx, event } = props
 	const count = event.warns.length
-	const iconElt = <Icon name="AlertTriangle" className="h-4 w-4 text-yellow-500 shrink-0" />
+	const iconElt = <Icon name="AlertTriangle" className="h-4 w-4 text-warn shrink-0" />
 
 	if (count <= 4) {
 		const warnees = event.warns.map((warn, i) => (
@@ -217,7 +218,7 @@ function NewGame(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, 
 
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
-			<Atoms.EventLine time={event.time} icon={<Icon name="Play" className="h-4 w-4 text-green-500 shrink-0" />} className="py-0.5">
+			<Atoms.EventLine time={event.time} icon={<Icon name="Play" className="h-4 w-4 text-ok shrink-0" />} className="py-0.5">
 				{tr.richText(
 					CHAT_Msgs.newGameLine(
 						label,
@@ -291,11 +292,11 @@ function RoundEnded(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriche
 	return (
 		<Atoms.EventLine
 			time={event.time}
-			icon={<Icon name="Flag" className="h-4 w-4 text-blue-500 shrink-0" />}
+			icon={<Icon name="Flag" className="h-4 w-4 text-info shrink-0" />}
 			className="[&_strong]:font-semibold"
 		>
 			{winnerId === null
-				? tr.richText(CHAT_Msgs.roundEndedDraw(layerElt(), <span className="text-yellow-400">{tr.text(CHAT_Msgs.draw())}</span>))
+				? tr.richText(CHAT_Msgs.roundEndedDraw(layerElt(), <span className="text-warn">{tr.text(CHAT_Msgs.draw())}</span>))
 				: tr.richText(
 						CHAT_Msgs.roundEndedWinner(
 							layerElt(),
@@ -316,18 +317,18 @@ function WoundedOrDied(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnri
 		if (event.type === 'PLAYER_DIED') {
 			switch (event.variant) {
 				case 'suicide':
-					return <Icon name="Skull" className="h-4 w-4 text-orange-400 shrink-0" />
+					return <Icon name="Skull" className="h-4 w-4 text-warn shrink-0" />
 				case 'teamkill':
-					return <Icon name="Skull" className="h-4 w-4 text-red-500 shrink-0" />
+					return <Icon name="Skull" className="h-4 w-4 text-danger shrink-0" />
 				case 'normal':
 					return <Icon name="Skull" className="h-4 w-4 text-foreground shrink-0" />
 			}
 		}
 		switch (event.variant) {
 			case 'suicide':
-				return <Icon name="HeartPulse" className="h-4 w-4 text-orange-400 shrink-0" />
+				return <Icon name="HeartPulse" className="h-4 w-4 text-warn shrink-0" />
 			case 'teamkill':
-				return <Icon name="HeartPulse" className="h-4 w-4 text-red-500 shrink-0" />
+				return <Icon name="HeartPulse" className="h-4 w-4 text-danger shrink-0" />
 			case 'normal':
 				return null
 		}
@@ -384,7 +385,7 @@ function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, {
 	const layer = () => (
 		<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={event.layerId} teamParity={0} className="text-xs" />
 	)
-	const iconElt = <Icon name="Map" className="h-4 w-4 text-blue-400 shrink-0" />
+	const iconElt = <Icon name="Map" className="h-4 w-4 text-info shrink-0" />
 	if (event.source?.type === 'observed') {
 		return (
 			<Atoms.EventLine time={event.time} icon={iconElt} className="py-0.5">
@@ -444,7 +445,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			return <ChatMessage ctx={ctx} event={event} />
 		case 'PLAYER_CONNECTED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="UserPlus" className="h-4 w-4 text-green-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="UserPlus" className="h-4 w-4 text-ok shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerConnected(
 							<Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />,
@@ -457,7 +458,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_DISCONNECTED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="UserMinus" className="h-4 w-4 text-red-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="UserMinus" className="h-4 w-4 text-danger shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerDisconnected(<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />),
 					)}
@@ -465,7 +466,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'POSSESSED_ADMIN_CAMERA':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Camera" className="h-4 w-4 text-purple-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Camera" className="h-4 w-4 text-[#b58cff] shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.enteredAdminCamera(<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />),
 					)}
@@ -473,7 +474,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'UNPOSSESSED_ADMIN_CAMERA':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="CameraOff" className="h-4 w-4 text-purple-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="CameraOff" className="h-4 w-4 text-[#b58cff] shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.exitedAdminCamera(<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />),
 					)}
@@ -481,7 +482,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_KICKED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="UserX" className="h-4 w-4 text-orange-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="UserX" className="h-4 w-4 text-warn shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerKicked(
 							<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />,
@@ -492,7 +493,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'SQUAD_CREATED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Users" className="h-4 w-4 text-blue-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Users" className="h-4 w-4 text-info shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.squadCreated(
 							<Atoms.PlayerDisplay ctx={ctx} player={event.creator} matchId={event.matchId} />,
@@ -500,12 +501,12 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 							<Atoms.MatchTeamDisplay ctx={ctx} matchId={event.matchId} teamId={event.squad.teamId} />,
 						),
 					)}
-					{event.squad.locked ? <Icon name="Lock" className="h-3 w-3 text-red-600 inline-block ml-1" /> : null}
+					{event.squad.locked ? <Icon name="Lock" className="h-3 w-3 text-danger inline-block ml-1" /> : null}
 				</Atoms.EventLine>
 			)
 		case 'PLAYER_BANNED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Ban" className="h-4 w-4 text-red-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Ban" className="h-4 w-4 text-danger shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerBanned(<Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />, event.interval),
 					)}
@@ -513,7 +514,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_WARNED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="AlertTriangle" className="h-4 w-4 text-yellow-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="AlertTriangle" className="h-4 w-4 text-warn shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerWarned(
 							<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />,
@@ -536,9 +537,9 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 					time={event.time}
 					icon={
 						locked ? (
-							<Icon name="Lock" className="h-4 w-4 text-yellow-500 shrink-0" />
+							<Icon name="Lock" className="h-4 w-4 text-warn shrink-0" />
 						) : (
-							<Icon name="LockOpen" className="h-4 w-4 text-green-500 shrink-0" />
+							<Icon name="LockOpen" className="h-4 w-4 text-ok shrink-0" />
 						)
 					}
 				>
@@ -555,7 +556,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			return (
 				<Atoms.EventLine
 					time={event.time}
-					icon={<Icon name="Pencil" className="h-4 w-4 text-cyan-400 shrink-0" />}
+					icon={<Icon name="Pencil" className="h-4 w-4 text-info shrink-0" />}
 					className="[&_strong]:font-medium [&_strong]:text-foreground"
 				>
 					{tr.richText(
@@ -576,7 +577,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			// don't render unassigned, and a player who was previously unassigned is a post-match team swap
 			if (event.newTeamId === null || event.prevTeamId === null) return null
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Repeat" className="h-4 w-4 text-purple-400 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Repeat" className="h-4 w-4 text-[#b58cff] shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerChangedTeam(
 							<Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />,
@@ -587,7 +588,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_LEFT_SQUAD':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="LogOut" className="h-4 w-4 text-orange-400 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="LogOut" className="h-4 w-4 text-warn shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerLeftSquad(
 							<Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />,
@@ -599,7 +600,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'SQUAD_DISBANDED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="UsersRound" className="h-4 w-4 text-red-400 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="UsersRound" className="h-4 w-4 text-[#ef7c7a] shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.squadWasDisbanded(
 							<Atoms.SquadDisplay ctx={ctx} squad={event.squad} matchId={event.matchId} showName showTeam />,
@@ -609,7 +610,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_JOINED_SQUAD':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="LogIn" className="h-4 w-4 text-green-400 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="LogIn" className="h-4 w-4 text-ok shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerJoinedSquad(
 							<Atoms.PlayerDisplay ctx={ctx} player={event.player} matchId={event.matchId} />,
@@ -620,7 +621,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'PLAYER_PROMOTED_TO_LEADER':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Crown" className="h-4 w-4 text-yellow-400 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Crown" className="h-4 w-4 text-warn shrink-0" />}>
 					{tr.richText(
 						CHAT_Msgs.playerPromotedToLeader(
 							<Atoms.PlayerDisplay ctx={ctx} showTeam showSquad player={event.player} matchId={event.matchId} />,
@@ -636,7 +637,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 		case 'INGAME_VOTE_STARTED':
 			if (event.container !== 'Vote_NextLayer') return null
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Vote" className="h-4 w-4 text-yellow-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Vote" className="h-4 w-4 text-warn shrink-0" />}>
 					<span>{tr.text(CHAT_Msgs.ingameVoteStarted())}</span>
 					{event.choices.length > 0 && (
 						<span className="text-muted-foreground">{tr.text(CHAT_Msgs.ingameVoteChoices(event.choices))}</span>
@@ -645,13 +646,13 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 			)
 		case 'RCON_CONNECTED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Plug" className="h-4 w-4 text-green-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Plug" className="h-4 w-4 text-ok shrink-0" />}>
 					{event.reconnected ? tr.text(CHAT_Msgs.rconReconnected()) : tr.text(CHAT_Msgs.rconFirstConnected())}
 				</Atoms.EventLine>
 			)
 		case 'RCON_DISCONNECTED':
 			return (
-				<Atoms.EventLine time={event.time} icon={<Icon name="Unplug" className="h-4 w-4 text-red-500 shrink-0" />}>
+				<Atoms.EventLine time={event.time} icon={<Icon name="Unplug" className="h-4 w-4 text-danger shrink-0" />}>
 					{tr.text(CHAT_Msgs.rconDisconnected())}
 				</Atoms.EventLine>
 			)

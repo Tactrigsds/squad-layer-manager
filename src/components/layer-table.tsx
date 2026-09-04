@@ -2,7 +2,7 @@ import type { Column, ColumnDef, Row } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { Table as CoreTable } from '@tanstack/table-core'
 import * as Icons from 'lucide-react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices } from 'lucide-react'
 import React from 'react'
 import { flushSync } from 'react-dom'
 
@@ -40,7 +40,6 @@ import { TablePagination } from './table-pagination'
 import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
-import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
@@ -102,31 +101,34 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			}
 
 			return (
-				<Button
-					className="data-[sort=true]:text-accent-foreground w-full justify-between pl-4"
-					size="sm"
+				<button
+					type="button"
+					className={cn(
+						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-left hover:text-text [&_svg]:size-2.5 [&_svg]:text-text-3',
+						isNumeric && 'justify-end',
+						sort && 'text-text [&_svg]:text-text',
+					)}
 					data-sort={!!sort}
-					variant="ghost"
 					title={colDef.displayName}
 					onClick={handleClick}
 				>
 					{colDef.shortName ?? colDef.displayName}
-					{!sort && <ArrowUpDown className="ml-2 h-4 w-4" />}
-					{sort?.direction === 'ASC' && <ArrowUp className="ml-2 h-4 w-4" />}
-					{sort?.direction === 'DESC' && <ArrowDown className="ml-2 h-4 w-4" />}
+					{!sort && <ArrowUpDown className="opacity-0 group-hover/th:opacity-100" />}
+					{sort?.direction === 'ASC' && <ArrowUp />}
+					{sort?.direction === 'DESC' && <ArrowDown />}
 					{sort?.direction === 'ASC:ABS' && (
-						<span className="ml-2 flex items-center">
-							<ArrowUp className="h-4 w-4" />
-							<span className="text-xs">{tr.text(L_Msgs.sortByMagnitude())}</span>
+						<span className="flex items-center">
+							<ArrowUp />
+							<span className="text-2xs">{tr.text(L_Msgs.sortByMagnitude())}</span>
 						</span>
 					)}
 					{sort?.direction === 'DESC:ABS' && (
-						<span className="ml-2 flex items-center">
-							<ArrowDown className="h-4 w-4" />
-							<span className="text-xs">{tr.text(L_Msgs.sortByMagnitude())}</span>
+						<span className="flex items-center">
+							<ArrowDown />
+							<span className="text-2xs">{tr.text(L_Msgs.sortByMagnitude())}</span>
 						</span>
 					)}
-				</Button>
+				</button>
 			)
 		},
 		cell: function ValueColCell(info) {
@@ -134,7 +136,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			const matchDescriptors = info.row.original.matchDescriptors
 			if (colDef.name === 'Layer') {
 				return (
-					<div className="pl-4">
+					<div className="px-2 font-mono">
 						<MapLayerDisplay
 							layer={L.toLayer(info.row.original.id).Layer}
 							extraLayerStyles={{
@@ -148,7 +150,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			}
 
 			const emptyElt = (
-				<div className="flex w-full justify-center">
+				<div className="flex w-full justify-center text-text-3">
 					<span>-</span>
 				</div>
 			)
@@ -167,7 +169,9 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				),
 			)
 
-			const valueElt = (value: React.ReactNode) => <div className={`pl-4 ${extraStyles}`}>{value}</div>
+			const valueElt = (value: React.ReactNode) => (
+				<div className={cn('px-2', isNumeric && 'fd-num text-right font-mono text-xs', extraStyles)}>{value}</div>
+			)
 			const value = info.getValue()
 			if (value === null || value === undefined) return emptyElt
 			let elt: React.ReactNode
@@ -232,7 +236,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 				}
 
 				return (
-					<div className="pl-4">
+					<div className="px-2">
 						<Checkbox
 							checked={checkState}
 							disabled={disabled}
@@ -250,12 +254,15 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 					LayerTablePrt.Sel.rowSelectionStatus(row.id),
 				)
 
-				return (
+				return blockedByPool ? (
+					<span className="fd-cbx text-text-3 opacity-45" title={tr.text(SM_Msgs.selectRow())}>
+						<Icons.Ban />
+					</span>
+				) : (
 					<Checkbox
 						checked={isSelected}
 						disabled={isUnselectable}
 						// no handler here because we're already handling onClick on the row
-						className={blockedByPool ? 'invisible' : ''}
 						aria-label={tr.text(SM_Msgs.selectRow())}
 					/>
 				)
@@ -296,8 +303,8 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 	// Always include constraints column
 	const constraintsCol = columnHelper.accessor('constraints', {
 		header: () => (
-			<span title={tr.text(L_Msgs.layerIndicatorsColumn())}>
-				<Icons.Flag />
+			<span className="flex justify-center" title={tr.text(L_Msgs.layerIndicatorsColumn())}>
+				<Icons.Flag className="size-3" />
 			</span>
 		),
 		enableHiding: false,
@@ -317,7 +324,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 						itemParity={teamParity}
 						matchDescriptors={row.original.constraints.matchDescriptors}
 						queriedConstraints={row.original.constraints.queriedConstraints}
-						height={32}
+						height={22}
 					/>
 				</span>
 			)
@@ -397,9 +404,7 @@ export default function LayerTable(props: {
 		() => (
 			<TableRow className="pointer-events-none">
 				{columns.map((column) => (
-					<TableCell key={column.id} className={column.id === 'select' ? 'pl-4' : undefined} style={{ width: column.getSize() }}>
-						<div style={{ height: '32px' }} />
-					</TableCell>
+					<TableCell key={column.id} style={{ width: column.getSize() }} />
 				))}
 			</TableRow>
 		),
@@ -416,16 +421,16 @@ export default function LayerTable(props: {
 
 	return (
 		<LayerTableCellCtx.Provider value={cellDisplayCtx}>
-			<div className="space-y-2">
-				<div className={cn('rounded-md border', !props.compact && 'min-w-250')}>
-					<LayerTableControlPanel {...props} table={table} />
-					{/*--------- table ---------*/}
-					<Table>
+			<div className={cn('flex flex-col gap-1.5 min-w-0', !props.compact && 'min-w-[660px]')}>
+				<LayerTableControlPanel {...props} table={table} />
+				{/*--------- table ---------*/}
+				<div className="fd-well overflow-hidden">
+					<Table className="[&_th]:px-0 [&_td]:px-0">
 						<TableHeader>
 							{table.getHeaderGroups().map((headerGroup) => (
 								<TableRow data-tour="table-sort" key={headerGroup.id}>
 									{headerGroup.headers.map((header) => (
-										<TableHead className="px-0" key={header.id} style={{ width: header.getSize() }}>
+										<TableHead className="group/th" key={header.id} style={{ width: header.getSize() }}>
 											{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 										</TableHead>
 									))}
@@ -513,7 +518,8 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 			<ContextMenuTrigger asChild>
 				<TableRow
 					key={row.id}
-					className="select-none h-8 data-disabled:hover:bg-unset data-disabled:hover:bg-unset data-disabled:bg-grey-800"
+					className="select-none data-disabled:text-text-3 data-disabled:[&_td]:bg-transparent!"
+					data-state={isSelected ? 'selected' : undefined}
 					data-disabled={orUndef(isUnselectable && !isSelected)}
 					onClick={(e) => {
 						if (isUnselectable) return
@@ -537,7 +543,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 				>
 					{visibleCells.map((cell) => (
 						<TableCell
-							className={cell.column.id === 'select' ? 'pl-4 h-full' : 'h-full'}
+							className={cell.column.id === 'select' ? 'px-2!' : undefined}
 							key={cell.id}
 							style={{ width: cell.column.getSize() }}
 						>
@@ -628,9 +634,8 @@ export function LayerTableControlPanel(props: {
 
 	return (
 		<>
-			{/* pl-1.5 for near-perfect spacing with checkboxes */}
-			<div className="flex items-center justify-between pl-1.5 pr-2">
-				<span className="flex h-10 items-center space-x-2">
+			<div className="flex items-center justify-between gap-2 h-(--ctl) whitespace-nowrap">
+				<span className="flex items-center gap-1.5">
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
 						<ComboBoxMulti
@@ -660,7 +665,7 @@ export function LayerTableControlPanel(props: {
 							restrictValueSize={false}
 							reset={defaultVisibleColumns}
 						>
-							<Button variant="ghost" size="icon" title={tr.text(L_Msgs.toggleColumns())}>
+							<Button variant="ghost" size="icon-sm" title={tr.text(L_Msgs.toggleColumns())}>
 								<Icons.Columns3 />
 							</Button>
 						</ComboBoxMulti>
@@ -670,6 +675,8 @@ export function LayerTableControlPanel(props: {
 						<PermissionDeniedTooltip denied={forceSelectDenied}>
 							<Toggle
 								size="sm"
+								variant="default"
+								className="fd-btn-ghost fd-btn-ico"
 								title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
 								aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
 								pressed={rawSetDialogOpen}
@@ -681,10 +688,10 @@ export function LayerTableControlPanel(props: {
 						</PermissionDeniedTooltip>
 					)}
 
-					<Separator orientation="vertical" className="h-full min-h-0" />
+					<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
 
 					{/*--------- show selected ---------*/}
-					<div data-tour="table-show-selected" className="flex items-center space-x-1">
+					<div data-tour="table-show-selected" className="flex items-center gap-1.5">
 						<Switch
 							id={showSelectedId}
 							checked={frameState.showSelectedLayers}
@@ -696,49 +703,51 @@ export function LayerTableControlPanel(props: {
 								})
 							}
 						/>
-						<Label htmlFor={showSelectedId}>{tr.text(L_Msgs.showSelected())}</Label>
+						<Label htmlFor={showSelectedId} className="fd-lbl-plain">
+							{tr.text(L_Msgs.showSelected())}
+						</Label>
 					</div>
 					<Button
 						variant="ghost"
-						size="icon"
+						size="icon-sm"
 						disabled={frameState.selectedLayerIds.length === 0}
 						onClick={() => {
 							LayerTablePrt.Actions.resetSelected(props.stores)
 						}}
 						title={tr.text(L_Msgs.resetSelectedLayers())}
 					>
-						<Icons.Trash className="h-4 w-4" />
+						<Icons.Trash />
 					</Button>
-					<p
-						className="whitespace-nowrap text-muted-foreground data-[hide=true]:invisible"
-						data-hide={frameState.selectedLayerIds.length === 0}
-					>
+					<p className="whitespace-nowrap text-text-2 data-[hide=true]:invisible" data-hide={frameState.selectedLayerIds.length === 0}>
 						{tr.text(L_Msgs.selectedCount(frameState.selectedLayerIds.length))}
 					</p>
 				</span>
-				<span className="flex h-10 items-center space-x-2 ">
+				<span className="flex items-center gap-1.5">
 					{props.extraPanelItems}
 					<Button
 						data-tour="table-randomize"
 						onClick={() => LayerTablePrt.Actions.randomize(props.stores)}
 						disabled={frameState.isFetching}
 						variant="ghost"
-						size="icon"
+						size="icon-sm"
 						data-enabled={randomized}
-						className="data-[enabled=true]:visible invisible"
+						className="data-[enabled=false]:hidden"
+						title={tr.text(L_Msgs.randomize())}
 					>
 						<Dices />
 					</Button>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<div data-tour="table-randomize" className="flex items-center space-x-1">
+							<div data-tour="table-randomize" className="flex items-center gap-1.5">
 								<Switch
 									disabled={frameState.showSelectedLayers}
 									checked={randomized}
 									onCheckedChange={() => toggleRandomize()}
 									id={toggleRandomizeId}
 								/>
-								<Label htmlFor={toggleRandomizeId}>{tr.text(L_Msgs.randomize())}</Label>
+								<Label htmlFor={toggleRandomizeId} className="fd-lbl-plain">
+									{tr.text(L_Msgs.randomize())}
+								</Label>
 							</div>
 						</TooltipTrigger>
 						<TooltipContent>{tr.text(L_Msgs.randomizeHint())}</TooltipContent>
@@ -815,7 +824,7 @@ function SetRawLayerDialog(props: {
 	return (
 		props.open && (
 			<div
-				className="flex items-center space-x-1 whitespace-nowrap w-full px-1"
+				className="flex items-center gap-1 whitespace-nowrap w-full"
 				onKeyDown={(e) => {
 					if (e.key === 'Enter' && e.target === inputRef.current) {
 						e.preventDefault()
@@ -839,25 +848,24 @@ function SetRawLayerDialog(props: {
 								data-layerFound={validLayerDebounced && (layersKnownRes.data?.[0].exists ?? false)}
 								className="invisible data-[layerFound=true]:visible"
 							>
-								<Icons.CheckSquare className="text-info" />
+								<Icons.CheckSquare className="size-3.5 text-info" />
 							</Label>
 							<Button
 								variant="ghost"
-								className="h-6 w-6 data-[singleOnly=true]:invisible"
+								className="data-[singleOnly=true]:invisible"
 								data-singleOnly={props.maxSelectedLayers === 1}
-								size="icon"
+								size="icon-sm"
 								onClick={() => {
 									setMultiSetLayerDialogOpen(true)
 								}}
 							>
-								<Icons.Expand className="h-4 w-4" />
+								<Icons.Expand />
 							</Button>
 						</div>
 					}
 				/>
 				<Button
 					disabled={!validLayer}
-					variant="secondary"
 					size="icon"
 					onClick={() => {
 						props.onSubmit([validLayer!])
@@ -889,10 +897,10 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 	)
 
 	return (
-		<div data-tour="table-pagination" className="flex items-center justify-between space-x-4 py-2">
-			<div className="flex items-center space-x-2">
+		<div data-tour="table-pagination" className="flex items-center justify-between gap-4 whitespace-nowrap">
+			<div className="flex items-center gap-2">
 				{initStatus.status === 'ready' && !frameState.isFetching && (
-					<div className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+					<div className="text-sm text-text-2 [&_strong]:font-semibold [&_strong]:text-foreground">
 						{(frameState.totalRowCount ?? 0) > 0 ? (
 							tr.richText(L_Msgs.matchedLayers((frameState.totalRowCount ?? 0).toLocaleString()))
 						) : (
@@ -902,9 +910,9 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 				)}
 				<div
 					data-loading={frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'}
-					className="flex items-center space-x-2 invisible data-[loading=true]:visible "
+					className="flex items-center gap-2 invisible data-[loading=true]:visible "
 				>
-					<LoaderCircle className="h-4 w-4 animate-spin" />
+					<span className="fd-spin" />
 					{initStatus.status === 'initializing' && <p className={Typo.Muted}>{tr.text(L_Msgs.initializingDatabase())}</p>}
 					{initStatus.status === 'downloading-layers' && <p className={Typo.Muted}>{tr.text(L_Msgs.downloadingLayers())}</p>}
 				</div>

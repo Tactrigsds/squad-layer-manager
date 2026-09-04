@@ -255,11 +255,12 @@ export function getAllExtraStyles(
 	return extraStyles
 }
 
+// four hues clear of every status hue: raw slots teal / coral, normalized violet / sky (theme.css --team*)
 export const TEAM_COLORS = {
-	teamA: '#9932CC',
-	teamB: '#00BFFF',
-	team1: 'teal',
-	team2: 'coral',
+	teamA: '#a985f5',
+	teamB: '#52b8f0',
+	team1: '#3ec6b4',
+	team2: '#f28b5c',
 }
 
 export function getTeamColor(teamId: SM.TeamId, parity: number, normalize: boolean) {

@@ -216,16 +216,13 @@ export function SettingsSavePanel({
 				</span>
 			)}
 			{totalDenied > 0 && (
-				<span
-					className="flex items-center gap-0.5 text-sm font-medium text-amber-500"
-					title={tr.text(SETTINGS_Msgs.deniedChangesHint())}
-				>
+				<span className="flex items-center gap-0.5 text-sm font-medium text-warn" title={tr.text(SETTINGS_Msgs.deniedChangesHint())}>
 					<Icons.ShieldAlert className="mr-1 h-4 w-4" />
 					{tr.text(SETTINGS_Msgs.deniedCount(totalDenied))}
 					<Button
 						variant="ghost"
 						size="icon"
-						className="ml-1 h-6 w-6 text-amber-500"
+						className="ml-1 h-6 w-6 text-warn"
 						title={tr.text(SETTINGS_Msgs.previousDeniedChange())}
 						onClick={() => navigateDenied(-1)}
 					>
@@ -234,7 +231,7 @@ export function SettingsSavePanel({
 					<Button
 						variant="ghost"
 						size="icon"
-						className="h-6 w-6 text-amber-500"
+						className="h-6 w-6 text-warn"
 						title={tr.text(SETTINGS_Msgs.nextDeniedChange())}
 						onClick={() => navigateDenied(1)}
 					>

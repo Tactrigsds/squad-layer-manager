@@ -15,7 +15,7 @@ const PopoverAnchor = PopoverPrimitive.Anchor
 const PopoverContent = React.forwardRef<
 	React.ElementRef<typeof PopoverPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = 'center', sideOffset = 4, children, style, ...props }, ref) => {
+>(({ className, align = 'center', sideOffset = 4, collisionPadding = 8, children, style, ...props }, ref) => {
 	const draggableWindowOutletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
 	const [contentNode, setContentNode] = React.useState<HTMLDivElement | null>(null)
@@ -46,14 +46,16 @@ const PopoverContent = React.forwardRef<
 
 	const contentZIndex = useZIndex(ZI_OFFSETS.POPOVER)
 
+	// never wider or taller than the viewport leaves: on a phone a popover is the whole screen minus a gutter
 	return (
 		<PopoverPrimitive.Portal>
 			<PopoverPrimitive.Content
 				ref={combinedRef}
 				align={align}
 				sideOffset={sideOffset}
+				collisionPadding={collisionPadding}
 				className={cn(
-					'w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+					'fd-pop w-72 max-w-[calc(100vw-16px)] max-h-(--radix-popover-content-available-height) overflow-y-auto outline-hidden',
 					className,
 				)}
 				style={{ zIndex: contentZIndex, ...style }}

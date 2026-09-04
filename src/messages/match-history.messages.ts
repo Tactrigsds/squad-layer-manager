@@ -48,7 +48,7 @@ export const woundBreakdown = def('{wounds} wounds dealt, {wounded} taken', (wou
 	wounded,
 }))
 
-export const teamBreakdowns = def('Team Breakdowns')
+export const teamBreakdowns = def('Teams Breakdown')
 
 // the breakdown's own help, behind the "?" beside its heading rather than on every segment's tooltip
 

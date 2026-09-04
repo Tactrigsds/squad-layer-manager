@@ -7,7 +7,7 @@ import type * as React from 'react'
 
 export function UnresolvedLabel({ id }: { id: string }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-500">
+		<span className="inline-flex items-center gap-1.5 text-warn dark:text-warn">
 			<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
 			<span className="font-mono">{id}</span>
 		</span>
@@ -15,5 +15,5 @@ export function UnresolvedLabel({ id }: { id: string }) {
 }
 
 export function UnresolvedNote({ children }: { children: React.ReactNode }) {
-	return <p className="text-xs text-amber-600 dark:text-amber-500">{children}</p>
+	return <p className="text-xs text-warn dark:text-warn">{children}</p>
 }

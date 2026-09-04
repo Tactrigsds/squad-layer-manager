@@ -80,3 +80,5 @@ export const invertHint = def('Ctrl+Click to invert')
 export const compact = def('Compact')
 
 export const compactHint = def('Collapse short maps and lists onto one line')
+
+export const done = def('Done')

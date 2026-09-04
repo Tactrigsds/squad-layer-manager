@@ -198,5 +198,5 @@ export function ReasonMessagePreview(props: {
 
 // the amber "this is what gets delivered in-game" box, shared with the settings-page reason preview
 export function MessagePreviewBox(props: { children: React.ReactNode }) {
-	return <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs whitespace-pre-wrap">{props.children}</p>
+	return <p className="rounded border border-amber-500/40 bg-warn/10 p-2 text-xs whitespace-pre-wrap">{props.children}</p>
 }

@@ -58,16 +58,16 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 				{options.map((option) => (
 					<div key={option.id} className="mb-4">
 						<div className="mb-2 flex flex-col items-start justify-between space-y-1">
-							<span className={`text-nowrap font-semibold ${option.isWinner ? 'text-green-600' : ''}`}>
+							<span className={`text-nowrap font-semibold ${option.isWinner ? 'text-ok' : ''}`}>
 								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>
-							<span className="text-sm text-gray-500">{tr.text(V_Msgs.choiceVotes(option.votes, option.percentage ?? 0))}</span>
+							<span className="text-sm text-text-3">{tr.text(V_Msgs.choiceVotes(option.votes, option.percentage ?? 0))}</span>
 						</div>
 						<Progress value={option.percentage ?? 0} className="h-2 data-[winner]bg-green-100" data-winner={option.isWinner} />
 					</div>
 				))}
-				<div className="mt-4 text-center text-sm text-gray-500">
+				<div className="mt-4 text-center text-sm text-text-3">
 					{tr.text(V_Msgs.turnout(tally.totalVotes, serverInfo?.playerCount ?? 0, tally.turnoutPercentage))}
 				</div>
 			</CardContent>

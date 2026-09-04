@@ -29,7 +29,7 @@ import * as SettingsClient from '@/systems/settings.client'
 // The advanced query tree editor: the filter card's visual idiom (depth colours, one compact row per node,
 // inline adds) over the history vocabulary, plus the two node kinds the filter AST does not have.
 
-const depthColors = ['border-red-700', 'border-green-700', 'border-blue-700', 'border-yellow-700']
+const depthColors = ['border-danger', 'border-ok', 'border-info', 'border-warn']
 
 type EditorProps = { stores: HistoryFrame.KeyProp }
 

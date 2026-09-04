@@ -242,7 +242,7 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 					<p className="text-xs text-muted-foreground">{info.description}</p>
 					{info.error && <p className="text-xs text-destructive whitespace-pre-wrap">{info.error}</p>}
 					{conflicts.map((conflict) => (
-						<p key={`${conflict.commandId} ${conflict.trigger}`} className="text-xs text-yellow-600">
+						<p key={`${conflict.commandId} ${conflict.trigger}`} className="text-xs text-warn">
 							{tr.text(PLUGINS_Msgs.commandTriggerTaken(conflict.trigger, conflict.ownedBy))}
 						</p>
 					))}

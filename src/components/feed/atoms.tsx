@@ -260,7 +260,7 @@ export function MatchTeamDisplay(props: MatchTeamProps & { ctx: RC.RenderCtx }) 
 
 // -------- short layer name --------
 
-const BACKFILLED_STYLE = 'text-gray-500'
+const BACKFILLED_STYLE = 'text-text-3'
 
 export type ShortLayerNameProps = {
 	normalized: boolean
@@ -389,7 +389,7 @@ export function PlayerDisplay(props: PlayerDisplayProps & { ctx: RC.RenderCtx })
 			)}
 			{player.isLeader && (
 				<span title={I18n.ambient.text(SM_Msgs.squadLeaderBadge())}>
-					<Icon name="Star" className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+					<Icon name="Star" className="h-3 w-3 text-warn fill-warn shrink-0" />
 				</span>
 			)}
 			<button
@@ -475,7 +475,7 @@ export function SquadDisplay(props: SquadDisplayProps & { ctx: RC.RenderCtx }) {
 
 // -------- the row shell --------
 
-const EVENT_LINE_CLASS = 'flex gap-2 py-1 text-xs text-muted-foreground w-full min-w-0 items-baseline'
+const EVENT_LINE_CLASS = 'flex gap-1.5 py-[3px] text-xs text-text-2 w-full min-w-0 items-baseline'
 
 /**
  * Shared layout for a feed entry: a non-shrinking time + icon gutter, then a text column that wraps.

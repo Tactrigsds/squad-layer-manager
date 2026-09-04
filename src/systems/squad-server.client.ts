@@ -216,14 +216,26 @@ export namespace SelectedServerActions {
 }
 
 export type DashboardTab = 'layers' | 'secondary'
+export type PhoneScreen = 'matches' | 'queue' | 'teams' | 'activity'
 
-// active tab for the server dashboard's single-column layout. Lives here (rather than in the component) so the NavBar can
-// drive it -- in single-column mode the tab switcher replaces the "Server" nav item instead of rendering as its own cluster.
-export const DashboardTabStore = Zus.createStore<{ activeTab: DashboardTab }>(() => ({ activeTab: 'layers' }))
+// active tab for the server dashboard's single-column layout, and the screen for the phone layout. Lives here (rather
+// than in the component) so the NavBar can drive it -- in single-column mode the tab switcher replaces the "Server" nav
+// item instead of rendering as its own cluster. The two track each other: a request for Server Activity means the
+// activity screen on a phone, and the layers side means whichever of queue / teams was last showing.
+export const DashboardTabStore = Zus.createStore<{ activeTab: DashboardTab; phoneScreen: PhoneScreen }>(() => ({
+	activeTab: 'layers',
+	phoneScreen: 'queue',
+}))
 
 export namespace DashboardTabActions {
 	export function setActiveTab(tab: DashboardTab) {
-		DashboardTabStore.setState({ activeTab: tab })
+		DashboardTabStore.setState((s) => ({
+			activeTab: tab,
+			phoneScreen: tab === 'secondary' ? 'activity' : s.phoneScreen === 'teams' ? 'teams' : 'queue',
+		}))
+	}
+	export function setPhoneScreen(screen: PhoneScreen) {
+		DashboardTabStore.setState({ phoneScreen: screen, activeTab: screen === 'activity' ? 'secondary' : 'layers' })
 	}
 }
 

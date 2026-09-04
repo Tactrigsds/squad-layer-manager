@@ -22,11 +22,11 @@ import { PluginErrorBoundary } from './plugin-slot.tsx'
 // The icons a plugin may pick from. Fixed markup per name so a plugin line looks like every other feed line,
 // and so no plugin has to ship an icon set.
 const PLUGIN_EVENT_ICONS: Record<PluginsClient.EventIcon, React.ReactNode> = {
-	plugin: <Icon name="Puzzle" className="h-4 w-4 text-slate-400 shrink-0" />,
-	info: <Icon name="Info" className="h-4 w-4 text-blue-400 shrink-0" />,
-	success: <Icon name="CheckCircle2" className="h-4 w-4 text-green-500 shrink-0" />,
-	warning: <Icon name="AlertTriangle" className="h-4 w-4 text-amber-500 shrink-0" />,
-	error: <Icon name="XCircle" className="h-4 w-4 text-red-500 shrink-0" />,
+	plugin: <Icon name="Puzzle" className="h-4 w-4 text-text-3 shrink-0" />,
+	info: <Icon name="Info" className="h-4 w-4 text-info shrink-0" />,
+	success: <Icon name="CheckCircle2" className="h-4 w-4 text-ok shrink-0" />,
+	warning: <Icon name="AlertTriangle" className="h-4 w-4 text-warn shrink-0" />,
+	error: <Icon name="XCircle" className="h-4 w-4 text-danger shrink-0" />,
 }
 
 export function PluginEventRow(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }> }) {

@@ -75,7 +75,7 @@ export default function LayerDisplay(props: {
 		badges.push(
 			<Tooltip key="is unknown layer">
 				<TooltipTrigger>
-					<Icons.ShieldBan className="text-red-800" />
+					<Icons.ShieldBan className="text-danger" />
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
@@ -88,7 +88,7 @@ export default function LayerDisplay(props: {
 		badges.push(
 			<Tooltip key="layer doesn't exist">
 				<TooltipTrigger>
-					<Icons.ShieldOff className="text-red-500" />
+					<Icons.ShieldOff className="text-danger" />
 				</TooltipTrigger>
 				<TooltipContent>
 					<b>{tr.text(L_Msgs.unknownLayer())}</b>

@@ -12,9 +12,10 @@ function Toaster(props: ToasterProps) {
 			className="toaster group"
 			style={
 				{
-					'--normal-bg': 'hsl(var(--popover))',
-					'--normal-text': 'hsl(var(--popover-foreground))',
-					'--normal-border': 'hsl(var(--border))',
+					'--normal-bg': 'var(--panel-hi)',
+					'--normal-text': 'var(--text)',
+					'--normal-border': 'var(--line)',
+					'--border-radius': '3px',
 				} as CSSProperties
 			}
 			{...props}

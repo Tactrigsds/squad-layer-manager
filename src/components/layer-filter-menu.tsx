@@ -2,10 +2,11 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import { tr } from '@/systems/messages.client'
@@ -13,23 +14,37 @@ import { tr } from '@/systems/messages.client'
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
-export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+const TEAM_FIELDS = ['Alliance_1', 'Faction_1', 'Unit_1', 'Alliance_2', 'Faction_2', 'Unit_2']
+const MATCHUP_ROWS: [label: string, team1: string, team2: string][] = [
+	['Alliance', 'Alliance_1', 'Alliance_2'],
+	['Faction', 'Faction_1', 'Faction_2'],
+	['Unit', 'Unit_1', 'Unit_2'],
+]
+
+/**
+ * The constraint rail: one row per field with a symbol-width operator and a value select, and the six team
+ * fields folded into one matchup node (a select per side per dimension, swap between the sides).
+ */
+export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp; className?: string }) {
 	const fields = Zus.useStore(
 		props.stores.filterMenu,
 		Zus.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
+	const hasTeamFields = TEAM_FIELDS.some((f) => fields.includes(f))
+	// the matchup sits where the first team field would have
+	const firstTeamIndex = fields.findIndex((f) => TEAM_FIELDS.includes(f))
 
-	// [&_button[role=combobox]]:w-full forces every combobox trigger (operator + value selects) to fill its
-	// grid cell so a column's controls are uniformly sized; the column-select cells are spans, so unaffected.
-	// px-2 trims the trigger padding to keep the menu compact
 	return (
-		<div className="grid h-full w-fit grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2">
-			{fields.map((field) => (
-				<LayerFilterMenuItem key={field} field={field} stores={props.stores} />
-			))}
+		<div className={cn('flex flex-col gap-1.5', props.className)}>
+			{fields.map((field, i) => {
+				if (TEAM_FIELDS.includes(field)) {
+					return i === firstTeamIndex && hasTeamFields ? <MatchupNode key="matchup" stores={props.stores} /> : null
+				}
+				return <LayerFilterMenuItem key={field} field={field} stores={props.stores} />
+			})}
 			<Button
-				className="col-span-full"
-				variant="secondary"
+				size="sm"
+				className="mt-1"
 				onClick={() => {
 					LayerFilterMenuPrt.Actions.resetAllFilters(props.stores)
 				}}
@@ -41,84 +56,127 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 	)
 }
 
-function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
-	// resetAllConstraints is a Predicate set up by the owning frame (select-layers / gen-vote), not part of
-	// LayerFilterMenuPrt's own Key type, but always present on the concrete frame state at runtime.
-	const getPredicates = () => Zus.getState(props.stores.filterMenu)
+function useMenuItem(field: string, stores: LayerFilterMenuPrt.PredicatedKeyProp) {
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, possibleValues, comp] = Zus.useStore(
-		props.stores.filterMenu,
-		Zus.useDeep(
-			(state) =>
-				[
-					LayerFilterMenuPrt.Sel.swapFactionsDisabled(state),
-					state.filterMenuItemPossibleValues?.[props.field],
-					state.filterMenu.menuItems[props.field],
-				] as const,
-		),
+	const [possibleValues, comp] = Zus.useStore(
+		stores.filterMenu,
+		Zus.useDeep((state) => [state.filterMenuItemPossibleValues?.[field], state.filterMenu.menuItems[field]] as const),
 	)
-
 	React.useEffect(() => {
-		const sub = Zus.getState(props.stores.filterMenu).filterMenu.clearAll$.subscribe(() => {
+		const sub = Zus.getState(stores.filterMenu).filterMenu.clearAll$.subscribe(() => {
 			ref.current?.clear(true)
 		})
 		return () => sub.unsubscribe()
-	}, [props.stores])
-	let unlockAllValues = () => {
-		getPredicates().resetAllConstraints()
+	}, [stores])
+	const clear = () => {
+		LayerFilterMenuPrt.Actions.resetFilter(stores, field)
+		ref.current?.clear(true)
 	}
+	return { ref, possibleValues, comp, clear }
+}
+
+// resetAllConstraints is a Predicate set up by the owning frame (select-layers / gen-vote), not part of
+// LayerFilterMenuPrt's own Key type, but always present on the concrete frame state at runtime.
+const unlockAllValues = (stores: LayerFilterMenuPrt.PredicatedKeyProp) => () => Zus.getState(stores.filterMenu).resetAllConstraints()
+
+const CLEAR_BUTTON = 'w-5! shrink-0 text-text-3 data-[empty=true]:invisible'
+
+function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+	const { ref, possibleValues, comp, clear } = useMenuItem(props.field, props.stores)
+	const hasValue = F.editableCompHasValue(comp)
+	const colDef = LC.getColumnDef(props.field)
 
 	return (
-		<React.Fragment key={props.field}>
-			{(props.field === 'Map' || props.field === 'Alliance_1') && <Separator className="col-span-full my-2" />}
-			{props.field === 'Alliance_2' && (
-				<div className="col-span-full gap-1 flex items-center">
-					<Button
-						title={tr.text(F_Msgs.swapFactions())}
-						disabled={swapFactionsDisabled}
-						onClick={() => {
-							return LayerFilterMenuPrt.Actions.swapTeams(props.stores)
-						}}
-						size="icon"
-						variant="outline"
-					>
-						<Icons.FlipVertical2 />
-					</Button>
-					<Separator className="flex-1 shrink-0" />
-				</div>
-			)}
+		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
+			<span className="text-xs text-text-2 whitespace-nowrap truncate" title={colDef?.displayName}>
+				{colDef?.shortName ?? colDef?.displayName ?? props.field}
+			</span>
 			<Comparison
 				ref={ref}
 				columnEditable={false}
-				numericValueClassName="w-[72px]"
-				highlight={F.editableCompHasValue(comp)}
+				showColumn={false}
+				operatorClassName="w-9 justify-center px-0! font-mono text-text-2 [&>span]:overflow-visible"
+				numericValueClassName="w-[58px]"
+				highlight={hasValue}
 				node={comp}
 				allowedEnumValues={possibleValues}
-				onSetAllValuesAllowed={unlockAllValues}
+				onSetAllValuesAllowed={unlockAllValues(props.stores)}
 				onSetAllValuesAllowedLabel={tr.text(F_Msgs.clearOtherFilters())}
-				setNode={(update) => {
-					return LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)
-				}}
+				setNode={(update) => LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)}
 				lockOnSingleOption
 			/>
 			<Button
-				disabled={!F.editableCompHasValue(comp)}
+				data-empty={!hasValue}
 				variant="ghost"
-				size="icon"
-				onClick={() => {
-					const colDef = LC.getColumnDef(props.field)
-					if (!colDef) {
-						console.warn('Column definition not found for field:', props.field)
-						return
-					}
-
-					LayerFilterMenuPrt.Actions.resetFilter(props.stores, props.field)
-					ref.current?.clear(true)
-				}}
+				size="icon-sm"
+				className={CLEAR_BUTTON}
+				title={tr.text(F_Msgs.clearAll())}
+				onClick={clear}
 			>
 				<Icons.Trash />
 			</Button>
-			{props.field === 'Unit_2' && <Separator className="col-span-full my-2" />}
-		</React.Fragment>
+		</div>
+	)
+}
+
+function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+	const swapFactionsDisabled = Zus.useStore(props.stores.filterMenu, LayerFilterMenuPrt.Sel.swapFactionsDisabled)
+	const anySet = Zus.useStore(props.stores.filterMenu, (s) => TEAM_FIELDS.some((f) => F.editableCompHasValue(s.filterMenu.menuItems[f])))
+	const clearAll = () => {
+		for (const field of TEAM_FIELDS) LayerFilterMenuPrt.Actions.resetFilter(props.stores, field)
+	}
+	return (
+		<div className="grid grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
+			<span className="text-xs text-text-2 whitespace-nowrap">{tr.text(F_Msgs.matchup())}</span>
+			<div className="col-span-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-2xs font-bold text-text-3 fd-cond uppercase tracking-wider">
+				<span>{tr.text(L_Msgs.teamName(1))}</span>
+				<Button
+					title={tr.text(F_Msgs.swapFactions())}
+					disabled={swapFactionsDisabled}
+					onClick={() => LayerFilterMenuPrt.Actions.swapTeams(props.stores)}
+					size="icon-sm"
+				>
+					<Icons.ArrowLeftRight />
+				</Button>
+				<span className="text-right">{tr.text(L_Msgs.teamName(2))}</span>
+			</div>
+			<Button
+				data-empty={!anySet}
+				variant="ghost"
+				size="icon-sm"
+				className={CLEAR_BUTTON}
+				title={tr.text(F_Msgs.clearAll())}
+				onClick={clearAll}
+			>
+				<Icons.Trash />
+			</Button>
+			{MATCHUP_ROWS.map(([label, t1, t2]) => (
+				<React.Fragment key={label}>
+					<span className="text-xs text-text-2 whitespace-nowrap">{label}</span>
+					<MatchupCell field={t1} stores={props.stores} />
+					<MatchupCell field={t2} stores={props.stores} />
+					<span />
+				</React.Fragment>
+			))}
+		</div>
+	)
+}
+
+function MatchupCell(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+	const { ref, possibleValues, comp } = useMenuItem(props.field, props.stores)
+	return (
+		<Comparison
+			ref={ref}
+			columnEditable={false}
+			showColumn={false}
+			showOperator={false}
+			highlight={F.editableCompHasValue(comp)}
+			node={comp}
+			allowedEnumValues={possibleValues}
+			onSetAllValuesAllowed={unlockAllValues(props.stores)}
+			onSetAllValuesAllowedLabel={tr.text(F_Msgs.clearOtherFilters())}
+			setNode={(update) => LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)}
+			lockOnSingleOption
+		/>
 	)
 }

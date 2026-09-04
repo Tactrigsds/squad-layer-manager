@@ -74,87 +74,94 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	}
 
 	return (
-		<div className="grid gap-4">
-			<div className="space-y-2">
-				<h4 className="font-medium leading-none">{tr.text(V_Msgs.displayOptionsHeading())}</h4>
-				<p className="text-sm text-muted-foreground">{tr.text(V_Msgs.displayOptionsBlurb())}</p>
+		<div className="grid gap-2.5">
+			<div>
+				<h4 className="fd-cond font-bold text-base">{tr.text(V_Msgs.displayOptionsHeading())}</h4>
+				<p className="text-xs text-text-3">{tr.text(V_Msgs.displayOptionsBlurb())}</p>
 			</div>
-			<div className="grid gap-4">
-				<div className="grid grid-cols-2 gap-4">
-					<div className="space-y-2">
-						<div className="grid gap-2">
-							<div className="flex items-center space-x-2">
+			<div className="grid gap-2.5">
+				<div className="grid grid-cols-2 gap-x-3 gap-y-1">
+					<div>
+						<div className="grid gap-1">
+							<div className="flex items-center gap-1.5">
 								<Checkbox
 									id="layer"
 									checked={statuses.layer}
 									onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="layer">{tr.text(V_Msgs.displayLayer())}</Label>
+								<Label htmlFor="layer" className="fd-lbl-plain">
+									{tr.text(V_Msgs.displayLayer())}
+								</Label>
 							</div>
-							<div className="ml-6 grid gap-2">
-								<div className="flex items-center space-x-2">
+							<div className="ml-[18px] grid gap-1">
+								<div className="flex items-center gap-1.5">
 									<Checkbox
 										id="map"
 										checked={statuses.map}
 										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="map">{tr.text(V_Msgs.displayMap())}</Label>
+									<Label htmlFor="map" className="fd-lbl-plain">
+										{tr.text(V_Msgs.displayMap())}
+									</Label>
 								</div>
-								<div className="flex items-center space-x-2">
+								<div className="flex items-center gap-1.5">
 									<Checkbox
 										id="gamemode"
 										checked={statuses.gamemode}
 										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="gamemode">{tr.text(V_Msgs.displayGamemode())}</Label>
+									<Label htmlFor="gamemode" className="fd-lbl-plain">
+										{tr.text(V_Msgs.displayGamemode())}
+									</Label>
 								</div>
 							</div>
 						</div>
 					</div>
-					<div className="space-y-2">
-						<div className="grid gap-2">
-							<div className="flex items-center space-x-2">
+					<div>
+						<div className="grid gap-1">
+							<div className="flex items-center gap-1.5">
 								<Checkbox
 									id="factions"
 									checked={statuses.factions}
 									onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="factions">{tr.text(V_Msgs.displayFactions())}</Label>
+								<Label htmlFor="factions" className="fd-lbl-plain">
+									{tr.text(V_Msgs.displayFactions())}
+								</Label>
 							</div>
-							<div className="flex items-center space-x-2">
+							<div className="flex items-center gap-1.5">
 								<Checkbox
 									id="units"
 									checked={statuses.units}
 									onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="units">{tr.text(V_Msgs.displayUnits())}</Label>
+								<Label htmlFor="units" className="fd-lbl-plain">
+									{tr.text(V_Msgs.displayUnits())}
+								</Label>
 							</div>
 						</div>
 					</div>
 				</div>
 				{!valid && (
-					<div className="bg-destructive/10 border border-destructive rounded p-2">
-						<p className="text-sm text-destructive">{tr.text(V_Msgs.choicesIndistinguishable())}</p>
+					<div className="fd-alert fd-alert-dng grid-cols-1">
+						<p className="text-xs">{tr.text(V_Msgs.choicesIndistinguishable())}</p>
 					</div>
 				)}
-				<div className="space-y-2">
+				<div className="fd-fld">
 					<Label>{tr.text(V_Msgs.previewLabel())}</Label>
 					<pre
-						style={{
-							fontFamily: `"Roboto Condensed", 'sans-serif'`,
-							color: '#fcff00',
-						}}
-						className="text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap"
+						style={{ color: props.choices.length > 0 ? '#fcff00' : undefined }}
+						className="fd-well fd-cond m-0 px-2 py-1.5 text-xs leading-[1.35] text-text-3 overflow-x-auto whitespace-pre-wrap"
 					>
 						{preview}
 					</pre>
 				</div>
-				<div className="space-y-2">
+				<div className="fd-fld">
 					<Label htmlFor="duration">{tr.text(V_Msgs.durationLabel())}</Label>
 					<Input
 						id="duration"

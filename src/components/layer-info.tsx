@@ -574,14 +574,14 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 					width={plotX(Math.abs(valueX - 0.5))}
 					height="8"
 					fill="currentColor"
-					className={`transition-all duration-200 ${diff > 0 ? 'text-blue-500' : 'text-red-500'}`}
+					className={`transition-all duration-200 ${diff > 0 ? 'text-info' : 'text-danger'}`}
 				/>
 				<circle
 					cx={plotX(valueX)}
 					cy="8"
 					r="5"
 					fill="currentColor"
-					className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
+					className={diff > 0 ? 'text-info' : diff < 0 ? 'text-[#ef7c7a]' : 'text-muted-foreground'}
 				/>
 			</HorizontalGauge>
 		</figure>
@@ -606,7 +606,7 @@ function ScoreGrid({
 	return (
 		<div className="grid gap-2">
 			<div className="flex justify-between text-xs font-medium">
-				<span className="text-blue-500">
+				<span className="text-info">
 					{tr.richText(
 						L_Msgs.teamScoreHeading(
 							tr.text(L_Msgs.team1()),
@@ -616,7 +616,7 @@ function ScoreGrid({
 						),
 					)}
 				</span>
-				<span className="text-red-500">
+				<span className="text-danger">
 					{tr.richText(
 						L_Msgs.teamScoreHeading(
 							tr.text(L_Msgs.team2()),
@@ -727,8 +727,8 @@ function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Sc
 					/>
 				)
 			})}
-			<ZScoreMarker score={team1Score} x="25%" className="text-blue-500" />
-			<ZScoreMarker score={team2Score} x="75%" className="text-red-500" />
+			<ZScoreMarker score={team1Score} x="25%" className="text-info" />
+			<ZScoreMarker score={team2Score} x="75%" className="text-danger" />
 		</svg>
 	)
 }
@@ -747,17 +747,17 @@ function ZScoreMarker({ score, x, className }: { score?: number; x: string; clas
 function ZScoreValues({ team1Score, team2Score, diff }: { team1Score?: number; team2Score?: number; diff: number }) {
 	return (
 		<div className="mt-0.5 flex items-baseline justify-between px-0.5 text-[10px] leading-tight">
-			<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="text-info">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 			<span className="font-light">
 				{tr.richText(
 					L_Msgs.scoreDiff(
-						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+						<span className={diff > 0 ? 'text-info' : diff < 0 ? 'text-danger' : 'text-muted-foreground'}>
 							{Math.abs(diff).toFixed(2)}
 						</span>,
 					),
 				)}
 			</span>
-			<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="text-danger">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 		</div>
 	)
 }

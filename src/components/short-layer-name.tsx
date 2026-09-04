@@ -56,7 +56,7 @@ export default function ShortLayerName({
 	if (!L.toLayer(layerId).Layer) return content
 
 	const host = (
-		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
+		<span data-tour={tourId} className={cn('fd-layer-name inline-flex flex-wrap items-baseline', className)} ref={ref}>
 			{content}
 		</span>
 	)

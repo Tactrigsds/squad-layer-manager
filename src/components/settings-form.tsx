@@ -1900,7 +1900,7 @@ const trWithDocLink = tr.withTags({
 
 function TemplateSyntaxHint() {
 	return (
-		<p className="text-xs text-muted-foreground [&_a]:text-blue-600 [&_a]:hover:underline">
+		<p className="text-xs text-muted-foreground [&_a]:text-info [&_a]:hover:underline">
 			{trWithDocLink.richText(AAR_Msgs.templateSyntaxHint())}
 		</p>
 	)
@@ -2475,7 +2475,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 							{!isRoleAssigned(rbac.roles?.[id]) && (
 								<Tooltip>
 									<TooltipTrigger asChild>
-										<Icons.TriangleAlert className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
+										<Icons.TriangleAlert className="h-3 w-3 shrink-0 text-warn dark:text-warn" />
 									</TooltipTrigger>
 									<TooltipContent>{tr.text(RBAC_Msgs.roleUnassignedShort())}</TooltipContent>
 								</Tooltip>
@@ -3076,7 +3076,7 @@ function RoleAssignmentsEditor({
 	return (
 		<div className="space-y-3">
 			{!assigned && (
-				<p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+				<p className="flex items-center gap-1 text-xs text-warn dark:text-warn">
 					<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
 					{tr.text(RBAC_Msgs.roleUnassigned())}
 				</p>
@@ -3393,7 +3393,7 @@ function PluginCommandCard({
 									</Button>
 								)}
 							</div>
-							{owner && <p className="text-xs text-yellow-600">{tr.text(CMD_Msgs.pluginTriggerTakenBy(owner))}</p>}
+							{owner && <p className="text-xs text-warn">{tr.text(CMD_Msgs.pluginTriggerTakenBy(owner))}</p>}
 						</div>
 					)
 				})}

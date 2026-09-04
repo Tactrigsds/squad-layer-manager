@@ -2,7 +2,7 @@ import { CloseButton, Description, Dialog, DialogBackdrop, DialogPanel, DialogTi
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
-import { useIsMobile } from '@/hooks/use-is-mobile'
+import * as Browser from '@/lib/browser'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
@@ -32,7 +32,7 @@ const HeadlessDialogContent = React.forwardRef<
 		children?: React.ReactNode
 	}
 >(({ className, children, showCloseButton = true, style, ...props }, ref) => {
-	const isMobile = useIsMobile()
+	const phone = Browser.useIsSmallViewport()
 	const outletKey = React.useId()
 	const panelRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -52,24 +52,17 @@ const HeadlessDialogContent = React.forwardRef<
 
 	return (
 		<>
-			<DialogBackdrop
-				className="fixed inset-0 bg-black/80 transition-opacity duration-200 ease-out data-closed:opacity-0"
-				style={{ zIndex }}
-				transition
-			/>
-			<div className="fixed inset-0 flex w-screen items-center justify-center p-4" style={{ zIndex }}>
+			<DialogBackdrop className="fixed inset-0 bg-black/60" style={{ zIndex }} />
+			<div className={cn('fixed inset-0 flex w-screen items-center justify-center', !phone && 'p-4')} style={{ zIndex }}>
 				<DialogPanel
 					ref={combinedRef}
-					data-mobile={isMobile}
+					data-phone={phone || undefined}
 					className={cn(
-						'relative grid w-full gap-4 border bg-background p-6 shadow-lg',
-						'transition-opacity duration-150 ease-out data-closed:opacity-0',
-						'sm:rounded-lg',
-						isMobile && 'fixed top-0 left-0 right-0 translate-x-0 translate-y-0 max-w-none rounded-none border-0',
+						'fd-dlg relative flex w-full flex-col gap-2 p-2.5',
+						phone && 'h-full max-w-none max-h-none rounded-none border-0',
 						className,
 					)}
 					style={style}
-					transition
 					{...props}
 				>
 					<BaseZIndexContext.Provider value={zIndex}>
@@ -78,8 +71,8 @@ const HeadlessDialogContent = React.forwardRef<
 						</DraggableWindowOutlet>
 					</BaseZIndexContext.Provider>
 					{showCloseButton && (
-						<CloseButton className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-hover:bg-accent data-hover:text-muted-foreground">
-							<Cross2Icon className="h-4 w-4" />
+						<CloseButton className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute right-1.5 top-1.5">
+							<Cross2Icon />
 							<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
 						</CloseButton>
 					)}
@@ -91,26 +84,26 @@ const HeadlessDialogContent = React.forwardRef<
 HeadlessDialogContent.displayName = 'HeadlessDialogContent'
 
 const HeadlessDialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-	<div className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props} />
+	<div className={cn('fd-dlg-h -mx-2.5 -mt-2.5 shrink-0 flex-wrap py-1 pr-8', className)} {...props} />
 )
 HeadlessDialogHeader.displayName = 'HeadlessDialogHeader'
 
 const HeadlessDialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-	<div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', className)} {...props} />
+	<div className={cn('fd-dlg-f -mx-2.5 -mb-2.5 shrink-0', className)} {...props} />
 )
 HeadlessDialogFooter.displayName = 'HeadlessDialogFooter'
 
 const HeadlessDialogTitle = React.forwardRef<React.ElementRef<typeof DialogTitle>, React.ComponentPropsWithoutRef<typeof DialogTitle>>(
-	({ className, ...props }, ref) => (
-		<DialogTitle ref={ref} className={cn('text-lg font-semibold leading-none tracking-tight', className)} {...props} />
-	),
+	({ className, ...props }, ref) => <DialogTitle ref={ref} className={cn('fd-cond font-bold text-base', className)} {...props} />,
 )
 HeadlessDialogTitle.displayName = 'HeadlessDialogTitle'
 
 const HeadlessDialogDescription = React.forwardRef<
 	React.ElementRef<typeof Description>,
 	React.ComponentPropsWithoutRef<typeof Description>
->(({ className, ...props }, ref) => <Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />)
+>(({ className, ...props }, ref) => (
+	<Description ref={ref} className={cn('font-sans text-xs font-normal text-text-2', className)} {...props} />
+))
 HeadlessDialogDescription.displayName = 'HeadlessDialogDescription'
 
 const HeadlessDialogClose = React.forwardRef<React.ElementRef<typeof CloseButton>, React.ComponentPropsWithoutRef<typeof CloseButton>>(

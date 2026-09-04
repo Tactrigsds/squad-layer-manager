@@ -130,7 +130,7 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 			{!member.eligible && (
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Icons.TriangleAlert className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
+						<Icons.TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warn" />
 					</TooltipTrigger>
 					<TooltipContent>
 						<p>{tr.text(CHAT_Msgs.notInBreakdown())}</p>

@@ -1,15 +1,18 @@
 import { cn } from '@/lib/utils'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
+// `variant="seg"` is the segmented control: a flush group of small buttons with the active one pressed
 export default function TabsList<T extends string>(props: {
 	options: { value: T; label: string; disabled?: boolean | string }[]
 	active: T
 	setActive: (active: T) => void
 	className?: string
+	variant?: 'tabs' | 'seg'
 }) {
+	const seg = props.variant === 'seg'
 	return (
 		<TooltipProvider>
-			<div className={cn('inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground', props.className)}>
+			<div className={cn(seg ? 'fd-grp' : 'fd-tabs', props.className)}>
 				{props.options.map((option) => {
 					const isDisabled = !!option.disabled
 					const disabledMessage = typeof option.disabled === 'string' ? option.disabled : null
@@ -18,13 +21,13 @@ export default function TabsList<T extends string>(props: {
 						<button
 							key={option.value}
 							type="button"
-							data-state={props.active === option.value && 'active'}
+							data-state={seg ? (props.active === option.value ? 'on' : 'off') : props.active === option.value && 'active'}
 							data-softdisabled={isDisabled}
 							onClick={() => {
 								if (isDisabled) return
 								props.setActive(option.value)
 							}}
-							className="inline-flex data-[softdisabled=true]:cursor-not-allowed items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+							className={seg ? 'fd-btn fd-btn-sm font-medium' : 'fd-tab'}
 						>
 							{option.label}
 						</button>

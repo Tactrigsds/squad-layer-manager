@@ -101,7 +101,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			renderedFilters.push([
 				constraint.id,
 				<Item key={constraint.id} variant="default" className="w-full">
-					<ItemMedia>{emoji ? <EmojiDisplay emoji={emoji} /> : <Icons.Filter className="bg-orange-500" />}</ItemMedia>
+					<ItemMedia>{emoji ? <EmojiDisplay emoji={emoji} /> : <Icons.Filter className="bg-warn" />}</ItemMedia>
 					<ItemContent>
 						<ItemTitle>{filter.name}</ItemTitle>
 						{alertMessage && (
@@ -124,7 +124,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 
 	// repeat icon always appears at the start
 	if (renderedFilters.length > 0 && indicatorIcons.length === 0) {
-		indicatorIcons.push(<Icons.Filter key="__filtered__" className="bg-orange-500" />)
+		indicatorIcons.push(<Icons.Filter key="__filtered__" className="bg-warn" />)
 	}
 	if (renderedRepeats.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
 
