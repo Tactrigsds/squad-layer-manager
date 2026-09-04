@@ -27,8 +27,9 @@ function RouteComponent() {
 	const desktopOnly = isPhone && !isOnServerDashboard && !isOnServers
 	return (
 		<div
-			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden"
+			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden data-phone:h-screen data-phone:overflow-hidden"
 			data-on-dashboard={orUndef(!!isOnServerDashboard)}
+			data-phone={orUndef(isPhone)}
 		>
 			<NavBar />
 			<div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhone ? 'p-2' : 'p-2.5')}>

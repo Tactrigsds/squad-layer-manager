@@ -159,7 +159,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						disabled={!poolFilter || !!api.writeDenied}
 					/>
 					<FilterEntitySelect
-						className="grow"
+						className="w-[260px]"
 						title={tr.text(SETTINGS_Msgs.poolFilter())}
 						filterId={poolFilter?.filterId ?? null}
 						onSelect={onSelect}
