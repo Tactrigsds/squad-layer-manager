@@ -85,11 +85,12 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 	const { ref, possibleValues, comp, clear } = useMenuItem(props.field, props.stores)
 	const hasValue = F.editableCompHasValue(comp)
 	const colDef = LC.getColumnDef(props.field)
+	const label = colDef?.shortName ?? colDef?.displayName ?? props.field
 
 	return (
 		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
 			<span className="text-xs text-text-2 whitespace-nowrap truncate" title={colDef?.displayName}>
-				{colDef?.shortName ?? colDef?.displayName ?? props.field}
+				{label}
 			</span>
 			<Comparison
 				ref={ref}
@@ -110,7 +111,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 				variant="ghost"
 				size="icon-sm"
 				className={CLEAR_BUTTON}
-				title={tr.text(F_Msgs.clearAll())}
+				title={tr.text(F_Msgs.clearFilter(label))}
 				onClick={clear}
 			>
 				<Icons.Trash />
@@ -145,7 +146,7 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 				variant="ghost"
 				size="icon-sm"
 				className={CLEAR_BUTTON}
-				title={tr.text(F_Msgs.clearAll())}
+				title={tr.text(F_Msgs.clearFilter(tr.text(F_Msgs.matchup())))}
 				onClick={clearAll}
 			>
 				<Icons.Trash />

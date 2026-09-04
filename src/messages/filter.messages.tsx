@@ -386,6 +386,8 @@ export const hideRepeatsHint = def('Hide layers which violate Repeat rules')
 
 export const clearAll = def('Clear All')
 
+export const clearFilter = def((filter: string) => ({ text: t('Clear {filter}', { filter }) }))
+
 export const swapFactions = def('Swap Factions')
 
 export const clearOtherFilters = def('Remove all other filters and select this one')
