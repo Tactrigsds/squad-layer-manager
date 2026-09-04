@@ -112,27 +112,22 @@ function ServerDashboardHost(props: { serverId: string }) {
 
 		// A user is "engaged" on this dashboard once they either navigated in or interacted. Until then
 		// they stay absent from presence (null activity). Engaging publishes presence reflecting the
-		// currently visible panel; staying engaged, the mirror below keeps it in sync with tab switches.
+		// panel being viewed; staying engaged, the mirror below keeps it in sync as that changes.
 		let engaged = false
 		const engage = () => {
 			engaged = true
-			UPClient.Actions.ensureViewingPanel(serverId, ClientOnlySettings.Store.getState().primaryPanelTab)
+			UPClient.Actions.ensureViewingPanel(serverId, SquadServerClient.viewedPrimaryPanel())
 		}
 
 		// arriving via in-app navigation is itself engagement -- establish immediately
 		if (enteredViaNavigation) engage()
 
-		// while engaged, mirror the visible panel into presence so VIEWING_QUEUE / VIEWING_TEAMS tracks
-		// the tab the user is actually looking at
+		// while engaged, mirror the viewed panel into presence so VIEWING_QUEUE / VIEWING_TEAMS tracks
+		// the tab the user is actually looking at, or the stacked section they last touched
 		sub.add(
-			Zus.toObservable(ClientOnlySettings.Store, true)
-				.pipe(
-					Rx.map(([s]) => s.primaryPanelTab),
-					Rx.distinctUntilChanged(),
-				)
-				.subscribe((panel) => {
-					if (engaged) UPClient.Actions.ensureViewingPanel(serverId, panel)
-				}),
+			SquadServerClient.viewedPrimaryPanel$.subscribe((panel) => {
+				if (engaged) UPClient.Actions.ensureViewingPanel(serverId, panel)
+			}),
 		)
 
 		// An "active session" can only be opened by a deliberate interaction (userInteracted$) -- this is

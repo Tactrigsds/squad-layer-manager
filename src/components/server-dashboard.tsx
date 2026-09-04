@@ -16,7 +16,7 @@ import ServerActivityPanel from './server-activity-panel.tsx'
  *   < 640      phone: one panel at a time behind a bottom tab bar (phone-dashboard.tsx)
  *   640..1279  one column; the nav bar's switch picks between the layers side and Server Activity
  *   1280..2099 two columns: history, breakdown and the tabs on the left, Server Activity full height on the right
- *   >= 2100    three columns: history + breakdown, the tabs, Server Activity
+ *   >= 2100    three columns: history + breakdown, the queue above the teams, Server Activity
  */
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const activeTab = SquadServerClient.dashboardSide(SquadServerClient.useDashboardTab())
@@ -62,10 +62,10 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 
 			{isDesktop && isUltrawide && (
 				/* Spend the width on a third column rather than gutters: history and the breakdown stack on the
-				   left, the tabs get the middle, Server Activity a full-height column. */
+				   left, the queue and the teams stack in the middle, Server Activity gets a full-height column. */
 				<div className="grid gap-2.5 h-full min-h-0 w-full grid-cols-[600px_minmax(0,1fr)_680px]">
 					<PrimaryPanel stores={props.stores} part="history" withStats />
-					<PrimaryPanel stores={props.stores} part="tabs" />
+					<PrimaryPanel stores={props.stores} part="tabs" stacked />
 					<div className="flex min-h-0 min-w-0">
 						<ServerActivityPanel stores={props.stores} />
 					</div>

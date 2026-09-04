@@ -86,8 +86,19 @@ export function useIsMediumViewport() {
 }
 
 // three-column dashboard tier
+export const ULTRAWIDE_QUERY = '(min-width: 2100px)'
 export function useIsUltrawide() {
-	return useMediaQuery('(min-width: 2100px)')
+	return useMediaQuery(ULTRAWIDE_QUERY)
+}
+
+// emits on every change of the query's result, not the current value
+export function mediaQueryChanged$(query: string): Rx.Observable<boolean> {
+	return new Rx.Observable((subscriber) => {
+		const mediaQuery = window.matchMedia(query)
+		const onChange = (e: MediaQueryListEvent) => subscriber.next(e.matches)
+		mediaQuery.addEventListener('change', onChange)
+		return () => mediaQuery.removeEventListener('change', onChange)
+	})
 }
 
 // a coarse pointer: touch density for button groups, sheets instead of floating windows. Keyed off the pointer,
