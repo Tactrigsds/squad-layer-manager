@@ -120,7 +120,7 @@
 	--color-teamA: var(--teamA);
 	--color-teamB: var(--teamB);
 
-	--breakpoint-dash-2col: 1280px;
+	--breakpoint-dash-2col: 1100px;
 	--breakpoint-dash-3col: 2100px;
 	--breakpoint-phone: 640px;
 

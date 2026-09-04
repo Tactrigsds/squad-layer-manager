@@ -1,7 +1,7 @@
 import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useIsDesktopSize, useIsSmallViewport, useIsUltrawide } from '@/lib/browser.ts'
+import { useIsDesktopSize, useIsSmallViewport, useIsUltrawide, useIsWideDesktop } from '@/lib/browser.ts'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
@@ -14,14 +14,15 @@ import ServerActivityPanel from './server-activity-panel.tsx'
  * Where the panels sit, by viewport width. The panels themselves do not change between tiers.
  *
  *   < 640      phone: one panel at a time behind a bottom tab bar (phone-dashboard.tsx)
- *   640..1279  one column; the nav bar's switch picks between the layers side and Server Activity
- *   1280..2099 two columns: history, breakdown and the tabs on the left, Server Activity full height on the right
+ *   640..1099  one column; the nav bar's switch picks between the layers side and Server Activity
+ *   1100..2099 two columns: history, breakdown and the tabs on the left, Server Activity full height on the right
  *   >= 2100    three columns: history + breakdown, the queue above the teams, Server Activity
  */
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const activeTab = SquadServerClient.dashboardSide(SquadServerClient.useDashboardTab())
 	const isDesktop = useIsDesktopSize()
 	const isUltrawide = useIsUltrawide()
+	const isWideDesktop = useIsWideDesktop()
 	const isPhone = useIsSmallViewport()
 
 	// "warn selected" routes to the server activity panel; in single-column mode that panel lives behind a
@@ -50,10 +51,10 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 
 			{isDesktop && !isUltrawide && (
 				/* Two proportional columns that share the give above their floors, and stop shrinking at them:
-				   860 + 400 + gaps fits the 1280 breakpoint without a sideways scroll. Below the floors the
+				   660 + 400 + gaps fits the 1100 breakpoint without a sideways scroll. Below the floors the
 				   dashboard outgrows the viewport and this container's `overflow-x-auto` scrolls the whole page. */
-				<div className="grid gap-2.5 h-full min-h-0 w-full grid-cols-[minmax(860px,1.6fr)_minmax(400px,1fr)]">
-					<PrimaryPanel stores={props.stores} withStats statsWide />
+				<div className="grid gap-2.5 h-full min-h-0 w-full grid-cols-[minmax(660px,1.6fr)_minmax(400px,1fr)]">
+					<PrimaryPanel stores={props.stores} withStats statsWide={isWideDesktop} />
 					<div className="flex min-h-0 min-w-0">
 						<ServerActivityPanel stores={props.stores} />
 					</div>

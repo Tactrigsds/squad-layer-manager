@@ -71,8 +71,15 @@ function useMediaQuery(query: string) {
 	return React.useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
+// two-column dashboard tier: 660 for the layers side and 400 for Server Activity fit from here up
 export function useIsDesktopSize() {
-	return useMediaQuery('(min-width: 1280px)')
+	return useMediaQuery('(min-width: 1100px)')
+}
+
+// the breakdown's legend rides in its title bar from here up; below it the title bar is too short and the legend
+// moves into the chart
+export function useIsWideDesktop() {
+	return useMediaQuery('(min-width: 1200px)')
 }
 
 // true below the `phone` breakpoint (640px): the phone layout, whatever the pointer
