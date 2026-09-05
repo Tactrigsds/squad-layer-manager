@@ -160,6 +160,36 @@ test.describe('the explore-layers collection', () => {
 		const reopened = await openExplore(page)
 		await expect(reopened.getByRole('combobox', { name: 'Collection' })).toHaveText('Select Collection...')
 	})
+
+	test('focusing a layer sets the collection it is in', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+
+		const dialog = await openExplore(page)
+		// pinned to the one layer rather than to its map: with the collection cleared below, every mod's Narva
+		// layers join the result set and a page of 16 rows no longer reliably holds the vanilla one
+		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
+		await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+
+		const collection = dialog.getByRole('combobox', { name: 'Collection' })
+		await collection.click()
+		await page.getByRole('option', { name: '-', exact: true }).click()
+		await expect(collection).toHaveText('Select Collection...')
+
+		// both constraints have to have answered before the row is touched: the table remounts its rows when a
+		// query lands, and a right-click that straddles that opens a context menu whose trigger is already gone
+		await settledText(dialog.getByText(/matched layers|No layers matched/))
+
+		const row = dialog
+			.getByRole('row')
+			.filter({ hasText: layerText('Narva_RAAS_v1') })
+			.first()
+		await expect(row).toBeVisible()
+		await row.click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Focus Layer' }).click()
+
+		await expect(collection).toHaveText('OWI')
+	})
 })
 
 test.describe('applied filters', () => {
