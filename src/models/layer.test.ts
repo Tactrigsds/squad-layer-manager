@@ -160,6 +160,21 @@ describe('getLayerCommand', () => {
 		})
 	})
 
+	describe('training layers', () => {
+		// the layer's config fixes both teams, so the command carries no factions whatever the id says
+		it('sends a bare command for a Jensens Range layer', () => {
+			const layer = L.parseRawLayerText('JensensRange_USA-PLA')!
+			expect(layer.Gamemode).toBe('Training')
+			expect(L.getLayerCommand(layer, 'set-next')).toBe('AdminSetNextLayer JensensRange_USA-PLA')
+		})
+
+		it('sends a bare command for a Pacific Proving Grounds layer', () => {
+			const layer = L.parseRawLayerText('PacificProvingGrounds_USMC-RGF')!
+			expect(layer.Gamemode).toBe('Training')
+			expect(L.getLayerCommand(layer, 'set-next')).toBe('AdminSetNextLayer PacificProvingGrounds_USMC-RGF')
+		})
+	})
+
 	describe('all command type permutations', () => {
 		const sampleLayer = 'RAW:Logar_FRAAS_v1 GFI+CombinedArms RGF+CombinedArms'
 		const expectedBase = 'Logar_RAAS_v1 GFI+CombinedArms RGF+CombinedArms'
