@@ -117,7 +117,7 @@ const setup: Frame['setup'] = (args) => {
 	set({
 		baseQueryInput: undefined,
 		onLayerFocused: (layerId) => {
-			const defaultFields = getFilterMenuDefaultFields(layerId, colConfig)
+			const defaultFields = getFilterMenuDefaultFields(layerId, colConfig, { keepCollection: true })
 			const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, colConfig)
 			LayerFilterMenuPrt.Actions.setMenuItems({ filterMenu: args.key }, itemState)
 		},
@@ -288,14 +288,20 @@ function menuItemsFromTemplate(filter: F.FilterNode, colConfig: LQY.EffectiveCol
 	return items
 }
 
-function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colConfig: LQY.EffectiveColumnAndTableConfig) {
+function getFilterMenuDefaultFields(
+	editedLayerId: L.LayerId | undefined,
+	colConfig: LQY.EffectiveColumnAndTableConfig,
+	opts?: { keepCollection?: boolean },
+) {
 	let defaults: Partial<L.KnownLayer> = {}
 	if (editedLayerId && colConfig) {
 		const layer = L.toLayer(editedLayerId)
 		if (layer.Gamemode === 'Training') {
-			defaults = { Gamemode: 'Training' }
+			defaults = { Gamemode: 'Training', Collection: opts?.keepCollection ? layer.Collection : undefined }
 		} else {
-			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size', 'Collection'])
+			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
+			// editing a layer should leave the rest of the catalog reachable, so only the focus action narrows to one collection
+			if (!opts?.keepCollection) delete defaults.Collection
 			for (const [key, value] of Obj.objEntries(defaults)) {
 				if (value === undefined) continue
 				const colDef = LC.getColumnDef(key)
