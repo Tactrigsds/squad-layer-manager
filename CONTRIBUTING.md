@@ -91,6 +91,43 @@ pnpm run build:agent   # cargo build --release, binary at server-agent/agent/tar
 
 See [docs/server_agent.md](docs/server_agent.md) for more details on how to configure it.
 
+## Releasing a layer artifact pair
+
+The pair in `assets/layers` is built from the layer sources under `data/sources`, which are tracked. Those exports
+come off a Squad install with the workshop mods subscribed, so refreshing them for a new game version is a local
+step, and it reaches a release by being committed first. Everything downstream of them is reproducible from the
+repo: a rebuild of the shipped `v10.5.0` pair from the inputs below matches it byte for byte.
+
+Rebuilding takes two things a checkout does not have: the 150MB scores csv, and the `layer-db.json` that says which
+of its columns to ingest. `release:layers` recovers both, so nobody has to hold either one:
+
+```sh
+pnpm release:layers 10.5.1              # build, test, ship, draft the release
+pnpm release:layers 10.5.1 --dry-run    # build it and stop
+```
+
+- the csv comes off the newest Layer Data release, since each one carries the csv it was built from.
+  `--csv-release` picks a different one, `--csv` uses a local file
+- the column config is read back out of a pair already in `assets/layers`, since preprocess bakes the defs it built
+  with into `layer-data.json`. Your own `layer-db.json` wins if you have one
+
+That pair is what the image ships, so a release is a commit on main as much as it is a release. Each step gates the
+next:
+
+1. it starts from a clean `main` in sync with `origin`, or it stops. `--no-preflight` skips the checks, and then it
+   builds and releases without committing anything
+2. `pnpm preprocess` builds the pair into `assets/layers`
+3. `pnpm test:e2e` runs against what was just built
+4. the json and the `.bin.gz` are committed and pushed to main. The uncompressed table and the csv stay out of git
+5. all four go up as a prerelease tagged `layer-db-v<version>`, drafted unless you pass `--publish`
+
+The push happens before the release so nothing is announced that main does not have. Needs the
+[`gh` cli](https://cli.github.com) logged in.
+
+The version is a label, not something read out of the repo: it is what stamps the filenames, and the same csv
+builds whatever version you name. It has to sort _above_ the pair it replaces or `@latest` will not pick it up,
+which rules out a suffix: those are semver prereleases and sort below.
+
 ## The pre-push hook
 
 Optional, and opt-in per clone. Once enabled, it runs the test, formatting, and linting checks before pushing:
