@@ -1,18 +1,18 @@
 import { def } from '@/models/messages.models'
 
-// Freeform notes on a queue item, rendered `<author>: <text>` beside the item's tags.
+// Freeform notes on a queue item, rendered `<author>: <text>` on a row under the layer name.
 
 export const addNote = def('Add note')
 
 // menu entry that opens the add dialog
 export const addNoteItem = def('Add note...')
 
-// the same affordance, shrunk to fit inline beside a queue item that has no notes yet
-export const addNoteInline = def('add note')
-
 export const editNote = def('Edit note')
 
-export const viewNotes = def('View {count} notes', (count: number) => ({ count }))
+// the chip after the newest notes on the row, counting those it leaves out. Opens the full list
+export const olderNotes = def('+{count} older', (count: number) => ({ count }))
+
+export const viewAllNotes = def('View all {count} notes', (count: number) => ({ count }))
 
 // on the popover holding one note, so a screen reader can tell them apart
 export const noteGroup = def('Note')

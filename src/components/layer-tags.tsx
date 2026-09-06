@@ -36,21 +36,6 @@ import * as SettingsClient from '@/systems/settings.client'
 // labels/colors are resolved against global settings at render, so an id whose tag has been deleted still renders
 // (as the raw id) and can be taken off the item.
 
-// lucide only ships tag-plus from v1, which is a major upgrade away from the version pinned here, so its icon data
-// (ISC, lucide-react v1.26.0) is inlined rather than dragging every other icon through a rename audit
-const TagPlus = Icons.createLucideIcon('tag-plus', [
-	['path', { d: 'M16 13h6', key: '1um0mj' }],
-	[
-		'path',
-		{
-			d: 'm16.5 6.5-3.914-3.914A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l1.79-1.79',
-			key: 'dp0yc9',
-		},
-	],
-	['path', { d: 'M19 10v6', key: '13mz7b' }],
-	['circle', { cx: '7.5', cy: '7.5', r: '.5', fill: 'currentColor', key: 'kqv944' }],
-])
-
 export function LayerTags(props: {
 	tags: LTag.TagId[] | undefined
 	// who put each tag on this item, where that's known. Absent in the dialogs, which tag items that don't exist yet.
@@ -94,7 +79,6 @@ export function LayerTags(props: {
 				configured={configured}
 				onSelect={add}
 				onCreate={() => setEditing('new')}
-				labelled={resolved.length === 0}
 				revealOnHover={props.revealAddOnHover}
 			/>
 			<LayerTagDialog state={editing} onClose={() => setEditing(null)} onCreated={add} />
@@ -194,7 +178,6 @@ function AddTagDropdown(props: {
 	configured: LTag.Tag[]
 	onSelect: (id: LTag.TagId) => void
 	onCreate: () => void
-	labelled?: boolean
 	revealOnHover?: boolean
 }) {
 	const available = props.configured.filter((t) => !props.applied.includes(t.id))
@@ -205,18 +188,16 @@ function AddTagDropdown(props: {
 					variant="ghost"
 					size="sm"
 					title={tr.text(LTag_Msgs.addTag())}
+					aria-label={tr.text(LTag_Msgs.addTag())}
 					className={cn(
 						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
-						props.labelled ? 'gap-0.5' : 'w-4 px-0',
+						'gap-0.5',
 						// data-[state=open] keeps it visible while its own menu is up, once the pointer leaves the item
-						props.revealOnHover && [
-							REVEAL_ON_ITEM_HOVER,
-							'data-[state=open]:w-auto data-[state=open]:px-1 data-[state=open]:opacity-100',
-						],
+						props.revealOnHover && [REVEAL_ON_ITEM_HOVER, 'data-[state=open]:visible'],
 					)}
 				>
-					<TagPlus className="h-3 w-3" />
-					{props.labelled && <span>{tr.text(LTag_Msgs.addTagInline())}</span>}
+					<span>+</span>
+					<Icons.Tag className="h-3 w-3" />
 				</Button>
 			</DropdownMenuTrigger>
 			{/* a description runs to note length, so the menu holds it to one clipped line and reads in full on the chip's hover card */}
@@ -308,7 +289,14 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 				<DialogTitle>{isNew ? tr.text(LTag_Msgs.newTagTitle()) : tr.text(LTag_Msgs.editTag())}</DialogTitle>
 				<DialogDescription>{isNew ? tr.text(LTag_Msgs.newTagBlurb()) : tr.text(LTag_Msgs.editTagBlurb())}</DialogDescription>
 			</DialogHeader>
-			<div className="space-y-3">
+			<div
+				className="space-y-3"
+				onKeyDown={(e) => {
+					if (!Browser.isSubmitChord(e)) return
+					e.preventDefault()
+					submit()
+				}}
+			>
 				<div className="space-y-1">
 					<Label htmlFor="layer-tag-label">{tr.text(LTag_Msgs.labelColumn())}</Label>
 					<Input

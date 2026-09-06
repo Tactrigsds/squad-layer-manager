@@ -23,8 +23,10 @@ export default function LayerDisplay(props: {
 	item: LQY.LayerItem
 	badges?: React.ReactNode[]
 	// rendered alongside the layer name, ahead of the badges, so tags read as part of the layer rather than as
-	// another status indicator. Notes follow the tags, wrapping underneath them when the row runs out of room
+	// another status indicator. addNote sits with them, and the group wraps under the name rather than breaking it.
+	// The notes themselves go on a row of their own underneath
 	tags?: React.ReactNode
+	addNote?: React.ReactNode
 	notes?: React.ReactNode
 	backfillLayerId?: L.LayerId
 	allowShowInfo?: boolean
@@ -104,25 +106,32 @@ export default function LayerDisplay(props: {
 				// the queue item this sits inside has its own menu -- right-clicking the layer is about the layer
 				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
 			>
-				<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
-					<span
-						data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
-						className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
-					>
-						<ShortLayerName
-							tourId={props.layerNameTourId}
-							ref={(props.droppable && dropOnAttrs.ref) || undefined}
-							className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
-							layerId={props.item.layerId}
-							teamParity={teamParity}
-							backfillLayerId={props.backfillLayerId}
-							matchDescriptors={statusData?.highlightedMatchDescriptors}
-							allowShowInfo={props.allowShowInfo}
-						/>
-						{props.tags}
-						{props.notes}
-					</span>
-					<span className="flex items-center gap-1">{badges}</span>
+				<div className={cn('flex flex-col gap-0.5', props.className)} ref={props.ref}>
+					<div className="flex space-x-2 items-center">
+						<span
+							data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
+							className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
+						>
+							<ShortLayerName
+								tourId={props.layerNameTourId}
+								ref={(props.droppable && dropOnAttrs.ref) || undefined}
+								className={cn('flex-nowrap shrink-0 whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
+								layerId={props.item.layerId}
+								teamParity={teamParity}
+								backfillLayerId={props.backfillLayerId}
+								matchDescriptors={statusData?.highlightedMatchDescriptors}
+								allowShowInfo={props.allowShowInfo}
+							/>
+							{(props.tags || props.addNote) && (
+								<span className="flex items-center gap-2">
+									{props.tags}
+									{props.addNote}
+								</span>
+							)}
+						</span>
+						<span className="flex items-center gap-1">{badges}</span>
+					</div>
+					{props.notes}
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent>

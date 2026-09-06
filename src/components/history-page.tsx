@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as HistoryFrame from '@/frames/history.frame'
+import * as Browser from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
@@ -73,7 +74,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 	runRef.current = run
 	React.useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return
+			if (!Browser.isSubmitChord(e)) return
 			e.preventDefault()
 			runRef.current()
 		}

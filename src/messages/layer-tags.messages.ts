@@ -45,7 +45,6 @@ export const taggedBy = def('Tagged by')
 export const addTag = def('Add tag')
 
 // the same affordance, shrunk to fit inline beside an untagged item
-export const addTagInline = def('add tag')
 
 export const noTagsAvailable = def('No tags available')
 

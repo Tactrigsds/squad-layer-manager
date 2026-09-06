@@ -110,21 +110,21 @@ describe('findNote', () => {
 	})
 })
 
-describe('displayInline', () => {
-	it('shows a couple of short notes inline', () => {
-		expect(LNote.displayInline([note('n1', alice, 'short'), note('n2', alice, 'also short')])).toBe(true)
+describe('partitionForRow', () => {
+	it('shows every note, newest first, while they fit the row', () => {
+		const { recent, older } = LNote.partitionForRow([note('n1', alice, 'first'), note('n2', alice, 'second')])
+		expect(recent.map((n) => n.id)).toEqual(['n2', 'n1'])
+		expect(older).toBe(0)
 	})
 
-	it('collapses once there are more notes than fit the row', () => {
-		const notes = Array.from({ length: LNote.MAX_INLINE + 1 }, (_, i) => note(`n${i}`, alice, 'x'))
-		expect(LNote.displayInline(notes)).toBe(false)
+	it('keeps the newest and counts the rest once there are more than fit', () => {
+		const notes = Array.from({ length: LNote.MAX_INLINE + 3 }, (_, i) => note(`n${i}`, alice, 'x'))
+		const { recent, older } = LNote.partitionForRow(notes)
+		expect(recent.map((n) => n.id)).toEqual(['n4', 'n3'])
+		expect(older).toBe(3)
 	})
 
-	it('collapses a single note long enough to crowd out the row', () => {
-		expect(LNote.displayInline([note('n1', alice, 'x'.repeat(LNote.INLINE_CHAR_BUDGET + 1))])).toBe(false)
-	})
-
-	it('renders nothing when there are no notes', () => {
-		expect(LNote.displayInline([])).toBe(false)
+	it('has nothing to show for no notes', () => {
+		expect(LNote.partitionForRow([])).toEqual({ recent: [], older: 0 })
 	})
 })
