@@ -400,6 +400,14 @@ export const repeatsDetectedLabel = def('Repeats Detected:')
 
 export const matchingFiltersLabel = def('Matching Filters:')
 
+export const unsupportedModLabel = def('Mod Not Installed:')
+
+export const unsupportedModTitle = def('{collection} is not installed', (collection: string) => ({ collection }))
+
+export const unsupportedModDescription = def(
+	'This server does not have the mod this layer comes from. Add it under the server’s installed mods to play this layer.',
+)
+
 // Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
 // message positions them rather than formatting them.
 export const repeatDescriptor = def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) =>

@@ -58,6 +58,7 @@ import type * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
@@ -2121,6 +2122,30 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
+// The collections the catalog knows, offered as a multi-select. A value the catalog no longer carries stays
+// selectable so an unrecognised entry is visible rather than silently dropped on the next save.
+function InstalledModsField({ value$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$) as string[] | undefined) ?? []
+	const collections = L.StaticLayerComponents.collections
+	const options = [...new Set([...collections, ...value])].map((collection) => ({
+		value: collection,
+		label: collections.includes(collection) ? collection : tr.text(SETTINGS_Msgs.unknownCollection(collection)),
+	}))
+
+	return (
+		<div className="max-w-[28rem]">
+			<ComboBoxMulti
+				title={tr.text(SETTINGS_Msgs.installedModsPicker())}
+				values={value}
+				options={options}
+				emptyLabel={tr.text(SETTINGS_Msgs.selectInstalledMods())}
+				chipDisplay
+				onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
+			/>
+		</div>
+	)
+}
+
 function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$) as Record<string, SM.AdminListDef> | undefined) ?? {}
 	const names = Object.keys(value)
@@ -3435,6 +3460,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	const last = path[path.length - 1]
 	// global settings define the lists (a record); a server picks from them (an array of names)
 	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField
+	if (path.length === 1 && last === 'installedMods') return InstalledModsField
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	if (path.length === 1 && last === 'locale') return LocaleField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override

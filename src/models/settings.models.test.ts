@@ -111,6 +111,28 @@ describe('getSettingsConstraints', () => {
 	})
 })
 
+describe('installed mods', () => {
+	test('a server that says nothing runs stock Squad', () => {
+		expect(SETTINGS.PublicServerSettingsSchema.parse({}).installedMods).toEqual(['OWI'])
+	})
+
+	test('an empty list is rejected: a server that can load nothing is not a configuration', () => {
+		expect(SETTINGS.PublicServerSettingsSchema.safeParse({ installedMods: [] }).success).toBe(false)
+	})
+
+	test('selection contexts indicate but do not filter, so an unsupported layer is shown greyed out', () => {
+		const settings = SETTINGS.PublicServerSettingsSchema.parse({ installedMods: ['OWI', 'GC'] })
+		const constraint = SETTINGS.getSettingsConstraints(settings).find((c) => c.type === 'installed-mods')
+		expect(constraint).toMatchObject({ collections: ['OWI', 'GC'], filterApplState: 'disabled', showIndicator: 'both' })
+	})
+
+	test('generation filters unsupported layers out', () => {
+		const settings = SETTINGS.PublicServerSettingsSchema.parse({ installedMods: ['OWI'] })
+		const constraint = SETTINGS.getSettingsConstraints(settings, { generatingLayers: true }).find((c) => c.type === 'installed-mods')
+		expect(constraint).toMatchObject({ collections: ['OWI'], filterApplState: 'regular' })
+	})
+})
+
 describe('message variable cycles', () => {
 	const parse = (messageVariables: { name: string; value: string }[]) => SETTINGS.parseGlobalSettings({ messageVariables })
 	const messageVariableIssues = (res: ReturnType<typeof parse>) =>

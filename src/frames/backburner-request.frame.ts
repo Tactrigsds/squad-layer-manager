@@ -15,6 +15,7 @@ import * as EFB from '@/models/editable-filter-builders'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -285,6 +286,11 @@ export namespace Sel {
 		// the applied filters (pool toggle, chips, extras) become part of the template itself, so the preview
 		// applies nothing beyond them and the parts the dialog carries through untouched
 		const constraints: LQY.Constraint[] = [...AppliedFiltersPrt.Sel.constraints(state)]
+		// a request the server could never load is not worth offering: generation applies this constraint anyway
+		if (state.squadServer) {
+			const settings = SquadServerFrame.Sel.settings(Zus.getState(state.squadServer))
+			constraints.push(SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'regular' }))
+		}
 		const preservedFilter = BB.buildTemplateFilter(state.preserved)
 		if (preservedFilter.type === 'and' && preservedFilter.children.length > 0) {
 			constraints.push(CB.filterAnon('backburner-request:preserved', preservedFilter))

@@ -177,8 +177,10 @@ export namespace Sel {
 	export function settings(s: State) {
 		return s.settings.saved
 	}
+	// with no server the fallback is the catalog rather than the schema defaults: a dialog opened outside a server
+	// describes every layer that exists, not the ones a hypothetical vanilla server could load
 	export function settingsOrDefault(s: State | undefined) {
-		return s?.settings.saved ?? SETTINGS.PublicServerSettingsSchema.parse({})
+		return s?.settings.saved ?? SETTINGS.catalogSettings()
 	}
 
 	export function playerSelection(s: State) {

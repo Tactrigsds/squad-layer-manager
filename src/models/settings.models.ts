@@ -12,6 +12,7 @@ import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as LTag from '@/models/layer-tags.models'
@@ -678,6 +679,11 @@ export function defaultRbacSettings() {
 
 // ============================== per-server settings ==============================
 
+// A fresh server is assumed to run stock Squad. The name is the catalog's, spelled out here rather than resolved
+// through L.getDefaultCollection because a zod prefault is a value, evaluated when this module loads, and layer
+// data is not loaded yet at that point.
+const DEFAULT_INSTALLED_MODS = ['OWI'] as const
+
 // autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
 // anyone wants, and the per-rule option is there to turn it off
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
@@ -918,6 +924,14 @@ export const PublicServerSettingsSchema = z.object({
 	navLinks: NavLinkSchema.prefault([]).describe(
 		'Links shown in the navbar links dropdown while this server is selected, below the global ones.',
 	),
+	installedMods: z
+		.array(z.string().min(1))
+		.min(1)
+		.prefault([...DEFAULT_INSTALLED_MODS])
+		.describe(
+			'The layer collections this game server has installed, by catalog name. A layer from a collection not listed here cannot ' +
+				'load, so SLM refuses to queue it, never generates one, and never offers one as a vote choice. OWI is vanilla Squad.',
+		),
 	adminLists: z
 		.array(SM.AdminListIdSchema)
 		.prefault([])
@@ -1123,9 +1137,28 @@ export function getIndicationAndWarnConstraints(settings: PublicServerSettings, 
 	)
 }
 
+// The constraint standing for "this server can actually load the layer". Applied as a hard query filter wherever
+// layers are being produced (generation, vote choices); left unapplied but indicated wherever layers are being
+// picked, so an unsupported layer is shown greyed out rather than silently missing from the catalog.
+export function getInstalledModsConstraint(
+	settings: PublicServerSettings,
+	opts?: { applyAs?: LQY.FilterApplicationState },
+): LQY.Constraint {
+	return CB.installedMods(settings.installedMods, opts)
+}
+
+// The stand-in settings for a context with no managed server: the schema defaults, except that every collection in
+// the catalog counts as installed. The layers page and the filter editor describe the catalog, not one server, so
+// the default of vanilla-only would wrongly grey out every modded layer there.
+export function catalogSettings(components = L.StaticLayerComponents): PublicServerSettings {
+	return { ...PublicServerSettingsSchema.parse({}), installedMods: [...components.collections] }
+}
+
 export function getSettingsConstraints(settings: PublicServerSettings, opts?: { generatingLayers?: boolean }) {
 	const constraints: LQY.Constraint[] = []
 	const queue = settings.queue
+
+	constraints.push(getInstalledModsConstraint(settings, { applyAs: opts?.generatingLayers ? 'regular' : 'disabled' }))
 
 	if (opts?.generatingLayers) {
 		const poolFilterConstraint = getPoolFilterConstraint(settings)

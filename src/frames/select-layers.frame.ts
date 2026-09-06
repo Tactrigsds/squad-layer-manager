@@ -16,6 +16,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
 
 import { frameManager } from './frame-manager'
@@ -256,10 +257,13 @@ export namespace Sel {
 
 		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
 
+		// left unapplied so an unsupported layer is still listed, greyed out with the reason, rather than absent
+		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'disabled' })
+
 		return {
 			cursor: state.cursor,
 			action: state.initialEditedLayerId ? 'edit' : 'add',
-			constraints: [...appliedConstraints, ...repeatRuleConstraints],
+			constraints: [installedMods, ...appliedConstraints, ...repeatRuleConstraints],
 			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 	}

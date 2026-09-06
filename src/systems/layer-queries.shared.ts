@@ -106,6 +106,12 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 				ir = res.ir
 				break
 			}
+			case 'installed-mods': {
+				const res = LE.lowerFilterNode(lower, FB.inValues('Collection', constraint.collections), [i.toString()])
+				if (res.code !== 'ok') return res
+				ir = res.ir
+				break
+			}
 			case 'do-not-repeat':
 				ir = repeatRuleIr(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
 				break
@@ -761,7 +767,12 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-				const active = constraint.type === 'do-not-repeat' || constraint.showIndicator !== 'disabled' || constraint.warn !== 'disabled'
+				// installed-mods always reports: an unloadable layer is worth saying regardless of how it was applied
+				const active =
+					constraint.type === 'do-not-repeat' ||
+					constraint.type === 'installed-mods' ||
+					constraint.showIndicator !== 'disabled' ||
+					constraint.warn !== 'disabled'
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
@@ -782,6 +793,21 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 						break
 					}
 
+					// read off the layer id rather than the engine: the collection is one of the id's own components
+					case 'installed-mods': {
+						const collection = L.toLayer(item.layerId).Collection
+						if (collection && !constraint.collections.includes(collection)) {
+							itemDescriptors.push({
+								type: 'installed-mods',
+								constraintId: constraint.id,
+								layerId: item.layerId,
+								itemId: item.itemId,
+								collection,
+							})
+						}
+						break
+					}
+
 					default:
 						assertNever(constraint)
 				}
@@ -794,6 +820,17 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	for (const { item } of LQY.iterItems(layerItems)) {
 		if (!LQY.isLayerListItem(item)) continue
 		if (!present.has(item.layerId)) continue
+		// a layer whose mod is not installed cannot load, whatever else exempts it, so this is checked ahead of every
+		// skip below: seeding and training layers ship with their mod as much as any other layer does
+		for (const descriptor of matchDescriptors.get(item.itemId) ?? []) {
+			if (descriptor.type !== 'installed-mods') continue
+			warns.push({
+				itemId: item.itemId,
+				type: 'unsupported-mod-warning',
+				collection: descriptor.collection,
+				constraintId: descriptor.constraintId,
+			})
+		}
 		// seeding and training layers are played outside the pool and repeat rules by design
 		if (L.isSeedingOrTrainingLayer(item.layerId)) continue
 		if (LQY.getTags(item)?.some((tag) => skipWarningsForTags.includes(tag))) continue
@@ -897,10 +934,21 @@ function postProcessLayers(
 
 		for (let i = 0; i < page.indicatorConstraints.length; i++) {
 			const constraintIdx = page.indicatorConstraints[i]
+			const constraint = constraints[constraintIdx]
 			const matched = page.indicatorResults[rowIndex]?.[i] ?? false
 			constraintResults[constraintIdx] = matched
-			if (matched) {
-				matchDescriptors.push({ type: 'filter-entity', constraintId: constraints[constraintIdx].id, layerId })
+			// installed-mods matches the layers the server *can* load, so the descriptor belongs to the misses
+			if (constraint.type === 'installed-mods') {
+				if (!matched) {
+					matchDescriptors.push({
+						type: 'installed-mods',
+						constraintId: constraint.id,
+						layerId,
+						collection: layer.Collection as string,
+					})
+				}
+			} else if (matched) {
+				matchDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId })
 			}
 		}
 

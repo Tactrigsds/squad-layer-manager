@@ -62,6 +62,20 @@ export const repeatRule = (
 	warn: opts?.warn ?? true,
 })
 
+// showIndicator stays 'both' even when the constraint is not applied, so a query always reports per-row support and
+// the layer table can grey the row out. applyAs 'regular' instead drops unsupported layers from the result entirely,
+// which is what layer generation and vote choices want.
+export const installedMods = (
+	collections: string[],
+	opts?: { applyAs?: LQY.FilterApplicationState },
+): Extract<LQY.Constraint, { type: 'installed-mods' }> => ({
+	type: 'installed-mods',
+	id: 'installed-mods',
+	collections,
+	filterApplState: opts?.applyAs ?? 'regular',
+	showIndicator: 'both',
+})
+
 export const filterMenuItems = (id: string, items: LQY.FilterMenuItem[]): Extract<LQY.Constraint, { type: 'filter-menu-items' }> => ({
 	type: 'filter-menu-items',
 	id,

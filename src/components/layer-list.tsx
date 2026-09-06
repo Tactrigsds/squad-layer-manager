@@ -381,6 +381,10 @@ function LoadedPasteRotation({
 	const entry = useStableValue((e) => e, [_entry])
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
+	const installedMods = Zus.useStore(
+		stores.squadServer,
+		Zus.useShallow((s: SquadServerFrame.State) => s.settings.saved.installedMods),
+	)
 
 	const onOpenChange = (open: boolean) => {
 		if (open) return
@@ -423,6 +427,7 @@ function LoadedPasteRotation({
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
+			installedMods={installedMods}
 			extraFooter={
 				<>
 					{positionTabsList}

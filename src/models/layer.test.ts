@@ -390,3 +390,35 @@ describe('the Community collection, folded into OWI', () => {
 		expect(L.parseLayerId(id.replace(/^([^:]+)/, '$1-ZZ')).code).not.toBe('ok')
 	})
 })
+
+describe('parseRawLayerLines', () => {
+	const vanilla = 'Narva_RAAS_v1 RGF USMC'
+	const supermod = 'SU_Sanxian_Invasion_v2 SU_ADF SU_BAF'
+
+	it('reports each line under its own 1-based number, blank lines included in the count', () => {
+		const lines = L.parseRawLayerLines(`\n${vanilla}\n\n  \nnot a layer at all\n`)
+		expect(lines.map((l) => [l.lineNumber, l.code])).toEqual([
+			[2, 'ok'],
+			[5, 'err:unknown-layer'],
+		])
+	})
+
+	it('flags a layer the catalog does not have', () => {
+		const [line] = L.parseRawLayerLines('Atlantis_RAAS_v1 RGF USMC')
+		expect(line.code).toBe('err:unknown-layer')
+	})
+
+	it('passes a modded layer when its collection is installed', () => {
+		const [line] = L.parseRawLayerLines(supermod, { installedMods: ['OWI', 'SuperMod'] })
+		expect(line.code).toBe('ok')
+	})
+
+	it('flags a modded layer when its collection is not, naming the collection', () => {
+		const [line] = L.parseRawLayerLines(supermod, { installedMods: ['OWI'] })
+		expect(line).toMatchObject({ code: 'err:mod-not-installed', collection: 'SuperMod' })
+	})
+
+	it('checks no collection when the caller names no server', () => {
+		expect(L.parseRawLayerLines(supermod)[0].code).toBe('ok')
+	})
+})

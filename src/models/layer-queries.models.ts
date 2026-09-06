@@ -127,6 +127,15 @@ export type Constraint =
 			showIndicator: 'disabled'
 			id: string
 	  }
+	// which of the catalog's collections the server has installed. There is one of these per query at most, and
+	// consumers find it by type.
+	| {
+			type: 'installed-mods'
+			collections: string[]
+			filterApplState: FilterApplicationState
+			showIndicator: IndicatorState
+			id: string
+	  }
 
 export type FilterMenuItem = {
 	field: string
@@ -385,12 +394,20 @@ export type FilterEntityMatchDescriptor = {
 	itemId?: ItemId
 	layerId: L.LayerId
 }
-export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor
+// the layer's collection is not among the server's installed mods, so the server cannot load it
+export type UnsupportedModMatchDescriptor = {
+	type: 'installed-mods'
+	constraintId: string
+	itemId?: ItemId
+	layerId: L.LayerId
+	collection: string
+}
+export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor | UnsupportedModMatchDescriptor
 
 export function resolveRepeatedFieldToDescriptorMap(descriptors: MatchDescriptor[], teamParity: number) {
 	const violatedFields: Map<keyof L.KnownLayer, RepeatMatchDescriptor> = new Map()
 	for (const descriptor of descriptors) {
-		if (descriptor.type === 'filter-entity') continue
+		if (descriptor.type === 'filter-entity' || descriptor.type === 'installed-mods') continue
 		if (descriptor.type === 'repeat-rule') {
 			violatedFields.set(resolveLayerPropertyForRepeatDescriptorField(descriptor, teamParity), descriptor)
 			continue
@@ -744,6 +761,11 @@ export type QueueWarning = {
 			matched: boolean
 			constraintId: string
 	  }
+	| {
+			type: 'unsupported-mod-warning'
+			collection: string
+			constraintId: string
+	  }
 )
 
 // A repeat violation is the same one as before iff the same pair of items still trips the same rule. Neither the offset
@@ -784,7 +806,7 @@ export function filterEditInducedWarnings(
 	const induced: QueueWarning[] = []
 	for (const warn of warns) {
 		const itemWasEdited = typeof warn.itemId === 'string' && editedItemIds.has(warn.itemId)
-		if (warn.type === 'filter-entity-warning') {
+		if (warn.type === 'filter-entity-warning' || warn.type === 'unsupported-mod-warning') {
 			if (itemWasEdited) induced.push(warn)
 		} else if (warn.type === 'repeat-rule-violation-warning') {
 			if (itemWasEdited) {

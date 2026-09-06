@@ -68,6 +68,14 @@ function getIsLayerOutOfPool(constraintValues: boolean[], constraints: LQY.Const
 	return poolConstraint.poolFilterMode === 'include' ? !matched : matched
 }
 
+// the installed-mods constraint matches the layers the server can load, so a false is the unsupported one. Absent
+// constraint means nothing scoped the query to a server, which supports everything.
+function getIsLayerUnsupported(constraintValues: boolean[], constraints: LQY.Constraint[]) {
+	const index = constraints.findIndex((c) => c.type === 'installed-mods')
+	if (index === -1) return false
+	return !(constraintValues[index] ?? true)
+}
+
 export type ConstraintRowDetails = {
 	values: boolean[]
 	matchDescriptors: LQY.MatchDescriptor[]
@@ -77,7 +85,13 @@ export type ConstraintRowDetails = {
 // isOutOfPool is pool membership alone. Whether that actually disables the row depends on queue:force-write, which is
 // resolved in LayerTablePrt.Sel so it tracks the permissions dialog's simulation; baking it in here read the real
 // permissions and left simulation with nothing to narrow.
-export type RowData = L.KnownLayer & Record<string, any> & { constraints: ConstraintRowDetails; isOutOfPool: boolean }
+export type RowData = L.KnownLayer &
+	Record<string, any> & {
+		constraints: ConstraintRowDetails
+		isOutOfPool: boolean
+		// the server has no mod for this layer's collection. Unlike isOutOfPool there is no permission that lifts it
+		isUnsupported: boolean
+	}
 function layerToRowData(layer: any, queriedConstraints: LQY.Constraint[]): RowData {
 	// TODO  this is madness
 	const constraintValues = Array.isArray(layer.constraints) ? layer.constraints : (layer.constraints?.values ?? [])
@@ -97,6 +111,7 @@ function layerToRowData(layer: any, queriedConstraints: LQY.Constraint[]): RowDa
 		...layer,
 		constraints,
 		isOutOfPool: getIsLayerOutOfPool(constraintValues, queriedConstraints),
+		isUnsupported: getIsLayerUnsupported(constraintValues, queriedConstraints),
 	} as RowData
 }
 
@@ -285,13 +300,16 @@ export function useLayerComponents(
 	})
 }
 
-const emptySettings = SETTINGS.PublicServerSettingsSchema.parse({})
+// built lazily: layer data has to be loaded before the catalog's collections can be read
+let catalogWideSettings: SETTINGS.PublicServerSettings | undefined
 
 // squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
 export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
 	return Zus.useStore(
 		squadServerFrameKey ?? null,
-		Zus.useDeep((state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings)),
+		Zus.useDeep((state: SquadServerFrame.State | undefined) =>
+			SETTINGS.getSettingsConstraints(state?.settings.saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings())),
+		),
 	)
 }
 

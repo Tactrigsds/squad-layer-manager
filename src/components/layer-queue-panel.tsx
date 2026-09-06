@@ -63,6 +63,7 @@ function ValidationWarningsDisplay(props: {
 
 	const repeatWarnings: Extract<QueueWarning, { type: 'repeat-rule-violation-warning' }>[] = []
 	const filterWarnings: Map<string, Extract<QueueWarning, { type: 'filter-entity-warning' }>[]> = new Map()
+	const unsupportedModWarnings: Extract<QueueWarning, { type: 'unsupported-mod-warning' }>[] = []
 
 	if (props.warnings) {
 		for (const warning of props.warnings) {
@@ -78,12 +79,31 @@ function ValidationWarningsDisplay(props: {
 				const itemFilterWarnings = MapUtils.defaultInsGet(filterWarnings, warning.itemId, [])
 				itemFilterWarnings.push({ ...warning, item, index, parity })
 			} else if (warning.type === 'repeat-rule-violation-warning') repeatWarnings.push({ ...warning, item, index, parity })
+			else if (warning.type === 'unsupported-mod-warning') unsupportedModWarnings.push({ ...warning, item, index, parity })
 			else assertNever(warning)
 		}
 	}
 
 	return (
 		<>
+			{unsupportedModWarnings.length > 0 && (
+				<Alert data-tour="save-warnings" variant="destructive" className="mx-2 my-1.5 w-auto">
+					<Icons.PackageX />
+					<AlertTitle>{tr.text(LL_Msgs.unsupportedMods())}</AlertTitle>
+					<AlertDescription>
+						{tr.text(LL_Msgs.unsupportedModsBlurb())}
+						<div className="flex flex-col gap-1">
+							{unsupportedModWarnings.map((warning) => (
+								<div key={warning.item.itemId} className="flex items-center gap-2 text-sm">
+									<span className="font-mono text-muted-foreground">{LL.getItemNumber(warning.index)}</span>
+									<ShortLayerName layerId={warning.item.layerId} teamParity={warning.parity} />
+									<span className="text-muted-foreground">{warning.collection}</span>
+								</div>
+							))}
+						</div>
+					</AlertDescription>
+				</Alert>
+			)}
 			{repeatWarnings.length > 0 && (
 				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-2 my-1.5 w-auto">
 					<Icons.AlertTriangle />
