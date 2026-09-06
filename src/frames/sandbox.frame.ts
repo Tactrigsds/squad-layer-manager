@@ -51,10 +51,13 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	} satisfies Store)
 
 	args.cleanup.push(
-		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId })).subscribe((res) => {
-			if (res.code === 'ok') args.set({ state: res, unavailable: false })
-			else args.set({ state: null, unavailable: true })
-		}),
+		// ends after a permission denial or on a server that is not a sandbox
+		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId }), { finite: true }).subscribe(
+			(res) => {
+				if (res.code === 'ok') args.set({ state: res, unavailable: false })
+				else args.set({ state: null, unavailable: true })
+			},
+		),
 	)
 }
 

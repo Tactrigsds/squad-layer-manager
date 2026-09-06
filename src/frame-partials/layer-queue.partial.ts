@@ -176,11 +176,13 @@ export function initLayerQueue(args: Args) {
 	)
 
 	args.cleanup.push(
-		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }))
-			.pipe(RPC.dropServerNotLoaded())
-			.subscribe((update) => {
-				get().handleServerUpdate(update)
-			}),
+		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }), {
+			apply: (update$) =>
+				update$.pipe(
+					RPC.dropServerNotLoaded(),
+					Rx.tap((update) => get().handleServerUpdate(update)),
+				),
+		}).subscribe(),
 	)
 }
 

@@ -156,7 +156,9 @@ let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 // the server opens with an 'init' update, so silence here is a genuine fault rather than an idle event feed
 const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	'userPresence.presenceUpdate',
-	RPC.observe('userPresence.watchUpdates', () => RPC.orpc.userPresence.watchUpdates.call()),
+	RPC.observe('userPresence.watchUpdates', () => RPC.orpc.userPresence.watchUpdates.call(), {
+		apply: Rx.tap((update) => handleIncomingPresenceUpdate(update)),
+	}),
 )
 
 export const Store = createPresenceStore()
@@ -575,10 +577,8 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 // -------- setup --------
 
 export async function setup() {
-	// Subscribe to presence broadcast stream
-	presenceUpdate$.pipe(ReactRx.retryHot()).subscribe((update) => {
-		handleIncomingPresenceUpdate(update)
-	})
+	// the handler runs inside the watch (see the `apply` on presenceUpdate$); this subscription only keeps it hot
+	presenceUpdate$.pipe(ReactRx.retryHot()).subscribe()
 
 	// Presence after a websocket reconnect is re-established server-side: our new socket sends the id we
 	// last held as `?prior=`, and the server reclaims that same wsClientId with its activity and locks
