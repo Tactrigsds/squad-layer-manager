@@ -193,18 +193,30 @@ opened$
 	.subscribe()
 
 // -------- version skew protection --------
-let previousSha: string | undefined
+// A page is pinned to the build and the layer pool it loaded with, so it crosses over to a new one by reloading.
+// The layer pool counts because its two halves are fetched once per page load and fed to a query worker that can
+// outlive the page (see layer-queries.worker.ts).
+let reloadScheduled = false
+export function reloadForSkew(reason: string, message: Parameters<typeof tr.toast>[0]) {
+	if (reloadScheduled) return
+	reloadScheduled = true
+	toast.info(...tr.toast(message))
+	setTimeout(() => {
+		console.warn(`${reason}, reloading window`)
+		window.location.reload()
+	}, 500)
+}
+
+let previous: { sha: string; layerDataHash: string } | undefined
 ConfigClient.Store.subscribe((config) => {
 	if (!config) return
-	if (!previousSha) {
-		previousSha = config.PUBLIC_GIT_SHA
+	if (!previous) {
+		previous = { sha: config.PUBLIC_GIT_SHA, layerDataHash: config.layerDataHash }
 		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
-	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
-		toast.info(...tr.toast(RPC_Msgs.upgrading()))
-		setTimeout(async () => {
-			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
-			window.location.reload()
-		}, 500)
+	} else if (previous.sha !== config.PUBLIC_GIT_SHA) {
+		reloadForSkew(`Version skew detected (${previous.sha} -> ${config.PUBLIC_GIT_SHA})`, RPC_Msgs.upgrading())
+	} else if (previous.layerDataHash !== config.layerDataHash) {
+		reloadForSkew(`Layer pool changed (${previous.layerDataHash} -> ${config.layerDataHash})`, RPC_Msgs.layerPoolUpdated())
 	}
 })
 

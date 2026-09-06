@@ -2,6 +2,7 @@ import * as Rx from '@/lib/rxjs'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
+import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -20,6 +21,7 @@ const envBuilder = Env.getEnvBuilder({
 	BM_ENABLED: Env.groups.battlemetrics.BM_ENABLED,
 	SQUADBROWSER_ENABLED: Env.groups.squadbrowser.SQUADBROWSER_ENABLED,
 	STEAM_ENABLED: Env.groups.steam.STEAM_ENABLED,
+	CACHE_LAYER_ARTIFACT: Env.groups.layers.CACHE_LAYER_ARTIFACT,
 })
 export let ENV!: ReturnType<typeof envBuilder>
 
@@ -42,6 +44,9 @@ export type PublicConfig = {
 	layerTable: SETTINGS.GlobalSettings['layerTable']
 	layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 	layersVersion: string
+	// content hash of the layer-data.json this deployment serves. A tab that loaded a different one is on another
+	// layer pool than the server, which is version skew (see orpc.client.ts)
+	layerDataHash: string
 	// Whether it is worth the client storing the decompressed layer artifact in OPFS. It is ~235MB, and the write
 	// costs more than fetching and inflating it put together, so it only pays for itself where a later page load
 	// reads it back. e2e is the case where none ever does: playwright gives every test a fresh browser profile.
@@ -66,8 +71,9 @@ export function pushPublicConfig() {
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
 		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
 		layersVersion: LayerEngine.layersVersion,
+		layerDataHash: LayerData.hash,
 		// a dev instance is reloaded against the same profile all day, so it wants the cache; only e2e does not
-		cacheLayerArtifact: ENV.NODE_ENV !== 'test',
+		cacheLayerArtifact: ENV.CACHE_LAYER_ARTIFACT ?? ENV.NODE_ENV !== 'test',
 		integrations: {
 			battlemetrics: ENV.BM_ENABLED,
 			discord: ENV.DISCORD_ENABLED,

@@ -174,11 +174,9 @@ function formatLocalTimeOfDay(epochMs: number): string {
 	return `${h < 10 ? '0' : ''}${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`
 }
 
-export function showLogEvent(
-	obj: { level: number; [key: string]: unknown },
-	align = false,
-	excludedContextParams: ReadonlySet<string> = new Set(),
-) {
+export type LogEvent = { level: number; [key: string]: unknown }
+
+export function showLogEvent(obj: LogEvent, align = false, excludedContextParams: ReadonlySet<string> = new Set()) {
 	const time = formatLocalTimeOfDay(obj.time as number)
 	const dimColor = '\x1b[2m' // Dim/reduced weight ANSI escape code
 	const resetColor = '\x1b[0m'
