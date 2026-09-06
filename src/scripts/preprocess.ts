@@ -516,7 +516,11 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			return undefined
 		}
 
-		if (map.factions.length > 0) {
+		// A training layer's teams are fixed by its config: the game ignores the faction arguments of a training
+		// command (see L.getLayerCommand), so the factions list a mod exports for one describes nothing playable.
+		// Taking it would put every pairing of those factions in the table, in both orientations, all resolving to
+		// the same match.
+		if (map.factions.length > 0 && segments.Gamemode !== 'Training') {
 			for (const faction of map.factions) {
 				if (!faction.defaultUnit) continue
 				const idDetails = root.Units[faction.defaultUnit]
@@ -552,7 +556,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 				}
 			}
 		} else {
-			// range/training layers of structured sources carry no factions list; the default units are all there is
+			// range and training layers: the two default units are all there is
 			for (const [index, team] of teamConfigs.entries()) {
 				const record = root.Units[team.defaultFactionUnit!]
 				const parsed = SLL.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
@@ -749,7 +753,8 @@ async function parseSquadLayerSheetData() {
 			for (const availEntry2 of availability.get(layer.Layer)!) {
 				if (!availEntry2.allowedTeams.includes(2)) continue
 
-				if (availEntry1.Faction === availEntry2.Faction) continue
+				// a training layer can put one faction against itself, and its config is what it is
+				if (availEntry1.Faction === availEntry2.Faction && layer.Gamemode !== 'Training') continue
 				const pairKey = `${availEntry1.Faction}|${availEntry1.Unit}|${availEntry2.Faction}|${availEntry2.Unit}`
 				if (seenPairs.has(pairKey)) continue
 				seenPairs.add(pairKey)

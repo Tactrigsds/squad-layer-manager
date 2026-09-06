@@ -594,9 +594,8 @@ export function getLayerCommand(
 	}
 
 	let commandArgs: string
-	const bareTrainingLayer =
-		layer.Layer.startsWith('JensensRange') ||
-		(layer.Gamemode === 'Training' && !!layer.Collection && layer.Collection !== getDefaultCollection(components))
+	// a training layer's teams are fixed by its config, and the game ignores faction arguments on one
+	const bareTrainingLayer = layer.Gamemode === 'Training'
 	if (isRawLayer(layer)) commandArgs = layer.id.slice('RAW:'.length)
 	else if (bareTrainingLayer) {
 		commandArgs = layer.Layer
