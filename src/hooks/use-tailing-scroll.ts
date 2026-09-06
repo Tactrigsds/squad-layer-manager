@@ -1,5 +1,7 @@
 import React from 'react'
 
+import * as ScrollIntent from '@/lib/scroll-intent'
+
 const EDGE_THRESHOLD_PX = 12
 // how long after a user gesture we keep attributing scroll events to the user (covers momentum/smooth scrolling)
 const SCROLL_IDLE_MS = 250
@@ -32,7 +34,8 @@ function scrollTo(viewport: HTMLElement, top: number) {
  * The tailing flag is driven by user gestures rather than by raw scroll events: programmatic
  * corrections, browser scroll anchoring and clamping on resize all emit scroll events that are
  * otherwise indistinguishable from a user scrolling up, which is what made the previous
- * implementation silently stop following new events.
+ * implementation silently stop following new events. A scroll made on the user's behalf, such as a
+ * find bar bringing a match into view, announces itself through `ScrollIntent` and counts as a gesture.
  */
 export function useTailingScroll() {
 	const [viewport, setViewport] = React.useState<HTMLElement | null>(null)
@@ -125,12 +128,14 @@ export function useTailingScroll() {
 
 		viewport.addEventListener('scroll', onScroll, { passive: true })
 		for (const event of USER_INTENT_EVENTS) intentTarget.addEventListener(event, markUserActive, { passive: true })
+		intentTarget.addEventListener(ScrollIntent.EVENT, markUserActive)
 		onScroll()
 
 		return () => {
 			clearTimeout(idleTimeout)
 			viewport.removeEventListener('scroll', onScroll)
 			for (const event of USER_INTENT_EVENTS) intentTarget.removeEventListener(event, markUserActive)
+			intentTarget.removeEventListener(ScrollIntent.EVENT, markUserActive)
 		}
 	}, [viewport, root])
 

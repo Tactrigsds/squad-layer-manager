@@ -43,8 +43,9 @@ export type Engine = {
 	pending: string
 	// the match offset to stay near when the results change under the reader
 	anchor: number
-	// the match a pending frame will paint and scroll to, and that frame's handle while one is booked
+	// the match a pending frame will paint, whether that frame also scrolls to it, and its handle while one is booked
 	revealTarget: number
+	revealScroll: boolean
 	revealHandle: number
 	observer: MutationObserver | null
 	typed$: Rx.Subject<void>
@@ -64,7 +65,7 @@ export type Store = {
 	supported: boolean
 }
 
-type Controls = { run: () => void; step: (delta: number) => void; close: () => void }
+type Controls = { run: (scroll: boolean) => void; step: (delta: number) => void; close: () => void }
 const controls = new WeakMap<Engine, Controls>()
 
 let painter: Engine | null = null
@@ -92,6 +93,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		pending: '',
 		anchor: 0,
 		revealTarget: -1,
+		revealScroll: false,
 		revealHandle: 0,
 		observer: null,
 		typed$: new Rx.Subject<void>(),
@@ -124,7 +126,9 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 
 	// paints the current match over the rest of them and brings it into view
 	function paintCurrent() {
+		const scroll = engine.revealScroll
 		engine.revealHandle = 0
+		engine.revealScroll = false
 		const match = engine.matches[engine.revealTarget]
 		if (!engine.index || !match) {
 			Find.clear(HIGHLIGHT_CURRENT)
@@ -132,7 +136,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		}
 		const range = Find.toRange(engine.index, match)
 		Find.paint(HIGHLIGHT_CURRENT, [range], 1)
-		Find.scrollRangeIntoView(range)
+		if (scroll) Find.scrollRangeIntoView(range)
 	}
 
 	function cancelReveal() {
@@ -144,14 +148,18 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	// Measuring and scrolling to a match forces a layout flush, and the enter key repeats far faster than the screen
 	// refreshes, so holding it spent every frame on positions nobody ever saw. Only the last one in a frame is worth
 	// showing. The anchor is still moved for each step, since a rebuild landing mid-burst reads it.
-	function reveal(current: number) {
+	function reveal(current: number, scroll: boolean) {
 		const match = engine.matches[current]
 		if (match) engine.anchor = match.start
 		engine.revealTarget = current
+		engine.revealScroll ||= scroll
 		if (engine.revealHandle === 0) engine.revealHandle = requestAnimationFrame(paintCurrent)
 	}
 
-	function run() {
+	// `scroll` is false for a rebuild the subtree forced by redrawing under an idle query. The highlights have to
+	// be repainted, but the reader did nothing, and a tailing feed redraws on every event: scrolling would pin them
+	// to the match for as long as the bar stayed open, and fight the feed's own scrolling for the viewport.
+	function run(scroll: boolean) {
 		const state = args.get()
 		const query = engine.pending
 		if (!state.open || !engine.root || query === '') {
@@ -177,7 +185,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 			matches.map((m) => Find.toStaticRange(engine.index!, m)),
 		)
 		publish({ query, matchCount: matches.length, currentIndex: current, truncated })
-		reveal(current)
+		reveal(current, scroll)
 	}
 
 	function step(delta: number) {
@@ -185,7 +193,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		if (total === 0) return
 		const next = (args.get().currentIndex + delta + total) % total
 		args.set({ currentIndex: next })
-		reveal(next)
+		reveal(next, true)
 	}
 
 	function close() {
@@ -202,8 +210,14 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 
 	args.cleanup.push(
 		Rx.merge(
-			engine.typed$.pipe(Rx.throttleTime(TYPING_THROTTLE_MS, Rx.asyncScheduler, { leading: true, trailing: true })),
-			engine.dirty$.pipe(Rx.auditTime(MUTATION_AUDIT_MS)),
+			engine.typed$.pipe(
+				Rx.throttleTime(TYPING_THROTTLE_MS, Rx.asyncScheduler, { leading: true, trailing: true }),
+				Rx.map(() => true),
+			),
+			engine.dirty$.pipe(
+				Rx.auditTime(MUTATION_AUDIT_MS),
+				Rx.map(() => false),
+			),
 		).subscribe(run),
 	)
 	args.cleanup.push(() => {
@@ -265,7 +279,7 @@ export namespace Actions {
 			})
 			engine.observer = observer
 		}
-		controls.get(engine)?.run()
+		controls.get(engine)?.run(false)
 	}
 
 	export function setQuery(stores: KeyProp, query: string) {
@@ -279,12 +293,12 @@ export namespace Actions {
 
 	export function setCaseSensitive(stores: KeyProp, caseSensitive: boolean) {
 		store(stores).setState({ caseSensitive })
-		controls.get(engineOf(stores))?.run()
+		controls.get(engineOf(stores))?.run(true)
 	}
 
 	export function setWholeWord(stores: KeyProp, wholeWord: boolean) {
 		store(stores).setState({ wholeWord })
-		controls.get(engineOf(stores))?.run()
+		controls.get(engineOf(stores))?.run(true)
 	}
 
 	export function next(stores: KeyProp) {
@@ -302,7 +316,7 @@ export namespace Actions {
 			engine.index = null
 			engine.anchor = 0
 		}
-		controls.get(engine)?.run()
+		controls.get(engine)?.run(true)
 	}
 
 	export function close(stores: KeyProp) {
