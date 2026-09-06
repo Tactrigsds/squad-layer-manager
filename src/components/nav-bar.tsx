@@ -442,7 +442,7 @@ function JoinServerButton(props: { serverId: string; asMenuItem?: boolean }) {
 		)
 	}
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button
 					variant="ghost"

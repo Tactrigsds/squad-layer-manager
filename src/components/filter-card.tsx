@@ -152,7 +152,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 			<div className="flex flex-col space-y-2">
 				<div className="flex items-center space-x-1 justify-end">
 					{/* -------- format -------- */}
-					<Tooltip>
+					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button
 								onClick={() => editorRef.current?.format()}
@@ -169,7 +169,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					</Tooltip>
 
 					{/* -------- reset filter -------- */}
-					<Tooltip>
+					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
 								<Undo2 color="hsl(var(--muted-foreground))" />
@@ -594,7 +594,7 @@ function CommentButton(props: NodeProps) {
 	)
 	const label = hasComment ? 'Edit comment' : 'Add comment'
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button
 					size="icon"
@@ -617,7 +617,7 @@ function CommentButton(props: NodeProps) {
 function DuplicateButton(props: { onClick: () => void }) {
 	const label = tr.text(F_Msgs.duplicateNode())
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button size="icon" variant="ghost" aria-label={label} onClick={props.onClick}>
 					<Icons.Copy color="hsl(var(--muted-foreground))" />
@@ -1811,7 +1811,7 @@ export function MatchupConfig(props: {
 				setValues={(col, values) => actions.setTeamValues(0, col, values)}
 			/>
 			<div className="flex flex-col items-center space-y-1">
-				<Tooltip>
+				<Tooltip help>
 					<TooltipTrigger asChild>
 						<Button size="icon" variant="ghost" onClick={() => actions.swapTeams()}>
 							<Icons.ArrowLeftRight />
@@ -1819,7 +1819,7 @@ export function MatchupConfig(props: {
 					</TooltipTrigger>
 					<TooltipContent>{tr.text(F_Msgs.swapSides())}</TooltipContent>
 				</Tooltip>
-				<Tooltip>
+				<Tooltip help>
 					<TooltipTrigger asChild>
 						<Button
 							size="icon"

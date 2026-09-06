@@ -281,7 +281,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	}
 
 	const clearButton = (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button
 					data-tour="queue-clear"
@@ -358,7 +358,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		</StartActivityInteraction>
 	)
 	const resetButton = (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button
 					data-tour="queue-reset"
@@ -397,7 +397,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			{(() => {
 				const saveButtonGroup = (
 					<ButtonGroup>
-						<Tooltip>
+						<Tooltip help>
 							<TooltipTrigger asChild>
 								<Button
 									size="icon-sm"
@@ -415,7 +415,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								<p>{tr.text(LL_Msgs.toggleForceSaveHint())}</p>
 							</TooltipContent>
 						</Tooltip>
-						<Tooltip>
+						<Tooltip help>
 							<TooltipTrigger asChild>
 								<Button
 									data-tour="queue-save"

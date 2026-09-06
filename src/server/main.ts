@@ -12,6 +12,7 @@ import * as Backups from '@/systems/backups.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
+import * as CombatStats from '@/systems/combat-stats.server'
 import * as Commands from '@/systems/commands.server'
 import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
@@ -124,6 +125,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Backups.setup()
 	EventArchive.setup()
 	History.setup()
+	CombatStats.setup()
 	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off

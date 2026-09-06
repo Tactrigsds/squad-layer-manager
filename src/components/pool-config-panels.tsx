@@ -50,7 +50,7 @@ function InvertToggle(props: {
 }) {
 	const label = props.pressed ? props.labels.inverted : props.labels.regular
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				{/* styled via aria-pressed: the wrapping TooltipTrigger overwrites the toggle's data-state with its own */}
 				<Toggle

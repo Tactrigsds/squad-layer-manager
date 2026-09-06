@@ -1016,7 +1016,7 @@ function GroupColorRow({
 // descriptions. `links` render as buttons that jump to (and highlight) another setting by its anchor id.
 function HelpTip({ text, links }: { text: string; links?: { label: string; anchor: string }[] }) {
 	return (
-		<Tooltip>
+		<Tooltip pinnable>
 			<TooltipTrigger asChild>
 				<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={tr.text(SETTINGS_Msgs.help())}>
 					<Icons.CircleHelp className="h-3.5 w-3.5" />
@@ -2821,7 +2821,7 @@ function RolePermissionsTable({
 								<TableCell className="align-top">
 									{/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
 									    enough that reusing the icon for "remove the whole permission" would be a trap */}
-									<Tooltip>
+									<Tooltip help>
 										<TooltipTrigger asChild>
 											<Button
 												type="button"
@@ -4140,7 +4140,7 @@ function TooltipButton({
 	children: React.ReactNode
 }) {
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<span className="inline-flex">
 					<Button
@@ -4414,7 +4414,7 @@ function CommentButton({ root$, pathStr, editing, setEditing, caretRef }: Commen
 	const hasComment = !!useSettingComment(root$, pathStr)
 	const label = hasComment ? tr.text(SETTINGS_Msgs.editComment()) : tr.text(SETTINGS_Msgs.addComment())
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<button
 					type="button"

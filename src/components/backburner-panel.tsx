@@ -187,7 +187,7 @@ export default function BackburnerPanel(props: StoresProp) {
 				<span className="fd-cond font-bold text-base flex items-center gap-1.5">
 					{tr.text(BB_Msgs.heading(items.length))}
 					{modified && <Badge variant="outline">{tr.text(BB_Msgs.unsavedBadge())}</Badge>}
-					<Tooltip>
+					<Tooltip pinnable>
 						<TooltipTrigger asChild>
 							<Icons.Info className="size-3 text-text-3" />
 						</TooltipTrigger>
@@ -206,7 +206,7 @@ export default function BackburnerPanel(props: StoresProp) {
 					{canRequest &&
 						(isEditing ? (
 							<>
-								<Tooltip>
+								<Tooltip help>
 									<TooltipTrigger asChild>
 										<Button
 											variant="ghost"
@@ -224,7 +224,7 @@ export default function BackburnerPanel(props: StoresProp) {
 									{tr.text(BB_Msgs.requestLayer())}
 								</Button>
 								<ButtonGroup>
-									<Tooltip>
+									<Tooltip help>
 										<TooltipTrigger asChild>
 											<Button
 												size="icon-sm"
@@ -471,7 +471,7 @@ function BackburnerRow(
 			{(canEdit || props.canRequest) && (
 				<span className="fd-grp">
 					{props.canRequest && (
-						<Tooltip>
+						<Tooltip help>
 							<TooltipTrigger asChild>
 								<Button
 									size="icon-sm"

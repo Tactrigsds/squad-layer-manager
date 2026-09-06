@@ -29,6 +29,63 @@ export function initMatchEventsCacheContext(): MEC.Ctx.Payload {
 }
 
 /**
+ * Each match's raw feed straight off the db, keyed by match id.
+ *
+ * The uncached half of getFeedEventsForMatches, exported because the combat-stats worker replays matches on its
+ * own thread: one implementation decides what a match's feed is, whichever thread is asking. Takes its logger
+ * off the ctx rather than the module's, since that thread never runs this module's setup.
+ */
+export const readMatchFeeds = Instr.spanOp(
+	'readMatchFeeds',
+	{ module, levels: { event: 'trace' } },
+	async (ctx: C.Db & CS.Log & CS.AbortSignal, matchIds: number[]): Promise<Map<number, CHAT.Event[]>> => {
+		// hot rows for matches still inside the archive window, unpacked blobs for the rest; the two are
+		// indistinguishable from here
+		const rowsByMatch = await EventArchive.loadMatchEvents(ctx, matchIds)
+
+		// SLM's own actions are entries in their own right, and the server events they caused collapse under them.
+		// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
+		// app events are not archived: the table is three orders of magnitude smaller than serverEvents and is
+		// read by the global audit log on a time cursor, which a per-match blob cannot serve.
+		const rawAppEvents = await ctx
+			.db()
+			.select()
+			.from(Schema.appEvents)
+			.where(E.inArray(Schema.appEvents.matchId, matchIds))
+			.orderBy(E.asc(Schema.appEvents.time))
+
+		const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
+		let dropped = 0
+		for (const row of rawAppEvents) {
+			const appEvent = AppEvents.fromRow(row)
+			if (!appEvent) {
+				dropped++
+				continue
+			}
+			if (!AppEvents.isFeedVisible(appEvent) || row.matchId === null) continue
+			let events = appEventsByMatch.get(row.matchId)
+			if (!events) appEventsByMatch.set(row.matchId, (events = []))
+			events.push(appEvent)
+		}
+		if (dropped > 0) ctx.log.warn('dropped %d unparseable app-event row(s) from the match feed', dropped)
+
+		const eventsByMatch = new Map<number, CHAT.Event[]>()
+		for (const matchId of matchIds) {
+			const serverEvents = SE.fromEventRows(ctx, rowsByMatch.get(matchId) ?? [])
+			eventsByMatch.set(matchId, CHAT.mergeAppEvents(serverEvents, appEventsByMatch.get(matchId) ?? []))
+		}
+		return eventsByMatch
+	},
+)
+
+/** One match's feed replayed into the entries every reader of it sees. Each match starts from an empty roster. */
+export function enrichMatchFeed(events: CHAT.Event[], opts: CHAT.InterpolationOptions): CHAT.EventEnriched[] {
+	const state = CHAT.getInitialChatState()
+	for (const event of events) CHAT.handleEvent(state, event, opts)
+	return state.eventBuffer
+}
+
+/**
  * A match's feed events in the same form the live chat stream sends: raw server events with the app events SLM
  * recorded against that match interleaved, ready to be replayed into enriched entries.
  *
@@ -53,44 +110,7 @@ export const getFeedEventsForMatches = Instr.spanOp(
 		}
 
 		if (uncached.length > 0) {
-			const batch$ = (async () => {
-				// hot rows for matches still inside the archive window, unpacked blobs for the rest; the two are
-				// indistinguishable from here
-				const rowsByMatch = await EventArchive.loadMatchEvents(ctx, uncached)
-
-				// SLM's own actions are entries in their own right, and the server events they caused collapse under them.
-				// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
-				// app events are not archived: the table is three orders of magnitude smaller than serverEvents and is
-				// read by the global audit log on a time cursor, which a per-match blob cannot serve.
-				const rawAppEvents = await ctx
-					.db()
-					.select()
-					.from(Schema.appEvents)
-					.where(E.inArray(Schema.appEvents.matchId, uncached))
-					.orderBy(E.asc(Schema.appEvents.time))
-
-				const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
-				let dropped = 0
-				for (const row of rawAppEvents) {
-					const appEvent = AppEvents.fromRow(row)
-					if (!appEvent) {
-						dropped++
-						continue
-					}
-					if (!AppEvents.isFeedVisible(appEvent) || row.matchId === null) continue
-					let events = appEventsByMatch.get(row.matchId)
-					if (!events) appEventsByMatch.set(row.matchId, (events = []))
-					events.push(appEvent)
-				}
-				if (dropped > 0) log.warn('dropped %d unparseable app-event row(s) from the match feed', dropped)
-
-				const eventsByMatch = new Map<number, CHAT.Event[]>()
-				for (const matchId of uncached) {
-					const serverEvents = SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])
-					eventsByMatch.set(matchId, CHAT.mergeAppEvents(serverEvents, appEventsByMatch.get(matchId) ?? []))
-				}
-				return eventsByMatch
-			})()
+			const batch$ = readMatchFeeds({ ...ctx, log }, uncached)
 			batch$.catch(() => {
 				for (const matchId of uncached) ctx.matchEventsCache.events.delete(matchId)
 			})
@@ -129,13 +149,7 @@ export const getEnrichedEventsForMatches = Instr.spanOp(
 	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, opts: CHAT.InterpolationOptions, ..._matches: number[]) => {
 		const byMatch = await getFeedEventsForMatches(ctx, ..._matches)
-		const enriched: CHAT.EventEnriched[] = []
-		for (const events of byMatch.values()) {
-			const state = CHAT.getInitialChatState()
-			for (const event of events) CHAT.handleEvent(state, event, opts)
-			enriched.push(...state.eventBuffer)
-		}
-		return enriched
+		return [...byMatch.values()].flatMap((events) => enrichMatchFeed(events, opts))
 	},
 )
 

@@ -46,6 +46,16 @@ export const durationOf = (row: typeof mh) => sql`(${row.endTime} - ${row.startT
 export const se = Schema.serverEvents
 export const am = Schema.archivedMatches
 
+// The scoreline measures, over both sides of the match: the per-team columns are the raw record, but which
+// side is team 1 flips every match, so what is worth filtering on is the match's own total -- and, like
+// ticketDiff, how lopsided it was. Null until the scoreline has been tallied, which reads as not-true.
+export const COMBAT_EXPRS = {
+	'match.kills': (row: typeof mh) => sql`(${row.team1Kills} + ${row.team2Kills})`,
+	'match.wounds': (row: typeof mh) => sql`(${row.team1Wounds} + ${row.team2Wounds})`,
+	'match.deaths': (row: typeof mh) => sql`(${row.team1Deaths} + ${row.team2Deaths})`,
+	'match.killDiff': (row: typeof mh) => sql`abs(${row.team1Kills} - ${row.team2Kills})`,
+} as const
+
 export type QueryError =
 	| { code: 'err:invalid-query'; message: string }
 	| { code: 'err:too-broad'; message: string }
@@ -569,6 +579,11 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'match.ticketDiff':
 			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+		case 'match.kills':
+		case 'match.wounds':
+		case 'match.deaths':
+		case 'match.killDiff':
+			return compileComp(comp, sql`(SELECT ${COMBAT_EXPRS[column](mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'match.duration':
 			return compileComp(comp, sql`(SELECT ${durationOf(mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
 		case 'layer.layer':
@@ -667,6 +682,11 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.ticketDiff':
 			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
+		case 'match.kills':
+		case 'match.wounds':
+		case 'match.deaths':
+		case 'match.killDiff':
+			return compileComp(comp, sql`(SELECT ${COMBAT_EXPRS[column](mh)} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.duration':
 			return compileComp(comp, sql`(SELECT ${durationOf(mh)} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'layer.layer':
@@ -750,6 +770,11 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			return compileComp(comp, mh.setByType, id)
 		case 'match.ticketDiff':
 			return compileComp(comp, ticketDiffOf(mh), id)
+		case 'match.kills':
+		case 'match.wounds':
+		case 'match.deaths':
+		case 'match.killDiff':
+			return compileComp(comp, COMBAT_EXPRS[column](mh), id)
 		case 'match.duration':
 			return compileComp(comp, durationOf(mh), id)
 		case 'server':

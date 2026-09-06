@@ -649,6 +649,14 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldTicketDiff())
 		case 'duration':
 			return tr.text(HistoryMsgs.fieldDuration())
+		case 'kills':
+			return tr.text(HistoryMsgs.fieldKills())
+		case 'wounds':
+			return tr.text(HistoryMsgs.fieldWounds())
+		case 'deaths':
+			return tr.text(HistoryMsgs.fieldDeaths())
+		case 'killDiff':
+			return tr.text(HistoryMsgs.fieldKillDiff())
 		case 'map':
 			return tr.text(HistoryMsgs.fieldMap())
 		case 'gamemode':

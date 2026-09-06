@@ -115,7 +115,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 								</Alert>
 							))}
 					</div>
-					<Tooltip>
+					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button
 								size="icon"

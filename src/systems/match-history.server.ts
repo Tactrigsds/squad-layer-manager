@@ -24,6 +24,7 @@ import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as CombatStats from '@/systems/combat-stats.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -159,6 +160,11 @@ export const initState = Instr.spanOp(
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) => {
 		await loadState(ctx)
 		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		// Runs for the life of the server, off the mutex and off this thread: every match without a scoreline
+		// gets one, oldest history included, at a pace that leaves the rcon loop alone.
+		addReleaseTask(() =>
+			CombatStats.runCatchUp(ctx, () => Settings.GLOBAL_SETTINGS.chat).catch((err) => log.error(err, 'combat stats catch-up failed')),
+		)
 	},
 )
 

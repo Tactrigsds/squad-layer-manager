@@ -56,19 +56,27 @@ const TRACKED = ['pointermove', 'pointerdown'] as const
 // The pointer's last known viewport position, or null before it has moved over the document. A follower mounting
 // mid-hover reads this to place itself for its first paint, rather than waiting for the next move.
 export function lastPointer(): Point | null {
+	watchPointer()
 	return lastPoint
 }
 
-// One document listener shared by every follower, installed while any of them is mounted.
+let listening = false
+
+// One passive document listener for the whole app, kept for the life of the page once anything has asked about the
+// pointer. Recording the position has to outlive the followers themselves: a follower that only started listening
+// when it opened would place its first frame from a stale point, or from none at all.
+export function watchPointer() {
+	if (listening || typeof document === 'undefined') return
+	listening = true
+	for (const type of TRACKED) document.addEventListener(type, handleMove, { passive: true, capture: true })
+}
+
+// Subscribes to movement, for a follower that is actually on screen. Closed followers must not subscribe: a page
+// carries far more of them than it shows, and each would run on every pointer move.
 export function trackPointer(onMove: (p: Point) => void): () => void {
-	if (listeners.size === 0) {
-		for (const type of TRACKED) document.addEventListener(type, handleMove, { passive: true, capture: true })
-	}
+	watchPointer()
 	listeners.add(onMove)
 	return () => {
 		listeners.delete(onMove)
-		if (listeners.size === 0) {
-			for (const type of TRACKED) document.removeEventListener(type, handleMove, { capture: true })
-		}
 	}
 }

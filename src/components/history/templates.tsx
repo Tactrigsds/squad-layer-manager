@@ -122,7 +122,7 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 	)
 }
 
-export const MATCH_ROW_COLUMNS = 9
+export const MATCH_ROW_COLUMNS = 11
 
 export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
 	const { details } = props
@@ -146,6 +146,8 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			</td>
 			<td className={CELL}>{MatchSummary.outcomeText(details)}</td>
 			<td className={CELL}>{MatchSummary.ticketDiffText(details)}</td>
+			<td className={CELL}>{MatchSummary.killsText(details)}</td>
+			<td className={CELL}>{MatchSummary.killDiffText(details)}</td>
 			<td className={CELL}>{MatchSummary.durationText(details)}</td>
 			<td className={CELL}>{details.layerSource.type}</td>
 		</ExpandableRow>
