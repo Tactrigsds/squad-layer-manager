@@ -104,6 +104,34 @@ sharedAppTest.describe('server console', () => {
 		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
 		await expect(backToBottom).toBeHidden()
 
+		// a find that carries the reader up to a match is the reader scrolling away too: the tail must not drag
+		// them back down, and the find must not drag them back up to the match on every redraw of the feed
+		await viewport.hover()
+		await page.keyboard.press('ControlOrMeta+f')
+		const findInput = page.getByRole('search', { name: 'Find in this panel' }).getByRole('textbox')
+		await findInput.fill('ListPlayers')
+		await expect.poll(distanceFromBottom).toBeGreaterThan(16)
+		await expect(backToBottom).toBeVisible()
+		const atMatch = await viewport.evaluate((el) => el.scrollTop)
+
+		// The failure this guards against is an oscillation, down to the tail and back up to the match a quarter second
+		// later, so a single sample after the growth can land on the right number. Every position passed through is what
+		// has to be checked.
+		type Recording = HTMLElement & { seenScrollTops?: number[] }
+		await viewport.evaluate((el: Recording) => {
+			el.seenScrollTops = []
+			el.addEventListener('scroll', () => el.seenScrollTops!.push(el.scrollTop))
+		})
+		const grownAgain = await scrollHeight()
+		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(grownAgain)
+		await page.waitForTimeout(500)
+		const seen = await viewport.evaluate((el: Recording) => el.seenScrollTops!)
+		expect(seen.filter((top) => top !== atMatch)).toEqual([])
+
+		await page.keyboard.press('Escape')
+		await backToBottom.click()
+		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
+
 		await hideNoise.click()
 		await expect(hideNoise).toBeChecked()
 	})

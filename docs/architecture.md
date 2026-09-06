@@ -91,6 +91,7 @@ the abbreviations reads any file quickly. The lib vocabulary:
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
 | `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
+| `ScrollIntent`                   | `scroll-intent`                                               | a scroll made by code at the reader's request      |
 | `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
