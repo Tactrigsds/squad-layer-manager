@@ -706,6 +706,46 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 	}
 }
 
+// One pasted line, and what is wrong with it. The line number is 1-based over the pasted text with blank lines
+// counted, so it addresses what the user is looking at rather than the parsed subset.
+export type RawLayerLine = { lineNumber: number; text: string } & (
+	| { code: 'ok'; layer: UnvalidatedLayer }
+	| { code: 'err:unparsable' }
+	| { code: 'err:unknown-layer'; layer: UnvalidatedLayer }
+	| { code: 'err:mod-not-installed'; layer: UnvalidatedLayer; collection: string }
+)
+
+// Parses pasted layer text a line at a time, reporting each line's own outcome rather than dropping what fails.
+// `installedMods` is the server's collections; omit it where there is no server to answer for.
+export function parseRawLayerLines(
+	text: string,
+	opts?: { installedMods?: readonly string[] },
+	components = StaticLayerComponents,
+): RawLayerLine[] {
+	const lines: RawLayerLine[] = []
+	text.split('\n').forEach((raw, index) => {
+		const trimmed = raw.trim()
+		if (trimmed.length === 0) return
+		const lineNumber = index + 1
+		const layer = parseRawLayerText(trimmed, components)
+		if (!layer) {
+			lines.push({ code: 'err:unparsable', lineNumber, text: trimmed })
+			return
+		}
+		if (!isKnownLayer(layer, components)) {
+			lines.push({ code: 'err:unknown-layer', lineNumber, text: trimmed, layer })
+			return
+		}
+		const collection = layer.Collection ?? getDefaultCollection(components)
+		if (opts?.installedMods && !opts.installedMods.includes(collection)) {
+			lines.push({ code: 'err:mod-not-installed', lineNumber, text: trimmed, layer, collection })
+			return
+		}
+		lines.push({ code: 'ok', lineNumber, text: trimmed, layer })
+	})
+	return lines
+}
+
 export const LAYER_STRING_PROPERTIES = ['Map', 'Gamemode', 'LayerVersion', 'Collection'] as const satisfies (keyof KnownLayer)[]
 export type ParseLayerStringSegmentResult<Collection extends string | null = string> = {
 	Map: string

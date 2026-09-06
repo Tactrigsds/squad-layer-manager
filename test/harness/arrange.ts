@@ -23,6 +23,8 @@ export const LAYERS = {
 	sumariSeed: 'SM-SD-V1:RGF-CA:VDV-CA',
 	sumariRaas: 'SM-RAAS-V1:ADF-CA:USA-CA',
 	skorpoRaas: 'SK-RAAS-V1:USA-CA:RGF-CA',
+	// SuperMod's Sanxian Invasion: only a server with that mod among its installedMods can load it
+	supermodSanxianInvasion: 'SSX-INV-V2-SPM:SU_ADF-CA:SU_BAF-CA',
 } satisfies Record<string, L.LayerId>
 
 // Matches a layer name as a whole name. `hasText` with a bare string is a substring match, and a mod layer name

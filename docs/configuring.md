@@ -84,6 +84,15 @@ Name which of your [configured admin lists](#1-admin-lists) apply to this server
 A player counts as an admin on this server, and picks up roles from an admin list group, only through a list named
 here. If you name none, SLM recognises no in-game admins on this server.
 
+#### 2.3. Installed mods
+
+SLM's catalog covers vanilla Squad and several mods. Name the ones this server actually has installed, under
+_Installed Mods_ in its settings. A new server starts with OWI alone, which is vanilla Squad.
+
+A layer from a collection not named here cannot load on this server, so SLM will not queue it, will not generate
+one, and will not offer one as a vote choice. Such a layer stays visible in the layer table, greyed out with the
+reason, and a queue item on one is flagged in the queue and in the in-game next-layer warning.
+
 ### 3. Permissions
 
 SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, which it grants to

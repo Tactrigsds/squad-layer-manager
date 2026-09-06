@@ -15,6 +15,7 @@ import type * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as V from '@/models/vote.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -139,10 +140,13 @@ export namespace Sel {
 		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
 		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
 
+		// applied, not indicated: a vote choice the server cannot load is not a choice
+		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'regular' })
+
 		const base: LQY.BaseQueryInput = {
 			cursor: state.cursor,
 			action: 'add',
-			constraints: [...appliedConstraints, ...repeatRuleConstraints],
+			constraints: [installedMods, ...appliedConstraints, ...repeatRuleConstraints],
 			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 		return LQY.mergeBaseInputs(base, { constraints: LayerFilterMenuPrt.Sel.filterMenuConstraints(state) })

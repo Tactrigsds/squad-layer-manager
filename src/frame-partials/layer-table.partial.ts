@@ -299,19 +299,21 @@ export namespace Sel {
 			],
 			(pageData, selected, minSelected, canForceSelect) => {
 				const row = pageData?.layers.find((r) => r.id === rowId)
-				if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false }
+				if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false, blockedByMods: false }
 				const isSelected = selected.includes(rowId)
 
+				// no permission lifts this one: the server has no mod that could load the layer
+				const blockedByMods = row.isUnsupported
 				const blockedByPool = row.isOutOfPool && !canForceSelect
-				if (blockedByPool) return { isUnselectable: true, isSelected, blockedByPool }
+				if (blockedByMods || blockedByPool) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
 
 				// Check if unchecking would violate minSelected
 				if (isSelected) {
 					const wouldBeUnderMin = (minSelected ?? 0) > selected.length - 1
-					if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool }
+					if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
 				}
 
-				return { isUnselectable: false, isSelected, blockedByPool }
+				return { isUnselectable: false, isSelected, blockedByPool, blockedByMods }
 			},
 		),
 	)
@@ -336,6 +338,7 @@ export namespace Sel {
 			const disabled =
 				(maxSelected ?? Infinity) < ifAllSelected.size ||
 				(minSelected ?? 0) > ifAllUnselected.size ||
+				pageData.layers.some((l) => l.isUnsupported) ||
 				(!canForceSelect && pageData.layers.some((l) => l.isOutOfPool))
 			return { selectState, disabled }
 		},

@@ -13,7 +13,20 @@ export const lowQueueItemCount = def(
 	(count: number) => ({ count }),
 )
 
-export type NextLayerViolations = { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }
+export type NextLayerViolations = {
+	repeatViolations: LQY.RepeatMatchDescriptor[]
+	poolViolations: string[]
+	// collections the next layer needs that this server has no mod for
+	unsupportedMods: string[]
+}
+
+// The next layer cannot load at all, which outranks anything else wrong with it, so it gets its own line.
+function unsupportedModsLine(violations: NextLayerViolations) {
+	if (violations.unsupportedMods.length === 0) return undefined
+	return t('WARNING: this server does not have {modList} installed, so the next layer cannot load.', {
+		modList: violations.unsupportedMods.join(', '),
+	})
+}
 
 // What the next layer breaks, appended to a message that has already named it.
 function violationsLine(violations: NextLayerViolations) {
@@ -153,6 +166,8 @@ export const showNext = def(
 			// only show who set the layer to admins
 			if (opts?.isAdmin) {
 				lines.push(setByDisplay(item, setByUser))
+				const unsupportedMods = opts.violations && unsupportedModsLine(opts.violations)
+				if (unsupportedMods) lines.push(unsupportedMods)
 				const violations = opts.violations && violationsLine(opts.violations)
 				if (violations) lines.push(violations)
 			}
@@ -254,6 +269,12 @@ export const repeatsBlurb = def(
 export const filterWarnings = def('Filter Warnings')
 
 export const filterWarningsBlurb = def('The following queued layers were edited in this session and trigger filter warnings:')
+
+export const unsupportedMods = def('Mods Not Installed')
+
+export const unsupportedModsBlurb = def(
+	'This server cannot load the following queued layers, because the mods they come from are not among its installed mods:',
+)
 
 export const clearQueue = def('Clear Queue')
 

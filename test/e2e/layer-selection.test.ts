@@ -267,6 +267,137 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 	})
 })
 
+// A layer whose mod the server does not have cannot load at all, so no permission makes it selectable. The
+// default installedMods is OWI alone, and the user here holds force-write, which is what separates this from
+// the pool tests below.
+// A layer whose mod the server does not have cannot load at all, so no permission makes it selectable, and the
+// Installed Mods setting is the only thing that changes the answer.
+test.describe('installed mods', () => {
+	// Opens Add Layers with the pool off and the filter menu pinned to `collection`. The pool is RAAS-only and the
+	// mod collections spell their gamemodes their own way, so turning it off is what keeps these tests about the
+	// mod rather than about pool membership. The count is what says a query settled (see the pool tests below).
+	async function openAddLayersOn(page: Page, collection: string) {
+		const dialog = await openAddLayers(page)
+		const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
+		await expect(poolControl).toHaveAttribute('aria-checked', 'true')
+		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
+		let lastCount = await settledText(matchedCount)
+		await poolControl.click()
+		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
+		lastCount = await settledTextAfter(matchedCount, lastCount)
+
+		const collectionMenu = dialog.getByRole('combobox', { name: 'Collection' })
+		await collectionMenu.click()
+		await page.getByRole('option', { name: collection, exact: true }).click()
+		await expect(collectionMenu).toHaveText(collection)
+		await settledTextAfter(matchedCount, lastCount)
+		return dialog
+	}
+
+	// the collection alone does not pin a layer, so the assertions read the first body row (index 0 is the header)
+	const firstRow = (dialog: ReturnType<Page['getByRole']>) => dialog.getByRole('row').nth(1)
+
+	// Adds or removes a collection in this server's Installed Mods, through the settings page rather than the
+	// fixture, so the path an operator actually takes is what the dialog below is answering to.
+	async function setModInstalled(page: Page, collection: string, installed: boolean) {
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+		const field = page.locator(`[id="setting:server:${app.serverId}:installedMods"]`)
+		await expect(field).toBeVisible({ timeout: 20_000 })
+		const picker = field.getByRole('combobox')
+		await expect(picker).toContainText('OWI')
+
+		await picker.click()
+		await page.getByRole('option', { name: collection, exact: true }).click()
+		await page.keyboard.press('Escape')
+		if (installed) await expect(picker).toContainText(collection)
+		else await expect(picker).not.toContainText(collection)
+
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
+		await expect(page.getByText('Settings saved')).toBeVisible()
+	}
+
+	test('a layer from a mod the server does not have is listed but unselectable, force-write included', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+
+		// the constraint does not narrow the query, so a SuperMod layer is still listed -- with no checkbox on it
+		const dialog = await openAddLayersOn(page, 'SuperMod')
+		await expect(firstRow(dialog)).toBeVisible()
+		await expect(firstRow(dialog).getByRole('checkbox', { name: 'Select row' })).toHaveCount(0)
+		await firstRow(dialog).click()
+		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeDisabled()
+
+		// positive control: a vanilla row, reached the same way with the pool still off, does arm Submit
+		const collectionMenu = dialog.getByRole('combobox', { name: 'Collection' })
+		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
+		const beforeSwitch = await settledText(matchedCount)
+		await collectionMenu.click()
+		await page.getByRole('option', { name: 'OWI', exact: true }).click()
+		await expect(collectionMenu).toHaveText('OWI')
+		await settledTextAfter(matchedCount, beforeSwitch)
+
+		await expect(firstRow(dialog).getByRole('checkbox', { name: 'Select row' })).toHaveCount(1)
+		await firstRow(dialog).click()
+		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeEnabled()
+	})
+
+	// The setting is the whole of it: installing the mod makes the same row selectable, and uninstalling it takes
+	// that back. Ends where it started, so the tests after this one see the server they were written against.
+	test('installing the mod in settings makes its layers selectable, and uninstalling them takes it back', async ({ page }) => {
+		await setModInstalled(page, 'SuperMod', true)
+
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		const installed = await openAddLayersOn(page, 'SuperMod')
+		await expect(firstRow(installed).getByRole('checkbox', { name: 'Select row' })).toHaveCount(1)
+		await firstRow(installed).click()
+		await expect(installed.getByRole('button', { name: 'Submit' })).toBeEnabled()
+
+		await setModInstalled(page, 'SuperMod', false)
+
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		const uninstalled = await openAddLayersOn(page, 'SuperMod')
+		await expect(firstRow(uninstalled).getByRole('checkbox', { name: 'Select row' })).toHaveCount(0)
+		await firstRow(uninstalled).click()
+		await expect(uninstalled.getByRole('button', { name: 'Submit' })).toBeDisabled()
+	})
+})
+
+test.describe('pasting a rotation', () => {
+	test('reports the unusable lines inline, keeps the text, and adds nothing until they are gone', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Paste Rotation' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Paste Rotation' })
+
+		const textarea = dialog.getByRole('textbox')
+		const pasted = 'Narva_RAAS_v1 RGF USMC\nnot a layer at all\nSU_Sanxian_Invasion_v2 SU_ADF SU_BAF'
+		await textarea.fill(pasted)
+
+		const errors = dialog.getByRole('alert')
+		await expect(errors).toContainText('2 lines cannot be added')
+		await expect(errors).toContainText('Line 2')
+		await expect(errors).toContainText('no such layer')
+		await expect(errors).toContainText('Line 3')
+		await expect(errors).toContainText('SuperMod is not installed on this server')
+
+		// the one good line is counted, but nothing is added while a bad one is left, and the text stays put
+		await expect(dialog.getByRole('button', { name: 'Add 1 Layer' })).toBeDisabled()
+		await expect(textarea).toHaveValue(pasted)
+
+		// dropping the two bad lines is all it takes
+		await textarea.fill('Narva_RAAS_v1 RGF USMC')
+		await expect(errors).toHaveCount(0)
+		await expect(dialog.getByRole('button', { name: 'Add 1 Layer' })).toBeEnabled()
+
+		await dialog.getByRole('button', { name: 'Cancel' }).click()
+		await expect(dialog).toHaveCount(0)
+	})
+})
+
 test.describe('pool membership and force-write', () => {
 	test('out-of-pool layers are viewable but unselectable without force-write', async ({ page }) => {
 		await page.goto(app.loginUrl(WRITER))

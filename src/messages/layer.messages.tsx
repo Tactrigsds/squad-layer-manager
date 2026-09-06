@@ -195,6 +195,18 @@ export const multiLayerPlaceholder = def('Enter one layer per line (e.g. Narva_R
 
 export const addLayers = def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
 
+export const pasteErrorsTitle = def('{count, plural, one {# line cannot be added} other {# lines cannot be added}}', (count: number) => ({
+	count,
+}))
+
+export const pasteErrorLine = def('Line {lineNumber}', (lineNumber: number) => ({ lineNumber }))
+
+export const pasteErrorUnparsable = def('not a layer')
+
+export const pasteErrorUnknownLayer = def('no such layer')
+
+export const pasteErrorModNotInstalled = def('{collection} is not installed on this server', (collection: string) => ({ collection }))
+
 export const editLayerTitle = def('Edit Layer')
 
 export const submit = def('Submit')

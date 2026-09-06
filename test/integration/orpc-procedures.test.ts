@@ -2,10 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 import * as FB from '@/models/filter-builders'
+import type * as L from '@/models/layer'
 import type * as SC from '@/models/server-console.models'
+import * as SLL from '@/models/shared-layer-list'
 
-import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { filter, role } from '../harness/arrange'
+import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { filter, LAYERS, queueItem, role } from '../harness/arrange'
+import { savedQueue } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -197,4 +200,36 @@ describe('a server with no recorded match', () => {
 		expect(status.data.currentMatch).toBeUndefined()
 		expect(events.map((e) => e.type)).toContain('SYNCED')
 	}, 120_000)
+})
+
+// A layer whose mod the server does not have cannot load, so the queue refuses it outright. Unlike the pool, no
+// permission lifts it: the admin here holds queue:force-write and is still turned away. Last in the file because
+// the accepted case saves a queue.
+describe('installedMods', () => {
+	const addOp = (layerId: L.LayerId) => ({
+		op: 'add' as const,
+		opId: SLL.createOpId(),
+		editWindowSeqId: 0,
+		userId: ADMIN_USER.discordId,
+		items: [queueItem(layerId)],
+		index: { outerIndex: 0, innerIndex: null },
+	})
+
+	it('refuses an add whose layer needs a mod the server does not have', async () => {
+		const res = await adminClient.layerQueue.dispatchOp({ serverId: app.serverId, op: addOp(LAYERS.supermodSanxianInvasion) })
+		expect(res.code).toBe('err:mods-not-installed')
+	})
+
+	it('accepts a vanilla layer, which the default installedMods covers', async () => {
+		const added = await adminClient.layerQueue.dispatchOp({ serverId: app.serverId, op: addOp(LAYERS.gorodokAas) })
+		expect(added.code).toBe('ok')
+		const saved = await adminClient.layerQueue.dispatchOp({
+			serverId: app.serverId,
+			op: { op: 'save' as const, opId: SLL.createOpId(), editWindowSeqId: 0, userId: ADMIN_USER.discordId },
+		})
+		expect(saved.code).toBe('ok')
+		await app.waitFor(async () => savedQueue(app).find((item) => item.layerId === LAYERS.gorodokAas) ?? null, {
+			label: 'the queued layer',
+		})
+	}, 60_000)
 })

@@ -21,6 +21,7 @@ import type { Focusable } from '@/lib/react'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
@@ -247,12 +248,20 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const { isUnselectable, isSelected, blockedByPool } = Zus.useStore(
+				const { isUnselectable, isSelected, blockedByPool, blockedByMods } = Zus.useStore(
 					stores.layerTable,
 					UsersClient.loggedInUserQueryOptions,
 					RbacClient.RbacStore,
 					LayerTablePrt.Sel.rowSelectionStatus(row.id),
 				)
+
+				if (blockedByMods) {
+					return (
+						<span className="fd-cbx text-text-3 opacity-45" title={tr.text(F_Msgs.unsupportedModDescription())}>
+							<Icons.PackageX />
+						</span>
+					)
+				}
 
 				return blockedByPool ? (
 					<span className="fd-cbx text-text-3 opacity-45" title={tr.text(SM_Msgs.selectRow())}>
@@ -581,7 +590,7 @@ export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: 
 }
 
 export function LayerTableControlPanel(props: {
-	stores: LayerTablePrt.KeyProp
+	stores: LayerTablePrt.KeyProp & Partial<SquadServerFrame.KeyProp>
 	canToggleColumns?: boolean
 	table: CoreTable<LayerQueriesClient.RowData>
 	enableForceSelect?: boolean
@@ -603,6 +612,10 @@ export function LayerTableControlPanel(props: {
 	)
 
 	const showSelectedId = React.useId()
+	const installedMods = Zus.useStore(
+		props.stores.squadServer ?? null,
+		Zus.useShallow((s: SquadServerFrame.State | undefined) => s?.settings.saved.installedMods),
+	)
 
 	// while compact mode overrides visibility, toggling stored prefs would have no visible effect
 	const canToggleColumns = (props.canToggleColumns ?? true) && !props.compact
@@ -757,6 +770,7 @@ export function LayerTableControlPanel(props: {
 			<div>
 				<SetRawLayerDialog
 					ref={rawSetDialogRef}
+					installedMods={installedMods}
 					maxSelectedLayers={frameState.maxSelectedLayers}
 					editingSingleValue={frameState.editingSingleValue}
 					open={rawSetDialogOpen}
@@ -785,6 +799,7 @@ function SetRawLayerDialog(props: {
 	maxSelectedLayers?: number | null
 	editingSingleValue: boolean
 	defaultValue?: string
+	installedMods?: readonly string[]
 	onSubmit: (layer: L.UnvalidatedLayer[]) => void
 	ref?: React.ForwardedRef<SetRawDialogHandle>
 }) {
@@ -834,7 +849,12 @@ function SetRawLayerDialog(props: {
 					}
 				}}
 			>
-				<MultiLayerSetDialog open={multiSetLayerDialogOpen} onOpenChange={setMultiSetLayerDialogOpen} onSubmit={props.onSubmit} />
+				<MultiLayerSetDialog
+					open={multiSetLayerDialogOpen}
+					onOpenChange={setMultiSetLayerDialogOpen}
+					onSubmit={props.onSubmit}
+					installedMods={props.installedMods}
+				/>
 				<Input
 					ref={inputRef}
 					defaultValue={props.defaultValue}

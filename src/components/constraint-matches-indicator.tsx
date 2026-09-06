@@ -52,6 +52,8 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	const indicatorIcons: React.ReactNode[] = []
 	const renderedRepeats: Extract<LQY.Constraint, { type: 'do-not-repeat' }>[] = []
 	const renderedFilters: [string, React.ReactNode][] = []
+	// the collection this layer needs, when the server does not have it
+	let unsupportedCollection: string | undefined
 	// the same filter can be reached by several constraints (pool filter, indicate lists, applied extras)
 	const renderedFilterIds = new Set<string>()
 	for (const constraint of props.queriedConstraints) {
@@ -60,7 +62,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			if (desc.constraintId !== constraint.id) return false
 			if (desc.itemId && desc.itemId !== itemId) return false
 			if (layerId && !L.layersEqual(desc.layerId, layerId)) return false
-			if (desc.type === 'filter-entity') {
+			if (desc.type === 'filter-entity' || desc.type === 'installed-mods') {
 				return !!layerId
 			} else if (desc.type === 'repeat-rule') {
 				return desc.itemId === itemId
@@ -74,6 +76,14 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		if (constraint.type === 'do-not-repeat') {
 			if (!matched) continue
 			renderedRepeats.push(constraint)
+			continue
+		}
+		// a descriptor for this constraint is the miss: the layer's collection is not installed
+		if (constraint.type === 'installed-mods') {
+			if (!matched) continue
+			unsupportedCollection = props.matchDescriptors?.find(
+				(desc): desc is LQY.UnsupportedModMatchDescriptor => desc.type === 'installed-mods' && desc.constraintId === constraint.id,
+			)?.collection
 			continue
 		}
 		if (constraint.type === 'filter-entity') {
@@ -118,7 +128,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		assertNever(constraint)
 	}
 
-	if (renderedFilters.length === 0 && renderedRepeats.length === 0) {
+	if (renderedFilters.length === 0 && renderedRepeats.length === 0 && !unsupportedCollection) {
 		return props.padEmpty ? <div className={cn('flex items-center', props.className)} style={{ height: `${height}px` }} /> : null
 	}
 
@@ -127,6 +137,10 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		indicatorIcons.push(<Icons.Filter key="__filtered__" className="bg-warn" />)
 	}
 	if (renderedRepeats.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
+	// an unloadable layer outranks everything else wrong with it
+	if (unsupportedCollection) {
+		indicatorIcons.unshift(<Icons.PackageX key="__unsupported-mod__" size={iconSize} className="text-destructive" />)
+	}
 
 	return (
 		<>
@@ -149,6 +163,24 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 				content={
 					!tooltip.open ? null : (
 						<>
+							{unsupportedCollection && (
+								<div className="flex flex-col">
+									<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.unsupportedModLabel())}</div>
+									<ItemGroup>
+										<Item variant="default" className="w-full">
+											<ItemMedia>
+												<Icons.PackageX className="text-destructive" />
+											</ItemMedia>
+											<ItemContent>
+												<ItemTitle>{tr.text(F_Msgs.unsupportedModTitle(unsupportedCollection))}</ItemTitle>
+												<ItemDescription className="whitespace-normal line-clamp-none text-wrap">
+													{tr.text(F_Msgs.unsupportedModDescription())}
+												</ItemDescription>
+											</ItemContent>
+										</Item>
+									</ItemGroup>
+								</div>
+							)}
 							{renderedRepeats.length > 0 && (
 								<div className="flex flex-col">
 									<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.repeatsDetectedLabel())}</div>

@@ -203,6 +203,13 @@ export const poolFilterMissingIndicators = def(
 // names the language picker on a server's settings, whose options are the languages themselves
 export const localePicker = def('Language')
 
+// names the picker for the layer collections a server has installed, whose options are the collections
+export const installedModsPicker = def('Installed Mods')
+
+export const selectInstalledMods = def('Select installed mods')
+
+export const unknownCollection = def('{collection} (not in the catalog)', (collection: string) => ({ collection }))
+
 export const secondaryFilters = def('Secondary Filters')
 
 export const aboutSecondaryFilters = def('About secondary filters')

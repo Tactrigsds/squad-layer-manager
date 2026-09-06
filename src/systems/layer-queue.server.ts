@@ -659,7 +659,8 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 				(missed ? entity?.invertedAlertMessage : entity?.alertMessage) ?? `${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
 			)
 		})
-	return { repeatViolations, poolViolations }
+	const unsupportedMods = [...new Set(warns.filter((w) => w.type === 'unsupported-mod-warning').map((w) => w.collection))]
+	return { repeatViolations, poolViolations, unsupportedMods }
 }
 
 export async function warnShowNext(
@@ -978,13 +979,28 @@ export const router = {
 				if (noteRes) return noteRes
 			}
 
-			// adding or setting a layer that isn't in the configured pool additionally requires queue:force-write.
-			// only checked when the op introduces layers and the user lacks force-write, to keep the common path cheap.
+			// Two checks on the layers an op introduces, in order of severity. A layer whose mod the server does not
+			// have cannot load at all, so it is refused outright, no permission involved. Being out of the configured
+			// pool is a policy call, and additionally requires queue:force-write -- checked only when the user lacks
+			// it, to keep the common path cheap.
 			const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
 			if (forceWriteCandidates.length > 0) {
+				const serverState = await SquadServer.getServerState(ctx)
+				const { installedMods } = serverState.settings
+				const unsupported = forceWriteCandidates.filter((layerId) => {
+					const collection = L.toLayer(layerId).Collection
+					return !!collection && !installedMods.includes(collection)
+				})
+				if (unsupported.length > 0) {
+					return {
+						code: 'err:mods-not-installed' as const,
+						layerIds: unsupported,
+						msg: `This server does not have the mods these layers need: ${unsupported.join(', ')}`,
+					}
+				}
+
 				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write', { serverId: ctx.serverId }))
 				if (forceWriteDenied) {
-					const serverState = await SquadServer.getServerState(ctx)
 					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
 					const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 					const poolRes = await LayerQueries.getLayersOutOfPool({
@@ -1009,11 +1025,18 @@ export const router = {
 // whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
 // and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
 // blocked until the next match shouldn't be rejected outright.
-export async function isTemplateSatisfiable(ctx: C.Db & MH.Ctx & LQ.Ctx & CS.AbortSignal, filter: F.FilterNode): Promise<boolean> {
+export async function isTemplateSatisfiable(
+	ctx: C.Db & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+	filter: F.FilterNode,
+): Promise<boolean> {
 	const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 	const res = await LayerQueries.checkBackburnerTemplates({
 		ctx: layerCtx,
-		input: { constraints: [], templates: [{ itemId: 'probe', filter }] },
+		input: {
+			// a request only this server's missing mods could satisfy has no solutions here either
+			constraints: [SETTINGS.getInstalledModsConstraint(ctx.serverSettings.settings)],
+			templates: [{ itemId: 'probe', filter }],
+		},
 	})
 	if (res.code !== 'ok') {
 		log.error('backburner satisfiability probe failed to build constraints, failing open: %o', res)
