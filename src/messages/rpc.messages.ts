@@ -17,6 +17,8 @@ export const reconnected = def('Reconnected to the server')
 
 export const upgrading = def(() => ({ toast: [t('SLM is being upgraded, window will refresh shortly...')] }))
 
+export const layerPoolUpdated = def(() => ({ toast: [t('The layer pool was updated, window will refresh shortly...')] }))
+
 export const subscriptionError = def((tag: string, reason: string) => ({
 	toast: [t('Remote Subscription Error'), { description: t('{tag}: {reason}', { tag, reason }) }],
 }))

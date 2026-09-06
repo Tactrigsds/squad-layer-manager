@@ -269,6 +269,9 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const etag = `"${LayerEngine.hash}"`
 		res.header('ETag', etag)
 		res.header('Cache-Control', 'no-cache')
+		// the table is half of a versioned pair. The query worker checks this against the layer-data the page
+		// loaded before it runs the two together, and it wants the answer on a 304 as much as on a 200.
+		res.header(AR.LAYER_DATA_HASH_HEADER, LayerData.hash)
 		if (ifNoneMatch && ifNoneMatch === etag) {
 			return res.code(304).send()
 		}

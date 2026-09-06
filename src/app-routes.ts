@@ -234,3 +234,17 @@ export type Cookies = Record<CookieKey, string | undefined>
 export function parseCookies(raw: string) {
 	return Cookie.parse(raw) as Cookies
 }
+
+// -------- the layer artifact pair on the wire --------
+
+// /layers.bin.gz names the layer-data.json it was built beside, so a client can tell it is running the two
+// halves of one pair (see fetchLayerArtifact in layer-queries.worker.ts)
+export const LAYER_DATA_HASH_HEADER = 'x-layer-data-hash'
+
+// The ETags of /layers.bin.gz and /layer-data.json are the sha256 of the body. A proxy that re-encodes a response
+// may weaken its ETag, and the hash is what the client keys its cache and skew checks on, so that is what comes out.
+// Null for anything that is not such an ETag, which the client treats as "unknown" rather than trusting.
+export function parseContentHashEtag(etag: string | null): string | null {
+	const match = etag?.match(/^(?:W\/)?"([0-9a-f]{64})"$/)
+	return match ? match[1] : null
+}
