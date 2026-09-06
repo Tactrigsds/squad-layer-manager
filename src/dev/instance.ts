@@ -25,6 +25,11 @@ export const EMU_SOCKET_PATH = path.join(DEV_DIR, 'emu.sock')
 // rather than something each worktree has to be told.
 export const RCON_PASSWORD = 'devpassword'
 
+// The account a workspace with no database to clone signs in as. Provisioning writes the id into the .env it
+// generates as the sole SUPER_USERS entry, so the instance opens on a user who can administer it. Discord
+// snowflakes are timestamps and far smaller than 2^61, so this can never collide with a real one.
+export const DEV_USER = { discordId: 2305843009213693952n, username: 'dev' }
+
 // The layer components are static app data, loaded at runtime rather than bundled. The emulator resolves its
 // team names from a layer's factions, so anything that builds a World needs them first. Resolved exactly as
 // the app under test resolves them, so the layers a scenario reasons about are the ones the app is running.

@@ -38,9 +38,9 @@ in them.
 route, the websocket and each page request to the app, so the app's own port is an implementation detail. `pnpm dev
 --url` prints it without starting the app.
 
-The login is a super user from the cloned database, resolved once during provisioning and kept in the slot registry.
-Discord oauth is off for a dev instance, so `?login=<username>` is how anyone signs in, and any username in the
-cloned database works.
+The login is a super user from the workspace's database, resolved once during provisioning and kept in the slot
+registry. Discord oauth is off for a dev instance, so `?login=<username>` is how anyone signs in, and any username in
+that database works.
 
 ## Slots
 
@@ -68,6 +68,11 @@ data rather than an empty db.
 Re-clone at any time with `pnpm dev --reset-data` after stopping the app. The clone is a `VACUUM INTO` snapshot over
 a read-only connection, so cloning from a primary checkout that is running the app is safe and never touches the
 source.
+
+A primary checkout with no database of its own is not a prerequisite: a fresh clone, or a machine that has only ever
+run the app in docker, has none. That workspace starts from an empty database instead, migrated and seeded the way
+the app's own first boot seeds one, plus the two rows a workspace needs before anyone can look at it: an `emulator`
+server pointed at this worktree's emulated Squad server, and the `dev` user the URL signs in as.
 
 No connection that reaches a real squad server survives a clone. The source's rows hold live RCON hosts and
 passwords, and a merely-disabled row would keep them one settings-page toggle away from a dev instance driving the
@@ -149,10 +154,16 @@ rather than copying them. A worktree wants the same Discord app, encryption key 
 copy would silently keep the old values when one is rotated. A standalone clone keeps its local environment files.
 The per-workspace differences (ports, `ORIGIN`, and the overrides above) are injected at spawn time instead.
 
+A checkout with no `.env` anywhere gets one written from `.env.example.dev`, naming the seeded `dev` user as the sole
+`SUPER_USERS` entry so the instance opens on a user who can administer it. Nothing generates a `.env.secrets`:
+`.env.example.dev` carries the public development encryption key, and every other credential a dev instance is
+deliberately unable to reach.
+
 The gitignored build artifacts a fresh checkout lacks (`assets/layer-engine.wasm`, `layer-db.json`) are copied from
 the primary checkout by whatever creates the worktree, provisioning included, so nothing has to reach a dev instance
 before the engine is there. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild
-over its own copy. Run `pnpm build:engine` if you change it.
+over its own copy. Run `pnpm build:engine` if you change it. A checkout with nothing to copy them from, the primary
+checkout itself included, has the engine built for it instead.
 
 The list of them lives in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because
 it runs from a `WorktreeCreate` hook against a worktree with no node_modules yet. Only provisioning asks it to build a
