@@ -2,6 +2,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
+import * as DB from '../harness/dashboard'
 import { expect, test } from './fixtures'
 
 // The generation weights (globalSettings.layerGeneration) take a long path to the Generate Vote dialog:
@@ -34,7 +35,7 @@ test.describe('generation weights', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await page.getByRole('button', { name: 'Gen Vote' }).click()
@@ -77,7 +78,7 @@ test.describe('generation weights', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await page.getByRole('button', { name: 'Gen Vote' }).click()

@@ -4,6 +4,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
+import * as DB from '../harness/dashboard'
 import { savedPool } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
@@ -37,9 +38,9 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			const indicators = (layerName: string) => items.filter({ hasText: layerName }).getByRole('button', { name: 'Layer indicators' })
 
 			// the second Gorodok repeats the first, two matches later
@@ -85,9 +86,9 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			await items
 				.filter({ hasText: layerText('Gorodok_AAS_v1') })
 				.getByRole('button', { name: 'Layer indicators' })
@@ -110,7 +111,7 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await page.getByRole('button', { name: 'Add Layers' }).click()
@@ -129,7 +130,7 @@ test.describe('queue item constraints', () => {
 
 			// the warnings are only as fresh as the item statuses, which the server recomputes for the edited
 			// queue; the repeat showing up on the item it applies to is what says they have landed
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			await expect(
 				items.filter({ hasText: layerText('Gorodok_RAAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
 			).toBeVisible()
@@ -174,9 +175,9 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			// the repeat is detected and indicated on the item; it is the save-time warning that is scoped to the session
 			await expect(
 				items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
@@ -228,9 +229,9 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (4)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (4)')).toBeVisible({ timeout: 20_000 })
 
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			await expect(items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' })).toHaveCount(
 				0,
 			)
@@ -284,9 +285,9 @@ test.describe('queue item constraints', () => {
 		})
 		try {
 			await page.goto(app.loginUrl())
-			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+			await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			const items = DB.queueSection(page).getByRole('listitem')
 			// the repeat is still detected and still indicated on the item; only the warning is suppressed
 			await expect(
 				items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' }),

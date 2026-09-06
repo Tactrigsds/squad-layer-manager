@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
+import * as DB from '../harness/dashboard'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
 
@@ -20,10 +21,8 @@ test.describe('server dashboard', () => {
 		await expect(page.getByRole('row', { name: /In progress/ })).toBeVisible()
 
 		// the app generates queue items on boot and pushes the first one to the server as next layer
-		const queueTab = page.getByRole('tab', { name: /^Queue/ })
-		await expect(queueTab).toHaveAttribute('aria-selected', 'true')
-
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
+		await expect(queuePanel).toBeVisible()
 		const firstItem = queuePanel.getByText(/^\w+_\w+_v\d+$/).first()
 		await expect(firstItem).toBeVisible({ timeout: 20_000 })
 		const queuedLayer = (await firstItem.textContent())!.trim()
@@ -42,13 +41,11 @@ test.describe('server dashboard', () => {
 		const player = makePlayer({ name: ' e2e_joiner', role: 'PLA_Rifleman_01' })
 		app.emu.world.connectPlayer(player)
 
-		// the roster reaches the UI through the app's ListPlayers poll, so the tab label counts them
-		const teamsTab = page.getByRole('tab', { name: /^Teams \(1\)/ })
-		await expect(teamsTab).toBeVisible({ timeout: 20_000 })
+		// the roster reaches the UI through the app's ListPlayers poll, so the section's label counts them
+		await expect(DB.teamsLabel(page, /^Teams \(1\)/)).toBeVisible({ timeout: 20_000 })
 
-		await teamsTab.click()
-		await expect(teamsTab).toHaveAttribute('aria-selected', 'true')
-		await expect(page.getByRole('tabpanel', { name: /^Teams/ }).getByText('e2e_joiner')).toBeVisible()
+		await DB.showTeams(page)
+		await expect(DB.teamsSection(page).getByText('e2e_joiner')).toBeVisible()
 	})
 
 	test('the activity feed records what the emulated server did', async ({ page }) => {
@@ -59,6 +56,31 @@ test.describe('server dashboard', () => {
 		await expect(feed.getByText(/RCON connection established/i).first()).toBeVisible({ timeout: 20_000 })
 		// the layer already set when SLM connected is reported as an observation: nobody set it as far as SLM saw
 		await expect(feed.getByText(/Server's next layer is/i).first()).toBeVisible()
+	})
+
+	// Match History, the breakdown and the queue scroll as one column, and that scroll is the column's own:
+	// when it escapes, the dashboard scrolls instead and carries Server Activity along with it. A long day of
+	// matches is what overflows the column in practice; this shrinks the window to the same geometry without
+	// seeding a day of history.
+	test('the layers column scrolls without taking Server Activity with it', async ({ page }) => {
+		const history = page.getByRole('heading', { name: 'Match History' })
+		const feed = page.getByRole('region', { name: 'Server Activity' })
+		await expect(history).toBeVisible()
+		// short enough that Match History and the breakdown alone overflow the column, measured rather than
+		// fixed so the case stays exercised however tall those two are
+		const labelTop = (await DB.queueLabel(page).boundingBox())!.y
+		await page.setViewportSize({ width: 1200, height: Math.round(labelTop) - 20 })
+		// and too short to show the queue and the teams at once, so the panel settles on tabs first
+		await expect(page.getByRole('tab', { name: /^Queue/ })).toBeVisible()
+		const historyTop = (await history.boundingBox())!.y
+		const feedTop = (await feed.boundingBox())!.y
+
+		await page.mouse.move(300, 120)
+		await page.mouse.wheel(0, 300)
+
+		// the column moved and the feed did not
+		await expect.poll(async () => (await history.boundingBox())!.y).toBeLessThan(historyTop - 50)
+		expect((await feed.boundingBox())!.y).toBe(feedTop)
 	})
 })
 
@@ -99,7 +121,7 @@ test.describe('teams panel', () => {
 	test.beforeEach(async ({ app, page }) => {
 		seedRoster(app)
 
-		await page.getByRole('tab', { name: /^Teams/ }).click()
+		await DB.showTeams(page)
 		// the roster reaches the UI through the app's ListPlayers poll
 		await expect(playerRow(teamTable(page, 'A'), ALPHA_LEAD)).toBeVisible({ timeout: 20_000 })
 		await expect(playerRow(teamTable(page, 'B'), BRAVO_ONE)).toBeVisible({ timeout: 20_000 })
