@@ -136,7 +136,7 @@ function CurrentLayerStrip(props: { stores: SquadServerFrame.KeyProp }) {
 	const current = MatchHistoryClient.useCurrentMatch(serverId)
 	if (!current) return null
 	return (
-		<div className="flex items-center gap-1.5 h-[26px] px-2.5 bg-[rgba(95,183,106,0.12)] border-b border-line text-xs whitespace-nowrap overflow-hidden shrink-0">
+		<div className="flex items-center gap-1.5 min-h-[26px] py-[5px] px-2.5 bg-[rgba(95,183,106,0.12)] border-b border-line text-xs leading-4 whitespace-nowrap shrink-0">
 			<Icons.Play className="size-[11px] text-ok" />
 			<ShortLayerName layerId={current.layerId} teamParity={current.ordinal} allowShowInfo={false} className="font-mono font-semibold" />
 			<span className="flex-1" />
