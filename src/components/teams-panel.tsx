@@ -280,7 +280,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 		<div className="flex justify-end items-center gap-1 whitespace-nowrap">
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['switch-requests']}
-				windowProps={{ serverId: stores.squadServer!.serverId } satisfies SwitchRequestsWindowProps}
+				windowProps={{ stores } satisfies SwitchRequestsWindowProps}
 				preload="intent"
 				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
 					<Button ref={ref} variant="ghost" size="sm" title={tr.text(SRQ_Msgs.switchRequestsTabHint())} {...props}>

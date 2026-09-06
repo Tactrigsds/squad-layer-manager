@@ -1,17 +1,40 @@
 import * as Im from 'immer'
 import React from 'react'
 
+import { frameManager } from '@/frames/frame-manager'
+import * as Cleanup from '@/lib/cleanup'
+import type * as FRM from '@/lib/frame'
 import * as Lifecycle from '@/lib/lifecycle'
 import * as Zus from '@/lib/zustand'
+import * as CS from '@/models/context-shared'
 import type { DraggableWindowContextValue } from '@/models/draggable-windows.models'
 import * as DW from '@/models/draggable-windows.models'
 import { DRAGGABLE_WINDOW_STACK_LIMIT } from '@/models/zindex'
+import { baseLogger } from '@/systems/logger.client'
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type InitialPosition = 'above' | 'below' | 'left' | 'right' | 'viewport-center'
+
+// Something a window cannot outlive. `onBeforeDispose` fires once, just before the dependency is destroyed, and
+// returns the unsubscribe. A dependency that is already gone calls the listener synchronously instead.
+export type WindowDependency = { onBeforeDispose: (listener: () => void) => () => void }
+
+// The dependency is the key, not the instance: a window renders from the key it was opened with, and that key is
+// the opener's to drop, typically when the dashboard that owns it unmounts. The frame instance can outlive the
+// key (other holders keep it alive), and the window still breaks
+export function frameDependency(key: FRM.RawInstanceKey): WindowDependency {
+	return {
+		onBeforeDispose: (listener) => {
+			const unsubscribe = frameManager.onBeforeRelease(key, listener)
+			if (unsubscribe) return unsubscribe
+			listener()
+			return () => {}
+		},
+	}
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface WindowDefinition<TProps = any, TData = any> {
@@ -32,6 +55,8 @@ export interface WindowDefinition<TProps = any, TData = any> {
 	defaultWidth?: number
 	/** Initial height in px when resizable. When omitted the window sizes to its content. */
 	defaultHeight?: number
+	/** What the window cannot outlive, read from its props as it opens. It closes just before any of them is disposed. */
+	dependsOn?: (props: TProps) => WindowDependency[]
 	/** Synchronous loader - called when window opens */
 	load?: (opts: { props: TProps; state: DraggableWindowStoreState }) => TData
 	/** Async loader - called when window opens */
@@ -135,6 +160,9 @@ function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 
 export const DraggableWindowStore = (() => {
 	const loaderConfigs: WindowLoaderConfig[] = []
+	const ctx: CS.Log = { ...CS.init(), log: baseLogger.child({ name: 'draggable-windows' }) }
+	// per open window, run FILO when it closes
+	const windowCleanups = new Map<string, Cleanup.Tasks>()
 
 	const store = Zus.createStore<DraggableWindowStore>((set, get) => {
 		const loaderCtx: Lifecycle.LoaderManagerContext<WindowLoaderConfig, DraggableWindowStoreState> = {
@@ -208,6 +236,25 @@ export const DraggableWindowStore = (() => {
 				const windowId = def.getId(props)
 				if (windows.find((w) => w.id === windowId)) return
 
+				// bound before the window exists, so a dependency that fires while binding has nothing to close and
+				// only marks the open as moot
+				const cleanup: Cleanup.Tasks = []
+				let dependencyGone = false
+				const onDependencyGone = () => {
+					dependencyGone = true
+					get().closeWindow(windowId)
+				}
+				for (const dependency of def.dependsOn?.(props) ?? []) {
+					cleanup.push(dependency.onBeforeDispose(onDependencyGone))
+					if (dependencyGone) break
+				}
+				if (dependencyGone) {
+					void Cleanup.runCleanup(ctx, cleanup)
+					ctx.log.warn(`not opening window "${windowId}": a dependency is already disposed`)
+					return
+				}
+				windowCleanups.set(windowId, cleanup)
+
 				const resolvedOutletKey = outletKey ?? DEFAULT_OUTLET_KEY
 				const config = loaderConfigs.find((c) => c.name === id)
 				const key: WindowLoaderKey = { type: id, windowId, props, outletKey: resolvedOutletKey }
@@ -239,6 +286,10 @@ export const DraggableWindowStore = (() => {
 				const state = get()
 				const window = state.windows.find((w) => w.id === id)
 				if (!window) return
+
+				const cleanup = windowCleanups.get(id)
+				windowCleanups.delete(id)
+				if (cleanup) void Cleanup.runCleanup(ctx, cleanup)
 
 				const config = loaderConfigs.find((c) => c.name === window.type)
 				if (config) {

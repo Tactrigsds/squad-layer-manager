@@ -1,19 +1,16 @@
 import * as Icons from 'lucide-react'
-import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { frameManager } from '@/frames/frame-manager'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as FRM from '@/lib/frame'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
-import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SRQClient from '@/systems/switch-requests.client'
@@ -32,15 +29,12 @@ DraggableWindowStore.getState().registerDefinition<SwitchRequestsWindowProps, un
 	minHeight: 180,
 	defaultWidth: 560,
 	defaultHeight: 320,
-	getId: (props) => `switch-requests:${props.serverId}`,
+	getId: (props) => `switch-requests:${props.stores.squadServer.serverId}`,
+	dependsOn: (props) => [frameDependency(props.stores.squadServer)],
 })
 
-function SwitchRequestsWindow(props: SwitchRequestsWindowProps) {
+function SwitchRequestsWindow({ stores }: SwitchRequestsWindowProps) {
 	useDraggableWindow()
-	const stores: SquadServerFrame.KeyProp = React.useMemo(
-		() => FRM.toProp(frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(props.serverId))),
-		[props.serverId],
-	)
 	const count = Zus.useStore(stores.squadServer!, SRQClient.Sel.requestCount)
 	// the heads of two non-empty queues trade places automatically; outline them so the pairing is visible
 	const mutualReady = Zus.useStore(

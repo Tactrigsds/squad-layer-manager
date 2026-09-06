@@ -98,3 +98,111 @@ describe('FrameManager teardown', () => {
 		expect(errors).toHaveLength(1)
 	})
 })
+
+describe('FrameManager onBeforeRelease', () => {
+	// a window rendering from a frame has to close before the frame goes, and "before" means before the signal too:
+	// setup work listening on it may already be pulling the frame apart when it fires
+	it('runs listeners before the signal aborts and before any cleanup task', async () => {
+		const { frameManager } = manager()
+		const order: string[] = []
+		let signal: AbortSignal | undefined
+		const frame = testFrame(frameManager, (args) => {
+			signal = args.signal
+			args.cleanup.push(() => void order.push('cleanup'))
+		})
+		const key = frameManager.ensureSetup(frame, { id: 'a' })
+		frameManager.onBeforeRelease(key, () => void order.push(signal!.aborted ? 'listener:aborted' : 'listener'))
+
+		frameManager.teardown(key)
+		await Prom.sleep(0)
+		expect(order).toEqual(['listener', 'cleanup'])
+	})
+
+	// the dashboard drops its key on unmount while the nav bar's and presence's keys keep the instance alive. A
+	// window opened with the dashboard's key renders from a key that no longer resolves, so it has to hear about the
+	// drop, not just about the instance going
+	it('fires when its key is dropped even though another key keeps the instance alive', () => {
+		const { frameManager } = manager()
+		const frame = testFrame(frameManager, () => {})
+		const borrowed = frameManager.ensureSetup(frame, { id: 'a' })
+		const other = frameManager.ensureSetup(frame, { id: 'a' })
+		let fired = 0
+		frameManager.onBeforeRelease(borrowed, () => void fired++)
+
+		frameManager.dropKey(borrowed)
+		expect(fired).toBe(1)
+		expect(frameManager.getState(borrowed)).toBeUndefined()
+		expect(frameManager.getState(other)).toEqual({ id: 'a' })
+
+		frameManager.dropKey(other)
+		expect(fired).toBe(1)
+	})
+
+	it('does not fire for a key that is still held when another key is dropped', () => {
+		const { frameManager } = manager()
+		const frame = testFrame(frameManager, () => {})
+		const held = frameManager.ensureSetup(frame, { id: 'a' })
+		const dropped = frameManager.ensureSetup(frame, { id: 'a' })
+		let fired = 0
+		frameManager.onBeforeRelease(held, () => void fired++)
+
+		frameManager.dropKey(dropped)
+		expect(fired).toBe(0)
+		frameManager.dropKey(held)
+		expect(fired).toBe(1)
+	})
+
+	it('fires once when the dropped key was the last reference', async () => {
+		const { frameManager } = manager()
+		const order: string[] = []
+		const frame = testFrame(frameManager, (args) => {
+			args.cleanup.push(() => void order.push('cleanup'))
+		})
+		const key = frameManager.ensureSetup(frame, { id: 'a' })
+		frameManager.onBeforeRelease(key, () => void order.push('listener'))
+
+		frameManager.dropKey(key)
+		await Prom.sleep(0)
+		expect(order).toEqual(['listener', 'cleanup'])
+	})
+
+	it('does not run an unsubscribed listener', () => {
+		const { frameManager } = manager()
+		const frame = testFrame(frameManager, () => {})
+		const key = frameManager.ensureSetup(frame, { id: 'a' })
+		let fired = 0
+		const unsubscribe = frameManager.onBeforeRelease(key, () => void fired++)!
+		unsubscribe()
+
+		frameManager.teardown(key)
+		expect(fired).toBe(0)
+	})
+
+	it('returns undefined once the instance is gone', () => {
+		const { frameManager } = manager()
+		const frame = testFrame(frameManager, () => {})
+		const key = frameManager.ensureSetup(frame, { id: 'a' })
+		frameManager.teardown(key)
+
+		expect(frameManager.onBeforeRelease(key, () => {})).toBeUndefined()
+	})
+
+	it('reports a throwing listener and still tears the frame down', async () => {
+		const { frameManager, errors } = manager()
+		const order: string[] = []
+		const frame = testFrame(frameManager, (args) => {
+			args.cleanup.push(() => void order.push('cleanup'))
+		})
+		const key = frameManager.ensureSetup(frame, { id: 'a' })
+		frameManager.onBeforeRelease(key, () => {
+			throw new Error('listener boom')
+		})
+		frameManager.onBeforeRelease(key, () => void order.push('second listener'))
+
+		frameManager.teardown(key)
+		await Prom.sleep(0)
+		expect(order).toEqual(['second listener', 'cleanup'])
+		expect(errors).toHaveLength(1)
+		expect(frameManager.getState(key)).toBeUndefined()
+	})
+})

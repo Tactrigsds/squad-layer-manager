@@ -27,7 +27,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
-import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 
@@ -58,6 +58,7 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	defaultWidth: 650,
 	defaultHeight: 560,
 	getId: (props) => String(props.uniqueSquadId),
+	dependsOn: (props) => [frameDependency(props.stores.squadServer)],
 	loadAsync: async ({ props }) => {
 		const squadServerFrameKey = props.stores.squadServer
 		const isLive = ChatPrt.Sel.squads(Zus.getState(squadServerFrameKey)).some((sq) => sq.uniqueId === props.uniqueSquadId)

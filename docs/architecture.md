@@ -270,6 +270,15 @@ useFrameTeardownOnUnmount(frameKey)
 return <ServerDashboard stores={FRM.toProp(frameKey)} />
 ```
 
+A key belongs to whoever called `ensureSetup`, and `dropKey` stops it resolving even when other keys keep the
+instance alive. The dashboard drops its key when it unmounts while the nav bar and presence hold their own, so a
+window opened with the dashboard's key would otherwise render from a dead key. Anything rendering from a borrowed key
+registers with `frameManager.onBeforeRelease(key, ...)`, which runs just before the key stops resolving, whether by
+its own drop or by the instance being disposed, and ahead of the abort signal and cleanup tasks. Draggable windows do
+this through `dependsOn` on their `WindowDefinition`: `frameDependency(props.stores.squadServer)` closes the window
+at that moment. `frameDependency` is one `WindowDependency`; anything else a window cannot outlive can implement the
+same shape.
+
 **A frame-partial** (`src/frame-partials/*.partial.ts`) is not a frame. It is a module exporting a slice type, an
 `init*(args)`, and its own `Sel`/`Actions`, which a real frame composes by intersecting the types and calling
 `init*` from `setup()`. This is how a large frame stays modular without every slice needing its own FrameManager
