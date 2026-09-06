@@ -37,16 +37,18 @@ export const statsTitle = def('Stats')
 
 export const noChartData = def('No data available for charts')
 
-export const kdRatio = def('K/D Ratio:')
+// the rows of the scoreline tooltip on a match history row, one column per team
+export const kdRatio = def('K/D')
 
-export const kdBreakdown = def('{kills} kills, {deaths} deaths', (kills: number, deaths: number) => ({ kills, deaths }))
+export const woundRatio = def('W/D')
 
-export const woundRatio = def('Wound Ratio:')
+export const killsDealt = def('Kills')
 
-export const woundBreakdown = def('{wounds} wounds dealt, {wounded} taken', (wounds: number, wounded: number) => ({
-	wounds,
-	wounded,
-}))
+export const woundsDealt = def('Wounds')
+
+export const deathsSuffered = def('Deaths')
+
+export const scoreline = def('Scoreline')
 
 export const teamBreakdowns = def('Teams Breakdown')
 

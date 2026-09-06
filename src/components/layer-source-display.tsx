@@ -17,7 +17,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 	const pluginId = props.source.type === 'plugin' ? props.source.pluginId : undefined
 	const pluginName = Zus.useStore(PluginsClient.Store, (s) => (pluginId ? s.manifests[pluginId]?.name : undefined))
 	const renderIcon = (displayName: string, backgroundColor: string, icon: React.ReactNode) => (
-		<Tooltip delayDuration={0}>
+		<Tooltip>
 			<TooltipTrigger>
 				<Avatar style={{ backgroundColor }} className="h-6 w-6">
 					{icon}

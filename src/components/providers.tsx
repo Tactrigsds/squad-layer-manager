@@ -14,7 +14,6 @@ import { DragContextProvider } from '@/systems/dndkit.client.tsx'
 
 import { DraggableWindowOutlet } from './ui/draggable-window'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'
-import { TooltipProvider } from './ui/tooltip'
 
 export function Providers(props: { children: ReactNode }) {
 	return (
@@ -26,18 +25,16 @@ export function Providers(props: { children: ReactNode }) {
 
 function ProvidersInner(props: { children: ReactNode }) {
 	return (
-		<TooltipProvider>
-			<DragContextProvider>
-				<AlertDialogProvider>
-					<Toaster />
-					<ResetOtherSessionsManager />
-					<TourOverlay />
-					<DraggableWindowOutlet outletKey="default">
-						<DomOverlays />
-						{props.children}
-					</DraggableWindowOutlet>
-				</AlertDialogProvider>
-			</DragContextProvider>
-		</TooltipProvider>
+		<DragContextProvider>
+			<AlertDialogProvider>
+				<Toaster />
+				<ResetOtherSessionsManager />
+				<TourOverlay />
+				<DraggableWindowOutlet outletKey="default">
+					<DomOverlays />
+					{props.children}
+				</DraggableWindowOutlet>
+			</AlertDialogProvider>
+		</DragContextProvider>
 	)
 }

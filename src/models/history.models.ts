@@ -97,6 +97,16 @@ export const COLUMN_DEFS = {
 	'match.ticketDiff': { key: 'match.ticketDiff', displayName: 'Ticket difference', domain: { kind: 'number' } },
 	// whole minutes from start to end, so a match still running or one the app never saw end has none
 	'match.duration': { key: 'match.duration', displayName: 'Match length', domain: { kind: 'number' } },
+	// The match's scoreline, over both sides: which side is team 1 flips between consecutive matches, so
+	// "how much fighting was there" is the question worth asking, not "how much did team 1 do". Deaths run
+	// ahead of kills by the teamkills and suicides nobody was credited with. Tallied when a match ends, so a
+	// match still in progress has none.
+	'match.kills': { key: 'match.kills', displayName: 'Kills', domain: { kind: 'number' } },
+	'match.wounds': { key: 'match.wounds', displayName: 'Wounds', domain: { kind: 'number' } },
+	'match.deaths': { key: 'match.deaths', displayName: 'Deaths', domain: { kind: 'number' } },
+	// how one-sided the fighting was, as one side's kills over the other's. Unsigned for the same reason
+	// ticketDiff is, and a distinct question from it: a ticket blowout can still be an even firefight.
+	'match.killDiff': { key: 'match.killDiff', displayName: 'Kill difference', domain: { kind: 'number' } },
 	// The layer played, by part. Every one of these is read off the layer id (L.toLayer), never off a join:
 	// the id spells out map, gamemode and both sides, so the engine resolves them by parsing the few hundred
 	// distinct ids in range rather than by asking the layer engine, which it has no artifact for.
@@ -288,7 +298,7 @@ export type PlayerSortColumn = (typeof PLAYER_SORT_COLUMNS)[number]
 
 // The measures a match can be ordered by. Only the ones the engine can order in sql: the events count is
 // gathered per page, after the ordering has already decided which page that is.
-export const MATCH_SORT_COLUMNS = ['time', 'duration', 'ticketDiff'] as const
+export const MATCH_SORT_COLUMNS = ['time', 'duration', 'ticketDiff', 'kills', 'killDiff'] as const
 export type MatchSortColumn = (typeof MATCH_SORT_COLUMNS)[number]
 
 const QueryFieldsSchema = z.object({
@@ -339,6 +349,15 @@ const QueryFieldsSchema = z.object({
 	// bounds on match.duration, in whole minutes
 	durationMin: z.number().int().nonnegative().optional(),
 	durationMax: z.number().int().nonnegative().optional(),
+	// bounds on the scoreline measures, read the same way as ticketDiff's
+	killsMin: z.number().int().nonnegative().optional(),
+	killsMax: z.number().int().nonnegative().optional(),
+	woundsMin: z.number().int().nonnegative().optional(),
+	woundsMax: z.number().int().nonnegative().optional(),
+	deathsMin: z.number().int().nonnegative().optional(),
+	deathsMax: z.number().int().nonnegative().optional(),
+	killDiffMin: z.number().int().nonnegative().optional(),
+	killDiffMax: z.number().int().nonnegative().optional(),
 	name: z.string().optional(),
 	matchId: z.number().int().positive().optional(),
 	minMatches: z.number().int().positive().optional(),
@@ -512,6 +531,10 @@ export function queryFilterNode(query: Query): Node {
 	if (query.outcomes?.length) children.push(comp('match.outcome', query.outcomes))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	children.push(...rangeNodes('match.ticketDiff', query.ticketDiffMin, query.ticketDiffMax))
+	children.push(...rangeNodes('match.kills', query.killsMin, query.killsMax))
+	children.push(...rangeNodes('match.wounds', query.woundsMin, query.woundsMax))
+	children.push(...rangeNodes('match.deaths', query.deathsMin, query.deathsMax))
+	children.push(...rangeNodes('match.killDiff', query.killDiffMin, query.killDiffMax))
 	children.push(...rangeNodes('match.duration', query.durationMin, query.durationMax))
 	return { type: 'and', children }
 }

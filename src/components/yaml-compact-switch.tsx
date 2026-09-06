@@ -19,7 +19,7 @@ export default function YamlCompactSwitch(props: {
 }) {
 	const id = React.useId()
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<div className={cn('flex items-center gap-1.5', props.className)}>
 					<Switch id={id} checked={props.compact} disabled={props.disabled} onCheckedChange={props.onChange} />

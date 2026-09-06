@@ -2,7 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
-import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
+import { TrackingTooltip } from '@/components/ui/tooltip'
 import { useFollowTooltip } from '@/hooks/use-follow-tooltip'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'

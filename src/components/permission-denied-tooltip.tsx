@@ -17,7 +17,7 @@ export function PermissionDeniedTooltip(props: {
 	if (!props.denied) return props.children
 	const { checkType, failures } = props.denied
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<span className={props.triggerClassName}>{props.children}</span>
 			</TooltipTrigger>

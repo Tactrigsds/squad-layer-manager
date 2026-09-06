@@ -5,6 +5,7 @@ import * as CD from '@/lib/ctx-def'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
+import type * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
@@ -30,6 +31,9 @@ type MatchDetailsCommon = {
 	startTime?: Date
 	isCurrentMatch: boolean
 	createdAt: Date | null
+	// Tallied from the match's feed once, server-side, and stored on the row. Absent while the match is still the
+	// current one, and on a match the backfill has not reached yet.
+	combatStats?: MatchCombatStats
 }
 
 // Details about current match besides the layer
@@ -64,6 +68,78 @@ export type NormalizedMatchOutcome =
 	  }
 
 export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }>
+
+/**
+ * One team's scoreline over a match: what it dealt, and what it lost. `deaths` is not the other team's `kills` --
+ * a teamkill or a suicide is a death nobody is credited with.
+ */
+export type TeamCombatStats = { kills: number; wounds: number; deaths: number }
+export type MatchCombatStats = { team1: TeamCombatStats; team2: TeamCombatStats }
+
+/** The scoreline as it sits on a match row: six columns, so the history query engine can filter and order on it. */
+export type CombatStatsColumns = {
+	team1Kills: number | null
+	team1Wounds: number | null
+	team1Deaths: number | null
+	team2Kills: number | null
+	team2Wounds: number | null
+	team2Deaths: number | null
+}
+
+export function combatStatsToColumns(stats: MatchCombatStats | undefined): CombatStatsColumns {
+	if (!stats) {
+		return { team1Kills: null, team1Wounds: null, team1Deaths: null, team2Kills: null, team2Wounds: null, team2Deaths: null }
+	}
+	return {
+		team1Kills: stats.team1.kills,
+		team1Wounds: stats.team1.wounds,
+		team1Deaths: stats.team1.deaths,
+		team2Kills: stats.team2.kills,
+		team2Wounds: stats.team2.wounds,
+		team2Deaths: stats.team2.deaths,
+	}
+}
+
+/** The scoreline back off a row, or undefined for a match that has none. The six are written as a set, so one says. */
+export function combatStatsFromColumns(row: CombatStatsColumns): MatchCombatStats | undefined {
+	if (row.team1Kills === null) return undefined
+	return {
+		team1: { kills: row.team1Kills, wounds: row.team1Wounds ?? 0, deaths: row.team1Deaths ?? 0 },
+		team2: { kills: row.team2Kills ?? 0, wounds: row.team2Wounds ?? 0, deaths: row.team2Deaths ?? 0 },
+	}
+}
+
+/**
+ * Tally a match's scoreline from its feed. Costs a walk of every event the match produced, which is why a finished
+ * match's tally is computed once on the server and stored (see backfillCombatStats) rather than per reader.
+ *
+ * `matchId` scopes the walk to one match, for the live buffer, which spans several. A replayed match's events are
+ * already its own.
+ */
+export function tallyCombatStats(events: Iterable<CHAT.EventEnriched>, matchId?: number): MatchCombatStats {
+	const kills = [0, 0]
+	const wounds = [0, 0]
+	const deaths = [0, 0]
+	for (const event of events) {
+		if (event.type !== 'PLAYER_DIED' && event.type !== 'PLAYER_WOUNDED') continue
+		if (matchId !== undefined && event.matchId !== matchId) continue
+		// unknown team ids fall outside 0..1 and so count towards neither side
+		const victimIdx = (event.victim.teamId ?? 0) - 1
+		const attackerIdx = (event.attacker.teamId ?? 0) - 1
+		if (event.type === 'PLAYER_DIED' && (victimIdx === 0 || victimIdx === 1)) deaths[victimIdx]++
+		// teamkills and suicides are still deaths, but they are not the attacking team's doing
+		if (event.variant !== 'normal' || (attackerIdx !== 0 && attackerIdx !== 1)) continue
+		if (event.type === 'PLAYER_DIED') kills[attackerIdx]++
+		else wounds[attackerIdx]++
+	}
+	const team = (idx: number): TeamCombatStats => ({ kills: kills[idx], wounds: wounds[idx], deaths: deaths[idx] })
+	return { team1: team(0), team2: team(1) }
+}
+
+/** Whether a match recorded any combat at all. One SLM saw nothing of has a stored tally like any other, all zeros. */
+export function hasCombat(stats: MatchCombatStats) {
+	return stats.team1.kills > 0 || stats.team2.kills > 0 || stats.team1.deaths > 0 || stats.team2.deaths > 0
+}
 
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
@@ -199,6 +275,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 		serverId: entry.serverId,
 		isCurrentMatch,
 		createdAt: entry.createdAt,
+		combatStats: combatStatsFromColumns(entry),
 	} satisfies Partial<MatchDetailsCommon>
 
 	if (!isNullOrUndef(entry.endTime) && isNullOrUndef(entry.outcome)) throw new Error('Match ended without an outcome')
@@ -309,6 +386,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 		setByType: matchDetails.layerSource.type,
 		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
 		setByPluginId: matchDetails.layerSource.type === 'plugin' ? matchDetails.layerSource.pluginId : null,
+		...combatStatsToColumns(matchDetails.combatStats),
 		...layerParts(layerId),
 		endTime: null,
 		outcome: null,

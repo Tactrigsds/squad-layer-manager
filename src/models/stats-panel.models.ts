@@ -7,7 +7,7 @@ import * as L_Msgs from '@/messages/layer.messages'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
-import type * as MH from '@/models/match-history.models'
+import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as TA from '@/models/team-attribution.models'
@@ -15,12 +15,6 @@ import type { ClientOnlySettingsStore } from '@/systems/client-only-settings.cli
 import type { PublicSettings } from '@/systems/settings.server'
 
 export type TeamDisplay = { label: string; color: string }
-
-// A count over a total, kept unreduced so a tooltip can name both halves. `value` is null where the denominator is
-// zero and the numerator is not, i.e. the ratio the display shows as infinite.
-export type Ratio = { numerator: number; denominator: number; value: number | null }
-export type TeamCombat = { kd: Ratio; wounds: Ratio }
-export type CombatStats = { team1: TeamCombat; team2: TeamCombat }
 
 export type BreakdownMember = { id: SM.PlayerId; name: string }
 
@@ -74,43 +68,17 @@ export namespace Sel {
 		},
 	)
 
-	// Kills and wounds per team over the displayed match. Historical events arrive from a query rather than a store,
-	// so they parameterise the selector; the live buffer is mutated in place, and its generation counter is what
-	// invalidates the cache.
-	export const combatStats = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
-		RSel.createDeepSelector(
-			[
-				(...[store]: TeamInputs) => store.chat.eventGeneration,
-				(...[store]: TeamInputs) => ChatPrt.Sel.chatEvents(store),
-				(...[store]: TeamInputs) => ChatPrt.Sel.selectedMatchOrdinal(store),
-				(...args: TeamInputs) => displayMatch(...args)?.historyEntryId,
-			],
-			(_generation, buffer, selectedOrdinal, liveMatchId): CombatStats | null => {
-				const events = selectedOrdinal !== null ? historicalEvents : liveMatchId === undefined ? null : buffer
-				if (!events || events.length === 0) return null
-				// a historical match's events are already scoped to it; the live buffer spans several
-				const matchId = selectedOrdinal !== null ? null : liveMatchId
-
-				const kills = [0, 0]
-				const deaths = [0, 0]
-				const wounds = [0, 0]
-				const wounded = [0, 0]
-				for (const event of events) {
-					if (event.type !== 'PLAYER_DIED' && event.type !== 'PLAYER_WOUNDED') continue
-					if (matchId !== null && event.matchId !== matchId) continue
-					// unknown team ids fall outside 0..1 and so count towards neither side
-					const victimIdx = (event.victim.teamId ?? 0) - 1
-					const attackerIdx = (event.attacker.teamId ?? 0) - 1
-					const [inflicted, suffered] = event.type === 'PLAYER_DIED' ? [kills, deaths] : [wounds, wounded]
-					if (victimIdx === 0 || victimIdx === 1) suffered[victimIdx]++
-					// teamkills and suicides are still deaths, but they are not the attacking team's doing
-					if (event.variant === 'normal' && (attackerIdx === 0 || attackerIdx === 1)) inflicted[attackerIdx]++
-				}
-
-				const team = (idx: number): TeamCombat => ({ kd: ratio(kills[idx], deaths[idx]), wounds: ratio(wounds[idx], wounded[idx]) })
-				return { team1: team(0), team2: team(1) }
-			},
-		),
+	// The current match's scoreline, tallied from the live buffer as it plays. A finished match carries its own,
+	// computed once on the server, so this is only ever the match still in progress. The buffer is mutated in
+	// place, and its generation counter is what invalidates the cache.
+	export const liveCombatStats = RSel.createDeepSelector(
+		[
+			(...[store]: TeamInputs) => store.chat.eventGeneration,
+			(...[store]: TeamInputs) => ChatPrt.Sel.chatEvents(store),
+			(...[, currentMatch]: TeamInputs) => currentMatch?.historyEntryId,
+		],
+		// the live buffer spans several matches, so the tally is scoped to the current one
+		(_generation, buffer, matchId) => (matchId === undefined ? null : MH.tallyCombatStats(buffer, matchId)),
 	)
 
 	const groupingIds = RSel.createDeepSelector(
@@ -205,16 +173,9 @@ export namespace Sel {
 		),
 	)
 
-	// whether the panel has anything at all to draw, so it can show its empty state without every child duplicating
-	// the question
+	// whether the panel has a chart to draw, so it can show its empty state without every child duplicating the
+	// question
 	export const hasData = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
-		RSel.createSelector(
-			[(...args: BreakdownInputs) => combatStats(historicalEvents)(...teamInputs(args)), breakdown(historicalEvents)],
-			(combat, breakdown) => combat !== null || breakdown !== null,
-		),
+		RSel.createSelector([breakdown(historicalEvents)], (breakdown) => breakdown !== null),
 	)
-}
-
-function ratio(numerator: number, denominator: number): Ratio {
-	return { numerator, denominator, value: denominator === 0 ? (numerator > 0 ? null : 0) : numerator / denominator }
 }

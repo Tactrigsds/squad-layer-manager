@@ -13,7 +13,7 @@ export function UserAvatar(props: { userId: USR.UserId; label?: string; classNam
 	if (!user) return null
 
 	return (
-		<Tooltip delayDuration={0}>
+		<Tooltip>
 			<TooltipTrigger>
 				<Avatar style={{ backgroundColor: user.displayHexColor ?? undefined }} className={cn('h-6 w-6', props.className)}>
 					<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />

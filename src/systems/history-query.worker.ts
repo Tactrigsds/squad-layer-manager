@@ -17,6 +17,7 @@ import {
 	appEventBoundsCond,
 	compileAppEventCond,
 	compileEventCond,
+	COMBAT_EXPRS,
 	compileMatchCond,
 	durationOf,
 	eventBoundsCond,
@@ -320,6 +321,8 @@ const MATCH_SORT_EXPRS: Record<HQ.MatchSortColumn, E.SQL> = {
 	time: matchTime,
 	duration: durationOf(mh),
 	ticketDiff: ticketDiffOf(mh),
+	kills: COMBAT_EXPRS['match.kills'](mh),
+	killDiff: COMBAT_EXPRS['match.killDiff'](mh),
 }
 
 export async function queryMatchRows(

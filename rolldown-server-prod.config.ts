@@ -40,6 +40,8 @@ export default defineConfig({
 		// the history query engine's worker thread; a sibling of the main chunk so history.server.ts can
 		// resolve it relative to import.meta.url in both dev and prod
 		'history-query.worker': 'src/systems/history-query.worker.ts',
+		// the scoreline catch-up's worker thread, a sibling for the same reason
+		'combat-stats.worker': 'src/systems/combat-stats.worker.ts',
 		// Schema (.sql) + data (.ts) migration runner. Bundled so the statically-imported
 		// .ts migration registry ships in the slim prod image; .sql files are read at
 		// runtime from the copied drizzle-sqlite/ folder.

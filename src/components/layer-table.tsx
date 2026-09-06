@@ -749,7 +749,7 @@ export function LayerTableControlPanel(props: {
 					>
 						<Dices />
 					</Button>
-					<Tooltip>
+					<Tooltip help>
 						<TooltipTrigger asChild>
 							<div data-tour="table-randomize" className="flex items-center gap-1.5">
 								<Switch

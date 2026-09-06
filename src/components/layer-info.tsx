@@ -34,7 +34,7 @@ import {
 } from './ui/draggable-window'
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import VehicleIcon from './vehicle-icon.tsx'
 
 type LayerInfoProps = {
@@ -362,14 +362,12 @@ function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfi
 						#
 					</div>
 					<div className="flex items-center font-medium" role="columnheader">
-						<TooltipProvider>
-							<Tooltip>
-								<TooltipTrigger>
-									<Icons.Timer size={16} className="text-muted-foreground" />
-								</TooltipTrigger>
-								<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
-							</Tooltip>
-						</TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger>
+								<Icons.Timer size={16} className="text-muted-foreground" />
+							</TooltipTrigger>
+							<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
+						</Tooltip>
 					</div>
 					<div className="flex items-center font-medium" role="columnheader">
 						<Tooltip>

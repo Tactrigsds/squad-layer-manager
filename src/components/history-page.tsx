@@ -108,7 +108,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 	// switches to, which is the only thing a one-shot toggle can usefully say.
 	const target = draft.mode === 'basic' ? 'advanced' : 'basic'
 	const modeToggle = (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button size="sm" onClick={() => HistoryFrame.Actions.setMode(props.stores, target)}>
 					<Icons.SlidersHorizontal />
@@ -119,7 +119,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 		</Tooltip>
 	)
 	const runButton = (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button size="sm" variant="primary" className="w-full" onClick={run}>
 					{tr.text(HistoryMsgs.run())}
@@ -492,6 +492,8 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colOutcome())}</th>
 							{sortHeader('ticketDiff', tr.text(HistoryMsgs.colTicketDiff()))}
+							{sortHeader('kills', tr.text(HistoryMsgs.colKills()))}
+							{sortHeader('killDiff', tr.text(HistoryMsgs.colKillDiff()))}
 							{sortHeader('duration', tr.text(HistoryMsgs.colDuration()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
 							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>

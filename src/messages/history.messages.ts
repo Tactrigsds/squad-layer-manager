@@ -59,6 +59,14 @@ export const copyMatchId = def('Copy match id')
 export const matchIdCopied = def('Match id copied')
 export const fieldTicketDiff = def('Ticket difference')
 export const fieldDuration = def('Match length')
+
+export const fieldKills = def('Kills')
+
+export const fieldWounds = def('Wounds')
+
+export const fieldDeaths = def('Deaths')
+
+export const fieldKillDiff = def('Kill difference')
 export const fieldTime = def('Time')
 export const fieldUser = def('SLM user')
 
@@ -129,6 +137,10 @@ export const colServer = def('Server')
 export const colSetBy = def('Set by')
 export const colTicketDiff = def('Ticket diff')
 export const colDuration = def('Length')
+
+export const colKills = def('Kills')
+
+export const colKillDiff = def('Kill diff')
 // the events results' sort direction, labelled with the order currently in effect
 export const resizeBuilder = def('Resize the query builder')
 export const orderNewest = def('Newest first')

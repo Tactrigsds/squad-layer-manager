@@ -9,7 +9,7 @@ import LayerContextMenuOptions from '../layer-context-menu-options'
 import PlayerContextMenuOptions from '../player-context-menu-options'
 import SquadContextMenuOptions from '../squad-context-menu-options'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../ui/context-menu'
-import { TrackingTooltip } from '../ui/tracking-tooltip'
+import { TrackingTooltip } from '../ui/tooltip'
 import * as Interactions from './interactions'
 import MatchTip from './match-tip'
 
