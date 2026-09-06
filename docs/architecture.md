@@ -400,6 +400,9 @@ Before touching a reducer:
   threaded into it: react to the resulting state via store subscriptions instead.
 - Op history is **bounded**, so it is a reconciliation buffer, not an audit log. Durable history is the app-events
   subsystem's job.
+- **Client update handlers run inside the watch's retried region**, through the `apply` option of `RPC.observe`.
+  An update the handler cannot apply restarts the watch, and the `init` that follows replaces the state the lost
+  update would otherwise have left diverged.
 
 Three state machines are built on it today, each as a model/server/client trio:
 

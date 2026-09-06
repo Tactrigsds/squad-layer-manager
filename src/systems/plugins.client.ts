@@ -300,8 +300,11 @@ function streamFamily(ctx: ClientCtx<any>, name: string) {
 	// fresh object every render. Keying on that would mint a new stream per render instead of sharing
 	// one, so nothing would ever settle.
 	const [, family$] = ReactRx.bind(`plugins.${ctx.plugin.id}.${name}`, (serverId: string, inputKey: string) =>
-		RPC.observe(`plugins.rpcStream:${ctx.plugin.id}.${name}`, () =>
-			RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, path: [name], serverId, input: JSON.parse(inputKey) }),
+		RPC.observe(
+			`plugins.rpcStream:${ctx.plugin.id}.${name}`,
+			() => RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, path: [name], serverId, input: JSON.parse(inputKey) }),
+			// a plugin's stream may be a finite iterable by design
+			{ finite: true },
 		).pipe(Rx.map((res) => (res && typeof res === 'object' && 'code' in res && res.code === 'ok' ? res.data : undefined))),
 	)
 	// Wrapped so getValue is total: a raw StateObservable throws NoSubscribersError before its first

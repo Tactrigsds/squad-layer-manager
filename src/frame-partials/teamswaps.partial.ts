@@ -156,11 +156,13 @@ export function initTeamswaps(args: Args) {
 	} satisfies TeamswapSlice)
 
 	args.cleanup.push(
-		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId }))
-			.pipe(RPC.dropServerNotLoaded())
-			.subscribe((update) => {
-				get().onUpdate(update)
-			}),
+		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId }), {
+			apply: (update$) =>
+				update$.pipe(
+					RPC.dropServerNotLoaded(),
+					Rx.tap((update) => get().onUpdate(update)),
+				),
+		}).subscribe(),
 	)
 }
 

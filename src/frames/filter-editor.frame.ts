@@ -175,7 +175,7 @@ const setup: Frame['setup'] = (args) => {
 
 	if (filterId) {
 		args.cleanup.push(
-			FilterEditClient.watchUpdates$(filterId).subscribe((update) => {
+			FilterEditClient.watchUpdates$(filterId, (update) => {
 				const prev = get().session
 				const next = ODSM.Client.applyUpdate(prev, update, FE.reducer, {
 					onSideEffects: (ses) => {
@@ -190,7 +190,7 @@ const setup: Frame['setup'] = (args) => {
 					onUnknownAcks: (opIds) => console.warn('received ack for unknown filter ops', opIds),
 				})
 				if (next !== prev) commitSession(set, next)
-			}),
+			}).subscribe(),
 		)
 	}
 
