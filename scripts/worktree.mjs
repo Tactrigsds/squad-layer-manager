@@ -121,29 +121,32 @@ const ARTIFACTS = ['assets/layer-engine.wasm', 'layer-db.json']
 
 function ensureArtifacts(dest, { build = false, force = false } = {}) {
 	const root = mainCheckout(dest)
-	if (path.resolve(dest) === path.resolve(root)) return
+	// The main checkout is a workspace too, and has nothing to copy from. It takes the build path below rather
+	// than being skipped, since a fresh clone has never built the engine either.
+	const copyFrom = path.resolve(dest) === path.resolve(root) ? null : root
+	const absent = copyFrom ? 'the main checkout has none' : 'this checkout has none'
 	for (const artifact of ARTIFACTS) {
 		const link = path.join(dest, artifact)
-		if (fs.existsSync(link) && !force) continue
-		const target = path.join(root, artifact)
-		if (fs.existsSync(target)) {
+		if (fs.existsSync(link) && !(force && copyFrom)) continue
+		const target = copyFrom && path.join(copyFrom, artifact)
+		if (target && fs.existsSync(target)) {
 			fs.mkdirSync(path.dirname(link), { recursive: true })
 			fs.copyFileSync(target, link)
 			console.error(`  ${artifact} copied from the main checkout`)
 			continue
 		}
 		if (!artifact.endsWith('.wasm')) {
-			console.error(`  ${artifact}: the main checkout has none, skipping`)
+			console.error(`  ${artifact}: ${absent}, skipping`)
 			continue
 		}
 		// Only ever on the paths that can afford it: a cargo build is minutes, and a WorktreeCreate hook that
 		// takes minutes reads as a hung one.
 		if (build) {
-			console.error(`  ${artifact}: the main checkout has none either, building it`)
+			console.error(`  ${artifact}: ${absent}, building it`)
 			run('pnpm', ['run', 'build:engine'], dest, { quiet: true })
 			continue
 		}
-		console.error(`  ${artifact}: the main checkout has none either -- build it with \`pnpm build:engine\``)
+		console.error(`  ${artifact}: ${absent} -- build it with \`pnpm build:engine\``)
 	}
 }
 

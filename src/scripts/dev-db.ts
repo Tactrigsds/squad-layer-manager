@@ -8,21 +8,31 @@ import { parseArgs } from 'node:util'
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
+import * as CS from '@/models/context-shared'
 import * as PG from '@/models/player-groupings.models'
 import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
+import { ensureLoggerSetup } from '@/server/logger'
 import * as Migrate from '@/server/migrate'
 import * as SecretBox from '@/server/secret-box.server'
+import * as Seed from '@/systems/seed.server'
 
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
 
-// the single admin list a dev clone keeps, pointed at the worktree's emulated Admins.cfg
+// the single admin list a dev workspace keeps, pointed at the worktree's emulated Admins.cfg
 const DEV_ADMIN_LIST = 'dev'
 
-// Clones the main checkout's database into this worktree and re-points its servers at the worktree's
-// emulator, so an experiment runs against realistic data instead of an empty db.
+// the one server a workspace that started from an empty database has: this worktree's emulator
+const DEV_SERVER_ID = 'emulator'
+
+// Gives this worktree the database its instance runs on, and points its servers at the worktree's emulator.
+//
+// The main checkout's database is the preferred source, since cloning it is what makes an experiment run
+// against realistic data. It is not a prerequisite: a fresh clone, or a machine that has only ever run the app
+// in docker, has none, and such a workspace starts from an empty database seeded the way the app's own first
+// boot would seed it (see seedFresh).
 //
 // The source may be in use by a running app, and must survive this untouched. That is what decides the
 // mechanism: `VACUUM INTO` over a read-only connection takes a read transaction and writes a new file. It
@@ -47,16 +57,24 @@ const args = parseArgs({
 })
 
 Env.ensureEnvSetup()
+// Seed.setup logs through a module logger, which nothing has stood up in a script.
+ensureLoggerSetup()
 
 const slot = Slots.requireSlot()
-const source = path.resolve(args.values.from ?? path.join(Slots.repoRootCheckout(), 'data/db.sqlite3'))
+const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
+const mainCheckoutDb = path.join(Slots.repoRootCheckout(), 'data/db.sqlite3')
+const requested = args.values.from ? path.resolve(args.values.from) : undefined
 const dest = path.resolve(process.env.DB_PATH ?? './data/db.sqlite3')
 
-if (!fs.existsSync(source)) {
-	console.error(`no database to clone at ${source}`)
+// A source asked for by name has to be there; the main checkout's is a default, and its absence is the
+// ordinary case this script seeds an empty database for.
+if (requested && !fs.existsSync(requested)) {
+	console.error(`no database to clone at ${requested}`)
 	process.exit(1)
 }
-if (path.resolve(source) === dest) {
+const source = requested ?? (fs.existsSync(mainCheckoutDb) ? mainCheckoutDb : undefined)
+
+if (source && source === dest) {
 	console.error(`source and destination are the same file (${dest}); run this from a worktree, not the main checkout`)
 	process.exit(1)
 }
@@ -93,7 +111,15 @@ function lockDest(): Database | null {
 	}
 }
 
-function snapshot() {
+// The -wal has to go with the file it belongs to, and before a new one takes the name. Left in place it is
+// replayed over whatever arrives as though it described it: the reader then silently sees the *old*
+// database's contents, and integrity_check calls that ok, so nothing anywhere reports a problem.
+function clearDest() {
+	fs.mkdirSync(path.dirname(dest), { recursive: true })
+	for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dest + suffix, { force: true })
+}
+
+function snapshot(source: string) {
 	// readonly is load-bearing rather than good manners: it makes it impossible for this connection to take a
 	// write lock on the source, whatever it does next.
 	const src = new DatabaseConstructor(source, { readonly: true })
@@ -105,21 +131,28 @@ function snapshot() {
 	} finally {
 		src.close()
 	}
-	// The -wal has to go with the file it belongs to, and before the new one takes the name. Left in place it
-	// is replayed over the clone as though it described it: the reader then silently sees the *old* database's
-	// contents, and integrity_check calls that ok, so nothing anywhere reports a problem.
-	for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dest + suffix, { force: true })
+	clearDest()
 	fs.renameSync(tmp, dest)
 }
 
-// The worktree's branch may add migrations the main checkout has never run.
+// The worktree's branch may add migrations the main checkout has never run, and an empty database has run none.
 async function migrate(driver: Database) {
 	const { applied } = await Migrate.runMigrations(driver, {
 		sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'),
 		tsMigrations,
 		log: (msg) => console.log(`  ${msg}`),
 	})
-	if (applied.length > 0) console.log(`applied ${applied.length} migration(s) the source had not run`)
+	if (applied.length > 0) console.log(`applied ${applied.length} migration(s)`)
+}
+
+// Where this worktree's emulator answers. The password is sealed rather than written plaintext: the column is
+// encrypted at rest, and a row that disagreed with that would be re-sealed on boot anyway.
+function emulatorConnection(): SETTINGS.ServerConnection {
+	return {
+		type: 'local',
+		logFile: DevInstance.SQUAD_LOG_PATH,
+		rcon: { host: '127.0.0.1', port: slot.ports.rcon, password: SecretBox.seal(DevInstance.RCON_PASSWORD) },
+	}
 }
 
 // The connection every server that is not the emulator gets. The point is that no connection reaching a real
@@ -132,6 +165,47 @@ function deadConnection(serverId: string): SETTINGS.ServerConnection {
 		logFile: path.join(DevInstance.DEV_DIR, `disabled-${serverId}.log`),
 		rcon: { host: '127.0.0.1', port: 1, password: SecretBox.seal('disabled') },
 	}
+}
+
+// What the app's own first boot would write to an empty database, written here instead: a workspace has to be
+// re-pointed at its emulator and signed in to before anyone sees it, and both need rows to exist by then.
+//
+// Order matters. Seed.setup only runs against a database that has never been configured, which is what an
+// empty globalSettings table means, so the filters the pool config below names are seeded before the global
+// settings row that would make the app skip them.
+async function seedFresh(driver: Database) {
+	const db = drizzle(driver)
+	await Seed.setup({ ...CS.init(), db: () => db })
+
+	const defaults = SETTINGS.parseGlobalSettings({})
+	if (!defaults.success) throw new Error('default global settings failed schema validation', { cause: defaults.error })
+	await db.insert(Schema.globalSettings).values(
+		superjsonify(Schema.globalSettings, {
+			id: 1,
+			settings: SETTINGS.GlobalSettingsSchema.encode(Seed.applyInitialGlobalSettings(defaults.data)),
+		}),
+	)
+
+	// The user `instanceUrl` signs in as. It carries a configured super user's id where there is one, since that
+	// is the only route to a permission with discord off: RBAC's other roles are discord roles.
+	const discordId = superUsers[0] ?? DevInstance.DEV_USER.discordId
+	await db.insert(Schema.discordAccounts).values({ discordId, username: DevInstance.DEV_USER.username })
+	await db.insert(Schema.users).values({ discordId })
+	if (superUsers.length === 0) {
+		console.error(`SUPER_USERS is empty, so ${DevInstance.DEV_USER.username} can administer nothing; put ${discordId} in it`)
+	}
+
+	const settings = Seed.applyInitialPoolConfig(SETTINGS.ServerSettingsSchema.parse({ connections: emulatorConnection() }))
+	await db.insert(Schema.servers).values(
+		superjsonify(Schema.servers, {
+			id: DEV_SERVER_ID,
+			displayName: 'Emulated Server',
+			enabled: true,
+			defaultServer: true,
+			settings,
+		}),
+	)
+	console.log(`seeded an empty database: the '${DEV_SERVER_ID}' server and the '${DevInstance.DEV_USER.username}' user`)
 }
 
 // Re-point the cloned servers at this worktree's emulator. The rows are rewritten in place rather than
@@ -162,19 +236,7 @@ async function repointServers(driver: Database) {
 		const isTarget = row.id === target.id
 		const settings: SETTINGS.ServerSettings = {
 			...parsed.data,
-			connections: isTarget
-				? {
-						type: 'local',
-						logFile: DevInstance.SQUAD_LOG_PATH,
-						rcon: {
-							host: '127.0.0.1',
-							port: slot.ports.rcon,
-							// sealed here rather than written plaintext: this column is encrypted at rest, and a row that
-							// disagrees with that would be re-sealed on boot anyway.
-							password: SecretBox.seal(DevInstance.RCON_PASSWORD),
-						},
-					}
-				: deadConnection(row.id),
+			connections: isTarget ? emulatorConnection() : deadConnection(row.id),
 		}
 		await db
 			.update(Schema.servers)
@@ -233,7 +295,6 @@ async function repointServers(driver: Database) {
 // link works for inspecting anything, and it is the account the person running the worktree already uses.
 async function resolveLogin(driver: Database) {
 	const db = drizzle(driver)
-	const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
 	const selectUsers = () =>
 		db
 			.select({ discordId: Schema.users.discordId, username: Schema.discordAccounts.username })
@@ -242,18 +303,19 @@ async function resolveLogin(driver: Database) {
 	const candidates = superUsers.length > 0 ? await selectUsers().where(E.inArray(Schema.users.discordId, superUsers)).limit(1) : []
 	const [user] = candidates.length > 0 ? candidates : await selectUsers().limit(1)
 	if (!user) {
-		console.error('the cloned database has no users, so no login for this instance -- pass ?login=<username> yourself')
+		console.error('this database has no users, so no login for this instance -- pass ?login=<username> yourself')
 		return
 	}
 	await Slots.setLogin(user.username)
 	console.log(`this instance signs in as ${user.username}`)
 }
 
-console.log(`cloning ${source}\n     -> ${dest}`)
+console.log(source ? `cloning ${source}\n     -> ${dest}` : `no database to clone at ${mainCheckoutDb}\nstarting ${dest} empty`)
 // held across the snapshot and the rename, not just checked before them
 const destLock = lockDest()
 try {
-	snapshot()
+	if (source) snapshot(source)
+	else clearDest()
 } finally {
 	destLock?.close()
 }
@@ -262,8 +324,9 @@ const driver = new DatabaseConstructor(dest)
 driver.pragma('journal_mode = WAL')
 try {
 	const integrity = driver.pragma('integrity_check', { simple: true })
-	if (integrity !== 'ok') throw new Error(`the clone failed its integrity check: ${String(integrity)}`)
+	if (integrity !== 'ok') throw new Error(`the database failed its integrity check: ${String(integrity)}`)
 	await migrate(driver)
+	if (!source) await seedFresh(driver)
 	await repointServers(driver)
 	await resolveLogin(driver)
 } finally {

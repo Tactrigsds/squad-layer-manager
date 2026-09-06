@@ -42,6 +42,22 @@ if (linkedWorktree) {
 	}
 }
 
+// A checkout with no .env at all -- a fresh clone, or a worktree of one -- has nothing to link and nothing to
+// fall back on. .env.example.dev is the file a checkout is meant to copy, and the only var it leaves for the
+// copier to fill in is SUPER_USERS, which the seeded dev user answers (see src/dev/instance.ts DEV_USER).
+{
+	const envFile = path.join(worktree, '.env')
+	if (!fs.existsSync(envFile)) {
+		const superUsers = `SUPER_USERS=${DevInstance.DEV_USER.discordId}`
+		const template = fs.readFileSync(path.join(worktree, '.env.example.dev'), 'utf8')
+		fs.writeFileSync(
+			envFile,
+			/^SUPER_USERS=.*$/m.test(template) ? template.replace(/^SUPER_USERS=.*$/m, superUsers) : `${template}\n${superUsers}\n`,
+		)
+		console.log(`  .env: written from .env.example.dev, with ${DevInstance.DEV_USER.username} as the super user`)
+	}
+}
+
 {
 	const ensureArgs = [path.join(worktree, 'scripts/worktree.mjs'), 'ensure-artifacts']
 	if (args.values.force) ensureArgs.push('--force')
@@ -51,9 +67,9 @@ if (linkedWorktree) {
 
 const dest = DevInstance.DEV_DB_PATH
 if (!fs.existsSync(dest) || args.values['reset-data']) {
-	const cloneArgs = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-clone-db.ts']
-	if (args.values['reset-data']) cloneArgs.push('--force')
-	const res = childProcess.spawnSync(path.join(worktree, 'node_modules/.bin/tsx'), cloneArgs, {
+	const dbArgs = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-db.ts']
+	if (args.values['reset-data']) dbArgs.push('--force')
+	const res = childProcess.spawnSync(path.join(worktree, 'node_modules/.bin/tsx'), dbArgs, {
 		cwd: worktree,
 		env: { ...process.env, ...DevInstance.envOverrides(slot) },
 		stdio: 'inherit',
