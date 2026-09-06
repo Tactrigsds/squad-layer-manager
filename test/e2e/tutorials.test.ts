@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { role } from '../harness/arrange'
+import * as DB from '../harness/dashboard'
 import { expect, test } from './fixtures'
 
 // The tutorial as a reader meets it: the index page starts a run, the tour narrates the real dashboard, and the
@@ -115,7 +116,7 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 			await prompt.getByRole('button', { name: 'Not now' }).click()
 			await promptPage.reload()
 			// the queue is behind the modal's aria-hidden while it is open, so reaching it is also proof it closed
-			await expect(promptPage.getByRole('tab', { name: /^Queue/ })).toBeVisible({ timeout: 60_000 })
+			await expect(DB.queueLabel(promptPage, /^Queue/)).toBeVisible({ timeout: 60_000 })
 			await expect(prompt).toHaveCount(0)
 		} finally {
 			await promptCtx.close()
@@ -142,7 +143,7 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await onStep(page, STEP.welcome)
 		await expect(overlay(page).getByText('Step 1 of')).toBeVisible()
 		// both panels stay mounted in one grid cell, so a tour left on Teams would narrate a queue nothing shows
-		await expect(page.getByRole('tab', { name: /^Queue/ })).toHaveAttribute('aria-selected', 'true')
+		await expect(DB.queueSection(page)).toBeVisible()
 	})
 
 	await test.step('the card button advances', async () => {
@@ -154,30 +155,30 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await jumpTo(page, STEP.addedLayers)
 		// the checkpoint installs the reader's two picks as unsaved additions and hands them an edit session
 		await expectEditing(page, true)
-		await expect(page.getByRole('tab', { name: 'Queue (5)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (5)')).toBeVisible()
 		for (const layer of ADDED) await expect(queuePanel(page).getByText(layer).first()).toBeVisible()
 	})
 
 	await test.step('stepping back rebuilds a step the reader has already acted on', async () => {
 		await jumpTo(page, STEP.removeItem)
-		await expect(page.getByRole('tab', { name: 'Queue (5)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (5)')).toBeVisible()
 
 		// this step points at the delete button and advances on the click, so doing what it asks both shrinks the
 		// queue and moves the tour on
 		await queuePanel(page).locator('[data-tour="queue-delete"]').first().click()
 		await onStep(page, STEP.swapTeams)
-		await expect(page.getByRole('tab', { name: 'Queue (4)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (4)')).toBeVisible()
 
 		// going back has to put the deleted item back, or the step describes a queue that no longer exists
 		await overlay(page).getByRole('button', { name: 'Previous step' }).click()
 		await onStep(page, STEP.removeItem)
-		await expect(page.getByRole('tab', { name: 'Queue (5)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (5)')).toBeVisible()
 		await expectEditing(page, true)
 
 		// and resetting the step it is already on leaves that state alone
 		await overlay(page).getByRole('button', { name: 'Reset this step' }).click()
 		await onStep(page, STEP.removeItem)
-		await expect(page.getByRole('tab', { name: 'Queue (5)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (5)')).toBeVisible()
 	})
 
 	await test.step('the save-warnings step surfaces warnings the reader caused', async () => {
@@ -192,7 +193,7 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		// the reading steps come before any editing, so arriving at one ends the session and drops the draft
 		await jumpTo(page, STEP.queueItems)
 		await expectEditing(page, false)
-		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible()
 	})
 
 	await test.step('the control a step points at is what advances it', async () => {

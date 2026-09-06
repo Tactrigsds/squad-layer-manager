@@ -2,6 +2,7 @@ import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerText, queue, selectableFilter } from '../harness/arrange'
+import * as DB from '../harness/dashboard'
 import { savedQueue } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
@@ -40,8 +41,8 @@ test.afterAll(async () => {
 test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	test('renders the seeded queue in order, and keeps the game server on its head', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		const queuePanel = DB.queueSection(page)
 
 		// the layer names the app renders for the ids we seeded, in the order we seeded them
 		await expect(queuePanel.getByText('Gorodok_RAAS_v1')).toBeVisible()
@@ -56,9 +57,9 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 	test('leaving the dashboard with a draft nobody else holds warns first, then discards it', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await queuePanel
 			.getByRole('listitem')
@@ -80,15 +81,15 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 		// and it really is gone server-side: the deleted item is back on the way in
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 		await expect(queuePanel.getByRole('listitem').filter({ hasText: layerText('Gorodok_RAAS_v1') })).toBeVisible()
 	})
 
 	test('deleting the head, saving, and pushing the new head to the game server', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const items = queuePanel.getByRole('listitem')
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 
@@ -110,7 +111,7 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		// the new head
 		const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 20_000 })
 		expect(setNext.body).toContain('Sumari_Seed_v1')
-		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible()
+		await expect(DB.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		await app.waitFor(
 			() => {
@@ -123,8 +124,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 	test('a map roll consumes the head and pushes the next one', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		await expect(DB.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		const queuePanel = DB.queueSection(page)
 		await expect(queuePanel.getByText('Sumari_Seed_v1')).toBeVisible()
 
 		// the save above put the server on Sumari, so that is what this roll plays
@@ -134,13 +135,13 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 25_000 })
 		expect(setNext.body).toContain('Skorpo')
 
-		await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 		await expect(queuePanel.getByText('Sumari_Seed_v1')).toBeHidden()
 	})
 
 	test('generates a vote from the pool and saves it into the queue', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Gen Vote' }).click()
@@ -172,7 +173,7 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		await expect(dialog).toBeHidden()
 
 		// the vote goes in as one queue item holding the three choices
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const voteItem = queuePanel.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Vote' }) })
 		await expect(voteItem).toHaveCount(1)
 		await expect(voteItem.getByRole('listitem')).toHaveCount(3)
@@ -198,9 +199,9 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	// it has to discard what was typed rather than leave it to be picked up the next time it opens
 	test('a vote config is discarded when its popover closes, and kept when saved', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		await expect(DB.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const voteItem = queuePanel.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Vote' }) })
 		const duration = page.getByLabel('Vote Duration (seconds)')
 

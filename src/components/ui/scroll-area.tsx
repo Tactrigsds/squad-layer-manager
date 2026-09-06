@@ -9,8 +9,13 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 // scroll by default for that reason; pass `orientation` only where an axis genuinely cannot overflow.
 const ScrollArea = React.forwardRef<
 	React.ElementRef<typeof ScrollAreaPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & { orientation?: 'vertical' | 'horizontal' | 'both' }
->(({ className, children, orientation = 'both', ...props }, ref) => {
+	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
+		orientation?: 'vertical' | 'horizontal' | 'both'
+		// stretch content shorter than the viewport to fill it, instead of leaving it shrink-wrapped at the
+		// top. The children become a flex column, so the one to stretch takes `flex-1`.
+		fill?: boolean
+	}
+>(({ className, children, orientation = 'both', fill = false, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.SCROLLBAR)
 	return (
 		<ScrollAreaPrimitive.Root
@@ -19,6 +24,10 @@ const ScrollArea = React.forwardRef<
 				'relative overflow-hidden',
 				// radix lays the content out as a table so it can grow past the viewport; a vertical-only area wants it to shrink to the viewport instead
 				orientation === 'vertical' && '[&_[data-radix-scroll-area-viewport]>div]:block!',
+				// that same wrapper is the only box that can be measured against the viewport, so `fill` is
+				// expressed on it: at least as tall as the viewport, and a flex column so children can grow
+				fill &&
+					'[&_[data-radix-scroll-area-viewport]>div]:flex! [&_[data-radix-scroll-area-viewport]>div]:flex-col [&_[data-radix-scroll-area-viewport]>div]:min-h-full',
 				className,
 			)}
 			{...props}

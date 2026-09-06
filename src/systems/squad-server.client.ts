@@ -2,7 +2,6 @@ import { useMutation } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import type * as React from 'react'
 
-import * as Browser from '@/lib/browser'
 import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
@@ -252,19 +251,21 @@ export namespace DashboardTabActions {
 	}
 }
 
-// The three-column tier shows the queue and the teams at once, so there is no tab to report as the panel being
-// viewed. Presence then follows the section last interacted with, queue by default. That choice is never
-// persisted: a window that drops back below the tier reports the saved tab again.
-const StackedSectionStore = Zus.createStore<{ section: ClientOnlySettings.PrimaryPanelTab }>()(() => ({ section: 'VIEWING_QUEUE' }))
+// Shown the queue and the teams at once, there is no tab to report as the panel being viewed. Presence then
+// follows the section last interacted with, queue by default. Neither that choice nor `stacked` is ever
+// persisted: a panel that goes back to tabs reports the saved tab again. `stacked` is set by the panel rather
+// than derived from the viewport, because whether both fit is a question about the content, not the width.
+const StackedSectionStore = Zus.createStore<{ stacked: boolean; section: ClientOnlySettings.PrimaryPanelTab }>()(() => ({
+	stacked: false,
+	section: 'VIEWING_QUEUE',
+}))
 
 export function viewedPrimaryPanel(): ClientOnlySettings.PrimaryPanelTab {
-	return window.matchMedia(Browser.ULTRAWIDE_QUERY).matches
-		? StackedSectionStore.getState().section
-		: ClientOnlySettings.Store.getState().primaryPanelTab
+	const { stacked, section } = StackedSectionStore.getState()
+	return stacked ? section : ClientOnlySettings.Store.getState().primaryPanelTab
 }
 
 export const viewedPrimaryPanel$: Rx.Observable<ClientOnlySettings.PrimaryPanelTab> = Rx.merge(
-	Browser.mediaQueryChanged$(Browser.ULTRAWIDE_QUERY),
 	Zus.toObservable(StackedSectionStore),
 	Zus.toObservable(ClientOnlySettings.Store),
 ).pipe(Rx.map(viewedPrimaryPanel), Rx.distinctUntilChanged())
@@ -278,7 +279,12 @@ export namespace PrimaryPanelActions {
 		if (StackedSectionStore.getState().section !== section) StackedSectionStore.setState({ section })
 	}
 
-	// brings the teams on screen: the tab below the ultrawide tier, the stacked section above it
+	// the primary panel reporting which of its two layouts it is currently in
+	export function setStacked(stacked: boolean) {
+		if (StackedSectionStore.getState().stacked !== stacked) StackedSectionStore.setState({ stacked })
+	}
+
+	// brings the teams on screen: the tab when there is one, the stacked section otherwise
 	export function showTeams() {
 		ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
 		touchStackedSection('VIEWING_TEAMS')

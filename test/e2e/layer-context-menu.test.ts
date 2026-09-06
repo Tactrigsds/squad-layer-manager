@@ -1,3 +1,4 @@
+import * as DB from '../harness/dashboard'
 import { expect, sharedAppTest as test } from './fixtures'
 
 // The layer actions are shared between the queue's layer display and the match history rows, and the queue
@@ -6,7 +7,7 @@ import { expect, sharedAppTest as test } from './fixtures'
 
 test.describe('the layer context menu', () => {
 	test('right-clicking a queued layer offers the layer actions, not the item actions', async ({ page }) => {
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const item = queuePanel.getByRole('listitem').first()
 		await expect(item).toBeVisible({ timeout: 20_000 })
 
@@ -29,7 +30,7 @@ test.describe('the layer context menu', () => {
 	})
 
 	test('right-clicking a queue item away from its layer still opens the item actions', async ({ page }) => {
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const item = queuePanel.getByRole('listitem').first()
 		await expect(item).toBeVisible({ timeout: 20_000 })
 
@@ -61,7 +62,7 @@ test.describe('the layer context menu', () => {
 	})
 
 	test('show details opens the layer info window on the details tab', async ({ page }) => {
-		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+		const queuePanel = DB.queueSection(page)
 		const item = queuePanel.getByRole('listitem').first()
 		await expect(item).toBeVisible({ timeout: 20_000 })
 
