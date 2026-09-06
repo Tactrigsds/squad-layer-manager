@@ -99,7 +99,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 // it on every hover. The click hints only apply while the chart is interactive, i.e. showing the live roster.
 function BreakdownHelp(props: { interactive: boolean }) {
 	return (
-		<Tooltip>
+		<Tooltip help>
 			<TooltipTrigger asChild>
 				<button type="button" className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm" aria-label={tr.text(SM_Msgs.help())}>
 					<Icons.CircleHelp />
@@ -212,7 +212,7 @@ function TeamBreakdown(props: {
 
 	const unmatchedGroupsButton = unmatchedSeries.length > 0 && (
 		<Popover>
-			<Tooltip>
+			<Tooltip help>
 				<TooltipTrigger asChild>
 					<PopoverTrigger asChild>
 						<button
@@ -252,44 +252,5 @@ function TeamBreakdown(props: {
 			onSegmentClick={onSegmentClick}
 			legendExtra={unmatchedGroupsButton}
 		/>
-	)
-}
-
-// Kills of the favoured team over the other's, for the match the panels are showing: one number, pointing at the
-// team it favours. Historical matches count from their stored events, the live one from the buffer.
-export function DisplayedMatchKd(props: { stores: SquadServerFrame.KeyProp; leftIsTeam1: boolean; className?: string }) {
-	const squadServer = props.stores.squadServer!
-	const serverId = squadServer.serverId
-	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
-	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
-	const historicalEvents = historicalEventsQuery.data?.events ?? null
-	const stats = Zus.useStore_Susp(
-		squadServer,
-		MatchHistoryClient.currentMatch$(serverId),
-		MatchHistoryClient.recentMatches$(serverId),
-		ClientOnlySettings.Store,
-		StatsModels.Sel.combatStats(historicalEvents),
-	)
-	if (!stats) return null
-	const kills1 = stats.team1.kd.numerator
-	const kills2 = stats.team2.kd.numerator
-	if (kills1 === 0 && kills2 === 0) return null
-	const [left, right] = props.leftIsTeam1 ? [kills1, kills2] : [kills2, kills1]
-	const favoursLeft = left >= right
-	const [hi, lo] = favoursLeft ? [left, right] : [right, left]
-	const value = lo === 0 ? '∞' : (hi / lo).toFixed(2)
-	const title = tr.text(MH_Msgs.kdBreakdown(hi, lo))
-	return (
-		<span
-			title={title}
-			className={cn(
-				'inline-flex items-center gap-px h-4 px-1 rounded-sm bg-white/6 font-mono text-[11px] text-text-2 [&_svg]:size-2.5 [&_svg]:text-text-3',
-				props.className,
-			)}
-		>
-			{favoursLeft && <Icons.ChevronLeft />}
-			{value}
-			{!favoursLeft && <Icons.ChevronRight />}
-		</span>
 	)
 }

@@ -20,8 +20,9 @@ import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
-import type * as MH from '@/models/match-history.models'
-import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
+import * as MH from '@/models/match-history.models'
+import * as StatsModels from '@/models/stats-panel.models'
+import { GlobalSettingsStore, Store as ClientOnlySettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -33,7 +34,6 @@ import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerContextMenuOptions from './layer-context-menu-options'
 import LayerSourceDisplay from './layer-source-display'
 import MapLayerDisplay from './map-layer-display'
-import { DisplayedMatchKd } from './stats-panel'
 import { Timer } from './timer'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -485,13 +485,14 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 						<div className="flex items-center justify-center gap-2">
 							{statusBadge}
 							{outcomeDisp}
-							{isViewingThisMatch && (
+							{entry.isCurrentMatch ? (
 								<React.Suspense fallback={null}>
-									<DisplayedMatchKd
-										stores={stores}
-										leftIsTeam1={!globalSettings.displayTeamsNormalized || entry.ordinal % 2 === 0}
-									/>
+									<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 								</React.Suspense>
+							) : (
+								entry.combatStats && (
+									<MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+								)
 							)}
 						</div>
 					</TableCell>
@@ -500,16 +501,13 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 					<TableCell className="text-center">
 						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
 							{decorationsByTint.map(([tint, decos]) => (
-								<Tooltip key={tint} delayDuration={0}>
+								<Tooltip key={tint}>
 									<TooltipTrigger asChild>
 										<Button variant="ghost" size="icon-sm" className={TINT_DISPLAY[tint].text}>
 											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'size-3' })}
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent
-										side="right"
-										className="w-auto max-w-sm overflow-y-auto p-0 border-0 bg-transparent shadow-none flex flex-col gap-1"
-									>
+									<TooltipContent className="w-auto max-w-sm overflow-y-auto p-0 border-0 bg-transparent shadow-none flex flex-col gap-1">
 										{decos.map((deco) => (
 											<Alert key={deco.regKey} variant={TINT_DISPLAY[tint].variant} className="w-full">
 												{deco.title && (
@@ -546,6 +544,98 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 			</ContextMenuContent>
 		</ContextMenu>
 	)
+}
+
+// The match in progress has no stored tally yet, so its row counts the live feed as it plays.
+function LiveMatchKd(props: { stores: SquadServerFrame.KeyProp; parity: number; normalized: boolean }) {
+	const squadServer = props.stores.squadServer!
+	const serverId = squadServer.serverId
+	const stats = Zus.useStore_Susp(
+		squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettingsStore,
+		StatsModels.Sel.liveCombatStats,
+	)
+	if (!stats) return null
+	return <MatchKd stats={stats} parity={props.parity} normalized={props.normalized} />
+}
+
+// A match's scoreline in one number: the K/D of the team that came out ahead, coloured for and pointing at that
+// team. Everything it is drawn from is in the tooltip.
+function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized: boolean }) {
+	if (!MH.hasCombat(props.stats)) return null
+	const sides = MH.getDisplayedTeamOrder(props.parity, props.normalized).map((normedTeam) => {
+		const teamId = MH.getDenormedTeamId(normedTeam, props.parity)
+		return {
+			teamId,
+			label: tr.text(L_Msgs.teamName(props.normalized ? normedTeam : teamId)),
+			color: DH.getTeamColor(teamId, props.parity, props.normalized),
+			stats: teamId === 1 ? props.stats.team1 : props.stats.team2,
+		}
+	})
+	const [left, right] = sides
+	const favoursLeft = kdOf(left.stats) >= kdOf(right.stats)
+	const favoured = favoursLeft ? left : right
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span
+					// the tint follows the number, so the badge reads as the favoured team's without a second colour to keep in sync
+					style={{ color: favoured.color, backgroundColor: 'color-mix(in oklab, currentColor 14%, transparent)' }}
+					className="inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5"
+				>
+					{favoursLeft && <Icons.ChevronLeft />}
+					{formatRatio(favoured.stats.kills, favoured.stats.deaths)}
+					{!favoursLeft && <Icons.ChevronRight />}
+				</span>
+			</TooltipTrigger>
+			<TooltipContent>
+				<table className="font-mono text-xs border-separate border-spacing-x-3 border-spacing-y-0.5 -mx-1">
+					<thead>
+						<tr>
+							<th className="text-left font-medium text-text-3">{tr.text(MH_Msgs.scoreline())}</th>
+							{sides.map((side) => (
+								<th key={side.teamId} className="text-right font-semibold" style={{ color: side.color }}>
+									{side.label}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{SCORELINE_ROWS.map((row) => (
+							<tr key={row.key}>
+								<th className="text-left font-normal text-text-2">{tr.text(row.label())}</th>
+								{sides.map((side) => (
+									<td key={side.teamId} className="text-right tabular-nums">
+										{row.value(side.stats)}
+									</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
+const SCORELINE_ROWS = [
+	{ key: 'kd', label: MH_Msgs.kdRatio, value: (stats: MH.TeamCombatStats) => formatRatio(stats.kills, stats.deaths) },
+	{ key: 'wd', label: MH_Msgs.woundRatio, value: (stats: MH.TeamCombatStats) => formatRatio(stats.wounds, stats.deaths) },
+	{ key: 'kills', label: MH_Msgs.killsDealt, value: (stats: MH.TeamCombatStats) => stats.kills },
+	{ key: 'wounds', label: MH_Msgs.woundsDealt, value: (stats: MH.TeamCombatStats) => stats.wounds },
+	{ key: 'deaths', label: MH_Msgs.deathsSuffered, value: (stats: MH.TeamCombatStats) => stats.deaths },
+]
+
+function kdOf(stats: MH.TeamCombatStats) {
+	return stats.deaths === 0 ? (stats.kills > 0 ? Infinity : 0) : stats.kills / stats.deaths
+}
+
+function formatRatio(numerator: number, denominator: number) {
+	if (denominator === 0) return numerator > 0 ? '\u221e' : '-'
+	return (numerator / denominator).toFixed(2)
 }
 
 const TINT_DISPLAY = {

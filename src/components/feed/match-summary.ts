@@ -29,6 +29,18 @@ export function ticketDiffText(details: MH.MatchDetails): string {
 	return String(Math.abs(outcome.team1Tickets - outcome.team2Tickets))
 }
 
+// The scoreline, over both sides, matching the match.kills and match.killDiff columns the filters compile to.
+// Blank on a match with no tally, which is also what those filters can never match.
+export function killsText(details: MH.MatchDetails): string {
+	const stats = details.combatStats
+	return stats ? String(stats.team1.kills + stats.team2.kills) : ''
+}
+
+export function killDiffText(details: MH.MatchDetails): string {
+	const stats = details.combatStats
+	return stats ? String(Math.abs(stats.team1.kills - stats.team2.kills)) : ''
+}
+
 // whole minutes, floored to agree with the filter, which divides the two epochs in sql. Blank for a match
 // still running or one whose end the app never saw, which is also what the filter can never match.
 export function durationText(details: MH.MatchDetails): string {

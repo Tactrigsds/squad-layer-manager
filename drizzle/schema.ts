@@ -58,6 +58,18 @@ export const matchHistory = sqliteTable(
 		// which plugin, when setByType is 'plugin'. Kept even after that plugin is uninstalled, so an old
 		// match still says what queued it.
 		setByPluginId: text('setByPluginId'),
+		// The match's scoreline, tallied from a full event replay once the match is over. Stored because that
+		// replay is the only way to attribute a kill to a team -- neither serverEvents nor playerEventIndex carries
+		// one -- so every reader would otherwise pay for it, and columns rather than a blob because the history
+		// query engine filters and orders on them (see COLUMN_DEFS, match.kills). `deaths` is not the other side's
+		// `kills`: a teamkill or a suicide is a death nobody is credited with. All six are null on the match in
+		// progress, and on one the backfill has not reached yet.
+		team1Kills: integer('team1Kills'),
+		team1Wounds: integer('team1Wounds'),
+		team1Deaths: integer('team1Deaths'),
+		team2Kills: integer('team2Kills'),
+		team2Wounds: integer('team2Wounds'),
+		team2Deaths: integer('team2Deaths'),
 	},
 	(table) => ({
 		layerIdIndex: index('layerIdIndex').on(table.layerId),

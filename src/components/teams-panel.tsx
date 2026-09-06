@@ -1644,7 +1644,7 @@ function SwapsPanel({
 			<TeamSwapsDisplay teamId={leftTeam} className="pr-2" stores={stores} />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
-					<Tooltip>
+					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button
 								variant="ghost"
@@ -1659,7 +1659,7 @@ function SwapsPanel({
 					</Tooltip>
 					{isEditing ? (
 						<ButtonGroup>
-							<Tooltip>
+							<Tooltip help>
 								<TooltipTrigger asChild>
 									<Button size="icon-sm" variant={forceSave ? 'destructive' : 'default'} onClick={() => setForceSave(!forceSave)}>
 										<Icons.Sword />

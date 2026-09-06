@@ -221,7 +221,7 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 						<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
 					</div>
 				</div>
-				<Tooltip>
+				<Tooltip help>
 					<TooltipTrigger asChild>
 						<Button
 							type="button"

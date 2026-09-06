@@ -380,7 +380,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 			{!isLoading && isCompact && (
 				<div className="absolute inset-0 flex items-center">
-					<Tooltip delayDuration={0}>
+					<Tooltip pinnable>
 						<TooltipTrigger asChild>
 							<div className="inline-flex items-center gap-1.5 h-6 rounded-full bg-accent px-1.5 cursor-pointer">
 								<div className="flex -space-x-1.5">
@@ -463,7 +463,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											{group.entries.map((entry) => {
 												const { clientId, user, presence } = entry
 												return (
-													<Tooltip key={clientId} delayDuration={0}>
+													<Tooltip key={clientId} pinnable>
 														<TooltipTrigger asChild>
 															<PresenceAvatar
 																onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}
@@ -507,7 +507,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 						const { clientId, user, presence, activityText } = entry
 						return (
 							<div key={clientId} className="flex items-center space-x-1">
-								<Tooltip delayDuration={0}>
+								<Tooltip pinnable>
 									<TooltipTrigger asChild>
 										<div
 											onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}

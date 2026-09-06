@@ -21,6 +21,10 @@ export type FieldKey =
 	| 'setBy'
 	| 'ticketDiff'
 	| 'duration'
+	| 'kills'
+	| 'wounds'
+	| 'deaths'
+	| 'killDiff'
 	| 'map'
 	| 'gamemode'
 	| 'faction'
@@ -29,7 +33,19 @@ export type FieldKey =
 
 export type FieldGroup = 'events' | 'match' | 'layer' | 'players'
 
-export type RangeBoundKey = 'ticketDiffMin' | 'ticketDiffMax' | 'durationMin' | 'durationMax'
+export type RangeBoundKey =
+	| 'ticketDiffMin'
+	| 'ticketDiffMax'
+	| 'durationMin'
+	| 'durationMax'
+	| 'killsMin'
+	| 'killsMax'
+	| 'woundsMin'
+	| 'woundsMax'
+	| 'deathsMin'
+	| 'deathsMax'
+	| 'killDiffMin'
+	| 'killDiffMax'
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
@@ -77,6 +93,10 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 		group: 'match',
 		control: { kind: 'number-range', min: 'durationMin', max: 'durationMax', unit: 'min' },
 	},
+	kills: { key: 'kills', group: 'match', control: { kind: 'number-range', min: 'killsMin', max: 'killsMax' } },
+	wounds: { key: 'wounds', group: 'match', control: { kind: 'number-range', min: 'woundsMin', max: 'woundsMax' } },
+	deaths: { key: 'deaths', group: 'match', control: { kind: 'number-range', min: 'deathsMin', max: 'deathsMax' } },
+	killDiff: { key: 'killDiff', group: 'match', control: { kind: 'number-range', min: 'killDiffMin', max: 'killDiffMax' } },
 	map: { key: 'map', group: 'layer', control: { kind: 'layer-part', column: 'Map' } },
 	gamemode: { key: 'gamemode', group: 'layer', control: { kind: 'layer-part', column: 'Gamemode' } },
 	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', column: 'Faction_1' } },
@@ -96,7 +116,7 @@ const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
 const DEFAULT_FIELDS: Record<HQ.ResultType, readonly FieldKey[]> = {
 	events: ['feed', 'types', 'chat', 'matchId'],
 	players: ['minMatches', 'types'],
-	matches: ['outcomes', 'map', 'ticketDiff', 'duration'],
+	matches: ['outcomes', 'map', 'ticketDiff', 'kills', 'duration'],
 }
 
 /**

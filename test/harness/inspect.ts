@@ -1,5 +1,6 @@
 import type { EmuPlayer } from '@/emulator'
 import * as BB from '@/models/backburner.models'
+import * as MH from '@/models/match-history.models'
 
 import type { AppFixture } from './app-fixture'
 
@@ -45,6 +46,19 @@ export function latestMatch(app: AppFixture): { id: number; layerId: string } {
 	const db = app.readDb()
 	try {
 		return db.prepare(`SELECT id, layerId FROM matchHistory ORDER BY id DESC LIMIT 1`).get() as { id: number; layerId: string }
+	} finally {
+		db.close()
+	}
+}
+
+// A finished match's stored scoreline, or undefined until the backfill has replayed and tallied it
+export function matchCombatStats(app: AppFixture, matchId: number): MH.MatchCombatStats | undefined {
+	const db = app.readDb()
+	try {
+		const row = db
+			.prepare(`SELECT team1Kills, team1Wounds, team1Deaths, team2Kills, team2Wounds, team2Deaths FROM matchHistory WHERE id = ?`)
+			.get(matchId) as MH.CombatStatsColumns | undefined
+		return row && MH.combatStatsFromColumns(row)
 	} finally {
 		db.close()
 	}

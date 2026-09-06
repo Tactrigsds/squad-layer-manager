@@ -4,7 +4,7 @@ import { makePlayer } from '@/emulator'
 import * as CHAT from '@/models/chat.models'
 
 import { LAYERS } from '../harness/arrange'
-import { matchOrdinal } from '../harness/inspect'
+import { matchCombatStats, matchOrdinal } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 import { createRollingFixture, type RollingFixture } from '../harness/rolling'
 
@@ -73,6 +73,33 @@ describe('server rolling: the roster across the roll', () => {
 		const newMatch = await app.waitForNewMatch(oldMatch.id)
 		expect(app.inResetRoster(newMatch.id, leaver.eos)).toBe(false)
 		expect(app.countEventsFor('PLAYER_DISCONNECTED', leaver.eos, newMatch.id)).toBe(0)
+	})
+
+	// Attributing a kill to a team needs the roster the match was replayed against, so a match's scoreline is
+	// tallied once on the server and stored on its row. It happens after the roll rather than at round end,
+	// because a match is still the current one until the next begins and the dashboard counts the live feed
+	// for that one.
+	it('tallies the finished match’s scoreline onto its row once the roll has moved past it', async () => {
+		const shooter = app.emu.world.connectPlayer(makePlayer({ name: ' kd_shooter', teamId: 1 }))
+		const target = app.emu.world.connectPlayer(makePlayer({ name: ' kd_target', teamId: 2 }))
+		await app.waitForRosterSync()
+		const oldMatch = app.latestMatch()
+
+		app.emu.world.killPlayer(target, shooter)
+		app.emu.world.killPlayer(target, shooter)
+		app.emu.world.woundPlayer(target, shooter)
+		app.emu.world.killPlayer(shooter, target)
+		await app.waitForRosterSync()
+
+		app.roll()
+		await app.waitForRosterSync()
+		await app.waitForNewMatch(oldMatch.id)
+
+		const stats = await app.waitFor(() => matchCombatStats(app, oldMatch.id), {
+			label: 'the finished match’s scoreline reaching its row',
+		})
+		expect(stats.team1).toEqual({ kills: 2, wounds: 1, deaths: 1 })
+		expect(stats.team2).toEqual({ kills: 1, wounds: 0, deaths: 2 })
 	})
 })
 
@@ -541,6 +568,36 @@ describe('the event archive', () => {
 		for (const type of ['events', 'players'] as const) {
 			const res = await client.history.query({ query: { type, ticketDiffMin: 0, ticketDiffMax: max } })
 			expect(res.code, `${type} with a ticket bound`).toBe('ok')
+		}
+	})
+
+	// the scoreline columns are the point of storing the tally as columns rather than a blob: a match query
+	// filters and orders on them without unpacking anything
+	it('filters and sorts matches by their scoreline', async () => {
+		const scored = await client.history.query({ query: { type: 'matches', killsMin: 1 } })
+		expect(scored.code).toBe('ok')
+		if (scored.code !== 'ok' || scored.type !== 'matches') return
+		expect(scored.total).toBeGreaterThan(0)
+		for (const match of scored.matches) {
+			expect(match.combatStats).toBeDefined()
+			expect(match.combatStats!.team1.kills + match.combatStats!.team2.kills).toBeGreaterThan(0)
+		}
+
+		// a match with no tally has no scoreline to compare against, so it can never satisfy a bound
+		const all = await client.history.query({ query: { type: 'matches' } })
+		if (all.code !== 'ok' || all.type !== 'matches') return
+		expect(scored.total).toBeLessThan(all.total)
+
+		const sorted = await client.history.query({ query: { type: 'matches', sort: { column: 'kills', dir: 'desc' } } })
+		expect(sorted.code).toBe('ok')
+		if (sorted.code !== 'ok' || sorted.type !== 'matches') return
+		const killsOf = (m: (typeof sorted.matches)[number]) => (m.combatStats ? m.combatStats.team1.kills + m.combatStats.team2.kills : -1)
+		expect(sorted.matches.map(killsOf)).toEqual([...sorted.matches.map(killsOf)].sort((a, b) => b - a))
+
+		// the events and players compilers reach the same columns through matchId, so they must at least run
+		for (const type of ['events', 'players'] as const) {
+			const res = await client.history.query({ query: { type, killsMin: 0, killDiffMax: 1000 } })
+			expect(res.code, `${type} with a scoreline bound`).toBe('ok')
 		}
 	})
 

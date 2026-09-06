@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
-import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
+import { TrackingTooltip } from '@/components/ui/tooltip'
 import * as Chart from '@/lib/chart'
 import { cn } from '@/lib/utils'
 
