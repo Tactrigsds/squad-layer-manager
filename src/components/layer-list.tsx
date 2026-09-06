@@ -4,7 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { AdvancedVoteConfigEditor } from '@/components/advanced-vote-config-editor'
-import { LayerNoteDialog, LayerNotes } from '@/components/layer-notes'
+import { AddNoteButton, LayerNoteDialog, LayerNotes } from '@/components/layer-notes'
 import { LayerTagDialog, LayerTags } from '@/components/layer-tags'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge.tsx'
@@ -679,7 +679,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</button>
 					<span
 						data-tour={isTourRow ? 'queue-item-display' : undefined}
-						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name>*:first-child]:basis-full data-[phone=true]:[&_.fd-layer-name>svg]:hidden"
+						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name]:flex-wrap data-[phone=true]:[&_.fd-layer-name>*:first-child]:basis-full data-[phone=true]:[&_.fd-layer-name>svg]:hidden"
 						data-phone={isMobile || undefined}
 					>
 						<LayerDisplay
@@ -703,13 +703,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 									/>
 								)
 							}
-							notes={
+							addNote={
 								item.type === 'single-list-item' && (
-									<LayerNotes
-										serverId={props.stores.squadServer.serverId}
-										notes={item.notes}
+									<AddNoteButton
 										disabled={!canEdit}
-										revealAddOnHover
+										revealOnHover
 										onAdd={(text) =>
 											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
 												op: 'add-note',
@@ -717,6 +715,15 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 												text,
 											})
 										}
+									/>
+								)
+							}
+							notes={
+								item.type === 'single-list-item' && (
+									<LayerNotes
+										serverId={props.stores.squadServer.serverId}
+										notes={item.notes}
+										disabled={!canEdit}
 										onEdit={(noteId, text) =>
 											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, {
 												op: 'edit-note',

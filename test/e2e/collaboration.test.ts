@@ -21,7 +21,7 @@ const WRITER: TestUser = { discordId: 900000000000000031n, username: 'test-write
 const SECOND_USER: TestUser = { discordId: 900000000000000009n, username: 'test-editor', superUser: true }
 
 const ADMIN_NOTE = 'watch the middle cap, see https://example.com/callouts'
-// long enough that the two notes together exceed what the row will hold inline
+// long enough to clamp on the row, so the card is the only place it reads in full
 const WRITER_NOTE = 'disagree, the north route is the faster approach and the middle cap is a trap on this layer'
 
 let app: AppFixture
@@ -125,13 +125,12 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 			await noteDialogB.getByRole('textbox').fill(WRITER_NOTE)
 			await noteDialogB.getByRole('button', { name: 'Add' }).click()
 
-			// two notes now crowd the row, so they collapse behind a count instead of rendering inline
-			await itemB.getByRole('button', { name: /View 2 notes/ }).click()
+			// both notes sit on the row, the newest first; their own carries the edit button
+			const noteRow = itemB.getByText(WRITER_NOTE)
+			await expect(noteRow).toBeVisible()
+			await noteRow.hover()
 			const ownNoteCard = pageB.getByRole('group', { name: 'Note' }).filter({ hasText: WRITER_NOTE })
 			await expect(ownNoteCard.getByRole('button', { name: 'Edit' })).toBeVisible()
-			await expect(
-				pageB.getByRole('group', { name: 'Note' }).filter({ hasText: ADMIN_NOTE }).getByRole('button', { name: 'Edit' }),
-			).toHaveCount(0)
 
 			// commit the writer's note, so their editing session ends cleanly rather than holding a draft
 			// into the next test. The seeded repeat is still in the queue, so this save asks too.

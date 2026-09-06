@@ -2,6 +2,11 @@ import * as React from 'react'
 
 import * as Rx from './rxjs'
 
+// ctrl+enter, or cmd+enter on a mac: the chord that submits a form from inside a textarea
+export function isSubmitChord(e: { key: string; ctrlKey: boolean; metaKey: boolean }): boolean {
+	return e.key === 'Enter' && (e.ctrlKey || e.metaKey)
+}
+
 export function isBrowser(): boolean {
 	return typeof window !== 'undefined' && typeof document !== 'undefined'
 }

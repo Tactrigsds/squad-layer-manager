@@ -30,15 +30,11 @@ export function isAuthor(note: Note, userId?: USR.UserId) {
 	return userId !== undefined && note.author === userId
 }
 
-// how many notes an item shows in the queue row before collapsing to a single "view N notes" button. Kept low because
-// they share the row with the layer name and its tags.
+// how many notes an item shows on its row. Each is clamped to one line, so the count is what bounds the row's height
 export const MAX_INLINE = 2
 
-// a note long enough to crowd out the rest of the row is collapsed with the others rather than truncated in place
-export const INLINE_CHAR_BUDGET = 80
-
-export function displayInline(notes: Note[]) {
-	if (notes.length === 0) return false
-	if (notes.length > MAX_INLINE) return false
-	return notes.reduce((total, note) => total + note.text.length, 0) <= INLINE_CHAR_BUDGET
+// notes are stored oldest first; the row shows the newest, and the count of what it leaves out
+export function partitionForRow(notes: Note[]): { recent: Note[]; older: number } {
+	const recent = notes.slice(-MAX_INLINE).reverse()
+	return { recent, older: notes.length - recent.length }
 }
