@@ -8,6 +8,7 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
+import * as RPC_Msgs from '@/messages/rpc.messages'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
@@ -15,6 +16,7 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
+import * as LOGS from '@/models/logs'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -503,6 +505,7 @@ async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
 	const response$ = Rx.fromEvent(worker, 'message').pipe(
 		Rx.concatMap((e: any) => {
 			const response = e.data as WorkerTypes.FromWorker
+			if (response.type === 'worker-log' || response.type === 'layer-download-started') return Rx.EMPTY
 			if (response.seqId !== seqId) {
 				return Rx.EMPTY
 			}
@@ -543,6 +546,7 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 	const response$ = Rx.fromEvent(worker, 'message').pipe(
 		Rx.concatMap((e: any) => {
 			const response = e.data as WorkerTypes.FromWorker
+			if (response.type === 'worker-log' || response.type === 'layer-download-started') return Rx.EMPTY
 			if (response.seqId !== seqId) {
 				return Rx.EMPTY
 			}
@@ -594,9 +598,18 @@ async function setup() {
 	}
 
 	// subscribe before any await so a download already in flight in the shared worker still surfaces its status
-	Rx.fromEvent(worker, 'message')
+	const workerMessages$ = Rx.fromEvent(worker, 'message').pipe(
+		Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
+		Rx.share(),
+	)
+	workerMessages$
 		.pipe(
-			Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
+			Rx.filter((message) => message.type === 'worker-log'),
+			Rx.tap((message) => LOGS.showLogEvent(message.payload)),
+		)
+		.subscribe()
+	workerMessages$
+		.pipe(
 			Rx.tap((message) => {
 				if (message.type !== 'layer-download-started') return
 				const store = Store.getState()
@@ -617,6 +630,7 @@ async function setup() {
 		generationConfig: config.layerGeneration,
 		filters,
 		layerData,
+		layerDataHash: LayerDataClient.hash,
 		cacheLayerArtifact: config.cacheLayerArtifact,
 	}
 
@@ -643,9 +657,12 @@ async function setup() {
 			Store.getState().incrementBackgroundStateEpoch()
 		})
 
-	await initPromise
-	// Set up window focus handlers after successful initialization
-	// const focusHandlers = setupWindowFocusHandlers()
+	const result = await initPromise
+	if (result.code === 'err:stale-layer-data') {
+		RPC.reloadForSkew('The layer data this page loaded is not what the server serves', RPC_Msgs.layerPoolUpdated())
+		// the page is on its way out: settling would run queries against layer data the worker does not hold
+		return await new Promise<never>(() => {})
+	}
 }
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {

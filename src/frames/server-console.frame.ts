@@ -37,17 +37,20 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	args.set({ serverId, events: [], tab: 'unified', hideNoise: true, denied: false } satisfies Store)
 
 	args.cleanup.push(
-		RPC.observe(`serverConsole.watch:${serverId}`, () => RPC.orpc.serverConsole.watch.call({ serverId })).subscribe((res) => {
-			if (res.code !== 'ok') {
-				args.set({ denied: true })
-				return
-			}
-			const next = args.get().events.concat(res.events)
-			args.set({
-				denied: false,
-				events: next.length > SC.BUFFER_SIZE ? next.slice(next.length - SC.BUFFER_SIZE) : next,
-			})
-		}),
+		// ends after a permission denial
+		RPC.observe(`serverConsole.watch:${serverId}`, () => RPC.orpc.serverConsole.watch.call({ serverId }), { finite: true }).subscribe(
+			(res) => {
+				if (res.code !== 'ok') {
+					args.set({ denied: true })
+					return
+				}
+				const next = args.get().events.concat(res.events)
+				args.set({
+					denied: false,
+					events: next.length > SC.BUFFER_SIZE ? next.slice(next.length - SC.BUFFER_SIZE) : next,
+				})
+			},
+		),
 	)
 }
 

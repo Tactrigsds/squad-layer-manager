@@ -193,18 +193,30 @@ opened$
 	.subscribe()
 
 // -------- version skew protection --------
-let previousSha: string | undefined
+// A page is pinned to the build and the layer pool it loaded with, so it crosses over to a new one by reloading.
+// The layer pool counts because its two halves are fetched once per page load and fed to a query worker that can
+// outlive the page (see layer-queries.worker.ts).
+let reloadScheduled = false
+export function reloadForSkew(reason: string, message: Parameters<typeof tr.toast>[0]) {
+	if (reloadScheduled) return
+	reloadScheduled = true
+	toast.info(...tr.toast(message))
+	setTimeout(() => {
+		console.warn(`${reason}, reloading window`)
+		window.location.reload()
+	}, 500)
+}
+
+let previous: { sha: string; layerDataHash: string } | undefined
 ConfigClient.Store.subscribe((config) => {
 	if (!config) return
-	if (!previousSha) {
-		previousSha = config.PUBLIC_GIT_SHA
+	if (!previous) {
+		previous = { sha: config.PUBLIC_GIT_SHA, layerDataHash: config.layerDataHash }
 		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
-	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
-		toast.info(...tr.toast(RPC_Msgs.upgrading()))
-		setTimeout(async () => {
-			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
-			window.location.reload()
-		}, 500)
+	} else if (previous.sha !== config.PUBLIC_GIT_SHA) {
+		reloadForSkew(`Version skew detected (${previous.sha} -> ${config.PUBLIC_GIT_SHA})`, RPC_Msgs.upgrading())
+	} else if (previous.layerDataHash !== config.layerDataHash) {
+		reloadForSkew(`Layer pool changed (${previous.layerDataHash} -> ${config.layerDataHash})`, RPC_Msgs.layerPoolUpdated())
 	}
 })
 
@@ -250,46 +262,67 @@ export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
 const MAX_RETRY_DELAY = 10_000
 
+// Resubscribing over a socket that is down just fails again, so the wait is for the transport to come back rather
+// than a poll of it: the reconnect itself is the delay, and the reconnect toast is the report. Otherwise every
+// watch subscription in the app retries at once after a reconnect, so identical delays would thunder against the
+// server: half-jittered, capped exponential backoff. The socket can still drop during the backoff, so the wait for
+// it holds there too rather than resubscribing into a dead transport.
+function resubscribeDelay$(count: number): Rx.Observable<unknown> {
+	const untilOpen$ = connectStatus$.pipe(
+		Rx.filter((status) => status === 'open'),
+		Rx.take(1),
+	)
+	if (!transportOpen()) return untilOpen$
+	const backoffMs = Math.min(Math.pow(2, count) * 250, MAX_RETRY_DELAY)
+	return Rx.timer(backoffMs / 2 + Math.random() * (backoffMs / 2)).pipe(Rx.concatMap(() => untilOpen$))
+}
+
+export type ObserveOpts<T, R> = {
+	onError?: (error: any, count: number) => void
+	// operators run inside the retried region, for handlers that must not lose an update: an exception thrown
+	// here restarts the subscription the way a transport failure does, so the server's next snapshot replaces
+	// whatever the failed update left behind. rxjs swallows an exception thrown from a subscribe callback and
+	// keeps the subscription alive, so a handler placed there loses the update it threw on and nothing notices.
+	apply?: (source$: Rx.Observable<T>) => Rx.Observable<R>
+	// the stream is expected to end on its own (a permission denial, a plugin's finite iterable). every other
+	// watch is infinite, so its completing is a fault and the subscription is re-established.
+	finite?: boolean
+}
+
 /**
  * @param tag - identifies the subscription in logs, traces and error messages. Conventionally the router path,
  * e.g. 'squadServer.watchTickRate'.
  */
-export function observe<T>(
-	tag: string,
-	task: () => Promise<Rx.ObservableInput<T>>,
-	opts?: { onError?: (error: any, count: number) => void },
-) {
-	return Rx.from(Rx.Ext.toCold(task)).pipe(
-		Rx.Ext.traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
-		Rx.concatAll(),
+export function observe<T, R = T>(tag: string, task: () => Promise<Rx.ObservableInput<T>>, opts?: ObserveOpts<T, R>): Rx.Observable<R> {
+	const source$ = Rx.from(Rx.Ext.toCold(task)).pipe(Rx.Ext.traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`), Rx.concatAll())
+	const applied$ = opts?.apply ? source$.pipe(opts.apply) : (source$ as Rx.Observable<unknown> as Rx.Observable<R>)
+	const retried$ = applied$.pipe(
 		Rx.retry({
 			// without this the attempt count accumulates across the whole session, so a subscription that has
 			// weathered a dozen reconnects ends up waiting tens of minutes before its next attempt
 			resetOnSuccess: true,
 			delay: (error, count) => {
 				opts?.onError?.(error, count)
-				// resubscribing over a socket that is down just fails again, so the retry waits for the transport to come
-				// back instead of polling it. The reconnect itself is the delay, and the reconnect toast is the report.
-				const untilOpen$ = connectStatus$.pipe(
-					Rx.filter((status) => status === 'open'),
-					Rx.take(1),
-				)
-				if (!transportOpen()) return untilOpen$
-
-				// every watch subscription in the app retries at once after a reconnect, so identical delays would
-				// thunder against the server. Half-jittered, capped exponential backoff.
-				const backoffMs = Math.min(Math.pow(2, count) * 250, MAX_RETRY_DELAY)
-				const backoff$ = Rx.timer(backoffMs / 2 + Math.random() * (backoffMs / 2))
-
-				console.error(`[${tag}] subscription failed (attempt ${count})`, error)
-				if (count > 2) {
-					// keyed per subscription so a stuck one replaces its own toast rather than stacking a new one each attempt
-					const [subErrorMsg, subErrorOpts] = tr.toast(RPC_Msgs.subscriptionError(tag, error.message))
-					toast.error(subErrorMsg, { ...subErrorOpts, id: `sub-error-${tag}` })
+				// a dropped socket fails every in-flight subscription at once, and none of those failures tell the user
+				// anything the reconnect toast isn't already saying
+				if (transportOpen()) {
+					console.error(`[${tag}] subscription failed (attempt ${count})`, error)
+					if (count > 2) {
+						// keyed per subscription so a stuck one replaces its own toast rather than stacking a new one each attempt
+						const [subErrorMsg, subErrorOpts] = tr.toast(RPC_Msgs.subscriptionError(tag, error.message))
+						toast.error(subErrorMsg, { ...subErrorOpts, id: `sub-error-${tag}` })
+					}
 				}
-
-				// the socket can still drop during the backoff, so hold there too rather than retrying into a dead transport
-				return backoff$.pipe(Rx.concatMap(() => untilOpen$))
+				return resubscribeDelay$(count)
+			},
+		}),
+	)
+	if (opts?.finite) return retried$
+	return retried$.pipe(
+		Rx.repeat({
+			delay: (count) => {
+				console.warn(`[${tag}] subscription ended, resubscribing (attempt ${count})`)
+				return resubscribeDelay$(count)
 			},
 		}),
 	)

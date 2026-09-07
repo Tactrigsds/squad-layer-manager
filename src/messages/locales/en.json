@@ -1553,6 +1553,7 @@
 	"The in-game chats this command may be typed in.": "The in-game chats this command may be typed in.",
 	"The layer context menu": "The layer context menu",
 	"The layer filter menu": "The layer filter menu",
+	"The layer pool was updated, window will refresh shortly...": "The layer pool was updated, window will refresh shortly...",
 	"The layer queue": "The layer queue",
 	"The layer request list is full (max {max}).": "The layer request list is full (max {max}).",
 	"The layer selection dialog": "The layer selection dialog",

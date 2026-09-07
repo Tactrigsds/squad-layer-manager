@@ -436,6 +436,14 @@ export const groups = {
 			description:
 				'an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships. Only needed when the artifacts live outside the data mount.',
 		}),
+		CACHE_LAYER_ARTIFACT: z
+			.stringbool()
+			.optional()
+			.meta({
+				description:
+					'whether browsers keep the layer artifact in OPFS between page loads. On unless NODE_ENV is test, where every e2e test gets a fresh profile nothing reads back; the e2e tests that cover the cache set it.',
+				envExample: { include: 'omit' },
+			}),
 	},
 
 	// only `pnpm preprocess` reads these, so they stay out of the deployment example
