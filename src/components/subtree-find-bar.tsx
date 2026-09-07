@@ -91,7 +91,7 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 				aria-label={tr.text(SF_Msgs.label())}
 				title={tr.text(SF_Msgs.label())}
 				{...{ [Find.IGNORE_ATTR]: '' }}
-				className={cn('h-7 w-7 shadow-md', className)}
+				className={cn('h-7 w-7 max-phone:size-(--ctl-sm) shadow-md', className)}
 				onClick={() => FindFrame.Actions.open(stores)}
 			>
 				<Icons.Search className="h-4 w-4" />

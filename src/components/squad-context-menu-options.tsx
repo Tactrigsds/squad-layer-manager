@@ -25,6 +25,7 @@ import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
 import {
 	ContextMenuItem,
+	ContextMenuLabel,
 	ContextMenuSeparator,
 	ContextMenuShortcut,
 	ContextMenuSub,
@@ -37,6 +38,7 @@ import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 const contextMenuSlots: MenuSlots = {
 	Item: ContextMenuItem,
 	Separator: ContextMenuSeparator,
+	Label: ContextMenuLabel,
 	Sub: ContextMenuSub,
 	SubTrigger: ContextMenuSubTrigger,
 	SubContent: ContextMenuSubContent,

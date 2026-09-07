@@ -35,6 +35,11 @@ export default function LayerDisplay(props: {
 	// it is narrating
 	layerNameTourId?: string
 	indicatorsTourId?: string
+	// the name on a row of its own, everything else (tags, badges, `trailing`) on the row below: for a narrow
+	// list, where a name and its indicators cannot share a line
+	stacked?: boolean
+	// rendered after the badges on the second row of a stacked display
+	trailing?: React.ReactNode
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
 	// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
@@ -107,30 +112,53 @@ export default function LayerDisplay(props: {
 				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
 			>
 				<div className={cn('flex flex-col gap-0.5', props.className)} ref={props.ref}>
-					<div className="flex space-x-2 items-center">
-						<span
-							data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
-							className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
-						>
+					{props.stacked ? (
+						<>
 							<ShortLayerName
 								tourId={props.layerNameTourId}
 								ref={(props.droppable && dropOnAttrs.ref) || undefined}
-								className={cn('flex-nowrap shrink-0 whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
+								className={cn('min-w-0 [&>*]:whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
 								layerId={props.item.layerId}
 								teamParity={teamParity}
 								backfillLayerId={props.backfillLayerId}
 								matchDescriptors={statusData?.highlightedMatchDescriptors}
 								allowShowInfo={props.allowShowInfo}
 							/>
-							{(props.tags || props.addNote) && (
-								<span className="flex items-center gap-2">
+							{(props.tags || props.addNote || badges.length > 0 || props.trailing) && (
+								<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 									{props.tags}
 									{props.addNote}
-								</span>
+									{badges.length > 0 && <span className="flex items-center gap-1">{badges}</span>}
+									{props.trailing}
+								</div>
 							)}
-						</span>
-						<span className="flex items-center gap-1">{badges}</span>
-					</div>
+						</>
+					) : (
+						<div className="flex space-x-2 items-center">
+							<span
+								data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
+								className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
+							>
+								<ShortLayerName
+									tourId={props.layerNameTourId}
+									ref={(props.droppable && dropOnAttrs.ref) || undefined}
+									className={cn('flex-nowrap shrink-0 whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
+									layerId={props.item.layerId}
+									teamParity={teamParity}
+									backfillLayerId={props.backfillLayerId}
+									matchDescriptors={statusData?.highlightedMatchDescriptors}
+									allowShowInfo={props.allowShowInfo}
+								/>
+								{(props.tags || props.addNote) && (
+									<span className="flex items-center gap-2">
+										{props.tags}
+										{props.addNote}
+									</span>
+								)}
+							</span>
+							<span className="flex items-center gap-1">{badges}</span>
+						</div>
+					)}
 					{props.notes}
 				</div>
 			</ContextMenuTrigger>

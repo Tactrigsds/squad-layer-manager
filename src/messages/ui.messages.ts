@@ -66,6 +66,8 @@ export const pageNumber = def('Page number')
 
 export const close = def('Close')
 
+export const back = def('Back')
+
 export const closeWindow = def('Close window')
 
 export const cancel = def('Cancel')

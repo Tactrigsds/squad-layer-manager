@@ -10,7 +10,6 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { useIsMobile } from '@/hooks/use-is-mobile.ts'
 import * as Browser from '@/lib/browser'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
@@ -227,7 +226,7 @@ type QueueControlPanelProps = {
 
 function QueueControlPanel(props: QueueControlPanelProps) {
 	const { showWarnings, setShowWarnings } = props
-	const isMobile = useIsMobile()
+	const phone = props.phone
 	// idle controls hold their place, so starting an edit moves nothing
 	const idleHidden = 'not-group-data-[status=editing]:invisible'
 	const loggedInUser = UsersClient.useLoggedInUser()
@@ -286,7 +285,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Button
 					data-tour="queue-clear"
 					disabled={!isEditing}
-					className={cn(idleHidden, isMobile && 'fd-btn-touch')}
+					className={idleHidden}
 					variant="ghost"
 					size="icon-sm"
 					onClick={() => clear()}
@@ -311,7 +310,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 			preload="intent"
 			render={Button}
-			className={cn(idleHidden, isMobile && 'fd-btn-touch')}
+			className={cn(idleHidden, phone && 'flex-1 min-w-0')}
 			size="sm"
 			disabled={!isEditing}
 		>
@@ -330,14 +329,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'GENERATING_VOTE'}
 			preload="intent"
 			render={Button}
-			className={cn(idleHidden, isMobile && 'w-9')}
-			size={isMobile ? 'icon-sm' : 'sm'}
-			title={isMobile ? tr.text(LL_Msgs.genVote()) : undefined}
+			className={idleHidden}
+			size={phone ? 'icon-sm' : 'sm'}
+			title={phone ? tr.text(LL_Msgs.genVote()) : undefined}
 			aria-label={tr.text(LL_Msgs.genVote())}
 			disabled={!isEditing}
 		>
 			<Icons.Vote />
-			{!isMobile && tr.text(LL_Msgs.genVote())}
+			{!phone && tr.text(LL_Msgs.genVote())}
 		</StartActivityInteraction>
 	)
 	const pasteRotationButton = (
@@ -347,14 +346,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			matchKey={(key) => key.id === 'PASTE_ROTATION'}
 			preload="intent"
 			render={Button}
-			className={cn(idleHidden, isMobile && 'w-9')}
-			size={isMobile ? 'icon-sm' : 'sm'}
-			title={isMobile ? tr.text(LL_Msgs.pasteRotationTitle()) : undefined}
+			className={idleHidden}
+			size={phone ? 'icon-sm' : 'sm'}
+			title={phone ? tr.text(LL_Msgs.pasteRotationTitle()) : undefined}
 			aria-label={tr.text(LL_Msgs.pasteRotationTitle())}
 			disabled={!isEditing}
 		>
 			<Icons.FileText />
-			{!isMobile && <span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>}
+			{!phone && <span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>}
 		</StartActivityInteraction>
 	)
 	const resetButton = (
@@ -377,7 +376,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		</Tooltip>
 	)
 	const stateControls = (
-		<div className={cn('grid items-center', isMobile && 'ml-auto')}>
+		<div className={cn('grid items-center', phone && 'ml-auto')}>
 			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
 				<span className="fd-spin" />
 				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
@@ -385,7 +384,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			<PermissionDeniedTooltip denied={startEditingDenied}>
 				<Button
 					data-tour="queue-edit"
-					className={cn('col-start-2 row-start-1 invisible group-data-[status=idle]:visible', isMobile && 'fd-btn-touch')}
+					className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 					size="sm"
 					disabled={!!startEditingDenied}
 					onClick={() => setEditing(true)}
@@ -467,18 +466,17 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	)
 	const status = committing ? 'saving' : !isEditing ? 'idle' : 'editing'
 
-	if (isMobile) {
+	if (phone) {
 		return (
-			<div className="flex flex-col gap-1 grow group" data-status={status}>
-				{props.phone && <QueueHeaderBadges className="justify-end" stores={props.stores} />}
-				<div className="flex items-center gap-1">
-					{clearButton}
+			<div className="flex flex-col gap-1.5 grow group" data-status={status}>
+				<div className="flex items-center gap-1.5 group-data-[status=idle]:hidden">
 					{addLayersButton}
-					{/* two small buttons make one touch-height control */}
-					<div className={cn('flex flex-col', idleHidden)}>
-						{genVoteButton}
-						{pasteRotationButton}
-					</div>
+					{genVoteButton}
+					{pasteRotationButton}
+				</div>
+				<div className="flex items-center gap-1.5">
+					<QueueHeaderBadges stores={props.stores} />
+					{clearButton}
 					{resetButton}
 					{stateControls}
 					{settingsButton}

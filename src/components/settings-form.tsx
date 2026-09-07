@@ -1120,7 +1120,7 @@ function PrefixRow({
 				className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
 				title={tr.text(CMD_Msgs.replyToUnknownHint())}
 			>
-				<Checkbox checked={replyToUnknown} onCheckedChange={(v) => onSetReplyToUnknown(v === true)} className="h-3.5 w-3.5" />
+				<Checkbox checked={replyToUnknown} onCheckedChange={(v) => onSetReplyToUnknown(v === true)} />
 				{tr.text(CMD_Msgs.replyToUnknown())}
 			</label>
 			<span className="whitespace-nowrap text-xs text-muted-foreground">{tr.text(CMD_Msgs.prefixUses(usage))}</span>

@@ -38,6 +38,12 @@ export type TeamsPanel = {
 	groupFilter: string | null
 	squadFilters: Record<SquadFilterTarget, string | null>
 	sorting: Record<SortingTarget, SortingState>
+	// the phone list shows one side or both; a tap on its team button cycles through the three
+	phoneTeam: 'both' | MH.NormedTeamId
+	// squad rows fold their players away: the button sets the base for every squad, a tap on one row overrides it
+	// for that squad (keyed by squadGroupKey) until the base changes again
+	squadsCollapsed: boolean
+	squadCollapseOverrides: Record<string, boolean>
 }
 
 export type Store = { teamsPanel: TeamsPanel }
@@ -64,6 +70,9 @@ export function initTeamsPanel(args: Args) {
 		groupFilter: null,
 		squadFilters: { A: null, B: null, combined: null },
 		sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
+		phoneTeam: 'both',
+		squadsCollapsed: false,
+		squadCollapseOverrides: {},
 	} satisfies TeamsPanel)
 
 	args.cleanup.push(
@@ -179,6 +188,19 @@ export namespace Sel {
 	}
 	export function adminsOnly(store: Store) {
 		return store.teamsPanel.adminsOnly
+	}
+	export function phoneTeam(store: Store) {
+		return store.teamsPanel.phoneTeam
+	}
+	export function squadsCollapsed(store: Store) {
+		return store.teamsPanel.squadsCollapsed
+	}
+	export const squadCollapse = RSel.createSelector(
+		[squadsCollapsed, (store: Store) => store.teamsPanel.squadCollapseOverrides],
+		(base, overrides) => ({ base, overrides }),
+	)
+	export function isSquadCollapsed(collapse: { base: boolean; overrides: Record<string, boolean> }, key: string) {
+		return collapse.overrides[key] ?? collapse.base
 	}
 	export function showSpoilers(store: Store) {
 		return store.teamsPanel.showSpoilers
@@ -308,9 +330,18 @@ export namespace Sel {
 			(...[store]: CombinedInputs) => store.teamsPanel.groupFilter,
 			(...[store]: CombinedInputs) => store.teamsPanel.squadFilters.combined,
 			(...[store]: CombinedInputs) => store.teamsPanel.adminsOnly,
+			(...[store]: CombinedInputs) => store.teamsPanel.phoneTeam,
 		],
-		(players, query, role, group, squad, adminsOnly) =>
-			applyFilters(players, query, role, group, squad, adminsOnly, matchesCombinedSquadFilter),
+		(players, query, role, group, squad, adminsOnly, phoneTeam) =>
+			applyFilters(
+				phoneTeam === 'both' ? players : players.filter((p) => p.normedTeam === phoneTeam),
+				query,
+				role,
+				group,
+				squad,
+				adminsOnly,
+				matchesCombinedSquadFilter,
+			),
 	)
 
 	export const displayedCombinedPlayers = RSel.createSelector(
@@ -357,6 +388,23 @@ export namespace Actions {
 
 	export function setSquadFilter(stores: KeyProp, target: SquadFilterTarget, value: string | null) {
 		slice(stores).setState((s) => ({ squadFilters: { ...s.squadFilters, [target]: value } }))
+	}
+
+	// both, then each side in the order the panel lays them out
+	export function cyclePhoneTeam(stores: KeyProp, order: [MH.NormedTeamId, MH.NormedTeamId]) {
+		slice(stores).setState((s) => ({
+			phoneTeam: s.phoneTeam === 'both' ? order[0] : s.phoneTeam === order[0] ? order[1] : 'both',
+		}))
+	}
+
+	export function setSquadsCollapsed(stores: KeyProp, squadsCollapsed: boolean) {
+		slice(stores).setState({ squadsCollapsed, squadCollapseOverrides: {} })
+	}
+
+	export function toggleSquadCollapsed(stores: KeyProp, key: string) {
+		slice(stores).setState((s) => ({
+			squadCollapseOverrides: { ...s.squadCollapseOverrides, [key]: !(s.squadCollapseOverrides[key] ?? s.squadsCollapsed) },
+		}))
 	}
 
 	export function setSorting(stores: KeyProp, target: SortingTarget, update: Updater<SortingState>) {

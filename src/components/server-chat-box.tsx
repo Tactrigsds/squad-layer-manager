@@ -161,8 +161,10 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					: tr.text(CHAT_Msgs.warnSelectedPlaceholder(selectedCount))
 
 	return (
-		<div className="flex items-stretch gap-1.5 pt-1.5 shrink-0">
-			<div className="flex flex-col justify-between gap-1 shrink-0 items-end">
+		// On a phone the controls take one line and the message the next: side by side, a textarea that fits beside
+		// the channel picker is too narrow to read what you are about to send to the whole server.
+		<div className="flex items-stretch gap-1.5 pt-1.5 shrink-0 max-phone:flex-wrap">
+			<div className="flex flex-col justify-between gap-1 shrink-0 items-end max-phone:flex-row max-phone:items-center max-phone:justify-start">
 				<div className="flex items-center gap-2">
 					{channel === 'warn-selected' && (
 						<label
@@ -219,7 +221,11 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				placeholder={placeholder}
 				disabled={!!channelDenied}
 				rows={2}
-				className={cn('min-h-[38px] h-auto flex-1 min-w-0 resize-none px-2 py-1', cfg.inputClass)}
+				className={cn(
+					'min-h-[38px] h-auto flex-1 min-w-0 resize-none px-2 py-1',
+					'max-phone:order-last max-phone:w-full max-phone:flex-none max-phone:min-h-[64px]',
+					cfg.inputClass,
+				)}
 			/>
 			{/* warn-admins is a free-form message to admins, with no preset codepath behind it */}
 			{channel !== 'warn-admins' && (
@@ -237,7 +243,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 			)}
 			<Button
 				size="icon-sm"
-				className="h-auto self-stretch shrink-0"
+				className="h-auto self-stretch shrink-0 max-phone:ml-auto max-phone:h-(--ctl) max-phone:self-center"
 				onClick={() => void send()}
 				disabled={sendDisabled}
 				title={tr.text(CHAT_Msgs.sendHint())}

@@ -93,8 +93,8 @@
 		user-select: none;
 	}
 	.fd-btn svg {
-		width: 14px;
-		height: 14px;
+		width: var(--ico);
+		height: var(--ico);
 		flex: none;
 		pointer-events: none;
 	}
@@ -200,7 +200,7 @@
 		text-decoration-color: currentColor;
 	}
 	.fd-btn-sm {
-		height: calc(var(--ctl) - 4px);
+		height: var(--ctl-sm);
 		padding: 0 calc(var(--pad) * 1.5);
 		font-size: calc(var(--fs) - 1px);
 	}
@@ -209,7 +209,7 @@
 		padding: 0;
 	}
 	.fd-btn-ico.fd-btn-sm {
-		width: calc(var(--ctl) - 4px);
+		width: var(--ctl-sm);
 	}
 
 	/* flush button group: one raised bar with dividers */
@@ -237,29 +237,20 @@
 		position: relative;
 		z-index: 1;
 	}
-	/* Button groups grow on touch: three small targets sit flush nowhere else. `fd-btn-touch` gives a lone button
-	   the same size, for one that sits beside a group. Keyed off the pointer, not the viewport, so tablets get it too. */
+	/* A group's buttons separate on touch. Flush edges read as one bar to the eye, which is what a group is for,
+	   but they give a finger no gap to miss into: a near-miss on the divider hits the wrong action rather than
+	   nothing. The touch densities already carry the size. */
 	@media (pointer: coarse) {
 		.fd-grp {
 			gap: 4px;
 		}
 		.fd-grp > .fd-btn,
-		.fd-btn-touch {
-			height: 36px;
-			min-width: 40px;
-			padding: 0 10px;
+		.fd-grp > .fd-btn:first-child,
+		.fd-grp > :first-child .fd-btn,
+		.fd-grp > .fd-btn:last-child,
+		.fd-grp > :last-child .fd-btn {
 			margin-left: 0;
 			border-radius: 3px;
-		}
-		.fd-grp > .fd-btn.fd-btn-ico,
-		.fd-btn-ico.fd-btn-touch {
-			width: 40px;
-			padding: 0;
-		}
-		.fd-grp > .fd-btn svg,
-		.fd-btn-touch svg {
-			width: 16px;
-			height: 16px;
 		}
 	}
 
@@ -271,7 +262,9 @@
 		height: var(--ctl);
 		padding: 0 8px;
 		font: inherit;
-		font-size: var(--fs);
+		/* 16px under the touch densities. Mobile Safari zooms the whole page in on a field it considers too small
+		   to read, and never zooms back out. */
+		font-size: var(--inp-fs);
 		line-height: 1;
 		color: var(--text);
 		background: var(--ground);
@@ -321,14 +314,14 @@
 		white-space: nowrap;
 	}
 	.fd-sel svg {
-		width: 14px;
-		height: 14px;
+		width: var(--ico);
+		height: var(--ico);
 		flex: none;
 		color: var(--text-3);
 	}
 	.fd-cbx {
-		width: 14px;
-		height: 14px;
+		width: var(--cbx);
+		height: var(--cbx);
 		border-radius: 2px;
 		background: var(--ground);
 		box-shadow:
@@ -341,8 +334,8 @@
 		cursor: pointer;
 	}
 	.fd-cbx svg {
-		width: 11px;
-		height: 11px;
+		width: calc(var(--cbx) - 3px);
+		height: calc(var(--cbx) - 3px);
 	}
 	.fd-cbx[data-state='checked'],
 	.fd-cbx-on {
@@ -362,8 +355,8 @@
 		cursor: not-allowed;
 	}
 	.fd-rad {
-		width: 14px;
-		height: 14px;
+		width: var(--cbx);
+		height: var(--cbx);
 		border-radius: 50%;
 		background: var(--ground);
 		box-shadow:
@@ -381,8 +374,8 @@
 		background: var(--pri-hi);
 	}
 	.fd-sw {
-		width: 30px;
-		height: 15px;
+		width: var(--sw-w);
+		height: var(--sw-h);
 		border-radius: 3px;
 		background: var(--ground);
 		box-shadow:
@@ -407,8 +400,8 @@
 		position: absolute;
 		top: 2px;
 		left: 2px;
-		width: 13px;
-		height: 11px;
+		width: calc(var(--sw-w) / 2 - 2px);
+		height: calc(var(--sw-h) - 4px);
 		border-radius: 2px;
 		background: var(--ctl-bg);
 		box-shadow:
@@ -417,7 +410,7 @@
 		display: block;
 	}
 	.fd-sw[data-state='checked'] .fd-sw-thumb {
-		left: 15px;
+		left: calc(var(--sw-w) / 2);
 		background: var(--pri);
 		box-shadow:
 			inset 0 1px 0 var(--pri-hi),
@@ -441,12 +434,16 @@
 		display: flex;
 		align-items: center;
 		flex: none;
+		height: var(--nav-h);
 		background: var(--panel-hi);
 		border-bottom: 1px solid var(--line);
 		box-shadow: inset 0 -1px 0 var(--line-soft);
 		white-space: nowrap;
 	}
 	.fd-nav-link {
+		display: inline-flex;
+		align-items: center;
+		height: var(--nav-h);
 		color: var(--text-2);
 		font-weight: 600;
 		font-size: calc(var(--fs) + 1px);
@@ -522,7 +519,7 @@
 	}
 
 	.fd-pill {
-		height: 18px;
+		height: var(--pill-h);
 		padding: 0 7px;
 		border: 0;
 		border-radius: 2px;
@@ -546,7 +543,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		height: calc(var(--ctl) - 6px);
+		height: var(--badge-h);
 		padding: 0 6px;
 		font-size: calc(var(--fs) - 1px);
 		font-weight: 600;
@@ -588,7 +585,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: calc(var(--ctl) - 8px);
+		height: var(--chip-h);
 		padding: 0 5px;
 		border-radius: 2px;
 		background: #414144;
@@ -601,7 +598,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		height: calc(var(--ctl) - 6px);
+		height: var(--badge-h);
 		padding: 0 2px 0 6px;
 		border-radius: 2px;
 		background: var(--ctl-bg);
@@ -621,8 +618,8 @@
 	.fd-tok-x {
 		display: inline-grid;
 		place-items: center;
-		width: 14px;
-		height: 14px;
+		width: var(--cbx);
+		height: var(--cbx);
 		border-radius: 2px;
 		color: var(--text-3);
 		cursor: pointer;
@@ -676,7 +673,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		height: calc(var(--ctl) - 6px);
+		height: var(--badge-h);
 		padding: 0 6px 0 4px;
 		border-radius: 2px;
 		background: #2b4a85;
@@ -712,7 +709,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		min-height: calc(var(--ctl) - 2px);
+		min-height: var(--mi-h);
 		padding: 0 8px;
 		border-radius: 2px;
 		cursor: pointer;
@@ -721,8 +718,8 @@
 		font-size: var(--fs);
 	}
 	.fd-mi svg {
-		width: 14px;
-		height: 14px;
+		width: var(--ico);
+		height: var(--ico);
 		flex: none;
 	}
 	.fd-mi:hover,

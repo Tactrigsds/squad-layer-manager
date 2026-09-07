@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
 	DropdownMenu,
+	DropdownMenuAccordion,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
@@ -153,6 +154,20 @@ export default function NavBar() {
 		</DropdownMenuItem>
 	)
 
+	const languageItems = (
+		<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
+			<DropdownMenuRadioItem value={MessagesClient.AUTO}>
+				<Icons.Languages className="mr-2" />
+				{tr.text(APP_Msgs.languageAuto())}
+			</DropdownMenuRadioItem>
+			{MessagesClient.availableLocales().map((locale) => (
+				<DropdownMenuRadioItem key={locale} value={locale}>
+					{MessagesClient.endonym(locale)}
+				</DropdownMenuRadioItem>
+			))}
+		</DropdownMenuRadioGroup>
+	)
+
 	// the user-avatar menu items, shared between the avatar dropdown (>= sm) and the hamburger (< sm). Rendered in exactly one
 	// of those two places (gated by isSmall) so the controlled dialogs below aren't mounted twice.
 	const userMenuContent = user && (
@@ -170,22 +185,14 @@ export default function NavBar() {
 					{tr.text(APP_Msgs.disconnectedFromServer())}
 				</DropdownMenuItem>
 			)}
-			<DropdownMenuSub>
-				<DropdownMenuSubTrigger chevronLeft>{tr.text(APP_Msgs.language())}</DropdownMenuSubTrigger>
-				<DropdownMenuSubContent>
-					<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
-						<DropdownMenuRadioItem value={MessagesClient.AUTO}>
-							<Icons.Languages className="mr-2" />
-							{tr.text(APP_Msgs.languageAuto())}
-						</DropdownMenuRadioItem>
-						{MessagesClient.availableLocales().map((locale) => (
-							<DropdownMenuRadioItem key={locale} value={locale}>
-								{MessagesClient.endonym(locale)}
-							</DropdownMenuRadioItem>
-						))}
-					</DropdownMenuRadioGroup>
-				</DropdownMenuSubContent>
-			</DropdownMenuSub>
+			{isSmall ? (
+				<DropdownMenuAccordion label={tr.text(APP_Msgs.language())}>{languageItems}</DropdownMenuAccordion>
+			) : (
+				<DropdownMenuSub>
+					<DropdownMenuSubTrigger chevronLeft>{tr.text(APP_Msgs.language())}</DropdownMenuSubTrigger>
+					<DropdownMenuSubContent>{languageItems}</DropdownMenuSubContent>
+				</DropdownMenuSub>
+			)}
 			<NormalizeTeamsToggle />
 			<DropdownMenuSeparator />
 			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
@@ -231,7 +238,10 @@ export default function NavBar() {
 	)
 
 	const avatar = user && (
-		<Avatar style={{ backgroundColor: user.displayHexColor ?? undefined }} className="select-none size-6 shrink-0 border border-line">
+		<Avatar
+			style={{ backgroundColor: user.displayHexColor ?? undefined }}
+			className="select-none size-6 max-phone:size-8 shrink-0 border border-line"
+		>
 			<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
 			<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 		</Avatar>
@@ -294,7 +304,7 @@ export default function NavBar() {
 
 	if (isSmall) {
 		return (
-			<nav className="fd-nav h-10 gap-2 px-2">
+			<nav className="fd-nav gap-2 px-2">
 				<PhoneMenu
 					open={openState !== null}
 					onOpenChange={onPrimaryDropdownOpenChange}
@@ -321,8 +331,12 @@ export default function NavBar() {
 	}
 
 	return (
-		<nav className="fd-nav h-10 gap-3 px-2.5" style={settings?.topBarColor ? { borderBottomColor: settings.topBarColor } : undefined}>
-			<TSR.Link to="/about" aria-label={tr.text(APP_Msgs.about())} className="shrink-0">
+		<nav className="fd-nav gap-3 px-2.5" style={settings?.topBarColor ? { borderBottomColor: settings.topBarColor } : undefined}>
+			<TSR.Link
+				to="/about"
+				aria-label={tr.text(APP_Msgs.about())}
+				className="shrink-0 grid place-items-center pointer-coarse:size-(--ctl)"
+			>
 				<LogoMark accent={settings?.topBarColor ?? null} className="size-6" />
 			</TSR.Link>
 			{/* on the dashboard's single-column layout the tab switcher takes over the "Server" nav slot at every width */}
@@ -383,7 +397,7 @@ export default function NavBar() {
 						<button
 							type="button"
 							aria-label={tr.text(APP_Msgs.userMenu())}
-							className="rounded-full hover:cursor-pointer focus-visible:outline-2 focus-visible:outline-pri-hi"
+							className="grid place-items-center rounded-full pointer-coarse:size-(--ctl) hover:cursor-pointer focus-visible:outline-2 focus-visible:outline-pri-hi"
 						>
 							{avatar}
 						</button>
@@ -527,7 +541,11 @@ function PhoneMenu(props: {
 					<Icons.Menu />
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="start" className="w-[250px] [&_.fd-mi]:min-h-8">
+			<DropdownMenuContent
+				align="start"
+				sideOffset={0}
+				className="w-[290px] max-w-[calc(100vw-32px)] h-[calc(100dvh-var(--nav-h))] overflow-y-auto rounded-none border-l-0 border-b-0"
+			>
 				<DropdownMenuLabel>{tr.text(APP_Msgs.navPages())}</DropdownMenuLabel>
 				{props.pageItems}
 				<DropdownMenuSeparator />
@@ -538,28 +556,19 @@ function PhoneMenu(props: {
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuLabel className="truncate">{props.serverName}</DropdownMenuLabel>
-						<DropdownMenuSub>
-							<DropdownMenuSubTrigger>{tr.text(SS_Msgs.serverActions())}</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
-								<ServerActionMenuItems stores={{ squadServer: props.squadServerKey }} slots={dropdownMenuSlots} />
-							</DropdownMenuSubContent>
-						</DropdownMenuSub>
+						<DropdownMenuAccordion label={tr.text(SS_Msgs.serverActions())}>
+							<ServerActionMenuItems stores={{ squadServer: props.squadServerKey }} slots={dropdownMenuSlots} />
+						</DropdownMenuAccordion>
 						<JoinServerButton serverId={props.squadServerKey.serverId} asMenuItem />
 						{hasLinks && (
-							<DropdownMenuSub>
-								<DropdownMenuSubTrigger>{tr.text(APP_Msgs.navLinks())}</DropdownMenuSubTrigger>
-								<DropdownMenuSubContent>
-									<NavLinkItems globalLinks={props.globalLinks} serverLinks={props.serverLinks} />
-								</DropdownMenuSubContent>
-							</DropdownMenuSub>
+							<DropdownMenuAccordion label={tr.text(APP_Msgs.navLinks())}>
+								<NavLinkItems globalLinks={props.globalLinks} serverLinks={props.serverLinks} />
+							</DropdownMenuAccordion>
 						)}
 						{props.servers.length > 1 && props.selectedServerId && (
-							<DropdownMenuSub>
-								<DropdownMenuSubTrigger>{tr.text(APP_Msgs.switchServer())}</DropdownMenuSubTrigger>
-								<DropdownMenuSubContent>
-									<ServerMenuItems servers={props.servers} selectedServerId={props.selectedServerId} />
-								</DropdownMenuSubContent>
-							</DropdownMenuSub>
+							<DropdownMenuAccordion label={tr.text(APP_Msgs.switchServer())}>
+								<ServerMenuItems servers={props.servers} selectedServerId={props.selectedServerId} />
+							</DropdownMenuAccordion>
 						)}
 					</>
 				)}

@@ -31,7 +31,7 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { useIsMobile } from '@/hooks/use-is-mobile.ts'
+import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import { inline, useStableValue } from '@/lib/react.ts'
@@ -511,7 +511,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 		[canEdit, _setDropdownOpen],
 	)
 
-	const isMobile = useIsMobile()
+	const isPhone = Browser.useIsSmallViewport()
 
 	const badges: React.ReactNode[] = []
 	let sourceDisplay: React.ReactNode | undefined
@@ -528,7 +528,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const editButtonProps = (className?: string) => ({
 		'data-can-edit': canEdit,
-		'data-mobile': isMobile,
+		'data-mobile': isPhone,
 		disabled: !canEdit,
 		className,
 	})
@@ -655,7 +655,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
 						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
 						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
-						isMobile ? 'grid-cols-[24px_minmax(0,1fr)_auto]' : 'grid-cols-[26px_16px_minmax(0,1fr)_auto]',
+						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[26px_16px_minmax(0,1fr)_auto]',
 					)}
 					data-mutation={displayedMutation}
 					data-tour={isTourSeqRow ? 'queue-item' : undefined}
@@ -663,7 +663,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span data-mobile={isMobile} className="text-right font-mono text-text-3 data-[mobile=true]:hidden">
+					<span data-mobile={isPhone} className="text-right font-mono text-text-3 data-[mobile=true]:hidden">
 						{LL.getItemNumber(index)}
 					</span>
 					<button
@@ -671,20 +671,22 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						ref={dragProps.handleRef}
 						data-tour={isTourRow ? 'queue-reorder' : undefined}
 						{...editButtonProps(
-							'flex size-4 pointer-coarse:size-6 touch-none items-center justify-center text-text-3 hover:text-text data-[can-edit=true]:cursor-grab disabled:opacity-40 [&_svg]:size-3.5 pointer-coarse:[&_svg]:size-4',
+							'flex size-4 pointer-coarse:size-(--ctl) max-phone:h-full! max-phone:w-full! max-phone:self-stretch touch-none select-none [-webkit-touch-callout:none] items-center justify-center text-text-3 hover:text-text data-[can-edit=true]:cursor-grab disabled:opacity-40 [&_svg]:size-3.5 pointer-coarse:[&_svg]:size-6',
 						)}
 						{...dragHandleTouchProps}
 					>
 						<Icons.GripVertical />
 					</button>
-					<span
-						data-tour={isTourRow ? 'queue-item-display' : undefined}
-						className="flex w-full min-w-0 flex-col gap-0.5 py-0.5 data-[phone=true]:[&_.fd-layer-name]:flex-wrap data-[phone=true]:[&_.fd-layer-name>*:first-child]:basis-full data-[phone=true]:[&_.fd-layer-name>svg]:hidden"
-						data-phone={isMobile || undefined}
-					>
+					<span data-tour={isTourRow ? 'queue-item-display' : undefined} className="flex w-full min-w-0 flex-col gap-0.5 py-0.5">
 						<LayerDisplay
 							stores={props.stores}
 							droppable={true}
+							stacked={isPhone}
+							trailing={
+								isPhone && sourceDisplay ? (
+									<span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>
+								) : undefined
+							}
 							layerNameTourId={isTourRow ? 'queue-layer-name' : undefined}
 							indicatorsTourId={isTourRow ? 'layer-indicators' : undefined}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
@@ -696,6 +698,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 										setBy={item.tagsSetBy}
 										disabled={!canEdit}
 										revealAddOnHover
+										hideAdd={isPhone}
 										onAdd={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })}
 										onRemove={(tagId) =>
 											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'remove-tag', tagId })
@@ -704,7 +707,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 								)
 							}
 							addNote={
-								item.type === 'single-list-item' && (
+								item.type === 'single-list-item' &&
+								!isPhone && (
 									<AddNoteButton
 										disabled={!canEdit}
 										revealOnHover
@@ -745,9 +749,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							</span>
 						)}
 					</span>
-					<span className="flex items-center gap-1.5">
-						{sourceDisplay && <span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>}
-						<span className={cn('fd-grp', isMobile && 'hidden')}>
+					<span className="flex items-center gap-1.5 max-phone:self-stretch">
+						{sourceDisplay && !isPhone && <span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>}
+						<span className={cn('fd-grp', isPhone && 'hidden')}>
 							<StartActivityInteraction
 								loaderName="selectLayers"
 								createActivity={UP.createEditingQueueVariant(editActivity)}
@@ -781,14 +785,19 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							</Button>
 						</span>
 						<ItemDropdown {...dropdownProps}>
-							<Button {...editButtonProps()} data-tour={isTourRow ? 'queue-item-menu' : undefined} variant="ghost" size="icon-sm">
+							<Button
+								{...editButtonProps('max-phone:h-full!')}
+								data-tour={isTourRow ? 'queue-item-menu' : undefined}
+								variant="ghost"
+								size="icon-sm"
+							>
 								<Icons.EllipsisVertical />
 							</Button>
 						</ItemDropdown>
 					</span>
 				</li>
 			</ItemContextMenu>
-			{isMobile && item.type === 'single-list-item' && (
+			{isPhone && item.type === 'single-list-item' && (
 				<>
 					<LayerTagDialog
 						state={phoneEditor === 'new-tag' ? 'new' : null}
@@ -830,17 +839,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const itemStores = { queue: props.stores.squadServer }
 
 	const [dropdownOpen, setDropdownOpen] = React.useState(false)
-	const isMobile = useIsMobile()
+	const isPhone = Browser.useIsSmallViewport()
 
 	const editButtonProps = (className?: string) => ({
-		['data-mobile']: isMobile,
+		['data-mobile']: isPhone,
 		disabled: !canEdit,
 		className: className,
 		['data-can-edit']: canEdit,
 	})
 
 	const manageVoteButtonProps = (opts?: { className?: string }) => ({
-		['data-mobile']: isMobile,
+		['data-mobile']: isPhone,
 		disabled: !!manageVoteDenied,
 		className: opts?.className,
 	})
@@ -1375,7 +1384,7 @@ function ItemMenuItems(props: {
 	}
 
 	const user = UsersClient.useLoggedInUser()
-	const isMobile = useIsMobile()
+	const isPhone = Browser.useIsSmallViewport()
 	const configuredTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const canManageTags = !RbacClient.usePermsCheck(RBAC.perm('queue:manage-tags'))
 	const appliedTags = item.type === 'single-list-item' ? (item.tags ?? []) : []
@@ -1387,7 +1396,7 @@ function ItemMenuItems(props: {
 	}
 	return (
 		<>
-			{isMobile && (
+			{isPhone && (
 				<>
 					<Menu.Group>
 						<StartActivityInteraction

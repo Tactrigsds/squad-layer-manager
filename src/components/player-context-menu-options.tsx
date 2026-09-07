@@ -33,6 +33,7 @@ import { PlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import {
 	ContextMenuItem,
+	ContextMenuLabel,
 	ContextMenuSeparator,
 	ContextMenuShortcut,
 	ContextMenuSub,
@@ -47,6 +48,7 @@ import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 export type MenuSlots = {
 	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; className?: string; children?: React.ReactNode }>
 	Separator: React.ComponentType
+	Label: React.ComponentType<{ children?: React.ReactNode }>
 	Sub: React.ComponentType<{ children?: React.ReactNode }>
 	SubTrigger: React.ComponentType<{ disabled?: boolean; children?: React.ReactNode }>
 	SubContent: React.ComponentType<{ children?: React.ReactNode }>
@@ -55,6 +57,7 @@ export type MenuSlots = {
 export const contextMenuSlots: MenuSlots = {
 	Item: ContextMenuItem,
 	Separator: ContextMenuSeparator,
+	Label: ContextMenuLabel,
 	Sub: ContextMenuSub,
 	SubTrigger: ContextMenuSubTrigger,
 	SubContent: ContextMenuSubContent,

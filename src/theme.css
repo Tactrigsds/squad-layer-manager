@@ -8,7 +8,8 @@
   are plain colours, used directly by foundry.css and by the `text-text-2` style utilities.
 
   Every dimension derives from four numbers: --fs (body size), --ctl (control height), --pad, --row. Compact is
-  the default; `data-density="legible"` on <html> raises all four.
+  the default; `data-density="legible"` on <html> raises all four. A phone or a tablet gets the touch densities at
+  the bottom of this file instead, which no user setting overrides: a target too small to hit is not a taste.
 */
 @theme {
 	--font-sans: 'Barlow', 'Segoe UI', system-ui, sans-serif;
@@ -152,6 +153,22 @@
 		--pad: 4px;
 		--row: 26px;
 
+		/* Sizes the four numbers cannot reach on their own. Each is derived here so compact and legible keep the
+		   proportions they always had, and pinned outright by the touch densities, where a passive badge must not
+		   grow to a 44px control's height. */
+		--ctl-sm: calc(var(--ctl) - 4px);
+		--ico: 14px;
+		--inp-fs: var(--fs);
+		--badge-h: calc(var(--ctl) - 6px);
+		--chip-h: calc(var(--ctl) - 8px);
+		--mi-h: calc(var(--ctl) - 2px);
+		--pill-h: 18px;
+		--cbx: 14px;
+		--sw-w: 30px;
+		--sw-h: 15px;
+		--nav-h: 30px;
+		--tabbar-h: 52px;
+
 		--ground: #262628;
 		--panel: #333335;
 		--panel-hi: #3c3c3f;
@@ -231,5 +248,62 @@
 		--ctl: 28px;
 		--pad: 6px;
 		--row: 32px;
+	}
+
+	/*
+	  Touch densities. A finger needs ~44px where a mouse needs 22, so every control grows, passive elements grow
+	  less, and body text goes to 14px (16px in fields, below which iOS zooms the page on focus).
+
+	  The phone tier is keyed off width alone so it always arrives with the phone dashboard, which forks at the
+	  same 640px. The tablet tier is keyed off the pointer, so an iPad gets touch sizes inside the unchanged
+	  desktop layouts, and a mouse at any width keeps the compact ones.
+
+	  Both restate `:root[data-density]` so they outrank the legible block above rather than losing to its
+	  specificity.
+	*/
+	@media (width < 640px) {
+		:root,
+		:root[data-density] {
+			--fs: 14px;
+			--ctl: 44px;
+			--pad: 8px;
+			--row: 48px;
+
+			--ctl-sm: 40px;
+			--ico: 18px;
+			--inp-fs: 16px;
+			--badge-h: 22px;
+			--chip-h: 20px;
+			--mi-h: 44px;
+			--pill-h: 40px;
+			--cbx: 22px;
+			--sw-w: 44px;
+			--sw-h: 24px;
+			--nav-h: 52px;
+			--tabbar-h: 64px;
+		}
+	}
+
+	@media (pointer: coarse) and (width >= 640px) {
+		:root,
+		:root[data-density] {
+			--fs: 14px;
+			--ctl: 40px;
+			--pad: 6px;
+			--row: 40px;
+
+			--ctl-sm: 36px;
+			--ico: 16px;
+			--inp-fs: 16px;
+			--badge-h: 20px;
+			--chip-h: 18px;
+			--mi-h: 40px;
+			--pill-h: 36px;
+			--cbx: 20px;
+			--sw-w: 40px;
+			--sw-h: 22px;
+			--nav-h: 48px;
+			--tabbar-h: 60px;
+		}
 	}
 }

@@ -10,6 +10,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
@@ -43,6 +44,7 @@ import WarnChatBox from './warn-chat-box'
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
 	Separator: DropdownMenuSeparator,
+	Label: DropdownMenuLabel,
 	Sub: DropdownMenuSub,
 	SubTrigger: DropdownMenuSubTrigger,
 	SubContent: DropdownMenuSubContent,
@@ -201,11 +203,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					<div className="flex items-center justify-between gap-2 py-0.5">
 						<h3 className="text-xs font-medium">{tr.text(SM_Msgs.squadEvents())}</h3>
 						<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-							<Checkbox
-								className="h-3.5 w-3.5"
-								checked={squadMessagesOnly}
-								onCheckedChange={(checked) => setSquadMessagesOnly(checked === true)}
-							/>
+							<Checkbox checked={squadMessagesOnly} onCheckedChange={(checked) => setSquadMessagesOnly(checked === true)} />
 							{tr.text(SM_Msgs.hideTeamChat())}
 						</label>
 					</div>

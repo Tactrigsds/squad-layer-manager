@@ -468,6 +468,71 @@ export const middleClickDeleteSwap = def('Middle-click: delete swap')
 
 export const playerDetailsTitle = def('Player Details')
 
+// the player details window's section on the match in progress, present only while the player is in it
+export const thisMatch = def('This match')
+
+export const notInCurrentMatch = def('Not in the current match')
+
+export const teamLabel = def('Team')
+
+export const squadLabel = def('Squad')
+
+export const leaderShort = def('SL')
+
+export const killsWoundsDeaths = def('K · W · D')
+
+export const teamKillsLabel = def('Team kills')
+
+// the phone list's team button: one side, or both
+export const bothTeams = def('Both')
+
+export const sortAndShow = def('Sort, show and filter')
+export const searchLabel = def('Search')
+export const collapseSquads = def('Collapse squads')
+export const expandSquads = def('Expand squads')
+export const collapseNeedsSquadSort = def('Sort by squad to collapse squads')
+
+export const sortBy = def('Sort by')
+
+export const showLabel = def('Show')
+
+export const filterLabel = def('Filter')
+
+export const sortSquad = def('Squad')
+
+export const sortName = def('Name')
+
+export const sortTeamKills = def('Team kills')
+
+export const sortKills = def('Kills')
+
+export const selectedOnly = def('Selected only')
+
+export const spoilersOnHint = def('role · K/W/D')
+
+export const selectedCount = def('{count, plural, one {# selected} other {# selected}}', (count: number) => ({ count }))
+
+export const clearSelection = def('Clear selection')
+
+export const moreActions = def('More')
+
+export const swapsPending = def('{count, plural, one {# swap pending} other {# swaps pending}}', (count: number) => ({ count }))
+
+export const swapsUnsaved = def('{count} unsaved', (count: number) => ({ count }))
+
+export const editSwaps = def('Edit')
+
+export const teamSwapsTitle = def('Team swaps')
+
+export const addSelectedToSwaps = def(
+	'{count, plural, =0 {Nothing selected to add} one {Add # selected player} other {Add # selected players}}',
+	(count: number) => ({ count }),
+)
+
+export const swapsRunAtMatchStart = def(
+	'Saved swaps run at the next match start. Swap now moves everyone immediately, and needs nobody else editing.',
+)
+
 export const squadWithId = def('Squad {squadId}', (squadId: number) => ({ squadId }))
 
 export const onlineFor = def('Online{known, select, yes { for {elapsed}} other {}}', (elapsed?: string | null) => ({

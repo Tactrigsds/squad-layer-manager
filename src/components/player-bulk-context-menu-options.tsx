@@ -22,14 +22,18 @@ import * as WarnChat from '@/systems/warn-chat.client'
 
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
-import { ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut } from './ui/context-menu'
+import { contextMenuSlots, type MenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
+import { ContextMenuShortcut } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 // When the selection is exactly one squad's full membership (and nothing else), returns that squad so the
 // warn action can route to the squad details window; otherwise null (mixed/partial selection).
-function detectFullSquadSelection(selectedIds: SM.PlayerId[], players: SM.Player[], squads: SM.UniqueSquad[]): SM.UniqueSquad | null {
+export function detectFullSquadSelection(
+	selectedIds: SM.PlayerId[],
+	players: SM.Player[],
+	squads: SM.UniqueSquad[],
+): SM.UniqueSquad | null {
 	if (selectedIds.length === 0) return null
 	const first = SM.PlayerIds.find(players, (p) => p.ids, selectedIds[0])
 	if (!first || first.squadId === null || first.teamId === null) return null
@@ -46,10 +50,13 @@ function detectFullSquadSelection(selectedIds: SM.PlayerId[], players: SM.Player
 export default function PlayerBulkContextMenuOptions({
 	playerIds,
 	stores,
+	slots = contextMenuSlots,
 }: {
 	playerIds: SM.PlayerId[]
 	stores: SquadServerFrame.KeyProp
+	slots?: MenuSlots
 }) {
+	const { Item, Label, Separator } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 
@@ -336,81 +343,81 @@ export default function PlayerBulkContextMenuOptions({
 
 	return (
 		<>
-			<ContextMenuLabel>
+			<Label>
 				{playerIds.length} {tr.text(SM_Msgs.playersSelected())}
-			</ContextMenuLabel>
-			<ContextMenuItem onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
+			</Label>
+			<Item onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
 				{tr.text(SM_Msgs.invertSelection())}
 				<ContextMenuShortcut>{SM_Msgs.shortcuts.invertBox.all}</ContextMenuShortcut>
-			</ContextMenuItem>
-			<ContextMenuSeparator />
+			</Item>
+			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
+				<Item onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
 					{tr.text(SM_Msgs.swapNextLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
-			<ContextMenuSeparator />
+			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem
+				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={swapNow}
 					disabled={!!manageDenied || !canSwapNow}
 				>
 					{tr.text(SM_Msgs.swapNowLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem
+				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={kill}
 					disabled={!!manageDenied || !canSwapNow}
 				>
 					{tr.text(SM_Msgs.killLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
-				<ContextMenuItem
+				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={kick}
 					disabled={!!kickDenied || playerIds.length === 0}
 				>
 					{tr.text(SM_Msgs.kickLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
-				<ContextMenuItem
+				<Item
 					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 					onClick={timeout}
 					disabled={!!timeoutDenied || playerIds.length === 0}
 				>
 					{tr.text(SM_Msgs.timeoutLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwap(stores, playerIds)} disabled={!!manageDenied}>
+				<Item onClick={() => TSWClient.Actions.removeSwap(stores, playerIds)} disabled={!!manageDenied}>
 					{tr.text(SM_Msgs.deleteSwapsLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
-			<ContextMenuSeparator />
-			<PlayerOpenLinksSub playerIds={playerIds} slots={contextMenuSlots} stores={stores} />
-			<PlayerCopyIdsSub playerIds={playerIds} slots={contextMenuSlots} stores={stores} />
-			<ContextMenuSeparator />
+			<Separator />
+			<PlayerOpenLinksSub playerIds={playerIds} slots={slots} stores={stores} />
+			<PlayerCopyIdsSub playerIds={playerIds} slots={slots} stores={stores} />
+			<Separator />
 			<WarnReasonsSub
-				slots={contextMenuSlots}
+				slots={slots}
 				denied={warnDenied}
 				label={fullSquad ? tr.text(SM_Msgs.warnSquadLabel()) : tr.text(SM_Msgs.warnLabel())}
 				onCustom={warn}
 				onPreset={warnPreset}
 			/>
 			<AddPlayerFlagsMenuItem
-				slots={contextMenuSlots}
+				slots={slots}
 				playerIds={playerIds}
 				target={fullSquad ? { kind: 'squad', squadName: fullSquad.squadName, count: playerIds.length } : msgTarget}
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>
+				<Item onClick={removeFromSquad} disabled={!!manageDenied}>
 					{tr.text(SM_Msgs.removeFromSquadLabel())}
-				</ContextMenuItem>
+				</Item>
 			</PermissionDeniedTooltip>
 		</>
 	)

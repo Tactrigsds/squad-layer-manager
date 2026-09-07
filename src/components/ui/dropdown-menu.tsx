@@ -87,6 +87,37 @@ const DropdownMenuItem = React.forwardRef<
 ))
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName
 
+// A submenu that opens in place, below its trigger, rather than as a flyout beside it: on a phone-width menu a
+// flyout has nowhere to go but off the screen. The trigger is an item that stays selected without closing the
+// menu, and the open group is a plain descendant, which is all Radix needs to keep the items in its roving focus.
+function DropdownMenuAccordion(props: { label: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode }) {
+	const [open, setOpen] = React.useState(props.defaultOpen ?? false)
+	const groupRef = React.useRef<HTMLDivElement>(null)
+	// a section opened near the bottom of a scrolling menu would otherwise unfold below the fold
+	React.useEffect(() => {
+		if (open) groupRef.current?.scrollIntoView({ block: 'nearest' })
+	}, [open])
+	return (
+		<>
+			<DropdownMenuItem
+				aria-expanded={open}
+				onSelect={(e) => {
+					e.preventDefault()
+					setOpen(!open)
+				}}
+			>
+				{props.label}
+				<ChevronRightIcon className={cn('ml-auto transition-transform', open && 'rotate-90')} />
+			</DropdownMenuItem>
+			{open && (
+				<div ref={groupRef} role="group" className="ml-2.5 border-l border-line pl-1">
+					{props.children}
+				</div>
+			)}
+		</>
+	)
+}
+
 const DropdownMenuCheckboxItem = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
@@ -140,6 +171,7 @@ DropdownMenuShortcut.displayName = 'DropdownMenuShortcut'
 
 export {
 	DropdownMenu,
+	DropdownMenuAccordion,
 	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuGroup,

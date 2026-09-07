@@ -15,6 +15,9 @@ export const layerColumn = def('Layer')
 
 export const outcomeColumn = def('Outcome')
 
+// separates the two teams on a phone row, where they share a line instead of taking a column each
+export const versus = def('vs')
+
 export const layerIndicatorsColumn = def('Layer Indicators')
 
 export const setByColumn = def('Set By')

@@ -46,12 +46,24 @@ export function TeamFactionDisplay(props: {
 	// Names the team ahead of its faction -- "Team A(current PLA)" rather than "PLA". Only for a header sitting over
 	// the live roster, which is what makes "current" true.
 	leadWithTeamName?: boolean
+	hideCurrentWord?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 	// overrides the global displayTeamsNormalized setting, for a surface showing what the other rendering looks like
 	normalized?: boolean
 }) {
 	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
-	const { className, parity, layer, team, includeUnits, showAltTeamIndicator, leadWithTeamName, extraStyles, normalized } = props
+	const {
+		className,
+		parity,
+		layer,
+		team,
+		includeUnits,
+		showAltTeamIndicator,
+		leadWithTeamName,
+		hideCurrentWord,
+		extraStyles,
+		normalized,
+	} = props
 	return (
 		<Atoms.TeamFactionDisplay
 			className={className}
@@ -61,6 +73,7 @@ export function TeamFactionDisplay(props: {
 			includeUnits={includeUnits}
 			showAltTeamIndicator={showAltTeamIndicator}
 			leadWithTeamName={leadWithTeamName}
+			hideCurrentWord={hideCurrentWord}
 			extraStyles={extraStyles}
 			normalized={normalized ?? globalNormalized}
 		/>
@@ -73,6 +86,7 @@ export function MatchTeamDisplay(props: {
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
 	leadWithTeamName?: boolean
+	hideCurrentWord?: boolean
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
@@ -94,6 +108,7 @@ export function MatchTeamDisplay(props: {
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}
 			leadWithTeamName={props.leadWithTeamName}
+			hideCurrentWord={props.hideCurrentWord}
 		/>
 	)
 }

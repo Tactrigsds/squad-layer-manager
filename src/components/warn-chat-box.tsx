@@ -107,11 +107,7 @@ export default function WarnChatBox({
 					className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 					title={tr.text(CHAT_Msgs.notifyAdminsHint())}
 				>
-					<Checkbox
-						checked={notifyAdminsChecked}
-						onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
-						className="h-3.5 w-3.5"
-					/>
+					<Checkbox checked={notifyAdminsChecked} onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)} />
 					{tr.text(CHAT_Msgs.notifyAdmins())}
 				</label>
 				{username && (
@@ -119,7 +115,7 @@ export default function WarnChatBox({
 						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 						title={tr.text(CHAT_Msgs.prefixNameHint())}
 					>
-						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
+						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} />
 						{username}:
 					</label>
 				)}

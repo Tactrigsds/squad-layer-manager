@@ -17,7 +17,7 @@ import {
 } from '@/systems/draggable-window.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
-import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
+import { ChevronLeftIcon, Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
@@ -150,8 +150,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const offset = definition.offset ?? 8
 	const collisionPadding = definition.collisionPadding ?? 16
 	const initialPosition = definition.initialPosition ?? 'below'
-	// On a phone a floating window has nowhere to float: it becomes a sheet pinned to the bottom edge, full
-	// width, scrolling inside. Dragging and resizing are off; the drag bar is just a title bar.
+	// On a phone a floating window has nowhere to float: it fills the screen, with the drag bar as a title bar
+	// carrying a back button. Dragging and resizing are off, and the body scrolls inside it.
 	const phone = Browser.useIsSmallViewport()
 
 	// Helper to update DOM position directly
@@ -450,8 +450,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				className={cn(
 					'fd-win fixed outline-none invisible',
 					definition.resizable && 'flex flex-col overflow-hidden',
-					phone &&
-						'inset-x-0 bottom-0 top-auto! left-0! flex max-h-[85vh] w-full! flex-col overflow-hidden rounded-b-none border-x-0 border-b-0',
+					phone && 'inset-0 top-0! left-0! flex h-full w-full! flex-col overflow-hidden rounded-none border-0',
 				)}
 				style={{ zIndex: effectiveZIndex }}
 			>
@@ -530,8 +529,9 @@ interface DraggableWindowDragBarProps extends React.HTMLAttributes<HTMLDivElemen
 	ref?: React.Ref<HTMLDivElement>
 }
 
-export function DraggableWindowDragBar({ className, ref, ...props }: DraggableWindowDragBarProps) {
-	const { registerDragBar } = useDraggableWindow()
+export function DraggableWindowDragBar({ className, children, ref, ...props }: DraggableWindowDragBarProps) {
+	const { registerDragBar, close } = useDraggableWindow()
+	const phone = Browser.useIsSmallViewport()
 
 	const combinedRef = React.useCallback(
 		(node: HTMLDivElement | null) => {
@@ -545,7 +545,22 @@ export function DraggableWindowDragBar({ className, ref, ...props }: DraggableWi
 		[registerDragBar, ref],
 	)
 
-	return <div ref={combinedRef} className={cn('fd-win-h shrink-0', className)} {...props} />
+	return (
+		<div ref={combinedRef} className={cn('fd-win-h shrink-0', phone && 'h-(--nav-h) cursor-default pl-0', className)} {...props}>
+			{phone && (
+				<button
+					type="button"
+					data-window-control="close"
+					onClick={close}
+					className="fd-btn fd-btn-ghost fd-btn-ico"
+					aria-label={tr.text(UI_Msgs.closeWindow())}
+				>
+					<ChevronLeftIcon />
+				</button>
+			)}
+			{children}
+		</div>
+	)
 }
 
 interface DraggableWindowTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
@@ -562,6 +577,8 @@ interface DraggableWindowPinToggleProps extends React.ButtonHTMLAttributes<HTMLB
 
 export function DraggableWindowPinToggle({ className, ref, ...props }: DraggableWindowPinToggleProps) {
 	const { isPinned, setIsPinned } = useDraggableWindow()
+	const phone = Browser.useIsSmallViewport()
+	if (phone) return null
 
 	return (
 		<button
@@ -583,6 +600,7 @@ interface DraggableWindowCloseProps extends React.ButtonHTMLAttributes<HTMLButto
 
 export function DraggableWindowClose({ className, onClick, ref, ...props }: DraggableWindowCloseProps) {
 	const { close } = useDraggableWindow()
+	const phone = Browser.useIsSmallViewport()
 
 	const handleClick = React.useCallback(
 		(e: React.MouseEvent<HTMLButtonElement>) => {
@@ -592,6 +610,7 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 		[close, onClick],
 	)
 
+	if (phone) return null
 	// data-window-control is a stable hook for whoever needs to point at this control. Not data-tour: the component
 	// is shared, so that would tag every window at once, and a selector can scope to the one window it means.
 	return (

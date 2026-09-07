@@ -37,12 +37,12 @@ export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string })
 	return (
 		<button
 			type="button"
-			className="relative inline-flex items-center gap-1 overflow-hidden hover:text-foreground transition-colors cursor-pointer"
+			className="relative inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden hover:text-foreground transition-colors cursor-pointer"
 			title={tr.text(SM_Msgs.copyIdHint(kind))}
 			onClick={handleClick}
 		>
 			<span className={cn('font-mono text-muted-foreground', hidden)}>{SM_Msgs.idKindLabels[kind]}:</span>
-			<span className={cn('font-mono', hidden)}>{id}</span>
+			<span className={cn('min-w-0 truncate font-mono', hidden)}>{id}</span>
 			<Icons.Copy className={cn('h-3 w-3', hidden)} />
 			{copied && (
 				<span role="status" style={{ zIndex }} className="absolute inset-0 flex items-center justify-end font-mono whitespace-nowrap">
