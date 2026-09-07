@@ -8,6 +8,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
@@ -49,6 +50,7 @@ function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
 export const dropdownMenuSlots: MenuSlots = {
 	Item: DropdownMenuItem,
 	Separator: DropdownMenuSeparator,
+	Label: DropdownMenuLabel,
 	Sub: DropdownMenuSub,
 	SubTrigger: DropdownMenuSubTrigger,
 	SubContent: DropdownMenuSubContent,

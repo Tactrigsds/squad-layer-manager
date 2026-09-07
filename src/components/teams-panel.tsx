@@ -17,6 +17,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebounced } from '@/hooks/use-debounce'
+import * as Browser from '@/lib/browser'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map-utils'
@@ -32,9 +33,11 @@ import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import type * as TeamsPanelModels from '@/models/teams-panel.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -43,16 +46,18 @@ import * as SRQClient from '@/systems/switch-requests.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
+import * as WarnChat from '@/systems/warn-chat.client'
 
 import * as RC from './feed/render-context'
-import PlayerBulkContextMenuOptions from './player-bulk-context-menu-options'
-import PlayerContextMenuOptions from './player-context-menu-options'
+import PlayerBulkContextMenuOptions, { detectFullSquadSelection } from './player-bulk-context-menu-options'
+import PlayerContextMenuOptions, { PlayerMenuItems } from './player-context-menu-options'
 import { PlayerDisplay } from './player-display'
 import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { SquadDisplay } from './squad-display'
 import { StickyGroup } from './sticky-group.tsx'
 import type { SwitchRequestsWindowProps } from './switch-requests-window.helpers'
+import { useOpenTeamSwapsWindow } from './team-swaps-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
@@ -75,6 +80,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/contex
 import { OpenWindowInteraction } from './ui/draggable-window'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { MenuSheet, sheetMenuSlots } from './ui/menu-sheet'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Switch } from './ui/switch'
@@ -84,6 +90,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 void import('@/components/squad-details-window')
 void import('@/components/switch-requests-window')
 void import('@/components/teamswaps-help-window')
+void import('@/components/team-swaps-window')
 void import('@/components/timeouts-window')
 
 // filtering both rosters is the expensive part of a keystroke and does not need to keep up with typing
@@ -93,6 +100,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const searchRef = React.useRef<HTMLInputElement>(null)
 	const isDesktop = useIsDesktopSize()
+	const phone = Browser.useIsSmallViewport()
+	const [sheetOpen, setSheetOpen] = React.useState(false)
 	const squadServer = props.stores.squadServer!
 	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: squadServer }
 	const currentMatch = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
@@ -120,16 +129,17 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	return (
 		<div className={cn('flex w-full flex-col', props.className)}>
 			<div ref={headerRef} className="flex w-full flex-col gap-1.5 bg-panel px-2 pt-1.5 pb-1.5">
-				<div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-base">
-					<div>
+				<div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 text-base">
+					<div className="min-w-0 truncate">
 						<TeamTitle teamId={leftTeam} stores={props.stores} />
 					</div>
 					<TeamPlayerCounts leftTeam={leftTeam} rightTeam={rightTeam} stores={props.stores} />
-					<div className="flex justify-end">
+					<div className="flex min-w-0 justify-end truncate">
 						<TeamTitle teamId={rightTeam} stores={props.stores} />
 					</div>
 				</div>
-				{showSwapsPanel && (
+				{showSwapsPanel && phone && <PhoneSwapsSummary leftTeam={leftTeam} rightTeam={rightTeam} stores={props.stores} />}
+				{showSwapsPanel && !phone && (
 					<SwapsPanel
 						className="rounded-[3px] border border-line bg-white/3 px-2 py-1.5 text-xs"
 						leftTeam={leftTeam}
@@ -137,81 +147,97 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						stores={props.stores}
 					/>
 				)}
-				<div className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1.5 whitespace-nowrap">
-					<Input
-						ref={searchRef}
-						containerClassName="w-[160px]"
-						placeholder={tr.text(SM_Msgs.searchPlayers())}
-						defaultValue={initialSearchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
-						// additive, like every other selection action -- merge matches into the current selection. Reads the
-						// live input rather than the store, which the debounce may not have caught up to yet.
-						onKeyDown={(e) => {
-							if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
-						}}
+				{phone ? (
+					<PhoneTeamsToolbar
+						stores={props.stores}
+						searchRef={searchRef}
+						initialSearchQuery={initialSearchQuery}
+						onSearchChange={setSearchQuery}
+						leftTeam={leftTeam}
+						rightTeam={rightTeam}
+						onOpenSheet={() => setSheetOpen(true)}
 					/>
-					<div className="flex flex-1 items-center gap-2.5 justify-center">
-						<div className="flex items-center gap-1.5">
-							<Switch
-								id={showSelectedId}
-								checked={showSelected}
-								disabled={selectedCount === 0}
-								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
-							/>
-							<Label htmlFor={showSelectedId} className="fd-lbl-plain">
-								{tr.text(SM_Msgs.showSelected())}
-							</Label>
-							<span className="min-w-[3ch] font-mono text-xs text-text-3 data-[hide=true]:invisible" data-hide={selectedCount === 0}>
-								({selectedCount})
-							</span>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								title={tr.text(SM_Msgs.resetPanel())}
-								onClick={() => {
-									SquadServerFrame.Actions.resetTeamsPanel(props.stores)
-									if (searchRef.current) searchRef.current.value = ''
-								}}
-							>
-								<Icons.Trash />
-							</Button>
-						</div>
-						<div className="flex items-center gap-1.5">
-							<Switch
-								id={adminsOnlyId}
-								checked={adminsOnly}
-								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)}
-							/>
-							<Label htmlFor={adminsOnlyId} className="fd-lbl-plain">
-								{tr.text(SM_Msgs.adminsOnly())}
-							</Label>
-						</div>
-						<div className="flex items-center gap-1.5">
-							<Switch
-								id={showSpoilersId}
-								checked={showSpoilers}
-								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)}
-							/>
-							<Label htmlFor={showSpoilersId} className="fd-lbl-plain" title={tr.text(SM_Msgs.showSpoilersHint())}>
-								{tr.text(SM_Msgs.showSpoilers())}
-							</Label>
-						</div>
-						{!showSpoilers && roleFilter !== null && (
-							<Badge variant="secondary" className="gap-1" title={tr.text(SM_Msgs.hiddenRoleFilter())}>
-								{tr.text(SM_Msgs.roleFilterLabel())} {roleFilter}
-								<button
-									type="button"
-									className="hover:text-destructive"
-									title={tr.text(SM_Msgs.clearRoleFilter())}
-									onClick={() => TeamsPanelPrt.Actions.setRoleFilter(panelStores, null)}
+				) : (
+					<div className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1.5 whitespace-nowrap">
+						<Input
+							ref={searchRef}
+							containerClassName="w-[160px] max-phone:w-full"
+							placeholder={tr.text(SM_Msgs.searchPlayers())}
+							defaultValue={initialSearchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							// additive, like every other selection action -- merge matches into the current selection. Reads the
+							// live input rather than the store, which the debounce may not have caught up to yet.
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
+							}}
+						/>
+						<CollapseSquadsButton sortingTarget={isDesktop ? 'teams' : 'combined'} stores={props.stores} />
+						<div className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1.5 justify-center max-phone:justify-start">
+							<div className="flex items-center gap-1.5">
+								<Switch
+									id={showSelectedId}
+									checked={showSelected}
+									disabled={selectedCount === 0}
+									onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
+								/>
+								<Label htmlFor={showSelectedId} className="fd-lbl-plain">
+									{tr.text(SM_Msgs.showSelected())}
+								</Label>
+								<span
+									className="min-w-[3ch] font-mono text-xs text-text-3 data-[hide=true]:invisible"
+									data-hide={selectedCount === 0}
 								>
-									<Icons.X className="size-2.5" />
-								</button>
-							</Badge>
-						)}
+									({selectedCount})
+								</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									title={tr.text(SM_Msgs.resetPanel())}
+									onClick={() => {
+										SquadServerFrame.Actions.resetTeamsPanel(props.stores)
+										if (searchRef.current) searchRef.current.value = ''
+									}}
+								>
+									<Icons.Trash />
+								</Button>
+							</div>
+							<div className="flex items-center gap-1.5">
+								<Switch
+									id={adminsOnlyId}
+									checked={adminsOnly}
+									onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)}
+								/>
+								<Label htmlFor={adminsOnlyId} className="fd-lbl-plain">
+									{tr.text(SM_Msgs.adminsOnly())}
+								</Label>
+							</div>
+							<div className="flex items-center gap-1.5">
+								<Switch
+									id={showSpoilersId}
+									checked={showSpoilers}
+									onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)}
+								/>
+								<Label htmlFor={showSpoilersId} className="fd-lbl-plain" title={tr.text(SM_Msgs.showSpoilersHint())}>
+									{tr.text(SM_Msgs.showSpoilers())}
+								</Label>
+							</div>
+							{!showSpoilers && roleFilter !== null && (
+								<Badge variant="secondary" className="gap-1" title={tr.text(SM_Msgs.hiddenRoleFilter())}>
+									{tr.text(SM_Msgs.roleFilterLabel())} {roleFilter}
+									<button
+										type="button"
+										className="hover:text-destructive"
+										title={tr.text(SM_Msgs.clearRoleFilter())}
+										onClick={() => TeamsPanelPrt.Actions.setRoleFilter(panelStores, null)}
+									>
+										<Icons.X className="size-2.5" />
+									</button>
+								</Badge>
+							)}
+						</div>
+						<ControlPanel stores={props.stores} />
 					</div>
-					<ControlPanel stores={props.stores} />
-				</div>
+				)}
 			</div>
 			<StickyGroup stickyRef={headerRef}>
 				{isDesktop ? (
@@ -225,19 +251,417 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					<CombinedPlayerTable stores={props.stores} />
 				)}
 			</StickyGroup>
+			{phone && (
+				<>
+					<PhoneSortSheet
+						open={sheetOpen}
+						onOpenChange={setSheetOpen}
+						leftTeam={leftTeam}
+						rightTeam={rightTeam}
+						stores={props.stores}
+					/>
+					<PhoneSelectionBar stores={props.stores} />
+				</>
+			)}
 		</div>
+	)
+}
+
+// The phone toolbar: search, one button that cycles both teams, one side, the other side, and the sheet behind
+// the sliders button with everything the desktop row spreads across the header.
+function PhoneTeamsToolbar(props: {
+	stores: SquadServerFrame.KeyProp
+	searchRef: React.RefObject<HTMLInputElement | null>
+	initialSearchQuery: string
+	onSearchChange: (query: string) => void
+	leftTeam: MH.NormedTeamId
+	rightTeam: MH.NormedTeamId
+	onOpenSheet: () => void
+}) {
+	const squadServer = props.stores.squadServer!
+	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: squadServer }
+	const phoneTeam = Zus.useStore(squadServer, TeamsPanelPrt.Sel.phoneTeam)
+	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
+	const { showSelected, adminsOnly, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
+	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
+	const active = [showSelected, adminsOnly, roleFilter !== null, filters.group !== null, filters.squad !== null].filter(Boolean).length
+	const order: [MH.NormedTeamId, MH.NormedTeamId] = [props.leftTeam, props.rightTeam]
+	const step = phoneTeam === 'both' ? 0 : phoneTeam === order[0] ? 1 : 2
+	// the input only exists while the search is open; closing it drops the query with it
+	const [searchOpen, setSearchOpen] = React.useState(props.initialSearchQuery !== '')
+	const toggleSearch = () => {
+		if (searchOpen) TeamsPanelPrt.Actions.setSearchQuery(panelStores, '')
+		setSearchOpen(!searchOpen)
+	}
+	return (
+		<div className="flex flex-col gap-2">
+			<div className="flex items-center gap-2">
+				<Button
+					size="icon"
+					variant={searchOpen ? 'primary' : 'default'}
+					aria-pressed={searchOpen}
+					className="shrink-0"
+					onClick={toggleSearch}
+					title={tr.text(SM_Msgs.searchLabel())}
+				>
+					<Icons.Search />
+				</Button>
+				<Button
+					className="min-w-0 flex-1 justify-start gap-1.5 px-2.5 font-bold"
+					onClick={() => TeamsPanelPrt.Actions.cyclePhoneTeam(panelStores, order)}
+					title={tr.text(SM_Msgs.bothTeams())}
+				>
+					{phoneTeam === 'both' ? (
+						<>
+							<Icons.Users />
+							{tr.text(SM_Msgs.bothTeams())}
+						</>
+					) : match ? (
+						<MatchTeamDisplay matchId={match.historyEntryId} teamId={phoneTeam} showAltTeamIndicator stores={props.stores} />
+					) : (
+						phoneTeam
+					)}
+					<span className="ml-auto flex gap-[3px]">
+						{[0, 1, 2].map((i) => (
+							<span key={i} className={cn('block size-[5px] rounded-full', i === step ? 'bg-pri-hi' : 'bg-line-soft')} />
+						))}
+					</span>
+				</Button>
+				<CollapseSquadsButton sortingTarget="combined" stores={props.stores} />
+				<Button size="icon" className="relative shrink-0" onClick={props.onOpenSheet} title={tr.text(SM_Msgs.sortAndShow())}>
+					<Icons.SlidersHorizontal />
+					{active > 0 && (
+						<span className="absolute right-1 top-1 grid h-3.5 min-w-3.5 place-items-center rounded-sm bg-pri px-[3px] font-mono text-[10px] text-pri-text">
+							{active}
+						</span>
+					)}
+				</Button>
+			</div>
+			{searchOpen && (
+				<Input
+					ref={props.searchRef}
+					autoFocus
+					containerClassName="w-full"
+					placeholder={tr.text(SM_Msgs.searchPlayers())}
+					defaultValue={props.initialSearchQuery}
+					onChange={(e) => props.onSearchChange(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
+					}}
+				/>
+			)}
+		</div>
+	)
+}
+
+// Folds every squad's players away or brings them all back. Only meaningful while the sort keeps a squad's rows
+// together, which is what the squad header rows are gated on too.
+function CollapseSquadsButton(props: { sortingTarget: TeamsPanelPrt.SortingTarget; stores: SquadServerFrame.KeyProp }) {
+	const squadServer = props.stores.squadServer!
+	const enabled = Zus.useStore(squadServer, TeamsPanelPrt.Sel.squadGroupsEnabled(props.sortingTarget))
+	const collapsed = Zus.useStore(squadServer, TeamsPanelPrt.Sel.squadsCollapsed)
+	const label = collapsed ? tr.text(SM_Msgs.expandSquads()) : tr.text(SM_Msgs.collapseSquads())
+	return (
+		<Button
+			size="icon"
+			className="shrink-0"
+			disabled={!enabled}
+			aria-pressed={collapsed}
+			title={enabled ? label : tr.text(SM_Msgs.collapseNeedsSquadSort())}
+			onClick={() => TeamsPanelPrt.Actions.setSquadsCollapsed({ teamsPanel: squadServer }, !collapsed)}
+		>
+			{collapsed ? <Icons.ChevronsUpDown /> : <Icons.ChevronsDownUp />}
+		</Button>
+	)
+}
+
+type PhoneSort = { id: string; desc: boolean }
+const PHONE_SORTS: { key: string; sort: PhoneSort; label: () => string; spoiler?: boolean }[] = [
+	{ key: 'squad', sort: { id: 'squad', desc: false }, label: () => tr.text(SM_Msgs.sortSquad()) },
+	{ key: 'name', sort: { id: 'name', desc: false }, label: () => tr.text(SM_Msgs.sortName()) },
+	{ key: 'tks', sort: { id: 'tks', desc: true }, label: () => tr.text(SM_Msgs.sortTeamKills()) },
+	{ key: 'stats', sort: { id: 'stats', desc: true }, label: () => tr.text(SM_Msgs.sortKills()), spoiler: true },
+]
+
+function PhoneSortSheet(props: {
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	leftTeam: MH.NormedTeamId
+	rightTeam: MH.NormedTeamId
+	stores: SquadServerFrame.KeyProp
+}) {
+	const squadServer = props.stores.squadServer!
+	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: squadServer }
+	const currentMatch$ = MatchHistoryClient.currentMatch$(squadServer.serverId)
+	const sorting = Zus.useStore(squadServer, TeamsPanelPrt.Sel.sorting('combined'))
+	const { showSelected, adminsOnly, showSpoilers } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
+	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
+	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const { roles, groups } = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelPrt.Sel.filterOptions,
+	)
+	const squadsWithTeam = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		ClientOnlySettings.Store,
+		TeamsPanelPrt.Sel.squadsWithTeam,
+	)
+	// the combined default sorts by faction then squad; anything else in first place is a sort the user picked
+	const activeKey = sorting.find((s) => s.id !== 'faction')?.id ?? 'squad'
+	const pick = (sort: PhoneSort) =>
+		TeamsPanelPrt.Actions.setSorting(panelStores, 'combined', sort.id === 'squad' ? TeamsPanelPrt.DEFAULT_COMBINED_SORTING : [sort])
+	const row = 'flex min-h-(--mi-h) items-center gap-3 px-3 text-base'
+	return (
+		<MenuSheet
+			open={props.open}
+			onOpenChange={props.onOpenChange}
+			title={tr.text(SM_Msgs.sortAndShow())}
+			trailing={
+				<Button variant="ghost" size="sm" onClick={() => SquadServerFrame.Actions.resetTeamsPanel(props.stores)}>
+					{tr.text(SM_Msgs.resetPanel())}
+				</Button>
+			}
+		>
+			<div className="fd-mlabel">{tr.text(SM_Msgs.sortBy())}</div>
+			{PHONE_SORTS.filter((o) => !o.spoiler || showSpoilers).map((o) => (
+				<button key={o.key} type="button" className={cn(row, 'w-full text-left')} onClick={() => pick(o.sort)}>
+					<span className="fd-rad" data-state={activeKey === o.key ? 'checked' : undefined} />
+					{o.label()}
+					<span className="ml-auto font-mono text-xs text-text-3">{o.sort.desc ? '↓' : '↑'}</span>
+				</button>
+			))}
+			<div className="fd-msep" />
+			<div className="fd-mlabel">{tr.text(SM_Msgs.showLabel())}</div>
+			<label className={row}>
+				<Switch
+					checked={showSelected}
+					disabled={selectedCount === 0}
+					onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
+				/>
+				{tr.text(SM_Msgs.selectedOnly())}
+				<span className="ml-auto font-mono text-xs text-text-3">{selectedCount}</span>
+			</label>
+			<label className={row}>
+				<Switch checked={adminsOnly} onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)} />
+				{tr.text(SM_Msgs.adminsOnly())}
+			</label>
+			<label className={row} title={tr.text(SM_Msgs.showSpoilersHint())}>
+				<Switch checked={showSpoilers} onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)} />
+				{tr.text(SM_Msgs.showSpoilers())}
+				<span className="ml-auto font-mono text-xs text-text-3">{tr.text(SM_Msgs.spoilersOnHint())}</span>
+			</label>
+			<div className="fd-msep" />
+			<div className="fd-mlabel">{tr.text(SM_Msgs.filterLabel())}</div>
+			<div className="grid grid-cols-2 gap-2 px-3 pb-2 [&_.fd-sel]:h-(--ctl) [&_.fd-sel]:w-full [&_.fd-sel]:bg-ctl [&_.fd-sel]:px-2.5 [&_.fd-sel]:text-sm">
+				<ColumnFilterSelect
+					value={filters.group}
+					onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStores, v)}
+					options={[...groups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: PG.UNGROUPED_LABEL }]}
+				/>
+				<ColumnFilterSelect
+					value={filters.role}
+					onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStores, v)}
+					options={roles.map((r) => ({ value: r, label: r }))}
+				/>
+				<ColumnFilterSelect
+					value={filters.squad}
+					onChange={(v) => TeamsPanelPrt.Actions.setSquadFilter(panelStores, 'combined', v)}
+					options={[
+						...squadsWithTeam.map(({ squad, normedTeam }) => ({
+							value: `${normedTeam}:${squad.squadId}`,
+							label: `${normedTeam} · ${squad.squadId} ${squad.squadName}`,
+						})),
+						{ value: FILTER_NONE, label: tr.text(SM_Msgs.unassignedSquad()) },
+					]}
+				/>
+				<GroupingSelect />
+			</div>
+			<div className="fd-msep" />
+			<div className="grid grid-cols-2 gap-2 px-3 pb-2">
+				<OpenWindowInteraction
+					windowId={WINDOW_ID.enum['switch-requests']}
+					windowProps={{ serverId: squadServer.serverId } satisfies SwitchRequestsWindowProps}
+					preload="intent"
+					render={({ ref, ...rest }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+						<Button ref={ref} variant="ghost" {...rest}>
+							<Icons.ArrowLeftRight />
+							{tr.text(SRQ_Msgs.switchRequestsTab())}
+						</Button>
+					)}
+				/>
+				<OpenWindowInteraction
+					windowId={WINDOW_ID.enum['timeouts']}
+					windowProps={{} satisfies TimeoutsWindowProps}
+					preload="intent"
+					render={({ ref, ...rest }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+						<Button ref={ref} variant="ghost" {...rest}>
+							<Icons.UserX />
+							{tr.text(SM_Msgs.timeoutsTab())}
+						</Button>
+					)}
+				/>
+			</div>
+		</MenuSheet>
+	)
+}
+
+// the admin-list grouping picker, as the header's ControlPanel renders it
+function GroupingSelect() {
+	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const playerGroupings = config?.playerGroupings
+	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
+	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	if (groupingIds.length === 0) return null
+	return (
+		<Select value={activeGroupingId ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedGroupingId(value || null)}>
+			<SelectTrigger className="fd-btn w-auto bg-ctl font-normal">
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{groupingIds.map((id) => (
+					<SelectItem key={id} value={id}>
+						{id}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	)
+}
+
+// From the first selected player: the count, the two actions an admin reaches for most, the way into the rest,
+// and clear. Sits above the tab bar so the list scrolls under it.
+function PhoneSelectionBar({ stores }: { stores: SquadServerFrame.KeyProp }) {
+	const squadServer = stores.squadServer!
+	const selectedIds = Zus.useStore(
+		squadServer,
+		Zus.useShallow((s: SquadServerFrame.State) => {
+			const sel = SquadServerFrame.Sel.playerSelection(s)
+			return Object.keys(sel).filter((id) => sel[id])
+		}),
+	)
+	const fullSquad = Zus.useStore(squadServer, (s: ChatPrt.Store) =>
+		detectFullSquadSelection(selectedIds, ChatPrt.Sel.players(s), ChatPrt.Sel.squads(s)),
+	)
+	const canQueue = Zus.useStore(squadServer, TSWClient.Sel.someCanQueue(selectedIds))
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: squadServer.serverId }))
+	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const openOrFocusWindow = useOpenOrFocusWindow()
+	const [menuOpen, setMenuOpen] = React.useState(false)
+	if (selectedIds.length === 0) return null
+	const single = selectedIds.length === 1 ? selectedIds[0] : null
+	const label = fullSquad ? `${fullSquad.squadName} · ${selectedIds.length}` : tr.text(SM_Msgs.selectedCount(selectedIds.length))
+	const warn = () => {
+		if (single) {
+			openOrFocusWindow(WINDOW_ID.enum['player-details'], { playerId: single, stores })
+			WarnChat.requestWarnFocus({ kind: 'player', playerId: single })
+		} else if (fullSquad) {
+			openOrFocusWindow(WINDOW_ID.enum['squad-details'], { uniqueSquadId: fullSquad.uniqueId, stores })
+			WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: fullSquad.uniqueId })
+		} else {
+			WarnChat.requestWarnFocus({ kind: 'server-activity' })
+		}
+	}
+	return (
+		<>
+			<div
+				className="fixed inset-x-2 flex items-center gap-1.5 rounded-[3px] border border-line-soft bg-panel-hi py-1.5 pl-3 pr-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+				style={{ zIndex, bottom: 'calc(var(--tabbar-h) + 8px)' }}
+			>
+				<span className="min-w-0 flex-1 truncate font-bold">{label}</span>
+				<Button size="sm" disabled={!!manageDenied || !canQueue} onClick={() => TSWClient.Actions.swapNext(stores, selectedIds)}>
+					<Icons.ArrowLeftRight />
+					{tr.text(SM_Msgs.swapNextLabel())}
+				</Button>
+				<Button size="icon-sm" title={tr.text(SM_Msgs.warnLabel())} onClick={warn}>
+					<Icons.TriangleAlert />
+				</Button>
+				<Button size="icon-sm" variant="ghost" title={tr.text(SM_Msgs.moreActions())} onClick={() => setMenuOpen(true)}>
+					<Icons.EllipsisVertical />
+				</Button>
+				<Button
+					size="icon-sm"
+					variant="ghost"
+					title={tr.text(SM_Msgs.clearSelection())}
+					onClick={() => SquadServerFrame.Actions.setSelection(stores, {})}
+				>
+					<Icons.X />
+				</Button>
+			</div>
+			<MenuSheet open={menuOpen} onOpenChange={setMenuOpen} title={label}>
+				{single ? (
+					<PlayerMenuItems playerId={single} slots={sheetMenuSlots} stores={stores} />
+				) : (
+					<PlayerBulkContextMenuOptions playerIds={selectedIds} stores={stores} slots={sheetMenuSlots} />
+				)}
+			</MenuSheet>
+		</>
+	)
+}
+
+// What the phone list says about pending swaps: the counts, and the way into the window that edits them.
+function PhoneSwapsSummary(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
+	const squadServer = props.stores.squadServer!
+	const info = Zus.useStore(
+		squadServer,
+		Zus.useShallow((s: TSWClient.Store & ChatPrt.Store) => {
+			const count = (team: MH.NormedTeamId) => {
+				const swaps = TSWClient.Sel.swapsToTeamEnrichedWithMutations(s, team)
+				let pending = 0
+				let unsaved = 0
+				for (const swap_ of swaps.values()) {
+					if (!swap_.mutation.removed) pending++
+					if (swap_.mutation.added || swap_.mutation.removed) unsaved++
+				}
+				return { pending, unsaved }
+			}
+			const a = count('A')
+			const b = count('B')
+			return { A: a.pending, B: b.pending, unsaved: a.unsaved + b.unsaved }
+		}),
+	)
+	const open = useOpenTeamSwapsWindow({ stores: props.stores })
+	return (
+		<button
+			type="button"
+			onClick={(e) => open(e.currentTarget)}
+			className="flex min-h-(--ctl) w-full items-center gap-2.5 rounded-[3px] border border-[rgba(230,180,34,0.35)] bg-[rgba(230,180,34,0.10)] pl-3 pr-1.5 text-left"
+		>
+			<Icons.ArrowLeftRight className="size-4 shrink-0 text-warn" />
+			<span className="flex min-w-0 flex-1 flex-col leading-tight">
+				<span className="truncate font-bold">{tr.text(SM_Msgs.swapsPending(info.A + info.B))}</span>
+				<span className="truncate text-xs text-text-2">
+					→ <MatchTeamDisplay teamId={props.leftTeam} stores={props.stores} /> {info[props.leftTeam]} · →{' '}
+					<MatchTeamDisplay teamId={props.rightTeam} stores={props.stores} /> {info[props.rightTeam]}
+					{info.unsaved > 0 && <> · {tr.text(SM_Msgs.swapsUnsaved(info.unsaved))}</>}
+				</span>
+			</span>
+			<span className="fd-btn fd-btn-sm shrink-0">
+				{tr.text(SM_Msgs.editSwaps())}
+				<Icons.ChevronRight />
+			</span>
+		</button>
 	)
 }
 
 function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+	const phone = Browser.useIsSmallViewport()
 	return (
-		<div>
+		<div className="min-w-0 truncate">
 			<MatchTeamDisplay
 				teamId={props.teamId}
 				matchId={match?.historyEntryId}
 				showAltTeamIndicator={true}
 				leadWithTeamName={true}
+				hideCurrentWord={phone}
 				stores={props.stores}
 			/>
 		</div>
@@ -277,7 +701,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	).size
 
 	return (
-		<div className="flex justify-end items-center gap-1 whitespace-nowrap">
+		<div className="flex flex-wrap justify-end items-center gap-1 whitespace-nowrap max-phone:w-full max-phone:justify-start">
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['switch-requests']}
 				windowProps={{ serverId: stores.squadServer!.serverId } satisfies SwitchRequestsWindowProps}
@@ -347,7 +771,7 @@ function SelectOrSpinner({
 }) {
 	const isPending = Zus.useStore(stores.squadServer!, TSWClient.Sel.isSwapPending(playerId))
 	return (
-		<div className="h-4 w-4 flex items-center justify-center shrink-0">
+		<div className="flex size-(--cbx) shrink-0 items-center justify-center">
 			{isPending ? (
 				<Icons.LoaderCircle className="h-3 w-3 animate-spin text-muted-foreground" />
 			) : (
@@ -390,7 +814,7 @@ function shiftClickCellProps(
 	columnId: string,
 	player: TeamsPanelModels.EnrichedPlayer,
 	stores: SquadServerFrame.KeyProp,
-): Pick<React.TdHTMLAttributes<HTMLTableCellElement>, 'onClickCapture' | 'title'> {
+): Pick<React.HTMLAttributes<HTMLElement>, 'onClickCapture' | 'title'> {
 	if (columnId === 'squad' && player.squadId !== null) {
 		return {
 			title: 'Shift+click: select all members of this squad',
@@ -483,7 +907,7 @@ const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
 function headerResetProps(
 	column: { id: string; getCanSort: () => boolean; clearSorting: () => void },
 	meta: BasePlayerTableMeta,
-): Pick<React.ThHTMLAttributes<HTMLTableCellElement>, 'title' | 'onMouseDown' | 'onAuxClick'> {
+): Pick<React.HTMLAttributes<HTMLElement>, 'title' | 'onMouseDown' | 'onAuxClick'> {
 	const hasFilter = FILTERED_COLUMN_IDS.includes(column.id)
 	if (!column.getCanSort() && !hasFilter) return {}
 	return {
@@ -524,7 +948,7 @@ function ColumnFilterSelect({
 			<SelectTrigger
 				onClick={(e) => e.stopPropagation()}
 				className={cn(
-					'h-4 w-auto gap-0.5 bg-transparent px-0 py-0 text-2xs font-normal normal-case tracking-normal shadow-none [&>svg]:size-2.5',
+					'h-4 max-phone:h-(--ctl-sm) max-phone:px-1.5 w-auto gap-0.5 bg-transparent px-0 py-0 text-2xs font-normal normal-case tracking-normal shadow-none [&>svg]:size-2.5',
 					triggerClassName,
 					value ? 'text-pri-hi font-semibold' : 'text-text-3',
 				)}
@@ -1106,7 +1530,13 @@ function useGroupColorByName(): Map<string, string> {
 // Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
 // id/name, member count and creator, wraps the squad context menu, and its checkbox selects/deselects
 // every (visible) member of the squad. The "Unassigned" group (null squad) has no context menu.
-function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[]; colSpan: number; stores: SquadServerFrame.KeyProp }) {
+function SquadGroupHeaderRow(props: {
+	info: SquadGroupInfo
+	playerIds: string[]
+	colSpan: number
+	collapsed: boolean
+	stores: SquadServerFrame.KeyProp
+}) {
 	const selectedCount = Zus.useStore(
 		props.stores.squadServer!,
 		(s: SquadServerFrame.State) => props.playerIds.filter((id) => SquadServerFrame.Sel.playerSelection(s)[id]).length,
@@ -1123,12 +1553,15 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 			return next
 		})
 	}
-	// clicking anywhere on the header row toggles the whole squad's selection, except on the squad name, which
-	// opens its window, and the checkbox, which stops propagation to keep its own behavior
-	const toggleAll = (e: React.MouseEvent) => {
+	// clicking anywhere on the header row folds the squad's players, except on the squad name, which opens its
+	// window, and the checkbox, which stops propagation to keep its own behavior
+	const toggleCollapsed = (e: React.MouseEvent) => {
 		if (RC.opensWindow(e.target)) return
-		toggle(!allSelected)
+		TeamsPanelPrt.Actions.toggleSquadCollapsed({ teamsPanel: props.stores.squadServer! }, props.info.key)
 	}
+	const chevron = (
+		<Icons.ChevronDown className={cn('ml-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90')} />
+	)
 	const { squad, creatorName, faction, totalSize } = props.info
 	const shownCount = props.playerIds.length
 	const checkbox = (
@@ -1153,7 +1586,11 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 	)
 	// combined table: keep the faction in its own cell so it lines up under the faction column
 	const row = faction ? (
-		<TableRow className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8" onClick={toggleAll}>
+		<TableRow
+			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
+			data-collapsed={props.collapsed || undefined}
+			onClick={toggleCollapsed}
+		>
 			<TableCell>{checkbox}</TableCell>
 			<TableCell>
 				<span className="text-xs font-semibold" style={{ color: faction.color }}>
@@ -1161,15 +1598,23 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 				</span>
 			</TableCell>
 			<TableCell colSpan={props.colSpan - 2}>
-				<div className="flex items-center gap-2 text-xs">{labelContent}</div>
+				<div className="flex items-center gap-2 text-xs">
+					{labelContent}
+					{chevron}
+				</div>
 			</TableCell>
 		</TableRow>
 	) : (
-		<TableRow className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8" onClick={toggleAll}>
+		<TableRow
+			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
+			data-collapsed={props.collapsed || undefined}
+			onClick={toggleCollapsed}
+		>
 			<TableCell colSpan={props.colSpan}>
 				<div className="flex items-center gap-2 text-xs">
 					{checkbox}
 					{labelContent}
+					{chevron}
 				</div>
 			</TableCell>
 		</TableRow>
@@ -1206,6 +1651,9 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const sorting = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.sorting(props.sortingTarget))
 	const showSpoilers = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.showSpoilers)
 	const squadGroupsEnabled = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadGroupsEnabled(props.sortingTarget))
+	const squadCollapse = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadCollapse)
+	const phone = Browser.useIsSmallViewport()
+	const [menuFor, setMenuFor] = React.useState<SM.PlayerId | null>(null)
 	const stores = props.stores
 	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
 		(updater) => SquadServerFrame.Actions.setSelection(stores, updater),
@@ -1253,58 +1701,125 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	React.useEffect(() => () => SquadServerFrame.Actions.clearVisiblePlayers(stores, visibleKey), [stores, visibleKey])
 	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
 
-	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
-		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
+	const renderPhoneCells = (row: Row<T>) => {
+		const cells = row.getVisibleCells()
+		const cell = (id: string) => {
+			const c = cells.find((c) => c.column.id === id)
+			if (!c) return null
+			return (
+				<span key={c.id} className="contents" {...shiftClickCellProps(id, row.original, props.stores)}>
+					{flexRender(c.column.columnDef.cell, c.getContext())}
+				</span>
+			)
+		}
+		// the squad header row already names the faction while the sort keeps squads together
+		const flat = !(props.getSquadGroup && squadGroupsEnabled)
+		const spoilers = cells.some((c) => c.column.id === 'role' || c.column.id === 'stats')
 		return (
-			<ContextMenu key={row.id}>
-				<ContextMenuTrigger asChild>
-					<TableRow
-						className={cn(
-							'cursor-pointer select-none',
-							savedSwaps.has(row.id)
-								? '[&>td]:bg-[rgba(230,180,34,0.16)]! data-[state=selected]:[&>td]:bg-[rgba(230,180,34,0.32)]!'
-								: undefined,
+			<TableCell colSpan={cells.length} className="h-auto! px-2.5! pr-1! py-1.5 whitespace-normal">
+				<div className="flex items-center gap-1">
+					<div className="flex min-w-0 flex-1 flex-col gap-1">
+						<div className="flex items-center gap-2 min-w-0">
+							{cell('select')}
+							{flat && cell('faction')}
+							<span className="min-w-0 truncate">{cell('name')}</span>
+							{cell('group')}
+							<span className="flex-1" />
+							{cell('squad')}
+							{cell('tks')}
+						</div>
+						{spoilers && (
+							<div className="flex items-center gap-2 min-w-0 pl-7 text-xs text-text-2">
+								<span className="min-w-0 truncate">{cell('role')}</span>
+								<span className="flex-1" />
+								{cell('stats')}
+							</div>
 						)}
-						data-state={row.getIsSelected() ? 'selected' : undefined}
+					</div>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						className="shrink-0"
+						title={tr.text(SM_Msgs.moreActions())}
+						onMouseDown={(e) => e.stopPropagation()}
 						onClick={(e) => {
-							if (RC.opensWindow(e.target)) return
-							row.toggleSelected()
-						}}
-						onMouseDown={(e) => {
-							if (e.button !== 0) return
-							mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
-						}}
-						onMouseUp={() => {
-							mouseDownRef.current = null
-						}}
-						onMouseEnter={() => {
-							const md = mouseDownRef.current
-							if (!md) return
-							const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
-							setRowSelection((current) => {
-								const next = { ...current }
-								for (let i = lo; i <= hi; i++) {
-									const p = rows[i]?.original
-									if (!p) continue
-									const pid = SM.PlayerIds.getPlayerId(p.ids)
-									if (md.originalSelected) {
-										next[pid] = true
-									} else {
-										delete next[pid]
-									}
-								}
-								return next
-							})
-							mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
+							e.stopPropagation()
+							setMenuFor(row.id)
 						}}
 					>
-						{row.getVisibleCells().map((cell) => (
+						<Icons.EllipsisVertical />
+					</Button>
+				</div>
+			</TableCell>
+		)
+	}
+
+	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
+		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
+		const rowEl = (
+			<TableRow
+				key={row.id}
+				className={cn(
+					'cursor-pointer select-none',
+					savedSwaps.has(row.id)
+						? '[&>td]:bg-[rgba(230,180,34,0.16)]! data-[state=selected]:[&>td]:bg-[rgba(230,180,34,0.32)]!'
+						: undefined,
+				)}
+				data-state={row.getIsSelected() ? 'selected' : undefined}
+				// a long press on a phone: the menu opens as a sheet rather than at the finger
+				onContextMenu={
+					phone
+						? (e) => {
+								e.preventDefault()
+								setMenuFor(row.id)
+							}
+						: undefined
+				}
+				onClick={(e) => {
+					if (RC.opensWindow(e.target)) return
+					row.toggleSelected()
+				}}
+				onMouseDown={(e) => {
+					if (e.button !== 0) return
+					mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
+				}}
+				onMouseUp={() => {
+					mouseDownRef.current = null
+				}}
+				onMouseEnter={() => {
+					const md = mouseDownRef.current
+					if (!md) return
+					const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
+					setRowSelection((current) => {
+						const next = { ...current }
+						for (let i = lo; i <= hi; i++) {
+							const p = rows[i]?.original
+							if (!p) continue
+							const pid = SM.PlayerIds.getPlayerId(p.ids)
+							if (md.originalSelected) {
+								next[pid] = true
+							} else {
+								delete next[pid]
+							}
+						}
+						return next
+					})
+					mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
+				}}
+			>
+				{phone
+					? renderPhoneCells(row)
+					: row.getVisibleCells().map((cell) => (
 							<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
 								{flexRender(cell.column.columnDef.cell, cell.getContext())}
 							</TableCell>
 						))}
-					</TableRow>
-				</ContextMenuTrigger>
+			</TableRow>
+		)
+		if (phone) return rowEl
+		return (
+			<ContextMenu key={row.id}>
+				<ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
 				<ContextMenuContent>
 					{isBulk ? (
 						<PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
@@ -1333,16 +1848,18 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 			}
 			let j = i
 			while (j < rows.length && props.getSquadGroup!(rows[j].original)?.key === info.key) j++
+			const collapsed = TeamsPanelPrt.Sel.isSquadCollapsed(squadCollapse, info.key)
 			bodyRows.push(
 				<SquadGroupHeaderRow
 					key={`squad-header-${info.key}`}
 					info={info}
 					playerIds={rows.slice(i, j).map((r) => r.id)}
 					colSpan={colSpan}
+					collapsed={collapsed}
 					stores={props.stores}
 				/>,
 			)
-			for (let k = i; k < j; k++) bodyRows.push(renderPlayerRow(rows[k], k))
+			if (!collapsed) for (let k = i; k < j; k++) bodyRows.push(renderPlayerRow(rows[k], k))
 			i = j
 		}
 	} else {
@@ -1354,40 +1871,61 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 			<Table
 				aria-label={props.label}
 				className={cn(
-					'[&_th]:px-1.5 [&_td]:px-1.5 [&_th]:h-[calc(var(--row)-4px)] [&_td]:h-[calc(var(--row)-4px)] [&_td]:text-xs',
+					'[&_th]:px-1.5 [&_td]:px-1.5 max-phone:[&_td]:px-2.5 [&_th]:h-[calc(var(--row)-4px)] [&_td]:h-[calc(var(--row)-4px)] [&_td]:text-xs',
 					props.className,
 				)}
 			>
 				<TableHeader ref={headersRef} className="bg-panel-hi">
 					{table.getHeaderGroups().map((headerGroup) => (
 						<TableRow key={headerGroup.id}>
-							{headerGroup.headers.map((header) => {
-								const sortDir = sortDirFor(sorting, header.column.id)
-								return (
-									<TableHead
-										key={header.id}
-										onClick={
-											header.column.getCanSort() && header.column.id !== 'stats'
-												? header.column.getToggleSortingHandler()
-												: undefined
-										}
-										className={cn('align-top pt-[3px] h-auto!', header.column.getCanSort() && 'cursor-pointer select-none')}
-										{...headerResetProps(header.column, table.options.meta as BasePlayerTableMeta)}
-									>
-										{header.isPlaceholder ? null : (
-											<span className="inline-flex items-start gap-0.5">
-												{flexRender(header.column.columnDef.header, header.getContext())}
-												{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : null}
-											</span>
-										)}
-									</TableHead>
-								)
-							})}
+							{phone
+								? null
+								: headerGroup.headers.map((header) => {
+										const sortDir = sortDirFor(sorting, header.column.id)
+										return (
+											<TableHead
+												key={header.id}
+												onClick={
+													header.column.getCanSort() && header.column.id !== 'stats'
+														? header.column.getToggleSortingHandler()
+														: undefined
+												}
+												className={cn('align-top pt-[3px] h-auto!', header.column.getCanSort() && 'cursor-pointer select-none')}
+												{...headerResetProps(header.column, table.options.meta as BasePlayerTableMeta)}
+											>
+												{header.isPlaceholder ? null : (
+													<span className="inline-flex items-start gap-0.5">
+														{flexRender(header.column.columnDef.header, header.getContext())}
+														{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : null}
+													</span>
+												)}
+											</TableHead>
+										)
+									})}
 						</TableRow>
 					))}
 				</TableHeader>
 				<TableBody>{bodyRows}</TableBody>
 			</Table>
+			{phone && (
+				<MenuSheet
+					open={menuFor !== null}
+					onOpenChange={(open) => {
+						if (!open) setMenuFor(null)
+					}}
+					title={
+						menuFor && selectedIds.length >= 2 && rowSelection[menuFor]
+							? tr.text(SM_Msgs.selectedCount(selectedIds.length))
+							: (props.data.find((p) => SM.PlayerIds.getPlayerId(p.ids) === menuFor)?.ids.username ?? '')
+					}
+				>
+					{menuFor && selectedIds.length >= 2 && rowSelection[menuFor] ? (
+						<PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} slots={sheetMenuSlots} />
+					) : menuFor ? (
+						<PlayerMenuItems playerId={menuFor} slots={sheetMenuSlots} stores={props.stores} />
+					) : null}
+				</MenuSheet>
+			)}
 		</StickyGroup>
 	)
 }

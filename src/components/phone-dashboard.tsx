@@ -124,7 +124,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 
 function PresenceRow(props: { children: React.ReactNode }) {
 	return (
-		<div className="flex items-center gap-2 h-[22px] px-2 border-b border-line shrink-0">
+		<div className="flex items-center gap-2 h-8 px-2 border-b border-line shrink-0">
 			<span className="text-xs text-text-3">{tr.text(APP_Msgs.phoneHere())}</span>
 			<span className="flex min-w-0 items-center gap-2.5">{props.children}</span>
 		</div>
@@ -136,10 +136,15 @@ function CurrentLayerStrip(props: { stores: SquadServerFrame.KeyProp }) {
 	const current = MatchHistoryClient.useCurrentMatch(serverId)
 	if (!current) return null
 	return (
-		<div className="flex items-center gap-1.5 min-h-[26px] py-[5px] px-2.5 bg-[rgba(95,183,106,0.12)] border-b border-line text-xs leading-4 whitespace-nowrap shrink-0">
-			<Icons.Play className="size-[11px] text-ok" />
-			<ShortLayerName layerId={current.layerId} teamParity={current.ordinal} allowShowInfo={false} className="font-mono font-semibold" />
-			<span className="flex-1" />
+		<div className="flex items-center gap-1.5 min-h-[34px] py-[5px] px-2.5 bg-[rgba(95,183,106,0.12)] border-b border-line text-xs leading-4 whitespace-nowrap shrink-0 overflow-hidden">
+			<Icons.Play className="size-3 text-ok shrink-0" />
+			<ShortLayerName
+				layerId={current.layerId}
+				teamParity={current.ordinal}
+				allowShowInfo={false}
+				className="font-mono font-semibold min-w-0 truncate"
+			/>
+			<span className="flex-1 min-w-2" />
 			{current.startTime && current.status === 'in-progress' && (
 				<span className="font-mono font-light">
 					<Timer zeros start={current.startTime.getTime()} />

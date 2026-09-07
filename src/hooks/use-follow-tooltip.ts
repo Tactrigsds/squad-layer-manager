@@ -4,6 +4,9 @@ import type * as Flt from '@/lib/floating'
 
 // A pinned tooltip sits a short gap away from the pointer, so moving onto it leaves both it and the trigger for a
 // frame or two. A close waits this long for the pointer to arrive at the other one.
+// How long a tip may outlive a trigger that hid under it. Nothing watches for `visibility: hidden`, so this polls.
+const TRIGGER_GONE_POLL_MS = 200
+
 const LEAVE_GRACE_MS = 150
 
 // Once one tip has been read, a neighbouring one opens at once rather than making the reader wait again at every
@@ -119,6 +122,20 @@ export function useFollowTooltip(opts?: { pinnable?: boolean; delayMs?: number }
 		}
 		document.addEventListener('pointerdown', onPointerDown, true)
 		return () => document.removeEventListener('pointerdown', onPointerDown, true)
+	}, [mode, close])
+
+	React.useEffect(() => {
+		if (mode === 'closed') return
+		const check = () => {
+			const node = triggerRef.current
+			if (!node) return
+			const shown =
+				node.isConnected &&
+				(node.checkVisibility ? node.checkVisibility({ visibilityProperty: true }) : getComputedStyle(node).visibility !== 'hidden')
+			if (!shown) close()
+		}
+		const timer = window.setInterval(check, TRIGGER_GONE_POLL_MS)
+		return () => window.clearInterval(timer)
 	}, [mode, close])
 
 	React.useEffect(() => {

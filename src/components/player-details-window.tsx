@@ -14,6 +14,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
@@ -23,8 +24,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
+import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import * as Browser from '@/lib/browser'
 import { toast } from '@/lib/toast'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
@@ -34,15 +38,20 @@ import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as HQ from '@/models/history.models'
+import * as MH from '@/models/match-history.models'
+import * as SM from '@/models/squad.models'
+import * as TeamsPanelModels from '@/models/teams-panel.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -50,6 +59,7 @@ import { CopyIdButton } from './copy-id-button'
 import { ServerEvent } from './feed/server-event'
 import { useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
+import ShortLayerName from './short-layer-name.tsx'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
@@ -64,6 +74,7 @@ import WarnChatBox from './warn-chat-box'
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
 	Separator: DropdownMenuSeparator,
+	Label: DropdownMenuLabel,
 	Sub: DropdownMenuSub,
 	SubTrigger: DropdownMenuSubTrigger,
 	SubContent: DropdownMenuSubContent,
@@ -247,6 +258,30 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
 	const groupColor = usePlayerGroupColor(playerId, livePlayer ?? recentPlayer ?? undefined)
 
+	// the same enrichment the Teams panel shows, so the two agree on role, score and group; empty once the player
+	// leaves, when the roster no longer carries them
+	const matchPlayer = Zus.useStore(
+		squadServerFrameKey,
+		MatchHistoryClient.currentMatch$(serverId),
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		(chatStore, match, bmData, bmStore, settings): TeamsPanelModels.EnrichedPlayer | null => {
+			const player = SM.PlayerIds.find(ChatPrt.Sel.players(chatStore), (p) => p.ids, playerId)
+			if (!player?.teamId || !match) return null
+			const enriched = TeamsPanelModels.Sel.playersForTeam(MH.getNormedTeamId(player.teamId, match.ordinal))(
+				chatStore,
+				match,
+				bmData,
+				bmStore,
+				settings,
+			)
+			return SM.PlayerIds.find(enriched, (p) => p.ids, playerId) ?? null
+		},
+	)
+	const showSpoilers = Zus.useStore(squadServerFrameKey, TeamsPanelPrt.Sel.showSpoilers)
+	const phone = Browser.useIsSmallViewport()
+
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
@@ -307,6 +342,74 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
+			{matchPlayer && currentMatch ? (
+				<div className="border-b border-border/50">
+					<div className="flex flex-col px-3 pt-2">
+						<span className="fd-cond text-base font-bold">{tr.text(SM_Msgs.thisMatch())}</span>
+						<span className="truncate text-xs text-text-3">
+							<ShortLayerName
+								layerId={currentMatch.layerId}
+								teamParity={currentMatch.ordinal}
+								allowShowInfo={false}
+								className="font-mono"
+							/>
+						</span>
+					</div>
+					<dl className="grid grid-cols-3 gap-x-2.5 gap-y-1.5 px-3 py-2 text-sm [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
+						<div>
+							<dt>{tr.text(SM_Msgs.teamLabel())}</dt>
+							<dd>
+								<MatchTeamDisplay
+									matchId={currentMatch.historyEntryId}
+									teamId={matchPlayer.teamId!}
+									showAltTeamIndicator
+									stores={stores}
+								/>
+							</dd>
+						</div>
+						<div>
+							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
+							<dd>
+								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
+								{matchPlayer.isLeader && <span className="ml-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
+							</dd>
+						</div>
+						<div>
+							<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
+							<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
+								{matchPlayer.stats?.teamkills ?? 0}
+							</dd>
+						</div>
+						{showSpoilers && (
+							<div>
+								<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
+								<dd>{matchPlayer.role ?? '-'}</dd>
+							</div>
+						)}
+						{showSpoilers && (
+							<div>
+								<dt>{tr.text(SM_Msgs.killsWoundsDeaths())}</dt>
+								<dd className="font-mono">
+									{matchPlayer.stats?.kills ?? 0} · {matchPlayer.stats?.wounds ?? 0} · {matchPlayer.stats?.deaths ?? 0}
+								</dd>
+							</div>
+						)}
+						{matchPlayer.group && (
+							<div>
+								<dt>{tr.text(SM_Msgs.groupColumn())}</dt>
+								<dd style={groupColor ? { color: groupColor } : undefined}>{matchPlayer.group}</dd>
+							</div>
+						)}
+					</dl>
+				</div>
+			) : (
+				phone && (
+					<div className="mx-3 my-2 flex items-center gap-2 rounded-[3px] border border-line-soft bg-[#3a3a3d] px-2.5 py-2 text-xs text-text-2">
+						<Icons.Info className="size-3.5 shrink-0 text-text-3" />
+						{tr.text(SM_Msgs.notInCurrentMatch())}
+					</div>
+				)
+			)}
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="flex flex-col ">
@@ -319,7 +422,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 						{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
 					</div>
 					{ids?.playerController && (
-						<div className="inline-flex gap-1 items-baseline">
+						<div className="flex min-w-0 gap-1 items-baseline">
 							<CopyIdButton kind="playerController" id={ids.playerController} />
 						</div>
 					)}

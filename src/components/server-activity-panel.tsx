@@ -374,7 +374,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
 		// alone once the panel is narrow.
 		<Card role="region" aria-label={tr.text(CHAT_Msgs.activityTitle())} className="flex flex-col h-full min-h-0 w-full @container">
-			<CardHeader className="flex-shrink-0 whitespace-nowrap">
+			<CardHeader className="flex-shrink-0 whitespace-nowrap max-phone:flex-wrap max-phone:gap-y-1 max-phone:py-1.5">
 				<CardTitle className="flex items-center gap-1.5">
 					<Icons.LayoutList className="size-3.5" />
 					<span className="hidden @[520px]:inline">{tr.text(CHAT_Msgs.activityTitle())}</span>

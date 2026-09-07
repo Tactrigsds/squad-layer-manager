@@ -137,6 +137,8 @@ export type TeamFactionProps = {
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
 	leadWithTeamName?: boolean
+	/** drops the word "current" from a leading team name. For a header too narrow to spend six characters on it. */
+	hideCurrentWord?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 	/** whether teams read as A/B rather than 1/2; resolved by the caller from the global setting */
 	normalized: boolean
@@ -183,7 +185,7 @@ export function TeamFactionDisplay(props: TeamFactionProps) {
 
 	const factionElt = (
 		<span className={cn(props.extraStyles?.[allianceProp], props.extraStyles?.[factionProp])}>
-			{props.leadWithTeamName ? trTeamName.richText(L_Msgs.teamName(attrs[0].id, faction, true)) : faction}
+			{props.leadWithTeamName ? trTeamName.richText(L_Msgs.teamName(attrs[0].id, faction, !props.hideCurrentWord)) : faction}
 		</span>
 	)
 
@@ -317,9 +319,13 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 			{hasFactions && (
 				<>
 					<Icon name="Dot" className="self-center" />
-					{leftTeamElt}
-					<span className="mx-1">{I18n.ambient.text(L_Msgs.versus())}</span>
-					{rightTeamElt}
+					{/* one flex item, so a narrow container moves both teams down together and only splits them when
+					    they do not fit on a line of their own */}
+					<span className="inline-flex flex-wrap items-baseline">
+						{leftTeamElt}
+						<span className="mx-1">{I18n.ambient.text(L_Msgs.versus())}</span>
+						{rightTeamElt}
+					</span>
 				</>
 			)}
 		</>

@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -173,9 +174,9 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	return (
 		<>
-			<CardHeader data-tour="match-history">
-				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
-				<span className="flex-1" />
+			<CardHeader data-tour="match-history" className="max-phone:flex-wrap max-phone:justify-center max-phone:gap-y-1 max-phone:py-1.5">
+				<CardTitle className="max-phone:w-full">{tr.text(MH_Msgs.title())}</CardTitle>
+				<span className="flex-1 max-phone:hidden" />
 				<span className="fd-grp">
 					<Button size="icon-sm" onClick={goToLastPage} disabled={onLastPage}>
 						<Icons.ChevronsLeft />
@@ -197,7 +198,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 			<CardContent data-tour="match-history" className="p-0 pb-1">
 				<Table className="[&_th]:h-[calc(var(--row)-2px)] [&_td]:h-[calc(var(--row)-2px)]">
 					<TableHeader>
-						<TableRow className="font-medium">
+						<TableRow className="font-medium max-phone:hidden">
 							<TableHead className="w-[34px] text-right"></TableHead>
 							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
@@ -262,6 +263,7 @@ interface MatchHistoryRowProps {
 function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
+	const phone = Browser.useIsSmallViewport()
 	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 
 	// Determine if this match is being viewed in the activity panel
@@ -421,6 +423,74 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 		bgColor = TINT_DISPLAY[rowTint].bg
 	}
 
+	const timeDisp = (
+		<>
+			{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress' && (
+				<span className="font-mono font-light">
+					<Timer zeros start={entry.startTime.getTime()} />
+				</span>
+			)}
+			{entry.isCurrentMatch && entry.startTime && entry.status === 'post-game' && (
+				<span className="font-mono font-light">
+					{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
+					{entry.endTime !== 'unknown' && (
+						<span className="text-text-3 flex flex-nowrap items-baseline">
+							+<Timer start={entry.endTime.getTime()} className="font-mono" />
+						</span>
+					)}
+				</span>
+			)}
+			{!entry.isCurrentMatch && entry.startTime && (
+				<span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
+			)}
+			{!entry.startTime && <span>-</span>}
+		</>
+	)
+
+	const gutterMarker = (
+		<>
+			{isViewingThisMatch && <Icons.Eye className="size-[11px] text-[#6ea8ff]" />}
+			{entry.isCurrentMatch && entry.status === 'in-progress' ? (
+				<Icons.Play className="size-[11px] text-ok" />
+			) : entry.isCurrentMatch && entry.status === 'post-game' ? (
+				<Icons.Check className="size-[11px]" />
+			) : (
+				currentMatchOffset.toString()
+			)}
+		</>
+	)
+
+	const matchKd = entry.isCurrentMatch ? (
+		<React.Suspense fallback={null}>
+			<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+		</React.Suspense>
+	) : (
+		entry.combatStats && <MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+	)
+
+	const decorationIcons = decorationsByTint.map(([tint, decos]) => (
+		<Tooltip key={tint}>
+			<TooltipTrigger asChild>
+				<Button variant="ghost" size="icon-sm" className={TINT_DISPLAY[tint].text}>
+					{React.createElement(TINT_DISPLAY[tint].icon, { className: 'size-3' })}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent className="w-auto max-w-sm overflow-y-auto p-0 border-0 bg-transparent shadow-none flex flex-col gap-1">
+				{decos.map((deco) => (
+					<Alert key={deco.regKey} variant={TINT_DISPLAY[tint].variant} className="w-full">
+						{deco.title && (
+							<AlertTitle className="flex items-center space-x-2">
+								{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 mr-2' })}
+								{deco.title}
+							</AlertTitle>
+						)}
+						{deco.body && <AlertDescription>{deco.body}</AlertDescription>}
+					</Alert>
+				))}
+			</TooltipContent>
+		</Tooltip>
+	))
+
 	return (
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
@@ -441,96 +511,76 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 						bgColor,
 					)}
 				>
-					<TableCell className="font-mono text-xs relative text-right">
-						<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-1.5">
-							<Icons.GripVertical className="h-4 w-4" />
-						</div>
-						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center gap-0.5 text-text-3">
-							{isViewingThisMatch && <Icons.Eye className="size-[11px] text-[#6ea8ff]" />}
-							{entry.isCurrentMatch && entry.status === 'in-progress' ? (
-								<Icons.Play className="size-[11px] text-ok" />
-							) : entry.isCurrentMatch && entry.status === 'post-game' ? (
-								<Icons.Check className="size-[11px]" />
-							) : (
-								currentMatchOffset.toString()
-							)}
-						</div>
-					</TableCell>
-					<TableCell className="text-xs hidden @[820px]:table-cell">
-						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress' && (
-							<span className="font-mono font-light">
-								<Timer zeros start={entry.startTime.getTime()} />
-							</span>
-						)}
-						{entry.isCurrentMatch && entry.startTime && entry.status === 'post-game' && (
-							<span className="font-mono font-light">
-								{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
-								{entry.endTime !== 'unknown' && (
-									<span className="text-text-3 flex flex-nowrap items-baseline">
-										+<Timer start={entry.endTime.getTime()} className="font-mono" />
+					{phone ? (
+						<TableCell colSpan={8} className="h-auto! whitespace-nowrap px-2 py-1.5">
+							{/* Two lines rather than eight columns. The table needs 404px at its narrowest and a phone panel
+								    offers 376, so below 640 the row stacks: what the match was, then how it went. */}
+							<div className="flex flex-col gap-1">
+								<div className="flex items-center gap-2 min-w-0">
+									<span className="w-5 shrink-0 flex justify-end items-center gap-0.5 text-text-3 font-mono text-xs">
+										{gutterMarker}
 									</span>
-								)}
-							</span>
-						)}
-						{!entry.isCurrentMatch && entry.startTime && (
-							<span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
-						)}
-						{!entry.startTime && <span>-</span>}
-					</TableCell>
-					<TableCell>
-						<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
-					</TableCell>
-					<TableCell>{leftTeam}</TableCell>
-					<TableCell className="text-center">
-						<div className="flex items-center justify-center gap-2">
-							{statusBadge}
-							{outcomeDisp}
-							{entry.isCurrentMatch ? (
-								<React.Suspense fallback={null}>
-									<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
-								</React.Suspense>
-							) : (
-								entry.combatStats && (
-									<MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
-								)
-							)}
-						</div>
-					</TableCell>
-					<TableCell>{rightTeam}</TableCell>
+									<span className="min-w-0 truncate">
+										<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+									</span>
+									<span className="flex-1 min-w-2" />
+									{decorationIcons}
+									{violationDisplayElt}
+									<span className="shrink-0 text-xs">{timeDisp}</span>
+								</div>
+								<div className="flex items-center gap-1.5 min-w-0">
+									<span className="w-5 shrink-0" />
+									<span className="min-w-0 truncate">{leftTeam}</span>
+									<span className="shrink-0 text-pri">{tr.text(MH_Msgs.versus())}</span>
+									<span className="min-w-0 truncate">{rightTeam}</span>
+									<span className="flex-1 min-w-2" />
+									<span className="shrink-0 flex items-center gap-1.5">
+										{statusBadge}
+										{outcomeDisp}
+										{matchKd}
+										<LayerSourceDisplay source={entry.layerSource} />
+									</span>
+								</div>
+							</div>
+						</TableCell>
+					) : (
+						<>
+							<TableCell className="font-mono text-xs relative text-right">
+								<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-1.5">
+									<Icons.GripVertical className="h-4 w-4" />
+								</div>
+								<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center gap-0.5 text-text-3">
+									{gutterMarker}
+								</div>
+							</TableCell>
+							<TableCell className="text-xs hidden @[820px]:table-cell">{timeDisp}</TableCell>
+							<TableCell>
+								<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+							</TableCell>
+							<TableCell>{leftTeam}</TableCell>
+							<TableCell className="text-center">
+								<div className="flex items-center justify-center gap-2">
+									{statusBadge}
+									{outcomeDisp}
+									{matchKd}
+								</div>
+							</TableCell>
+							<TableCell>{rightTeam}</TableCell>
 
-					<TableCell className="text-center">
-						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
-							{decorationsByTint.map(([tint, decos]) => (
-								<Tooltip key={tint}>
-									<TooltipTrigger asChild>
-										<Button variant="ghost" size="icon-sm" className={TINT_DISPLAY[tint].text}>
-											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'size-3' })}
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent className="w-auto max-w-sm overflow-y-auto p-0 border-0 bg-transparent shadow-none flex flex-col gap-1">
-										{decos.map((deco) => (
-											<Alert key={deco.regKey} variant={TINT_DISPLAY[tint].variant} className="w-full">
-												{deco.title && (
-													<AlertTitle className="flex items-center space-x-2">
-														{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 mr-2' })}
-														{deco.title}
-													</AlertTitle>
-												)}
-												{deco.body && <AlertDescription>{deco.body}</AlertDescription>}
-											</Alert>
-										))}
-									</TooltipContent>
-								</Tooltip>
-							))}
-							{violationDisplayElt}
-						</div>
-					</TableCell>
+							<TableCell className="text-center">
+								<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
+									{decorationIcons}
+									{violationDisplayElt}
+								</div>
+							</TableCell>
 
-					<TableCell>
-						<span className="w-full flex justify-center">
-							<LayerSourceDisplay source={entry.layerSource} />
-						</span>
-					</TableCell>
+							<TableCell>
+								<span className="w-full flex justify-center">
+									<LayerSourceDisplay source={entry.layerSource} />
+								</span>
+							</TableCell>
+						</>
+					)}
 				</TableRow>
 			</ContextMenuTrigger>
 			<ContextMenuContent>

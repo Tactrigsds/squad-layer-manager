@@ -47,6 +47,8 @@ export function LayerTags(props: {
 	// keeps the add button out of the way until the queue item is hovered or the button takes focus. Only meaningful
 	// inside a `group/single-item`; the dialogs render the button unconditionally.
 	revealAddOnHover?: boolean
+	// no add button at all, where the item's menu adds tags instead; with no tags either, nothing renders
+	hideAdd?: boolean
 }) {
 	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const resolved = LTag.resolveAll(props.tags, configured)
@@ -59,6 +61,7 @@ export function LayerTags(props: {
 		props.onAdd(id)
 	}
 
+	if (props.hideAdd && resolved.length === 0) return null
 	return (
 		<span className={cn('flex flex-wrap items-center gap-1', props.className)}>
 			{resolved.map((tag) => (
@@ -72,15 +75,17 @@ export function LayerTags(props: {
 					onEdit={() => setEditing(configured.find((t) => t.id === tag.id) ?? null)}
 				/>
 			))}
-			<AddTagDropdown
-				canManage={canManage}
-				disabled={props.disabled}
-				applied={tagIds}
-				configured={configured}
-				onSelect={add}
-				onCreate={() => setEditing('new')}
-				revealOnHover={props.revealAddOnHover}
-			/>
+			{!props.hideAdd && (
+				<AddTagDropdown
+					canManage={canManage}
+					disabled={props.disabled}
+					applied={tagIds}
+					configured={configured}
+					onSelect={add}
+					onCreate={() => setEditing('new')}
+					revealOnHover={props.revealAddOnHover}
+				/>
+			)}
 			<LayerTagDialog state={editing} onClose={() => setEditing(null)} onCreated={add} />
 		</span>
 	)
