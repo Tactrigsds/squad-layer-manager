@@ -39,7 +39,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
-import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -78,6 +78,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	minHeight: 320,
 	defaultHeight: 660,
 	getId: (props) => props.playerId,
+	dependsOn: (props) => (props.stores ? [frameDependency(props.stores.squadServer)] : []),
 	loadAsync: async ({ props }) => {
 		const prefetches: Promise<unknown>[] = [
 			RPC.queryClient.fetchQuery(

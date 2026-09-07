@@ -11,7 +11,7 @@ import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
-import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -33,6 +33,7 @@ DraggableWindowStore.getState().registerDefinition<PoolConfigWindowProps, unknow
 	defaultWidth: 1049,
 	defaultHeight: 640,
 	getId: (props) => `pool-config:${props.stores.squadServer!.serverId}`,
+	dependsOn: (props) => [frameDependency(props.stores.squadServer!)],
 })
 
 function PoolConfigWindow(props: PoolConfigWindowProps) {

@@ -75,7 +75,6 @@ export type Frame<T extends FrameTypes> = {
 	id: FrameId
 	createKey: (frameId: FrameId, input: T['input']) => T['key']
 	setup(args: SetupArgs<T['input'], T['state']>): void
-	beforeTeardown?: (state: T['state']) => void
 	canInitialize?: (input: T['input']) => boolean
 }
 
@@ -83,7 +82,6 @@ type FrameOps<T extends FrameTypes> = {
 	name: T['name']
 	createKey: Frame<T>['createKey']
 	setup: Frame<T>['setup']
-	beforeTeardown?: Frame<T>['beforeTeardown']
 	canInitialize?: Frame<T>['canInitialize']
 }
 
@@ -98,12 +96,18 @@ type FrameInstance = {
 	set: Zus.Setter<FrameTypes>
 	update$: Rx.Subject<any>
 	cleanup: Cleanup.Tasks
+	// every live listener registered through onBeforeRelease on any of this instance's keys, run first in dispose
+	releaseListeners: Set<ReleaseListener>
 	abort: AbortController
 	input: FrameTypes['input']
 	lastUsed: number
 }
 
 type DirectInstanceKey = RawInstanceKey
+
+// a listener remembers the key it was registered on, so running it from either side (that key's release, or the
+// instance's dispose) can remove it from the other side's set
+type ReleaseListener = { key: RawInstanceKey; run: () => void }
 
 export class FrameManager {
 	constructor(private ctx: CS.Log) {}
@@ -117,10 +121,35 @@ export class FrameManager {
 	private registry = new FinalizationRegistry<DirectInstanceKey>((directKey) => {
 		this.cleanupReference(directKey)
 	})
+	private releaseListeners = new WeakMap<RawInstanceKey, Set<ReleaseListener>>()
 
-	// aborts first so setup work waiting on an await bails before the tasks it would touch are torn down, then runs
-	// the tasks FILO. runCleanup is async and logs per-task failures itself, so nothing here waits on it
+	private runReleaseListeners(listeners: Iterable<ReleaseListener>, instance: FrameInstance | undefined) {
+		for (const listener of [...listeners]) {
+			this.releaseListeners.get(listener.key)?.delete(listener)
+			instance?.releaseListeners.delete(listener)
+			try {
+				listener.run()
+			} catch (err) {
+				this.ctx.log.error(err, 'caught error in frame release listener')
+			}
+		}
+	}
+
+	// the key is about to stop resolving: its own listeners run now, before it is forgotten, whether or not the
+	// instance behind it survives
+	private releaseKey(key: RawInstanceKey) {
+		const listeners = this.releaseListeners.get(key)
+		if (!listeners?.size) return
+		const directKey = this.keys.get(key)
+		this.runReleaseListeners(listeners, directKey && this.frameInstances.get(directKey))
+	}
+
+	// release listeners go first, while the instance is still whole, so whatever registered them can let go of the
+	// frame before any of it is torn down. Then the signal aborts so setup work waiting on an await bails before the
+	// tasks it would touch are torn down, then the tasks run FILO. runCleanup is async and logs per-task failures
+	// itself, so nothing here waits on it
 	private dispose(instance: FrameInstance) {
+		this.runReleaseListeners(instance.releaseListeners, instance)
 		instance.abort.abort(new DOMException('frame torn down', 'AbortError'))
 		instance.update$.complete()
 		void Cleanup.runCleanup(this.ctx, instance.cleanup)
@@ -139,7 +168,31 @@ export class FrameManager {
 		this.frameInstances.delete(directKey)
 	}
 
+	// Runs `listener` once, just before `key` stops resolving: when the key is dropped or torn down, even if other
+	// keys keep the instance alive, and when the instance is disposed through some other key. Either way it runs
+	// ahead of the instance's abort signal and cleanup tasks. A key someone else owns can be dropped from under a
+	// borrower at any time, so anything rendering from a borrowed key registers here rather than trusting it.
+	// Returns the unsubscribe, or undefined when the key already fails to resolve
+	onBeforeRelease(key: RawInstanceKey, run: () => void): (() => void) | undefined {
+		const directKey = this.keys.get(key)
+		const instance = directKey && this.frameInstances.get(directKey)
+		if (!instance) return
+		const listener: ReleaseListener = { key, run }
+		let forKey = this.releaseListeners.get(key)
+		if (!forKey) {
+			forKey = new Set()
+			this.releaseListeners.set(key, forKey)
+		}
+		forKey.add(listener)
+		instance.releaseListeners.add(listener)
+		return () => {
+			forKey.delete(listener)
+			instance.releaseListeners.delete(listener)
+		}
+	}
+
 	teardown(key: RawInstanceKey) {
+		this.releaseKey(key)
 		this.keys.delete(key)
 		this.registry.unregister(key)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
@@ -153,6 +206,7 @@ export class FrameManager {
 	// one (the same accounting the FinalizationRegistry applies lazily when a key is collected). Use this instead of
 	// teardown() whenever other systems might hold references to the same instance.
 	dropKey(key: RawInstanceKey) {
+		this.releaseKey(key)
 		const directKey = this.keys.get(key)
 		this.keys.delete(key)
 		this.registry.unregister(key)
@@ -188,6 +242,7 @@ export class FrameManager {
 				refCount: 0,
 				store: Zus.createStore(() => ({})),
 				cleanup: [],
+				releaseListeners: new Set(),
 				abort: new AbortController(),
 				update$: new Rx.Subject(),
 				get: undefined!,
