@@ -488,7 +488,7 @@ function PhoneSortSheet(props: {
 			<div className="grid grid-cols-2 gap-2 px-3 pb-2">
 				<OpenWindowInteraction
 					windowId={WINDOW_ID.enum['switch-requests']}
-					windowProps={{ serverId: squadServer.serverId } satisfies SwitchRequestsWindowProps}
+					windowProps={{ stores: props.stores } satisfies SwitchRequestsWindowProps}
 					preload="intent"
 					render={({ ref, ...rest }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
 						<Button ref={ref} variant="ghost" {...rest}>
