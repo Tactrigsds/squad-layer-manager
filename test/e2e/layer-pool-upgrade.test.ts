@@ -80,11 +80,12 @@ test.describe('a new layer pool under open tabs', { tag: '@firefox' }, () => {
 
 		const pageB = await page.context().newPage()
 		try {
-			await page.goto(app.loginUrl())
-			await pageB.goto(app.loginUrl())
-			const before = await matchedLayers(page)
+			await Promise.all([page.goto(app.loginUrl()), pageB.goto(app.loginUrl())])
+
+			// four settled readouts at 1.6s of stable reads each, and the two tabs are independent, so they read at once
+			const [before, beforeOnB] = await Promise.all([matchedLayers(page), matchedLayers(pageB)])
 			expect(before).toMatch(/\d+ matched layers/)
-			expect(await matchedLayers(pageB)).toBe(before)
+			expect(beforeOnB).toBe(before)
 
 			// one entry, named by the artifact's hash, and the legacy layouts swept
 			const cachedBefore = await opfsEntries(page)
@@ -97,10 +98,10 @@ test.describe('a new layer pool under open tabs', { tag: '@firefox' }, () => {
 			await reloaded
 
 			// the worker both tabs reconnected to answers for the new pool, and the tabs agree
-			const after = await matchedLayers(page)
+			const [after, afterOnB] = await Promise.all([matchedLayers(page), matchedLayers(pageB)])
 			expect(after).toMatch(/\d+ matched layers/)
 			expect(after).not.toBe(before)
-			expect(await matchedLayers(pageB)).toBe(after)
+			expect(afterOnB).toBe(after)
 
 			const cachedAfter = await opfsEntries(page)
 			expect(cachedAfter).toHaveLength(1)
