@@ -1027,6 +1027,15 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 
 export type ComparisonHandle = Clearable & Focusable
 
+// A team column's displayName is the layer table's compact header ('T1'), which names nothing on its own in a
+// value picker: "Selected T1s (0)". Every picker on a team dimension names itself by the dimension and, for a
+// concrete side, which side.
+const TEAM_DIMENSION_BY_COLUMN: Record<string, { label: string; team: 1 | 2 }> = Object.fromEntries(
+	F.TEAM_COLUMNS.flatMap((column) =>
+		([1, 2] as const).map((team) => [F.resolveTeamColumn(column, team), { label: F.TEAM_COLUMN_LABELS[column], team }]),
+	),
+)
+
 // A single comparison node: [anchor column] [operator] [value(s)]. The anchor (args[0]) determines
 // the value domain, which in turn drives the operator options and the value editor.
 export function Comparison(props: {
@@ -1055,6 +1064,12 @@ export function Comparison(props: {
 	// the filter menu labels its rows itself, and the matchup node's cells have no operator of their own
 	showColumn?: boolean
 	showOperator?: boolean
+	// overrides for how the value multi-select names itself; a team dimension defaults all three (see
+	// TEAM_DIMENSION_BY_COLUMN). The constraint rail overrides the placeholder, whose cells are too narrow
+	// for the default "any faction"
+	valuesTitle?: string
+	valuesAriaLabel?: string
+	valuesEmptyLabel?: string
 	ref?: React.ForwardedRef<ComparisonHandle>
 	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
@@ -1088,6 +1103,19 @@ export function Comparison(props: {
 	// the concrete column used to source enum options / value rendering (team columns resolve to team 1)
 	const optionsColumn = anchorColumn ?? (anchorTeamColumn ? F.resolveTeamColumn(anchorTeamColumn, 1) : undefined)
 	const domain = anchor ? F.argValueDomain(anchor, cfg) : undefined
+
+	// a team-generic anchor carries its quantifier in the column box beside the picker, so the side is not the
+	// picker's to say; a concrete one has no other label
+	const teamDimension = anchorTeamColumn
+		? { label: F.TEAM_COLUMN_LABELS[anchorTeamColumn], team: undefined }
+		: anchorColumn
+			? TEAM_DIMENSION_BY_COLUMN[anchorColumn]
+			: undefined
+	const valuesTitle = props.valuesTitle ?? teamDimension?.label
+	const valuesAriaLabel =
+		props.valuesAriaLabel ??
+		(teamDimension?.team ? tr.text(F_Msgs.teamColumnForTeam(teamDimension.label, teamDimension.team)) : teamDimension?.label)
+	const valuesEmptyLabel = props.valuesEmptyLabel ?? (teamDimension && tr.text(F_Msgs.anyTeamColumn(teamDimension.label)))
 
 	const hasSubject = !!(anchorColumn || anchorTeamColumn)
 	// whether the value slot(s) still need input, so we only jump focus forward when there's a blank to fill
@@ -1500,6 +1528,9 @@ export function Comparison(props: {
 						column={optionsColumn}
 						allowedEnumValues={props.allowedEnumValues}
 						restrictValueSize={restrictValueSize}
+						title={valuesTitle}
+						ariaLabel={valuesAriaLabel}
+						emptyLabel={valuesEmptyLabel}
 						items={items}
 						setItems={setItems}
 						comparableColumns={comparableColumnOptions()}
@@ -1690,6 +1721,7 @@ export function StringInConfig(props: {
 	restrictValueSize?: boolean
 	// matchup dimensions title themselves by dimension ('Faction'), not by the underlying column ('T1')
 	title?: string
+	ariaLabel?: string
 	emptyLabel?: string
 }) {
 	const options = React.useMemo(() => {
@@ -1710,6 +1742,7 @@ export function StringInConfig(props: {
 	return (
 		<ComboBoxMulti
 			title={props.title ?? (props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
+			ariaLabel={props.ariaLabel}
 			emptyLabel={props.emptyLabel}
 			ref={props.ref}
 			values={props.values}
@@ -1863,6 +1896,9 @@ function InListConfig(props: {
 	comparableColumns: ComboBoxOption<string>[]
 	allowColumns: boolean
 	restrictValueSize?: boolean
+	title?: string
+	ariaLabel?: string
+	emptyLabel?: string
 	className?: string
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }) {
@@ -1892,6 +1928,9 @@ function InListConfig(props: {
 				column={props.column}
 				allowedValues={props.allowedEnumValues}
 				restrictValueSize={props.restrictValueSize}
+				title={props.title}
+				ariaLabel={props.ariaLabel}
+				emptyLabel={props.emptyLabel}
 				values={primitives}
 				setValues={setPrimitives}
 			/>

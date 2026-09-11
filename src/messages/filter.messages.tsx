@@ -277,6 +277,13 @@ export const swapSides = def('Swap the two sides')
 // the placeholder on a team-spec dimension, e.g. "any faction"
 export const anyTeamColumn = def('any {column}', (column: string) => ({ column: column.toLowerCase() }))
 
+// the same placeholder where the row already carries the dimension's name and the picker is too narrow to
+// spend characters on "any", e.g. "faction"
+export const teamColumnPlaceholder = def('{column}', (column: string) => ({ column: column.toLowerCase() }))
+
+// names one side's picker in the matchup, e.g. "Faction T1". The dimension alone is ambiguous across the two sides
+export const teamColumnForTeam = def('{column} T{team}', (column: string, team: 1 | 2) => ({ column, team: String(team) }))
+
 // -------- the filter editor page --------
 
 export const save = def('Save')

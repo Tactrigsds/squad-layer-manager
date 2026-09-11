@@ -2007,6 +2007,8 @@
 	"{collection} (not in the catalog)": "{collection} (not in the catalog)",
 	"{collection} is not installed": "{collection} is not installed",
 	"{collection} is not installed on this server": "{collection} is not installed on this server",
+	"{column}": "{column}",
+	"{column} T{team}": "{column} T{team}",
 	"{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}": "{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}",
 	"{count, plural, =0 {Nothing selected to add} one {Add # selected player} other {Add # selected players}}": "{count, plural, =0 {Nothing selected to add} one {Add # selected player} other {Add # selected players}}",
 	"{count, plural, one {# error} other {# errors}}": "{count, plural, one {# error} other {# errors}}",

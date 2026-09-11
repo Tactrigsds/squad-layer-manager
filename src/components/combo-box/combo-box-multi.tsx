@@ -34,7 +34,10 @@ import {
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
+	// the noun this picks, used in prose ("Selected Factions (3)")
 	title?: string
+	// the trigger's accessible name, where the noun alone does not identify the picker. Defaults to `title`
+	ariaLabel?: string
 	inputValue?: string
 	setInputValue?: (value: string) => void
 	values: T[]
@@ -277,6 +280,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					disabled={disabled}
 					role="combobox"
 					aria-expanded={open}
+					// the trigger's text is the selection, which two pickers of the same dimension share (the
+					// matchup's two sides read alike until one is filled), so it is named rather than left to it
+					aria-label={props.ariaLabel || props.title || undefined}
 					// truncation is left to the ellipsis on the label below: it cuts at the width actually
 					// available, where a character count would cut at a guess about it
 					// min-w-0: a flex item defaults to min-width:auto and so refuses to shrink below its
