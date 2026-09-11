@@ -128,13 +128,14 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 	const teamswapEvent$ = frameState.teamswaps.presenceEvent$
 
 	const rootRef = React.useRef<HTMLDivElement>(null)
-	// the scroller is the enclosing column's, shared with Match History and the breakdown, so this reads
-	// upwards rather than down
-	const findViewport = () => rootRef.current?.closest<HTMLElement>('[data-radix-scroll-area-viewport]')
+	// the scroller is never this panel's own: in the two-column layout it is the enclosing column's, shared
+	// with Match History and the breakdown, and in the ultrawide one it is the dashboard itself. So this
+	// reads upwards rather than down, and takes whichever comes first.
+	const findScroller = () => rootRef.current?.closest<HTMLElement>('[data-radix-scroll-area-viewport],[data-dashboard-scroller]')
 
 	// what the column can show at once is what decides between the two layouts, so the budget is the
 	// scroller's visible height rather than the panel's own, which is as tall as its content
-	const fit = useStackWhenItFits({ enabled: props.stacked === 'when-it-fits', getBudgetEl: findViewport })
+	const fit = useStackWhenItFits({ enabled: props.stacked === 'when-it-fits', getBudgetEl: findScroller })
 	const stacked = props.stacked === 'when-it-fits' ? fit.stacked : (props.stacked ?? false)
 	React.useEffect(() => {
 		SquadServerClient.PrimaryPanelActions.setStacked(stacked)
@@ -146,7 +147,7 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 
 	React.useEffect(() => {
 		if (stacked) return
-		const viewport = findViewport()
+		const viewport = findScroller()
 		if (!viewport) return
 		const onScroll = () => {
 			scrollPositions.current[scrolledTabRef.current] = viewport.scrollTop
@@ -158,7 +159,7 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 	React.useLayoutEffect(() => {
 		if (stacked) return
 		scrolledTabRef.current = tab
-		const viewport = findViewport()
+		const viewport = findScroller()
 		if (!viewport) return
 		viewport.scrollTop = scrollPositions.current[tab]
 	}, [tab, stacked])
