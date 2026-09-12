@@ -8,21 +8,23 @@ import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as VEH from '@/models/vehicles.models'
 import { tr } from '@/systems/messages.client'
 
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
-const TEAM_FIELDS = ['Alliance_1', 'Faction_1', 'Unit_1', 'Alliance_2', 'Faction_2', 'Unit_2']
-const MATCHUP_ROWS: [label: string, team1: string, team2: string][] = [
-	['Alliance', 'Alliance_1', 'Alliance_2'],
-	['Faction', 'Faction_1', 'Faction_2'],
-	['Unit', 'Unit_1', 'Unit_2'],
-]
+const MATCHUP_ROWS = F.TEAM_COLUMNS.map((column) => ({
+	label: F.TEAM_COLUMN_LABELS[column],
+	team1: F.resolveTeamColumn(column, 1),
+	team2: F.resolveTeamColumn(column, 2),
+}))
+const TEAM_FIELDS = MATCHUP_ROWS.flatMap((row) => [row.team1, row.team2])
 
 /**
- * The constraint rail: one row per field with a symbol-width operator and a value select, and the six team
+ * The constraint rail: one row per field with a symbol-width operator and a value select, and the team
  * fields folded into one matchup node (a select per side per dimension, swap between the sides).
  */
 export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp; className?: string }) {
@@ -122,7 +124,22 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 
 function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	const swapFactionsDisabled = Zus.useStore(props.stores.filterMenu, LayerFilterMenuPrt.Sel.swapFactionsDisabled)
-	const anySet = Zus.useStore(props.stores.filterMenu, (s) => TEAM_FIELDS.some((f) => F.editableCompHasValue(s.filterMenu.menuItems[f])))
+	// the vehicle rows also need the artifact's vehicle tables: a picker over an empty enum is worse than no picker
+	const hasVehicleData = VEH.hasVehicleData(L.StaticLayerComponents)
+	const rows = Zus.useStore(
+		props.stores.filterMenu,
+		Zus.useShallow((s) =>
+			MATCHUP_ROWS.filter(
+				(row) =>
+					s.filterMenu.menuItems[row.team1] &&
+					s.filterMenu.menuItems[row.team2] &&
+					(hasVehicleData || !LC.vehicleColumnInfo(row.team1)),
+			),
+		),
+	)
+	const anySet = Zus.useStore(props.stores.filterMenu, (s) =>
+		TEAM_FIELDS.some((f) => s.filterMenu.menuItems[f] && F.editableCompHasValue(s.filterMenu.menuItems[f])),
+	)
 	const clearAll = () => {
 		for (const field of TEAM_FIELDS) LayerFilterMenuPrt.Actions.resetFilter(props.stores, field)
 	}
@@ -151,11 +168,13 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 			>
 				<Icons.Trash />
 			</Button>
-			{MATCHUP_ROWS.map(([label, t1, t2]) => (
-				<React.Fragment key={label}>
-					<span className="text-xs text-text-2 whitespace-nowrap">{label}</span>
-					<MatchupCell field={t1} stores={props.stores} />
-					<MatchupCell field={t2} stores={props.stores} />
+			{rows.map((row) => (
+				<React.Fragment key={row.label}>
+					<span className="text-xs text-text-2 truncate" title={row.label}>
+						{row.label}
+					</span>
+					<MatchupCell field={row.team1} label={row.label} stores={props.stores} />
+					<MatchupCell field={row.team2} label={row.label} stores={props.stores} />
 					<span />
 				</React.Fragment>
 			))}
@@ -163,7 +182,7 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	)
 }
 
-function MatchupCell(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+function MatchupCell(props: { field: string; label: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	const { ref, possibleValues, comp } = useMenuItem(props.field, props.stores)
 	return (
 		<Comparison
@@ -176,6 +195,9 @@ function MatchupCell(props: { field: string; stores: LayerFilterMenuPrt.Predicat
 			allowedEnumValues={possibleValues}
 			onSetAllValuesAllowed={unlockAllValues(props.stores)}
 			onSetAllValuesAllowedLabel={tr.text(F_Msgs.clearOtherFilters())}
+			// the title and the accessible name come from the dimension itself; only the placeholder is
+			// shortened, since the row is already labelled and the cell has no room for "any faction"
+			valuesEmptyLabel={tr.text(F_Msgs.teamColumnPlaceholder(props.label))}
 			setNode={(update) => LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)}
 			lockOnSingleOption
 		/>

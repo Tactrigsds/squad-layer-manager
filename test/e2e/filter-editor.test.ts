@@ -243,7 +243,8 @@ test.describe('option groupings', () => {
 		// picker, which opens itself in turn -- clicking either trigger here would close it
 		await page.getByRole('option', { name: 'Vehicle T1', exact: true }).click()
 
-		const picker = page.getByRole('dialog').filter({ hasText: 'Selected Vehicle T1s' })
+		// the picker names itself by the dimension, not by the column's table header ('Vehicle', not 'Vehicle T1')
+		const picker = page.getByRole('dialog').filter({ hasText: 'Selected Vehicles' })
 		const facet = picker.getByRole('button', { name: 'Narrow by Vehicle type' })
 		await expect(facet).toHaveText(/Vehicle type:\s*All/)
 		await expect(picker.getByRole('tab', { name: 'OWI' })).toBeVisible()

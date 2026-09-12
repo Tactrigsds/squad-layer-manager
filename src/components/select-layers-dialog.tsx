@@ -49,8 +49,8 @@ type SelectLayersDialogProps = {
 	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
-	// rendered in the title bar, e.g. the play next / play after switch
-	footerAdditions?: React.ReactNode
+	// rendered beside the vote/set-layer switch, e.g. the play next / play after switch
+	modeSwitchAdditions?: React.ReactNode
 	// rendered in the submit block above the mode switch and Submit, e.g. the tags to apply
 	footerBeforeSubmit?: React.ReactNode
 	cursor?: LL.Cursor
@@ -63,7 +63,7 @@ type SelectLayersDialogContentProps = {
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected: L.LayerId[]
 	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
-	footerAdditions?: React.ReactNode
+	modeSwitchAdditions?: React.ReactNode
 	footerBeforeSubmit?: React.ReactNode
 	cursor?: LL.Cursor
 	onClose: () => void
@@ -194,7 +194,6 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				{props.description && (
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 				)}
-				{props.footerAdditions}
 				<span className="flex-1" />
 				{!phone && <kbd className="fd-kbd">Esc</kbd>}
 				<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
@@ -254,7 +253,8 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 							{props.footerBeforeSubmit && (
 								<div className="flex items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>
 							)}
-							<div className="flex items-center justify-between gap-2">
+							<div className="flex flex-wrap items-center justify-between gap-1.5">
+								{props.modeSwitchAdditions}
 								{modeSwitch}
 								{submitButton}
 							</div>
@@ -263,9 +263,10 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				)}
 				{phone && (
 					<div className="flex shrink-0 flex-col gap-1.5 border-t border-line pt-2 shadow-[inset_0_1px_0_var(--line-soft)]">
-						<div className="flex items-center gap-2">
+						<div className="flex items-center gap-2 overflow-x-auto">
 							{props.footerBeforeSubmit}
 							<span className="flex-1" />
+							{props.modeSwitchAdditions}
 							{modeSwitch}
 						</div>
 						{submitButton}
@@ -294,7 +295,7 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 				selectQueueItems={props.selectQueueItems}
 				defaultSelected={defaultSelected}
 				stores={props.stores}
-				footerAdditions={props.footerAdditions}
+				modeSwitchAdditions={props.modeSwitchAdditions}
 				footerBeforeSubmit={props.footerBeforeSubmit}
 				cursor={props.cursor}
 				onClose={onClose}

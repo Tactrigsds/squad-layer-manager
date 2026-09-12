@@ -117,6 +117,12 @@ export type LayerTable = {
 	columnVisibility: VisibilityState
 
 	isFetching: boolean
+	// Which query input the table is showing an answer for. `requestedQuery` counts the distinct inputs the
+	// constraints have produced; `answeredQuery` is the one `pageData` came from. They differ while a query is
+	// in flight and, unlike `isFetching`, across the throttle window before one starts -- which is the whole
+	// window in which the readout is stale but nothing says so.
+	requestedQuery: number
+	answeredQuery: number
 	pageData: LayerQueriesClient.QueryLayersPageData | null
 } & F.NodeValidationErrorStore
 
@@ -164,6 +170,8 @@ export function initLayerTable(args: Args) {
 
 		pageData: null,
 		isFetching: false,
+		requestedQuery: 0,
+		answeredQuery: 0,
 	}
 
 	set(initialLayerTable)
@@ -186,15 +194,21 @@ export function initLayerTable(args: Args) {
 					return input
 				}),
 				Rx.Ext.distinctDeepEquals(),
+				// counted before the throttle, so an input waiting out the window already reads as unanswered
+				Rx.map((input) => {
+					const requestedQuery = get().requestedQuery + 1
+					set({ requestedQuery })
+					return [input, requestedQuery] as const
+				}),
 				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
-				Rx.switchMap((input) =>
+				Rx.switchMap(([input, requestedQuery]) =>
 					LayerQueriesClient.queryLayers$(input).pipe(
 						Rx.tap({
 							subscribe: () => {
 								set({ isFetching: true })
 							},
 							complete: () => {
-								set({ isFetching: false })
+								set({ isFetching: false, answeredQuery: requestedQuery })
 							},
 							unsubscribe: () => {
 								set({ isFetching: false })

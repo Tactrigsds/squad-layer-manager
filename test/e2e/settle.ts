@@ -1,46 +1,35 @@
 import { expect, type Locator } from '@playwright/test'
 
-// The "N matched layers" readout is the only thing in the layer-select dialog that says a query has answered
-// for the constraints currently set, so several tests use it to know when it is safe to touch the filter menu
-// (see the comment at the toggle in layer-select.test.ts for what goes wrong if they don't). Reading it once
-// is not enough: a value can be left over from an earlier constraint whose query is still in flight, and a
+// The "N matched layers" readout is the only thing in the layer-select dialog that says how many layers the
+// constraints currently set match, so several tests read it. On its own it does not say whether it belongs to
+// those constraints: a value can be left over from an earlier constraint whose query is still in flight, and a
 // baseline read that way makes "wait for it to change" fire on the wrong transition and pass instantly.
-// Only a value that holds still is one this dialog has settled on.
 //
-// The pool filter is also seeded asynchronously (the panel waits for filter entities over the websocket), so
-// the readout first shows a real, larger number for the unconstrained query -- matching /\d+ matched layers/
-// does not mean the baseline is the pool's. The query pipeline additionally throttles at 500ms, so the
-// constrained result can land a full throttle window later; the stability window has to clear that comfortably.
-const STABLE_READS = 4
-const READ_INTERVAL_MS = 400
+// The table publishes `data-query-settled` for exactly this (see LayerTablePagination): true only once the
+// answer on screen came from the input the constraints currently produce, which covers the query being in
+// flight and the throttle window before it starts -- the whole window in which the readout is stale and
+// nothing else says so. These take the dialog rather than the readout, because the readout unmounts while a
+// query runs and a locator that matches nothing cannot be waited on.
+const TIMEOUT_MS = 30_000
 
-async function pollSettled(locator: Locator, reject: string | null) {
-	let previous: string | null = null
-	let agreements = 0
-	let settled: string | null = null
-	await expect
-		.poll(
-			async () => {
-				// the readout unmounts while a query is in flight, so a missing element counts as "not settled"
-				const current = (await locator.count()) === 1 ? await locator.textContent() : null
-				agreements = current !== null && current !== reject && current === previous ? agreements + 1 : 0
-				previous = current
-				if (agreements >= STABLE_READS) settled = current
-				return agreements
-			},
-			{ timeout: 30_000, intervals: [READ_INTERVAL_MS] },
-		)
-		.toBeGreaterThanOrEqual(STABLE_READS)
-	return settled!
+const pagination = (dialog: Locator) => dialog.locator('[data-tour="table-pagination"]')
+const readout = (dialog: Locator) => dialog.getByText(/matched layers|No layers matched/)
+
+async function settledValue(dialog: Locator) {
+	return (await pagination(dialog).getAttribute('data-query-settled')) === 'true' ? await readout(dialog).textContent() : null
 }
 
-export function settledText(locator: Locator) {
-	return pollSettled(locator, null)
+// the readout, once the table says it answers for the constraints currently set
+export async function settledText(dialog: Locator) {
+	await expect(pagination(dialog)).toHaveAttribute('data-query-settled', 'true', { timeout: TIMEOUT_MS })
+	return (await readout(dialog).textContent())!
 }
 
-// the settled value the readout reaches after a constraint changed, which `previous` must be the settled value
-// from before it. Waiting for "settled" and "different" together is what keeps a stale intermediate value from
-// satisfying either half on its own.
-export function settledTextAfter(locator: Locator, previous: string) {
-	return pollSettled(locator, previous)
+// the same, for a read taken after a constraint changed. `previous` must be the settled value from before it:
+// waiting for "settled" and "different" together is what keeps the pre-change value from satisfying it during
+// the window before the store has registered the new constraints at all. An unsettled table reads as the old
+// value, so it keeps waiting rather than returning early.
+export async function settledTextAfter(dialog: Locator, previous: string) {
+	await expect.poll(async () => (await settledValue(dialog)) ?? previous, { timeout: TIMEOUT_MS, intervals: [100] }).not.toBe(previous)
+	return (await readout(dialog).textContent())!
 }

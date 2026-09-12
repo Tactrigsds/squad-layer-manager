@@ -84,12 +84,18 @@ export function getDefaultFilterMenuItemState(
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion'] ?? undefined),
 		Collection: EFB.eq('Collection', defaultFields['Collection'] ?? undefined),
-		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
-		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
-		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
-		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_1'] ?? undefined),
-		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
-		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
+		// the matchup's dimensions take several values a side, so every team field is an `in`
+		Alliance_1: teamItem('Alliance_1', defaultFields['Alliance_1']),
+		Faction_1: teamItem('Faction_1', defaultFields['Faction_1']),
+		Unit_1: teamItem('Unit_1', defaultFields['Unit_1']),
+		Alliance_2: teamItem('Alliance_2', defaultFields['Alliance_1']),
+		Faction_2: teamItem('Faction_2', defaultFields['Faction_2']),
+		Unit_2: teamItem('Unit_2', defaultFields['Unit_2']),
+		// virtual columns, so they take no default from a layer: a layer names its units, not their vehicles
+		Vehicle_1: teamItem('Vehicle_1'),
+		VehicleType_1: teamItem('VehicleType_1'),
+		Vehicle_2: teamItem('Vehicle_2'),
+		VehicleType_2: teamItem('VehicleType_2'),
 	}
 
 	if (config?.extraLayerSelectMenuItems) {
@@ -99,6 +105,29 @@ export function getDefaultFilterMenuItemState(
 		}
 	}
 	return extraItems
+}
+
+function teamItem(field: string, defaultValue?: F.Value | null): F.EditableCompNode {
+	return EFB.inValues(field, defaultValue === undefined || defaultValue === null ? undefined : [defaultValue])
+}
+
+function teamFieldPairs(): [team1: string, team2: string][] {
+	return F.TEAM_COLUMNS.map((column) => [F.resolveTeamColumn(column, 1), F.resolveTeamColumn(column, 2)])
+}
+
+// a menu item's selection, whatever shape its comparison has: `in` items carry a list, the rest a single value
+function itemValues(comp: F.EditableCompNode): F.Value[] | undefined {
+	const values = F.compValues(comp)
+	if (values) return values.filter((item): item is F.Value => !F.isColumnListItem(item))
+	const value = F.compValue(comp)
+	return value === undefined ? undefined : [value]
+}
+
+// a values-shaped comp (in) must stay values-shaped, or the node ends up with a value-arg its code can't read
+function setItemValues(comp: F.EditableCompNode, values: F.Value[] | undefined) {
+	const valuesArg = comp.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
+	if (valuesArg) valuesArg.values = values?.length ? values : undefined
+	else F.setCompValue(comp, values?.[0])
 }
 
 function getFilterFromComparisons(items: Record<string, F.EditableCompNode>) {
@@ -116,8 +145,10 @@ function getFilterFromComparisons(items: Record<string, F.EditableCompNode>) {
 export namespace Sel {
 	export function filterMenuConstraints(store: Store): LQY.Constraint[] {
 		let items: LQY.FilterMenuItem[] = []
+		const ctx = { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig }
 		for (const [field, node] of Object.entries(store.filterMenu.menuItems)) {
-			const returnPossibleValues = LC.isEnumeratedColumn(field, { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig })
+			// a virtual column has no artifact column to take a distinct over, so its editor offers the whole enum
+			const returnPossibleValues = LC.isEnumeratedColumn(field, ctx) && !LC.isVirtualColumn(field, store.filterMenu.colConfig)
 			let excludedSiblings: string[] | undefined
 			if (field === 'Layer') {
 				excludedSiblings = [...(L.LAYER_STRING_PROPERTIES as string[])]
@@ -136,10 +167,12 @@ export namespace Sel {
 	}
 
 	export function swapFactionsDisabled(state: Store) {
-		const swapFactionsDisabled = !['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(
-			(key) => F.compValue(state.filterMenu.menuItems[key]) !== undefined,
+		return !teamFieldPairs().some(([field1, field2]) =>
+			[field1, field2].some((field) => {
+				const comp = state.filterMenu.menuItems[field]
+				return comp && F.editableCompHasValue(comp)
+			}),
 		)
-		return swapFactionsDisabled
 	}
 }
 
@@ -154,15 +187,12 @@ export namespace Actions {
 	export function swapTeams(stores: KeyProp) {
 		setMenuItems(stores, (state) =>
 			Im.produce(state, (draft) => {
-				const faction1 = F.compValue(draft['Faction_1'])
-				const subFac1 = F.compValue(draft['Unit_1'])
-				const alliance1 = F.compValue(draft['Alliance_1'])
-				F.setCompValue(draft['Faction_1'], F.compValue(draft['Faction_2']))
-				F.setCompValue(draft['Unit_1'], F.compValue(draft['Unit_2']))
-				F.setCompValue(draft['Alliance_1'], F.compValue(draft['Alliance_2']))
-				F.setCompValue(draft['Faction_2'], faction1)
-				F.setCompValue(draft['Unit_2'], subFac1)
-				F.setCompValue(draft['Alliance_2'], alliance1)
+				for (const [field1, field2] of teamFieldPairs()) {
+					if (!draft[field1] || !draft[field2]) continue
+					const values1 = itemValues(draft[field1])
+					setItemValues(draft[field1], itemValues(draft[field2]))
+					setItemValues(draft[field2], values1)
+				}
 			}),
 		)
 	}
@@ -178,11 +208,7 @@ export namespace Actions {
 				const value = F.compValue(comp)
 				const setFieldValue = (f: string, v: F.Value | undefined) => {
 					const fieldComp = draft[f]
-					if (!fieldComp) return
-					// a values-shaped comp (in) must stay values-shaped, or the node ends up with a value-arg its code can't read
-					const valuesArg = fieldComp.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
-					if (valuesArg) valuesArg.values = v === undefined ? undefined : [v]
-					else F.setCompValue(fieldComp, v)
+					if (fieldComp) setItemValues(fieldComp, v === undefined ? undefined : [v])
 				}
 
 				if (column === 'Layer' && value) {

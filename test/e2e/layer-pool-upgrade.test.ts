@@ -51,7 +51,7 @@ async function matchedLayers(page: Page) {
 	await page.getByRole('button', { name: 'Start Editing' }).click()
 	await page.getByRole('button', { name: 'Add Layers' }).click()
 	const dialog = page.getByRole('dialog', { name: 'Add Layers' })
-	const text = await settledText(dialog.getByText(/matched layers|No layers matched/))
+	const text = await settledText(dialog)
 	await page.keyboard.press('Escape')
 	return text
 }

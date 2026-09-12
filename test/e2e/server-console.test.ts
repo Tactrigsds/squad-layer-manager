@@ -110,8 +110,15 @@ sharedAppTest.describe('server console', () => {
 		await page.keyboard.press('ControlOrMeta+f')
 		const findInput = page.getByRole('search', { name: 'Find in this panel' }).getByRole('textbox')
 		await findInput.fill('ListPlayers')
-		await expect.poll(distanceFromBottom).toBeGreaterThan(16)
-		await expect(backToBottom).toBeVisible()
+		// the find has to have landed on a match before the position means anything; its counter is what says so
+		await expect(page.getByText(/\d+ of \d+/)).toBeVisible()
+		// both halves in one sample. The console grows the whole time, so a moment where the reader is away from
+		// the bottom is not necessarily the moment the button is up: read separately, the first assertion can
+		// pass on the gap between content arriving and the tail correcting for it, and the second then reads a
+		// console that has since been pulled back down.
+		await expect
+			.poll(async () => ({ away: (await distanceFromBottom()) > 16, offersTheTail: await backToBottom.isVisible() }))
+			.toEqual({ away: true, offersTheTail: true })
 		const atMatch = await viewport.evaluate((el) => el.scrollTop)
 
 		// The failure this guards against is an oscillation, down to the tail and back up to the match a quarter second
