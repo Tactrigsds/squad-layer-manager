@@ -78,11 +78,10 @@ async function clickOutOfPoolRow(page: Page) {
 
 	// see the settling notes below for why the count is what makes the filter menu answer for the new pool
 	const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
-	const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-	const countWithPool = await settledText(matchedCount)
+	const countWithPool = await settledText(dialog)
 	await poolControl.click()
 	await expect(poolControl).toHaveAttribute('aria-checked', 'false')
-	await settledTextAfter(matchedCount, countWithPool)
+	await settledTextAfter(dialog, countWithPool)
 
 	await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
 	await page.getByRole('option', { name: 'Seed', exact: true }).click()
@@ -179,7 +178,7 @@ test.describe('the explore-layers collection', () => {
 
 		// both constraints have to have answered before the row is touched: the table remounts its rows when a
 		// query lands, and a right-click that straddles that opens a context menu whose trigger is already gone
-		await settledText(dialog.getByText(/matched layers|No layers matched/))
+		await settledText(dialog)
 
 		const row = dialog
 			.getByRole('row')
@@ -223,7 +222,7 @@ test.describe('applied filters', () => {
 		// entering the query at all. Necessary but not sufficient -- the count it produces lands later still
 		await expect(dialog.getByRole('checkbox', { name: 'RAAS Only' })).toBeVisible()
 		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-		const poolOnlyCount = await settledText(matchedCount)
+		const poolOnlyCount = await settledText(dialog)
 		expect(poolOnlyCount).toMatch(/\d+ matched layers/)
 
 		await dialog.getByRole('button', { name: 'Edit extra filters' }).click()
@@ -238,7 +237,7 @@ test.describe('applied filters', () => {
 
 		await extraControl.click()
 		await expect(extraControl).toHaveAttribute('aria-checked', 'true')
-		await settledTextAfter(matchedCount, poolOnlyCount)
+		await settledTextAfter(dialog, poolOnlyCount)
 		await expect(dialog.getByRole('row').filter({ hasText: 'Narva' }).first()).toBeVisible()
 	})
 })
@@ -281,17 +280,16 @@ test.describe('installed mods', () => {
 		const dialog = await openAddLayers(page)
 		const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
 		await expect(poolControl).toHaveAttribute('aria-checked', 'true')
-		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-		let lastCount = await settledText(matchedCount)
+		let lastCount = await settledText(dialog)
 		await poolControl.click()
 		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
-		lastCount = await settledTextAfter(matchedCount, lastCount)
+		lastCount = await settledTextAfter(dialog, lastCount)
 
 		const collectionMenu = dialog.getByRole('combobox', { name: 'Collection' })
 		await collectionMenu.click()
 		await page.getByRole('option', { name: collection, exact: true }).click()
 		await expect(collectionMenu).toHaveText(collection)
-		await settledTextAfter(matchedCount, lastCount)
+		await settledTextAfter(dialog, lastCount)
 		return dialog
 	}
 
@@ -331,12 +329,11 @@ test.describe('installed mods', () => {
 
 		// positive control: a vanilla row, reached the same way with the pool still off, does arm Submit
 		const collectionMenu = dialog.getByRole('combobox', { name: 'Collection' })
-		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-		const beforeSwitch = await settledText(matchedCount)
+		const beforeSwitch = await settledText(dialog)
 		await collectionMenu.click()
 		await page.getByRole('option', { name: 'OWI', exact: true }).click()
 		await expect(collectionMenu).toHaveText('OWI')
-		await settledTextAfter(matchedCount, beforeSwitch)
+		await settledTextAfter(dialog, beforeSwitch)
 
 		await expect(firstRow(dialog).getByRole('checkbox', { name: 'Select row' })).toHaveCount(1)
 		await firstRow(dialog).click()
@@ -424,11 +421,10 @@ test.describe('pool membership and force-write', () => {
 		// which gamemodes are still reachable -- until it lands, an out-of-pool option swallows the click
 		// that would select it. The count only renders on a settled query, so waiting for it to change is
 		// what makes the menu below answer for the pool we actually have.
-		const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-		const countWithPool = await settledText(matchedCount)
+		const countWithPool = await settledText(dialog)
 		await poolControl.click()
 		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
-		await settledTextAfter(matchedCount, countWithPool)
+		await settledTextAfter(dialog, countWithPool)
 
 		await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
 		await page.getByRole('option', { name: 'Seed', exact: true }).click()

@@ -913,11 +913,18 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 			totalRowCount: table.pageData?.totalCount,
 			totalPageCount: table.pageData?.pageCount,
 			isFetching: table.isFetching,
+			settled: table.answeredQuery === table.requestedQuery,
 		})),
 	)
 
 	return (
-		<div data-tour="table-pagination" className="flex items-center justify-between gap-4 whitespace-nowrap">
+		<div
+			data-tour="table-pagination"
+			// the one place that says the count below belongs to the constraints currently set; e2e waits on it
+			// rather than on the count holding still (see test/e2e/settle.ts)
+			data-query-settled={initStatus.status === 'ready' && frameState.settled && !frameState.isFetching}
+			className="flex items-center justify-between gap-4 whitespace-nowrap"
+		>
 			<div className="flex items-center gap-2">
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-text-2 [&_strong]:font-semibold [&_strong]:text-foreground">
