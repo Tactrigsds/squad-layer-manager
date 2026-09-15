@@ -74,6 +74,9 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
  *     (`top` is computed relative to the nearest scrollable ancestor, so a
  *     sticky element in a different scroll container than its "content"
  *     will produce numerically correct but visually meaningless results.)
+ *     The one deliberate exception is a sticky element that *is* the scroll
+ *     container its content lives in: pass `ownScroller` and the content
+ *     starts a fresh stack rather than being offset by the whole element.
  *   - Sit immediately before (in DOM order) the content it's meant to head.
  *     Sticky positioning relies on the element's natural place in normal
  *     flow to know when to "release" as its container scrolls past.
@@ -114,9 +117,16 @@ export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	 * through the ref, it never renders or clones it.
 	 */
 	stickyRef: RefObject<T | null>
+	/**
+	 * The ref'd element scrolls its own contents. `children` then pin against that scroller rather than
+	 * against this element, so they stack from its top instead of below it, and this group's height is not
+	 * their offset. Without this they would take an offset as tall as the element they live inside, which
+	 * pushes them down its whole height instead of pinning them.
+	 */
+	ownScroller?: boolean
 }
 
-export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, stickyRef }: StickyGroupProps<T>) {
+export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, stickyRef, ownScroller }: StickyGroupProps<T>) {
 	const parentStore = useContext(StickyStoreContext)
 	const stickyCeiling = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const stickyFloor = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
@@ -153,10 +163,14 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, sti
 			el!.style.zIndex = String(Math.max(stickyCeiling - depth, stickyFloor))
 
 			// Tell any nested <StickyGroup> what offset/depth to build on.
-			ownStore.setState({
-				offset: offset + measure(),
-				depth: depth + 1,
-			})
+			ownStore.setState(
+				ownScroller
+					? { offset: 0, depth: 0 }
+					: {
+							offset: offset + measure(),
+							depth: depth + 1,
+						},
+			)
 		}
 
 		// Measured synchronously so the correct (padding-inclusive) offset is
@@ -183,7 +197,7 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, sti
 			el!.style.top = ''
 			el!.style.zIndex = ''
 		}
-	}, [stickyRef, parentStore, ownStore, stickyCeiling, stickyFloor])
+	}, [stickyRef, parentStore, ownStore, stickyCeiling, stickyFloor, ownScroller])
 
 	return <StickyStoreContext.Provider value={ownStore}>{children}</StickyStoreContext.Provider>
 }

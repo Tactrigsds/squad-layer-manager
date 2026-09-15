@@ -24,9 +24,9 @@ import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.ts
 
 type PanelTab = 'queue' | 'teams'
 
-// stable ids so each tab and its panel can point at each other (aria-controls / aria-labelledby)
-const tabId = (value: string) => `primary-panel-tab-${value}`
-const tabPanelId = (value: string) => (value === 'teams' ? SquadServerClient.TEAMS_PANEL_ELEMENT_ID : `primary-panel-panel-${value}`)
+// stable ids so a section's title and its body can point at each other (aria-controls / aria-labelledby)
+const titleId = (value: string) => `primary-panel-tab-${value}`
+const bodyId = (value: string) => (value === 'teams' ? SquadServerClient.TEAMS_PANEL_ELEMENT_ID : `primary-panel-panel-${value}`)
 
 function TabBar<T extends string>({
 	tabs,
@@ -50,9 +50,9 @@ function TabBar<T extends string>({
 					key={tab.value}
 					type="button"
 					role="tab"
-					id={tabId(tab.value)}
+					id={titleId(tab.value)}
 					aria-selected={value === tab.value}
-					aria-controls={tabPanelId(tab.value)}
+					aria-controls={bodyId(tab.value)}
 					data-state={value === tab.value ? 'active' : 'inactive'}
 					// only the active tab is in the tab order; arrow keys are the expected way to move between
 					// tabs, and roving tabindex is what tells assistive tech that
@@ -69,43 +69,167 @@ function TabBar<T extends string>({
 	)
 }
 
+function QueuePresence(props: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = props.stores.squadServer.serverId
+	// subjects are created once per frame instance, so reading them outside a selector is fine
+	const event$ = Zus.getState(props.stores.squadServer).queue.presenceEvent$
+	return (
+		<UserPresencePanel
+			stores={props.stores}
+			sourcePresenceFn={sortEditingPresence}
+			matchActivity={(root) =>
+				UP.Trans.viewingQueue(serverId).match(root) ||
+				UP.Trans.editingQueue(serverId).match(root) ||
+				UP.Trans.editingLayerRequests(serverId).match(root)
+			}
+			matchActivityForStatusText={(root) =>
+				UP.Trans.editingQueue(serverId).match(root) ||
+				UP.Trans.editingLayerRequests(serverId).match(root) ||
+				UP.Trans.viewingQueue(serverId).match(root)
+			}
+			event$={event$}
+			transitionMessages={[
+				{
+					matchActivity: (root) => UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
+					leaveMessage: tr.text(APP_Msgs.finishedEditing()),
+				},
+			]}
+			className="min-w-0"
+		/>
+	)
+}
+
+function TeamsPresence(props: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = props.stores.squadServer.serverId
+	const event$ = Zus.getState(props.stores.squadServer).teamswaps.presenceEvent$
+	return (
+		<UserPresencePanel
+			stores={props.stores}
+			sourcePresenceFn={sortEditingPresence}
+			matchActivity={(root) => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
+			matchActivityForStatusText={(root) =>
+				UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
+			}
+			event$={event$}
+			className="min-w-0"
+		/>
+	)
+}
+
+function QueueBody(props: { stores: SquadServerFrame.KeyProp }) {
+	return (
+		<>
+			<IngameVoteAlert stores={props.stores} />
+			<SlmUpdatesDisabledAlert stores={props.stores} />
+			<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId: props.stores.squadServer.serverId }} />
+			{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
+			<div data-tour="queue-panel">
+				<QueuePanelContent stores={props.stores} />
+			</div>
+			<BackburnerPanel stores={props.stores} />
+		</>
+	)
+}
+
+// The queue with a heading of its own, for every layout that shows it beside the teams rather than behind a tab.
+function QueueCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => void; ref?: React.RefObject<HTMLDivElement | null> }) {
+	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
+	return (
+		<Card
+			ref={props.ref}
+			role="region"
+			aria-labelledby={titleId('queue')}
+			onPointerDownCapture={props.onTouch}
+			onFocusCapture={props.onTouch}
+		>
+			<CardHeader>
+				<CardTitle id={titleId('queue')} data-tour="queue-editors">
+					{tr.text(APP_Msgs.queueTab(queueLength))}
+				</CardTitle>
+				<span className="ml-auto flex min-w-0 items-center gap-2">
+					<QueuePresence stores={props.stores} />
+				</span>
+			</CardHeader>
+			<QueueBody stores={props.stores} />
+		</Card>
+	)
+}
+
+function TeamsCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => void; ref?: React.RefObject<HTMLDivElement | null> }) {
+	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
+	const titleRef = React.useRef<HTMLDivElement>(null)
+	return (
+		<Card
+			ref={props.ref}
+			id={bodyId('teams')}
+			role="region"
+			aria-labelledby={titleId('teams')}
+			onPointerDownCapture={props.onTouch}
+			onFocusCapture={props.onTouch}
+		>
+			{/* the title stays on screen while the tables scroll under it; the teams panel's own header stacks below */}
+			<StickyGroup stickyRef={titleRef}>
+				<CardHeader ref={titleRef}>
+					<CardTitle id={titleId('teams')}>{tr.text(APP_Msgs.teamsTab(playerCount))}</CardTitle>
+					<span className="ml-auto flex min-w-0 items-center gap-2">
+						<TeamsPresence stores={props.stores} />
+					</span>
+				</CardHeader>
+				<TeamsPanel stores={props.stores} />
+			</StickyGroup>
+		</Card>
+	)
+}
+
 /**
- * Match History, the Teams Breakdown and the Queue / Teams tabs. `part` picks which of those this instance
- * renders: the two-column dashboard stacks them all in one column, the three-column one splits history and
- * breakdown from the tabs. `stacked` shows the queue and the teams at once, one above the other, instead of
- * behind tabs, and `'when-it-fits'` picks between the two from whether they both do.
+ * Match History, the Teams Breakdown, the Queue and the Teams. `part` picks which of those this instance
+ * renders: the one- and two-column dashboards stack them all in one column, the three-column one splits them
+ * down the middle, history with the queue and the breakdown with the teams. `stacked` shows the queue and the
+ * teams at once, one above the other, instead of behind tabs, and `'when-it-fits'` picks between the two from
+ * whether they both do.
  */
 export default function PrimaryPanel(props: {
 	stores: SquadServerFrame.KeyProp
-	part?: 'all' | 'history' | 'tabs'
-	// whether the breakdown sits here (the single-column layout keeps it with Server Activity instead)
+	part?: 'all' | 'history-queue' | 'stats-teams'
+	// whether the breakdown sits here; implied by `stats-teams`. The single-column layout keeps it with
+	// Server Activity instead.
 	withStats?: boolean
 	statsWide?: boolean
 	stacked?: boolean | 'when-it-fits'
 }) {
 	const part = props.part ?? 'all'
+	// Split across two columns, both sections are on screen at once, which is what `stacked` means to presence:
+	// there is no tab to report, so it follows the section last interacted with.
+	const split = part !== 'all'
+	React.useEffect(() => {
+		if (split) SquadServerClient.PrimaryPanelActions.setStacked(true)
+	}, [split])
+	const touch = (section: ClientOnlySettings.PrimaryPanelTab) => () => SquadServerClient.PrimaryPanelActions.touchStackedSection(section)
+
 	const content = (
 		<div className="flex flex-col gap-2.5 flex-1">
-			{part !== 'tabs' && (
+			{part !== 'stats-teams' && (
 				<>
 					<Card>
 						<MatchHistoryPanelContent stores={props.stores} />
 					</Card>
 					<PluginSlot anchor="server-dashboard:alerts" anchorProps={{ serverId: props.stores.squadServer.serverId }} />
-					{props.withStats && (
-						<React.Suspense fallback={null}>
-							<StatsPanel stores={props.stores} wide={props.statsWide} />
-						</React.Suspense>
-					)}
 				</>
 			)}
-			{part !== 'history' && <QueueTeamsTabs stores={props.stores} stacked={props.stacked} />}
+			{(props.withStats || part === 'stats-teams') && (
+				<React.Suspense fallback={null}>
+					<StatsPanel stores={props.stores} wide={props.statsWide} />
+				</React.Suspense>
+			)}
+			{part === 'all' && <QueueTeamsTabs stores={props.stores} stacked={props.stacked} />}
+			{part === 'history-queue' && <QueueCard stores={props.stores} onTouch={touch('VIEWING_QUEUE')} />}
+			{part === 'stats-teams' && <TeamsCard stores={props.stores} onTouch={touch('VIEWING_TEAMS')} />}
 		</div>
 	)
-	// One scroller for the whole column, so history, the breakdown and the tabs move together. `tabs` is the
-	// exception: it is the half of the ultrawide split that scrolls the page, so its scroller is the
-	// dashboard's. `history` is the other half, pinned to the window there, and scrolls within that.
-	if (part === 'tabs') return <div className="min-w-0 @container">{content}</div>
+	// One scroller for the whole column, so everything in it moves together. `stats-teams` is the exception: it
+	// is the half of the ultrawide split that scrolls the page, so its scroller is the dashboard's. The other
+	// half is pinned to the window there, and scrolls within that.
+	if (part === 'stats-teams') return <div className="min-w-0 @container">{content}</div>
 	return (
 		<ScrollArea fill className="flex-1 min-h-0 min-w-0 @container">
 			{content}
@@ -113,8 +237,7 @@ export default function PrimaryPanel(props: {
 	)
 }
 
-export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; className?: string; stacked?: boolean | 'when-it-fits' }) {
-	const serverId = props.stores.squadServer.serverId
+function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; stacked?: boolean | 'when-it-fits' }) {
 	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
 	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
 	const tab: PanelTab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
@@ -122,15 +245,10 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
 	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
 
-	// subjects are created once per frame instance, so reading them outside a selector is fine
-	const frameState = Zus.getState(props.stores.squadServer)
-	const queueEvent$ = frameState.queue.presenceEvent$
-	const teamswapEvent$ = frameState.teamswaps.presenceEvent$
-
 	const rootRef = React.useRef<HTMLDivElement>(null)
 	// the scroller is never this panel's own: in the two-column layout it is the enclosing column's, shared
-	// with Match History and the breakdown, and in the ultrawide one it is the dashboard itself. So this
-	// reads upwards rather than down, and takes whichever comes first.
+	// with Match History and the breakdown, and in the tablet one it is the same column's. So this reads
+	// upwards rather than down, and takes whichever comes first.
 	const findScroller = () => rootRef.current?.closest<HTMLElement>('[data-radix-scroll-area-viewport],[data-dashboard-scroller]')
 
 	// what the column can show at once is what decides between the two layouts, so the budget is the
@@ -165,57 +283,6 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 	}, [tab, stacked])
 
 	const tabBarRef = React.useRef<HTMLDivElement>(null)
-	const teamsTitleRef = React.useRef<HTMLDivElement>(null)
-
-	const queuePresence = (
-		<UserPresencePanel
-			stores={props.stores}
-			sourcePresenceFn={sortEditingPresence}
-			matchActivity={(root) =>
-				UP.Trans.viewingQueue(serverId).match(root) ||
-				UP.Trans.editingQueue(serverId).match(root) ||
-				UP.Trans.editingLayerRequests(serverId).match(root)
-			}
-			matchActivityForStatusText={(root) =>
-				UP.Trans.editingQueue(serverId).match(root) ||
-				UP.Trans.editingLayerRequests(serverId).match(root) ||
-				UP.Trans.viewingQueue(serverId).match(root)
-			}
-			event$={queueEvent$}
-			transitionMessages={[
-				{
-					matchActivity: (root) => UP.Trans.editingQueue(serverId).match(root) || UP.Trans.editingLayerRequests(serverId).match(root),
-					leaveMessage: tr.text(APP_Msgs.finishedEditing()),
-				},
-			]}
-			className="min-w-0"
-		/>
-	)
-	const teamsPresence = (
-		<UserPresencePanel
-			stores={props.stores}
-			sourcePresenceFn={sortEditingPresence}
-			matchActivity={(root) => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
-			matchActivityForStatusText={(root) =>
-				UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
-			}
-			event$={teamswapEvent$}
-			className="min-w-0"
-		/>
-	)
-
-	const queueContent = (
-		<>
-			<IngameVoteAlert stores={props.stores} />
-			<SlmUpdatesDisabledAlert stores={props.stores} />
-			<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId }} />
-			{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
-			<div data-tour="queue-panel">
-				<QueuePanelContent stores={props.stores} />
-			</div>
-			<BackburnerPanel stores={props.stores} />
-		</>
-	)
 
 	if (stacked) {
 		// Both panels at once, scrolling with the rest of the page. Presence follows the section last touched
@@ -224,45 +291,15 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 		const touch = (section: ClientOnlySettings.PrimaryPanelTab) => () =>
 			SquadServerClient.PrimaryPanelActions.touchStackedSection(section)
 		return (
-			<div ref={rootRef} className={cn('flex flex-col gap-2.5', props.className)}>
-				<Card
-					ref={fit.firstRef}
-					role="region"
-					aria-labelledby={tabId('queue')}
-					onPointerDownCapture={touch('VIEWING_QUEUE')}
-					onFocusCapture={touch('VIEWING_QUEUE')}
-				>
-					<CardHeader>
-						<CardTitle id={tabId('queue')} data-tour="queue-editors">
-							{tr.text(APP_Msgs.queueTab(queueLength))}
-						</CardTitle>
-						<span className="ml-auto flex min-w-0 items-center gap-2">{queuePresence}</span>
-					</CardHeader>
-					{queueContent}
-				</Card>
-				<Card
-					ref={fit.secondRef}
-					id={tabPanelId('teams')}
-					role="region"
-					aria-labelledby={tabId('teams')}
-					onPointerDownCapture={touch('VIEWING_TEAMS')}
-					onFocusCapture={touch('VIEWING_TEAMS')}
-				>
-					{/* the title stays on screen while the tables scroll under it; the teams panel's own header stacks below */}
-					<StickyGroup stickyRef={teamsTitleRef}>
-						<CardHeader ref={teamsTitleRef}>
-							<CardTitle id={tabId('teams')}>{tr.text(APP_Msgs.teamsTab(playerCount))}</CardTitle>
-							<span className="ml-auto flex min-w-0 items-center gap-2">{teamsPresence}</span>
-						</CardHeader>
-						<TeamsPanel stores={props.stores} />
-					</StickyGroup>
-				</Card>
+			<div ref={rootRef} className="flex flex-col gap-2.5">
+				<QueueCard stores={props.stores} ref={fit.firstRef} onTouch={touch('VIEWING_QUEUE')} />
+				<TeamsCard stores={props.stores} ref={fit.secondRef} onTouch={touch('VIEWING_TEAMS')} />
 			</div>
 		)
 	}
 
 	return (
-		<div ref={rootRef} className={cn('flex flex-col flex-1 min-w-0', props.className)}>
+		<div ref={rootRef} className="flex flex-col flex-1 min-w-0">
 			{/* the column scrolls as one, so the tab bar would leave with Match History: pin it, since it is
 			    what switches away from whatever you scrolled down to. `bg-ground` because the tabs have gaps
 			    between them and the content passes underneath */}
@@ -278,8 +315,8 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 					onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
 					trailing={
 						<>
-							{queuePresence}
-							{teamsPresence}
+							<QueuePresence stores={props.stores} />
+							<TeamsPresence stores={props.stores} />
 						</>
 					}
 				/>
@@ -291,16 +328,16 @@ export function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; classN
 						    scrolling past its own content */}
 						<div
 							role="tabpanel"
-							id={tabPanelId('queue')}
-							aria-labelledby={tabId('queue')}
+							id={bodyId('queue')}
+							aria-labelledby={titleId('queue')}
 							className={cn('[grid-area:1/1]', tab !== 'queue' && 'hidden')}
 						>
-							{queueContent}
+							<QueueBody stores={props.stores} />
 						</div>
 						<div
 							role="tabpanel"
-							id={tabPanelId('teams')}
-							aria-labelledby={tabId('teams')}
+							id={bodyId('teams')}
+							aria-labelledby={titleId('teams')}
 							className={cn('[grid-area:1/1]', tab !== 'teams' && 'hidden')}
 						>
 							<TeamsPanel stores={props.stores} />
