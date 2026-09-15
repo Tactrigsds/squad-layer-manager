@@ -126,11 +126,15 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 
 	// paints the current match over the rest of them and brings it into view
 	function paintCurrent() {
-		const scroll = engine.revealScroll
 		engine.revealHandle = 0
+		// A mutation landing between the search and this frame drops the index, and the matches went with it. The
+		// rebuild that mutation scheduled resolves the reveal instead, so the intent to scroll has to outlive this
+		// frame: consuming it here is a find over a live feed that never moves the reader at all.
+		if (!engine.index) return
+		const scroll = engine.revealScroll
 		engine.revealScroll = false
 		const match = engine.matches[engine.revealTarget]
-		if (!engine.index || !match) {
+		if (!match) {
 			Find.clear(HIGHLIGHT_CURRENT)
 			return
 		}
@@ -140,6 +144,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	}
 
 	function cancelReveal() {
+		engine.revealScroll = false
 		if (engine.revealHandle === 0) return
 		cancelAnimationFrame(engine.revealHandle)
 		engine.revealHandle = 0

@@ -26,6 +26,11 @@ function setOverflowAnchor(viewport: HTMLElement, value: 'auto' | 'none') {
  * answer: a clamp keeps a reader at the bottom at the bottom, and a find bar, focus or gesture that carries them
  * away is them leaving.
  *
+ * That scroll event is dispatched a frame after the scroll it reports, and the resize observer driving the pin runs
+ * inside the gap. So the pin sits out any frame where the viewport is not where it last left it, and lets the event
+ * still to come decide. Pinning over such a position would erase it, and the one coalesced event would report the
+ * bottom the pin had just written.
+ *
  * The browser's scroll anchoring is on only while the reader is parked. There it keeps the rows they are reading
  * still as rows above resize or a capped buffer drops rows off the top. While tailing that same correction would
  * scroll them away from the bottom, so the pin does the work instead.
@@ -37,6 +42,9 @@ export function useTailingScroll() {
 	const [isAtTop, setIsAtTop] = React.useState(true)
 	const tailingRef = React.useRef(true)
 	const pinnedTop = React.useRef<number | null>(null)
+	// the last position our own pin wrote or a scroll event reported. A viewport sitting anywhere else was scrolled
+	// by someone whose event has not arrived yet.
+	const accountedTop = React.useRef(0)
 
 	const scrollAreaRef = React.useCallback((node: HTMLElement | null) => {
 		setViewport(node?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]') ?? null)
@@ -52,6 +60,7 @@ export function useTailingScroll() {
 	const pin = React.useCallback((viewport: HTMLElement) => {
 		scrollTo(viewport, viewport.scrollHeight - viewport.clientHeight)
 		pinnedTop.current = viewport.scrollTop
+		accountedTop.current = viewport.scrollTop
 	}, [])
 
 	const scrollToBottom = React.useCallback(() => {
@@ -68,7 +77,10 @@ export function useTailingScroll() {
 
 	React.useEffect(() => {
 		if (!viewport || !content) return
+		// the position below belongs to whichever viewport is current, so a new one starts from where it sits
+		accountedTop.current = viewport.scrollTop
 		const settle = () => {
+			if (viewport.scrollTop !== accountedTop.current) return
 			if (tailingRef.current) pin(viewport)
 		}
 		// content growth and viewport resize (panel, window) both need the same correction
@@ -87,6 +99,7 @@ export function useTailingScroll() {
 	React.useEffect(() => {
 		if (!viewport) return
 		const onScroll = () => {
+			accountedTop.current = viewport.scrollTop
 			setIsAtTop(viewport.scrollTop <= EDGE_THRESHOLD_PX)
 			const pinned = pinnedTop.current
 			pinnedTop.current = null
