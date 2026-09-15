@@ -1,5 +1,3 @@
-import * as ScrollIntent from './scroll-intent'
-
 // Ctrl+F over one subtree. The whole point is that nothing here touches React or the DOM's shape: matches are
 // painted with the CSS Custom Highlight API, which takes ranges and paints them during the browser's own text
 // rendering, so a query over thousands of matches costs zero nodes, zero reflows and zero component renders.
@@ -361,7 +359,6 @@ export function scrollRangeIntoView(range: Range, margin = 56) {
 			else if (rect.right > port.right - pad) dx = rect.right - (port.right - pad)
 		}
 		if (dy === 0 && dx === 0) continue
-		ScrollIntent.announce(el)
 		el.scrollTop += dy
 		el.scrollLeft += dx
 	}

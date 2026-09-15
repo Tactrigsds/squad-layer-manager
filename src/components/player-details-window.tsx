@@ -288,7 +288,23 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const isOnline = !!livePlayer
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
-	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
+	const { scrollAreaRef, contentRef, content, showScrollButton, isAtTop, scrollToBottom, scrollBy } = useTailingScroll()
+
+	// older events prepend above the reader. The browser's own scroll anchoring sits out when the scroller is at
+	// the top, which is exactly where the load-older button lives, so the topmost row is held in place by hand
+	// until the fetch settles.
+	const prependAnchor = React.useRef<{ el: Element; top: number } | null>(null)
+	const anchorForPrepend = () => {
+		const el = content?.firstElementChild
+		if (el) prependAnchor.current = { el, top: el.getBoundingClientRect().top }
+	}
+	const wasLoadingOlder = React.useRef(false)
+	React.useLayoutEffect(() => {
+		const anchor = prependAnchor.current
+		if (wasLoadingOlder.current && !isLoadingOlder) prependAnchor.current = null
+		wasLoadingOlder.current = isLoadingOlder
+		if (anchor?.el.isConnected) scrollBy(anchor.el.getBoundingClientRect().top - anchor.top)
+	})
 	const { setIsPinned } = useDraggableWindow()
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 

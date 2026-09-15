@@ -1,143 +1,101 @@
 import React from 'react'
 
-import * as ScrollIntent from '@/lib/scroll-intent'
-
 const EDGE_THRESHOLD_PX = 12
-// how long after a user gesture we keep attributing scroll events to the user (covers momentum/smooth scrolling)
-const SCROLL_IDLE_MS = 250
-// a prepend that never materializes (empty page, aborted fetch) must not leave a stale anchor around
-const PREPEND_ANCHOR_TTL_MS = 3000
-
-const USER_INTENT_EVENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'] as const
-
-type PrependAnchor = { scrollHeight: number; scrollTop: number; takenAt: number }
 
 function distanceFromBottom(viewport: HTMLElement) {
 	return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
 }
 
-function maxScrollTop(viewport: HTMLElement) {
-	return viewport.scrollHeight - viewport.clientHeight
-}
-
-// the viewport lives in state so the effects below can depend on it, which makes React Compiler treat it as a
-// value that must not be mutated. scrolling a DOM node is a side effect on the document, not a state write, so
-// it goes through here rather than being written inline.
+// the viewport lives in state, which makes React Compiler treat it as a value that must not be mutated. scrolling
+// a DOM node is a side effect on the document, not a state write, so the writes go through here.
 function scrollTo(viewport: HTMLElement, top: number) {
 	viewport.scrollTop = top
 }
 
+function setOverflowAnchor(viewport: HTMLElement, value: 'auto' | 'none') {
+	viewport.style.overflowAnchor = value
+}
+
 /**
- * Keeps a Radix ScrollArea pinned to the bottom as content grows, and lets go only when the user
- * deliberately scrolls away.
+ * Keeps a Radix ScrollArea pinned to the bottom as content grows, and lets go when the reader scrolls away.
  *
- * The tailing flag is driven by user gestures rather than by raw scroll events: programmatic
- * corrections, browser scroll anchoring and clamping on resize all emit scroll events that are
- * otherwise indistinguishable from a user scrolling up, which is what made the previous
- * implementation silently stop following new events. A scroll made on the user's behalf, such as a
- * find bar bringing a match into view, announces itself through `ScrollIntent` and counts as a gesture.
+ * Every scroll event decides tailing from where it landed. The one exception is the event our own pin
+ * produces: it fires a frame later and can observe growth that arrived in between, which would read as the
+ * reader having scrolled away during a burst. The pin records the position it wrote, and the next scroll
+ * event landing there is skipped. Any other scroll, whatever caused it, lands where geometry gives the right
+ * answer: a clamp keeps a reader at the bottom at the bottom, and a find bar, focus or gesture that carries them
+ * away is them leaving.
+ *
+ * The browser's scroll anchoring is on only while the reader is parked. There it keeps the rows they are reading
+ * still as rows above resize or a capped buffer drops rows off the top. While tailing that same correction would
+ * scroll them away from the bottom, so the pin does the work instead.
  */
 export function useTailingScroll() {
 	const [viewport, setViewport] = React.useState<HTMLElement | null>(null)
-	const [root, setRoot] = React.useState<HTMLElement | null>(null)
 	const [content, setContent] = React.useState<HTMLElement | null>(null)
-	const [showScrollButton, setShowScrollButton] = React.useState(false)
+	const [tailing, setTailingState] = React.useState(true)
 	const [isAtTop, setIsAtTop] = React.useState(true)
-	const tailing = React.useRef(true)
-	const prependAnchor = React.useRef<PrependAnchor | null>(null)
+	const tailingRef = React.useRef(true)
+	const pinnedTop = React.useRef<number | null>(null)
 
 	const scrollAreaRef = React.useCallback((node: HTMLElement | null) => {
-		const viewport = node?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]') ?? null
-		// browser scroll anchoring shifts scrollTop when content above the viewport changes size, which
-		// both fights our own prepend anchoring and fires spurious scroll events. we handle it ourselves.
-		if (viewport) viewport.style.overflowAnchor = 'none'
-		setRoot(node)
-		setViewport(viewport)
+		setViewport(node?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]') ?? null)
 	}, [])
 
 	const contentRef = React.useCallback((node: HTMLElement | null) => setContent(node), [])
 
-	const scrollToBottom = React.useCallback(() => {
-		tailing.current = true
-		prependAnchor.current = null
-		if (viewport) scrollTo(viewport, maxScrollTop(viewport))
-	}, [viewport])
+	const setTailing = React.useCallback((value: boolean) => {
+		tailingRef.current = value
+		setTailingState(value)
+	}, [])
 
-	// captures the pre-growth metrics so the next content growth can be offset by the added height,
-	// keeping the previously-visible items anchored in place.
-	const anchorForPrepend = React.useCallback(() => {
-		if (!viewport) return
-		prependAnchor.current = { scrollHeight: viewport.scrollHeight, scrollTop: viewport.scrollTop, takenAt: performance.now() }
-	}, [viewport])
+	const pin = React.useCallback((viewport: HTMLElement) => {
+		scrollTo(viewport, viewport.scrollHeight - viewport.clientHeight)
+		pinnedTop.current = viewport.scrollTop
+	}, [])
+
+	const scrollToBottom = React.useCallback(() => {
+		setTailing(true)
+		if (viewport) pin(viewport)
+	}, [viewport, setTailing, pin])
+
+	const scrollBy = React.useCallback(
+		(delta: number) => {
+			if (viewport) scrollTo(viewport, viewport.scrollTop + delta)
+		},
+		[viewport],
+	)
 
 	React.useEffect(() => {
 		if (!viewport || !content) return
-
 		const settle = () => {
-			const anchor = prependAnchor.current
-			if (anchor && performance.now() - anchor.takenAt > PREPEND_ANCHOR_TTL_MS) prependAnchor.current = null
-			else if (anchor) {
-				// wait for the growth we anchored for; unrelated resizes must not consume the anchor
-				if (viewport.scrollHeight === anchor.scrollHeight) return
-				prependAnchor.current = null
-				scrollTo(viewport, anchor.scrollTop + (viewport.scrollHeight - anchor.scrollHeight))
-				return
-			}
-			if (tailing.current) scrollTo(viewport, maxScrollTop(viewport))
+			if (tailingRef.current) pin(viewport)
 		}
-
-		// content growth, viewport resize (panel/window) and clamping all need the same correction
+		// content growth and viewport resize (panel, window) both need the same correction
 		const resizeObserver = new ResizeObserver(settle)
 		resizeObserver.observe(content)
 		resizeObserver.observe(viewport)
-
-		// resize observers don't run while the tab is hidden, so content can outgrow our scroll position
-		const onVisibilityChange = () => {
-			if (!document.hidden) settle()
-		}
-		document.addEventListener('visibilitychange', onVisibilityChange)
 		settle()
-
-		return () => {
-			resizeObserver.disconnect()
-			document.removeEventListener('visibilitychange', onVisibilityChange)
-		}
-	}, [viewport, content])
+		return () => resizeObserver.disconnect()
+	}, [viewport, content, pin])
 
 	React.useEffect(() => {
 		if (!viewport) return
-		const intentTarget = root ?? viewport
+		setOverflowAnchor(viewport, tailing ? 'none' : 'auto')
+	}, [viewport, tailing])
 
-		let userScrolling = false
-		let idleTimeout: ReturnType<typeof setTimeout> | undefined
-
-		const markUserActive = () => {
-			userScrolling = true
-			clearTimeout(idleTimeout)
-			idleTimeout = setTimeout(() => (userScrolling = false), SCROLL_IDLE_MS)
-		}
-
+	React.useEffect(() => {
+		if (!viewport) return
 		const onScroll = () => {
-			const fromBottom = distanceFromBottom(viewport)
-			setShowScrollButton(fromBottom > EDGE_THRESHOLD_PX)
 			setIsAtTop(viewport.scrollTop <= EDGE_THRESHOLD_PX)
-			if (!userScrolling) return
-			markUserActive()
-			tailing.current = fromBottom <= EDGE_THRESHOLD_PX
+			const pinned = pinnedTop.current
+			pinnedTop.current = null
+			if (pinned !== null && Math.abs(viewport.scrollTop - pinned) < 1) return
+			setTailing(distanceFromBottom(viewport) <= EDGE_THRESHOLD_PX)
 		}
-
 		viewport.addEventListener('scroll', onScroll, { passive: true })
-		for (const event of USER_INTENT_EVENTS) intentTarget.addEventListener(event, markUserActive, { passive: true })
-		intentTarget.addEventListener(ScrollIntent.EVENT, markUserActive)
-		onScroll()
+		return () => viewport.removeEventListener('scroll', onScroll)
+	}, [viewport, setTailing])
 
-		return () => {
-			clearTimeout(idleTimeout)
-			viewport.removeEventListener('scroll', onScroll)
-			for (const event of USER_INTENT_EVENTS) intentTarget.removeEventListener(event, markUserActive)
-			intentTarget.removeEventListener(ScrollIntent.EVENT, markUserActive)
-		}
-	}, [viewport, root])
-
-	return { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend }
+	return { scrollAreaRef, contentRef, content, showScrollButton: !tailing, isAtTop, scrollToBottom, scrollBy }
 }

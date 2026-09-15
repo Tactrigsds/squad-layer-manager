@@ -39,8 +39,6 @@ export const loadOlderEvents = def('Load older events')
 
 export const noMoreEvents = def('No more events to load')
 
-export const newEvents = def('{count, plural, one {# new event} other {# new events}}', (count: number) => ({ count }))
-
 export const previousMatch = def('Previous match')
 
 export const nextMatch = def('Next match')

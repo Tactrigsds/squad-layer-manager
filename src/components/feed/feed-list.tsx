@@ -131,11 +131,13 @@ export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: S
 
 	return (
 		<>
-			{/* display:contents so the rows are the feed container's own flex items, as they were when react rendered them */}
+			{/* display:contents so the rows are the feed container's own flex items, as they were when react rendered them.
+			    A freshly inserted content-visibility:auto row is skipped, at its placeholder size, until the next
+			    intersection pass, so the newest row is exempt: it paints at its real size on the frame it arrives. */}
 			<div
 				ref={hostRef}
 				{...{ [RC.SCOPE_ATTR]: ctx.scopeId }}
-				className="contents [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
+				className="contents [&>*:not(:last-child)]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
 			/>
 			{appEvents.map((row) =>
 				createPortal(<PluginEventRow ctx={ctx} event={row.appEvent!} />, row.node as Element, String(row.event.id)),

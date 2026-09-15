@@ -19,14 +19,17 @@ import type * as RC from './render-context'
  * is stale.
  */
 export function useActorLabels(events: readonly CHAT.EventEnriched[] | null | undefined): Pick<RC.RenderCtx, 'userLabel' | 'pluginName'> {
-	const userIds = React.useMemo(() => {
+	// keyed on the ids themselves, not the events array: an append that brings no new actor must leave the
+	// labels, and so the ctx, identical, or every row is rebuilt on every event
+	const userIdsKey = React.useMemo(() => {
 		const ids = new Set<USR.UserId>()
 		for (const event of events ?? []) {
 			if (event.type !== 'APP_EVENT') continue
 			for (const id of AppEvents.iterAssocUserIds(event.appEvent)) ids.add(id)
 		}
-		return [...ids]
+		return [...ids].join(',')
 	}, [events])
+	const userIds = React.useMemo(() => (userIdsKey === '' ? [] : userIdsKey.split(',').map((id) => BigInt(id) as USR.UserId)), [userIdsKey])
 
 	const loggedInUser = UsersClient.useLoggedInUser()
 	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
