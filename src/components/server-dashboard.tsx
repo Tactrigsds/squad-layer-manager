@@ -73,8 +73,14 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 				   Activity gets a full-height column.
 				   Here the two layers columns scroll the page together rather than one at a time, so the grid
 				   grows past the viewport (`shrink-0`, or it is squashed back to it as a flex item) and this
-				   container's own scroll is what moves them. */
-				<div className="grid gap-2.5 min-h-full shrink-0 w-full grid-cols-[600px_minmax(0,1fr)_680px]">
+				   container's own scroll is what moves them.
+				   The left column is 760 wherever the window pays for it, which is what Match History needs to
+				   keep its eight columns on one row on most days, and never below 600. A content-sized track
+				   (`fit-content`) cannot do this job twice over: the `min-w-0` this column needs to scroll its
+				   own contents leaves the track no content to measure, so it collapses to zero, and Match
+				   History reads the width back to choose its row layout, which would have the two chasing each
+				   other. At the 2100 breakpoint this leaves the middle 640. */
+				<div className="grid gap-2.5 min-h-full shrink-0 w-full grid-cols-[minmax(600px,760px)_minmax(0,1fr)_680px]">
 					{/* The outer columns are pinned to the window, each scrolling its own contents, and only the
 					    queue and the teams between them move the page. Sticky travels only within its containing
 					    block, so this needs the grid above to be the tall one and the column itself to be
