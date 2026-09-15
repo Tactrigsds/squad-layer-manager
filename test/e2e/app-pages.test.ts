@@ -82,6 +82,45 @@ test.describe('server dashboard', () => {
 		await expect.poll(async () => (await history.boundingBox())!.y).toBeLessThan(historyTop - 50)
 		expect((await feed.boundingBox())!.y).toBe(feedTop)
 	})
+
+	// A match narrower than its eight columns stacks onto two lines rather than dropping any, so what this
+	// asserts is that the same fields survive the switch: the column header is what goes away, not the data.
+	// What the columns cost is measured from the names on the page, so the width that stops fitting them
+	// depends on the history seeded here. The phone panel is under it whatever that history is.
+	test('a match keeps every field when the columns stop fitting', async ({ page }) => {
+		const restore = page.viewportSize()!
+		const row = page.getByRole('row', { name: /Harju_RAAS_v1/ })
+		const timeHeader = page.getByRole('columnheader', { name: 'Time' })
+		const setByHeader = page.getByRole('columnheader', { name: 'Set By' })
+
+		// wide enough for all eight side by side, including the two the old layout dropped below 900px
+		await page.setViewportSize({ width: 1600, height: 900 })
+		await expect(timeHeader).toBeVisible()
+		await expect(setByHeader).toBeVisible()
+		await expect(row).toBeVisible()
+		await expect(row.getByRole('cell')).not.toHaveCount(1)
+		const wide = (await row.textContent())!
+
+		await page.setViewportSize({ width: 390, height: 800 })
+		await page
+			.getByRole('button', { name: /matches/i })
+			.first()
+			.click()
+		await expect(row).toBeVisible()
+		// one cell carrying both lines, and no column header left to label them
+		await expect(row.getByRole('cell')).toHaveCount(1)
+		await expect(timeHeader).toBeHidden()
+		await expect(setByHeader).toBeHidden()
+		const stacked = (await row.textContent())!
+
+		// the layer, the live status and the start time all read the same either way
+		for (const field of ['Harju_RAAS_v1', 'In progress']) {
+			expect(wide).toContain(field)
+			expect(stacked).toContain(field)
+		}
+
+		await page.setViewportSize(restore)
+	})
 })
 
 const ALPHA_LEAD = 'e2e_alpha_lead'

@@ -12,7 +12,6 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -44,11 +43,66 @@ const STD_PADDING = 'px-1.5'
 const MAX_PAGES = 30
 const MATCH_LIMIT = 8
 
+// Going back to columns costs a relayout and moves what the reader was looking at, so it asks for headroom,
+// while stacking only needs the columns to stop fitting. One number both ways would flip on a scrollbar
+// arriving or leaving.
+const UNSTACK_HEADROOM_PX = 24
+
+/**
+ * Whether a match takes two lines or eight columns, from whether the eight columns fit.
+ *
+ * What they cost is measured rather than assumed: it is the widest layer and faction names on the page that
+ * decide it, and those move with the day being shown and with the density setting. The same two rows want
+ * 435px on one page and 669px on another, so any fixed number is wrong on most of them.
+ *
+ * Measured rather than a container query, too, because the two layouts share their pieces -- the decoration
+ * tooltips, the live K/D subscription -- and rendering both to let CSS pick would mount each of those twice.
+ */
+function useStackedRows(boxRef: React.RefObject<HTMLElement | null>, tableRef: React.RefObject<HTMLElement | null>) {
+	const [stacked, setStacked] = React.useState(false)
+	const needed = React.useRef(0)
+
+	const measure = React.useCallback(() => {
+		const available = boxRef.current?.clientWidth
+		// zero means it is not on screen to measure, which is not news about how wide it is
+		if (!available) return
+		const table = tableRef.current
+		// Only the eight-column layout can price the eight columns; stacked, the table is one cell wide and
+		// the last reading stands. The probe restores the width before yielding, so nothing paints mid-probe.
+		if (table && !stacked) {
+			const restore = table.style.width
+			table.style.width = 'min-content'
+			needed.current = table.getBoundingClientRect().width
+			table.style.width = restore
+		}
+		if (!needed.current) return
+		setStacked(available < needed.current + (stacked ? UNSTACK_HEADROOM_PX : 0))
+	}, [boxRef, tableRef, stacked])
+
+	// after every render, since what the columns cost moves with the rows on the page, not just with the width
+	React.useLayoutEffect(() => {
+		measure()
+	})
+
+	React.useLayoutEffect(() => {
+		const box = boxRef.current
+		if (!box) return
+		const observer = new ResizeObserver(() => measure())
+		observer.observe(box)
+		return () => observer.disconnect()
+	}, [boxRef, measure])
+
+	return stacked
+}
+
 export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyProp }) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const historyState = MatchHistoryClient.useMatchHistoryState(props.stores.squadServer!.serverId)
 	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
+	const tableBoxRef = React.useRef<HTMLDivElement>(null)
+	const tableRef = React.useRef<HTMLTableElement>(null)
+	const stacked = useStackedRows(tableBoxRef, tableRef)
 	type MatchesByDate = [string, MH.MatchDetails[]][]
 	const [matchesByDate, currentMatchOrdinal] = React.useMemo(() => {
 		const matchesByDate: MatchesByDate = []
@@ -195,12 +249,12 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 					</Button>
 				</span>
 			</CardHeader>
-			<CardContent data-tour="match-history" className="p-0 pb-1">
-				<Table className="[&_th]:h-[calc(var(--row)-2px)] [&_td]:h-[calc(var(--row)-2px)]">
+			<CardContent ref={tableBoxRef} data-tour="match-history" className="p-0 pb-1">
+				<Table ref={tableRef} className="[&_th]:h-[calc(var(--row)-2px)] [&_td]:h-[calc(var(--row)-2px)]">
 					<TableHeader>
-						<TableRow className="font-medium max-phone:hidden">
+						<TableRow className={cn('font-medium', stacked && 'hidden')}>
 							<TableHead className="w-[34px] text-right"></TableHead>
-							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
+							<TableHead>{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}</TableHead>
 							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
@@ -208,7 +262,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<TableHead className="text-center w-14" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
 								<Icons.Flag className="inline size-3" />
 							</TableHead>
-							<TableHead className="hidden @[900px]:table-cell w-[30px] text-center" title={tr.text(MH_Msgs.setByColumn())}>
+							<TableHead className="w-[30px] text-center" title={tr.text(MH_Msgs.setByColumn())}>
 								<Icons.User className="inline size-3" />
 							</TableHead>
 						</TableRow>
@@ -216,13 +270,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 					<TableBody>
 						{currentEntries.length === 0 ? (
 							<TableRow>
-								<TableCell colSpan={8} className="text-center text-text-3 h-16! hidden @[900px]:table-cell">
-									{tr.text(MH_Msgs.noMatches())}
-								</TableCell>
-								<TableCell colSpan={7} className="text-center text-text-3 h-16! hidden @[820px]:table-cell @[900px]:hidden">
-									{tr.text(MH_Msgs.noMatches())}
-								</TableCell>
-								<TableCell colSpan={6} className="text-center text-text-3 h-16! table-cell @[820px]:hidden">
+								<TableCell colSpan={8} className="text-center text-text-3 h-16!">
 									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
 							</TableRow>
@@ -242,6 +290,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 										key={entry.historyEntryId}
 										entry={entry}
 										currentMatchOffset={entry.ordinal - currentMatchOrdinal}
+										stacked={stacked}
 										stores={props.stores}
 									/>
 								))}
@@ -257,13 +306,14 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
 	currentMatchOffset: number
+	// two lines instead of eight columns, where the columns do not fit (see useStackedRows)
+	stacked: boolean
 	stores: SquadServerFrame.KeyProp
 }
 
-function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowProps) {
+function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
-	const phone = Browser.useIsSmallViewport()
 	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 
 	// Determine if this match is being viewed in the activity panel
@@ -511,35 +561,38 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 						bgColor,
 					)}
 				>
-					{phone ? (
+					{stacked ? (
 						<TableCell colSpan={8} className="h-auto! whitespace-nowrap px-2 py-1.5">
-							{/* Two lines rather than eight columns. The table needs 404px at its narrowest and a phone panel
-								    offers 376, so below 640 the row stacks: what the match was, then how it went. */}
-							<div className="flex flex-col gap-1">
-								<div className="flex items-center gap-2 min-w-0">
-									<span className="w-5 shrink-0 flex justify-end items-center gap-0.5 text-text-3 font-mono text-xs">
-										{gutterMarker}
-									</span>
-									<span className="min-w-0 truncate">
-										<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
-									</span>
-									<span className="flex-1 min-w-2" />
-									{decorationIcons}
-									{violationDisplayElt}
-									<span className="shrink-0 text-xs">{timeDisp}</span>
-								</div>
-								<div className="flex items-center gap-1.5 min-w-0">
-									<span className="w-5 shrink-0" />
-									<span className="min-w-0 truncate">{leftTeam}</span>
-									<span className="shrink-0 text-pri">{tr.text(MH_Msgs.versus())}</span>
-									<span className="min-w-0 truncate">{rightTeam}</span>
-									<span className="flex-1 min-w-2" />
-									<span className="shrink-0 flex items-center gap-1.5">
-										{statusBadge}
-										{outcomeDisp}
-										{matchKd}
-										<LayerSourceDisplay source={entry.layerSource} />
-									</span>
+							{/* What the match was, then how it went. The gutter marks the whole match rather than its first
+								    line, so it sits beside both and centres against them. */}
+							<div className="flex items-stretch gap-2">
+								{/* the two 11px glyphs of a live match being watched, which is the widest a marker gets. A fixed
+									    width rather than a spacing step, because the step moves with the density setting and the glyphs do not */}
+								<span className="w-[24px] shrink-0 flex justify-end items-center gap-0.5 text-text-3 font-mono text-xs">
+									{gutterMarker}
+								</span>
+								<div className="flex-1 min-w-0 flex flex-col gap-1">
+									<div className="flex items-center gap-2 min-w-0">
+										<span className="min-w-0 truncate">
+											<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
+										</span>
+										<span className="flex-1 min-w-2" />
+										{decorationIcons}
+										{violationDisplayElt}
+										<span className="shrink-0 text-xs">{timeDisp}</span>
+									</div>
+									<div className="flex items-center gap-1.5 min-w-0">
+										<span className="min-w-0 truncate">{leftTeam}</span>
+										<span className="shrink-0 text-pri">{tr.text(MH_Msgs.versus())}</span>
+										<span className="min-w-0 truncate">{rightTeam}</span>
+										<span className="flex-1 min-w-2" />
+										<span className="shrink-0 flex items-center gap-1.5">
+											{statusBadge}
+											{outcomeDisp}
+											{matchKd}
+											<LayerSourceDisplay source={entry.layerSource} />
+										</span>
+									</div>
 								</div>
 							</div>
 						</TableCell>
@@ -553,7 +606,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 									{gutterMarker}
 								</div>
 							</TableCell>
-							<TableCell className="text-xs hidden @[820px]:table-cell">{timeDisp}</TableCell>
+							<TableCell className="text-xs">{timeDisp}</TableCell>
 							<TableCell>
 								<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 							</TableCell>
