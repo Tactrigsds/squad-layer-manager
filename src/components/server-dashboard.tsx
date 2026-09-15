@@ -17,7 +17,7 @@ import { StickyGroup } from './sticky-group.tsx'
  *   < 640      phone: one panel at a time behind a bottom tab bar (phone-dashboard.tsx)
  *   640..1099  one column; the nav bar's switch picks between the layers side and Server Activity
  *   1100..2099 two columns: history, breakdown and the tabs on the left, Server Activity full height on the right
- *   >= 2100    three columns: history + breakdown, the queue and the teams, Server Activity
+ *   >= 2100    three columns: history + the queue, breakdown + the teams, Server Activity
  */
 export default function ServerDashboard(props: { stores: SquadServerFrame.KeyProp }) {
 	const activeTab = SquadServerClient.dashboardSide(SquadServerClient.useDashboardTab())
@@ -25,7 +25,7 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 	const isUltrawide = useIsUltrawide()
 	const isWideDesktop = useIsWideDesktop()
 	const isPhone = useIsSmallViewport()
-	const historyRef = React.useRef<HTMLDivElement>(null)
+	const queueColumnRef = React.useRef<HTMLDivElement>(null)
 	const activityRef = React.useRef<HTMLDivElement>(null)
 
 	// "warn selected" routes to the server activity panel; in single-column mode that panel lives behind a
@@ -68,12 +68,11 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 			)}
 
 			{isDesktop && isUltrawide && (
-				/* Spend the width on a third column rather than gutters: history and the breakdown stack on the
-				   left, the queue and the teams take the middle, together or behind tabs as they fit, and Server
-				   Activity gets a full-height column.
-				   Here the two layers columns scroll the page together rather than one at a time, so the grid
-				   grows past the viewport (`shrink-0`, or it is squashed back to it as a flex item) and this
-				   container's own scroll is what moves them.
+				/* Spend the width on a third column rather than gutters: Match History and the queue on the left,
+				   the breakdown and the teams in the middle, Server Activity on the right. The breakdown filters
+				   the teams panel, so those two travel together and neither needs a tab.
+				   Only the middle column moves the page, so the grid grows past the viewport (`shrink-0`, or it
+				   is squashed back to it as a flex item) and this container's own scroll is what moves it.
 				   The left column is 760 wherever the window pays for it, which is what Match History needs to
 				   keep its eight columns on one row on most days, and never below 600. A content-sized track
 				   (`fit-content`) cannot do this job twice over: the `min-w-0` this column needs to scroll its
@@ -81,18 +80,18 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 				   History reads the width back to choose its row layout, which would have the two chasing each
 				   other. At the 2100 breakpoint this leaves the middle 640. */
 				<div className="grid gap-2.5 min-h-full shrink-0 w-full grid-cols-[minmax(600px,760px)_minmax(0,1fr)_680px]">
-					{/* The outer columns are pinned to the window, each scrolling its own contents, and only the
-					    queue and the teams between them move the page. Sticky travels only within its containing
-					    block, so this needs the grid above to be the tall one and the column itself to be
-					    window-height: `self-start` off the grown row, and `100cqh` against the dashboard's own box,
-					    which is the window minus the nav bar without anyone having to know its height. */}
-					<StickyGroup stickyRef={historyRef}>
-						<div ref={historyRef} className="flex self-start h-[100cqh] min-w-0">
-							<PrimaryPanel stores={props.stores} part="history" withStats />
+					{/* The outer columns are pinned to the window, each scrolling its own contents. Sticky travels
+					    only within its containing block, so this needs the grid above to be the tall one and the
+					    column itself to be window-height: `self-start` off the grown row, and `100cqh` against the
+					    dashboard's own box, which is the window minus the nav bar without anyone having to know
+					    its height. */}
+					<StickyGroup stickyRef={queueColumnRef} ownScroller>
+						<div ref={queueColumnRef} className="flex self-start h-[100cqh] min-w-0">
+							<PrimaryPanel stores={props.stores} part="history-queue" />
 						</div>
 					</StickyGroup>
-					<PrimaryPanel stores={props.stores} part="tabs" stacked="when-it-fits" />
-					<StickyGroup stickyRef={activityRef}>
+					<PrimaryPanel stores={props.stores} part="stats-teams" />
+					<StickyGroup stickyRef={activityRef} ownScroller>
 						<div ref={activityRef} className="flex self-start h-[100cqh] min-w-0">
 							<ServerActivityPanel stores={props.stores} />
 						</div>
