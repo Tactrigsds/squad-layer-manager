@@ -166,6 +166,45 @@ export async function getListsForServer(
 	return lists
 }
 
+// What a player's admin-list membership looks like to a client: which lists put them in each group, plus where any of
+// those lists can be opened. Urls are resolved here rather than the sources being sent, so ftp and sftp credentials
+// never leave the server.
+export type PlayerAdminStanding = {
+	groups: SM.PlayerGroupSources[]
+	listUrls: Record<SM.AdminListId, string>
+}
+
+export function playerStanding(lists: SM.AdminLists, ids: SM.PlayerIds.IdQuery<'eos'>): PlayerAdminStanding {
+	const groups = SM.AdminList.collectPlayerGroupSources(lists, ids as SM.PlayerIds.IdQuery<'steam'>)
+	const listUrls: Record<SM.AdminListId, string> = {}
+	// `checked` rather than testing listUrls, so a list with nowhere to open is not re-resolved for every group it
+	// assigned this player
+	const checked = new Set<SM.AdminListId>()
+	for (const entry of groups) {
+		for (const listId of entry.lists) {
+			if (checked.has(listId)) continue
+			checked.add(listId)
+			const url = openableUrl(listId)
+			if (url) listUrls[listId] = url
+		}
+	}
+	return { groups, listUrls }
+}
+
+// Only an http(s) remote source is something a browser can open. A `remote` source holds a bare string, so the scheme
+// is checked rather than assumed from the type, and local, ftp and sftp have nowhere to send anyone.
+function openableUrl(listId: SM.AdminListId): string | null {
+	const source = Settings.GLOBAL_SETTINGS.adminLists[listId]?.source
+	if (source?.type !== 'remote') return null
+	let parsed: URL
+	try {
+		parsed = new URL(source.source)
+	} catch {
+		return null
+	}
+	return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null
+}
+
 export function setup() {
 	log = module.getLogger()
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })

@@ -102,6 +102,32 @@ export function usePlayerGroupColor(playerId: string, player: PG.PlayerFactsSour
 	return useGroupColorResolver()(playerId, player)
 }
 
+export type PlayerGrouping = { groupingId: string; group: string; color: string }
+
+// Every grouping this player lands in, in configured order, skipping the ones no rule matched them under -- which is
+// what "Other" means, and is not worth a row each. Reports all of them rather than the active one: which grouping is
+// active is a view setting, while a player's standing under each is a fact about them.
+export function usePlayerGroupings(playerId: string, player: PG.PlayerFactsSource | undefined): PlayerGrouping[] {
+	const bmData = usePlayerBmData()
+	const orgFlags = useOrgFlags()
+	const playerGroupings = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerGroupings)
+
+	return React.useMemo(() => {
+		if (!playerGroupings || !player) return []
+		const flagIds = bmData[playerId]?.flagIds
+		const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
+		const facts = PG.playerFacts(player, flags)
+		const groupings: PlayerGrouping[] = []
+		for (const groupingId of PG.getGroupingIds(playerGroupings)) {
+			const grouping = playerGroupings[groupingId]
+			const group = PG.resolveGroup(grouping, facts)
+			if (group === undefined) continue
+			groupings.push({ groupingId, group, color: PG.getGroupColor(grouping, group, orgFlags) })
+		}
+		return groupings
+	}, [playerId, player, bmData, orgFlags, playerGroupings])
+}
+
 export function setup() {
 	playerBmData$.subscribe()
 

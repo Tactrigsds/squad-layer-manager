@@ -954,4 +954,21 @@ describe('AdminList lookups across several lists', () => {
 		expect(SM.AdminList.collectPlayerGroups(lists, { steam: 'nobody' } as any)).toEqual([])
 		expect(SM.AdminList.isAdminInAny(lists, { steam: 'nobody' } as any)).toBe(false)
 	})
+
+	// the question the details window asks: not which lists define a group, but which put this player in it
+	it('names every list that assigned a group, not just the first', () => {
+		expect(SM.AdminList.collectPlayerGroupSources(lists, { steam: 'steam1', eos: 'eos1' } as any)).toEqual([
+			{ group: 'Admins', lists: ['a', 'b'] },
+			{ group: 'Moderator', lists: ['b'] },
+			{ group: 'Whitelist', lists: ['b'] },
+		])
+	})
+
+	it('reports a group held in one list alone against that list', () => {
+		expect(SM.AdminList.collectPlayerGroupSources(lists, { steam: 'steam2' } as any)).toEqual([{ group: 'Whitelist', lists: ['b'] }])
+	})
+
+	it('has no sources for a player on none of them', () => {
+		expect(SM.AdminList.collectPlayerGroupSources(lists, { steam: 'nobody' } as any)).toEqual([])
+	})
 })

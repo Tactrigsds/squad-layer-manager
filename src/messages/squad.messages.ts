@@ -483,6 +483,28 @@ export const killsWoundsDeaths = def('K · W · D')
 
 export const teamKillsLabel = def('Team kills')
 
+// -------- the player details window's tags --------
+// Three sources of tag, each labelled by where it comes from: the game server's admin lists, BattleMetrics, and SLM's
+// own player groupings.
+
+export const ingameTagsLabel = def('Ingame')
+
+export const bmFlagsTagsLabel = def('BM flags')
+
+export const groupingTagsLabel = def('SLM groupings')
+
+export const adminTag = def('Admin')
+
+export const adminTagHint = def('This player is an admin on this server')
+
+// the lists that put this player in the hovered group, which need not be every list that defines it
+export const groupSourceListsLabel = def('Source lists')
+
+export const openAdminList = def('Open {listId}', (listId: string) => ({ listId }))
+
+// a grouping and the group this player falls into under it
+export const groupingTagHint = def('{groupingId}: {group}', (groupingId: string, group: string) => ({ groupingId, group }))
+
 // the phone list's team button: one side, or both
 export const bothTeams = def('Both')
 

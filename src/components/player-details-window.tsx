@@ -21,6 +21,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -59,7 +60,6 @@ import { CopyIdButton } from './copy-id-button'
 import { ServerEvent } from './feed/server-event'
 import { useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
-import ShortLayerName from './short-layer-name.tsx'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
@@ -142,9 +142,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
 					{username ?? tr.text(SM_Msgs.playerDetailsTitle())}
 				</DraggableWindowTitle>
-				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
 				<PlayerBmRefreshButton playerId={playerId} />
-				<PlayerFlagsButton playerId={playerId} />
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -184,6 +182,14 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 				</div>
 				<PlayerDiscordLink steamId={steam} />
 			</div>
+			{/* no groupings: resolving one needs the roster entry's admin standing and discord roles, which is per-server */}
+			<PlayerTags
+				playerId={playerId}
+				adminGroups={info?.code === 'ok' ? info.adminGroups : []}
+				adminListUrls={info?.code === 'ok' ? info.adminListUrls : {}}
+				flags={flags}
+				groupings={[]}
+			/>
 			<Separator />
 			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
@@ -258,6 +264,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const recentPlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
 	const groupColor = usePlayerGroupColor(playerId, livePlayer ?? recentPlayer ?? undefined)
+	const groupings = BattlemetricsClient.usePlayerGroupings(playerId, livePlayer ?? recentPlayer ?? undefined)
 
 	// the same enrichment the Teams panel shows, so the two agree on role, score and group; empty once the player
 	// leaves, when the roster no longer carries them
@@ -339,9 +346,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							}
 						/>
 					))}
-				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
 				<PlayerBmRefreshButton playerId={playerId} />
-				<PlayerFlagsButton playerId={playerId} />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button
@@ -359,74 +364,6 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			{matchPlayer && currentMatch ? (
-				<div className="border-b border-border/50">
-					<div className="flex flex-col px-3 pt-2">
-						<span className="fd-cond text-base font-bold">{tr.text(SM_Msgs.thisMatch())}</span>
-						<span className="truncate text-xs text-text-3">
-							<ShortLayerName
-								layerId={currentMatch.layerId}
-								teamParity={currentMatch.ordinal}
-								allowShowInfo={false}
-								className="font-mono"
-							/>
-						</span>
-					</div>
-					<dl className="grid grid-cols-3 gap-x-2.5 gap-y-1.5 px-3 py-2 text-sm [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
-						<div>
-							<dt>{tr.text(SM_Msgs.teamLabel())}</dt>
-							<dd>
-								<MatchTeamDisplay
-									matchId={currentMatch.historyEntryId}
-									teamId={matchPlayer.teamId!}
-									showAltTeamIndicator
-									stores={stores}
-								/>
-							</dd>
-						</div>
-						<div>
-							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
-							<dd>
-								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
-								{matchPlayer.isLeader && <span className="ml-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
-							</dd>
-						</div>
-						<div>
-							<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
-							<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
-								{matchPlayer.stats?.teamkills ?? 0}
-							</dd>
-						</div>
-						{showSpoilers && (
-							<div>
-								<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
-								<dd>{matchPlayer.role ?? '-'}</dd>
-							</div>
-						)}
-						{showSpoilers && (
-							<div>
-								<dt>{tr.text(SM_Msgs.killsWoundsDeaths())}</dt>
-								<dd className="font-mono">
-									{matchPlayer.stats?.kills ?? 0} · {matchPlayer.stats?.wounds ?? 0} · {matchPlayer.stats?.deaths ?? 0}
-								</dd>
-							</div>
-						)}
-						{matchPlayer.group && (
-							<div>
-								<dt>{tr.text(SM_Msgs.groupColumn())}</dt>
-								<dd style={groupColor ? { color: groupColor } : undefined}>{matchPlayer.group}</dd>
-							</div>
-						)}
-					</dl>
-				</div>
-			) : (
-				phone && (
-					<div className="mx-3 my-2 flex items-center gap-2 rounded-[3px] border border-line-soft bg-[#3a3a3d] px-2.5 py-2 text-xs text-text-2">
-						<Icons.Info className="size-3.5 shrink-0 text-text-3" />
-						{tr.text(SM_Msgs.notInCurrentMatch())}
-					</div>
-				)
-			)}
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="flex flex-col ">
@@ -475,6 +412,68 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				</div>
 				<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
 			</div>
+			<PlayerTags
+				playerId={playerId}
+				isAdmin={data?.isAdmin}
+				adminGroups={data?.adminGroups ?? []}
+				adminListUrls={data?.adminListUrls ?? {}}
+				flags={flags}
+				groupings={groupings}
+			/>
+			{matchPlayer && currentMatch ? (
+				<div className="border-b border-border/50">
+					<div className="flex flex-col px-3 pt-2">
+						<span className="fd-cond text-base font-bold">{tr.text(SM_Msgs.thisMatch())}</span>
+					</div>
+					<dl className="grid grid-cols-3 gap-x-2.5 gap-y-1.5 px-3 py-2 text-sm [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
+						<div>
+							<dt>{tr.text(SM_Msgs.teamLabel())}</dt>
+							<dd>
+								<MatchTeamDisplay
+									matchId={currentMatch.historyEntryId}
+									teamId={matchPlayer.teamId!}
+									showAltTeamIndicator
+									stores={stores}
+								/>
+							</dd>
+						</div>
+						<div>
+							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
+							<dd>
+								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
+								{matchPlayer.isLeader && <span className="ml-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
+							</dd>
+						</div>
+						<div>
+							<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
+							<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
+								{matchPlayer.stats?.teamkills ?? 0}
+							</dd>
+						</div>
+						{showSpoilers && (
+							<div>
+								<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
+								<dd>{matchPlayer.role ?? '-'}</dd>
+							</div>
+						)}
+						{showSpoilers && (
+							<div>
+								<dt>{tr.text(SM_Msgs.killsWoundsDeaths())}</dt>
+								<dd className="font-mono">
+									{matchPlayer.stats?.kills ?? 0} · {matchPlayer.stats?.wounds ?? 0} · {matchPlayer.stats?.deaths ?? 0}
+								</dd>
+							</div>
+						)}
+					</dl>
+				</div>
+			) : (
+				phone && (
+					<div className="mx-3 my-2 flex items-center gap-2 rounded-[3px] border border-line-soft bg-[#3a3a3d] px-2.5 py-2 text-xs text-text-2">
+						<Icons.Info className="size-3.5 shrink-0 text-text-3" />
+						{tr.text(SM_Msgs.notInCurrentMatch())}
+					</div>
+				)
+			)}
 			<Separator />
 			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
@@ -796,68 +795,84 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 	return null
 }
 
-interface PlayerFlagsListProps {
-	flags: BM.PlayerFlag[]
+// Every tag in the section is this shape; only the fill and the ring say which source it came from.
+const TAG_CLS = 'inline-flex h-(--badge-h) items-center gap-1 whitespace-nowrap rounded-[2px] px-1.5 text-2xs font-semibold leading-none'
+const TAG_GAP = 4
+// the overflow button at --badge-h, which is the one width here that cannot be measured off a rendered child
+const OVERFLOW_W = 22
+
+function FlagTag({ flag }: { flag: BM.PlayerFlag }) {
+	return (
+		<span
+			className={cn(TAG_CLS, 'shrink-0')}
+			style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
+			title={flag.description ?? undefined}
+		>
+			{flag.icon && (
+				<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
+					{flag.icon}
+				</span>
+			)}
+			{flag.name}
+		</span>
+	)
 }
 
-function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
-	const containerRef = React.useRef<HTMLDivElement>(null)
+// Flags keep to one line with the rest behind an overflow button, rather than wrapping like the rows above and
+// below: a player can hold a dozen, and the window's other sections should not be pushed down by them.
+//
+// The count is measured off a hidden copy at natural width. The rendered row cannot answer it, since it is already
+// truncated to whatever the last measurement decided.
+function PlayerFlagsList({ flags }: { flags: BM.PlayerFlag[] }) {
+	const rowRef = React.useRef<HTMLDivElement>(null)
+	const measureRef = React.useRef<HTMLDivElement>(null)
 	const [visibleCount, setVisibleCount] = React.useState(flags.length)
 	const [isPopoverOpen, setIsPopoverOpen] = React.useState(false)
 
-	React.useEffect(() => {
-		if (!containerRef.current) return
+	React.useLayoutEffect(() => {
+		const row = rowRef.current
+		const measure = measureRef.current
+		if (!row || !measure) return
 
-		const container = containerRef.current
-		const children = Array.from(container.children) as HTMLElement[]
-		let totalWidth = 0
-		let count = 0
-		const maxWidth = 450
-		const ellipsisWidth = 40 // approximate width for ellipsis button
-
-		for (let i = 0; i < children.length - 1; i++) {
-			// -1 to exclude the ellipsis button
-			const child = children[i]
-			const childWidth = child.offsetWidth
-			const gap = 2 // gap-0.5 = 2px
-
-			if (totalWidth + childWidth + (count > 0 ? gap : 0) > maxWidth - ellipsisWidth) {
-				break
+		const recount = () => {
+			const widths = Array.from(measure.children, (child) => (child as HTMLElement).offsetWidth)
+			const fits = (available: number) => {
+				let used = 0
+				let count = 0
+				for (const width of widths) {
+					used += width + (count > 0 ? TAG_GAP : 0)
+					if (used > available) break
+					count++
+				}
+				return count
 			}
-
-			totalWidth += childWidth + (count > 0 ? gap : 0)
-			count++
+			const available = row.clientWidth
+			// the overflow button only costs width once it is there to be shown, so the whole list gets the row first
+			setVisibleCount(fits(available) === widths.length ? widths.length : fits(available - OVERFLOW_W - TAG_GAP))
 		}
 
-		setVisibleCount(count === flags.length ? flags.length : count)
+		recount()
+		const observer = new ResizeObserver(recount)
+		observer.observe(row)
+		return () => observer.disconnect()
 	}, [flags])
 
-	const visibleFlags = flags.slice(0, visibleCount)
 	const hasOverflow = visibleCount < flags.length
+	// the row is shared with the manage-flags button, which would otherwise be pushed to the far edge by a
+	// flex-1 element holding nothing
+	if (flags.length === 0) return null
 
 	return (
-		<div className="flex items-center gap-0.5 min-w-0" ref={containerRef}>
-			{visibleFlags.map((flag) => (
-				<span
-					key={flag.id}
-					className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
-					style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
-					title={flag.description ?? undefined}
-				>
-					{flag.icon && (
-						<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
-							{flag.icon}
-						</span>
-					)}
-					{flag.name}
-				</span>
+		<div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+			{flags.slice(0, visibleCount).map((flag) => (
+				<FlagTag key={flag.id} flag={flag} />
 			))}
 			{hasOverflow && (
 				<Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
 					<PopoverTrigger asChild>
 						<button
 							type="button"
-							className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0 bg-muted hover:bg-muted/80 transition-colors"
+							className={cn(TAG_CLS, 'shrink-0 bg-muted px-1 transition-colors hover:bg-muted/80')}
 							title={tr.text(BM_Msgs.showAllFlags())}
 						>
 							<Icons.MoreHorizontal className="h-3 w-3" />
@@ -866,40 +881,128 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 					<PopoverContent className="w-auto max-w-md p-2">
 						<div className="flex flex-wrap gap-1">
 							{flags.map((flag) => (
-								<span
-									key={flag.id}
-									className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium leading-tight"
-									style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
-									title={flag.description ?? undefined}
-								>
-									{flag.icon && (
-										<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
-											{flag.icon}
-										</span>
-									)}
-									{flag.name}
-								</span>
+								<FlagTag key={flag.id} flag={flag} />
 							))}
 						</div>
 					</PopoverContent>
 				</Popover>
 			)}
-			<div style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}>
+			<div aria-hidden className="pointer-events-none invisible absolute flex gap-1" ref={measureRef}>
 				{flags.map((flag) => (
-					<span
-						key={flag.id}
-						className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
-						style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
-					>
-						{flag.icon && (
-							<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
-								{flag.icon}
-							</span>
-						)}
-						{flag.name}
-					</span>
+					<FlagTag key={flag.id} flag={flag} />
 				))}
 			</div>
+		</div>
+	)
+}
+
+// An admin-list group, with the lists that put this player in it on hover. Two lists can assign the same group, so
+// this names every one of them, and only an http(s) source is something the viewer can open.
+function AdminGroupTag({ entry, listUrls }: { entry: SM.PlayerGroupSources; listUrls: Record<string, string> }) {
+	return (
+		<HoverCard openDelay={120} closeDelay={80}>
+			<HoverCardTrigger asChild>
+				<span
+					className={cn(
+						TAG_CLS,
+						'cursor-default bg-transparent text-text-2 shadow-[inset_0_0_0_1px_var(--line-soft)]',
+						'hover:bg-white/5 hover:text-text hover:shadow-[inset_0_0_0_1px_var(--ctl-hi)]',
+					)}
+				>
+					<Icons.List className="h-2.5 w-2.5 text-text-3" />
+					{entry.group}
+				</span>
+			</HoverCardTrigger>
+			<HoverCardContent align="start" className="w-auto min-w-44 p-2">
+				<span className="text-xs font-bold">{entry.group}</span>
+				<div className="fd-lbl-k2 mt-1.5 mb-0.5">{tr.text(SM_Msgs.groupSourceListsLabel())}</div>
+				{entry.lists.map((listId) => (
+					<div key={listId} className="flex items-center gap-1.5 py-0.5 text-xs text-text-2">
+						<Icons.List className="h-3 w-3 shrink-0 text-text-3" />
+						<span className="min-w-0 flex-1 truncate">{listId}</span>
+						{listUrls[listId] && (
+							<a
+								href={listUrls[listId]}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="shrink-0 text-info hover:text-info/80"
+								title={tr.text(SM_Msgs.openAdminList(listId))}
+							>
+								<Icons.ExternalLink className="h-2.5 w-2.5" />
+							</a>
+						)}
+					</div>
+				))}
+			</HoverCardContent>
+		</HoverCard>
+	)
+}
+
+// The three kinds of tag a player carries. They are alike enough to sit together and different enough that the
+// source has to stay readable, so each row is labelled and keeps its own treatment: outlined for an in-game
+// admin-list membership, filled in the flag's own colour for battlemetrics, flat for one of our groupings.
+function PlayerTags(props: {
+	playerId: string
+	// absent without a server: which groups mark an admin is a property of the lists a server recognises
+	isAdmin?: boolean
+	adminGroups: SM.PlayerGroupSources[]
+	adminListUrls: Record<string, string>
+	flags: BM.PlayerFlag[] | undefined
+	groupings: BattlemetricsClient.PlayerGrouping[]
+}) {
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
+	const cannotManageFlags = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
+	const flags = props.flags ?? []
+	const showIngame = !!props.isAdmin || props.adminGroups.length > 0
+	// an empty flag row survives only for someone who can add the first flag to it
+	const showFlags = bmEnabled && (flags.length > 0 || !cannotManageFlags)
+	const showGroupings = props.groupings.length > 0
+	if (!showIngame && !showFlags && !showGroupings) return null
+
+	return (
+		<div className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1.5 border-b border-border/50 px-3 py-2">
+			{showIngame && (
+				<>
+					<span className="fd-lbl-k2 pt-1">{tr.text(SM_Msgs.ingameTagsLabel())}</span>
+					<div className="flex min-w-0 flex-wrap gap-1">
+						{props.isAdmin && (
+							<span className={cn(TAG_CLS, 'bg-admin/15 font-bold text-admin')} title={tr.text(SM_Msgs.adminTagHint())}>
+								<Icons.ShieldCheck className="h-2.5 w-2.5" />
+								{tr.text(SM_Msgs.adminTag())}
+							</span>
+						)}
+						{props.adminGroups.map((entry) => (
+							<AdminGroupTag key={entry.group} entry={entry} listUrls={props.adminListUrls} />
+						))}
+					</div>
+				</>
+			)}
+			{showFlags && (
+				<>
+					<span className="fd-lbl-k2 pt-1">{tr.text(SM_Msgs.bmFlagsTagsLabel())}</span>
+					<div className="flex min-w-0 items-center gap-1">
+						<PlayerFlagsList flags={flags} />
+						<PlayerFlagsButton playerId={props.playerId} />
+					</div>
+				</>
+			)}
+			{showGroupings && (
+				<>
+					<span className="fd-lbl-k2 pt-1">{tr.text(SM_Msgs.groupingTagsLabel())}</span>
+					<div className="flex min-w-0 flex-wrap gap-1">
+						{props.groupings.map((grouping) => (
+							<span
+								key={grouping.groupingId}
+								className={cn(TAG_CLS, 'bg-[#414144] text-text')}
+								title={tr.text(SM_Msgs.groupingTagHint(grouping.groupingId, grouping.group))}
+							>
+								<span className="text-text-3">{grouping.groupingId}</span>
+								<span style={{ color: grouping.color }}>{grouping.group}</span>
+							</span>
+						))}
+					</div>
+				</>
+			)}
 		</div>
 	)
 }
