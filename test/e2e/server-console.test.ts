@@ -8,6 +8,23 @@ import { expect, sharedAppTest } from './fixtures'
 // concluded from it, so these drive real traffic through the emulator and assert it comes out the other end.
 // Who may open it at all is a security boundary, asserted in rbac-access.test.ts.
 
+type Held = HTMLElement & { heldRow?: Element; seenDistances?: number[] }
+
+// the first row in view, held so its screen position can be read back after the content changes around it.
+// That position, not scrollTop, is what a parked reader keeps: the console's buffer is capped, and a row dropped
+// off the top moves scrollTop by exactly its height to leave the rows in view where they were.
+function holdRow(el: Held) {
+	const port = el.getBoundingClientRect()
+	const row = [...el.querySelectorAll('li')].find((li) => li.getBoundingClientRect().bottom > port.top + 1)
+	if (!row) throw new Error('no row in view')
+	el.heldRow = row
+	return Math.round(row.getBoundingClientRect().top)
+}
+
+function heldRowTop(el: Held) {
+	return Math.round(el.heldRow!.getBoundingClientRect().top)
+}
+
 async function openConsole(page: Page) {
 	await page.getByRole('button', { name: 'Server Actions' }).click()
 	await page.getByRole('menuitem', { name: 'Server Console' }).click()
@@ -93,12 +110,12 @@ sharedAppTest.describe('server console', () => {
 		await page.mouse.wheel(0, -600)
 		const backToBottom = page.getByRole('button', { name: 'Scroll to bottom' })
 		await expect(backToBottom).toBeVisible()
-		const parked = await viewport.evaluate((el) => el.scrollTop)
+		const parked = await viewport.evaluate(holdRow)
 
 		// traffic arriving while they read must not drag them back down
 		const grown = await scrollHeight()
 		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(grown)
-		expect(await viewport.evaluate((el) => el.scrollTop)).toBe(parked)
+		expect(Math.abs((await viewport.evaluate(heldRowTop)) - parked)).toBeLessThanOrEqual(1)
 
 		await backToBottom.click()
 		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
@@ -119,21 +136,19 @@ sharedAppTest.describe('server console', () => {
 		await expect
 			.poll(async () => ({ away: (await distanceFromBottom()) > 16, offersTheTail: await backToBottom.isVisible() }))
 			.toEqual({ away: true, offersTheTail: true })
-		const atMatch = await viewport.evaluate((el) => el.scrollTop)
-
 		// The failure this guards against is an oscillation, down to the tail and back up to the match a quarter second
 		// later, so a single sample after the growth can land on the right number. Every position passed through is what
-		// has to be checked.
-		type Recording = HTMLElement & { seenScrollTops?: number[] }
-		await viewport.evaluate((el: Recording) => {
-			el.seenScrollTops = []
-			el.addEventListener('scroll', () => el.seenScrollTops!.push(el.scrollTop))
+		// has to be checked, and the match sits near the top of a capped buffer, so the rows there cannot be held:
+		// what must never happen is any scroll landing at the bottom.
+		await viewport.evaluate((el: Held) => {
+			el.seenDistances = []
+			el.addEventListener('scroll', () => el.seenDistances!.push(el.scrollHeight - el.scrollTop - el.clientHeight))
 		})
 		const grownAgain = await scrollHeight()
 		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(grownAgain)
 		await page.waitForTimeout(500)
-		const seen = await viewport.evaluate((el: Recording) => el.seenScrollTops!)
-		expect(seen.filter((top) => top !== atMatch)).toEqual([])
+		const seen = await viewport.evaluate((el: Held) => el.seenDistances!)
+		expect(seen.filter((distance) => distance <= 16)).toEqual([])
 
 		await page.keyboard.press('Escape')
 		await backToBottom.click()

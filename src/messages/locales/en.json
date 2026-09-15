@@ -2014,7 +2014,6 @@
 	"{count, plural, one {# error} other {# errors}}": "{count, plural, one {# error} other {# errors}}",
 	"{count, plural, one {# layer} other {# layers}}": "{count, plural, one {# layer} other {# layers}}",
 	"{count, plural, one {# line cannot be added} other {# lines cannot be added}}": "{count, plural, one {# line cannot be added} other {# lines cannot be added}}",
-	"{count, plural, one {# new event} other {# new events}}": "{count, plural, one {# new event} other {# new events}}",
 	"{count, plural, one {# permission} other {# permissions}}": "{count, plural, one {# permission} other {# permissions}}",
 	"{count, plural, one {# player} other {# players}}": "{count, plural, one {# player} other {# players}}",
 	"{count, plural, one {# player} other {# players}} could not be swapped to their assigned team.": "{count, plural, one {# player} other {# players}} could not be swapped to their assigned team.",

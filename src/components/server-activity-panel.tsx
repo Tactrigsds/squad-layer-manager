@@ -49,32 +49,14 @@ function ServerChatEvents(props: {
 	)
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
-	const [unseenMessageCount, setNewMessageCount] = React.useState(0)
 	const synced = props.synced
 	const connectionError = props.connectionError
 
+	// a match opens at its end, whichever way the reader arrived at it
 	React.useEffect(() => {
-		if (synced) {
-			requestAnimationFrame(() => {
-				scrollToBottom()
-			})
-		}
-	}, [synced, scrollToBottom])
-
-	// Auto-scroll to bottom when returning to live match
-	const prevSelectedMatchOrdinal = React.useRef<number | null>(selectedMatchOrdinal)
-	React.useEffect(() => {
-		if (prevSelectedMatchOrdinal.current !== null && selectedMatchOrdinal === null) {
-			// Just switched from historical to live
-			requestAnimationFrame(() => {
-				scrollToBottom()
-			})
-		}
-		prevSelectedMatchOrdinal.current = selectedMatchOrdinal
+		scrollToBottom()
 	}, [selectedMatchOrdinal, scrollToBottom])
 
-	// the count only means anything while the feed is scrolled away from the bottom
-	const newMessageCount = showScrollButton ? unseenMessageCount : 0
 	// the loading overlay covers the scroll affordance, not the other way round
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
@@ -142,9 +124,7 @@ function ServerChatEvents(props: {
 					title={tr.text(CHAT_Msgs.scrollToBottom())}
 				>
 					<Icons.ChevronDown />
-					<span className="text-xs">
-						{newMessageCount > 0 ? tr.text(CHAT_Msgs.newEvents(newMessageCount)) : tr.text(CHAT_Msgs.scrollToBottom())}
-					</span>
+					<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
 				</Button>
 			)}
 		</div>
