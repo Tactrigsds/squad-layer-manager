@@ -52,6 +52,9 @@ importers:
       '@dnd-kit/dom':
         specifier: 0.1.21
         version: 0.1.21
+      '@lezer/highlight':
+        specifier: ^1.2.3
+        version: 1.2.3
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -139,9 +142,6 @@ importers:
       superjson:
         specifier: ^2.2.6
         version: 2.2.6
-      thememirror:
-        specifier: ^2.0.1
-        version: 2.0.1(@codemirror/language@6.12.4)(@codemirror/state@6.7.1)(@codemirror/view@6.43.6)
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -5991,13 +5991,6 @@ packages:
   tar@7.5.21:
     resolution: {integrity: sha512-XdhtCvlMywwxpCW8YEq3lOXBJpUPTR2OHHcwLPO3HwsJqOHa2Ok/oJ7ruGzp+JrKoRPVCzJwAdEjqLW/vNRPHA==}
     engines: {node: '>=18'}
-
-  thememirror@2.0.1:
-    resolution: {integrity: sha512-d5i6FVvWWPkwrm4cHLI3t9AT1OrkAt7Ig8dtdYSofgF7C/eiyNuq6zQzSTusWTde3jpW9WLvA9J/fzNKMUsd0w==}
-    peerDependencies:
-      '@codemirror/language': ^6.0.0
-      '@codemirror/state': ^6.0.0
-      '@codemirror/view': ^6.0.0
 
   thread-stream@3.2.0:
     resolution: {integrity: sha512-zLBvqpwr4Esa0kRjcrzGU6zL25lePWaCLMx0RQFrmteozIfeNdaMLpG5U7PeHzvlFkAWaRKA9/KVW4F60iB+qw==}
@@ -12279,12 +12272,6 @@ snapshots:
       minizlib: 3.1.0
       yallist: 5.0.0
     optional: true
-
-  thememirror@2.0.1(@codemirror/language@6.12.4)(@codemirror/state@6.7.1)(@codemirror/view@6.43.6):
-    dependencies:
-      '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.7.1
-      '@codemirror/view': 6.43.6
 
   thread-stream@3.2.0:
     dependencies:

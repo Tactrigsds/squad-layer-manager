@@ -71,6 +71,7 @@
 		"@dnd-kit/abstract": "0.1.21",
 		"@dnd-kit/collision": "0.1.21",
 		"@dnd-kit/dom": "0.1.21",
+		"@lezer/highlight": "^1.2.3",
 		"@opentelemetry/api": "^1.9.1",
 		"@opentelemetry/api-logs": "^0.220.0",
 		"@opentelemetry/auto-instrumentations-node": "^0.78.0",
@@ -100,7 +101,6 @@
 		"sql-highlight": "^6.1.0",
 		"ssh2": "^1.17.0",
 		"superjson": "^2.2.6",
-		"thememirror": "^2.0.1",
 		"tsx": "^4.23.12",
 		"utf-8-validate": "^6.0.6",
 		"yaml": "^2.9.0"

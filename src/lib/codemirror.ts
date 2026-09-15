@@ -10,8 +10,8 @@ import { basicSetup } from 'codemirror'
 import { stateExtensions, updateSchema } from 'codemirror-json-schema'
 import { yamlCompletion, yamlSchemaHover } from 'codemirror-json-schema/yaml'
 import type { JSONSchema7 } from 'json-schema'
-import { dracula } from 'thememirror'
 
+import { foundryTheme } from './codemirror-theme.ts'
 import { z } from './zod.ts'
 
 export { EditorState, EditorView, updateSchema }
@@ -31,12 +31,7 @@ export function toJsonSchema(schema: z.core.$ZodType): JsonSchema | undefined {
 	}
 }
 
-const heightTheme = EditorView.theme({
-	'&': { height: '100%', fontSize: '13px' },
-	'.cm-scroller': { overflow: 'auto' },
-})
-
-// Base extensions for a YAML editor: editing affordances, YAML syntax, dracula theme, line wrapping, and --
+// Base extensions for a YAML editor: editing affordances, YAML syntax, the Foundry theme, line wrapping, and --
 // when a schema is provided -- schema-driven autocompletion and hover tooltips (descriptions come from
 // `.describe()` annotations on the zod schema).
 export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[] {
@@ -50,9 +45,8 @@ export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[
 		yamlLanguage.data.of({ autocomplete: yamlCompletion() }),
 		hoverTooltip(yamlSchemaHover()),
 		stateExtensions(schema),
-		dracula,
+		foundryTheme,
 		EditorView.lineWrapping,
-		heightTheme,
 	]
 }
 
