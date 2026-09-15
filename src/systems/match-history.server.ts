@@ -18,12 +18,14 @@ import type * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import type * as SQS from '@/models/squad-server.models'
+import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AdminList from '@/systems/adminlist.server'
 import * as CombatStats from '@/systems/combat-stats.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as Settings from '@/systems/settings.server'
@@ -307,19 +309,32 @@ export const matchHistoryRouter = {
 
 			// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
 			// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
-			const connectionRows = await ctx
-				.db()
-				.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
-				.from(Schema.playerEventIndex)
-				.where(
-					E.and(
-						E.eq(Schema.playerEventIndex.playerId, playerId),
-						E.eq(Schema.playerEventIndex.serverId, input.serverId),
-						E.inArray(Schema.playerEventIndex.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']),
-					),
-				)
-				.orderBy(E.desc(Schema.playerEventIndex.time))
-				.limit(1)
+			// Issued alongside the other two reads rather than before them: none of the three needs another's answer.
+			const [connectionRows, playerRows, adminLists] = await Promise.all([
+				ctx
+					.db()
+					.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
+					.from(Schema.playerEventIndex)
+					.where(
+						E.and(
+							E.eq(Schema.playerEventIndex.playerId, playerId),
+							E.eq(Schema.playerEventIndex.serverId, input.serverId),
+							E.inArray(Schema.playerEventIndex.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']),
+						),
+					)
+					.orderBy(E.desc(Schema.playerEventIndex.time))
+					.limit(1),
+				// an admin list can key a player by either id, so their steam id is worth the lookup even though the
+				// window asks by eos
+				ctx.db().select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, playerId)),
+				AdminList.getListsForServerId(ctx, input.serverId),
+			])
+
+			const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: playerId, steam: playerRows[0]?.steamId?.toString() }
+			const standing = AdminList.playerStanding(adminLists, ids)
+			// Only meaningful against a server: which groups mark an admin is a property of the lists that server
+			// recognises, so the frameless window has no answer and shows no badge.
+			const isAdmin = SM.AdminList.isAdminInAny(adminLists, ids as SM.PlayerIds.IdQuery<'steam'>)
 
 			const lastConnectionEvent = connectionRows[0]
 			const connectionStatus: { status: 'online'; connectedSince: number } | { status: 'offline'; lastSeen: number | null } =
@@ -329,7 +344,7 @@ export const matchHistoryRouter = {
 						? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }
 						: { status: 'offline', lastSeen: null }
 
-			return { connectionStatus }
+			return { connectionStatus, isAdmin, adminGroups: standing.groups, adminListUrls: standing.listUrls }
 		}),
 
 	// Player-specific events are drawn from the enriched events of the recent matches, cached or re-read per page.

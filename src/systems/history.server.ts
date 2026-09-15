@@ -13,11 +13,13 @@ import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
+import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import type * as HistoryWorker from '@/systems/history-query.worker'
@@ -272,15 +274,28 @@ export const router = {
 			}
 		}),
 
-	// who a player is, independent of any server: what the frameless player-details window opens with
+	// Who a player is, independent of any server: what the frameless player-details window opens with. Their ids and
+	// the admin-list groups they hold are true of the person; whether those groups make them an admin is a property of
+	// the lists a *server* recognises, so there is deliberately no isAdmin here and the window shows no badge.
 	playerInfo: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const [row] = await ctx
-			.db()
-			.select({ username: Schema.players.username, steamId: Schema.players.steamId })
-			.from(Schema.players)
-			.where(E.eq(Schema.players.eosId, input.playerId))
+		const [[row], adminLists] = await Promise.all([
+			ctx
+				.db()
+				.select({ username: Schema.players.username, steamId: Schema.players.steamId })
+				.from(Schema.players)
+				.where(E.eq(Schema.players.eosId, input.playerId)),
+			AdminList.getAllLists(ctx),
+		])
 		if (!row) return { code: 'err:not-found' as const }
-		return { code: 'ok' as const, username: row.username, steamId: row.steamId?.toString() ?? null }
+		const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: input.playerId, steam: row.steamId?.toString() }
+		const standing = AdminList.playerStanding(adminLists, ids)
+		return {
+			code: 'ok' as const,
+			username: row.username,
+			steamId: row.steamId?.toString() ?? null,
+			adminGroups: standing.groups,
+			adminListUrls: standing.listUrls,
+		}
 	}),
 
 	// what the player field's combo-box lists as you type. Names rather than ids: nobody filters by an eos id

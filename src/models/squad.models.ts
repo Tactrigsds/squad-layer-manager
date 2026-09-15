@@ -740,6 +740,9 @@ export type AdminList = {
 		admins: Set<PlayerId>
 	}
 }
+// One of a player's admin-list groups and every list that put them in it.
+export type PlayerGroupSources = { group: string; lists: AdminListId[] }
+
 export namespace AdminList {
 	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
 	export function getPlayerGroups(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
@@ -769,6 +772,21 @@ export namespace AdminList {
 			if (getIsAdmin(list, ids)) return true
 		}
 		return false
+	}
+
+	// Same question as `collectPlayerGroups`, but keeping which list each group came from. Two lists can put a player
+	// in a same-named group, so a group carries every list that assigned it rather than the first. Ordered by list and
+	// then by the group's first appearance, so the rendering is stable across polls.
+	export function collectPlayerGroupSources(lists: AdminLists, ids: PlayerIds.IdQuery<'steam'>): PlayerGroupSources[] {
+		const out: PlayerGroupSources[] = []
+		for (const [listId, list] of lists) {
+			for (const group of getPlayerGroups(list, ids)) {
+				const existing = out.find((entry) => entry.group === group)
+				if (existing) existing.lists.push(listId)
+				else out.push({ group, lists: [listId] })
+			}
+		}
+		return out
 	}
 
 	// Every group name any of them defines. The merged view used to answer this by unioning the maps; nothing reads
