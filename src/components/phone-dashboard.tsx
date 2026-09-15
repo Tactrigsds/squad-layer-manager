@@ -28,8 +28,7 @@ type Screen = SquadServerClient.DashboardTab
 
 /**
  * Below 640px the dashboard is one panel at a time: the same panels as the desktop layout, behind a bottom tab
- * bar. The current layer rides in a strip under the top bar on every screen but Matches, which already shows it
- * as the highlighted history row.
+ * bar. The current layer rides in a strip under the top bar on the Queue screen only.
  *
  * A screen mounts on its first visit and then stays, hidden with `display: none`: the activity feed builds every
  * row of the match on mount, which is most of a second on a phone, and a hidden feed only appends.
@@ -46,7 +45,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 
 	return (
 		<div className="flex h-full w-full flex-col min-h-0">
-			{screen !== 'matches' && <CurrentLayerStrip stores={props.stores} />}
+			{screen === 'queue' && <CurrentLayerStrip stores={props.stores} />}
 			<div className="flex flex-col flex-1 min-h-0 p-2 gap-2">
 				{visited.includes('matches') && (
 					<ScrollArea className="flex-1 min-h-0" style={show('matches')}>
