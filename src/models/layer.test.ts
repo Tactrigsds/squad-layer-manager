@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import * as L from './layer'
+import * as LC from './layer-columns'
 
 describe('getLayerCommand', () => {
 	const testLayers = [
@@ -420,5 +421,86 @@ describe('parseRawLayerLines', () => {
 
 	it('checks no collection when the caller names no server', () => {
 		expect(L.parseRawLayerLines(supermod)[0].code).toBe('ok')
+	})
+})
+
+describe('world partitioning layers', () => {
+	const WP_LAYERS = ['Yehorivka_AAS_v1_WP', 'Yehorivka_Invasion_v1_WP', 'Yehorivka_RAAS_v1_WP', 'Yehorivka_Skirmish_v1_WP']
+
+	// the checked-in catalog predates the WP layers, so each one is added as a copy of its base layer
+	const base = L.StaticLayerComponents
+	const components: typeof base = {
+		...base,
+		layers: [...base.layers, ...WP_LAYERS],
+		versions: [...base.versions, 'V1WP'],
+		mapLayers: [
+			...base.mapLayers,
+			...WP_LAYERS.map((layer) => ({ ...L.getLayerConfig(layer.replace(/_WP$/, ''), base)!, Layer: layer, LayerVersion: 'V1WP' })),
+		],
+		layerFactionAvailability: {
+			...base.layerFactionAvailability,
+			...Object.fromEntries(WP_LAYERS.map((layer) => [layer, base.layerFactionAvailability[layer.replace(/_WP$/, '')]])),
+		},
+	}
+
+	function idOf(layerString: string) {
+		const config = L.getLayerConfig(layerString, components)!
+		const avail = components.layerFactionAvailability[layerString]
+		const team1 = avail.find((e) => e.allowedTeams.includes(1))!
+		const team2 = avail.find((e) => e.allowedTeams.includes(2) && e.Faction !== team1.Faction)!
+		return L.getKnownLayerId(
+			{
+				Map: config.Map,
+				Gamemode: config.Gamemode,
+				LayerVersion: config.LayerVersion,
+				Collection: L.layerConfigCollection(config, components),
+				Faction_1: team1.Faction,
+				Unit_1: team1.Unit,
+				Faction_2: team2.Faction,
+				Unit_2: team2.Unit,
+			},
+			components,
+		)!
+	}
+
+	it('segments a WP layer string into its own version, with or without the catalog', () => {
+		for (const c of [components, null]) {
+			const segments = L.parseLayerStringSegment('Yehorivka_AAS_v1_WP', c)!
+			expect(segments).toMatchObject({ Map: 'Yehorivka', Gamemode: 'AAS', LayerVersion: 'V1WP' })
+		}
+		expect(L.parseLayerStringSegment('Yehorivka_AAS_v1', null)!.LayerVersion).toBe('V1')
+	})
+
+	it.each(WP_LAYERS)('gives %s an id distinct from its base layer, which round-trips', (layer) => {
+		const id = idOf(layer)
+		expect(id).toMatch(/^YH-[A-Z]+-V1WP:/)
+		expect(idOf(layer.replace(/_WP$/, ''))).toBe(id.replace('-V1WP:', '-V1:'))
+
+		const res = L.parseLayerId(id, components)
+		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
+		expect(res.layer.Layer).toBe(layer)
+
+		const command = L.getLayerCommand(res.layer, 'set-next', components)
+		expect(command).toContain(` ${layer} `)
+		expect(L.parseRawLayerText(command, components)?.id).toBe(id)
+
+		expect(LC.unpackId(LC.packId(res.layer, components), components)).toBe(id)
+	})
+
+	it('still resolves the base layer to itself', () => {
+		const res = L.parseLayerId(idOf('Yehorivka_AAS_v1'), components)
+		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
+		expect(res.layer.Layer).toBe('Yehorivka_AAS_v1')
+	})
+
+	it('spells the version back out as it appears in the layer name', () => {
+		expect(L.layerVersionNameSegment('V1WP')).toBe('v1_WP')
+		expect(L.layerVersionNameSegment('V1')).toBe('v1')
+		expect(
+			L.getLayerString(
+				{ Map: 'Yehorivka', Gamemode: 'TC', LayerVersion: 'V1WP', Collection: 'OWI', Faction_1: 'USA', Faction_2: 'RGF' },
+				components,
+			),
+		).toBe('Yehorivka_TC_v1_WP')
 	})
 })

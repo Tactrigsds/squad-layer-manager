@@ -46,6 +46,29 @@ export function setLayerData(data: LayerData) {
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
 
+// A world partitioning layer (Yehorivka_AAS_v1_WP) shares Map/Gamemode/Version with its base layer, so the suffix
+// is folded into LayerVersion (V1WP) to keep the two apart in ids and filters.
+const WORLD_PARTITION_SUFFIX = 'WP'
+
+export function isWorldPartitionVersion(version: string | null) {
+	return version?.endsWith(WORLD_PARTITION_SUFFIX) ?? false
+}
+
+export function worldPartitionVersion(version: string) {
+	return version + WORLD_PARTITION_SUFFIX
+}
+
+/** The version without its world partitioning suffix: V1WP -> V1. */
+export function baseLayerVersion(version: string) {
+	return isWorldPartitionVersion(version) ? version.slice(0, -WORLD_PARTITION_SUFFIX.length) : version
+}
+
+/** How a version is spelled in a layer string: V1 -> v1, V1WP -> v1_WP. */
+export function layerVersionNameSegment(version: string) {
+	const base = baseLayerVersion(version).toLowerCase()
+	return isWorldPartitionVersion(version) ? `${base}_${WORLD_PARTITION_SUFFIX}` : base
+}
+
 export type KnownLayer = {
 	id: string
 	Map: string
@@ -266,7 +289,7 @@ export function getLayerString(
 		return `${details.Map}_${details.Faction_1}-${details.Faction_2}`
 	}
 	let layer = `${details.Map}_${details.Gamemode}`
-	if (details.LayerVersion) layer += `_${details.LayerVersion.toLowerCase()}`
+	if (details.LayerVersion) layer += `_${layerVersionNameSegment(details.LayerVersion)}`
 	if (details.Collection) {
 		const abbrev = components.collectionAbbreviations[details.Collection]
 		if (typeof abbrev === 'string') {
@@ -374,7 +397,7 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 	let collectionPart: string | null = null
 	for (const part of [versionOrCollectionPart1, versionOrCollectionPart2]) {
 		if (!part) continue
-		if (part.match(/V\d+/)) {
+		if (/^V\d+(?:WP)?$/.test(part)) {
 			if (versionPart) {
 				return {
 					code: 'err:invalid-layer-id' as const,
@@ -420,7 +443,7 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 				msg: `Unknown Training layer: ${id}`,
 			}
 		}
-		layerString = `${map}_${gamemode}${layerVersion ? `_${layerVersion.toLowerCase()}` : ''}${collectionPart ? `_${collectionPart}` : ''}`
+		layerString = `${map}_${gamemode}${layerVersion ? `_${layerVersionNameSegment(layerVersion)}` : ''}${collectionPart ? `_${collectionPart}` : ''}`
 	}
 
 	const layer = {
@@ -619,7 +642,11 @@ export function getSquadcalcUrl(baseUrl: string, layerOrId: UnvalidatedLayer | L
 	if (!layer.Gamemode || !layer.Map) return undefined
 	const params = new URLSearchParams()
 	params.set('map', layer.Map)
-	params.set('layer', layer.Gamemode.replace('FRAAS', 'RAAS') + (layer.LayerVersion ? layer.LayerVersion.toLowerCase() : ''))
+	// squadcalc has no world partitioning layers; the base layer's version stands in
+	params.set(
+		'layer',
+		layer.Gamemode.replace('FRAAS', 'RAAS') + (layer.LayerVersion ? baseLayerVersion(layer.LayerVersion).toLowerCase() : ''),
+	)
 	return baseUrl + '?' + params.toString()
 }
 
@@ -782,7 +809,7 @@ export function parseLayerStringSegment<C extends typeof StaticLayerComponents |
 		}
 	}
 
-	const groups = layer.match(/^([A-Za-z0-9]+)_([A-Za-z0-9]+)?(_v\d+)?(_\w+)?$/)
+	const groups = layer.match(/^([A-Za-z0-9]+)_([A-Za-z0-9]+)?(_v\d+)?(_WP)?(_\w+)?$/)
 	if (!groups) {
 		const trainingMaps = ['JensensRange', 'PacificProvingGrounds']
 		for (const map of trainingMaps) {
@@ -803,8 +830,9 @@ export function parseLayerStringSegment<C extends typeof StaticLayerComponents |
 		}
 		return null
 	}
-	const [map, gamemode, versionRaw, collectionRaw] = groups.slice(1)
-	const version = versionRaw?.slice(1)
+	const [map, gamemode, versionRaw, worldPartitionRaw, collectionRaw] = groups.slice(1)
+	let version = versionRaw?.slice(1).toUpperCase()
+	if (version && worldPartitionRaw) version = worldPartitionVersion(version)
 	const collection = !components
 		? null
 		: (Obj.revLookupCached(components.collectionAbbreviations, collectionRaw?.slice(1) ?? null) ?? getDefaultCollection(components))
@@ -812,7 +840,7 @@ export function parseLayerStringSegment<C extends typeof StaticLayerComponents |
 		layerType: 'normal' as const,
 		Map: map,
 		Gamemode: gamemode,
-		LayerVersion: version?.toUpperCase() ?? null,
+		LayerVersion: version ?? null,
 		// @ts-expect-error typescript bad and/or skill-issue
 		Collection: collection,
 	}
