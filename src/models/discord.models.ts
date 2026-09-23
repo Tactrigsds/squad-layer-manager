@@ -20,9 +20,7 @@ export type GetEmojisOptions = z.infer<typeof GetEmojisOptionsSchema>
 export const GetEmojiOptionsSchema = z.object({ id: z.string() })
 export type GetEmojiOptions = z.infer<typeof GetEmojiOptionsSchema>
 
-// discord's embed limits: one embed's description, and the text of every embed on a message taken together
-export const EMBED_DESCRIPTION_LIMIT = 4096
-export const EMBEDS_TOTAL_LIMIT = 6000
+export const MESSAGE_CONTENT_LIMIT = 2000
 
 /**
  * `text` in a code block within `limit` characters. Past it, the block keeps as many whole lines as fit, `note` says
@@ -41,20 +39,21 @@ export function codeBlock(text: string, limit: number, note: (omittedLines: numb
 }
 
 /**
- * One embed per quoted text, holding nothing but the text in a code block. The quotes share the message's embed
- * budget evenly; one cut short to fit is returned whole as a file to attach.
+ * The quoted texts as one message's content, a code block each. The quotes share the message's length evenly; one cut
+ * short to fit is returned whole as a file to attach.
  */
-export function quoteEmbeds(
+export function quoteContent(
 	texts: string[],
 	note: (omittedLines: number) => string,
-): { embeds: D.APIEmbed[]; files: { name: string; text: string }[] } {
-	const share = Math.min(EMBED_DESCRIPTION_LIMIT, Math.floor(EMBEDS_TOTAL_LIMIT / Math.max(texts.length, 1)))
-	const embeds: D.APIEmbed[] = []
+): { content: string; files: { name: string; text: string }[] } {
+	const separators = Math.max(texts.length - 1, 0)
+	const share = Math.floor((MESSAGE_CONTENT_LIMIT - separators) / Math.max(texts.length, 1))
+	const blocks: string[] = []
 	const files: { name: string; text: string }[] = []
 	texts.forEach((text, i) => {
 		const { block, truncated } = codeBlock(text, share, note)
-		embeds.push({ description: block })
+		blocks.push(block)
 		if (truncated) files.push({ name: texts.length === 1 ? 'selection.txt' : `selection-${i + 1}.txt`, text })
 	})
-	return { embeds, files }
+	return { content: blocks.join('\n'), files }
 }

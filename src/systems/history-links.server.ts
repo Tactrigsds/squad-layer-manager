@@ -18,8 +18,8 @@ import * as History from '@/systems/history.server'
 import * as Settings from '@/systems/settings.server'
 
 // Quotes a linked history selection back into discord. A message in the home guild whose links to the history page
-// carry selections gets one reply, an embed per selection holding its events as text (the same text copying them in
-// the app gives), which follows the message as it is edited or deleted.
+// carry selections gets one reply, a code block per selection holding its events as text (the same text copying them
+// in the app gives), which follows the message as it is edited or deleted.
 //
 // Answered only for a poster who may query history (`history:query`), and scoped to the servers they can see, the way
 // their own query of the link would be. The reply itself is public to the channel, as the link was.
@@ -158,9 +158,9 @@ async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selecti
 }
 
 function replyPayload(quotes: string[]) {
-	const { embeds, files } = DM.quoteEmbeds(quotes, (n) => I18n.ambient.text(HistoryMsgs.quotedSelectionTruncated(n)))
+	const { content, files } = DM.quoteContent(quotes, (n) => I18n.ambient.text(HistoryMsgs.quotedSelectionTruncated(n)))
 	return {
-		embeds,
+		content,
 		files: files.map((file) => ({ attachment: Buffer.from(file.text, 'utf8'), name: file.name })),
 		allowedMentions: { parse: [], repliedUser: false },
 	}

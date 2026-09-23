@@ -26,20 +26,16 @@ describe('codeBlock', () => {
 	})
 })
 
-describe('quoteEmbeds', () => {
-	test('an embed per quote, holding the text alone', () => {
-		const { embeds, files } = DM.quoteEmbeds(['a\nb'], note)
-		expect(embeds).toEqual([{ description: '```\na\nb\n```' }])
-		expect(files).toEqual([])
+describe('quoteContent', () => {
+	test('a code block per quote, holding the text alone', () => {
+		expect(DM.quoteContent(['a\nb', 'c'], note)).toEqual({ content: '```\na\nb\n```\n```\nc\n```', files: [] })
 	})
 
-	test('the quotes share the message budget, and one cut short comes whole as a file', () => {
+	test('the quotes share the message length, and one cut short comes whole as a file', () => {
 		const long = lines(300).join('\n')
-		const { embeds, files } = DM.quoteEmbeds([long, 'short'], note)
-		const total = embeds.reduce((sum, e) => sum + e.description!.length, 0)
-		expect(total).toBeLessThanOrEqual(DM.EMBEDS_TOTAL_LIMIT)
-		for (const embed of embeds) expect(embed.description!.length).toBeLessThanOrEqual(DM.EMBED_DESCRIPTION_LIMIT)
+		const { content, files } = DM.quoteContent([long, 'short'], note)
+		expect(content.length).toBeLessThanOrEqual(DM.MESSAGE_CONTENT_LIMIT)
 		expect(files).toEqual([{ name: 'selection-1.txt', text: long }])
-		expect(embeds[1].description).toBe('```\nshort\n```')
+		expect(content.endsWith('```\nshort\n```')).toBe(true)
 	})
 })
