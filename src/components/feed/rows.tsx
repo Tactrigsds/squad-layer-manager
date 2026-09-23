@@ -227,6 +227,7 @@ function NewGame(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, 
 							normalized={ctx.displayTeamsNormalized}
 							layerId={match.layerId}
 							teamParity={match.ordinal % 2}
+							historyEntryId={match.historyEntryId}
 							className="text-xs"
 						/>,
 					),

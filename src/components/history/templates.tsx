@@ -141,6 +141,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 					normalized={props.displayTeamsNormalized}
 					layerId={details.layerId}
 					teamParity={details.ordinal % 2}
+					historyEntryId={details.historyEntryId}
 					className="text-xs"
 				/>
 			</td>

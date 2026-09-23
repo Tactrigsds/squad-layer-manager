@@ -271,6 +271,8 @@ export type ShortLayerNameProps = {
 	backfillLayerId?: L.LayerId
 	matchDescriptors?: LQY.MatchDescriptor[]
 	allowShowInfo?: boolean
+	/** the match the layer was played in, which the layer's context menu then also acts on */
+	historyEntryId?: number
 	tourId?: string
 	className?: string
 }
@@ -352,8 +354,13 @@ export function LayerInfoButton(props: { layerId: L.LayerId; children: React.Rea
  * segment stays intact because it carries its own nowrap.
  */
 export function ShortLayerName(props: ShortLayerNameProps) {
+	const menu = RC.menuAttrs({
+		kind: 'layer',
+		layerIds: [props.layerId],
+		historyEntryIds: props.historyEntryId === undefined ? undefined : [props.historyEntryId],
+	})
 	const span = (
-		<span data-tour={props.tourId} className={cn('inline-flex flex-wrap items-baseline', props.className)}>
+		<span data-tour={props.tourId} className={cn('inline-flex flex-wrap items-baseline', props.className)} {...menu}>
 			<ShortLayerNameContent {...props} />
 		</span>
 	)
