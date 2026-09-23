@@ -595,6 +595,7 @@ export const squadTeam = def('Team')
 export const squadInGameId = def('In-game ID:')
 
 export const squadEvents = def('Squad Events')
+export const squadLinkShowsMatch = def("Opens the whole match: history can't filter by squad")
 
 export const hideTeamChat = def('Hide team/allchat')
 

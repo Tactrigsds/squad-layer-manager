@@ -1013,6 +1013,7 @@
 	"Open the repeat rules configured for this server:": "Open the repeat rules configured for this server:",
 	"Open the scores": "Open the scores",
 	"Open {listId}": "Open {listId}",
+	"Opens the whole match: history can't filter by squad": "Opens the whole match: history can't filter by squad",
 	"Operator": "Operator",
 	"Options": "Options",
 	"Order and default visibility of columns in the layer table. Drag to reorder; order is top to bottom.": "Order and default visibility of columns in the layer table. Drag to reorder; order is top to bottom.",

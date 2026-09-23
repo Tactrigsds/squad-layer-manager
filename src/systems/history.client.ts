@@ -1,8 +1,12 @@
 import { useMutation } from '@tanstack/react-query'
-import type * as TSR from '@tanstack/react-router'
+import * as TSR from '@tanstack/react-router'
+import React from 'react'
 
+import type * as RC from '@/components/feed/render-context'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
+import * as RbacClient from '@/systems/rbac.client'
 
 export type QueryPageInput = {
 	query: HQ.Query
@@ -13,10 +17,40 @@ export type QueryPageInput = {
 	includeMatchBoundaries?: boolean
 }
 
-/** An absolute url to the history page showing `search`, for pasting outside the app. */
-export function historyUrl(router: ReturnType<typeof TSR.useRouter>, search: HQ.Search): string {
-	const location = router.buildLocation({ to: '/history', search })
-	return new URL(location.href, window.location.origin).href
+/**
+ * An absolute url to the history page showing `search`, for pasting outside the app. Serialized the way the router
+ * serializes a search (it is given no serializer of its own), without asking the router: a draggable window renders
+ * outside the router's context, and a link is built from there too.
+ */
+export function historyUrl(search: HQ.Search): string {
+	return new URL(`/history${TSR.defaultStringifySearch(search)}`, window.location.origin).href
+}
+
+export type RowsLinkTarget = {
+	query: HQ.Query
+	// the ends to link to, where they differ from the selection's own
+	ends?: RC.RowSelection
+	caveat?: string
+}
+
+/**
+ * A render ctx's `linkToRows`, for a feed that can name its rows as a history query, or none for a user who may not
+ * open the history page. `target` is read when a link is asked for rather than closed over, so it may read anything
+ * current without costing the feed a new ctx, which would rebuild its rows.
+ */
+export function useRowsLink(
+	target: (selection: RC.RowSelection, rows: Element[], group: string | undefined) => RowsLinkTarget | undefined,
+): RC.RenderCtx['linkToRows'] {
+	const denied = RbacClient.usePermsCheck(RBAC.perm('history:query')) !== null
+	const targetRef = React.useRef(target)
+	targetRef.current = target
+	const link = React.useCallback<NonNullable<RC.RenderCtx['linkToRows']>>((selection, rows, group) => {
+		const res = targetRef.current(selection, rows, group)
+		if (!res) return undefined
+		const ends = res.ends ?? selection
+		return { url: historyUrl({ ...res.query, sel: [ends.anchor, ends.head] }), caveat: res.caveat }
+	}, [])
+	return denied ? undefined : link
 }
 
 export const queryPageBase = (input: QueryPageInput) =>

@@ -1,5 +1,4 @@
 import { useIsFetching, useQuery } from '@tanstack/react-query'
-import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -37,13 +36,14 @@ export default function HistoryEvents(props: {
 	// player details window shows a fixed slice), which is also what hides the control.
 	onReorder?: (order: 'newest' | 'oldest') => void
 	// The selection, held by the caller (the history page keeps it in the url). A value that arrives from
-	// outside, rather than from a drag here, is loaded and scrolled to. `linkable` offers a link to the rows.
-	// Omitted, the rows still select, but nothing outside knows.
+	// outside, rather than from a drag here, is loaded and scrolled to. Omitted, the rows still select, but nothing
+	// outside knows.
 	selection?: {
 		value: HQ.RowSelectionParam | undefined
 		onChange: (selection: HQ.RowSelectionParam | undefined) => void
-		linkable?: boolean
 	}
+	// offers a link to selected rows, as `query` on the history page
+	linkable?: boolean
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const render = React.useMemo(() => ({ displayTeamsNormalized, locale: I18n.getAmbientLocale() }), [displayTeamsNormalized])
@@ -86,14 +86,7 @@ export default function HistoryEvents(props: {
 		extraStore.setState({ key, pages: [...prev.pages, res as EventsPage] })
 	}
 
-	const router = TSR.useRouter()
-	const linkable = props.selection?.linkable ?? false
-	const linkToRows = React.useCallback(
-		(selection: RC.RowSelection) => ({
-			url: HistoryClient.historyUrl(router, { ...props.query, sel: [selection.anchor, selection.head] }),
-		}),
-		[router, props.query],
-	)
+	const linkToRows = HistoryClient.useRowsLink(() => ({ query: props.query }))
 	// the server's, since the rows here arrived as markup with no events behind them
 	const selectionText = React.useCallback(
 		async (selection: RC.RowSelection) => {
@@ -110,7 +103,7 @@ export default function HistoryEvents(props: {
 	const hostRef = React.useRef<HTMLDivElement | null>(null)
 	const ctx = useHistoryRenderCtx(matches, {
 		serverId: HQ.soleServerId(props.query),
-		linkToRows: linkable ? linkToRows : undefined,
+		linkToRows: props.linkable ? linkToRows : undefined,
 		selectionText,
 	})
 	// A selection that arrived from the caller rather than from a drag here, until it has been scrolled to. A ref
