@@ -216,6 +216,12 @@ export function rowIdentity(event: CHAT.EventEnriched): { id: string; contains: 
 	return { id, contains }
 }
 
+// the same, for a row react renders
+export function rowAttrs(event: CHAT.EventEnriched): Attrs {
+	const identity = rowIdentity(event)
+	return { [ROW_ATTR]: identity.id, [ROW_CONTAINS_ATTR]: identity.contains }
+}
+
 export function setRowIdentity(node: Element, event: CHAT.EventEnriched) {
 	const identity = rowIdentity(event)
 	node.setAttribute(ROW_ATTR, identity.id)

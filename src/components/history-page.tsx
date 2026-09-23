@@ -325,7 +325,8 @@ function Results(props: {
 				<HistoryEvents
 					query={props.query}
 					onReorder={(order) => props.onRun({ ...props.query, order })}
-					selection={{ value: props.selection, onChange: props.onSelect, linkable: true }}
+					selection={{ value: props.selection, onChange: props.onSelect }}
+					linkable
 				/>
 			)
 		case 'players':
@@ -424,15 +425,10 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 
 	// A selection in a row's events names events of the row's own narrowed query, which is what the link opens and
 	// what the text is read from. There is no selecting the result rows themselves, so no group means nothing.
-	const router = TSR.useRouter()
-	const linkToRows = React.useCallback(
-		(selection: RC.RowSelection, _rows: Element[], group: string | undefined) => {
-			const narrowed = group && HQ.eventsForRow(query, group)
-			if (!narrowed) return undefined
-			return { url: HistoryClient.historyUrl(router, { ...narrowed, sel: [selection.anchor, selection.head] }) }
-		},
-		[router, query],
-	)
+	const linkToRows = HistoryClient.useRowsLink((_selection, _rows, group) => {
+		const narrowed = group && HQ.eventsForRow(query, group)
+		return narrowed ? { query: narrowed } : undefined
+	})
 	const selectionText = React.useCallback(
 		async (selection: RC.RowSelection, _ctx: RC.RenderCtx, group: string | undefined) => {
 			const narrowed = group && HQ.eventsForRow(query, group)

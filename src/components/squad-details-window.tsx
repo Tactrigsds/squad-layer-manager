@@ -25,15 +25,19 @@ import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as HQ from '@/models/history.models'
 import * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
+import * as HistoryClient from '@/systems/history.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 
+import * as RC from './feed/render-context'
+import * as Selection from './feed/selection'
 import { ServerEvent } from './feed/server-event'
-import { useRenderCtx } from './feed/use-render-ctx'
+import { useEventsSelectionText, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -124,9 +128,20 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		if (!squadMessagesOnly) return events
 		return events.filter((e) => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId)))
 	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
-	const feedCtx = useRenderCtx(stores, allEvents)
+	// History has no squad filter, so the link opens the squad's match, every event of it, with the selection in it.
+	// The match is read off the selected events, which all carry one, whether the squad is live or long gone.
+	const linkToRows = HistoryClient.useRowsLink((selection) => {
+		const anchor = allEvents.find((e) => RC.eventHasId(e, selection.anchor))
+		if (!anchor?.matchId) return undefined
+		return {
+			query: HQ.activityLogQuery({ serverId, matchId: anchor.matchId, feed: 'ALL' }),
+			caveat: tr.text(SM_Msgs.squadLinkShowsMatch()),
+		}
+	})
+	const feedCtx = useRenderCtx(stores, allEvents, { linkToRows, selectionText: useEventsSelectionText(allEvents) })
 
-	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const { scrollAreaRef, contentRef, content, showScrollButton, scrollToBottom } = useTailingScroll()
+	usePaintedSelection(content)
 
 	const creatorId = knownSquad?.creator ?? squad?.creatorId ?? null
 	const creatorPlayer = creatorId
@@ -209,7 +224,11 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					</div>
 					<div className="relative flex-1 min-h-0">
 						<ScrollArea ref={scrollAreaRef} className="h-full">
-							<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+							<div
+								ref={contentRef}
+								{...Selection.hostAttrs(feedCtx.scopeId)}
+								className={`flex flex-col gap-0.5 min-h-0 w-full max-w-175 ${Selection.HOST_CLASS}`}
+							>
 								{isPending && allEvents.length === 0 && (
 									<div className="flex items-center justify-center py-6">
 										<Spinner className="size-5" />
