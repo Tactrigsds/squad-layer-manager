@@ -244,6 +244,11 @@ async function buildLayerArtifact(
 		if (segments.Gamemode === 'RAAS') {
 			layerIds.push(L.getKnownLayerId({ ...idArgs, Gamemode: 'FRAAS' }, components)!)
 		}
+		// the scores csv has no world partitioning rows, so a WP layer takes its base layer's scores
+		if (segments.LayerVersion && !L.isWorldPartitionVersion(segments.LayerVersion)) {
+			const wpIdArgs = { ...idArgs, LayerVersion: L.worldPartitionVersion(segments.LayerVersion) }
+			if (L.findLayerConfigs(wpIdArgs, components).length > 0) layerIds.push(L.getKnownLayerId(wpIdArgs, components)!)
+		}
 		const parsed = extraColsSchema.parse(row) as Record<string, number | null>
 
 		for (const layerId of layerIds) {
@@ -620,7 +625,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 	if (manifest.fraasVariants) {
 		const fraasLayers: L.LayerConfig[] = []
 		for (const layerConfig of mapLayers) {
-			if (layerConfig.Gamemode !== 'RAAS') continue
+			if (layerConfig.Gamemode !== 'RAAS' || L.isWorldPartitionVersion(layerConfig.LayerVersion)) continue
 			const fraasLayer = { ...layerConfig, Gamemode: 'FRAAS', Layer: layerConfig.Layer.replace('RAAS', 'FRAAS') }
 			fraasLayers.push(fraasLayer)
 			availability.set(fraasLayer.Layer, availability.get(layerConfig.Layer)!)

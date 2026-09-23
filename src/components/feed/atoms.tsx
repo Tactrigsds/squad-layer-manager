@@ -98,7 +98,7 @@ export function MapLayerDisplay(props: { layer: string; extraStyles?: Record<str
 			)}
 			{segments.LayerVersion && (
 				<>
-					_<span className={styles.Layer}>{segments.LayerVersion.toLowerCase()}</span>
+					_<span className={styles.Layer}>{L.layerVersionNameSegment(segments.LayerVersion)}</span>
 				</>
 			)}
 			{segments.Collection && collection !== null && (
