@@ -430,14 +430,21 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&
 
 // Three consecutive chat lines to select, each waited for in the index. Unique per call, since the app and its
 // feed outlive a repeated test.
-async function seedSelectionChat(app: AppFixture): Promise<string[]> {
+// The talker, connected and indexed. Named with a leading space, the way the game reports a name with no clan tag,
+// so it is found by its trimmed name.
+async function historyTalker(app: AppFixture) {
 	const talker =
-		app.emu.world.playerList().find((p) => p.name === HISTORY_TALKER) ??
+		app.emu.world.playerList().find((p) => p.name.trim() === HISTORY_TALKER) ??
 		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_TALKER}`, teamId: 1 }))
 	await app.waitFor(() => indexedEventsFor(app, talker.eos) > 0 || undefined, {
 		label: 'the talker to reach the history index',
 		timeoutMs: 30_000,
 	})
+	return talker
+}
+
+async function seedSelectionChat(app: AppFixture): Promise<string[]> {
+	const talker = await historyTalker(app)
 	const run = Date.now()
 	const lines = [1, 2, 3].map((n) => `zqselection${run}x${n}`)
 	for (const line of lines) {
@@ -448,6 +455,34 @@ async function seedSelectionChat(app: AppFixture): Promise<string[]> {
 		})
 	}
 	return lines
+}
+
+// Drags across the seeded lines in the window that just opened (the last feed on the page to hold them), checks the
+// text it copies, and hands back the link it copies.
+async function dragAndCopyLink(page: Page, lines: string[]) {
+	const host = page.locator('[data-dom-selectable]').filter({ hasText: lines[0] }).last()
+	const rowWith = (text: string) => host.locator(':scope > [data-dom-row]').filter({ hasText: text })
+	const timeOf = (text: string) => rowWith(text).locator('[data-dom-tip-time]').first()
+	await expect(rowWith(lines[2])).toBeVisible({ timeout: 20_000 })
+
+	await dragFrom(page, timeOf(lines[0]), () => centerOf(timeOf(lines[2])))
+	await expect(host.locator(':scope > [data-selected]')).toHaveCount(3)
+
+	await timeOf(lines[1]).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+	await expect.poll(async () => (await readClipboard(page)).split('\n')).toEqual(lines.map((line) => expect.stringContaining(line)))
+
+	await timeOf(lines[1]).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: /Copy link to selection/ }).click()
+	await expect.poll(() => readClipboard(page)).toContain('sel=')
+	return readClipboard(page)
+}
+
+async function expectLinkSelects(page: Page, link: string, lines: string[]) {
+	await page.goto(link)
+	const selected = page.getByRole('region', { name: 'Event results' }).locator(':scope > [data-selected]')
+	await expect(selected).toHaveCount(3, { timeout: 30_000 })
+	for (const line of lines) await expect(selected.filter({ hasText: line })).toHaveCount(1)
 }
 
 test.describe('history page', () => {
@@ -888,6 +923,35 @@ test.describe('history page', () => {
 		const selected = page.getByRole('region', { name: 'Event results' }).locator(':scope > [data-selected]')
 		await expect(selected).toHaveCount(3, { timeout: 30_000 })
 		await expect(selected.first()).toContainText(lines[2])
+	})
+
+	// The player and squad windows draw their events row by row in react, as against the feeds built as dom, and
+	// sit outside the router's context. A selection there still links, to the history page's events for them.
+	test("a selection in a player's window links to their events", async ({ app, page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+		const lines = await seedSelectionChat(app)
+		await page.goto(app.loginUrl())
+		const logRow = page.getByRole('region', { name: 'Server Activity' }).locator('[data-dom-row]').filter({ hasText: lines[2] })
+		await logRow.getByText(HISTORY_TALKER).click({ timeout: 20_000 })
+
+		const link = await dragAndCopyLink(page, lines)
+		expect(link).toMatch(/players=/)
+		await expectLinkSelects(page, link, lines)
+	})
+
+	test("a selection in a squad's window links to its match", async ({ app, page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+		const squadName = `zqsquad${Date.now()}`
+		app.emu.world.createSquad(await historyTalker(app), squadName)
+		const lines = await seedSelectionChat(app)
+		await page.goto(app.loginUrl())
+		const created = page.getByRole('region', { name: 'Server Activity' }).locator('[data-dom-row]').filter({ hasText: squadName })
+		await created.getByText(/^Squad \d+/).click({ timeout: 20_000 })
+
+		const link = await dragAndCopyLink(page, lines)
+		// history has no squad filter, so the link is to the squad's match
+		expect(link).toMatch(/matchId=\d+/)
+		await expectLinkSelects(page, link, lines)
 	})
 
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save

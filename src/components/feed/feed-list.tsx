@@ -1,4 +1,3 @@
-import * as TSR from '@tanstack/react-router'
 import React from 'react'
 import { createPortal } from 'react-dom'
 
@@ -10,22 +9,18 @@ import * as CHAT from '@/models/chat.models'
 import * as HQ from '@/models/history.models'
 import type * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
-import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as HistoryClient from '@/systems/history.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
-import * as RbacClient from '@/systems/rbac.client'
 
 import { PluginEventRow } from '../server-event'
-import { localTimeZone } from './format'
 import * as RC from './render-context'
-import * as RowText from './row-text'
 import { Row } from './rows'
 import * as Selection from './selection'
 import { renderStatic } from './static-render'
-import { useRenderCtx } from './use-render-ctx'
+import { useEventsSelectionText, useRenderCtx } from './use-render-ctx'
 
 type AppEvent = Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
 
@@ -78,40 +73,30 @@ function collectFacts(map: Map<string, PG.PlayerFactsSource>, event: CHAT.EventE
 // showing only when asked, so it never costs the feed a rebuild. None while the log has no match on record to
 // name, such as before the first sync, and none for a user who may not open the history page.
 function useActivityLogLink(stores: SquadServerFrame.KeyProp): RC.RenderCtx['linkToRows'] {
-	const historyDenied = RbacClient.usePermsCheck(RBAC.perm('history:query')) !== null
-	const router = TSR.useRouter()
 	const serverId = stores.squadServer!.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
-	const matchesRef = React.useRef({ currentMatch, recentMatches })
-	matchesRef.current = { currentMatch, recentMatches }
-
-	const link = React.useCallback(
-		(selection: RC.RowSelection, rows: Element[]) => {
-			const state = Zus.resolveStore<SquadServerFrame.State>(stores.squadServer!).getState()
-			const { currentMatch, recentMatches } = matchesRef.current
-			const match = ChatPrt.Sel.displayMatch(state, currentMatch, recentMatches)
-			if (!match) return undefined
-			const feed = state.chat.secondaryFilterState
-			const query = HQ.activityLogQuery({ serverId, matchId: match.historyEntryId, feed })
-			// Under a narrowing filter, an end on a pinned row would name an event the results leave out, so the
-			// ends move inward to the nearest rows they keep. ALL and DEFAULT keep every pinned kind.
-			let ends: RC.RowSelection | undefined = selection
-			if (feed !== 'ALL' && feed !== 'DEFAULT') {
-				const kept = rows.filter((row) => !row.hasAttribute(RC.ROW_PINNED_ATTR))
-				const first = kept[0]?.getAttribute(RC.ROW_ATTR)
-				const last = kept.at(-1)?.getAttribute(RC.ROW_ATTR)
-				ends = first && last ? { anchor: first, head: last } : undefined
-			}
-			if (!ends) return undefined
-			return {
-				url: HistoryClient.historyUrl(router, { ...query, sel: [ends.anchor, ends.head] }),
-				caveat: state.chat.selectedOnly ? tr.text(CHAT_Msgs.linkOmitsSelectedOnly()) : undefined,
-			}
-		},
-		[router, serverId, stores],
-	)
-	return historyDenied ? undefined : link
+	return HistoryClient.useRowsLink((selection, rows) => {
+		const state = Zus.resolveStore<SquadServerFrame.State>(stores.squadServer!).getState()
+		const match = ChatPrt.Sel.displayMatch(state, currentMatch, recentMatches)
+		if (!match) return undefined
+		const feed = state.chat.secondaryFilterState
+		// Under a narrowing filter, an end on a pinned row would name an event the results leave out, so the ends
+		// move inward to the nearest rows they keep. ALL and DEFAULT keep every pinned kind.
+		let ends: RC.RowSelection | undefined = selection
+		if (feed !== 'ALL' && feed !== 'DEFAULT') {
+			const kept = rows.filter((row) => !row.hasAttribute(RC.ROW_PINNED_ATTR))
+			const first = kept[0]?.getAttribute(RC.ROW_ATTR)
+			const last = kept.at(-1)?.getAttribute(RC.ROW_ATTR)
+			ends = first && last ? { anchor: first, head: last } : undefined
+		}
+		if (!ends) return undefined
+		return {
+			query: HQ.activityLogQuery({ serverId, matchId: match.historyEntryId, feed }),
+			ends,
+			caveat: state.chat.selectedOnly ? tr.text(CHAT_Msgs.linkOmitsSelectedOnly()) : undefined,
+		}
+	})
 }
 
 /**
@@ -126,15 +111,10 @@ function useActivityLogLink(stores: SquadServerFrame.KeyProp): RC.RenderCtx['lin
  * differs and rebuilds from there. Everything before it is left alone, which is what keeps an append cheap.
  */
 export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: SquadServerFrame.KeyProp }) {
-	// read when a copy asks rather than closed over, so a new batch of events leaves the ctx, and the rows, alone
-	const eventsRef = React.useRef(props.events)
-	eventsRef.current = props.events
-	const selectionText = React.useCallback(async (selection: RC.RowSelection, ctx: RC.RenderCtx) => {
-		const selected = RC.selectedEvents(eventsRef.current ?? [], selection)
-		if (!selected) return undefined
-		return { text: RowText.eventsText(ctx, selected, { timeZone: localTimeZone() }), count: selected.length }
-	}, [])
-	const ctx = useRenderCtx(props.stores, props.events, { linkToRows: useActivityLogLink(props.stores), selectionText })
+	const ctx = useRenderCtx(props.stores, props.events, {
+		linkToRows: useActivityLogLink(props.stores),
+		selectionText: useEventsSelectionText(props.events),
+	})
 	const hostRef = React.useRef<HTMLDivElement | null>(null)
 	const builtRef = React.useRef<{ ctx: RC.RenderCtx | null; rows: Built[] }>({ ctx: null, rows: [] })
 	const factsRef = React.useRef(new Map<string, PG.PlayerFactsSource>())

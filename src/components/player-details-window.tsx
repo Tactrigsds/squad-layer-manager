@@ -49,6 +49,7 @@ import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/syst
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
+import * as HistoryClient from '@/systems/history.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -57,8 +58,9 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
+import * as Selection from './feed/selection'
 import { ServerEvent } from './feed/server-event'
-import { useRenderCtx } from './feed/use-render-ctx'
+import { useEventsSelectionText, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import {
 	DraggableWindowClose,
@@ -197,7 +199,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 					{/* no selectedOnly: this window has no teams panel selection to restrict against */}
 					<EventFilterSelect variant="ghost" value={feed} onValueChange={setFeed} />
 				</div>
-				<HistoryEvents query={eventsQuery} showTotal={false} className="flex min-h-0 flex-1 flex-col gap-1" />
+				<HistoryEvents query={eventsQuery} showTotal={false} linkable className="flex min-h-0 flex-1 flex-col gap-1" />
 			</div>
 		</div>
 	)
@@ -257,7 +259,6 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 		return events
 	}, [historyRequested, eventsQuery.data?.pages, currentMatch])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
-	const feedCtx = useRenderCtx(stores, allEvents)
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
 	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
@@ -295,7 +296,20 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const isOnline = !!livePlayer
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
+	// the player's events on this server through the same filter, newest first, so a selection of recent rows has its
+	// ends on the first pages of the history results
+	const linkToRows = HistoryClient.useRowsLink(() => ({
+		query: {
+			...HQ.DEFAULT_QUERY,
+			type: 'events',
+			servers: [serverId],
+			players: [playerId],
+			feed: filterState === 'ALL' ? undefined : filterState,
+		},
+	}))
+	const feedCtx = useRenderCtx(stores, allEvents, { linkToRows, selectionText: useEventsSelectionText(filteredEvents) })
 	const { scrollAreaRef, contentRef, content, showScrollButton, isAtTop, scrollToBottom, scrollBy } = useTailingScroll()
+	usePaintedSelection(content)
 
 	// older events prepend above the reader. The browser's own scroll anchoring sits out when the scroller is at
 	// the top, which is exactly where the load-older button lives, so the topmost row is held in place by hand
@@ -493,7 +507,11 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				</div>
 				<div className="relative flex-1 min-h-0">
 					<ScrollArea ref={scrollAreaRef} className="h-full">
-						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
+						<div
+							ref={contentRef}
+							{...Selection.hostAttrs(feedCtx.scopeId)}
+							className={cn('flex flex-col gap-0.5 min-h-0 w-full max-w-175', Selection.HOST_CLASS)}
+						>
 							{isLoadingOlder && filteredEvents.length === 0 && (
 								<div className="flex items-center justify-center py-6">
 									<Spinner className="size-5" />

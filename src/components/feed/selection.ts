@@ -35,6 +35,11 @@ export function set(hostKey: string, selection: RC.RowSelection | undefined) {
 	if (host) paint(host, selection)
 }
 
+/** What makes an element a feed's selectable host, for a feed whose rows react renders (see ServerEvent). */
+export function hostAttrs(scopeId: string): RC.Attrs {
+	return { [RC.SCOPE_ATTR]: scopeId, [RC.SELECTABLE_ATTR]: scopeId }
+}
+
 export function hostOf(hostKey: string): Element | null {
 	return document.querySelector(`[${RC.SELECTABLE_ATTR}="${CSS.escape(hostKey)}"]`)
 }
