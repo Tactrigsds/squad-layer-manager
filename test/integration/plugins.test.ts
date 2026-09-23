@@ -11,7 +11,8 @@ import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/or
 // activation at boot with its migration applied, trigger evaluation off finalized matches, the generic
 // rpc stream, and deactivation over oRPC. The disable step kills the plugin's subscriptions, so it is
 // last. Two RAAS layers in the queue give the trigger two same-session matches to fire on; the seed
-// layer the emulator boots on is a session breaker and never counts.
+// layer the emulator boots on is a session breaker and never counts. The third pins the match the
+// teamkill test runs on: generation can land on a Training layer, where teamkill-warns stays silent.
 //
 // teamkill-warns rides along as the second subject, for the one thing balance-triggers cannot show: it
 // is enabled here with an empty enabledServers, so every warn it sends proves the host contract that a
@@ -26,7 +27,7 @@ const admin = makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID })
 
 beforeAll(async () => {
 	app = await createAppFixture({
-		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.narvaRaas),
+		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.narvaRaas, LAYERS.skorpoRaas),
 		admins: [ADMIN_STEAM_ID],
 		adminSteamIds: [ADMIN_STEAM_ID],
 	})
