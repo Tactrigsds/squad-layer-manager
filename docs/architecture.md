@@ -362,6 +362,26 @@ ways that would need most of a component model rebuilt. Messages resolve through
 shares the catalogue, the ICU evaluation and the message builders with the react path and differs only in what it
 assembles at the end.
 
+Every top-level row carries its event's id (`data-dom-row`), plus the ids of any events it folds in. A row selection
+(`selection.ts`) is two of those ids, dragged from the rows' time gutter and painted back on as an attribute, so it
+survives a feed rebuilding its rows. Its ends resolve by containment, so a link from the activity log still finds
+them on the history page where a warn burst was grouped differently. The history page keeps the selection in its
+url as `sel`, beside the query rather than in it, and loads pages until both ends are in when a link is opened.
+
+A selection as text has one builder, `row-text.ts`, which walks the same row templates as `static-render.ts`. The
+activity log runs it over the events it holds. History rows reach the browser as markup with no events behind them,
+so the history page asks the server (`history.selectionText`), and the discord listener (`history-links.server.ts`)
+calls the same function to quote a linked selection.
+
+The history url itself answers as plain text or csv when asked (`contentType`, or an Accept header preferring one;
+the param wins). Events come as text: the url's selection if it has one, else one page from its `cursor`. Players
+and matches come as a text table or csv, one page by `page` (see `result-table.ts`). Either way the next page's url
+is in a `Link: rel="next"` header. In dev, vite's middleware hands `/history` to fastify before its own spa fallback
+can answer it (see vite.config.ts).
+
+Everything that queries history needs `history:query`, and checks it where it enters: the rpc procedures, the url's
+raw forms, and the discord listener (see `History.denyUnlessHistoryQuery`).
+
 ### Charts
 
 Charts are ours, not a library's. `src/lib/chart.ts` (`Chart`) holds the geometry as pure functions -- a nice

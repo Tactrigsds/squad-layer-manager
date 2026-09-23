@@ -20,6 +20,7 @@ import * as EventArchive from '@/systems/event-archive.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as HistoryLinks from '@/systems/history-links.server'
 import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
@@ -167,6 +168,10 @@ await Instr.spanOp('main', { module }, async () => {
 
 	// after Discord.setup, for the same reason: its first build reads the guild, and it observes the gateway
 	PlayerDiscordRoles.setup()
+	// after Discord.setup, whose gateway it listens on
+	HistoryLinks.setup()
+	// the bot's intents are only known once it has logged in
+	Config.pushPublicConfig()
 
 	// after SquadServer.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()

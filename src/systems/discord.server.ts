@@ -51,6 +51,43 @@ let ENV!: ReturnType<typeof envBuilder>
 export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'roles' }
 export const guildRbacEvents$ = new IsolatedSubject<GuildRbacEvent>()
 
+// Messages people post in the home guild, with their content. Silent when the bot could not get the Message Content
+// intent (see readsMessageContent).
+export const messages$ = new IsolatedSubject<D.Message>()
+
+// whether the portal granted the privileged Message Content intent, which messages$ depends on. Null until the bot
+// has logged in, and for good with the integration off.
+let messageContent: boolean | null = null
+export function readsMessageContent() {
+	return messageContent
+}
+
+const BASE_INTENTS = [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers]
+const MESSAGE_INTENTS = [...BASE_INTENTS, D.GatewayIntentBits.GuildMessages, D.GatewayIntentBits.MessageContent]
+
+async function login(intents: D.GatewayIntentBits[]) {
+	const loggingIn = new D.Client({ intents })
+	try {
+		await new Promise((resolve, reject) => {
+			loggingIn.once('ready', resolve)
+			loggingIn.once('error', reject)
+			// a login failure that doesn't surface as an 'error' event would otherwise reject unobserved; route it to the connect promise
+			loggingIn.login(ENV.DISCORD_BOT_TOKEN).catch(reject)
+		})
+	} catch (err) {
+		await loggingIn.destroy()
+		throw err
+	}
+	return loggingIn
+}
+
+// the gateway closing on a privileged intent the portal has not granted. @discordjs/ws rejects the login with a plain
+// Error for it, and discord.js has a code of its own for the same thing
+function isDisallowedIntents(err: unknown) {
+	if (err instanceof D.DiscordjsError) return err.code === D.DiscordjsErrorCodes.DisallowedIntents
+	return err instanceof Error && err.message === 'Used disallowed intents'
+}
+
 export async function setup() {
 	log = module.getLogger()
 	ENV = envBuilder()
@@ -58,20 +95,19 @@ export async function setup() {
 		log.info('Discord integration is off (DISCORD_ENABLED=false); users resolve from the db and guild roles go unread')
 		return
 	}
-	client = new D.Client({
-		intents: [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers],
-	})
-
-	await new Promise((resolve, reject) => {
-		client.once('ready', () => {
-			resolve(client)
-		})
-		client.once('error', (err) => {
-			reject(err)
-		})
-		// a login failure that doesn't surface as an 'error' event would otherwise reject unobserved; route it to the connect promise
-		client.login(ENV.DISCORD_BOT_TOKEN).catch(reject)
-	})
+	// Message Content is privileged: the login fails outright unless it is switched on in the developer portal. What
+	// needs it is optional, so an install that has not switched it on logs in again without it.
+	try {
+		client = await login(MESSAGE_INTENTS)
+		messageContent = true
+	} catch (err) {
+		if (!isDisallowedIntents(err)) throw err
+		log.warn(
+			'Message Content Intent is off for the bot in the discord developer portal, so SLM cannot read messages in your discord server; logging in without it',
+		)
+		client = await login(BASE_INTENTS)
+		messageContent = false
+	}
 
 	// everything SLM resolves (members, roles, emojis) is scoped to the home guild, so an install in any other
 	// one serves nobody and leaves the app with a presence no one here manages. Leave on sight, and sweep what
@@ -100,6 +136,9 @@ export async function setup() {
 	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
 
 	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
+	client.on('messageCreate', (message) => {
+		if (message.guildId === homeGuildId && !message.author.bot) messages$.next(message)
+	})
 	client.on('guildMemberUpdate', (oldMember, newMember) => {
 		if (newMember.guild.id !== homeGuildId) return
 		// only roles matter for rbac; nickname/avatar edits don't change permissions

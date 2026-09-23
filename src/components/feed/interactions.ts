@@ -15,6 +15,7 @@ import { tr } from '@/systems/messages.client'
 
 import { formatFullTime } from './format'
 import * as RC from './render-context'
+import * as Selection from './selection'
 
 // the windows a row can open, registered before any click can ask for one. Loaded here rather than in the
 // (isomorphic) builders: registration only means anything where windows exist.
@@ -29,12 +30,23 @@ const INTENT_DELAY = 150
 type OverlayState = {
 	// stores are absent where the scope has no frame to offer, which the menu's own options answer for: the
 	// layer target never wanted one, and a player's menu falls back to what is true off any server
-	menu: { target: RC.MenuTarget; stores: SquadServerFrame.KeyProp | undefined; zIndexBase: number } | null
+	menu: { target: RC.MenuTarget | TimeMenuTarget; stores: SquadServerFrame.KeyProp | undefined; zIndexBase: number } | null
 	tip: { content: RC.TipContent; zIndexBase: number } | null
 	tipOpen: boolean
 	// where a pinned tooltip is parked. Null means it follows the pointer, which also means the pointer
 	// cannot reach it (see the tooltip section).
 	tipAnchor: Flt.Point | null
+}
+
+// A row's timestamp. Built when the menu opens rather than read off attributes, since what it offers depends on
+// the selection at that moment: the link and the text cover the selection when the row is part of it, and the
+// row alone otherwise.
+export type TimeMenuTarget = {
+	kind: 'time'
+	time: number
+	// absent outside a selectable feed. `selection` is the row alone when it is not part of the host's own.
+	rows?: { hostKey: string; selection: RC.RowSelection; wholeSelection: boolean }
+	link?: { url: string; caveat?: string }
 }
 
 export const OverlayStore = Zus.createStore<OverlayState>(() => ({ menu: null, tip: null, tipOpen: false, tipAnchor: null }))
@@ -150,6 +162,14 @@ function onClickCapture(event: MouseEvent) {
 // -------- context menu --------
 
 function onContextMenu(event: MouseEvent) {
+	// a selectable feed's gutter first, which covers more than its timestamps do; a timestamp anywhere else is
+	// only its own element
+	const time = gutterAt(event)?.time ?? elementAt(event, RC.TIP_TIME_ATTR)
+	if (time && menuAnchor) {
+		event.preventDefault()
+		openMenu({ target: timeMenuTarget(time), stores: undefined, zIndexBase: RC.scopeOf(time)?.zIndexBase ?? 0 }, event)
+		return
+	}
 	const element = elementAt(event, RC.MENU_ATTR)
 	if (!element || !menuAnchor) return
 	const target = RC.menuTargetOf(element)
@@ -158,10 +178,183 @@ function onContextMenu(event: MouseEvent) {
 	// a squad only exists on a server, so its menu has nothing to say without one
 	if (!target || !ctx || (target.kind === 'squad' && !stores)) return
 	event.preventDefault()
-	OverlayStore.setState({ menu: { target, stores, zIndexBase: ctx.zIndexBase } })
+	openMenu({ target, stores, zIndexBase: ctx.zIndexBase }, event)
+}
+
+function openMenu(menu: NonNullable<OverlayState['menu']>, event: MouseEvent) {
+	OverlayStore.setState({ menu })
 	// radix's own trigger is what knows how to place and open the menu, and all it reads off the event is the
 	// point. Re-firing at the parked trigger gets its placement, its focus handling and its dismissal for free.
-	menuAnchor.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: event.clientX, clientY: event.clientY }))
+	menuAnchor!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: event.clientX, clientY: event.clientY }))
+}
+
+function timeMenuTarget(timeElement: Element): TimeMenuTarget {
+	const target: TimeMenuTarget = { kind: 'time', time: Number(timeElement.getAttribute(RC.TIP_TIME_ATTR)) }
+	const host = timeElement.closest(`[${RC.SELECTABLE_ATTR}]`)
+	const row = host && Selection.rowOf(host, timeElement)
+	const hostKey = host && Selection.keyOf(host)
+	if (!host || !row || !hostKey) return target
+	const selection = Selection.get(hostKey)
+	const wholeSelection = Selection.contains(host, selection, row)
+	const rowId = row.getAttribute(RC.ROW_ATTR)!
+	const covered = wholeSelection ? selection! : { anchor: rowId, head: rowId }
+	target.rows = { hostKey, selection: covered, wholeSelection }
+	const rows = wholeSelection ? Selection.selectedRows(host, selection) : [row]
+	target.link = RC.scopeOf(host)?.linkToRows?.(covered, rows, Selection.groupOf(host))
+	return target
+}
+
+// -------- row selection --------
+//
+// Dragged from a row's time gutter (see Selection.gutterAt), the way a code view's line numbers work, so that
+// pressing anywhere else in a row still selects its text. A click selects the one row, or clears it when it was
+// the whole selection, and shift extends from the anchor.
+
+function gutterAt(event: MouseEvent) {
+	const target = event.target instanceof Element ? event.target : null
+	const host = target && Selection.hostAt(target)
+	const hit = host && Selection.gutterAt(host, event.clientX, event.clientY)
+	return hit ? { host: host!, ...hit } : null
+}
+
+// the pointer cursor over the gutter, which has no element of its own to carry it
+let gutterCursor = false
+
+function setGutterCursor(on: boolean) {
+	if (on === gutterCursor) return
+	gutterCursor = on
+	document.documentElement.style.cursor = on ? 'pointer' : ''
+}
+
+type Drag = {
+	host: Element
+	hostKey: string
+	anchor: string
+	head: string
+	moved: boolean
+	pointer: Flt.Point
+	scroller: Element | null
+	frame: number | null
+}
+
+let drag: Drag | null = null
+// the host a selection was last made in, which is what escape and copy act on
+let activeHostKey: string | null = null
+
+const AUTOSCROLL_EDGE = 32
+const AUTOSCROLL_MAX_STEP = 16
+
+function onPointerDown(event: PointerEvent) {
+	if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey) return
+	const hit = gutterAt(event)
+	const hostKey = hit && Selection.keyOf(hit.host)
+	if (!hit || !hostKey) return
+	const { host, row } = hit
+	// No text selection and no focus ring from pressing the time's button. That also keeps focus where it
+	// was, so it is let go by hand: an input still holding it would take the copy and escape meant for rows.
+	event.preventDefault()
+	if (document.activeElement instanceof HTMLElement && isEditable(document.activeElement)) document.activeElement.blur()
+	const rowId = row.getAttribute(RC.ROW_ATTR)!
+	const existing = Selection.get(hostKey)
+	drag = {
+		host,
+		hostKey,
+		anchor: event.shiftKey && existing ? existing.anchor : rowId,
+		head: rowId,
+		moved: event.shiftKey,
+		pointer: { x: event.clientX, y: event.clientY },
+		scroller: Selection.scrollParentOf(host),
+		frame: null,
+	}
+	activeHostKey = hostKey
+	Selection.paint(host, { anchor: drag.anchor, head: drag.head })
+	if (event.pointerType === 'mouse') drag.frame = requestAnimationFrame(autoscroll)
+}
+
+function onPointerMove(event: PointerEvent) {
+	if (!drag) {
+		if (event.pointerType === 'mouse') setGutterCursor(gutterAt(event) !== null)
+		return
+	}
+	drag.pointer = { x: event.clientX, y: event.clientY }
+	extendTo(drag.pointer)
+}
+
+// by height alone, so the pointer can wander sideways off the rows, or past either end of them, mid-drag
+function extendTo(point: Flt.Point) {
+	if (!drag) return
+	// held inside the scroller's view: past its edge are rows it is clipping, which autoscroll brings in
+	let y = point.y
+	if (drag.scroller) {
+		const view = Selection.viewOf(drag.scroller)
+		y = Math.min(Math.max(y, view.top + 1), view.bottom - 1)
+	}
+	const row = Selection.rowAtY(drag.host, y, true)
+	const id = row?.getAttribute(RC.ROW_ATTR)
+	if (!id || id === drag.head) return
+	drag.head = id
+	drag.moved = true
+	Selection.paint(drag.host, { anchor: drag.anchor, head: drag.head })
+}
+
+// Scrolls the feed while the pointer is held past its top or bottom edge, faster the further past it is. Per
+// frame rather than per move, so a pointer held still at the edge keeps scrolling.
+function autoscroll() {
+	if (!drag) return
+	drag.frame = requestAnimationFrame(autoscroll)
+	const scroller = drag.scroller
+	if (!scroller) return
+	const rect = Selection.viewOf(scroller)
+	const y = drag.pointer.y
+	let step = 0
+	if (y < rect.top + AUTOSCROLL_EDGE) step = -Math.min(AUTOSCROLL_MAX_STEP, rect.top + AUTOSCROLL_EDGE - y)
+	else if (y > rect.bottom - AUTOSCROLL_EDGE) step = Math.min(AUTOSCROLL_MAX_STEP, y - (rect.bottom - AUTOSCROLL_EDGE))
+	if (step === 0) return
+	scroller.scrollTop += step
+	extendTo(drag.pointer)
+}
+
+function onPointerUp() {
+	if (!drag) return
+	const { hostKey, anchor, head, moved, frame } = drag
+	if (frame !== null) cancelAnimationFrame(frame)
+	drag = null
+	const existing = Selection.get(hostKey)
+	const alone = existing?.anchor === anchor && existing.head === anchor
+	Selection.set(hostKey, !moved && alone ? undefined : { anchor, head })
+}
+
+// a touch that turned into a scroll is not a selection
+function onPointerCancel() {
+	if (!drag) return
+	if (drag.frame !== null) cancelAnimationFrame(drag.frame)
+	const { host, hostKey } = drag
+	drag = null
+	Selection.paint(host, Selection.get(hostKey))
+}
+
+function isEditable(target: EventTarget | null) {
+	return target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select') !== null)
+}
+
+function onSelectionKeyDown(event: KeyboardEvent) {
+	if (!activeHostKey || isEditable(event.target)) return
+	const selection = Selection.get(activeHostKey)
+	if (!selection) return
+	// escape belongs to whatever overlay has it first
+	const inOverlay = event.target instanceof Element && event.target.closest('[role="menu"],[role="dialog"]') !== null
+	if (event.key === 'Escape' && !pinnedElement && !inOverlay) {
+		Selection.set(activeHostKey, undefined)
+		return
+	}
+	if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+		// a text selection is the reader's own, and copies the ordinary way
+		if (!(window.getSelection()?.isCollapsed ?? true)) return
+		const host = Selection.hostOf(activeHostKey)
+		if (!host || !RC.scopeOf(host)?.selectionText) return
+		event.preventDefault()
+		Selection.copySelection(host, selection)
+	}
 }
 
 // -------- tooltip --------
@@ -336,6 +529,8 @@ function fillRowEvents(row: Element, more = false) {
 		.then((page) => {
 			setStatus(slot, null)
 			slot.insertAdjacentHTML('beforeend', page.rows.join(''))
+			Selection.adoptRowEvents(slot, ctx.scopeId, key)
+			Selection.paint(slot)
 			if (page.nextCursor === undefined) return
 			row.setAttribute(RC.ROW_EVENTS_CURSOR_ATTR, JSON.stringify(page.nextCursor))
 			const button = document.createElement('button')
@@ -416,5 +611,10 @@ export function setup() {
 	document.addEventListener('focusin', onFocusIn)
 	document.addEventListener('focusout', onFocusOut)
 	document.addEventListener('keydown', onKeyDown, true)
+	document.addEventListener('keydown', onSelectionKeyDown)
+	document.addEventListener('pointerdown', onPointerDown)
+	document.addEventListener('pointermove', onPointerMove, { passive: true })
+	document.addEventListener('pointerup', onPointerUp)
+	document.addEventListener('pointercancel', onPointerCancel)
 	document.addEventListener('scroll', onScroll, { capture: true, passive: true })
 }

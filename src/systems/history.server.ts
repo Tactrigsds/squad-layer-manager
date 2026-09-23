@@ -4,6 +4,8 @@ import { Worker } from 'node:worker_threads'
 import * as Schema from '$root/drizzle/schema'
 import { renderRow } from '@/components/feed/render'
 import * as RC from '@/components/feed/render-context'
+import * as RowText from '@/components/feed/row-text'
+import * as ResultTable from '@/components/history/result-table'
 import { createId } from '@/lib/id'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
@@ -15,6 +17,7 @@ import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
@@ -26,6 +29,7 @@ import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as PluginsSys from '@/systems/plugins.server'
+import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // The history page's server half. A query request is: authorize and resolve on the main thread
@@ -155,12 +159,12 @@ async function dispatch(
 
 // -------- queries --------
 
-// a position in the merged event order; exactly one id is set, per the family the cursor sits in
-const CursorSchema = z.object({
-	time: z.number().int(),
-	serverEventId: z.number().int().optional(),
-	appEventId: z.string().optional(),
-})
+// where the page after `hits` starts, if there is one: a full page may have more behind it
+function nextCursorOf(hits: HistoryWorker.EventHit[]): HQ.EventCursor | undefined {
+	const last = hits.at(-1)
+	if (hits.length < HQ.PAGE_SIZES.events || !last) return undefined
+	return { time: last.time.getTime(), serverEventId: last.serverEventId, appEventId: last.appEventId }
+}
 
 // what server-side rendering needs to know about the viewer, since row markup depends on both
 const RenderSchema = z.object({
@@ -168,11 +172,70 @@ const RenderSchema = z.object({
 	locale: z.string().max(35).prefault('en'),
 })
 type RenderOpts = z.infer<typeof RenderSchema>
+export const DEFAULT_RENDER: RenderOpts = RenderSchema.parse({})
+
+function isTimeZone(timeZone: string) {
+	try {
+		return new Intl.DateTimeFormat('en', { timeZone }).resolvedOptions().timeZone !== ''
+	} catch {
+		return false
+	}
+}
 
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
 
-async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
+// what running a query needs: the db, and the user whose server visibility bounds it
+type QueryCtx = C.Db & USR.Ctx.Id & CS.AbortSignal
+
+/**
+ * Refuses a user who may not query history (see RBAC `history:query`). Every entry point checks it for itself: the
+ * rpc procedures here, the url's raw forms (fastify.server.ts) and the discord listener (history-links.server.ts).
+ */
+export function denyUnlessHistoryQuery(ctx: QueryCtx) {
+	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('history:query'))
+}
+type Resolved = Extract<Awaited<ReturnType<typeof resolveForQuery>>, { code: 'ok' }>
+
+// one page of a players result, `page` counted from 0
+async function playersPage(ctx: QueryCtx, resolved: Resolved, query: HQ.Query, page: number) {
+	const res = await dispatch(ctx, {
+		kind: 'players',
+		node: resolved.node,
+		bounds: resolved.bounds,
+		group: HQ.groupPlayerRefs(query),
+		minMatches: query.minMatches,
+		sort: HQ.playerSort(query),
+		limit: HQ.PAGE_SIZES.players,
+		offset: page * HQ.PAGE_SIZES.players,
+	})
+	if (res.code !== 'ok') return res
+	if (res.kind !== 'players') throw new Error('engine returned a mismatched response kind')
+	return { code: 'ok' as const, rows: res.rows, total: res.total }
+}
+
+// one page of a matches result, `page` counted from 0
+async function matchesPage(ctx: QueryCtx, resolved: Resolved, query: HQ.Query, page: number) {
+	const res = await dispatch(ctx, {
+		kind: 'matches',
+		node: resolved.node,
+		bounds: resolved.bounds,
+		sort: HQ.matchSort(query),
+		limit: HQ.PAGE_SIZES.matches,
+		offset: page * HQ.PAGE_SIZES.matches,
+	})
+	if (res.code !== 'ok') return res
+	if (res.kind !== 'matches') throw new Error('engine returned a mismatched response kind')
+	return {
+		code: 'ok' as const,
+		matches: res.rows.flatMap((row) => toMatchDetails(row) ?? []),
+		// keyed by match id, since a row toMatchDetails drops has no details to hang a count on
+		eventCounts: res.events,
+		total: res.total,
+	}
+}
+
+async function resolveForQuery(ctx: QueryCtx, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
 	const problems = HQ.validateQueryNode(node)
 	if (problems.length > 0) {
@@ -194,7 +257,7 @@ export const router = {
 			z.object({
 				query: HQ.QuerySchema,
 				// events page backwards from newest by compound cursor; players/matches page by offset
-				cursor: CursorSchema.optional(),
+				cursor: HQ.EventCursorSchema.optional(),
 				page: z.number().int().nonnegative().prefault(0),
 				render: RenderSchema.prefault({}),
 				// events only. 'html' is the default because a results feed only displays what it gets; 'wire'
@@ -207,6 +270,8 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
+			const denied = await denyUnlessHistoryQuery(ctx)
+			if (denied) return denied
 			const resolved = await resolveForQuery(ctx, input.query)
 			if (resolved.code !== 'ok') return resolved
 			const { node, bounds, unrecognisedLayerMatches } = resolved
@@ -226,52 +291,49 @@ export const router = {
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
 					const page = await assembleEventPage(ctx, res.hits, input.render, input.format, input.includeMatchBoundaries, order)
-					const last = res.hits.at(-1)
-					const nextCursor =
-						res.hits.length === HQ.PAGE_SIZES.events && last
-							? { time: last.time.getTime(), serverEventId: last.serverEventId, appEventId: last.appEventId }
-							: undefined
-					return { code: 'ok' as const, type: 'events' as const, ...page, nextCursor, total: res.total, unrecognisedLayerMatches }
-				}
-				case 'players': {
-					const res = await dispatch(ctx, {
-						kind: 'players',
-						node,
-						bounds,
-						group: HQ.groupPlayerRefs(input.query),
-						minMatches: input.query.minMatches,
-						sort: HQ.playerSort(input.query),
-						limit: HQ.PAGE_SIZES.players,
-						offset: input.page * HQ.PAGE_SIZES.players,
-					})
-					if (res.code !== 'ok') return res
-					if (res.kind !== 'players') throw new Error('engine returned a mismatched response kind')
-					return { code: 'ok' as const, type: 'players' as const, rows: res.rows, total: res.total, unrecognisedLayerMatches }
-				}
-				case 'matches': {
-					const res = await dispatch(ctx, {
-						kind: 'matches',
-						node,
-						bounds,
-						sort: HQ.matchSort(input.query),
-						limit: HQ.PAGE_SIZES.matches,
-						offset: input.page * HQ.PAGE_SIZES.matches,
-					})
-					if (res.code !== 'ok') return res
-					if (res.kind !== 'matches') throw new Error('engine returned a mismatched response kind')
 					return {
 						code: 'ok' as const,
-						type: 'matches' as const,
-						matches: res.rows.flatMap((row) => toMatchDetails(row) ?? []),
-						// keyed by match id, since a row toMatchDetails drops has no details to hang a count on
-						eventCounts: res.events,
+						type: 'events' as const,
+						...page,
+						nextCursor: nextCursorOf(res.hits),
 						total: res.total,
 						unrecognisedLayerMatches,
 					}
 				}
+				case 'players': {
+					const res = await playersPage(ctx, resolved, input.query, input.page)
+					if (res.code !== 'ok') return res
+					return { ...res, type: 'players' as const, unrecognisedLayerMatches }
+				}
+				case 'matches': {
+					const res = await matchesPage(ctx, resolved, input.query, input.page)
+					if (res.code !== 'ok') return res
+					return { ...res, type: 'matches' as const, unrecognisedLayerMatches }
+				}
 				default:
 					assertNever(input.query.type)
 			}
+		}),
+
+	// the text a copied selection puts on the clipboard, in the viewer's own time zone
+	selectionText: orpcBase
+		.input(
+			z.object({
+				query: HQ.QuerySchema,
+				sel: HQ.RowSelectionParamSchema,
+				render: RenderSchema.prefault({}),
+				timeZone: z.string().max(64).refine(isTimeZone, 'unknown time zone'),
+			}),
+		)
+		.handler(async ({ input, context: ctx }) => {
+			const denied = await denyUnlessHistoryQuery(ctx)
+			if (denied) return denied
+			return selectionText(
+				ctx,
+				input.query,
+				{ anchor: input.sel[0], head: input.sel[1] },
+				{ render: input.render, timeZone: input.timeZone },
+			)
 		}),
 
 	// Who a player is, independent of any server: what the frameless player-details window opens with. Their ids and
@@ -339,6 +401,8 @@ export const router = {
 	// -------- saved queries --------
 
 	listSaved: orpcBase.handler(async ({ context: ctx }) => {
+		const denied = await denyUnlessHistoryQuery(ctx)
+		if (denied) return denied
 		const rows = await ctx
 			.db()
 			.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
@@ -369,6 +433,8 @@ export const router = {
 	save: orpcBase
 		.input(z.object({ id: HQ.SAVED_QUERY_ID.optional() }).extend(HQ.SavedQueryUpdateSchema.shape))
 		.handler(async ({ input, context: ctx }) => {
+			const denied = await denyUnlessHistoryQuery(ctx)
+			if (denied) return denied
 			if (input.id) {
 				const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
 				if (!existing) return { code: 'err:not-found' as const }
@@ -392,6 +458,8 @@ export const router = {
 		}),
 
 	deleteSaved: orpcBase.input(z.object({ id: HQ.SAVED_QUERY_ID })).handler(async ({ input, context: ctx }) => {
+		const denied = await denyUnlessHistoryQuery(ctx)
+		if (denied) return denied
 		const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
 		if (!existing) return { code: 'err:not-found' as const }
 		if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
@@ -414,14 +482,26 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 // here against a shadow dom, the client inserts the strings and holds them behind content-visibility, and
 // interactivity is all attributes resolved against the client's scope (see feed/render-context.ts).
 async function assembleEventPage(
-	ctx: C.OrpcBase,
+	ctx: QueryCtx,
 	hits: HistoryWorker.EventHit[],
 	render: RenderOpts,
 	format: 'html' | 'wire',
 	includeMatchBoundaries = false,
 	order: HistoryWorker.EventOrder = 'newest',
 ) {
-	if (hits.length === 0) return { rowsHtml: [] as string[], events: null as CHAT.Wire.Batch | null, matches: [] as MH.MatchDetails[] }
+	const { events, matches } = await loadEventPage(ctx, hits, includeMatchBoundaries, order)
+	if (format === 'wire') return { rowsHtml: [] as string[], events: events.length > 0 ? CHAT.Wire.encode(events) : null, matches }
+	return { rowsHtml: renderEventRows(events, matches, render, await actorLabels(ctx, events)), events: null, matches }
+}
+
+// the enriched events behind one page of hits, in the order they were paged in, with the matches they belong to
+async function loadEventPage(
+	ctx: QueryCtx,
+	hits: HistoryWorker.EventHit[],
+	includeMatchBoundaries: boolean,
+	order: HistoryWorker.EventOrder,
+): Promise<{ events: CHAT.EventEnriched[]; matches: MH.MatchDetails[] }> {
+	if (hits.length === 0) return { events: [], matches: [] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
 	const matchRows = await ctx.db().select().from(Schema.matchHistory).where(E.inArray(Schema.matchHistory.id, matchIds))
 
@@ -456,9 +536,7 @@ async function assembleEventPage(
 	// the same direction the hits were paged in, so each further page stacks on in reading order
 	events.sort((a, b) => (order === 'newest' ? b.time - a.time : a.time - b.time))
 	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
-	const revived = await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true })
-	if (format === 'wire') return { rowsHtml: [] as string[], events: CHAT.Wire.encode(revived), matches }
-	return { rowsHtml: renderEventRows(revived, matches, render, await actorLabels(ctx, revived)), events: null, matches }
+	return { events: await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true }), matches }
 }
 
 // display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
@@ -488,14 +566,13 @@ async function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
 	}
 }
 
-function renderEventRows(
-	events: CHAT.EventEnriched[],
+function resultsRenderCtx(
 	matches: MH.MatchDetails[],
 	render: RenderOpts,
 	labels: Pick<RC.RenderCtx, 'userLabel' | 'pluginName'>,
-): string[] {
+): RC.RenderCtx {
 	const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
-	const rctx: RC.RenderCtx = {
+	return {
 		scopeId: '',
 		stores: {} as never,
 		outletKey: 'default',
@@ -509,25 +586,146 @@ function renderEventRows(
 		groupColor: () => null,
 		...labels,
 	}
-	// safe to set-and-restore without a scope: the render loop below is synchronous, so nothing else can
-	// read the ambient locale while it is ours. Same for the timestamp format: results span days and servers,
-	// so a row's time on its own does not place it, unlike in a feed of one match.
+}
+
+// Safe to set-and-restore without a scope: `fn` is synchronous, so nothing else can read the ambient locale while
+// it is ours. Same for the timestamp format: results span days and servers, so a row's time on its own does not
+// place it, unlike in a feed of one match.
+function withResultsAmbient<T>(render: RenderOpts, fn: () => T): T {
 	const prevLocale = I18n.getAmbientLocale()
 	I18n.setAmbientLocale(render.locale)
 	const prevFull = RC.setFullTimestamps(true)
 	try {
+		return fn()
+	} finally {
+		I18n.setAmbientLocale(prevLocale)
+		RC.setFullTimestamps(prevFull)
+		RC.setRowMatchId(undefined)
+	}
+}
+
+function renderEventRows(
+	events: CHAT.EventEnriched[],
+	matches: MH.MatchDetails[],
+	render: RenderOpts,
+	labels: Pick<RC.RenderCtx, 'userLabel' | 'pluginName'>,
+): string[] {
+	const rctx = resultsRenderCtx(matches, render, labels)
+	return withResultsAmbient(render, () => {
 		const out: string[] = []
 		for (const event of events) {
 			// per row rather than per pass: results span matches, and which one a row is from is the thing a
 			// timestamp alone does not say
 			RC.setRowMatchId(event.matchId ?? undefined)
 			const html = renderRow(rctx, event)
-			if (html !== '') out.push(html)
+			if (html !== '') out.push(RC.withRowIdentity(html, event))
 		}
 		return out
-	} finally {
-		I18n.setAmbientLocale(prevLocale)
-		RC.setFullTimestamps(prevFull)
-		RC.setRowMatchId(undefined)
+	})
+}
+
+// -------- results as text and csv --------
+//
+// Events as copying rows in the feed gives them (see row-text.ts), always with match boundaries, the way the page
+// shows events. Players and matches as a table (see result-table.ts). Scoped to the servers `ctx.user` can see,
+// like any query.
+
+type TextOpts = { render: RenderOpts; timeZone: string }
+
+// how far a selection's ends are looked for, the same bound the page itself pages to when a link opens
+const SELECTION_MAX_PAGES = 20
+
+async function eventsPage(ctx: QueryCtx, resolved: Resolved, order: HistoryWorker.EventOrder, cursor: HQ.EventCursor | undefined) {
+	const res = await dispatch(ctx, {
+		kind: 'events',
+		node: resolved.node,
+		bounds: resolved.bounds,
+		cursor,
+		pageSize: HQ.PAGE_SIZES.events,
+		withTotal: false,
+		order,
+	})
+	if (res.code !== 'ok') return res
+	if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
+	const loaded = await loadEventPage(ctx, res.hits, true, order)
+	return { code: 'ok' as const, ...loaded, nextCursor: nextCursorOf(res.hits) }
+}
+
+async function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], opts: TextOpts) {
+	const rctx = resultsRenderCtx(matches, opts.render, await actorLabels(ctx, events))
+	return withResultsAmbient(opts.render, () => RowText.eventsText(rctx, events, { timeZone: opts.timeZone, withMatchIds: true }))
+}
+
+/** The events between a selection's ends in `query`'s results. Pages until both ends are in; `err:not-found` when they never are. */
+export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: RC.RowSelection, opts: TextOpts) {
+	if (query.type !== 'events') return { code: 'err:not-events' as const }
+	const resolved = await resolveForQuery(ctx, query)
+	if (resolved.code !== 'ok') return resolved
+	const order = query.order ?? 'newest'
+	const events: CHAT.EventEnriched[] = []
+	const matches = new Map<number, MH.MatchDetails>()
+	// each page carries the NEW_GAME of every match on it, so a match spanning pages repeats it
+	const seen = new Set<CHAT.EventEnriched['id']>()
+	let cursor: HQ.EventCursor | undefined
+	for (let page = 0; page < SELECTION_MAX_PAGES; page++) {
+		const res = await eventsPage(ctx, resolved, order, cursor)
+		if (res.code !== 'ok') return res
+		for (const event of res.events) {
+			if (seen.has(event.id)) continue
+			seen.add(event.id)
+			events.push(event)
+		}
+		for (const match of res.matches) matches.set(match.historyEntryId, match)
+
+		const selected = RC.selectedEvents(events, selection)
+		if (selected) {
+			return { code: 'ok' as const, text: await eventsAsText(ctx, selected, [...matches.values()], opts), count: selected.length }
+		}
+		if (!res.nextCursor) break
+		cursor = res.nextCursor
+	}
+	return { code: 'err:not-found' as const }
+}
+
+/**
+ * The history url answered in one of its raw forms (see HQ.rawContentTypes), with the params of the page after it
+ * when there is one. Events: the url's selection when it has one, else the page of events its cursor starts. Players
+ * and matches: the page it names, as a table.
+ */
+export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: 'text/plain' | 'text/csv', opts: TextOpts) {
+	const { query, sel, cursor, page = 1 } = HQ.splitSearch(search)
+	if (!HQ.rawContentTypes(query.type).includes(contentType)) return { code: 'err:no-raw-form' as const }
+	if (query.type === 'events' && sel) {
+		const res = await selectionText(ctx, query, { anchor: sel[0], head: sel[1] }, opts)
+		return res.code === 'ok' ? { code: 'ok' as const, body: res.text, next: undefined } : res
+	}
+	const resolved = await resolveForQuery(ctx, query)
+	if (resolved.code !== 'ok') return resolved
+	const tableOpts: ResultTable.TableOpts = { timeZone: opts.timeZone, displayTeamsNormalized: opts.render.displayTeamsNormalized }
+	const format = (table: ResultTable.Table) => (contentType === 'text/csv' ? ResultTable.tableCsv(table) : ResultTable.tableText(table))
+	const nextPage = (total: number, size: number): HQ.SearchExtras | undefined => (page * size < total ? { page: page + 1 } : undefined)
+
+	switch (query.type) {
+		case 'events': {
+			const res = await eventsPage(ctx, resolved, query.order ?? 'newest', cursor)
+			if (res.code !== 'ok') return res
+			const next: HQ.SearchExtras | undefined = res.nextCursor ? { cursor: res.nextCursor } : undefined
+			return { code: 'ok' as const, body: await eventsAsText(ctx, res.events, res.matches, opts), next }
+		}
+		case 'players': {
+			const res = await playersPage(ctx, resolved, query, page - 1)
+			if (res.code !== 'ok') return res
+			const body = withResultsAmbient(opts.render, () => format(ResultTable.playersTable(res.rows, tableOpts)))
+			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.players) }
+		}
+		case 'matches': {
+			const res = await matchesPage(ctx, resolved, query, page - 1)
+			if (res.code !== 'ok') return res
+			const rows = res.matches.map((details) => ({ details, events: res.eventCounts[details.historyEntryId] ?? 0 }))
+			const body = withResultsAmbient(opts.render, () => format(ResultTable.matchesTable(rows, tableOpts)))
+			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.matches) }
+		}
+		default:
+			assertNever(query.type)
 	}
 }

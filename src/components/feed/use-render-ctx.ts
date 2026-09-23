@@ -21,7 +21,14 @@ import { useActorLabels } from './use-actor-labels'
  * deliberately not part of that -- see RC.applyGroupColors -- because they follow a stream, and a rebuild would cost
  * every open disclosure in the feed.
  */
-export function useRenderCtx(stores: SquadServerFrame.KeyProp, events?: readonly CHAT.EventEnriched[] | null): RC.RenderCtx {
+export function useRenderCtx(
+	stores: SquadServerFrame.KeyProp,
+	events?: readonly CHAT.EventEnriched[] | null,
+	// keep these stable: a new one is a new ctx, which rebuilds every row
+	selectable?: Pick<RC.RenderCtx, 'linkToRows' | 'selectionText'>,
+): RC.RenderCtx {
+	const linkToRows = selectable?.linkToRows
+	const selectionText = selectable?.selectionText
 	const serverId = stores.squadServer!.serverId
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -51,9 +58,11 @@ export function useRenderCtx(stores: SquadServerFrame.KeyProp, events?: readonly
 			latestMatch: recentMatches[recentMatches.length - 1],
 			currentMatch,
 			groupColor: (playerId, player) => groupColorRef.current(playerId, player),
+			linkToRows,
+			selectionText,
 			...actorLabels,
 		}
-	}, [scopeId, stores, outletKey, zIndexBase, displayTeamsNormalized, recentMatches, currentMatch, actorLabels])
+	}, [scopeId, stores, outletKey, zIndexBase, displayTeamsNormalized, recentMatches, currentMatch, actorLabels, linkToRows, selectionText])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()

@@ -4,6 +4,7 @@ import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
 import * as DB from '../harness/dashboard'
+import { dragFrom } from '../harness/drag'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
 
@@ -418,6 +419,37 @@ async function seedKill(app: AppFixture): Promise<{ attacker: string; victim: st
 const historyUrl = (app: AppFixture, search: string) => `${app.loginUrl(app.adminUser, '/history')}&${search}`
 const resultTab = (page: Page, name: 'Events' | 'Players' | 'Matches') => page.getByRole('button', { name, exact: true })
 
+async function centerOf(locator: Locator) {
+	const box = await locator.boundingBox()
+	if (!box) throw new Error('element is not visible')
+	return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+const readClipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText())
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Three consecutive chat lines to select, each waited for in the index. Unique per call, since the app and its
+// feed outlive a repeated test.
+async function seedSelectionChat(app: AppFixture): Promise<string[]> {
+	const talker =
+		app.emu.world.playerList().find((p) => p.name === HISTORY_TALKER) ??
+		app.emu.world.connectPlayer(makePlayer({ name: ` ${HISTORY_TALKER}`, teamId: 1 }))
+	await app.waitFor(() => indexedEventsFor(app, talker.eos) > 0 || undefined, {
+		label: 'the talker to reach the history index',
+		timeoutMs: 30_000,
+	})
+	const run = Date.now()
+	const lines = [1, 2, 3].map((n) => `zqselection${run}x${n}`)
+	for (const line of lines) {
+		app.emu.world.chat(talker, 'ChatAll', line)
+		await app.waitFor(() => searchableChatMatches(app, line) > 0 || undefined, {
+			label: `${line} to become searchable`,
+			timeoutMs: 30_000,
+		})
+	}
+	return lines
+}
+
 test.describe('history page', () => {
 	test.beforeEach(async ({ app }) => {
 		await seedHistory(app)
@@ -702,6 +734,153 @@ test.describe('history page', () => {
 		await header.click()
 		await expect(header).toHaveAttribute('aria-sort', 'ascending', { timeout: 20_000 })
 		check(await column(), 'asc')
+	})
+
+	// The selection rides in the url beside the query, so a copied link reopens the same rows.
+	test('a dragged selection rides in the url, and its link reopens it', async ({ app, page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+		const lines = await seedSelectionChat(app)
+		// newest first, so the seeded lines are on the first page however much the file has recorded before them
+		await page.goto(historyUrl(app, `type=events&servers=%5B%22${app.serverId}%22%5D`))
+		const results = page.getByRole('region', { name: 'Event results' })
+		const rowWith = (text: string) => results.locator(':scope > [data-dom-row]').filter({ hasText: text })
+		const timeOf = (text: string) => rowWith(text).locator('[data-dom-tip-time]').first()
+		await expect(rowWith(lines[2])).toBeVisible({ timeout: 30_000 })
+
+		// the raw menu's text form, read off its link: events have no other
+		const rawHref = async () => {
+			await page.getByRole('button', { name: 'Raw' }).click()
+			const item = page.getByRole('menuitem')
+			await expect(item).toHaveCount(1)
+			const href = await item.getAttribute('href')
+			await page.keyboard.press('Escape')
+			return href!
+		}
+		expect(await rawHref()).not.toMatch(/sel=/)
+
+		await dragFrom(page, timeOf(lines[0]), () => centerOf(timeOf(lines[2])))
+		await expect(page).toHaveURL(/sel=/)
+		const selected = results.locator(':scope > [data-selected]')
+		await expect(selected).toHaveCount(3)
+
+		// the raw link follows the selection, and answers with just its events
+		const href = await rawHref()
+		expect(href).toMatch(/sel=/)
+		expect(href).toMatch(/contentType=text%2Fplain/)
+		const rawRes = await page.request.get(new URL(href, page.url()).href)
+		expect(rawRes.headers()['content-type']).toMatch(/^text\/plain/)
+		const rawLines = (await rawRes.text()).split('\n').filter((line) => line !== '')
+		expect(rawLines).toEqual([...lines].reverse().map((line) => expect.stringContaining(line)))
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy timestamp (ISO 8601)' }).click()
+		await expect.poll(() => readClipboard(page)).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/)
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+		// one line per row in the order they are shown, newest first, each leading with its full timestamp
+		await expect
+			.poll(async () => (await readClipboard(page)).split('\n'))
+			.toEqual(
+				[...lines].reverse().map((line) => expect.stringMatching(new RegExp(`^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d .*${line}`))),
+			)
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy link to selection' }).click()
+		await expect.poll(() => readClipboard(page)).toContain('sel=')
+		const link = await readClipboard(page)
+
+		await page.goto(link)
+		await expect(selected).toHaveCount(3, { timeout: 30_000 })
+		await expect(selected.first()).toBeInViewport()
+
+		// a click on a time selects its row alone, and a second click on the only selected row clears it,
+		// and the url with it
+		await timeOf(lines[2]).click()
+		await expect(selected).toHaveCount(1)
+		await timeOf(lines[2]).click()
+		await expect(selected).toHaveCount(0)
+		await expect(page).not.toHaveURL(/sel=/)
+	})
+
+	// The activity log's link is a history query of the same match and filter, so its ends have to be events
+	// the query returns. Chat is what both sides agree on under every filter the log offers.
+	test('a selection in the activity log links to the same rows on the history page', async ({ app, page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+		const lines = await seedSelectionChat(app)
+
+		await page.goto(app.loginUrl())
+		const feed = page.getByRole('region', { name: 'Server Activity' })
+		const rowWith = (text: string) => feed.locator('[data-dom-row]').filter({ hasText: text })
+		await expect(rowWith(lines[2])).toBeVisible({ timeout: 20_000 })
+		const timeOf = (text: string) => rowWith(text).locator('[data-dom-tip-time]').first()
+
+		await dragFrom(page, timeOf(lines[0]), () => centerOf(timeOf(lines[2])))
+		const ids = await Promise.all(lines.map((line) => rowWith(line).getAttribute('data-dom-row')))
+		await expect(feed.locator('[data-dom-row][data-selected]')).toHaveCount(3)
+
+		// the log has its own events, so its text is built here in the browser
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+		await expect.poll(async () => (await readClipboard(page)).split('\n')).toHaveLength(3)
+		const logText = (await readClipboard(page)).split('\n')
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy link to selection' }).click()
+		await expect.poll(() => readClipboard(page)).toContain('sel=')
+		const link = await readClipboard(page)
+		expect(decodeURIComponent(link)).toContain(`"${ids[0]}","${ids[2]}"`)
+
+		await page.goto(link)
+		const results = page.getByRole('region', { name: 'Event results' })
+		const selected = results.locator(':scope > [data-selected]')
+		await expect(selected.first()).toHaveAttribute('data-dom-row', ids[0]!, { timeout: 30_000 })
+		await expect(selected.last()).toHaveAttribute('data-dom-row', ids[2]!)
+		await expect(selected.first()).toBeInViewport()
+
+		// the history page's comes from the server, through the same text builder: line for line the same, with
+		// each line naming its match since results can span several
+		await results.locator(':scope > [data-selected] [data-dom-tip-time]').first().click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+		await expect
+			.poll(async () => (await readClipboard(page)).split('\n'))
+			.toEqual(logText.map((line) => expect.stringMatching(new RegExp(`^${escapeRegExp(line)} \\(match #\\d+\\)$`))))
+	})
+
+	// The events under a results row select like a feed's own, and name the events of that row's narrowed query.
+	test("a selection in a player row's events links to that player's events", async ({ app, page }) => {
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+		const lines = await seedSelectionChat(app)
+		await page.goto(historyUrl(app, `type=players&name=${HISTORY_TALKER}`))
+		const table = page.getByRole('table', { name: 'Player results' })
+		// the chevron cell, since the name opens the player's window rather than the row
+		await table.getByRole('row').filter({ hasText: HISTORY_TALKER }).locator('td').first().click({ timeout: 30_000 })
+
+		const slot = table.locator('[data-dom-row-events-slot]')
+		const rowWith = (text: string) => slot.locator(':scope > [data-dom-row]').filter({ hasText: text })
+		const timeOf = (text: string) => rowWith(text).locator('[data-dom-tip-time]').first()
+		await expect(rowWith(lines[0])).toBeVisible({ timeout: 30_000 })
+
+		// newest first, so the last line seeded is the top row
+		await dragFrom(page, timeOf(lines[2]), () => centerOf(timeOf(lines[0])))
+		await expect(slot.locator(':scope > [data-selected]')).toHaveCount(3)
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+		await expect
+			.poll(async () => (await readClipboard(page)).split('\n'))
+			.toEqual([...lines].reverse().map((line) => expect.stringContaining(line)))
+
+		await timeOf(lines[1]).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Copy link to selection' }).click()
+		await expect.poll(() => readClipboard(page)).toContain('sel=')
+		const link = await readClipboard(page)
+		expect(link).toContain('type=events')
+
+		await page.goto(link)
+		const selected = page.getByRole('region', { name: 'Event results' }).locator(':scope > [data-selected]')
+		await expect(selected).toHaveCount(3, { timeout: 30_000 })
+		await expect(selected.first()).toContainText(lines[2])
 	})
 
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save

@@ -70,6 +70,11 @@ cannot lock yourself out of. This person must be a member of your org's discord 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
 sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
 
+SLM replies to a link to a selection on the history page with the selected events as text. For that, switch on
+`Message Content Intent` on the `Bot` page. Without it SLM still starts, but it cannot read messages, and the
+`discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch that setting off. SLM only
+replies to people whose roles grant `history:query`, the permission the history page itself needs. SLM will only be able to respond to messages in channels it has permissions for.
+
 #### 3.3. Secrets
 
 Every credential SLM reads lives in `.env.secrets`. The rest of the configuration stays in `.env`.

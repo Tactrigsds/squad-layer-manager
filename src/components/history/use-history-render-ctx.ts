@@ -33,9 +33,11 @@ export function useHistoryRenderCtx(
 		// the one server every row came from, where the query named exactly one. A players result has no match
 		// per row, so this is the only thing that can give its rows a frame to act on.
 		serverId?: string
+		linkToRows?: RC.RenderCtx['linkToRows']
+		selectionText?: RC.RenderCtx['selectionText']
 	},
 ): RC.RenderCtx {
-	const { events, loadRowEvents, lateMatch, serverId } = opts ?? {}
+	const { events, loadRowEvents, lateMatch, serverId, linkToRows, selectionText } = opts ?? {}
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const zIndexBase = React.useContext(BaseZIndexContext)
@@ -76,9 +78,23 @@ export function useHistoryRenderCtx(
 			currentMatch: undefined,
 			groupColor: () => null,
 			loadRowEvents,
+			linkToRows,
+			selectionText,
 			...actorLabels,
 		}
-	}, [scopeId, zIndexBase, displayTeamsNormalized, matches, settings, actorLabels, loadRowEvents, lateMatch, serverId])
+	}, [
+		scopeId,
+		zIndexBase,
+		displayTeamsNormalized,
+		matches,
+		settings,
+		actorLabels,
+		loadRowEvents,
+		lateMatch,
+		serverId,
+		linkToRows,
+		selectionText,
+	])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()

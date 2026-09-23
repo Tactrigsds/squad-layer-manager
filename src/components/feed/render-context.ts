@@ -7,6 +7,7 @@
 // that mounts dom.
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as PG from '@/models/player-groupings.models'
 import type * as SM from '@/models/squad.models'
@@ -44,6 +45,18 @@ export type RenderCtx = {
 	// the page rather than closed over by the row, which has no closures to give. The cursor is opaque here:
 	// it is parked on the row as json and handed back to resume.
 	loadRowEvents?: (key: string, cursor?: unknown) => Promise<{ rows: string[]; nextCursor?: unknown }>
+	// A url that reopens `selection` on the history page, where the scope can express its rows as a query.
+	// `rows` are the selected elements, in order. `group` is the results row the selection sits under when it is
+	// in one's events (see Selection.groupOf), which the query is narrowed to. `caveat` names what the query could
+	// not carry over, shown beside the menu item.
+	linkToRows?: (selection: RowSelection, rows: Element[], group: string | undefined) => { url: string; caveat?: string } | undefined
+	// `selection` as text (see row-text.ts), from wherever the scope's events are: the activity log holds its own,
+	// history results ask the server. `group` as for linkToRows. Undefined when the ends cannot be found.
+	selectionText?: (
+		selection: RowSelection,
+		ctx: RenderCtx,
+		group: string | undefined,
+	) => Promise<{ text: string; count: number } | undefined>
 }
 
 // Whether a row's timestamp carries its date as well as its time. Ambient rather than a prop or a ctx field,
@@ -172,6 +185,78 @@ export const ROW_EVENTS_DONE_ATTR = 'data-dom-row-events-done'
 export const ROW_EVENTS_CURSOR_ATTR = 'data-dom-row-events-cursor'
 // on the data row while its panel is showing, which is what turns the chevron
 export const ROW_OPEN_ATTR = 'data-open'
+
+// -------- row identity and selection --------
+//
+// Every top-level row of a feed carries its event's id, and a row that folds other events in (an aggregated warn
+// burst, a warn under the app event that issued it) also lists theirs. Selections are held by id rather than by
+// element, so they survive a feed rebuilding its rows, and they resolve by containment, so a link made where a
+// burst was grouped one way still finds its ends where the grouping differs.
+
+export const ROW_ATTR = 'data-dom-row'
+export const ROW_CONTAINS_ATTR = 'data-dom-row-contains'
+// on an activity log row that shows under every filter (see CHAT.isPinnedSystemEvent), which a history query
+// through the same filter may not return
+export const ROW_PINNED_ATTR = 'data-dom-row-pinned'
+// on the host whose direct children are rows a drag can select, holding the key its selection is kept under:
+// the scope id of a feed, or `<scope id>/<row key>` for the events under a results row
+export const SELECTABLE_ATTR = 'data-dom-selectable'
+export const SELECTED_ATTR = 'data-selected'
+
+/** A contiguous run of rows, by the event ids at either end. The anchor is where the drag started. */
+export type RowSelection = { anchor: string; head: string }
+
+export function rowIdentity(event: CHAT.EventEnriched): { id: string; contains: string | undefined } {
+	const id = String(event.id)
+	let contains: string | undefined
+	for (const contained of CHAT.iterContainedEventIds(event)) {
+		if (contained === event.id) continue
+		contains = contains === undefined ? String(contained) : `${contains} ${contained}`
+	}
+	return { id, contains }
+}
+
+export function setRowIdentity(node: Element, event: CHAT.EventEnriched) {
+	const identity = rowIdentity(event)
+	node.setAttribute(ROW_ATTR, identity.id)
+	if (identity.contains !== undefined) node.setAttribute(ROW_CONTAINS_ATTR, identity.contains)
+}
+
+// the same attributes, spliced into a row's markup: its root element's first tag
+export function withRowIdentity(html: string, event: CHAT.EventEnriched): string {
+	const identity = rowIdentity(event)
+	const end = html.search(/[\s>]/)
+	if (html[0] !== '<' || end < 0) return html
+	let attrs = ` ${ROW_ATTR}="${escapeAttr(identity.id)}"`
+	if (identity.contains !== undefined) attrs += ` ${ROW_CONTAINS_ATTR}="${identity.contains}"`
+	return html.slice(0, end) + attrs + html.slice(end)
+}
+
+function escapeAttr(value: string) {
+	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+/** Whether `event` stands for the event `id`, directly or by containing it. The data side of rowHasId. */
+export function eventHasId(event: CHAT.EventEnriched, id: string): boolean {
+	if (String(event.id) === id) return true
+	for (const contained of CHAT.iterContainedEventIds(event)) if (String(contained) === id) return true
+	return false
+}
+
+/** The run of `events` between the selection's ends, in the order given; undefined while either end is missing. */
+export function selectedEvents<E extends CHAT.EventEnriched>(events: readonly E[], selection: RowSelection): E[] | undefined {
+	const anchor = events.findIndex((event) => eventHasId(event, selection.anchor))
+	const head = events.findIndex((event) => eventHasId(event, selection.head))
+	if (anchor < 0 || head < 0) return undefined
+	return events.slice(Math.min(anchor, head), Math.max(anchor, head) + 1)
+}
+
+/** Whether a row element stands for the event `id`, directly or by containing it. */
+export function rowHasId(row: Element, id: string): boolean {
+	if (row.getAttribute(ROW_ATTR) === id) return true
+	const contains = row.getAttribute(ROW_CONTAINS_ATTR)
+	return contains !== null && contains.split(' ').includes(id)
+}
 
 export function menuAttrs(target: MenuTarget, matchId?: number | null): Attrs {
 	return {

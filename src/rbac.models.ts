@@ -126,6 +126,11 @@ function definePermission<T extends string, S extends PermScope>(type: T, args: 
 
 export const PERMISSION_DEFINITION = {
 	...definePermission('site:authorized', { description: 'Access the site', scope: 'global' }),
+	...definePermission('history:query', {
+		description:
+			'Query event, player and match history: the history page, its results as text or csv, and quoting a linked selection into discord. Results only cover servers the user can view',
+		scope: 'global',
+	}),
 
 	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'server' }),
 	...definePermission('queue:force-write', {

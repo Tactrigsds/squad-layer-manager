@@ -4257,6 +4257,24 @@ function CommandsPageCrossLink({ path }: { path: Path }) {
 	)
 }
 
+// What the running install says about one setting, under its description: a setting that cannot take effect as
+// configured says so where it is set. Keyed on the path before anything subscribes, so the other fields pay nothing.
+function FieldNotice({ path }: { path: Path }) {
+	if (path.join('.') === 'discord.expandHistoryLinks') return <MessageContentNotice />
+	return null
+}
+
+function MessageContentNotice() {
+	const missing = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.discordMissingMessageContent)
+	if (!missing) return null
+	return (
+		<p role="status" className="flex items-start gap-1 pt-0.5 text-xs text-warn dark:text-warn">
+			<Icons.TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+			<span>{tr.text(SETTINGS_Msgs.discordMessageContentMissing())}</span>
+		</p>
+	)
+}
+
 // -------- comments --------
 
 // the comment on the setting at `pathStr`, read off the root document (see SETTINGS.COMMENTS_KEY)
@@ -4760,6 +4778,7 @@ function LeafField({
 				{commentProps && <SettingComment {...commentProps} />}
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
+				<FieldNotice path={path} />
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}

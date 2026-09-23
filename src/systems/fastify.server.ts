@@ -16,9 +16,12 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
+import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import * as HQ from '@/models/history.models'
 import { PLUGIN_API_EXPORTS } from '@/models/plugin-api-exports'
 import * as SHIM from '@/models/plugin-api-shim'
 import * as USR from '@/models/users.models'
@@ -31,6 +34,7 @@ import { initModule } from '@/server/logger'
 import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
+import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
@@ -331,6 +335,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const baseCtx = buildFastifyRequestContext(req)
 		if (baseCtx.route?.def.authed === false) return
 		const authRes = await authorizeRequest(baseCtx, reply)
+		const servesPage = baseCtx.route?.def.handle === 'page' && !wantsHistoryRaw(req, baseCtx.route)
 		switch (authRes.code) {
 			case 'ok':
 				authedCtxMap.set(req.id, authRes.ctx)
@@ -341,9 +346,9 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			case 'unauthorized:expired':
 			case 'unauthorized:not-found':
 				reply = Sessions.clearInvalidSession({ ...CS.init(), res: reply })
-				if (baseCtx.route?.def.handle === 'page') {
+				if (servesPage) {
 					// unauthenticated visitors get the public login page at '/', not an automatic bounce to discord
-					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(req.headers['accept-language']), 200)
+					if (baseCtx.route?.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(req.headers['accept-language']), 200)
 					return await reply.redirect(AR.route('/'), 302)
 				} else {
 					return await reply
@@ -351,7 +356,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 						.send(I18n.translatorForRequest(req.headers['accept-language']).text(USR_Msgs.unAuthenticated()))
 				}
 			case 'err:permission-denied':
-				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+				if (servesPage) return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
 				return await reply
 					.status(401)
 					.send(I18n.translatorForRequest(req.headers['accept-language']).text(USR_Msgs.noApplicationAccess()))
@@ -427,6 +432,51 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		}
 	}
 
+	// The history page, or its results as plain text or csv (see HQ.negotiateContentType and History.searchRaw), with
+	// the next page's url in a Link header. The same url answers all three, so it varies on Accept.
+	instance.get(AR.route('/history'), async (req, res) => {
+		res.header('Vary', 'Accept')
+		const search = historySearchOf(req)
+		const contentType = HQ.negotiateContentType(search.contentType, req.headers.accept)
+		if (contentType === 'text/html') return getHtmlResponse(req, res)
+
+		const t = I18n.translatorForRequest(req.headers['accept-language'])
+		const ctx = getAuthedCtx(req)
+		const denied = await History.denyUnlessHistoryQuery(ctx)
+		if (denied)
+			return res
+				.status(403)
+				.type('text/plain; charset=utf-8')
+				.send(t.text(RBAC_Msgs.permissionDenied(denied)))
+		res.type(`${contentType}; charset=utf-8`)
+		const result = await History.searchRaw(ctx, search, contentType, { render: History.DEFAULT_RENDER, timeZone: 'UTC' })
+		switch (result.code) {
+			case 'ok':
+				break
+			case 'err:no-raw-form':
+				res.type('text/plain; charset=utf-8')
+				return res.status(406).send(t.text(HistoryMsgs.rawFormUnavailable(contentType)))
+			case 'err:not-found':
+				return res.status(404).send(t.text(HistoryMsgs.textSelectionNotFound()))
+			case 'err:invalid-query':
+			case 'err:too-broad':
+				return res.status(400).send(t.text(HistoryMsgs.queryFailed(result.message ?? result.code)))
+			default:
+				return res.status(500).send(t.text(HistoryMsgs.queryFailed(result.message ?? result.code)))
+		}
+		if (result.next) {
+			const next = new URL(req.url, ENV.ORIGIN)
+			if (result.next.cursor) next.searchParams.set('cursor', JSON.stringify(result.next.cursor))
+			if (result.next.page) next.searchParams.set('page', String(result.next.page))
+			res.header('Link', `<${next.href}>; rel="next"`)
+		}
+		if (contentType === 'text/csv') {
+			res.header('Content-Disposition', `inline; filename="history-${search.type}${search.page ? `-${search.page}` : ''}.csv"`)
+		}
+		const eol = contentType === 'text/csv' ? '\r\n' : '\n'
+		return res.send(result.body === '' ? '' : `${result.body}${eol}`)
+	})
+
 	instance.get('/', getHtmlResponse)
 	instance.get('/*', getHtmlResponse)
 
@@ -488,6 +538,16 @@ export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, 
 
 	WsSessionSys.registerClient(wsCtx)
 	return wsCtx
+}
+
+function historySearchOf(req: FastifyRequest): HQ.Search {
+	return HQ.parseSearchParams(new URL(req.url, 'http://localhost').searchParams)
+}
+
+// A request for the history url that negotiated a raw form rather than the page. Refused as text rather than
+// bounced to the login page, which only a browser could follow.
+function wantsHistoryRaw(req: FastifyRequest, route: C.FastifyRequestFull['route']) {
+	return route?.def.id === '/history' && HQ.negotiateContentType(historySearchOf(req).contentType, req.headers.accept) !== 'text/html'
 }
 
 function buildHttpRequestContext(req: FastifyRequest, res: FastifyReply): C.HttpRequestFull {

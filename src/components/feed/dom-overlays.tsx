@@ -8,6 +8,7 @@ import { DraggableWindowOutletContext } from '@/systems/draggable-window.client'
 import LayerContextMenuOptions from '../layer-context-menu-options'
 import PlayerContextMenuOptions from '../player-context-menu-options'
 import SquadContextMenuOptions from '../squad-context-menu-options'
+import TimeContextMenuOptions from '../time-context-menu-options'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '../ui/context-menu'
 import { TrackingTooltip } from '../ui/tooltip'
 import * as Interactions from './interactions'
@@ -53,6 +54,7 @@ function MenuOverlay() {
 						{menu?.target.kind === 'layer' && (
 							<LayerContextMenuOptions layerIds={menu.target.layerIds} historyEntryIds={menu.target.historyEntryIds} />
 						)}
+						{menu?.target.kind === 'time' && <TimeContextMenuOptions target={menu.target} />}
 					</ContextMenuContent>
 				</ContextMenu>
 			</DraggableWindowOutletContext.Provider>

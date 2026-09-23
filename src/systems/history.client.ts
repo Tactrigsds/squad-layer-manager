@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import type * as TSR from '@tanstack/react-router'
 
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
@@ -10,6 +11,12 @@ export type QueryPageInput = {
 	// events rows are rendered server-side, so the viewer's display settings ride along
 	render?: { displayTeamsNormalized: boolean; locale: string }
 	includeMatchBoundaries?: boolean
+}
+
+/** An absolute url to the history page showing `search`, for pasting outside the app. */
+export function historyUrl(router: ReturnType<typeof TSR.useRouter>, search: HQ.Search): string {
+	const location = router.buildLocation({ to: '/history', search })
+	return new URL(location.href, window.location.origin).href
 }
 
 export const queryPageBase = (input: QueryPageInput) =>
