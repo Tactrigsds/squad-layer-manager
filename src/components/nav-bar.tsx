@@ -40,6 +40,7 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -116,6 +117,7 @@ export default function NavBar() {
 		SettingsClient.PublicSettingsStore,
 		RbacClient.Sel.settingsLinkVisible,
 	)
+	const historyDenied = RbacClient.usePermsCheck(RBAC.perm('history:query'))
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
 	const siteMode = SiteMode.useSiteMode()
 	// the desktop site on a phone: offer the way back to the phone layout
@@ -127,7 +129,9 @@ export default function NavBar() {
 			: { key: 'server', label: tr.text(APP_Msgs.navServer()), to: '/servers' },
 		{ key: 'commands', label: tr.text(APP_Msgs.navCommands()), to: '/commands' },
 		{ key: 'filters', label: tr.text(APP_Msgs.navFilters()), to: '/filters' },
-		{ key: 'history', label: tr.text(APP_Msgs.navHistory()), to: '/history', search: { type: 'events', mode: 'basic' } },
+		...(historyDenied
+			? []
+			: [{ key: 'history', label: tr.text(APP_Msgs.navHistory()), to: '/history', search: { type: 'events', mode: 'basic' } }]),
 		{ key: 'tutorials', label: tr.text(APP_Msgs.navTutorials()), to: '/tutorials' },
 		...(showSettingsLink ? [{ key: 'settings', label: tr.text(APP_Msgs.navSettings()), to: '/settings' }] : []),
 	]

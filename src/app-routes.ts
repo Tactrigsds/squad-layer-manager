@@ -70,6 +70,8 @@ export const routes = [
 	defRoute('/servers/:id', ['id'] as const, 'page'),
 	defRoute('/layers/:id/scores', ['id'] as const, 'page'),
 	defRoute('/layers/:id/details', ['id'] as const, 'page'),
+	// the page, or its results as plain text for a request asking for that (see HQ.negotiateContentType)
+	defRoute('/history', [], 'page'),
 	defRoute('/*', [], 'page'),
 ] as const satisfies GenericRouteDefinition[]
 

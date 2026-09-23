@@ -1108,7 +1108,7 @@ export type ChatViewOptionsStore = {
 
 // match boundaries and rcon connectivity anchor the feed in time, so they're shown under every filter. MAP_SET is
 // deliberately not one of them: a layer being set is an administrative event, not a marker the other feeds need
-function isPinnedSystemEvent(event: EventEnriched): boolean {
+export function isPinnedSystemEvent(event: EventEnriched): boolean {
 	switch (event.type) {
 		case 'NEW_GAME':
 		case 'RESET':

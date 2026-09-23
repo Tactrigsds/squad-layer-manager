@@ -4,9 +4,11 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import * as Paths from '$root/paths'
+import { makePlayer } from '@/emulator'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { chatEventIds, indexedEventsFor } from '../harness/inspect'
 
 // The app's plain-HTTP surface, asserted with raw fetch: the response headers for everything served out of a file,
 // and the session endpoints. The file-serving contract is invisible from the UI and silently reversible -- dropping
@@ -223,6 +225,109 @@ describe('the icon renditions', () => {
 // Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the
 // FastifyReply, and a reply is a thenable that only settles once the response is sent -- so the handler blocked
 // forever waiting for a send it was itself holding up. The request never got a response.
+// The history url answers with its results as plain text when asked, by param or by Accept header: one page of
+// events with the next in a Link header, or just the selection the url carries.
+describe('GET /history as text', () => {
+	const NEEDLE = 'zqtextpage'
+	// one page and a bit, so there is a next page and it ends
+	const LINES = 105
+	const search = `type=events&order=oldest&chat=${NEEDLE}`
+	let ids: number[]
+
+	beforeAll(async () => {
+		const talker = app.emu.world.connectPlayer(makePlayer({ name: ' text_talker', teamId: 1 }))
+		// an event whose player the app has not persisted yet is dropped from the index, so the join goes first
+		await app.waitFor(() => indexedEventsFor(app, talker.eos) > 0 || undefined, { label: 'the talker to be indexed', timeoutMs: 30_000 })
+		for (let i = 0; i < LINES; i++) app.emu.world.chat(talker, 'ChatAll', `${NEEDLE} line ${i}`)
+		await app.waitFor(() => (chatEventIds(app, NEEDLE).length === LINES ? true : undefined), {
+			label: 'every line to be searchable',
+			timeoutMs: 60_000,
+		})
+		ids = chatEventIds(app, NEEDLE)
+	}, 90_000)
+
+	const lines = (body: string) => body.split('\n').filter((line) => line !== '')
+
+	it('answers one page, and links the next', async () => {
+		const res = await get(`/history?${search}&contentType=text%2Fplain`)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toMatch(/^text\/plain/)
+		expect(res.headers.get('vary')).toMatch(/Accept/)
+		const page = lines(await res.text())
+		expect(page).toHaveLength(100)
+		expect(page[0]).toMatch(new RegExp(`^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d .*${NEEDLE} line 0 \\(match #\\d+\\)$`))
+
+		const link = /^<([^>]+)>; rel="next"$/.exec(res.headers.get('link') ?? '')
+		expect(link).not.toBeNull()
+		const next = new URL(link![1])
+		const rest = await get(next.pathname + next.search)
+		expect(lines(await rest.text()).map((line) => line.replace(/.* line (\d+) .*/, '$1'))).toEqual(['100', '101', '102', '103', '104'])
+		expect(rest.headers.get('link')).toBeNull()
+	})
+
+	it('answers only the selection when the url carries one', async () => {
+		const sel = encodeURIComponent(JSON.stringify([String(ids[3]), String(ids[5])]))
+		const res = await get(`/history?${search}&sel=${sel}&contentType=text%2Fplain`)
+		expect(lines(await res.text()).map((line) => line.replace(/.* line (\d+) .*/, '$1'))).toEqual(['3', '4', '5'])
+	})
+
+	it('follows the Accept header, with the param taking priority', async () => {
+		const byHeader = await get(`/history?${search}`, { accept: 'text/plain' })
+		expect(byHeader.headers.get('content-type')).toMatch(/^text\/plain/)
+
+		const overridden = await get(`/history?${search}&contentType=text%2Fhtml`, { accept: 'text/plain' })
+		expect(overridden.headers.get('content-type')).toMatch(/html/)
+
+		// what a browser sends
+		const browser = await get(`/history?${search}`, { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' })
+		expect(browser.headers.get('content-type')).toMatch(/html/)
+	})
+
+	it('answers players and matches as a text table or csv', async () => {
+		const players = `type=players&name=text_talker`
+		const table = await get(`/history?${players}&contentType=text%2Fplain`)
+		expect(table.headers.get('content-type')).toMatch(/^text\/plain/)
+		const [header, rule, row] = (await table.text()).split('\n')
+		expect(header).toMatch(/^Player +Steam ID +EOS ID +Matches +Chat +Last seen +Events$/)
+		expect(rule).toMatch(/^[- ]+$/)
+		expect(row).toMatch(/^text_talker /)
+
+		// by header too, as for events
+		const csv = await get(`/history?${players}`, { accept: 'text/csv' })
+		expect(csv.headers.get('content-type')).toMatch(/^text\/csv/)
+		const csvLines = (await csv.text()).split('\r\n')
+		expect(csvLines[0]).toBe('Player,Steam ID,EOS ID,Matches,Chat,Last seen,Events')
+		// one row, its events the talker's lines and the join
+		expect(csvLines[1].split(',')).toEqual([
+			'text_talker',
+			expect.any(String),
+			expect.any(String),
+			'1',
+			String(LINES),
+			expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/),
+			expect.stringMatching(/^\d+$/),
+		])
+		expect(csv.headers.get('link')).toBeNull()
+
+		const matches = await get('/history?type=matches&contentType=text%2Fcsv')
+		expect(matches.status).toBe(200)
+		expect((await matches.text()).split('\r\n')[0]).toBe('Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events')
+	})
+
+	it('refuses what has no raw form, and a request without a session, as text', async () => {
+		const eventsCsv = await get(`/history?${search}&contentType=text%2Fcsv`)
+		expect(eventsCsv.status).toBe(406)
+		expect(eventsCsv.headers.get('content-type')).toMatch(/^text\/plain/)
+
+		const missing = await get(`/history?${search}&sel=${encodeURIComponent('["999999999","999999999"]')}&contentType=text%2Fplain`)
+		expect(missing.status).toBe(404)
+
+		const anonymous = await fetch(`${base}/history?${search}&contentType=text%2Fplain`, { redirect: 'manual' })
+		expect(anonymous.status).toBe(401)
+		expect(anonymous.headers.get('content-type')).toMatch(/^text\/plain/)
+	})
+})
+
 describe('POST /logout', () => {
 	it('responds instead of hanging on the thenable reply', async () => {
 		// a session of its own, so logging it out cannot invalidate the cookie the other tests share

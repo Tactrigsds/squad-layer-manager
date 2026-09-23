@@ -3,7 +3,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
-import type { CommonServerOptions, Plugin, UserConfig } from 'vite'
+import type { CommonServerOptions, Connect, Plugin, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
@@ -80,58 +80,74 @@ export default defineConfig({
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {
+				// The history url also answers as plain text, which a request can ask for without accepting html, so it is
+				// asked ahead of vite's own middleware, whose spa fallback would otherwise answer it with index.html. When
+				// it does answer with the page, vite is pointed at index.html itself: the fallback only serves that to a
+				// request accepting html.
+				server.middlewares.use((req, res, next) => {
+					if (!req.url || new URL(req.url, 'http://localhost').pathname !== '/history') return next()
+					void proxyPage(req, res, () => {
+						req.url = '/index.html'
+						next()
+					})
+				})
 				return () => {
-					server.middlewares.use(async (req, res, next) => {
-						const acceptHeader = req.headers.accept || ''
+					server.middlewares.use((req, res, next) => {
+						if (req.url && (req.headers.accept || '').includes('text/html')) void proxyPage(req, res, next)
+						else next()
+					})
+				}
 
-						if (req.url && acceptHeader.includes('text/html') && res.statusCode === 200) {
-							try {
-								Env.ensureEnvSetup()
-								const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
-								const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
+				async function proxyPage(req: Connect.IncomingMessage, res: ServerResponse, next: Connect.NextFunction) {
+					if (res.statusCode === 200) {
+						try {
+							Env.ensureEnvSetup()
+							const ENV = Env.getEnvBuilder({ ...Env.groups.httpServer })()
+							const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
 
-								// req.headers can have symbols attached when using vite-rolldown, and metadata prefixed with :
-								const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith(':'))) as Record<
-									string,
-									string
-								>
+							// req.headers can have symbols attached when using vite-rolldown, and metadata prefixed with :
+							const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith(':'))) as Record<
+								string,
+								string
+							>
 
-								const proxyRes = await fetch(proxyUrl, {
-									method: 'GET',
-									redirect: 'manual',
-									headers,
+							const proxyRes = await fetch(proxyUrl, {
+								method: 'GET',
+								redirect: 'manual',
+								headers,
+							})
+
+							// non-200 responses (redirects, 403), marked static pages (the landing page, a 200) and anything that
+							// is not html carry their own body; anything else is a 200 the SPA should hydrate, so fall through to
+							// vite's index.html
+							const html = proxyRes.headers.get('content-type')?.includes('text/html') ?? false
+							if (proxyRes.status !== 200 || proxyRes.headers.get('x-slm-static-page') || !html) {
+								console.log(`Upstream returned ${proxyRes.status}, proxying entire response`)
+								res.statusCode = proxyRes.status
+
+								// Copy all headers from upstream
+								proxyRes.headers.forEach((value, key) => {
+									const name = key.toLowerCase()
+									if (name === 'keep-alive' || name === 'connection' || name === 'set-cookie') return
+									res.setHeader(key, value)
 								})
+								copyCookies(proxyRes, res)
 
-								// non-200 responses (redirects, 403) and marked static pages (the landing page, a 200) carry their
-								// own body; anything else is a 200 the SPA should hydrate, so fall through to vite's index.html
-								if (proxyRes.status !== 200 || proxyRes.headers.get('x-slm-static-page')) {
-									console.log(`Upstream returned ${proxyRes.status}, proxying entire response`)
-									res.statusCode = proxyRes.status
-
-									// Copy all headers from upstream
-									proxyRes.headers.forEach((value, key) => {
-										const name = key.toLowerCase()
-										if (name === 'keep-alive' || name === 'connection' || name === 'set-cookie') return
-										res.setHeader(key, value)
-									})
-									copyCookies(proxyRes, res)
-
-									// Pipe the body
-									const body = await proxyRes.text()
-									res.end(body)
-									return
-								} else {
-									copyCookies(proxyRes, res)
-									next()
-								}
-							} catch (error) {
-								console.error('Error fetching upstream headers:', error)
+								// Pipe the body
+								const body = await proxyRes.text()
+								res.end(body)
+								return
+							} else {
+								copyCookies(proxyRes, res)
 								next()
 							}
-						} else {
+						} catch (error) {
+							console.error('Error fetching upstream headers:', error)
 							next()
 						}
-					})
+					} else {
+						next()
+					}
 				}
 			},
 		},

@@ -3,6 +3,7 @@ import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { localTimeZone } from '@/components/feed/format'
 import * as RC from '@/components/feed/render-context'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor from '@/components/history-advanced-editor'
@@ -39,6 +40,9 @@ export type HistoryPageProps = {
 	// the query the url holds, which is the one the results answer
 	executed: HQ.Query
 	onRun: (query: HQ.Query) => void
+	// the highlighted event rows, from the url
+	selection: HQ.RowSelectionParam | undefined
+	onSelect: (selection: HQ.RowSelectionParam | undefined) => void
 }
 
 type QueryRes = Awaited<ReturnType<typeof RPC.orpc.history.query.call>>
@@ -164,6 +168,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 						}}
 					/>
 					<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
+					<RawMenu query={props.executed} selection={props.selection} />
 					<CopyLinkButton />
 					{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
 				</div>
@@ -187,7 +192,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 						</div>
 					)
 				) : (
-					<Results query={props.executed} onRun={props.onRun} />
+					<Results query={props.executed} onRun={props.onRun} selection={props.selection} onSelect={props.onSelect} />
 				)}
 			</div>
 
@@ -254,6 +259,36 @@ function RailResizer(props: { children: React.ReactNode }) {
 	)
 }
 
+// The results the page is showing, in each form the url answers them in besides the page itself (see
+// HQ.rawContentTypes): events as text, and only the selected ones when there is a selection; players and matches as
+// a text table or csv, from their first page. Each opens in a tab of its own.
+function RawMenu(props: { query: HQ.Query; selection: HQ.RowSelectionParam | undefined }) {
+	const router = TSR.useRouter()
+	const sel = props.query.type === 'events' ? props.selection : undefined
+	const hrefFor = (contentType: HQ.ContentType) =>
+		router.buildLocation({ to: '/history', search: { ...props.query, sel, contentType } }).href
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="ghost" size="sm" className="h-8">
+					<Icons.FileText className="h-4 w-4" />
+					{tr.text(HistoryMsgs.rawText())}
+					<Icons.ChevronDown className="h-3 w-3" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				{HQ.rawContentTypes(props.query.type).map((contentType) => (
+					<DropdownMenuItem key={contentType} asChild>
+						<a href={hrefFor(contentType)} target="_blank" rel="noopener">
+							{tr.text(HistoryMsgs.rawFormat(contentType, sel !== undefined))}
+						</a>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
 function CopyLinkButton() {
 	const [copied, setCopied] = React.useState(false)
 	React.useEffect(() => {
@@ -278,10 +313,21 @@ function CopyLinkButton() {
 
 // -------- results --------
 
-function Results(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
+function Results(props: {
+	query: HQ.Query
+	onRun: (query: HQ.Query) => void
+	selection: HQ.RowSelectionParam | undefined
+	onSelect: (selection: HQ.RowSelectionParam | undefined) => void
+}) {
 	switch (props.query.type) {
 		case 'events':
-			return <HistoryEvents query={props.query} onReorder={(order) => props.onRun({ ...props.query, order })} />
+			return (
+				<HistoryEvents
+					query={props.query}
+					onReorder={(order) => props.onRun({ ...props.query, order })}
+					selection={{ value: props.selection, onChange: props.onSelect, linkable: true }}
+				/>
+			)
 		case 'players':
 			return <PlayersResults query={props.query} onRun={props.onRun} />
 		case 'matches':
@@ -360,11 +406,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 	const lateMatch = React.useCallback((matchId: number) => lateMatches.current.get(matchId), [])
 	const loadRowEvents = React.useCallback(
 		async (key: string, cursor?: unknown) => {
-			const separator = key.indexOf(':')
-			const kind = key.slice(0, separator)
-			const id = key.slice(separator + 1)
-			const narrowed =
-				kind === 'player' ? HQ.eventsForPlayer(query, id) : kind === 'match' ? HQ.eventsForMatch(query, Number(id)) : undefined
+			const narrowed = HQ.eventsForRow(query, key)
 			if (!narrowed) return { rows: [] }
 			const res = await RPC.queryClient.fetchQuery(
 				HistoryClient.queryPageBase({
@@ -379,7 +421,33 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 		},
 		[query, displayTeamsNormalized],
 	)
-	return useHistoryRenderCtx(matches, { loadRowEvents, lateMatch, serverId: HQ.soleServerId(query) })
+
+	// A selection in a row's events names events of the row's own narrowed query, which is what the link opens and
+	// what the text is read from. There is no selecting the result rows themselves, so no group means nothing.
+	const router = TSR.useRouter()
+	const linkToRows = React.useCallback(
+		(selection: RC.RowSelection, _rows: Element[], group: string | undefined) => {
+			const narrowed = group && HQ.eventsForRow(query, group)
+			if (!narrowed) return undefined
+			return { url: HistoryClient.historyUrl(router, { ...narrowed, sel: [selection.anchor, selection.head] }) }
+		},
+		[router, query],
+	)
+	const selectionText = React.useCallback(
+		async (selection: RC.RowSelection, _ctx: RC.RenderCtx, group: string | undefined) => {
+			const narrowed = group && HQ.eventsForRow(query, group)
+			if (!narrowed) return undefined
+			const res = await RPC.orpc.history.selectionText.call({
+				query: narrowed,
+				sel: [selection.anchor, selection.head],
+				render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() },
+				timeZone: localTimeZone(),
+			})
+			return res.code === 'ok' ? { text: res.text, count: res.count } : undefined
+		},
+		[query, displayTeamsNormalized],
+	)
+	return useHistoryRenderCtx(matches, { loadRowEvents, lateMatch, serverId: HQ.soleServerId(query), linkToRows, selectionText })
 }
 
 const HEADER_CELL = 'px-2 py-1 text-left font-medium'

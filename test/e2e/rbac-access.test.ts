@@ -56,6 +56,22 @@ test.describe('a dashboard-only user', () => {
 		await expect(dialog.getByText('You have every permission.')).toHaveCount(0)
 	})
 
+	// history:query is its own grant: site access alone no longer reaches the history, in any of its forms
+	test('is withheld the history page, and its text form', async ({ page }) => {
+		await page.goto(app.loginUrl(VIEWER))
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveCount(0)
+
+		await page.goto(app.loginUrl(VIEWER, '/history'))
+		const alert = page.getByRole('alert')
+		await expect(alert).toContainText('Permission denied', { timeout: 30_000 })
+		await expect(alert).toContainText('history:query')
+
+		const text = await page.request.get(new URL('/history?type=events&contentType=text%2Fplain', page.url()).href)
+		expect(text.status()).toBe(403)
+		expect(text.headers()['content-type']).toMatch(/^text\/plain/)
+	})
+
 	test('is withheld the server console', { tag: '@firefox' }, async ({ page }) => {
 		await page.goto(app.loginUrl(VIEWER))
 		// they really are on the dashboard: the denial below is about the console, not a broken session

@@ -5,6 +5,24 @@ import * as RBAC_Msgs from '@/messages/rbac.messages'
 import type * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 
+/** The same reason, standing in for a whole page the user may not see. */
+export function PermissionDeniedPanel(props: { denied: RBAC.PermissionDeniedResponse }) {
+	const { checkType, failures } = props.denied
+	return (
+		<div role="alert" className="m-auto max-w-sm space-y-1 p-4">
+			<p className="font-semibold text-destructive">{tr.text(RBAC_Msgs.permissionDeniedHeading())}</p>
+			<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.permissionsNeeded(checkType, failures.length))}</p>
+			<ul className="text-xs space-y-1">
+				{failures.map((msg) => (
+					<li key={msg} className="p-1.5 bg-muted/50 rounded font-mono">
+						{msg}
+					</li>
+				))}
+			</ul>
+		</div>
+	)
+}
+
 /**
  * Wraps children in a tooltip showing the permission denied reason when `denied` is non-null.
  * The trigger span is required so the tooltip works even when the child is a disabled button.

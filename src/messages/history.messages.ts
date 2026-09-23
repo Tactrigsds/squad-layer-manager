@@ -100,6 +100,26 @@ export const rangeFrom = def('Min')
 export const rangeTo = def('Max')
 export const linkCopied = def('Link copied')
 
+// the history url asked for as plain text or csv
+export const rawFormUnavailable = def((contentType: string) =>
+	t('These results have no {contentType} form. Event results come as text/plain, players and matches as text/plain or text/csv.', {
+		contentType,
+	}),
+)
+export const textSelectionNotFound = def('The selected events are not in these results.')
+
+// a discord reply quoting a linked selection
+export const quotedSelection = def((n: number) =>
+	t('{n, plural, one {# event} other {# events}}, times in UTC', {
+		n,
+	}),
+)
+export const quotedSelectionTruncated = def((n: number) =>
+	t('{n, plural, one {# more line} other {# more lines}} in the attached file', {
+		n,
+	}),
+)
+
 export const results = def((n: number) => t('{n, plural, one {# result} other {# results}}', { n }))
 export const loadMore = def('Load more')
 export const noResults = def('No results')
@@ -122,6 +142,13 @@ export const visibilityPrivate = def('Private')
 export const visibilityShared = def('Shared')
 export const deleteQuery = def('Delete')
 export const copyLink = def('Copy link')
+export const rawText = def('Raw')
+export const rawFormat = def((contentType: 'text/plain' | 'text/csv', selection: boolean) =>
+	t('{format, select, csv {CSV} other {{selection, select, yes {Selected events as text} other {Text}}}}', {
+		format: contentType === 'text/csv' ? 'csv' : 'text',
+		selection: selection ? 'yes' : 'no',
+	}),
+)
 export const saveDialogTitle = def('Save query')
 
 export const colPlayer = def('Player')

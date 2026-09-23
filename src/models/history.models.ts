@@ -397,6 +397,157 @@ export type Query = z.infer<typeof QuerySchema>
 
 export const DEFAULT_QUERY: Query = QuerySchema.parse({})
 
+// The history url's params beside the query. None of them changes what the query answers, so a saved or recent
+// query carries none of them.
+
+// a run of result rows to highlight and scroll to, by the event ids at either end, anchor first
+export const RowSelectionParamSchema = z.tuple([z.coerce.string(), z.coerce.string()])
+export type RowSelectionParam = z.infer<typeof RowSelectionParamSchema>
+
+// A position in the merged event order, where a page of events starts; exactly one id is set, per the family the
+// cursor sits in. A url only carries one for a page asked for as text: the page itself loads more in place.
+export const EventCursorSchema = z.object({
+	time: z.number().int(),
+	serverEventId: z.number().int().optional(),
+	appEventId: z.string().optional(),
+})
+export type EventCursor = z.infer<typeof EventCursorSchema>
+
+// What the url answers with. The page itself is html. Text is events as copying them gives, and players and
+// matches as a table; csv is players and matches alone. Listed in order of preference, for a header that ranks
+// several the same.
+export const CONTENT_TYPES = ['text/html', 'text/plain', 'text/csv'] as const
+export type ContentType = (typeof CONTENT_TYPES)[number]
+export const ContentTypeSchema = z.enum(CONTENT_TYPES)
+
+/** The content types other than the page that a result type has a form in. */
+export function rawContentTypes(type: ResultType): Exclude<ContentType, 'text/html'>[] {
+	switch (type) {
+		case 'events':
+			return ['text/plain']
+		case 'players':
+		case 'matches':
+			return ['text/plain', 'text/csv']
+		default:
+			assertNever(type)
+	}
+}
+
+// which page of a players or matches result the url asks for as text, counted from 1 as the pager counts
+export const PageParamSchema = z.number().int().positive()
+
+export type Search = Query & { sel?: RowSelectionParam; cursor?: EventCursor; page?: number; contentType?: ContentType }
+export type SearchExtras = Pick<Search, 'sel' | 'cursor' | 'page' | 'contentType'>
+
+/** The history url's search, from the router's already-parsed params; a query that does not parse is the default. */
+export function parseSearch(raw: Record<string, unknown>): Search {
+	const res = QuerySchema.safeParse(raw)
+	const search: Search = res.success ? res.data : DEFAULT_QUERY
+	const sel = RowSelectionParamSchema.safeParse(raw.sel)
+	const cursor = EventCursorSchema.safeParse(raw.cursor)
+	const page = PageParamSchema.safeParse(raw.page)
+	const contentType = ContentTypeSchema.safeParse(raw.contentType)
+	return {
+		...search,
+		...(sel.success ? { sel: sel.data } : {}),
+		...(cursor.success ? { cursor: cursor.data } : {}),
+		...(page.success ? { page: page.data } : {}),
+		...(contentType.success ? { contentType: contentType.data } : {}),
+	}
+}
+
+/** A search split into the query it runs and the params beside it. */
+export function splitSearch(search: Search): { query: Query } & SearchExtras {
+	const { sel, cursor, page, contentType, ...query } = search
+	return { query, sel, cursor, page, contentType }
+}
+
+/**
+ * What a request for the history url answers with: the `contentType` param when it names one, else the type the
+ * Accept header prefers, else the page. Types the header ranks equally go to the earliest in CONTENT_TYPES.
+ */
+export function negotiateContentType(param: ContentType | undefined, accept: string | undefined): ContentType {
+	if (param) return param
+	if (!accept) return 'text/html'
+	const ranges = accept.split(',').map((part) => {
+		const [range, ...params] = part.trim().toLowerCase().split(';')
+		const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='))
+		return { range: range.trim(), q: q ? Number(q.slice(2)) : 1 }
+	})
+	// a type's quality is the one its most specific matching range gives it; unmatched is 0
+	const quality = (type: ContentType) => {
+		const [major] = type.split('/')
+		const match =
+			ranges.find((r) => r.range === type) ?? ranges.find((r) => r.range === `${major}/*`) ?? ranges.find((r) => r.range === '*/*')
+		return match && Number.isFinite(match.q) ? match.q : 0
+	}
+	let best: ContentType = 'text/html'
+	for (const type of CONTENT_TYPES) if (quality(type) > quality(best)) best = type
+	return best
+}
+
+const URL_PATTERN = /https?:\/\/[^\s<>]+/g
+
+/**
+ * The history links in `text` that carry a selection, once each, in order. Only links to this app (`origin`) count.
+ * Trailing sentence punctuation is not part of a link: a pasted url is often followed by one.
+ */
+export function selectionLinksIn(text: string, origin: string): { query: Query; sel: RowSelectionParam }[] {
+	const own = new URL(origin).origin
+	const seen = new Set<string>()
+	const out: { query: Query; sel: RowSelectionParam }[] = []
+	for (const [match] of text.matchAll(URL_PATTERN)) {
+		let url: URL
+		try {
+			url = new URL(match.replace(/[.,!?)]+$/, ''))
+		} catch {
+			continue
+		}
+		if (url.origin !== own || url.pathname !== '/history' || seen.has(url.search)) continue
+		seen.add(url.search)
+		const { query, sel } = splitSearch(parseSearchParams(url.searchParams))
+		if (sel) out.push({ query, sel })
+	}
+	return out
+}
+
+/**
+ * The same from raw url params, for reading a history link outside the router. Each value is json where it parses
+ * as json and a plain string otherwise, which is how the router serializes a search.
+ */
+export function parseSearchParams(params: URLSearchParams): Search {
+	const raw: Record<string, unknown> = {}
+	for (const [key, value] of params) {
+		try {
+			raw[key] = JSON.parse(value)
+		} catch {
+			raw[key] = value
+		}
+	}
+	return parseSearch(raw)
+}
+
+/**
+ * The query whose results are a server activity log's rows: its match on its server, through the same event
+ * filter, oldest first as the log reads.
+ *
+ * Close rather than exact. The results also show the teamless chat and the undrawn event types the log leaves
+ * out, and ADMIN differs as feedFilterNode says. The log shows its pinned rows (CHAT.isPinnedSystemEvent) under
+ * every filter, where the results keep them only under ALL and DEFAULT, apart from each match's NEW_GAME.
+ * "Selected Only" is not carried at all: `players` also matches a
+ * player's game-participant rows and leaves out app events they were the actor of, which is a different set
+ * from the log's.
+ */
+export function activityLogQuery(args: { serverId: string; matchId: number; feed: CHAT.SecondaryFilterState }): Query {
+	return {
+		...DEFAULT_QUERY,
+		servers: [args.serverId],
+		matchId: args.matchId,
+		feed: args.feed === 'ALL' ? undefined : args.feed,
+		order: 'oldest',
+	}
+}
+
 // The one server every result can only have come from, where the query names exactly one. What lets a row
 // with no match of its own still offer the interactions that act on a server.
 export function soleServerId(query: Query): string | undefined {
@@ -539,22 +690,36 @@ export function queryFilterNode(query: Query): Node {
 	return { type: 'and', children }
 }
 
-/**
- * The same query, narrowed to the events of one row of a players or matches result.
- *
- * Always advanced form, whichever mode the query was built in: `queryFilterNode` normalizes both to one
- * tree, and anding a leaf onto that tree is the only narrowing that composes with everything already in it.
- */
-function narrowedToEvents(query: Query, extra: Node): Query {
-	return { ...query, type: 'events', mode: 'advanced', q: { type: 'and', children: [queryFilterNode(query), extra] } }
+// The same query, narrowed to the events of one row of a players or matches result. A basic query stays basic,
+// with the row as one more field, so a link to those events reads the way the query did. An advanced query has
+// the row anded onto its tree, the only narrowing that composes with anything a tree can hold.
+
+function narrowedTree(query: Query, extra: Node): Query {
+	return { ...query, type: 'events', q: { type: 'and', children: [queryFilterNode(query), extra] } }
 }
 
 export function eventsForPlayer(query: Query, playerId: string): Query {
-	return narrowedToEvents(query, comp('player', [playerId]))
+	if (query.mode === 'advanced') return narrowedTree(query, comp('player', [playerId]))
+	// On a players result, `players` and the `playerRole` qualifying it pick which rows show, as do `name` and
+	// `minMatches`; none of them filters the events a row counts (see queryFilterNode, groupPlayerRefs). So the row's
+	// player replaces them rather than being anded with them.
+	return { ...query, type: 'events', players: [playerId], playerRole: undefined, name: undefined, minMatches: undefined }
 }
 
 export function eventsForMatch(query: Query, matchId: number): Query {
-	return narrowedToEvents(query, { type: 'match-ids', neg: false, matchIds: [matchId] })
+	if (query.mode === 'advanced') return narrowedTree(query, { type: 'match-ids', neg: false, matchIds: [matchId] })
+	// every row of a matches result already passed the query's own `matchId`, if it has one, so this narrows it
+	return { ...query, type: 'events', matchId }
+}
+
+/** The same, for a results row by its key (`player:<eos id>` or `match:<id>`); undefined for a key of neither kind. */
+export function eventsForRow(query: Query, rowKey: string): Query | undefined {
+	const separator = rowKey.indexOf(':')
+	const kind = rowKey.slice(0, separator)
+	const id = rowKey.slice(separator + 1)
+	if (kind === 'player') return eventsForPlayer(query, id)
+	if (kind === 'match') return eventsForMatch(query, Number(id))
+	return undefined
 }
 
 // the players result type's output filter: which player rows to show, as opposed to which events count

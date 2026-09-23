@@ -107,6 +107,19 @@ export function searchableChatMatches(app: AppFixture, needle: string): number {
 	}
 }
 
+/** The event ids of the recorded chat messages matching `needle`, oldest first. */
+export function chatEventIds(app: AppFixture, needle: string): number[] {
+	const db = app.readDb()
+	try {
+		const rows = db.prepare(`SELECT serverEventId AS id FROM chatSearch WHERE chatSearch MATCH ? ORDER BY serverEventId`).all(needle) as {
+			id: number
+		}[]
+		return rows.map((row) => row.id)
+	} finally {
+		db.close()
+	}
+}
+
 // how many of a player's events reached the history index. Zero until the app has persisted the player, so
 // this is what says an arranged join has landed and the player's later events will be indexed rather than
 // dropped.

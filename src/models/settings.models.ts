@@ -415,6 +415,19 @@ export const GlobalSettingsSchema = z
 			'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
 		),
 		warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
+		discord: z
+			.object({
+				expandHistoryLinks: z
+					.boolean()
+					.prefault(true)
+					.describe(
+						'Reply to a message linking a selection on the history page with the selected events as text. Only for a poster who can ' +
+							'use SLM, and only from the servers they can see. Needs Message Content Intent switched on for the bot in the discord ' +
+							'developer portal.',
+					),
+			})
+			.prefault({})
+			.describe("What SLM's discord bot does in your discord server."),
 		allowedPrefixes: z
 			.array(CMD.PrefixConfigSchema)
 			.min(1)
@@ -619,6 +632,7 @@ export function defaultRbacSettings() {
 	// in-game admin capabilities, shared by admins and managers (all global-scope perms)
 	const adminPermissions: RBAC.RolePermissionExpression[] = [
 		'site:authorized',
+		'history:query',
 		'squad-server:view',
 		'queue:write',
 		'queue:manage-tags',

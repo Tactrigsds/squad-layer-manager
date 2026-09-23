@@ -20,6 +20,8 @@ export const config$: Rx.Observable<PublicConfigForClient> = Zus.toStream(Store,
 export const Sel = {
 	battlemetricsEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.battlemetrics ?? false,
 	discordEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.discord ?? false,
+	// only a definite no: unknown reads as fine, so nothing warns before the bot has logged in
+	discordMissingMessageContent: (config: PublicConfigForClient | undefined) => config?.discordMessageContent === false,
 	// either integration can answer for a join link, and neither is asked until the button is clicked
 	joinLinkEnabled: (config: PublicConfigForClient | undefined) =>
 		(config?.integrations.squadBrowser || config?.integrations.steam) ?? false,

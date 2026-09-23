@@ -2,6 +2,7 @@ import * as Rx from '@/lib/rxjs'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
+import * as Discord from '@/systems/discord.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Settings from '@/systems/settings.server'
@@ -53,6 +54,8 @@ export type PublicConfig = {
 	cacheLayerArtifact: boolean
 	// what this deployment is wired up to, so the client hides the affordances that would resolve to nothing
 	integrations: { battlemetrics: boolean; discord: boolean; squadBrowser: boolean; steam: boolean }
+	// whether the discord bot can read message content (see Discord.readsMessageContent); null until it has logged in
+	discordMessageContent: boolean | null
 }
 
 export type PublicConfigForClient = PublicConfig & { wsClientId: string }
@@ -80,6 +83,7 @@ export function pushPublicConfig() {
 			squadBrowser: ENV.SQUADBROWSER_ENABLED,
 			steam: ENV.STEAM_ENABLED,
 		},
+		discordMessageContent: Discord.readsMessageContent(),
 	})
 }
 

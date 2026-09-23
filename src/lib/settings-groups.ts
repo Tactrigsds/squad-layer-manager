@@ -29,7 +29,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
 		slug: 'misc',
 		label: 'Miscellaneous',
-		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'logFilePollInterval', 'tickRateThresholds'],
+		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'discord', 'logFilePollInterval', 'tickRateThresholds'],
 	},
 ]
 
