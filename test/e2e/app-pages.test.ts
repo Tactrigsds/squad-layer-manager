@@ -839,12 +839,19 @@ test.describe('history page', () => {
 		await expect(selected.first()).toBeInViewport()
 
 		// the history page's comes from the server, through the same text builder: line for line the same, with
-		// each line naming its match since results can span several
+		// each line naming its match after its time, as the page draws it, since results can span several
 		await results.locator(':scope > [data-selected] [data-dom-tip-time]').first().click({ button: 'right' })
 		await page.getByRole('menuitem', { name: 'Copy selection as text' }).click()
+		const TIME_LENGTH = 'yyyy-mm-dd hh:mm:ss'.length
 		await expect
 			.poll(async () => (await readClipboard(page)).split('\n'))
-			.toEqual(logText.map((line) => expect.stringMatching(new RegExp(`^${escapeRegExp(line)} \\(match #\\d+\\)$`))))
+			.toEqual(
+				logText.map((line) =>
+					expect.stringMatching(
+						new RegExp(`^${escapeRegExp(line.slice(0, TIME_LENGTH))} #\\d+ ${escapeRegExp(line.slice(TIME_LENGTH + 1))}$`),
+					),
+				),
+			)
 	})
 
 	// The events under a results row select like a feed's own, and name the events of that row's narrowed query.

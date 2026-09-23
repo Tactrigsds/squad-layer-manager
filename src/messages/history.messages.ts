@@ -109,11 +109,6 @@ export const rawFormUnavailable = def((contentType: string) =>
 export const textSelectionNotFound = def('The selected events are not in these results.')
 
 // a discord reply quoting a linked selection
-export const quotedSelection = def((n: number) =>
-	t('{n, plural, one {# event} other {# events}}, times in UTC', {
-		n,
-	}),
-)
 export const quotedSelectionTruncated = def((n: number) =>
 	t('{n, plural, one {# more line} other {# more lines}} in the attached file', {
 		n,
