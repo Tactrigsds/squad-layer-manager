@@ -7,8 +7,6 @@
 
 import { createElement, Fragment, type ReactElement, type ReactNode } from 'react'
 
-import * as CHAT_Msgs from '@/messages/chat.messages'
-import * as I18n from '@/messages/i18n'
 import type * as CHAT from '@/models/chat.models'
 
 import { formatDateTimeIn } from './format'
@@ -41,11 +39,12 @@ export function eventsText(ctx: RC.RenderCtx, events: readonly CHAT.EventEnriche
 		} finally {
 			if (opts.withMatchIds) RC.setRowMatchId(previous)
 		}
+		// laid out the way the row draws it: the time, the match badge beside it, then the row
 		lines.forEach((line, i) => {
 			let text = i === 0 ? '' : '  '
 			if (line.time !== undefined) text += `${formatDateTimeIn(line.time, opts.timeZone)} `
+			if (line.matchId !== undefined) text += `#${line.matchId} `
 			text += line.text
-			if (line.matchId !== undefined) text += ` ${I18n.ambient.text(CHAT_Msgs.matchSuffix(line.matchId))}`
 			out.push(text)
 		})
 	}

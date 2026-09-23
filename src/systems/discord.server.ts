@@ -51,9 +51,11 @@ let ENV!: ReturnType<typeof envBuilder>
 export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'roles' }
 export const guildRbacEvents$ = new IsolatedSubject<GuildRbacEvent>()
 
-// Messages people post in the home guild, with their content. Silent when the bot could not get the Message Content
-// intent (see readsMessageContent).
-export const messages$ = new IsolatedSubject<D.Message>()
+// What happens to messages people post in the home guild: one arriving or being edited, with its current content, or
+// one being deleted. Silent when the bot could not get the Message Content intent (see readsMessageContent). An edit
+// includes discord adding a link preview, which leaves the content as it was.
+export type MessageEvent = { type: 'posted'; message: D.Message } | { type: 'deleted'; messageId: string }
+export const messageEvents$ = new IsolatedSubject<MessageEvent>()
 
 // whether the portal granted the privileged Message Content intent, which messages$ depends on. Null until the bot
 // has logged in, and for good with the integration off.
@@ -66,7 +68,8 @@ const BASE_INTENTS = [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembe
 const MESSAGE_INTENTS = [...BASE_INTENTS, D.GatewayIntentBits.GuildMessages, D.GatewayIntentBits.MessageContent]
 
 async function login(intents: D.GatewayIntentBits[]) {
-	const loggingIn = new D.Client({ intents })
+	// partial messages, so an edit or deletion of one discord.js no longer holds in its cache still arrives
+	const loggingIn = new D.Client({ intents, partials: [D.Partials.Message] })
 	try {
 		await new Promise((resolve, reject) => {
 			loggingIn.once('ready', resolve)
@@ -137,7 +140,16 @@ export async function setup() {
 
 	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
 	client.on('messageCreate', (message) => {
-		if (message.guildId === homeGuildId && !message.author.bot) messages$.next(message)
+		if (message.guildId === homeGuildId && !message.author.bot) messageEvents$.next({ type: 'posted', message })
+	})
+	client.on('messageUpdate', (_old, updated) => void postedFromUpdate(updated, homeGuildId))
+	client.on('messageDelete', (message) => {
+		if (message.guildId === homeGuildId) messageEvents$.next({ type: 'deleted', messageId: message.id })
+	})
+	client.on('messageDeleteBulk', (messages) => {
+		for (const message of messages.values()) {
+			if (message.guildId === homeGuildId) messageEvents$.next({ type: 'deleted', messageId: message.id })
+		}
 	})
 	client.on('guildMemberUpdate', (oldMember, newMember) => {
 		if (newMember.guild.id !== homeGuildId) return
@@ -164,6 +176,17 @@ export async function setup() {
 	})
 
 	return res
+}
+
+// an edited message arrives partial when discord.js no longer holds it, and a partial has no content to read
+async function postedFromUpdate(updated: D.Message | D.PartialMessage, homeGuildId: string) {
+	if (updated.guildId !== homeGuildId) return
+	try {
+		const message = updated.partial ? await updated.fetch() : updated
+		if (!message.author.bot) messageEvents$.next({ type: 'posted', message })
+	} catch (err) {
+		log.warn({ err }, 'could not fetch edited message %s', updated.id)
+	}
 }
 
 const RESTART_SLM_COMMAND = 'restart-slm'

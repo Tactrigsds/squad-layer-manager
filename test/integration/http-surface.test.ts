@@ -255,20 +255,20 @@ describe('GET /history as text', () => {
 		expect(res.headers.get('vary')).toMatch(/Accept/)
 		const page = lines(await res.text())
 		expect(page).toHaveLength(100)
-		expect(page[0]).toMatch(new RegExp(`^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d .*${NEEDLE} line 0 \\(match #\\d+\\)$`))
+		expect(page[0]).toMatch(new RegExp(`^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d #\\d+ .*${NEEDLE} line 0$`))
 
 		const link = /^<([^>]+)>; rel="next"$/.exec(res.headers.get('link') ?? '')
 		expect(link).not.toBeNull()
 		const next = new URL(link![1])
 		const rest = await get(next.pathname + next.search)
-		expect(lines(await rest.text()).map((line) => line.replace(/.* line (\d+) .*/, '$1'))).toEqual(['100', '101', '102', '103', '104'])
+		expect(lines(await rest.text()).map((line) => line.replace(/.* line (\d+)$/, '$1'))).toEqual(['100', '101', '102', '103', '104'])
 		expect(rest.headers.get('link')).toBeNull()
 	})
 
 	it('answers only the selection when the url carries one', async () => {
 		const sel = encodeURIComponent(JSON.stringify([String(ids[3]), String(ids[5])]))
 		const res = await get(`/history?${search}&sel=${sel}&contentType=text%2Fplain`)
-		expect(lines(await res.text()).map((line) => line.replace(/.* line (\d+) .*/, '$1'))).toEqual(['3', '4', '5'])
+		expect(lines(await res.text()).map((line) => line.replace(/.* line (\d+)$/, '$1'))).toEqual(['3', '4', '5'])
 	})
 
 	it('follows the Accept header, with the param taking priority', async () => {
