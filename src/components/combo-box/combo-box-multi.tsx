@@ -3,6 +3,7 @@ import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
+import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
@@ -10,7 +11,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
-import { LOADING } from './constants.ts'
+import { LOADING, POPOVER_SIZING_CLASSES } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
 import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './groupings.tsx'
@@ -31,6 +32,7 @@ import {
 	searchKeywords,
 	selectableCount,
 } from './options.ts'
+import { useGrowOnlyWidth } from './sizing.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -234,6 +236,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	// the option the mouse is over (in either column) is pushed straight into the description box rather than
 	// held in state: hovering restated as a render would rebuild the whole option list for every row crossed
 	const descriptionBoxRef = useRef<DescriptionBoxHandle | null>(null)
+	const popoverRef = useGrowOnlyWidth<HTMLDivElement>()
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
 	const showDescription = (value: T) => {
 		const option = optionsByValue.get(value)
@@ -347,13 +350,13 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		},
 	)
 
-	// we don't fully unbound the size here, just relax the limit
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			{trigger}
 			<PopoverContent
 				align="start"
-				className="relative min-w-[600px] p-0"
+				ref={popoverRef}
+				className={cn('relative p-0', POPOVER_SIZING_CLASSES)}
 				// see ComboBox
 				onEscapeKeyDown={(e) => e.preventDefault()}
 			>
@@ -363,7 +366,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}
-						className="flex flex-col"
+						className="min-h-0"
 						onKeyDown={(e) => {
 							if (e.key !== 'Tab') return
 							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
@@ -372,96 +375,23 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 							cycleGroup(tabbed, e.shiftKey ? -1 : 1)
 						}}
 					>
-						{/* Shared header row */}
-						<div className="flex border-b shrink-0">
-							{/* Left header: search input */}
-							<div className="flex-1 border-r">
-								<CommandInput value={inputValue} onValueChange={onInputChange} placeholder={tr.text(UI_Msgs.searchOptions())} />
-							</div>
-							{/* Right header: selected count + action buttons */}
-							<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
-								<span className="text-sm font-medium">
-									{tr.text(UI_Msgs.selectedCount(props.title, displayValues.length, selectionLimit))}
-								</span>
-								<span className="flex items-center space-x-1">
-									{reset &&
-										(() => {
-											const resetToValues = Array.isArray(reset) ? reset : initialValues
-											const resetValues = resetToValues.filter((val) => optionsByValue.has(val))
-											const currentSet = new Set(displayValues)
-											const resetSet = new Set(resetValues)
-											const isIdentical = currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
-											return (
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onSelect(resetValues)}
-													disabled={isIdentical}
-													className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-													title={tr.text(UI_Msgs.resetToInitial())}
-												>
-													<Undo2 className="h-4 w-4" />
-												</Button>
-											)
-										})()}
-									{!drillEntry && selectableVisible.some((val) => !displayValues.includes(val)) && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => {
-												// adds the rows on screen to the selection rather than replacing it: under a
-												// narrowed grouping the rest of the catalog is not what the user is looking at,
-												// and dropping their earlier picks to reach it would be a trap
-												const allValues = [...displayValues]
-												for (const val of selectableVisible) {
-													if (allValues.includes(val)) continue
-													if (selectionLimit && allValues.length >= selectionLimit) break
-													allValues.push(val)
-												}
-												onSelect(allValues)
-											}}
-											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-											title={tr.text(UI_Msgs.selectAll())}
-										>
-											<CheckCheck className="h-4 w-4" />
-										</Button>
-									)}
-									{displayValues.length > 0 && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => onSelect([])}
-											className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-											title={tr.text(UI_Msgs.clearAll())}
-										>
-											<Trash2 className="h-4 w-4" />
-										</Button>
-									)}
-									{!props.confirm && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setOpen(false)}
-											className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-											title={tr.text(UI_Msgs.close())}
-										>
-											<X className="h-4 w-4" />
-										</Button>
-									)}
-								</span>
-							</div>
-						</div>
-
-						{/* Lists row */}
-						<div className="flex h-[340px]">
-							{/* Left — available options */}
-							<div className="flex-1 border-r overflow-hidden flex flex-col">
+						<div className="flex min-h-0">
+							<div
+								className={cn(
+									'flex grow shrink flex-col border-r',
+									MenuSizing.MENU_MIN_WIDTH_CLASS,
+									MenuSizing.MENU_MAX_WIDTH_CLASS,
+								)}
+							>
+								<div className="shrink-0 border-b">
+									<CommandInput value={inputValue} onValueChange={onInputChange} placeholder={tr.text(UI_Msgs.searchOptions())} />
+								</div>
 								{drillEntry ? (
 									<GroupDrillInHeader grouping={drillEntry.grouping} onBack={closeDrill} />
 								) : (
 									<GroupingBar groupings={barEntries} onPick={pickGroup} onDrill={openDrill} />
 								)}
-								<CommandList className="max-h-[340px]">
+								<CommandList className={cn('min-h-0', MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
 									<CommandEmpty>{tr.text(UI_Msgs.noResults())}</CommandEmpty>
 									{drillEntry && options !== LOADING && (
 										<GroupDrillIn
@@ -512,15 +442,17 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 													>
 														<Check
 															className={cn(
-																'mr-2 h-4 w-4',
+																'mr-2 h-4 w-4 shrink-0',
 																displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 															)}
 														/>
-														<PrefixedLabel
-															prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-															label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-															render={prefixRenderer}
-														/>
+														<span className="min-w-0 flex-1 truncate">
+															<PrefixedLabel
+																prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+																label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+																render={prefixRenderer}
+															/>
+														</span>
 													</CommandItem>
 												))}
 											</CommandGroup>
@@ -528,46 +460,123 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								</CommandList>
 							</div>
 
-							{/* Right — selected items */}
-							<div className="flex-1 overflow-y-auto p-2 space-y-1">
-								{displayValues.length === 0 ? (
-									<div className="text-sm text-muted-foreground text-center py-8">{tr.text(UI_Msgs.nothingSelected())}</div>
-								) : (
-									displayValues.map((value) => {
-										const option = optionsByValue.get(value)
-										const displayText = option ? (option.label ?? option.value) : value
-										return (
-											<div
-												key={value}
-												className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
-												onMouseEnter={() => showDescription(value)}
-												onMouseLeave={hideDescription}
-												onMouseDown={(e) => {
-													if (e.button === 1) {
-														e.preventDefault()
-														onSelect((prevValues) => prevValues.filter((v) => v !== value))
+							{/* on a narrow screen this pane gives up its width before the option pane does */}
+							<div className="flex w-64 min-w-32 shrink-[8] flex-col">
+								<div className="flex h-[41px] shrink-0 items-center justify-between border-b px-2">
+									<span className="truncate text-sm font-medium">
+										{tr.text(UI_Msgs.selectedCount(props.title, displayValues.length, selectionLimit))}
+									</span>
+									<span className="flex items-center space-x-1">
+										{reset &&
+											(() => {
+												const resetToValues = Array.isArray(reset) ? reset : initialValues
+												const resetValues = resetToValues.filter((val) => optionsByValue.has(val))
+												const currentSet = new Set(displayValues)
+												const resetSet = new Set(resetValues)
+												const isIdentical =
+													currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
+												return (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => onSelect(resetValues)}
+														disabled={isIdentical}
+														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+														title={tr.text(UI_Msgs.resetToInitial())}
+													>
+														<Undo2 className="h-4 w-4" />
+													</Button>
+												)
+											})()}
+										{!drillEntry && selectableVisible.some((val) => !displayValues.includes(val)) && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => {
+													// adds the rows on screen to the selection rather than replacing it: under a
+													// narrowed grouping the rest of the catalog is not what the user is looking at,
+													// and dropping their earlier picks to reach it would be a trap
+													const allValues = [...displayValues]
+													for (const val of selectableVisible) {
+														if (allValues.includes(val)) continue
+														if (selectionLimit && allValues.length >= selectionLimit) break
+														allValues.push(val)
 													}
+													onSelect(allValues)
 												}}
+												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+												title={tr.text(UI_Msgs.selectAll())}
 											>
-												<span className="flex-1 truncate">
-													<PrefixedLabel
-														prefix={selectedPrefix(option)}
-														label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
-														render={prefixRenderer}
-													/>
-												</span>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
-													className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
-												>
-													<X className="h-3 w-3" />
-												</Button>
-											</div>
-										)
-									})
-								)}
+												<CheckCheck className="h-4 w-4" />
+											</Button>
+										)}
+										{displayValues.length > 0 && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => onSelect([])}
+												className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+												title={tr.text(UI_Msgs.clearAll())}
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										)}
+										{!props.confirm && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => setOpen(false)}
+												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+												title={tr.text(UI_Msgs.close())}
+											>
+												<X className="h-4 w-4" />
+											</Button>
+										)}
+									</span>
+								</div>
+								{/* out of flow, so a long selection scrolls here instead of heightening the option pane beside it */}
+								<div className="relative min-h-[calc(var(--mi-h)*4)] flex-1">
+									<div className="absolute inset-0 space-y-1 overflow-y-auto p-2">
+										{displayValues.length === 0 ? (
+											<div className="text-sm text-muted-foreground text-center py-8">{tr.text(UI_Msgs.nothingSelected())}</div>
+										) : (
+											displayValues.map((value) => {
+												const option = optionsByValue.get(value)
+												const displayText = option ? (option.label ?? option.value) : value
+												return (
+													<div
+														key={value}
+														className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
+														onMouseEnter={() => showDescription(value)}
+														onMouseLeave={hideDescription}
+														onMouseDown={(e) => {
+															if (e.button === 1) {
+																e.preventDefault()
+																onSelect((prevValues) => prevValues.filter((v) => v !== value))
+															}
+														}}
+													>
+														<span className="flex-1 truncate">
+															<PrefixedLabel
+																prefix={selectedPrefix(option)}
+																label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+																render={prefixRenderer}
+															/>
+														</span>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
+															className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+														>
+															<X className="h-3 w-3" />
+														</Button>
+													</div>
+												)
+											})
+										)}
+									</div>
+								</div>
 							</div>
 						</div>
 
