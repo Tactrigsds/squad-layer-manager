@@ -4,12 +4,13 @@ import React, { useCallback, useImperativeHandle, useRef, useState } from 'react
 
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
-import { LOADING } from './constants.ts'
+import { LOADING, POPOVER_SIZING_CLASSES } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
 import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './groupings.tsx'
@@ -31,6 +32,7 @@ import {
 	searchKeywords,
 	selectableCount,
 } from './options.ts'
+import { useGrowOnlyWidth } from './sizing.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -65,11 +67,6 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	// mount already open. for pickers summoned by another control (an "add" button that becomes this), where the
 	// summoning click is the only click the user should need.
 	autoOpen?: boolean
-	// widen the popover to the trigger instead of the default 200px. For a picker whose trigger is a real
-	// form field and whose options are long enough to be unreadable narrow. Not the default: a popover as
-	// wide as a full-width trigger covers whatever sits under it, and a picker that autoOpens inside a
-	// dialog would land on the dialog's own buttons.
-	matchTriggerWidth?: boolean
 	// fired when the user dismisses the popover (escape, outside click, trigger). NOT fired when a selection closes
 	// it -- `onSelect` covers that -- so a caller can tell "picked nothing" from "picked something".
 	onOpenChange?: (open: boolean) => void
@@ -188,6 +185,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	const onInputChange = drillEntry ? setDrillQuery : callerControlsInput ? props.setInputValue : setQuery
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
+	const popoverRef = useGrowOnlyWidth<HTMLDivElement>()
 	const inputRef = useRef<HTMLInputElement | null>(null)
 	// records whether the pending close was caused by a selection (vs. a dismiss). Reset on open, so it never
 	// races the close callback. Only consulted when preventCloseAutoFocus is set.
@@ -288,7 +286,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className={cn('relative w-50 p-0', props.matchTriggerWidth && 'w-[var(--radix-popover-trigger-width)] min-w-50')}
+				ref={popoverRef}
+				className={cn('relative p-0', POPOVER_SIZING_CLASSES)}
 				// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
 				// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
 				// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
@@ -308,6 +307,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}
+						className={cn('min-h-0', MenuSizing.MENU_MIN_WIDTH_CLASS, MenuSizing.MENU_MAX_WIDTH_CLASS)}
 						onKeyDown={(e) => {
 							if (e.key !== 'Tab') return
 							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
@@ -330,7 +330,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						) : (
 							<GroupingBar groupings={barEntries} onPick={pickGroup} onDrill={openDrill} />
 						)}
-						<CommandList>
+						<CommandList className={cn('min-h-0', MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
 							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
 							{drillEntry && options !== LOADING && (
 								<GroupDrillIn
