@@ -84,18 +84,17 @@ export function getDefaultFilterMenuItemState(
 		Gamemode: EFB.eq('Gamemode', defaultFields['Gamemode']),
 		LayerVersion: EFB.eq('LayerVersion', defaultFields['LayerVersion'] ?? undefined),
 		Collection: EFB.eq('Collection', defaultFields['Collection'] ?? undefined),
-		// the matchup's dimensions take several values a side, so every team field is an `in`
-		Alliance_1: teamItem('Alliance_1', defaultFields['Alliance_1']),
-		Faction_1: teamItem('Faction_1', defaultFields['Faction_1']),
-		Unit_1: teamItem('Unit_1', defaultFields['Unit_1']),
-		Alliance_2: teamItem('Alliance_2', defaultFields['Alliance_1']),
-		Faction_2: teamItem('Faction_2', defaultFields['Faction_2']),
-		Unit_2: teamItem('Unit_2', defaultFields['Unit_2']),
+		Alliance_1: EFB.eq('Alliance_1', defaultFields['Alliance_1'] ?? undefined),
+		Faction_1: EFB.eq('Faction_1', defaultFields['Faction_1']),
+		Unit_1: EFB.eq('Unit_1', defaultFields['Unit_1']),
+		Alliance_2: EFB.eq('Alliance_2', defaultFields['Alliance_2'] ?? undefined),
+		Faction_2: EFB.eq('Faction_2', defaultFields['Faction_2']),
+		Unit_2: EFB.eq('Unit_2', defaultFields['Unit_2']),
 		// virtual columns, so they take no default from a layer: a layer names its units, not their vehicles
-		Vehicle_1: teamItem('Vehicle_1'),
-		VehicleType_1: teamItem('VehicleType_1'),
-		Vehicle_2: teamItem('Vehicle_2'),
-		VehicleType_2: teamItem('VehicleType_2'),
+		Vehicle_1: EFB.eq('Vehicle_1'),
+		VehicleType_1: EFB.eq('VehicleType_1'),
+		Vehicle_2: EFB.eq('Vehicle_2'),
+		VehicleType_2: EFB.eq('VehicleType_2'),
 	}
 
 	if (config?.extraLayerSelectMenuItems) {
@@ -107,8 +106,18 @@ export function getDefaultFilterMenuItemState(
 	return extraItems
 }
 
-function teamItem(field: string, defaultValue?: F.Value | null): F.EditableCompNode {
-	return EFB.inValues(field, defaultValue === undefined || defaultValue === null ? undefined : [defaultValue])
+// A matchup row shows one operator for both sides, and swapTeams moves values between them, so a row seeded with
+// an `in` on one side and an `eq` on the other has both widened to `in`
+export function alignTeamRowOperators(items: Record<string, F.EditableCompNode>): Record<string, F.EditableCompNode> {
+	const next = { ...items }
+	for (const [field1, field2] of teamFieldPairs()) {
+		const comp1 = items[field1]
+		const comp2 = items[field2]
+		if (!comp1 || !comp2 || comp1.type === comp2.type) continue
+		if (comp1.type === 'in') next[field2] = F.applyCompOpSelection(comp2, comp1)
+		else if (comp2.type === 'in') next[field1] = F.applyCompOpSelection(comp1, comp2)
+	}
+	return next
 }
 
 function teamFieldPairs(): [team1: string, team2: string][] {
@@ -195,6 +204,17 @@ export namespace Actions {
 				}
 			}),
 		)
+	}
+
+	// one operator governs both sides of a matchup row
+	export function setTeamRowOperator(stores: KeyProp, fields: readonly string[], option: Pick<F.CompOpSelectOption, 'type' | 'neg'>) {
+		setMenuItems(stores, (items) => {
+			const next = { ...items }
+			for (const field of fields) {
+				if (items[field]) next[field] = F.applyCompOpSelection(items[field], option)
+			}
+			return next
+		})
 	}
 
 	export function setComparison(stores: KeyProp, field: string, update: React.SetStateAction<F.EditableCompNode>) {

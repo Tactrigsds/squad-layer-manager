@@ -282,8 +282,8 @@ export namespace Actions {
 }
 
 // a backburner template's constraints as the menu's per-column comparisons. A field the menu already models as
-// an `in` (the team fields) keeps that shape; elsewhere a single value becomes `eq` and several (e.g. a merged
-// request's `Map in [Chora, Fallujah]`) an `in`. The team-column split is done upstream.
+// an `in` keeps that shape; elsewhere a single value becomes `eq` and several (e.g. a merged request's
+// `Map in [Chora, Fallujah]`) an `in`. The team-column split is done upstream.
 function menuItemsFromTemplate(filter: F.FilterNode, colConfig: LQY.EffectiveColumnAndTableConfig): Record<string, F.EditableCompNode> {
 	const items = LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, colConfig)
 	for (const [field, values] of Obj.objEntries(BB.templateToMenuFieldValues(filter))) {
@@ -291,7 +291,7 @@ function menuItemsFromTemplate(filter: F.FilterNode, colConfig: LQY.EffectiveCol
 		if (!item) continue
 		items[field] = item.type === 'in' || values.length > 1 ? EFB.inValues(field, values) : EFB.eq(field, values[0])
 	}
-	return items
+	return LayerFilterMenuPrt.alignTeamRowOperators(items)
 }
 
 function getFilterMenuDefaultFields(

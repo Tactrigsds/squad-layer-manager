@@ -297,7 +297,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					// (h-auto) and top-align the chevron; the parent decides how much room it gets
 					className={cn(
 						restrictValueSize ? 'max-w-[400px]' : 'max-w-full',
-						'min-w-0 justify-between font-mono',
+						'min-w-0 justify-between',
+						// the placeholder reads like ComboBox's, the selection in mono
+						displayValues.length > 0 ? 'font-mono' : 'font-normal',
 						showChips && 'h-auto min-h-9 items-start py-1',
 						props.className,
 					)}

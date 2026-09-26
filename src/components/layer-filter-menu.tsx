@@ -11,8 +11,10 @@ import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as VEH from '@/models/vehicles.models'
+import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 
+import ComboBox from './combo-box/combo-box.tsx'
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
@@ -25,7 +27,7 @@ const TEAM_FIELDS = MATCHUP_ROWS.flatMap((row) => [row.team1, row.team2])
 
 /**
  * The constraint rail: one row per field with a symbol-width operator and a value select, and the team
- * fields folded into one matchup node (a select per side per dimension, swap between the sides).
+ * fields folded into one matchup node (an operator per dimension, a select per side, swap between the sides).
  */
 export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp; className?: string }) {
 	const fields = Zus.useStore(
@@ -144,8 +146,9 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 		for (const field of TEAM_FIELDS) LayerFilterMenuPrt.Actions.resetFilter(props.stores, field)
 	}
 	return (
-		<div className="grid grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
+		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
 			<span className="text-xs text-text-2 whitespace-nowrap">{tr.text(F_Msgs.matchup())}</span>
+			<span />
 			<div className="col-span-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-2xs font-bold text-text-3 fd-cond uppercase tracking-wider">
 				<span>{tr.text(L_Msgs.teamName(1))}</span>
 				<Button
@@ -169,21 +172,79 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 				<Icons.Trash />
 			</Button>
 			{rows.map((row) => (
-				<React.Fragment key={row.label}>
-					<span className="text-xs text-text-2 truncate" title={row.label}>
-						{row.label}
-					</span>
-					<MatchupCell field={row.team1} label={row.label} stores={props.stores} />
-					<MatchupCell field={row.team2} label={row.label} stores={props.stores} />
-					<span />
-				</React.Fragment>
+				<MatchupRow key={row.label} row={row} stores={props.stores} />
 			))}
 		</div>
 	)
 }
 
-function MatchupCell(props: { field: string; label: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
-	const { ref, possibleValues, comp } = useMenuItem(props.field, props.stores)
+type MatchupRowDef = (typeof MATCHUP_ROWS)[number]
+
+function MatchupRow(props: { row: MatchupRowDef; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
+	const { row } = props
+	const team1 = useMenuItem(row.team1, props.stores)
+	const team2 = useMenuItem(row.team2, props.stores)
+	const hasValue = F.editableCompHasValue(team1.comp) || F.editableCompHasValue(team2.comp)
+	return (
+		<>
+			<span className="text-xs text-text-2 truncate" title={row.label}>
+				{row.label}
+			</span>
+			<MatchupOperator row={row} comp={team1.comp} highlight={hasValue} stores={props.stores} />
+			<MatchupCell label={row.label} item={team1} field={row.team1} stores={props.stores} />
+			<MatchupCell label={row.label} item={team2} field={row.team2} stores={props.stores} />
+			<Button
+				data-empty={!hasValue}
+				variant="ghost"
+				size="icon-sm"
+				className={CLEAR_BUTTON}
+				title={tr.text(F_Msgs.clearFilter(row.label))}
+				onClick={() => {
+					team1.clear()
+					team2.clear()
+				}}
+			>
+				<Icons.Trash />
+			</Button>
+		</>
+	)
+}
+
+// both sides of a row share team 1's operator, since setTeamRowOperator keeps them in step
+function MatchupOperator(props: {
+	row: MatchupRowDef
+	comp: F.EditableCompNode
+	highlight: boolean
+	stores: LayerFilterMenuPrt.PredicatedKeyProp
+}) {
+	const cfg = ConfigClient.useEffectiveColConfig()
+	const anchor = props.comp.args[0] as F.EditableScalarArg | undefined
+	const opOptions = F.compOpSelectOptions(anchor ? F.argValueDomain(anchor, cfg) : undefined)
+	return (
+		<ComboBox
+			allowEmpty={false}
+			className={cn(
+				'w-9 justify-center gap-0.5 px-0! font-mono text-text-2 [&>span]:overflow-visible [&_svg]:ml-0 [&_svg]:size-3',
+				props.highlight && 'text-pri-hi',
+			)}
+			title={tr.text(F_Msgs.operatorPicker())}
+			value={F.compOpSelectionKey(props.comp)}
+			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
+			onSelect={(key) => {
+				const option = opOptions.find((o) => o.key === key)
+				if (option) LayerFilterMenuPrt.Actions.setTeamRowOperator(props.stores, [props.row.team1, props.row.team2], option)
+			}}
+		/>
+	)
+}
+
+function MatchupCell(props: {
+	field: string
+	label: string
+	item: ReturnType<typeof useMenuItem>
+	stores: LayerFilterMenuPrt.PredicatedKeyProp
+}) {
+	const { ref, possibleValues, comp } = props.item
 	return (
 		<Comparison
 			ref={ref}

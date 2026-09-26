@@ -1459,6 +1459,8 @@ export function Comparison(props: {
 					onSetAllValuesAllowed={props.onSetAllValuesAllowed}
 					onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
 					column={optionsColumn}
+					title={valuesAriaLabel}
+					placeholder={valuesEmptyLabel}
 					value={value as string | undefined | null}
 					setValue={(v) => setSlotValue(index, v)}
 				/>,
@@ -1643,6 +1645,9 @@ export function StringEqConfig<T extends string | null>(props: {
 	setValue: (value: T | undefined) => void
 	className?: string
 	lockOnSingleOption?: boolean
+	// override naming the picker by its column, as StringInConfig's do
+	title?: string
+	placeholder?: string
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
@@ -1701,7 +1706,8 @@ export function StringEqConfig<T extends string | null>(props: {
 			ref={props.ref}
 			allowEmpty
 			className={props.className}
-			title={(props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
+			title={props.title ?? (props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
+			placeholder={props.placeholder}
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
