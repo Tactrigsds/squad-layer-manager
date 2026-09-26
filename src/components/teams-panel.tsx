@@ -20,6 +20,7 @@ import { useDebounced } from '@/hooks/use-debounce'
 import * as Browser from '@/lib/browser'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
+import * as FitCols from '@/lib/fitted-columns'
 import * as MapUtils from '@/lib/map-utils'
 import { useNow } from '@/lib/react.ts'
 import { cn } from '@/lib/utils.ts'
@@ -241,7 +242,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 			</div>
 			<StickyGroup stickyRef={headerRef}>
 				{isDesktop ? (
-					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)]">
+					<div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)]">
 						{([leftTeam, rightTeam] as const).map((teamId, i) => (
 							// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
 							<TeamPlayerTable key={teamId} teamId={teamId} className={i === 1 ? 'pl-1.5' : undefined} stores={props.stores} />
@@ -1149,8 +1150,14 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 			return (
-				<span className="inline-flex items-center gap-1">
-					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+				<span className="flex min-w-0 items-center gap-1" title={row.original.ids.username}>
+					<PlayerDisplay
+						stores={meta.stores}
+						player={row.original}
+						matchId={meta.matchId}
+						disableContextMenu
+						className="min-w-0 items-center [&>button]:truncate"
+					/>
 					<SwitchRequestIcon playerId={SM.PlayerIds.getPlayerId(row.original.ids)} teamId={row.original.teamId} stores={meta.stores} />
 					{row.original.inAdminCam && (
 						<span
@@ -1580,8 +1587,8 @@ function SquadGroupHeaderRow(props: {
 			) : (
 				<span className="font-semibold">{tr.text(SM_Msgs.unassignedSquad())}</span>
 			)}
-			<span className="text-muted-foreground">{tr.text(SM_Msgs.squadRowCount(shownCount, totalSize))}</span>
-			{creatorName && <span className="text-muted-foreground">{tr.text(SM_Msgs.createdBy(creatorName))}</span>}
+			<span className="shrink-0 text-muted-foreground">{tr.text(SM_Msgs.squadRowCount(shownCount, totalSize))}</span>
+			{creatorName && <span className="min-w-0 truncate text-muted-foreground">{tr.text(SM_Msgs.createdBy(creatorName))}</span>}
 		</>
 	)
 	// combined table: keep the faction in its own cell so it lines up under the faction column
@@ -1611,7 +1618,7 @@ function SquadGroupHeaderRow(props: {
 			onClick={toggleCollapsed}
 		>
 			<TableCell colSpan={props.colSpan}>
-				<div className="flex items-center gap-2 text-xs">
+				<div className="flex items-center gap-2 overflow-hidden text-xs">
 					{checkbox}
 					{labelContent}
 					{chevron}
@@ -1644,6 +1651,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	stores: SquadServerFrame.KeyProp
 	// when provided, and when the sort permits it, players are grouped under squad-separator headers
 	getSquadGroup?: (player: T) => SquadGroupInfo | null
+	columnFit?: FitCols.Spec
 	className?: string
 }) {
 	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
@@ -1700,6 +1708,15 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	}, [stores, visibleKey, displayedIds])
 	React.useEffect(() => () => SquadServerFrame.Actions.clearVisiblePlayers(stores, visibleKey), [stores, visibleKey])
 	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
+	const tableRef = React.useRef<HTMLTableElement | null>(null)
+	FitCols.useFittedColumns(tableRef, props.columnFit, [
+		rows,
+		columnVisibility,
+		sorting,
+		squadCollapse,
+		statsMetric,
+		props.meta.statsMayBeInaccurate,
+	])
 
 	const renderPhoneCells = (row: Row<T>) => {
 		const cells = row.getVisibleCells()
@@ -1869,12 +1886,21 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	return (
 		<StickyGroup stickyRef={headersRef}>
 			<Table
+				ref={tableRef}
 				aria-label={props.label}
 				className={cn(
 					'[&_th]:px-1.5 [&_td]:px-1.5 max-phone:[&_td]:px-2.5 [&_th]:h-[calc(var(--row)-4px)] [&_td]:h-[calc(var(--row)-4px)] [&_td]:text-xs',
+					props.columnFit && 'table-fixed [&_td]:overflow-hidden [&_td]:text-ellipsis [&_th]:overflow-hidden',
 					props.className,
 				)}
 			>
+				{props.columnFit && (
+					<colgroup>
+						{table.getVisibleLeafColumns().map((column) => (
+							<col key={column.id} data-col-id={column.id} />
+						))}
+					</colgroup>
+				)}
 				<TableHeader ref={headersRef} className="bg-panel-hi">
 					{table.getHeaderGroups().map((headerGroup) => (
 						<TableRow key={headerGroup.id}>
@@ -1928,6 +1954,14 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 			)}
 		</StickyGroup>
 	)
+}
+
+const TEAM_TABLE_COLUMN_FIT: FitCols.Spec = {
+	shrinkable: [
+		{ id: 'name', minEm: 7 },
+		{ id: 'group', minEm: 5.5 },
+		{ id: 'role', minEm: 5 },
+	],
 }
 
 function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; stores: SquadServerFrame.KeyProp }) {
@@ -1999,6 +2033,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 			)}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
+			columnFit={TEAM_TABLE_COLUMN_FIT}
 			className={props.className}
 		/>
 	)

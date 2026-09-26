@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { LAYERS, role } from '../harness/arrange'
+import { LAYERS, queue, role } from '../harness/arrange'
 import * as Inspect from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
@@ -83,6 +83,8 @@ beforeAll(async () => {
 		admins: [ADMIN_STEAM_ID],
 		adminSteamIds: [ADMIN_STEAM_ID],
 		users: [OUTSIDER],
+		// seeded, so no queue-item generation is still running when the plugin edits the queue
+		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 		globalSettings: (settings) => {
 			settings.rbac.roles['plugin-rpc-outsider'] = {
 				...role(['site:authorized', 'squad-server:view'], { users: [OUTSIDER] }),
