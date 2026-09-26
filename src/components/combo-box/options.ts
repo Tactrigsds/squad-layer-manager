@@ -201,7 +201,8 @@ export type GroupingBarEntry = { grouping: ResolvedGrouping; live: ResolvedGroup
 
 // every grouping worth showing a control for, resolved against the options actually present. A grouping
 // whose options all land in one group narrows nothing, so it stays out of the bar rather than offering a
-// choice between "all" and the same thing.
+// choice between "all" and the same thing. One whose live options land in one group while excluded ones sit
+// in others does narrow: it opens on that sole live group, hiding the dead rows until "all" is picked.
 export function groupingBarEntries<T extends string | null>(
 	options: ComboBoxOption<T>[],
 	groupings: readonly ResolvedGrouping[],
@@ -210,16 +211,18 @@ export function groupingBarEntries<T extends string | null>(
 	const entries: GroupingBarEntry[] = []
 	for (const grouping of groupings) {
 		const live = liveGroups(options, grouping)
-		if (live.length < 2) continue
-		entries.push({ grouping, live, control: controlFor(grouping, live.length), narrowed: narrowedGroup(selection, grouping, live) })
+		if (live.length === 0) continue
+		const soleLive = live.length === 1 ? live[0].key : undefined
+		if (soleLive !== undefined && !options.some((o) => groupsOf(o, grouping.key).some((group) => group !== soleLive))) continue
+		const picked = selection[grouping.key] ?? soleLive ?? ALL_GROUPS
+		entries.push({ grouping, live, control: controlFor(grouping, live.length), narrowed: narrowedGroup(picked, live) })
 	}
 	return entries
 }
 
 // a grouping narrows only while its pick names a live group, so a stale or defaulted pick degrades to
 // "all" instead of showing an empty list
-export function narrowedGroup(selection: GroupSelection, grouping: ResolvedGrouping, live: readonly ResolvedGroup[]): string {
-	const picked = selection[grouping.key] ?? ALL_GROUPS
+function narrowedGroup(picked: string, live: readonly ResolvedGroup[]): string {
 	return live.some((group) => group.key === picked) ? picked : ALL_GROUPS
 }
 

@@ -287,4 +287,15 @@ describe('grouping controls', () => {
 		expect(groupingBarEntries(options, groupings, { [COLL]: 'RS' })[0].narrowed).toBe(ALL_GROUPS)
 		expect(groupingBarEntries(options, groupings, { [COLL]: 'GC' })[0].narrowed).toBe('GC')
 	})
+
+	it('opens on the sole group with live options when excluded ones sit in others', () => {
+		const options = normalize([
+			{ value: 'a', groups: coll('OWI') },
+			{ value: 'b', groups: coll('GC'), sortLast: true },
+			{ value: 'c', groups: coll('RS'), disabled: true },
+		])
+		const groupings = resolveGroupings([{ key: COLL, label: 'Collection', groups: ['OWI', 'GC', 'RS'] }])
+		expect(groupingBarEntries(options, groupings, {})[0].narrowed).toBe('OWI')
+		expect(groupingBarEntries(options, groupings, { [COLL]: ALL_GROUPS })[0].narrowed).toBe(ALL_GROUPS)
+	})
 })
