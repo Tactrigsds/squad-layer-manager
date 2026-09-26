@@ -66,6 +66,7 @@ import * as m0111 from './0111_chat_channel_index'
 import * as m0112 from './0112_teamkill_warns_plugin'
 import * as m0113 from './0113_match_combat_stats'
 import * as m0114 from './0114_history_query_permission'
+import * as m0115 from './0115_server_event_index'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -119,4 +120,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0112_teamkill_warns_plugin', up: m0112.up },
 	{ name: '0113_match_combat_stats', up: m0113.up },
 	{ name: '0114_history_query_permission', up: m0114.up },
+	{ name: '0115_server_event_index', up: m0115.up },
 ]

@@ -81,8 +81,8 @@ async function hotFloorOrdinal(ctx: C.Db, serverId: string, minHotMatches: numbe
  *
  * The archive is the source of truth for a compacted match: `loadMatchEvents` reads back exactly the rows
  * that went in, so no caller can tell the difference. What survives compaction relationally is the part
- * searches run on -- playerEventIndex for the player dimension, matchHistory for the layer dimension --
- * and both are written when the event is recorded, not here.
+ * searches run on -- serverEventIndex for each event, playerEventIndex for the player dimension, matchHistory
+ * for the layer dimension -- and all are written when the event is recorded, not here.
  */
 export const compactAgedMatches = Instr.spanOp(
 	'compactAgedMatches',

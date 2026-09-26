@@ -10,17 +10,17 @@ import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
 import type * as C from '@/server/context'
 
-// Compiles a history query's node tree to sql. The whole vocabulary is projected -- playerEventIndex,
-// chatSearch and matchHistory hold every filterable dimension -- so no query ever unpacks an archived match
-// to decide membership; bodies are read only to display a page (history.server.ts).
+// Compiles a history query's node tree to sql. The whole vocabulary is projected -- serverEventIndex,
+// playerEventIndex, chatSearch and matchHistory hold every filterable dimension -- so no query ever unpacks an
+// archived match to decide membership; bodies are read only to display a page (history.server.ts).
 //
 // Shared rather than server-owned because it has callers in two execution contexts: the query engine on its
 // worker thread (history-query.worker.ts, which runs the queries these conditions feed) and the main thread,
 // where history-resolve rewrites layer nodes.
 //
-// Semantics are per-event, not per-index-row: `and[player = X, player = Y]` matches an event involving both.
-// Player-valued predicates therefore compile to serverEventId subselects rather than row conditions, since
-// the player is the one dimension that varies between an event's index rows.
+// Semantics are per-event: `and[player = X, player = Y]` matches an event involving both. Events are paged
+// and counted over serverEventIndex, one row each, and player-valued predicates compile to serverEventId
+// subselects over playerEventIndex, the one table with a row per player.
 
 // caps on how many ids a resolved set may carry into an IN (via json_each, so these are memory caps, not
 // sqlite variable limits)
@@ -30,6 +30,7 @@ const MAX_NAME_MATCHES = 5_000
 const MAX_SUBQUERY_DEPTH = 3
 
 export const pei = Schema.playerEventIndex
+export const sei = Schema.serverEventIndex
 export const ae = Schema.appEvents
 export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
@@ -320,12 +321,12 @@ export async function resolveArtifacts(
 					rows.map((r) => r.id),
 				)
 			} else if (node.target === 'players') {
-				const cond = compileEventCond(node.filter, inner.artifacts)
+				const cond = compileEventCond(node.filter, inner.artifacts, pei)
 				const rows = await ctx
 					.db()
 					.selectDistinct({ playerId: pei.playerId })
 					.from(pei)
-					.where(E.and(eventBoundsCond(bounds), cond))
+					.where(E.and(E.ne(pei.assocType, GAME_PARTICIPANT), eventBoundsCond(bounds, pei), cond))
 					.limit(MAX_SUBQUERY_PLAYERS + 1)
 				if (rows.length > MAX_SUBQUERY_PLAYERS)
 					return { code: 'err:too-broad', message: 'a players sub-query matched too many players' }
@@ -382,13 +383,17 @@ function mustColumnKey(comp: F.CompNode): HQ.ColumnKey {
 
 export const GAME_PARTICIPANT = SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']
 
-export function eventBoundsCond(bounds: Bounds): E.SQL | undefined {
+// Either server-event table: serverEventIndex, one row per event, or playerEventIndex, one row per event and
+// player, where a query aggregates by player. They share every event-level column by name.
+export type EventTable = typeof sei | typeof pei
+
+export function eventBoundsCond(bounds: Bounds, t: EventTable = sei): E.SQL | undefined {
 	return E.and(
-		bounds.serverIds ? inJsonSet(pei.serverId, bounds.serverIds) : undefined,
-		bounds.from !== undefined ? E.gte(pei.time, new Date(bounds.from)) : undefined,
-		bounds.to !== undefined ? E.lte(pei.time, new Date(bounds.to)) : undefined,
-		bounds.idMin !== undefined ? E.gte(pei.serverEventId, bounds.idMin) : undefined,
-		bounds.idMax !== undefined ? E.lte(pei.serverEventId, bounds.idMax) : undefined,
+		bounds.serverIds ? inJsonSet(t.serverId, bounds.serverIds) : undefined,
+		bounds.from !== undefined ? E.gte(t.time, new Date(bounds.from)) : undefined,
+		bounds.to !== undefined ? E.lte(t.time, new Date(bounds.to)) : undefined,
+		bounds.idMin !== undefined ? E.gte(t.serverEventId, bounds.idMin) : undefined,
+		bounds.idMax !== undefined ? E.lte(t.serverEventId, bounds.idMax) : undefined,
 	)
 }
 
@@ -496,15 +501,15 @@ function combineBlock(type: F.BlockType, children: (E.SQL | undefined)[]): E.SQL
 }
 
 /**
- * The tree as a condition over playerEventIndex rows, with per-event semantics for the player-valued nodes
- * (they vary between an event's rows, so they compile to serverEventId subselects; everything else is
- * constant across an event's rows and compiles directly).
+ * The tree as a condition over the rows of `t`, with per-event semantics for the player-valued nodes: they
+ * compile to serverEventId subselects over playerEventIndex, so on its rows they hold for the event as a whole
+ * rather than for the one row. Everything else is constant across an event and compiles directly.
  */
-export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL | undefined {
+export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: EventTable = sei): E.SQL | undefined {
 	if (HQ.isBlockNode(node)) {
 		return combineBlock(
 			node.type,
-			node.children.map((child) => compileEventCond(child, art)),
+			node.children.map((child) => compileEventCond(child, art, t)),
 		)
 	}
 	if (!HQ.isCompNode(node)) {
@@ -512,20 +517,20 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 			case 'match-layer':
 			case 'match-ids': {
 				const matchIds = art.matchSets.get(node) ?? []
-				const cond = matchIds.length === 0 ? sql`0 = 1` : inJsonSet(pei.matchId, matchIds)
+				const cond = matchIds.length === 0 ? sql`0 = 1` : inJsonSet(t.matchId, matchIds)
 				return node.neg ? negate(cond) : cond
 			}
 			case 'subquery': {
 				if (node.target === 'matches') {
 					const matchIds = art.matchSets.get(node) ?? []
-					const cond = matchIds.length === 0 ? sql`0 = 1` : inJsonSet(pei.matchId, matchIds)
+					const cond = matchIds.length === 0 ? sql`0 = 1` : inJsonSet(t.matchId, matchIds)
 					return node.neg ? negate(cond) : cond
 				}
 				const playerIds = art.playerSets.get(node) ?? []
 				const cond =
 					playerIds.length === 0
 						? sql`0 = 1`
-						: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${inJsonSet(pei.playerId, playerIds)})`
+						: sql`${t.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${pei.assocType} != ${GAME_PARTICIPANT} AND ${inJsonSet(pei.playerId, playerIds)})`
 				return node.neg ? negate(cond) : cond
 			}
 			default:
@@ -536,56 +541,56 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 	const column = mustColumnKey(comp)
 	switch (column) {
 		case 'time':
-			return compileComp(comp, pei.time, id)
+			return compileComp(comp, t.time, id)
 		case 'eventId':
-			return compileComp(comp, pei.serverEventId, id)
+			return compileComp(comp, t.serverEventId, id)
 		case 'server':
-			return compileComp(comp, pei.serverId, id)
+			return compileComp(comp, t.serverId, id)
 		case 'event.type':
-			return compileComp(comp, pei.type, id)
+			return compileComp(comp, t.type, id)
 		case 'event.variant':
-			return compileComp(comp, pei.variant, id)
+			return compileComp(comp, t.variant, id)
 		case 'event.damageSource': {
 			const ids = art.damageSourceIds.get(node) ?? []
 			const hasNull = compValueList(comp).includes(null)
 			const parts: E.SQL[] = []
-			if (ids.length > 0) parts.push(E.inArray(pei.damageSourceId, ids) as E.SQL)
-			if (hasNull) parts.push(sql`${pei.damageSourceId} IS NULL`)
+			if (ids.length > 0) parts.push(E.inArray(t.damageSourceId, ids) as E.SQL)
+			if (hasNull) parts.push(sql`${t.damageSourceId} IS NULL`)
 			const cond = parts.length === 0 ? sql`0 = 1` : (E.or(...parts) as E.SQL)
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'player':
-			return eventPlayerCond(comp, art.playerValues.get(node) ?? [])
+			return eventPlayerCond(t, comp, art.playerValues.get(node) ?? [])
 		// the same predicate narrowed to one end of the kill. Row-scoped inside the subselect on purpose: an
 		// assocType compared against the outer row would match the attacker's row of an event the victim named,
 		// which is the opposite of what was asked
 		case 'event.attacker':
-			return eventPlayerCond(comp, art.playerValues.get(node) ?? [], 'attacker')
+			return eventPlayerCond(t, comp, art.playerValues.get(node) ?? [], 'attacker')
 		case 'event.victim':
-			return eventPlayerCond(comp, art.playerValues.get(node) ?? [], 'victim')
+			return eventPlayerCond(t, comp, art.playerValues.get(node) ?? [], 'victim')
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
-			const cond = sql`${pei.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
+			const cond = sql`${t.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'chat.channel':
-			return compileComp(comp, pei.channel, id)
+			return compileComp(comp, t.channel, id)
 		case 'match.id':
-			return compileComp(comp, pei.matchId, id)
+			return compileComp(comp, t.matchId, id)
 		case 'match.outcome':
-			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.setBy':
-			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.ticketDiff':
-			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.kills':
 		case 'match.wounds':
 		case 'match.deaths':
 		case 'match.killDiff':
-			return compileComp(comp, sql`(SELECT ${COMBAT_EXPRS[column](mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${COMBAT_EXPRS[column](mh)} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.duration':
-			return compileComp(comp, sql`(SELECT ${durationOf(mh)} FROM ${mh} WHERE ${mh.id} = ${pei.matchId})`, id)
+			return compileComp(comp, sql`(SELECT ${durationOf(mh)} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'layer.layer':
 		case 'layer.map':
 		case 'layer.gamemode':
@@ -593,9 +598,7 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 		case 'layer.unit': {
 			const layerIds = art.layerSets.get(node) ?? []
 			const cond =
-				layerIds.length === 0
-					? sql`0 = 1`
-					: sql`${pei.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.layerId, layerIds)})`
+				layerIds.length === 0 ? sql`0 = 1` : sql`${t.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.layerId, layerIds)})`
 			return comp.neg ? negate(cond) : cond
 		}
 		// an app-event dimension a server event has no counterpart for: it records what the game did, which is
@@ -608,13 +611,14 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 }
 
 // "an event this player is named in", optionally only where they are named as one end of a kill. Per-event,
-// not per-row: an event's rows differ by player, so the condition has to hold for the event as a whole.
-function eventPlayerCond(comp: F.CompNode, playerIds: string[], assocType?: HQ.PlayerRole): E.SQL {
-	const assoc = assocType === undefined ? sql`` : sql`${pei.assocType} = ${assocType} AND `
+// not per-row: an event's rows differ by player, so the condition has to hold for the event as a whole. Being on
+// the roster a RESET restates is not being named in it, or every player's history would hold every RESET.
+function eventPlayerCond(t: EventTable, comp: F.CompNode, playerIds: string[], assocType?: HQ.PlayerRole): E.SQL {
+	const assoc = assocType === undefined ? sql`${pei.assocType} != ${GAME_PARTICIPANT}` : sql`${pei.assocType} = ${assocType}`
 	const cond =
 		playerIds.length === 0
 			? sql`0 = 1`
-			: sql`${pei.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${assoc}${inJsonSet(pei.playerId, playerIds)})`
+			: sql`${t.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${assoc} AND ${inJsonSet(pei.playerId, playerIds)})`
 	return comp.neg ? negate(cond) : cond
 }
 
@@ -721,15 +725,61 @@ function appEventUserCond(userIds: string[]): E.SQL {
 	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'user' AND ${inJsonSet(aea.value, userIds)})`
 }
 
+const EVENT_VALUED_COLUMNS = new Set<HQ.ColumnKey>([
+	'eventId',
+	'player',
+	'user',
+	'event.type',
+	'event.variant',
+	'event.damageSource',
+	'chat.message',
+	'chat.channel',
+	'event.attacker',
+	'event.victim',
+])
+
+function hasEventValuedLeaf(node: HQ.Node): boolean {
+	if (HQ.isBlockNode(node)) return node.children.some(hasEventValuedLeaf)
+	if (!HQ.isCompNode(node)) return false
+	return EVENT_VALUED_COLUMNS.has(mustColumnKey(node as F.CompNode))
+}
+
+// The match holds at least one event, of either family, satisfying `node` as a whole. Correlated, so each
+// match's search walks its own events through the matchId index and stops at the first hit: on production a
+// broad filter like the DEFAULT feed took 3ms this way against 210ms for a DISTINCT over every event. A rare
+// filter walks each match to the end, which is the same scan the DISTINCT form always does.
+function matchHasEvent(node: HQ.Node, art: ResolvedArtifacts, bounds: Bounds): E.SQL {
+	const inner = E.and(eventBoundsCond({ ...bounds, serverIds: undefined }), compileEventCond(node, art))
+	const appInner = E.and(appEventBoundsCond({ ...bounds, serverIds: undefined }), compileAppEventCond(node, art))
+	return E.or(
+		sql`EXISTS (SELECT 1 FROM ${sei} WHERE ${sei.matchId} = ${mh.id}${inner ? sql` AND ${inner}` : sql``})`,
+		sql`EXISTS (SELECT 1 FROM ${ae} WHERE ${ae.matchId} = ${mh.id}${appInner ? sql` AND ${appInner}` : sql``})`,
+	) as E.SQL
+}
+
 /**
- * The tree as a condition over matchHistory rows. Event-valued leaves get exists-semantics: the match has
- * at least one event satisfying that leaf.
+ * The tree as a condition over matchHistory rows: the match passes its match-valued nodes and holds an event
+ * passing the event-valued ones. A block holding an event-valued leaf is asked of one event as a whole, since
+ * exists does not distribute over negation: `nor[kill, chat]` means "an event that is neither", where
+ * per-leaf it would mean "a match with no kills and no chat".
  */
 export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: Bounds): E.SQL | undefined {
 	if (HQ.isBlockNode(node)) {
-		return combineBlock(
-			node.type,
-			node.children.map((child) => compileMatchCond(child, art, bounds)),
+		if (!hasEventValuedLeaf(node)) {
+			return combineBlock(
+				node.type,
+				node.children.map((child) => compileMatchCond(child, art, bounds)),
+			)
+		}
+		const semantics = F.BLOCK_TYPE_SEMANTICS[node.type]
+		if (!semantics.conjunction || semantics.negated) return matchHasEvent(node, art, bounds)
+		// a plain conjunction keeps its match-valued children on the match row, where they are cheap
+		const eventValued = node.children.filter(hasEventValuedLeaf)
+		return E.and(
+			...node.children.filter((child) => !hasEventValuedLeaf(child)).map((child) => compileMatchCond(child, art, bounds)),
+			eventValued.length === 1
+				? compileMatchCond(eventValued[0], art, bounds)
+				: matchHasEvent({ type: 'and', children: eventValued }, art, bounds),
 		)
 	}
 	if (!HQ.isCompNode(node)) {
@@ -782,8 +832,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
-			const cond = sql`${mh.id} IN (SELECT ${cs.matchId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
-			return comp.neg ? negate(cond) : cond
+			if (comp.neg) return matchHasEvent(node, art, bounds)
+			return sql`${mh.id} IN (SELECT ${cs.matchId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
 		}
 		case 'layer.layer':
 		case 'layer.map':
@@ -794,7 +844,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			const cond = layerIds.length === 0 ? sql`0 = 1` : inJsonSet(mh.layerId, layerIds)
 			return comp.neg ? negate(cond) : cond
 		}
-		// event-valued leaves: the match contains a matching event, of either family
+		// the leaf's own negation is per-event, like everywhere else: `player != X` is a match with an event X
+		// is not in, not a match X never played
 		case 'eventId':
 		case 'player':
 		case 'user':
@@ -803,15 +854,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'event.damageSource':
 		case 'chat.channel':
 		case 'event.attacker':
-		case 'event.victim': {
-			const inner = E.and(eventBoundsCond({ ...bounds, serverIds: undefined }), compileEventCond(node, art))
-			const appInner = E.and(appEventBoundsCond({ ...bounds, serverIds: undefined }), compileAppEventCond(node, art))
-			const cond = E.or(
-				sql`${mh.id} IN (SELECT DISTINCT ${pei.matchId} FROM ${pei} ${inner ? sql`WHERE ${inner}` : sql``})`,
-				sql`${mh.id} IN (SELECT DISTINCT ${ae.matchId} FROM ${ae} ${appInner ? sql`WHERE ${appInner}` : sql``})`,
-			) as E.SQL
-			return comp.neg ? negate(cond) : cond
-		}
+		case 'event.victim':
+			return matchHasEvent(node, art, bounds)
 		default:
 			assertNever(column)
 	}

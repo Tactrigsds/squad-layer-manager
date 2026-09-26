@@ -352,6 +352,35 @@ describe('the event archive', () => {
 		expect(CHAT.Wire.decode(without.events!).some((e) => e.type === 'NEW_GAME')).toBe(false)
 	})
 
+	it('finds the events that name no player', async () => {
+		const db = app.readDb()
+		let recorded: number
+		try {
+			const unindexed = db
+				.prepare(`SELECT count(*) AS n FROM serverEvents WHERE id NOT IN (SELECT serverEventId FROM serverEventIndex)`)
+				.get() as { n: number }
+			expect(unindexed.n).toBe(0)
+			recorded = (db.prepare(`SELECT count(*) AS n FROM serverEventIndex WHERE type = 'NEW_GAME'`).get() as { n: number }).n
+		} finally {
+			db.close()
+		}
+		expect(recorded).toBeGreaterThan(0)
+
+		const events = await client.history.query({ query: { types: ['NEW_GAME'] }, format: 'wire' })
+		expect(events.code).toBe('ok')
+		if (events.code !== 'ok' || events.type !== 'events') return
+		expect(events.total).toBe(recorded)
+		const decoded = CHAT.Wire.decode(events.events!)
+		expect(decoded.length).toBeGreaterThan(0)
+		expect(decoded.every((e) => e.type === 'NEW_GAME')).toBe(true)
+
+		const matches = await client.history.query({ query: { type: 'matches', types: ['NEW_GAME'] } })
+		expect(matches.code).toBe('ok')
+		if (matches.code !== 'ok' || matches.type !== 'matches') return
+		expect(matches.total).toBeGreaterThan(0)
+		for (const match of matches.matches) expect(matches.eventCounts[match.historyEntryId]).toBeGreaterThan(0)
+	})
+
 	// App events are SLM's own actions, indexed in appEvents plus its association sidecar rather than in
 	// playerEventIndex, and merged into the same result page. The two families overlap on a handful of type
 	// names, and a search for one deliberately gets both.
@@ -599,6 +628,14 @@ describe('the event archive', () => {
 			const res = await client.history.query({ query: { type, killsMin: 0, killDiffMax: 1000 } })
 			expect(res.code, `${type} with a scoreline bound`).toBe('ok')
 		}
+
+		// The DEFAULT feed is a `nor` over event types, kills among them. A match passes it by holding one event
+		// that is none of those, not by holding no kills at all, so a match with a scoreline still passes.
+		const feed = await client.history.query({ query: { type: 'matches', feed: 'DEFAULT', killsMin: 1 } })
+		expect(feed.code).toBe('ok')
+		if (feed.code !== 'ok' || feed.type !== 'matches') return
+		expect(feed.total).toBeGreaterThan(0)
+		for (const match of feed.matches) expect(feed.eventCounts[match.historyEntryId] ?? 0).toBeGreaterThan(0)
 	})
 
 	// the player field accepts a name, so the picker's list has to resolve to the same ids the filter does
