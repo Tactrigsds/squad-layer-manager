@@ -243,6 +243,36 @@ export const playerEventIndex = sqliteTable(
 	}),
 )
 
+// One row per server event, player or not: what the history engine pages, counts and filters events on. The
+// event-level columns repeat playerEventIndex's under the same names, so one compiler serves both tables; the
+// player dimension stays there and is reached by serverEventId. Events are immutable, so the copies cannot drift.
+export const serverEventIndex = sqliteTable(
+	'serverEventIndex',
+	{
+		// serverEvents.id, and the rowid. Not a reference, for the same reason as playerEventIndex.serverEventId.
+		serverEventId: integer('serverEventId').primaryKey(),
+		time: timestamp('time').notNull(),
+		matchId: integer('matchId')
+			.notNull()
+			.references(() => matchHistory.id, { onDelete: 'cascade' }),
+		serverId: text('serverId')
+			.notNull()
+			.references(() => servers.id, { onDelete: 'cascade' }),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		damageSourceId: integer('damageSourceId').references(() => damageSources.id),
+		variant: text('variant'),
+		channel: text('channel'),
+	},
+	// Measured on production (1.0M events): the table is 63MB, time 16MB, matchId 12MB, (type, time) 32MB. The
+	// last turns a page of a rare type (NEW_GAME, ~1 in 1500) from a 46ms scan into a 1ms seek, and its total from
+	// 112ms into 2ms, a gap that grows with the table.
+	(table) => ({
+		timeIndex: index('serverEventIndexTimeIndex').on(table.time),
+		matchIdIndex: index('serverEventIndexMatchIdIndex').on(table.matchId),
+		typeTimeIndex: index('serverEventIndexTypeTimeIndex').on(table.type, table.time),
+	}),
+)
+
 // What an app event is about, one row per value: the players it names, the layers it names. Generic over the
 // dimension rather than a table per kind, because both have the same query shape and the write path is one walk
 // over the event's meta (see event-meta.models.ts) -- a third dimension is an extractor and a new `dimension`

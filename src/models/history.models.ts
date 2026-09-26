@@ -534,9 +534,8 @@ export function parseSearchParams(params: URLSearchParams): Search {
  * Close rather than exact. The results also show the teamless chat and the undrawn event types the log leaves
  * out, and ADMIN differs as feedFilterNode says. The log shows its pinned rows (CHAT.isPinnedSystemEvent) under
  * every filter, where the results keep them only under ALL and DEFAULT, apart from each match's NEW_GAME.
- * "Selected Only" is not carried at all: `players` also matches a
- * player's game-participant rows and leaves out app events they were the actor of, which is a different set
- * from the log's.
+ * "Selected Only" is not carried at all: `players` leaves out app events a
+ * player was the actor of, which is a different set from the log's.
  */
 export function activityLogQuery(args: { serverId: string; matchId: number; feed: CHAT.SecondaryFilterState }): Query {
 	return {
@@ -599,7 +598,7 @@ const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
 // roster bookkeeping rather than anything a player did; only ALL shows them
-const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED']
+const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED', 'RESET', 'TEAMS_POLLED_UPDATE']
 
 const NOT_TEAMKILL: F.CompNode = {
 	type: 'eq',

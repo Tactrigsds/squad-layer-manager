@@ -1949,11 +1949,13 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 		.filter((e): e is AppEvents.AppEvent => e !== null && AppEvents.isFeedVisible(e))
 })
 
-// an index entry before its weapon name has been resolved to a weapons row, which needs the db
+// index entries before their weapon name has been resolved to a weapons row, which needs the db
 type PendingIndexRow = Omit<SchemaModels.NewPlayerEventIndexEntry, 'damageSourceId'> & { damageSource: string | null }
+type PendingEventIndexRow = Omit<SchemaModels.NewServerEventIndexEntry, 'damageSourceId'> & { damageSource: string | null }
 
 // the rows that hang off an event, and so can only be built once the insert has allocated its id
 type EventAssociationRows = {
+	eventIndexRow: PendingEventIndexRow
 	playerRows: SchemaModels.NewPlayer[]
 	playerIndexRows: PendingIndexRow[]
 	squadRows: SchemaModels.NewSquad[]
@@ -1975,6 +1977,18 @@ function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
 }
 
 function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): EventAssociationRows {
+	const eventIndexRow: PendingEventIndexRow = {
+		serverEventId: event.id,
+		time: new Date(event.time),
+		matchId: event.matchId,
+		serverId,
+		type: event.type,
+		// the event model calls this `weapon` because the log line does; see the damageSourceId comment in
+		// the schema for why the projection does not. Resolved to a damageSources row by insertAssociationRows.
+		damageSource: 'weapon' in event ? event.weapon : null,
+		variant: 'variant' in event ? event.variant : null,
+		channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
+	}
 	const playerRows: SchemaModels.NewPlayer[] = []
 	const playerIndexRows: PendingIndexRow[] = []
 	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
@@ -1998,11 +2012,9 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 			matchId: event.matchId,
 			serverId,
 			type: event.type,
-			// the event model calls this `weapon` because the log line does; see the damageSourceId comment in
-			// the schema for why the projection does not. Resolved to a damageSources row by insertAssociationRows.
-			damageSource: 'weapon' in event ? event.weapon : null,
-			variant: 'variant' in event ? event.variant : null,
-			channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
+			damageSource: eventIndexRow.damageSource,
+			variant: eventIndexRow.variant,
+			channel: eventIndexRow.channel,
 		})
 	}
 
@@ -2038,7 +2050,7 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 				}
 			: undefined
 
-	return { playerRows, playerIndexRows, squadRows, squadAssociationRows, chatSearchRow }
+	return { eventIndexRow, playerRows, playerIndexRows, squadRows, squadAssociationRows, chatSearchRow }
 }
 
 // blueprint name -> damageSources.id. Process-wide and never invalidated: the table is append-only and an id
@@ -2067,6 +2079,14 @@ async function internDamageSources(ctx: C.Db, names: (string | null)[]): Promise
 }
 
 async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
+	const { damageSource, ...eventIndexRow } = rows.eventIndexRow
+	const sourceIds = await internDamageSources(ctx, [damageSource])
+	await ctx
+		.db()
+		.insert(Schema.serverEventIndex)
+		.values({ ...eventIndexRow, damageSourceId: damageSource === null ? null : sourceIds.get(damageSource)! })
+		.onConflictDoNothing({ target: Schema.serverEventIndex.serverEventId })
+
 	if (rows.playerRows.length > 0) {
 		await ctx
 			.db()
@@ -2101,10 +2121,6 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 			return false
 		})
 		if (validRows.length > 0) {
-			const sourceIds = await internDamageSources(
-				ctx,
-				validRows.map((r) => r.damageSource),
-			)
 			await ctx
 				.db()
 				.insert(Schema.playerEventIndex)

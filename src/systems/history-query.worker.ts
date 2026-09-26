@@ -8,8 +8,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
-import * as F from '@/models/filter.models'
-import * as HQ from '@/models/history.models'
+import type * as HQ from '@/models/history.models'
 import type * as C from '@/server/context'
 import {
 	ae,
@@ -31,6 +30,7 @@ import {
 	resolveArtifacts,
 	resolveNamedPlayerIds,
 	resolvePlayerRefs,
+	sei,
 	ticketDiffOf,
 } from '@/systems/history-query.shared'
 import * as LayerData from '@/systems/layer-data.server'
@@ -47,7 +47,7 @@ const pei = Schema.playerEventIndex
 const mh = Schema.matchHistory
 
 // One hit: which event, in which match, when. Exactly one of the two ids is set -- the families are indexed
-// separately (playerEventIndex vs appEvents) and their ids are not even the same type.
+// separately (serverEventIndex vs appEvents) and their ids are not even the same type.
 export type EventHit = { matchId: number; time: Date } & (
 	| { serverEventId: number; appEventId?: undefined }
 	| { appEventId: string; serverEventId?: undefined }
@@ -80,21 +80,6 @@ function comparator(order: EventOrder) {
 	return order === 'newest' ? compareHits : (a: EventHit, b: EventHit) => -compareHits(a, b)
 }
 
-// A single positive player constraint under the root `and` also constrains which index rows can produce
-// hits, so it is added as a direct pk condition. Purely an optimization: the subselect the comp compiled to
-// stays, this just lets sqlite drive the scan off the pk instead of the whole index.
-export function playerAnchor(root: HQ.Node, art: ResolvedArtifacts): string[] | undefined {
-	if (!HQ.isBlockNode(root) || root.type !== 'and') return undefined
-	for (const child of root.children) {
-		if (!HQ.isCompNode(child)) continue
-		const comp = child as F.CompNode
-		if (comp.neg || F.compAnchorColumn(comp) !== 'player') continue
-		const playerIds = art.playerValues.get(child)
-		if (playerIds && playerIds.length > 0) return playerIds
-	}
-	return undefined
-}
-
 /**
  * One page of hits, merged from both event families.
  *
@@ -114,17 +99,14 @@ async function queryServerEventHits(
 	ctx: C.Db & CS.AbortSignal,
 	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number; order: EventOrder },
 ): Promise<EventHit[]> {
-	const anchor = playerAnchor(opts.node, opts.art)
 	const cursor = opts.cursor
 	const newest = opts.order === 'newest'
 	const rows = await ctx
 		.db()
-		.select({ serverEventId: pei.serverEventId, matchId: pei.matchId, time: pei.time })
-		.from(pei)
+		.select({ serverEventId: sei.serverEventId, matchId: sei.matchId, time: sei.time })
+		.from(sei)
 		.where(
 			E.and(
-				anchor ? (anchor.length === 1 ? E.eq(pei.playerId, anchor[0]) : inJsonSet(pei.playerId, anchor)) : undefined,
-				E.ne(pei.assocType, GAME_PARTICIPANT),
 				eventBoundsCond(opts.bounds),
 				compileEventCond(opts.node, opts.art),
 				// Newest first, a cursor sitting on an app event has already passed every server event of that
@@ -135,15 +117,14 @@ async function queryServerEventHits(
 					? undefined
 					: cursor.serverEventId === undefined
 						? newest
-							? sql`${pei.time} < ${cursor.time}`
-							: sql`${pei.time} >= ${cursor.time}`
+							? sql`${sei.time} < ${cursor.time}`
+							: sql`${sei.time} >= ${cursor.time}`
 						: newest
-							? sql`(${pei.time} < ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} < ${cursor.serverEventId}))`
-							: sql`(${pei.time} > ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} > ${cursor.serverEventId}))`,
+							? sql`(${sei.time} < ${cursor.time} OR (${sei.time} = ${cursor.time} AND ${sei.serverEventId} < ${cursor.serverEventId}))`
+							: sql`(${sei.time} > ${cursor.time} OR (${sei.time} = ${cursor.time} AND ${sei.serverEventId} > ${cursor.serverEventId}))`,
 			),
 		)
-		.groupBy(pei.serverEventId)
-		.orderBy(...(newest ? [E.desc(pei.time), E.desc(pei.serverEventId)] : [E.asc(pei.time), E.asc(pei.serverEventId)]))
+		.orderBy(...(newest ? [E.desc(sei.time), E.desc(sei.serverEventId)] : [E.asc(sei.time), E.asc(sei.serverEventId)]))
 		.limit(opts.pageSize)
 	return rows
 }
@@ -196,20 +177,28 @@ async function eventCountsFor(
 	const counts: Record<string, number> = {}
 	if (keys.length === 0) return counts
 
-	const serverKey = dimension === 'player' ? pei.playerId : pei.matchId
-	const serverRows = await ctx
-		.db()
-		.select({ key: serverKey, n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
-		.from(pei)
-		.where(
-			E.and(
-				inJsonSet(serverKey, keys),
-				E.ne(pei.assocType, GAME_PARTICIPANT),
-				eventBoundsCond(opts.bounds),
-				compileEventCond(opts.node, opts.art),
-			),
-		)
-		.groupBy(serverKey)
+	// a player's events are the ones playerEventIndex names them in, and it has a row per player to group on
+	const serverRows =
+		dimension === 'player'
+			? await ctx
+					.db()
+					.select({ key: pei.playerId, n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
+					.from(pei)
+					.where(
+						E.and(
+							inJsonSet(pei.playerId, keys),
+							E.ne(pei.assocType, GAME_PARTICIPANT),
+							eventBoundsCond(opts.bounds, pei),
+							compileEventCond(opts.node, opts.art, pei),
+						),
+					)
+					.groupBy(pei.playerId)
+			: await ctx
+					.db()
+					.select({ key: sei.matchId, n: sql<number>`count(*)` })
+					.from(sei)
+					.where(E.and(inJsonSet(sei.matchId, keys), eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art)))
+					.groupBy(sei.matchId)
 	for (const row of serverRows) counts[String(row.key)] = (counts[String(row.key)] ?? 0) + row.n
 
 	const appCond = E.and(appEventBoundsCond(opts.bounds), compileAppEventCond(opts.node, opts.art))
@@ -252,8 +241,8 @@ export async function queryPlayerRows(
 ): Promise<{ rows: HQ.PlayerRow[]; total: number }> {
 	const cond = E.and(
 		opts.groupPlayerIds ? inJsonSet(pei.playerId, opts.groupPlayerIds) : undefined,
-		eventBoundsCond(opts.bounds),
-		compileEventCond(opts.node, opts.art),
+		eventBoundsCond(opts.bounds, pei),
+		compileEventCond(opts.node, opts.art, pei),
 	)
 	const aggregates = {
 		playerId: pei.playerId,
@@ -403,12 +392,11 @@ async function countEventHits(
 	ctx: C.Db & CS.AbortSignal,
 	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds },
 ): Promise<number> {
-	const cond = E.and(E.ne(pei.assocType, GAME_PARTICIPANT), eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art))
 	const [row] = await ctx
 		.db()
-		.select({ n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
-		.from(pei)
-		.where(cond)
+		.select({ n: sql<number>`count(*)` })
+		.from(sei)
+		.where(E.and(eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art)))
 	const [appRow] = await ctx
 		.db()
 		.select({ n: sql<number>`count(*)` })
