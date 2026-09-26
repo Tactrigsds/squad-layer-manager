@@ -3,7 +3,7 @@ import React from 'react'
 
 import DesktopOnly from '@/components/desktop-only'
 import NavBar from '@/components/nav-bar'
-import { useIsSmallViewport } from '@/lib/browser'
+import { useCoarsePointer, useIsSmallViewport } from '@/lib/browser'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import * as ConfigClient from '@/systems/config.client'
@@ -23,8 +23,10 @@ function RouteComponent() {
 	const isOnServerDashboard = useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
 	const isOnServers = useMatch({ from: '/_app/servers/', shouldThrow: false })
 	const isPhone = useIsSmallViewport()
-	// the phone layout covers the dashboard; every other page opens as the desktop page, by choice
-	const desktopOnly = isPhone && !isOnServerDashboard && !isOnServers
+	const isTouch = useCoarsePointer()
+	// the phone layout covers the dashboard; every other page opens as the desktop page, by choice. A narrow viewport
+	// with a mouse is a small or zoomed desktop window, which can't switch to the desktop site, so it gets the page as-is
+	const desktopOnly = isPhone && isTouch && !isOnServerDashboard && !isOnServers
 	return (
 		<div
 			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden data-phone:h-screen data-phone:overflow-hidden"
