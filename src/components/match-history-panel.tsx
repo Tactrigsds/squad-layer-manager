@@ -232,22 +232,25 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 			<CardHeader data-tour="match-history" className="max-phone:flex-wrap max-phone:justify-center max-phone:gap-y-1 max-phone:py-1.5">
 				<CardTitle className="max-phone:w-full">{tr.text(MH_Msgs.title())}</CardTitle>
 				<span className="flex-1 max-phone:hidden" />
-				<span className="fd-grp">
-					<Button size="icon-sm" onClick={goToLastPage} disabled={onLastPage}>
-						<Icons.ChevronsLeft />
-					</Button>
-					<Button size="icon-sm" onClick={goToNextPage} disabled={onLastPage}>
-						<Icons.ChevronLeft />
-					</Button>
-				</span>
-				<span className="text-sm font-mono font-normal min-w-[90px] text-center">{getDateDisplayText()}</span>
-				<span className="fd-grp">
-					<Button size="icon-sm" onClick={goToPrevPage} disabled={onFirstPage}>
-						<Icons.ChevronRight />
-					</Button>
-					<Button size="icon-sm" onClick={goToFirstPage} disabled={onFirstPage}>
-						<Icons.ChevronsRight />
-					</Button>
+				{/* gap-2 is the header's own gap, so grouping the pager for the tour does not move it */}
+				<span data-tour="mh-days" className="flex items-center gap-2">
+					<span className="fd-grp">
+						<Button size="icon-sm" onClick={goToLastPage} disabled={onLastPage}>
+							<Icons.ChevronsLeft />
+						</Button>
+						<Button size="icon-sm" onClick={goToNextPage} disabled={onLastPage}>
+							<Icons.ChevronLeft />
+						</Button>
+					</span>
+					<span className="text-sm font-mono font-normal min-w-[90px] text-center">{getDateDisplayText()}</span>
+					<span className="fd-grp">
+						<Button size="icon-sm" onClick={goToPrevPage} disabled={onFirstPage}>
+							<Icons.ChevronRight />
+						</Button>
+						<Button size="icon-sm" onClick={goToFirstPage} disabled={onFirstPage}>
+							<Icons.ChevronsRight />
+						</Button>
+					</span>
 				</span>
 			</CardHeader>
 			<CardContent ref={tableBoxRef} data-tour="match-history" className="p-0 pb-1">
@@ -449,7 +452,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 			}
 
 			outcomeDisp = (
-				<span className="font-mono">
+				<span data-tour="mh-outcome" className="font-mono">
 					{team1Tickets} <b className={team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team1Status}</b> -{' '}
 					<b className={team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team2Status}</b> {team2Tickets}
 				</span>
@@ -477,7 +480,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	}
 
 	const timeDisp = (
-		<>
+		<span data-tour="mh-time" className="inline-block">
 			{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress' && (
 				<span className="font-mono font-light">
 					<Timer zeros start={entry.startTime.getTime()} />
@@ -497,7 +500,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 				<span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
 			)}
 			{!entry.startTime && <span>-</span>}
-		</>
+		</span>
 	)
 
 	const gutterMarker = (
@@ -513,12 +516,22 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		</>
 	)
 
-	const matchKd = entry.isCurrentMatch ? (
+	const kd = entry.isCurrentMatch ? (
 		<React.Suspense fallback={null}>
 			<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 		</React.Suspense>
 	) : (
 		entry.combatStats && <MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+	)
+	const matchKd = kd && (
+		<span data-tour="mh-kd" className="inline-flex">
+			{kd}
+		</span>
+	)
+	const setBy = (
+		<span data-tour="mh-set-by" className="inline-flex">
+			<LayerSourceDisplay source={entry.layerSource} />
+		</span>
 	)
 
 	const decorationIcons = decorationsByTint.map(([tint, decos]) => (
@@ -553,6 +566,8 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					// its own, which would make this <tr> a button wrapping <td> cells: invalid, and it drops the
 					// row out of the table's accessibility tree. Declaring the real role keeps dnd-kit off it.
 					role="row"
+					data-tour="mh-row"
+					data-tour-current={entry.isCurrentMatch || undefined}
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
 					onMouseDown={handleMouseDown}
@@ -593,7 +608,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 											{statusBadge}
 											{outcomeDisp}
 											{matchKd}
-											<LayerSourceDisplay source={entry.layerSource} />
+											{setBy}
 										</span>
 									</div>
 								</div>
@@ -631,9 +646,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 							</TableCell>
 
 							<TableCell>
-								<span className="w-full flex justify-center">
-									<LayerSourceDisplay source={entry.layerSource} />
-								</span>
+								<span className="w-full flex justify-center">{setBy}</span>
 							</TableCell>
 						</>
 					)}

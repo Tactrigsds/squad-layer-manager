@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser'
 import * as Zus from '@/lib/zustand'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
@@ -51,6 +52,15 @@ export default function TutorialsPage() {
 	)
 }
 
+function StartingLabel() {
+	return (
+		<>
+			<Spinner />
+			{tr.text(TUT_Msgs.settingUpShort())}
+		</>
+	)
+}
+
 function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; progress?: TUT.Progress }) {
 	const { meta, run, progress } = props
 	const completed = !!progress?.completed
@@ -58,7 +68,10 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; progres
 	const resumeAt = !completed && progress?.stepId ? progress.stepId : null
 	const copy = TUT_Msgs.scenarios[meta.id]
 	const active = run.code === 'active' && run.scenarioId === meta.id
-	const starting = run.code === 'starting' && run.scenarioId === meta.id
+	// this tab's own click, from the moment it lands, and the server's run for whichever tab started it
+	const startingHere = Zus.useStore(Tour.Store, Tour.Sel.starting)
+	const starting = (run.code === 'starting' && run.scenarioId === meta.id) || startingHere === meta.id
+	const busy = starting || startingHere !== null || run.code === 'starting'
 	// whether this tab still holds the tour, which is the difference between going back to a narration in progress
 	// and rebuilding one from the reader's saved place
 	const narrating = Zus.useStore(Tour.Store, (s) => s.state.code !== 'idle')
@@ -88,24 +101,24 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; progres
 			)}
 			{resumeAt ? (
 				<>
-					<Button variant="outline" size="sm" onClick={() => void Tour.Actions.start(meta.id)}>
+					<Button variant="outline" size="sm" disabled={busy} onClick={() => void Tour.Actions.start(meta.id)}>
 						{tr.text(TUT_Msgs.replay())}
 					</Button>
 					<Button
 						size="sm"
-						disabled={starting}
+						disabled={busy}
 						onClick={() =>
 							narrating && active
 								? void navigate({ to: '/servers/$serverId', params: { serverId: run.serverId } })
 								: void Tour.Actions.resume(meta.id, resumeAt)
 						}
 					>
-						{tr.text(TUT_Msgs.resume())}
+						{starting ? <StartingLabel /> : tr.text(TUT_Msgs.resume())}
 					</Button>
 				</>
 			) : (
-				<Button size="sm" disabled={starting} onClick={() => void Tour.Actions.start(meta.id)}>
-					{tr.text(completed || active ? TUT_Msgs.replay() : TUT_Msgs.start())}
+				<Button size="sm" disabled={busy} onClick={() => void Tour.Actions.start(meta.id)}>
+					{starting ? <StartingLabel /> : tr.text(completed || active ? TUT_Msgs.replay() : TUT_Msgs.start())}
 				</Button>
 			)}
 		</>

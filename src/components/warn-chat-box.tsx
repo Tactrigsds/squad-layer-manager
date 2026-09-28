@@ -101,7 +101,7 @@ export default function WarnChatBox({
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
-			<div className="flex items-center self-end gap-2">
+			<div data-tour="warn-options" className="flex items-center self-end gap-2">
 				<label
 					className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 					title={tr.text(CHAT_Msgs.notifyAdminsHint())}
@@ -136,6 +136,7 @@ export default function WarnChatBox({
 					className={cn('min-h-0 h-auto text-xs flex-1 min-w-0 resize-none px-2 py-1', accent)}
 				/>
 				<AdminReasonPicker
+					tourId="warn-presets"
 					reasons={draft.reasons}
 					preview={draft.render}
 					onPick={(reason) => {

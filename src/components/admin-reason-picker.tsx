@@ -18,6 +18,7 @@ export function AdminReasonPicker({
 	disabled,
 	className,
 	title,
+	tourId,
 }: {
 	reasons: AAR.AdminActionReason[]
 	preview: (reason: AAR.AdminActionReason) => string
@@ -25,6 +26,7 @@ export function AdminReasonPicker({
 	disabled?: boolean
 	className?: string
 	title?: string
+	tourId?: string
 }) {
 	const [open, setOpen] = React.useState(false)
 	if (reasons.length === 0) return null
@@ -33,6 +35,7 @@ export function AdminReasonPicker({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button
+					data-tour={tourId}
 					size="sm"
 					variant="outline"
 					className={cn('h-auto self-stretch w-7 p-0 shrink-0', className)}

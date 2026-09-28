@@ -130,8 +130,8 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	)
 	const setSearchQuery = useDebounced({ delay: SEARCH_DEBOUNCE_MS, onChange: onSearchChange })
 	return (
-		<div className={cn('flex w-full flex-col', props.className)}>
-			<div ref={headerRef} className="flex w-full flex-col gap-1.5 bg-panel px-2 pt-1.5 pb-1.5">
+		<div data-tour="teams-panel" className={cn('flex w-full flex-col', props.className)}>
+			<div ref={headerRef} data-tour="teams-header" className="flex w-full flex-col gap-1.5 bg-panel px-2 pt-1.5 pb-1.5">
 				<div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 text-base">
 					<div className="min-w-0 truncate">
 						<TeamTitle teamId={leftTeam} stores={props.stores} />
@@ -164,6 +164,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					<div className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1.5 whitespace-nowrap">
 						<Input
 							ref={searchRef}
+							data-tour="teams-search"
 							containerClassName="w-[160px] max-phone:w-full"
 							placeholder={tr.text(SM_Msgs.searchPlayers())}
 							defaultValue={initialSearchQuery}
@@ -193,6 +194,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 									({selectedCount})
 								</span>
 								<Button
+									data-tour="teams-reset"
 									variant="ghost"
 									size="icon-sm"
 									title={tr.text(SM_Msgs.resetPanel())}
@@ -214,7 +216,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 									{tr.text(SM_Msgs.adminsOnly())}
 								</Label>
 							</div>
-							<div className="flex items-center gap-1.5">
+							<div data-tour="teams-show-spoilers" className="flex items-center gap-1.5">
 								<Switch
 									id={showSpoilersId}
 									checked={showSpoilers}
@@ -244,7 +246,10 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 			</div>
 			<StickyGroup stickyRef={headerRef}>
 				{isDesktop ? (
-					<div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)]">
+					<div
+						data-tour="teams-tables"
+						className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)]"
+					>
 						{([leftTeam, rightTeam] as const).map((teamId, i) => (
 							// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
 							<TeamPlayerTable key={teamId} teamId={teamId} className={i === 1 ? 'pl-1.5' : undefined} stores={props.stores} />
@@ -710,7 +715,14 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 				windowProps={{ stores } satisfies SwitchRequestsWindowProps}
 				preload="intent"
 				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-					<Button ref={ref} variant="ghost" size="sm" title={tr.text(SRQ_Msgs.switchRequestsTabHint())} {...props}>
+					<Button
+						ref={ref}
+						data-tour="teams-switch-requests"
+						variant="ghost"
+						size="sm"
+						title={tr.text(SRQ_Msgs.switchRequestsTabHint())}
+						{...props}
+					>
 						<Icons.ArrowLeftRight />
 						{tr.text(SRQ_Msgs.switchRequestsTab())}
 						{switchRequestCount > 0 && (
@@ -726,7 +738,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 				windowProps={{} satisfies TimeoutsWindowProps}
 				preload="intent"
 				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-					<Button ref={ref} variant="ghost" size="sm" title={tr.text(SM_Msgs.timeoutsTabHint())} {...props}>
+					<Button ref={ref} data-tour="teams-timeouts" variant="ghost" size="sm" title={tr.text(SM_Msgs.timeoutsTabHint())} {...props}>
 						<Icons.UserX />
 						{tr.text(SM_Msgs.timeoutsTab())}
 						{timedOutCount > 0 && (
@@ -738,7 +750,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 				)}
 			/>
 			{groupingIds.length > 0 && (
-				<>
+				<span data-tour="teams-grouping" className="flex items-center gap-1">
 					<span className="text-text-3">{tr.text(SM_Msgs.groupingLabel())}</span>
 					<Select
 						value={activeGroupingId ?? ''}
@@ -755,7 +767,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 							))}
 						</SelectContent>
 					</Select>
-				</>
+				</span>
 			)}
 		</div>
 	)
@@ -1026,6 +1038,7 @@ function StatsColumnHeader({
 				<PopoverTrigger asChild>
 					<button
 						type="button"
+						data-tour="players-stats-sort"
 						onClick={(e) => e.stopPropagation()}
 						className="inline-flex items-center"
 						title={tr.text(
@@ -1605,6 +1618,8 @@ function SquadGroupHeaderRow(props: {
 		<TableRow
 			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
 			data-collapsed={props.collapsed || undefined}
+			data-tour="squad-header"
+			data-tour-squad={squad?.squadName}
 			onClick={toggleCollapsed}
 		>
 			<TableCell>{checkbox}</TableCell>
@@ -1624,6 +1639,8 @@ function SquadGroupHeaderRow(props: {
 		<TableRow
 			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
 			data-collapsed={props.collapsed || undefined}
+			data-tour="squad-header"
+			data-tour-squad={squad?.squadName}
 			onClick={toggleCollapsed}
 		>
 			<TableCell colSpan={props.colSpan}>
@@ -1785,6 +1802,8 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 		const rowEl = (
 			<TableRow
 				key={row.id}
+				data-tour="player-row"
+				data-tour-player={row.original.ids.username}
 				className={cn(
 					'cursor-pointer select-none',
 					savedSwaps.has(row.id)
@@ -1920,6 +1939,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 										return (
 											<TableHead
 												key={header.id}
+												data-tour={`players-col-${header.column.id}`}
 												onClick={
 													header.column.getCanSort() && header.column.id !== 'stats'
 														? header.column.getToggleSortingHandler()
@@ -2224,7 +2244,7 @@ function SwapsPanel({
 	)
 
 	return (
-		<div className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-line', className)}>
+		<div data-tour="swaps-panel" className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-line', className)}>
 			<TeamSwapsDisplay teamId={leftTeam} className="pr-2" stores={stores} />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
@@ -2251,7 +2271,7 @@ function SwapsPanel({
 								</TooltipTrigger>
 								<TooltipContent>{tr.text(SM_Msgs.toggleForceSaveHint())}</TooltipContent>
 							</Tooltip>
-							<Button size="sm" variant={forceSave ? 'destructive' : 'primary'} onClick={handleFinishOrSave}>
+							<Button data-tour="swaps-save" size="sm" variant={forceSave ? 'destructive' : 'primary'} onClick={handleFinishOrSave}>
 								{saveButtonLabel}
 							</Button>
 						</ButtonGroup>
@@ -2265,7 +2285,7 @@ function SwapsPanel({
 					)}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
-							<Button size="sm" className="text-[#ef7c7a]" disabled={!canExecute || numEditors > 0}>
+							<Button data-tour="swaps-execute" size="sm" className="text-[#ef7c7a]" disabled={!canExecute || numEditors > 0}>
 								{tr.text(SM_Msgs.swapNowLabel())}
 							</Button>
 						</AlertDialogTrigger>
@@ -2350,6 +2370,7 @@ function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; st
 
 	return (
 		<Badge
+			data-tour="swap-badge"
 			variant={variant}
 			className="flex items-center gap-1"
 			title={mutation.removed ? undefined : tr.text(SM_Msgs.middleClickDeleteSwap())}

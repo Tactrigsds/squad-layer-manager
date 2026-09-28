@@ -32,7 +32,45 @@ export const LQ_TUTORIAL_LAYERS = {
 	picks: { chora: 'CH-TC-V1:CAF-CA:MEI-CA', yehorivka: 'YH-TC-V1:CAF-CA:RGF-CA' },
 } as const
 
-export const ScenarioIdSchema = z.enum(['layer-queue'])
+// The player management scenario's roster, shared by the server setup and the client steps so both halves name the
+// same people. Eight a side, so a lone /switch queues rather than firing on the spot. Each player's team is the raw
+// slot of the opening match, and `squad` is the squad they join; the first player listed for a squad leads it.
+// `groups` are admin-list groups from the emulated server's seeded list (SB.SEEDED_ADMIN_GROUPS), which is what a
+// fresh install's own grouping reads.
+export type PMRosterPlayer = { name: string; team: 1 | 2; squad: string | null; groups: string[] }
+
+export const PM_TUTORIAL_ROSTER: PMRosterPlayer[] = [
+	{ name: 'Kestrel', team: 1, squad: 'ALPHA', groups: ['Admin', 'Regular'] },
+	{ name: 'Marlow', team: 1, squad: 'ALPHA', groups: ['Regular'] },
+	{ name: 'Brightwater', team: 1, squad: 'ALPHA', groups: [] },
+	{ name: 'Okafor', team: 1, squad: 'ALPHA', groups: ['SquadLeader'] },
+	{ name: 'Lindqvist', team: 1, squad: 'ARMOR', groups: ['ArmorPlayer'] },
+	{ name: 'Tanaka', team: 1, squad: 'ARMOR', groups: ['ArmorPlayer', 'Regular'] },
+	{ name: 'Ruiz', team: 1, squad: null, groups: ['Watchlist'] },
+	{ name: 'Novak', team: 1, squad: null, groups: [] },
+	{ name: 'Hollis', team: 2, squad: 'BRAVO', groups: ['SquadLeader'] },
+	{ name: 'Petrov', team: 2, squad: 'BRAVO', groups: ['Regular'] },
+	{ name: 'Adeyemi', team: 2, squad: 'BRAVO', groups: [] },
+	{ name: 'Castellan', team: 2, squad: 'BRAVO', groups: ['Watchlist'] },
+	{ name: 'Weiss', team: 2, squad: 'LOGI', groups: ['Admin'] },
+	{ name: 'Moreau', team: 2, squad: 'LOGI', groups: ['Regular'] },
+	{ name: 'Sato', team: 2, squad: null, groups: [] },
+	{ name: 'Quill', team: 2, squad: null, groups: ['ArmorPlayer'] },
+]
+
+// The players the tour asks the reader to act on, one per action so no step's target has been kicked, timed out or
+// moved by an earlier one.
+export const PM_TUTORIAL_TARGETS = {
+	details: 'Marlow',
+	kick: 'Novak',
+	timeout: 'Ruiz',
+	swapNow: 'Sato',
+	swapNext: 'Tanaka',
+	switchRequest: 'Brightwater',
+	squadWarn: 'BRAVO',
+} as const
+
+export const ScenarioIdSchema = z.enum(['layer-queue', 'player-management'])
 export type ScenarioId = z.infer<typeof ScenarioIdSchema>
 
 // the wire carries stage ids as strings; the scenario validates them on arrival, as sandbox
@@ -69,7 +107,7 @@ export const SurfaceIdSchema = z.enum(['server-dashboard'])
 export type SurfaceId = z.infer<typeof SurfaceIdSchema>
 
 export const RECOMMENDED_TUTORIALS: Record<SurfaceId, ScenarioId[]> = {
-	'server-dashboard': ['layer-queue'],
+	'server-dashboard': ['layer-queue', 'player-management'],
 }
 
 // what a stage answers. err:not-ready means the user has not done their part yet: an ordinary

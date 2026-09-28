@@ -162,7 +162,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	return (
 		// On a phone the controls take one line and the message the next: side by side, a textarea that fits beside
 		// the channel picker is too narrow to read what you are about to send to the whole server.
-		<div className="flex items-stretch gap-1.5 pt-1.5 shrink-0 max-phone:flex-wrap">
+		<div data-tour="activity-warn" className="flex items-stretch gap-1.5 pt-1.5 shrink-0 max-phone:flex-wrap">
 			<div className="flex flex-col justify-between gap-1 shrink-0 items-end max-phone:flex-row max-phone:items-center max-phone:justify-start">
 				<div className="flex items-center gap-2">
 					{channel === 'warn-selected' && (
@@ -186,6 +186,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				</div>
 				<Select value={channel} onValueChange={(v) => selectChannel(v as Channel)}>
 					<SelectTrigger
+						data-tour="activity-warn-channel"
 						className={cn(
 							'fd-btn fd-btn-sm w-auto min-w-24 gap-1.5 px-2 bg-ctl shrink-0 [&>span]:whitespace-nowrap [&>span]:overflow-visible',
 							cfg.triggerClass,
