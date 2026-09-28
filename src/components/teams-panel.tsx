@@ -26,8 +26,10 @@ import { useNow } from '@/lib/react.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
+import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -465,7 +467,7 @@ function PhoneSortSheet(props: {
 				<ColumnFilterSelect
 					value={filters.group}
 					onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStores, v)}
-					options={[...groups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: PG.UNGROUPED_LABEL }]}
+					options={[...groups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: tr.text(PG_Msgs.ungrouped()) }]}
 				/>
 				<ColumnFilterSelect
 					value={filters.role}
@@ -818,7 +820,7 @@ function shiftClickCellProps(
 ): Pick<React.HTMLAttributes<HTMLElement>, 'onClickCapture' | 'title'> {
 	if (columnId === 'squad' && player.squadId !== null) {
 		return {
-			title: 'Shift+click: select all members of this squad',
+			title: tr.text(SM_Msgs.squadCellHint()),
 			onClickCapture: (e) => {
 				if (!e.shiftKey) return
 				// the (SL) indicator has its own shift+click handler (select squad leaders); let it win
@@ -832,7 +834,7 @@ function shiftClickCellProps(
 	if (columnId === 'role' && player.role != null) {
 		const role = player.role
 		return {
-			title: 'Shift+click: select teammates with this role. Shift+Ctrl+click: both teams',
+			title: tr.text(SM_Msgs.roleCellHint()),
 			onClickCapture: (e) => {
 				if (!e.shiftKey) return
 				e.preventDefault()
@@ -844,7 +846,7 @@ function shiftClickCellProps(
 	if (columnId === 'group' && player.group) {
 		const group = player.group
 		return {
-			title: 'Shift+click: select teammates in this group. Shift+Ctrl+click: both teams',
+			title: tr.text(SM_Msgs.groupCellHint()),
 			onClickCapture: (e) => {
 				if (!e.shiftKey) return
 				e.preventDefault()
@@ -970,10 +972,10 @@ function ColumnFilterSelect({
 
 type StatsSortMetric = 'kills' | 'wounds' | 'deaths'
 
-const STATS_SORT_METRICS: { metric: StatsSortMetric; short: string; label: string }[] = [
-	{ metric: 'kills', short: 'K', label: 'Kills' },
-	{ metric: 'wounds', short: 'W', label: 'Wounds' },
-	{ metric: 'deaths', short: 'D', label: 'Deaths' },
+const STATS_SORT_METRICS: { metric: StatsSortMetric; short: typeof SM_Msgs.statsKillsShort; label: typeof SM_Msgs.sortKills }[] = [
+	{ metric: 'kills', short: SM_Msgs.statsKillsShort, label: SM_Msgs.sortKills },
+	{ metric: 'wounds', short: SM_Msgs.statsWoundsShort, label: SM_Msgs.sortWounds },
+	{ metric: 'deaths', short: SM_Msgs.statsDeathsShort, label: SM_Msgs.sortDeaths },
 ]
 
 type StatsSortColumn = {
@@ -1026,13 +1028,17 @@ function StatsColumnHeader({
 						type="button"
 						onClick={(e) => e.stopPropagation()}
 						className="inline-flex items-center"
-						title={sorted ? `Sorted by ${metric}` : 'Sort by kills/wounds/deaths'}
+						title={tr.text(
+							sorted
+								? SM_Msgs.sortedByStat(tr.text(STATS_SORT_METRICS.find((s) => s.metric === metric)!.label()))
+								: SM_Msgs.sortByStatsHint(),
+						)}
 					>
 						<span>
 							{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
 								<React.Fragment key={m}>
 									{i > 0 && <span className="text-muted-foreground">/</span>}
-									<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{short}</span>
+									<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{tr.text(short())}</span>
 								</React.Fragment>
 							))}
 						</span>
@@ -1055,7 +1061,7 @@ function StatsColumnHeader({
 										column.toggleSorting(sorted !== 'asc')
 									}}
 								>
-									{label}
+									{tr.text(label())}
 								</button>
 							))}
 						</div>
@@ -1070,7 +1076,7 @@ function StatsColumnHeader({
 									)}
 									onClick={() => column.toggleSorting(dir === 'desc')}
 								>
-									{dir === 'desc' ? 'Desc' : 'Asc'}
+									{tr.text(dir === 'desc' ? SM_Msgs.sortDescending() : SM_Msgs.sortAscending())}
 								</button>
 							))}
 							<button
@@ -1193,7 +1199,10 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 					<ColumnFilterSelect
 						value={filters.group}
 						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
-						options={[...availableGroups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: PG.UNGROUPED_LABEL }]}
+						options={[
+							...availableGroups.map((g) => ({ value: g, label: g })),
+							{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungrouped()) },
+						]}
 						triggerClassName="max-w-24"
 					/>
 				</span>
@@ -1325,7 +1334,7 @@ function SquadCell({
 						SquadServerFrame.Actions.selectAllSquadLeaders(stores, e.ctrlKey ? undefined : teamId)
 					}}
 				>
-					(SL)
+					{tr.text(SM_Msgs.squadLeaderMarker())}
 				</span>
 			)}
 		</span>
@@ -1576,7 +1585,7 @@ function SquadGroupHeaderRow(props: {
 			<Checkbox
 				checked={allSelected ? true : someSelected ? 'indeterminate' : false}
 				onCheckedChange={toggle}
-				aria-label={squad ? `Select squad ${squad.squadId}` : 'Select unassigned players'}
+				aria-label={tr.text(squad ? SM_Msgs.selectSquadCheckbox(squad.squadId) : SM_Msgs.selectUnassignedCheckbox())}
 			/>
 		</div>
 	)
@@ -2210,7 +2219,9 @@ function SwapsPanel({
 		setForceSave(false)
 	}
 
-	const saveButtonLabel = forceSave ? 'Force Save' : numEditors <= 1 && swapsModified ? 'Save' : 'Finish Editing'
+	const saveButtonLabel = tr.text(
+		forceSave ? UI_Msgs.forceSave() : numEditors <= 1 && swapsModified ? UI_Msgs.save() : UI_Msgs.finishEditing(),
+	)
 
 	return (
 		<div className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-line', className)}>

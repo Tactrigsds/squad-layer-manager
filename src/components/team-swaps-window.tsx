@@ -8,6 +8,7 @@ import * as MapUtils from '@/lib/map-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -72,7 +73,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 		if (shouldSave) TSWClient.Actions.save(stores)
 		setForceSave(false)
 	}
-	const saveLabel = forceSave ? 'Force Save' : numEditors <= 1 && swapsModified ? 'Save' : 'Finish Editing'
+	const saveLabel = tr.text(forceSave ? UI_Msgs.forceSave() : numEditors <= 1 && swapsModified ? UI_Msgs.save() : UI_Msgs.finishEditing())
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">

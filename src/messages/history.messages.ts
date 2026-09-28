@@ -1,4 +1,6 @@
-import { def, t } from '@/models/messages.models'
+import type * as F from '@/models/filter.models'
+import type * as HQ from '@/models/history.models'
+import { def, t, type TString } from '@/models/messages.models'
 
 export const pageTitle = def('History')
 
@@ -188,3 +190,40 @@ export const notLabel = def('NOT')
 export const removeNode = def('Remove')
 export const selectColumn = def('column')
 export const selectFilter = def('pick a filter')
+
+// -------- the advanced editor's columns --------
+
+export const columnNames: Record<HQ.ColumnKey, TString> = {
+	time: t('Time'),
+	eventId: t('Event id'),
+	server: t('Server'),
+	player: t('Player'),
+	user: t('SLM user'),
+	'event.type': t('Event type'),
+	'event.variant': t('Kill variant'),
+	'event.damageSource': t('Damage source'),
+	'event.attacker': t('Attacker'),
+	'event.victim': t('Victim'),
+	'chat.message': t('Chat text'),
+	'chat.channel': t('Chat channel'),
+	'match.id': t('Match id'),
+	'match.outcome': t('Match outcome'),
+	'match.setBy': t('Layer set by'),
+	'match.ticketDiff': t('Ticket difference'),
+	'match.duration': t('Match length'),
+	'match.kills': t('Kills'),
+	'match.wounds': t('Wounds'),
+	'match.deaths': t('Deaths'),
+	'match.killDiff': t('Kill difference'),
+	'layer.layer': t('Layer'),
+	'layer.map': t('Map'),
+	'layer.gamemode': t('Gamemode'),
+	'layer.faction': t('Faction'),
+	'layer.unit': t('Unit'),
+}
+
+// a text column reads `eq` as "contains"
+export const textCompOpLabels: Partial<Record<F.CompOpKey, TString>> = {
+	eq: t('contains'),
+	neq: t('not containing'),
+}

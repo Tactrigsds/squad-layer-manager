@@ -431,7 +431,7 @@ export function commandSettingsPath(cmdId: CMD.CommandId): string {
 }
 
 // groups command ids into their declared sections, dropping empty ones. Section order follows COMMAND_SECTIONS.
-export function splitCommandsBySection(ids: CMD.CommandId[]): { section: CMD.CommandSection; label: string; ids: CMD.CommandId[] }[] {
+export function splitCommandsBySection(ids: CMD.CommandId[]): { section: CMD.CommandSection; label: TString; ids: CMD.CommandId[] }[] {
 	return CMD.COMMAND_SECTION_IDS.map((section) => ({
 		section,
 		label: CMD.COMMAND_SECTIONS[section].label,

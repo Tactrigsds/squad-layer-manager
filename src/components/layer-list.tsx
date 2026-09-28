@@ -46,6 +46,7 @@ import * as Zus from '@/lib/zustand.ts'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
+import * as UP_Msgs from '@/messages/user-presence.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -272,8 +273,8 @@ function LoadedSelectLayersView({
 		<TabsList
 			variant="seg"
 			options={[
-				{ label: 'Play Next', value: 'next' },
-				{ label: 'Play After', value: 'after' },
+				{ label: tr.text(V_Msgs.playNext()), value: 'next' },
+				{ label: tr.text(V_Msgs.playAfter()), value: 'after' },
 			]}
 			active={addLayersAtPosition}
 			setActive={setPosition}
@@ -285,7 +286,7 @@ function LoadedSelectLayersView({
 	} else if (activity.id === 'ADDING_ITEM') {
 		return (
 			<SelectLayersDialog
-				title={activity.opts.title ?? 'Add Layers'}
+				title={activity.opts.title ?? tr.text(LL_Msgs.addLayers())}
 				stores={dialogStores}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
@@ -413,8 +414,8 @@ function LoadedPasteRotation({
 	const positionTabsList = (
 		<TabsList
 			options={[
-				{ label: 'Play Next', value: 'next' },
-				{ label: 'Play After', value: 'after' },
+				{ label: tr.text(V_Msgs.playNext()), value: 'next' },
+				{ label: tr.text(V_Msgs.playAfter()), value: 'after' },
 			]}
 			active={pastePosition}
 			setActive={setPastePosition}
@@ -519,7 +520,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	if (user && itemPresence?.itemActivity) {
 		sourceDisplay = (
 			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
-				{UP.getAttributedHumanReadableActivity(itemPresence.activityState!, index, itemActivityUser.displayName)}...
+				{attributedActivityText(itemPresence.activityState!, index, itemActivityUser.displayName)}
 			</Badge>
 		)
 	} else {
@@ -1350,7 +1351,11 @@ function ItemMenuItems(props: {
 			'create-vote': {
 				_tag: 'leaf',
 				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' }, title: 'Create Vote', action: 'edit' },
+				opts: {
+					cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' },
+					title: tr.text(V_Msgs.createVote()),
+					action: 'edit',
+				},
 			},
 		} satisfies { [k in SubDropdownState]: UP.QueueEditingActivity }
 	}, [item.itemId])
@@ -1538,4 +1543,11 @@ function QueueItemSeparator(props: {
 			data-is-over={!disabled && isDropTarget}
 		/>
 	)
+}
+
+function attributedActivityText(activity: UP.AnyActivityNode, index: LL.ItemIndex, displayName: string) {
+	const described = UP.describeActivity(activity, index)
+	if (!described) return null
+	const activityText = tr.text(UP_Msgs.activity(described)).toLocaleLowerCase(tr.locale)
+	return tr.text(UP_Msgs.attributedActivity(displayName, activityText))
 }

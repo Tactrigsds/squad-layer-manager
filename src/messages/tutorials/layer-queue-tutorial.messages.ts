@@ -515,3 +515,6 @@ export namespace PoolSettings {
 		),
 	}
 }
+
+// the text of the note the notes stage seeds onto the queue head
+export const seededNote = def('Tutorial note')

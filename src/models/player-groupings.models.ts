@@ -146,9 +146,6 @@ export const EMPTY_PLAYER_GROUPINGS: PlayerGroupings = {}
 
 export const EMPTY_GROUPING: Grouping = { rules: [], groups: {} }
 
-// shown for players no rule matched
-export const UNGROUPED_LABEL = 'Other'
-
 export const DEFAULT_GROUP_COLOR = '#888888'
 
 // The grouping a fresh install starts with, and the one a dev instance is given: it buckets a server's roster by

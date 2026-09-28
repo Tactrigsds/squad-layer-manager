@@ -79,48 +79,7 @@ export function UnifiedEmojiPicker(props: UnifiedEmojiPickerProps) {
 	// 	}
 	// })
 
-	const categories = [
-		{
-			category: 'custom',
-			name: 'Discord Emojis',
-		},
-		{
-			category: 'suggested',
-			name: 'Recently Used',
-		},
-		{
-			category: 'smileys_people',
-			name: 'Smileys & People',
-		},
-		{
-			category: 'animals_nature',
-			name: 'Animals & Nature',
-		},
-		{
-			category: 'food_drink',
-			name: 'Food & Drink',
-		},
-		{
-			category: 'travel_places',
-			name: 'Travel & Places',
-		},
-		{
-			category: 'activities',
-			name: 'Activities',
-		},
-		{
-			category: 'objects',
-			name: 'Objects',
-		},
-		{
-			category: 'symbols',
-			name: 'Symbols',
-		},
-		{
-			category: 'flags',
-			name: 'Flags',
-		},
-	] as any
+	const categories = Object.entries(SETTINGS_Msgs.emojiCategories).map(([category, msg]) => ({ category, name: tr.text(msg()) })) as any
 
 	if (isLoading) {
 		return (

@@ -2,7 +2,8 @@
 // classic JSX runtime can render it
 import * as React from 'react'
 
-import { def, raw, rt } from '@/models/messages.models'
+import type * as AAR from '@/models/admin-action-reasons.models'
+import { def, raw, rt, t, type TString } from '@/models/messages.models'
 
 // The preset reasons an admin picks from when warning, kicking or timing a player out. Each carries one text per
 // action it applies to, plus the keywords that select it in chat.
@@ -97,3 +98,14 @@ export const noReasonsFound = def('No reasons found.')
 export const fillWithPresetReason = def('Fill the box with a preset reason')
 
 export const fillWithPresetBroadcast = def('Fill the box with a preset broadcast')
+
+export const actionNames: Record<AAR.AdminActionType, TString> = {
+	warn: t('Warn'),
+	broadcast: t('Broadcast'),
+	kill: t('Kill'),
+	kick: t('Kick'),
+	timeout: t('Timeout'),
+	'remove-from-squad': t('Remove from Squad'),
+	'disband-squad': t('Disband Squad'),
+	'demote-commander': t('Demote Commander'),
+}

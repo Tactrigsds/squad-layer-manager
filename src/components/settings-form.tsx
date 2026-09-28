@@ -38,7 +38,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/lib/settings-groups'
-import { humanize, settingLabel } from '@/lib/settings-labels'
+import { humanize } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
@@ -53,6 +53,7 @@ import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
@@ -1787,14 +1788,14 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 							<div key={action} className="rounded-md border">
 								<div className="flex items-center justify-between px-2 pt-1">
 									<span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-										{AAR.ADMIN_ACTIONS[action].displayName}
+										{tr.text(AAR_Msgs.actionNames[action])}
 									</span>
 									<Button
 										type="button"
 										size="icon"
 										variant="ghost"
 										className="h-5 w-5 text-destructive"
-										title={tr.text(AAR_Msgs.removeActionText(AAR.ADMIN_ACTIONS[action].displayName))}
+										title={tr.text(AAR_Msgs.removeActionText(tr.text(AAR_Msgs.actionNames[action])))}
 										onClick={() => removeAction(action)}
 									>
 										<Icons.X className="h-3.5 w-3.5" />
@@ -1804,7 +1805,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 									value$={text$}
 									reset$={reset$}
 									onChange={setActionText(action)}
-									placeholder={tr.text(AAR_Msgs.actionTextPlaceholder(AAR.ADMIN_ACTIONS[action].displayName))}
+									placeholder={tr.text(AAR_Msgs.actionTextPlaceholder(tr.text(AAR_Msgs.actionNames[action])))}
 								/>
 							</div>
 						)
@@ -1817,7 +1818,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 							<SelectContent>
 								{remainingActions.map((a) => (
 									<SelectItem key={a} value={a}>
-										{AAR.ADMIN_ACTIONS[a].displayName}
+										{tr.text(AAR_Msgs.actionNames[a])}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -1858,7 +1859,7 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, varDefs: Templating
 		const base = applied(action, { extraVars })
 		const squad = applied(action, { extraVars: { ...extraVars, squadName: PREVIEW_SQUAD_NAME } })
 		if (squad !== base) {
-			entries.push({ context: tr.text(AAR_Msgs.previewSquadVariant(AAR.ADMIN_ACTIONS[action].displayName)), text: squad })
+			entries.push({ context: tr.text(AAR_Msgs.previewSquadVariant(tr.text(AAR_Msgs.actionNames[action]))), text: squad })
 		}
 	}
 	// one entry per action the reason carries text for; squad-directed actions get the @Squad1 tag
@@ -1880,7 +1881,7 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, varDefs: Templating
 		}
 		const squadTargeted = AAR.ADMIN_ACTIONS[action].targetKind === 'squad'
 		entries.push({
-			context: AAR.ADMIN_ACTIONS[action].displayName,
+			context: tr.text(AAR_Msgs.actionNames[action]),
 			text: applied(action, {
 				audienceTag: squadTargeted ? '@Squad1' : undefined,
 				extraVars: squadTargeted ? { squadName: PREVIEW_SQUAD_NAME } : undefined,
@@ -2757,7 +2758,8 @@ function RolePermissionsTable({
 	const addOptions: ComboBoxOption<string>[] = PermRows.ADDABLE_TYPES.map((type) => {
 		const repeatable = PermRows.rowScope(type) === 'server-settings' || PermRows.rowScope(type) === 'server-settings-write'
 		const taken = !repeatable && rows.some((r) => r.type === type && r.effect === 'allow')
-		return { value: type, description: PermRows.permDescription(type), disabled: taken }
+		const description = PermRows.permDescription(type)
+		return { value: type, description: description && tr.text(description), disabled: taken }
 	})
 
 	return (
@@ -2804,7 +2806,7 @@ function RolePermissionsTable({
 										<code className="text-xs leading-8">
 											{row.type === PermRows.ALL_PERMISSIONS ? tr.text(RBAC_Msgs.allPermissions()) : row.type}
 										</code>
-										{PermRows.permDescription(row.type) && <HelpTip text={PermRows.permDescription(row.type)!} />}
+										{PermRows.permDescription(row.type) && <HelpTip text={tr.text(PermRows.permDescription(row.type)!)} />}
 										{subsumed && (
 											<Tooltip>
 												<TooltipTrigger asChild>
@@ -3427,7 +3429,7 @@ function DiscriminatedUnionField({
 						const opt = String(b.properties[discriminator].const)
 						return (
 							<SelectItem key={opt} value={opt}>
-								{settingLabel([...path, discriminator, opt], opt)}
+								{tr.text(SETTINGS_Msgs.settingName([...path, discriminator, opt], opt))}
 							</SelectItem>
 						)
 					})}
@@ -4269,7 +4271,7 @@ function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEd
 // the comment reads as something that can be edited.
 function CommentButton({ root$, pathStr, editing, setEditing, caretRef }: CommentProps) {
 	const hasComment = !!useSettingComment(root$, pathStr)
-	const label = hasComment ? tr.text(SETTINGS_Msgs.editComment()) : tr.text(SETTINGS_Msgs.addComment())
+	const label = hasComment ? tr.text(UI_Msgs.editComment()) : tr.text(UI_Msgs.addComment())
 	return (
 		<Tooltip help>
 			<TooltipTrigger asChild>
@@ -4496,7 +4498,7 @@ function SectionField({
 		>
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
-					<legend className="px-1 text-sm font-semibold">{settingLabel(path, name)}</legend>
+					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingName(path, name))}</legend>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
 					<span className="contents" inert={!writable}>
@@ -4521,7 +4523,7 @@ function SectionField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={settingLabel(path, name)}
+						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
 						domId={domId}
 						path={path}
 						value$={value$}
@@ -4598,7 +4600,7 @@ function LeafField({
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
-					<Label className={cn('text-sm', hasError && 'text-destructive')}>{settingLabel(path, name)}</Label>
+					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingName(path, name))}</Label>
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
 					{!writable && (
 						<Tooltip>
@@ -4624,7 +4626,7 @@ function LeafField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={settingLabel(path, name)}
+						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
 						domId={domId}
 						path={path}
 						value$={value$}
@@ -4728,7 +4730,7 @@ function GroupedRootFields({
 				group.passthrough ? (
 					<React.Fragment key={group.slug}>{renderKeys(keys)}</React.Fragment>
 				) : (
-					<GroupSection key={group.slug} slug={group.slug} label={group.label}>
+					<GroupSection key={group.slug} slug={group.slug} label={tr.text(SETTINGS_Msgs.settingsGroupNames[group.slug])}>
 						{renderKeys(keys)}
 					</GroupSection>
 				),
@@ -4756,7 +4758,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 						onChange(JSON.parse(e.target.value))
 						setError('')
 					} catch {
-						setError('Invalid JSON')
+						setError(tr.text(SETTINGS_Msgs.invalidJson()))
 					}
 				}}
 			/>

@@ -167,7 +167,7 @@ const UNCATEGORIZED = 'Uncategorized'
 // fetched list rather than declared: the categories are whatever the guild has.
 function channelGroupings(channels: { categoryName: string | null }[]): ComboBoxGroupingDef[] {
 	const groups = [...new Set(channels.map((c) => c.categoryName ?? UNCATEGORIZED))]
-	return groups.length > 1 ? [{ key: 'category', label: 'Category', groups }] : []
+	return groups.length > 1 ? [{ key: 'category', label: tr.text(USR_Msgs.channelCategory()), groups }] : []
 }
 
 function channelOptions(

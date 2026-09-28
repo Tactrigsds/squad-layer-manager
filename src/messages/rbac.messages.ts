@@ -1,4 +1,4 @@
-import { def, t } from '@/models/messages.models'
+import { def, t, type Variants } from '@/models/messages.models'
 import type * as RBAC from '@/rbac.models'
 
 // Delivered in-game as a warn and in the web client as an error toast, which is why it declares both.
@@ -216,3 +216,64 @@ export const pluginActionServers = def('Servers')
 export const pluginActionsUnresolved = def('Granted actions no running plugin defines:')
 
 export const removeGrant = def('Remove')
+
+export const showFewerPermissions = def('Show fewer')
+
+export const showAllPermissions = def('...see all {count}', (count: number) => ({ count }))
+
+// -------- what each permission grants --------
+
+export const allPermissionsDescription = def('Grants every permission (full access to everything)')
+
+export const permissionDescriptions = {
+	'site:authorized': def('Access the site'),
+	'history:query': def(
+		'Query event, player and match history: the history page, its results as text or csv, and quoting a linked selection into discord. Results only cover servers the user can view',
+	),
+	'queue:write': def('Add, remove, edit or reorder layers in the queue'),
+	'queue:force-write': def("Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool"),
+	'queue:manage-all-notes': def(
+		"Edit or delete anyone's notes on queued layers. Writing notes, and managing your own, only needs queue:write",
+	),
+	'queue:manage-tags': def('Create and edit layer tags from the queue, without needing settings access'),
+	'queue:request-layers': def(
+		'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
+	),
+	'vote:manage': def('Start and abort votes'),
+	'global-settings:read': def('View global settings and the audit log'),
+	'global-settings:write': def('Edit global settings, optionally restricted to specific setting paths. Implies global-settings:read'),
+	'server-settings:read': def('View server settings. Never includes the RCON/SFTP connection details'),
+	'server-settings:write': def(
+		'Edit non-sensitive server settings, optionally restricted to specific setting paths. Implies server-settings:read',
+	),
+	'server-settings:write-sensitive': def('View and edit the RCON/SFTP connection details of a server'),
+	'filters:create': def('Create new filters'),
+	'filters:write-all': def('Delete or modify any filter, change their owners, and add/remove contributors'),
+	'filters:write': def('Modify a filter'),
+	'filters:manage': def('Manage a filters owner and contributors, and delete the filter'),
+	'squad-server:view': def("View a server's dashboard: its roster, chat, queue and match history"),
+	'squad-server:end-match': def('End the current match on the server'),
+	'squad-server:disable-slm-updates': def('Disable updates from slm to the game-server'),
+	'squad-server:turn-fog-off': def('Disable fog-of-war for the current match'),
+	'squad-server:manage-players': def('Kill players, disband squads, remove players from squads, demote commanders, and manage team swaps'),
+	'squad-server:warn-players': def('Send in-game warnings to players'),
+	'squad-server:broadcast': def('Send server-wide broadcast messages'),
+	'squad-server:kick-players': def('Kick players from the server (no timeout; they may rejoin immediately)'),
+	'squad-server:timeout-players': def('Kick players with a timeout barring them from rejoining, up to the granted maximum duration'),
+	'squad-server:view-console': def(
+		"Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the dashboard does. Read-only: it cannot issue commands.",
+	),
+	'sandbox:control': def(
+		'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. Has no effect on a server backed by a real squad server.',
+	),
+	'battlemetrics:write-flags': def('Add or remove BattleMetrics player flags'),
+	'users:manage-steam-links': def(
+		"Link a player's steam account to a discord account on their behalf, and remove links made that way. Linking grants that discord identity whatever the linked player is entitled to in game, and grants the player whatever that discord account holds through its roles, so it decides who both of them are. Nobody needs this to link their own accounts.",
+	),
+	'admin:manage-servers': def('Manage the server registry: create servers, start/stop them and set the default server'),
+	'plugins:manage': def('Start, stop and configure plugins. Plugins run with full SLM access, so treat this like admin access'),
+	'admin:delete-servers': def('Delete servers'),
+	'admin:restart-slm': def('Restart the SLM application'),
+	'ping-admins': def('Request the attention of admins in the chat'),
+	'plugin:action': def("An action a plugin defines for itself. Granted per plugin and per action under a role's plugin grants"),
+} satisfies Record<RBAC.PermissionType, () => Variants.Textable>

@@ -7,8 +7,10 @@ import { LOADING } from '@/components/combo-box/constants.ts'
 import EmojiDisplay from '@/components/emoji-display.tsx'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import * as F_Msgs from '@/messages/filter.messages'
 import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 
 import { Checkbox } from './ui/checkbox.tsx'
 
@@ -54,7 +56,7 @@ export default function FilterEntitySelect(props: {
 				/>
 			)}
 			<ComboBox
-				title={props.title ?? 'Filter'}
+				title={props.title ?? tr.text(F_Msgs.filterPicker())}
 				className="grow"
 				options={filterOptions ?? LOADING}
 				allowEmpty={props.allowEmpty ?? true}
@@ -122,7 +124,7 @@ export function FilterSelect(props: {
 	return (
 		<ComboBox
 			className={props.className}
-			title={props.title ?? 'Filter'}
+			title={props.title ?? tr.text(F_Msgs.filterPicker())}
 			value={props.value ?? undefined}
 			options={filterOptions(filters, props.value ? [props.value] : [])}
 			disabled={props.disabled}
@@ -143,7 +145,7 @@ export function FilterMultiSelect(props: {
 	return (
 		<ComboBoxMulti
 			className={props.className}
-			title={props.title ?? 'Filters'}
+			title={props.title ?? tr.text(F_Msgs.filtersHeading())}
 			values={props.values}
 			options={filterOptions(filters, props.values)}
 			selectionLimit={props.selectionLimit}

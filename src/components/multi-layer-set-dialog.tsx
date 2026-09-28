@@ -50,7 +50,7 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 			{props.trigger && <DialogTrigger asChild>{props.trigger}</DialogTrigger>}
 			<DialogContent className="max-w-lg min-w-[min(700px,70vw)]">
 				<DialogHeader>
-					<DialogTitle>{props.title ?? 'Add Multiple Layers'}</DialogTitle>
+					<DialogTitle>{props.title ?? tr.text(L_Msgs.addMultipleLayers())}</DialogTitle>
 				</DialogHeader>
 				<div className="space-y-4">
 					<div className="relative">

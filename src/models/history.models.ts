@@ -43,7 +43,7 @@ export type ColumnDomain =
 export const DYNAMIC_ENUM_SOURCES = ['damageSources', 'servers', 'layers', 'maps', 'gamemodes', 'factions', 'units'] as const
 export type DynamicEnumSource = (typeof DYNAMIC_ENUM_SOURCES)[number]
 
-export type ColumnDef = { key: ColumnKey; displayName: string; domain: ColumnDomain }
+export type ColumnDef = { key: ColumnKey; domain: ColumnDomain }
 
 // Both event families, since a search runs over both. The two enums overlap on the handful of names that
 // describe the same action from either side (PLAYER_WARNED, MAP_SET, ...), and a shared name deliberately
@@ -66,56 +66,55 @@ export function eventTypeFamilies(type: string): EventFamily[] {
 }
 
 export const COLUMN_DEFS = {
-	time: { key: 'time', displayName: 'Time', domain: { kind: 'timestamp' } },
-	eventId: { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
-	server: { key: 'server', displayName: 'Server', domain: { kind: 'dynamic-enum', source: 'servers' } },
-	player: { key: 'player', displayName: 'Player', domain: { kind: 'player' } },
+	time: { key: 'time', domain: { kind: 'timestamp' } },
+	eventId: { key: 'eventId', domain: { kind: 'number' } },
+	server: { key: 'server', domain: { kind: 'dynamic-enum', source: 'servers' } },
+	player: { key: 'player', domain: { kind: 'player' } },
 	// The SLM user an event is attributable to: whoever performed it, plus anyone it was performed against
 	// (see iterAssocUserIds). Only app events have one, so this reads as false against a server event, which
 	// is what makes "events involving user X" mean the audit trail rather than nothing.
-	user: { key: 'user', displayName: 'SLM user', domain: { kind: 'user' } },
-	'event.type': { key: 'event.type', displayName: 'Event type', domain: { kind: 'enum', options: EVENT_TYPES } },
-	'event.variant': { key: 'event.variant', displayName: 'Kill variant', domain: { kind: 'enum', options: EVENT_VARIANTS } },
+	user: { key: 'user', domain: { kind: 'user' } },
+	'event.type': { key: 'event.type', domain: { kind: 'enum', options: EVENT_TYPES } },
+	'event.variant': { key: 'event.variant', domain: { kind: 'enum', options: EVENT_VARIANTS } },
 	'event.damageSource': {
 		key: 'event.damageSource',
-		displayName: 'Damage source',
 		domain: { kind: 'dynamic-enum', source: 'damageSources' },
 	},
 	// Who a kill was between. `player` matches an event the player is named in at all, which for a kill is
 	// both ends of it; these two say which end. Only PLAYER_DIED and PLAYER_WOUNDED record the distinction.
-	'event.attacker': { key: 'event.attacker', displayName: 'Attacker', domain: { kind: 'player' } },
-	'event.victim': { key: 'event.victim', displayName: 'Victim', domain: { kind: 'player' } },
-	'chat.message': { key: 'chat.message', displayName: 'Chat text', domain: { kind: 'text' } },
+	'event.attacker': { key: 'event.attacker', domain: { kind: 'player' } },
+	'event.victim': { key: 'event.victim', domain: { kind: 'player' } },
+	'chat.message': { key: 'chat.message', domain: { kind: 'text' } },
 	// which chat a message went to. Only CHAT_MESSAGE has one, so this reads as false against everything else
-	'chat.channel': { key: 'chat.channel', displayName: 'Chat channel', domain: { kind: 'enum', options: CHAT_CHANNELS } },
+	'chat.channel': { key: 'chat.channel', domain: { kind: 'enum', options: CHAT_CHANNELS } },
 	// the match's own id, which every results row shows, so a row can be taken back to the match it came from
-	'match.id': { key: 'match.id', displayName: 'Match id', domain: { kind: 'number' } },
-	'match.outcome': { key: 'match.outcome', displayName: 'Match outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
-	'match.setBy': { key: 'match.setBy', displayName: 'Layer set by', domain: { kind: 'enum', options: SET_BY_TYPES } },
+	'match.id': { key: 'match.id', domain: { kind: 'number' } },
+	'match.outcome': { key: 'match.outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
+	'match.setBy': { key: 'match.setBy', domain: { kind: 'enum', options: SET_BY_TYPES } },
 	// how lopsided the match was, as the winner's remaining tickets over the loser's. Unsigned, because which
 	// side won is `match.outcome`'s question; this one is only ever asked as "a blowout" or "a close game".
-	'match.ticketDiff': { key: 'match.ticketDiff', displayName: 'Ticket difference', domain: { kind: 'number' } },
+	'match.ticketDiff': { key: 'match.ticketDiff', domain: { kind: 'number' } },
 	// whole minutes from start to end, so a match still running or one the app never saw end has none
-	'match.duration': { key: 'match.duration', displayName: 'Match length', domain: { kind: 'number' } },
+	'match.duration': { key: 'match.duration', domain: { kind: 'number' } },
 	// The match's scoreline, over both sides: which side is team 1 flips between consecutive matches, so
 	// "how much fighting was there" is the question worth asking, not "how much did team 1 do". Deaths run
 	// ahead of kills by the teamkills and suicides nobody was credited with. Tallied when a match ends, so a
 	// match still in progress has none.
-	'match.kills': { key: 'match.kills', displayName: 'Kills', domain: { kind: 'number' } },
-	'match.wounds': { key: 'match.wounds', displayName: 'Wounds', domain: { kind: 'number' } },
-	'match.deaths': { key: 'match.deaths', displayName: 'Deaths', domain: { kind: 'number' } },
+	'match.kills': { key: 'match.kills', domain: { kind: 'number' } },
+	'match.wounds': { key: 'match.wounds', domain: { kind: 'number' } },
+	'match.deaths': { key: 'match.deaths', domain: { kind: 'number' } },
 	// how one-sided the fighting was, as one side's kills over the other's. Unsigned for the same reason
 	// ticketDiff is, and a distinct question from it: a ticket blowout can still be an even firefight.
-	'match.killDiff': { key: 'match.killDiff', displayName: 'Kill difference', domain: { kind: 'number' } },
+	'match.killDiff': { key: 'match.killDiff', domain: { kind: 'number' } },
 	// The layer played, by part. Every one of these is read off the layer id (L.toLayer), never off a join:
 	// the id spells out map, gamemode and both sides, so the engine resolves them by parsing the few hundred
 	// distinct ids in range rather than by asking the layer engine, which it has no artifact for.
-	'layer.layer': { key: 'layer.layer', displayName: 'Layer', domain: { kind: 'dynamic-enum', source: 'layers' } },
-	'layer.map': { key: 'layer.map', displayName: 'Map', domain: { kind: 'dynamic-enum', source: 'maps' } },
-	'layer.gamemode': { key: 'layer.gamemode', displayName: 'Gamemode', domain: { kind: 'dynamic-enum', source: 'gamemodes' } },
-	'layer.faction': { key: 'layer.faction', displayName: 'Faction', domain: { kind: 'dynamic-enum', source: 'factions' } },
-	'layer.unit': { key: 'layer.unit', displayName: 'Unit', domain: { kind: 'dynamic-enum', source: 'units' } },
-} as const satisfies Record<string, { key: string; displayName: string; domain: ColumnDomain }>
+	'layer.layer': { key: 'layer.layer', domain: { kind: 'dynamic-enum', source: 'layers' } },
+	'layer.map': { key: 'layer.map', domain: { kind: 'dynamic-enum', source: 'maps' } },
+	'layer.gamemode': { key: 'layer.gamemode', domain: { kind: 'dynamic-enum', source: 'gamemodes' } },
+	'layer.faction': { key: 'layer.faction', domain: { kind: 'dynamic-enum', source: 'factions' } },
+	'layer.unit': { key: 'layer.unit', domain: { kind: 'dynamic-enum', source: 'units' } },
+} as const satisfies Record<string, { key: string; domain: ColumnDomain }>
 
 // Faction and unit are matched against both sides at once: historically "was RGF in this match" is the
 // question worth asking, where "was RGF specifically team 1" is close to meaningless, since the slot a side
@@ -176,7 +175,7 @@ export function columnCompOptions(key: string): F.CompOpSelectOption[] {
 	if (!def) return all
 	switch (def.domain.kind) {
 		case 'text':
-			return all.filter((o) => o.type === 'eq').map((o) => ({ ...o, label: o.neg ? 'not containing' : 'contains' }))
+			return all.filter((o) => o.type === 'eq')
 		case 'player':
 		case 'user':
 			return all.filter((o) => o.type === 'eq' || o.type === 'in')

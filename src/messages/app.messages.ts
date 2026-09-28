@@ -210,3 +210,13 @@ export const boundaryTimedOutBlurb = def('The server never sent this data. It ma
 export const retry = def('Retry')
 
 export const routeSuspended = def('Route suspended, waiting on state…')
+
+// -------- page titles --------
+
+export const pageTitle = def('SLM - {page}', (page: string) => ({ page }))
+
+// -------- the dashboard's single-column tabs --------
+
+export const dashboardLayersTab = def('Layers & Teams')
+
+export const dashboardActivityTab = def('Server Activity')

@@ -4,6 +4,7 @@ import * as DH from '@/lib/display-helpers'
 import * as RSel from '@/lib/reselect'
 import * as I18n from '@/messages/i18n'
 import * as L_Msgs from '@/messages/layer.messages'
+import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -145,7 +146,7 @@ export namespace Sel {
 					])
 				const groups = PG.resolvePlayerGroups(playerFacts, playerGroupings, groupingId)
 
-				const labels = [...PG.getGroupNames(grouping), PG.UNGROUPED_LABEL]
+				const labels = [...PG.getGroupNames(grouping), I18n.ambient.text(PG_Msgs.ungrouped())]
 				const labelToIdx = new Map(labels.map((label, i) => [label, i]))
 				const ungroupedIdx = labels.length - 1
 				const counts = [labels.map(() => 0), labels.map(() => 0)]

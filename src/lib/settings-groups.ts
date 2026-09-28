@@ -5,7 +5,9 @@
 // A `passthrough` group emits no header of its own: it exists only to place a single field that already renders its
 // own section header (carrying that section's reset controls, anchor and YAML toggle), where a second header above it
 // would just repeat the name.
-export type SettingsGroup = { slug: string; label: string; keys: string[]; passthrough?: true }
+export type SettingsGroupSlug = 'rbac' | 'warns-and-broadcasts' | 'commands' | 'players' | 'layers' | 'misc'
+
+export type SettingsGroup = { slug: SettingsGroupSlug; keys: string[]; passthrough?: true }
 
 // top-level keys that render no field of their own in the GUI, so neither the form nor the TOC emits a row/anchor for
 // them. `defaultPrefix` is chosen via the "default" markers in the allowedPrefixes editor; `comments` (SETTINGS.COMMENTS_KEY)
@@ -15,20 +17,17 @@ export const HIDDEN_SETTINGS_KEYS: ReadonlySet<string> = new Set(['defaultPrefix
 export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
 		slug: 'rbac',
-		label: 'Permissions & Roles',
 		keys: ['rbac', 'adminLists'],
 	},
 	{
 		slug: 'warns-and-broadcasts',
-		label: 'Warns & Broadcasts',
 		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
-	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
-	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
+	{ slug: 'commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
+	{ slug: 'players', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
+	{ slug: 'layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',
-		label: 'Miscellaneous',
 		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'discord', 'logFilePollInterval', 'tickRateThresholds'],
 	},
 ]

@@ -214,7 +214,7 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 			>
 				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
 				<div className="flex min-h-7 items-center gap-2 pr-9">
-					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? 'Settings'}</h3>
+					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? tr.text(SETTINGS_Msgs.yamlEditorLabel())}</h3>
 					{/* the switch sits last so it lands in the same place whether or not the caller gave us a toolbar */}
 					<div className="ml-auto flex min-w-0 items-center gap-2">
 						{props.toolbar}

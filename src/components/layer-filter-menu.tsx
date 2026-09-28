@@ -6,6 +6,7 @@ import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -19,7 +20,7 @@ import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
 const MATCHUP_ROWS = F.TEAM_COLUMNS.map((column) => ({
-	label: F.TEAM_COLUMN_LABELS[column],
+	label: F_Msgs.teamColumnNames[column],
 	team1: F.resolveTeamColumn(column, 1),
 	team2: F.resolveTeamColumn(column, 2),
 }))
@@ -89,11 +90,12 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 	const { ref, possibleValues, comp, clear } = useMenuItem(props.field, props.stores)
 	const hasValue = F.editableCompHasValue(comp)
 	const colDef = LC.getColumnDef(props.field)
-	const label = colDef?.shortName ?? colDef?.displayName ?? props.field
+	const name = colDef ? tr.text(LC_Msgs.columnName(colDef)) : props.field
+	const label = colDef?.shortName ?? name
 
 	return (
 		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
-			<span className="text-xs text-text-2 whitespace-nowrap truncate" title={colDef?.displayName}>
+			<span className="text-xs text-text-2 whitespace-nowrap truncate" title={name}>
 				{label}
 			</span>
 			<Comparison
@@ -172,7 +174,7 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 				<Icons.Trash />
 			</Button>
 			{rows.map((row) => (
-				<MatchupRow key={row.label} row={row} stores={props.stores} />
+				<MatchupRow key={row.team1} row={row} stores={props.stores} />
 			))}
 		</div>
 	)
@@ -185,20 +187,21 @@ function MatchupRow(props: { row: MatchupRowDef; stores: LayerFilterMenuPrt.Pred
 	const team1 = useMenuItem(row.team1, props.stores)
 	const team2 = useMenuItem(row.team2, props.stores)
 	const hasValue = F.editableCompHasValue(team1.comp) || F.editableCompHasValue(team2.comp)
+	const label = tr.text(row.label)
 	return (
 		<>
-			<span className="text-xs text-text-2 truncate" title={row.label}>
-				{row.label}
+			<span className="text-xs text-text-2 truncate" title={label}>
+				{label}
 			</span>
 			<MatchupOperator row={row} comp={team1.comp} highlight={hasValue} stores={props.stores} />
-			<MatchupCell label={row.label} item={team1} field={row.team1} stores={props.stores} />
-			<MatchupCell label={row.label} item={team2} field={row.team2} stores={props.stores} />
+			<MatchupCell label={label} item={team1} field={row.team1} stores={props.stores} />
+			<MatchupCell label={label} item={team2} field={row.team2} stores={props.stores} />
 			<Button
 				data-empty={!hasValue}
 				variant="ghost"
 				size="icon-sm"
 				className={CLEAR_BUTTON}
-				title={tr.text(F_Msgs.clearFilter(row.label))}
+				title={tr.text(F_Msgs.clearFilter(label))}
 				onClick={() => {
 					team1.clear()
 					team2.clear()
@@ -229,7 +232,11 @@ function MatchupOperator(props: {
 			)}
 			title={tr.text(F_Msgs.operatorPicker())}
 			value={F.compOpSelectionKey(props.comp)}
-			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
+			options={opOptions.map((o) => ({
+				value: o.key,
+				label: tr.text(F_Msgs.compOpLabels[o.key]),
+				description: tr.text(F_Msgs.compOpDescription(o)),
+			}))}
 			onSelect={(key) => {
 				const option = opOptions.find((o) => o.key === key)
 				if (option) LayerFilterMenuPrt.Actions.setTeamRowOperator(props.stores, [props.row.team1, props.row.team2], option)

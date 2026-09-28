@@ -3,6 +3,7 @@ import * as Str from '@/lib/string-utils'
 import * as Templating from '@/lib/templating'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import { t, type TString } from '@/models/messages.models'
@@ -68,15 +69,15 @@ export type AnyCommandConfigs = Record<string, CommandConfig>
 // commands page's table of contents and `!help <section>` navigate by, so they have to stay exhaustive as commands
 // are added, and a section an admin renamed out from under a stored alias would be a needless failure mode.
 export const COMMAND_SECTIONS = {
-	general: { label: 'General' },
-	votes: { label: 'Votes & SLM Updates' },
-	layerRequests: { label: 'Layer Requests' },
-	teamswaps: { label: 'Teamswaps' },
-	switchRequests: { label: 'Switch Requests' },
-	flags: { label: 'Player Flags' },
-	moderation: { label: 'Moderation' },
-	messaging: { label: 'Messaging' },
-} as const satisfies Record<string, { label: string }>
+	general: { label: t('General') },
+	votes: { label: t('Votes & SLM Updates') },
+	layerRequests: { label: t('Layer Requests') },
+	teamswaps: { label: t('Teamswaps') },
+	switchRequests: { label: t('Switch Requests') },
+	flags: { label: t('Player Flags') },
+	moderation: { label: t('Moderation') },
+	messaging: { label: t('Messaging') },
+} as const satisfies Record<string, { label: TString }>
 
 export type CommandSection = keyof typeof COMMAND_SECTIONS
 export const COMMAND_SECTION_IDS = Object.keys(COMMAND_SECTIONS) as CommandSection[]
@@ -97,7 +98,7 @@ export function sectionTokens(): string[] {
 // (see sectionTokens); matching labels is a convenience for the ones that happen to be typeable.
 export function resolveSectionToken(token: string): CommandSection | undefined {
 	const t = token.trim().toLowerCase()
-	return COMMAND_SECTION_IDS.find((id) => id.toLowerCase() === t || COMMAND_SECTIONS[id].label.toLowerCase() === t)
+	return COMMAND_SECTION_IDS.find((id) => id.toLowerCase() === t || COMMAND_SECTIONS[id].label.original.toLowerCase() === t)
 }
 
 export function commandsInSection(section: CommandSection): CommandId[] {
@@ -1070,7 +1071,7 @@ export function resolveReasonToken(
 	const choices = reasonChoices(applicable, token)
 	const what =
 		res.code === 'err:reason-not-applicable'
-			? `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}.`
+			? `Reason "${token}" isn't set up for ${AAR_Msgs.actionNames[action].original}.`
 			: `Unknown reason "${token}".`
 	// The choices are the suggestion. Listing every configured reason under them repeats most of the same words in a
 	// warn that holds a few lines, so the hint is what stands in for a list nobody can pick from.

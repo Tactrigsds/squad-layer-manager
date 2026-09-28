@@ -119,137 +119,61 @@ export type UserWithRbac = USR.User & { perms: TracedPermission[] }
 
 // the return is cast to a keyed record ({ [K in T]: ... }); left to inference the computed `[type]` key becomes a
 // string index signature, which erases the specific key so PERMISSION_DEFINITION[K] can't resolve per-permission
-function definePermission<T extends string, S extends PermScope>(type: T, args: { description: string; scope: S }) {
-	return { [type]: { type, description: args.description, scope: args.scope, scopeArgs: PERM_SCOPE_ARGS[args.scope] } } as {
-		[K in T]: { type: T; description: string; scope: S; scopeArgs: (typeof PERM_SCOPE_ARGS)[S] }
+function definePermission<T extends string, S extends PermScope>(type: T, scope: S) {
+	return { [type]: { type, scope, scopeArgs: PERM_SCOPE_ARGS[scope] } } as {
+		[K in T]: { type: T; scope: S; scopeArgs: (typeof PERM_SCOPE_ARGS)[S] }
 	}
 }
 
 export const PERMISSION_DEFINITION = {
-	...definePermission('site:authorized', { description: 'Access the site', scope: 'global' }),
-	...definePermission('history:query', {
-		description:
-			'Query event, player and match history: the history page, its results as text or csv, and quoting a linked selection into discord. Results only cover servers the user can view',
-		scope: 'global',
-	}),
+	...definePermission('site:authorized', 'global'),
+	...definePermission('history:query', 'global'),
 
-	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'server' }),
-	...definePermission('queue:force-write', {
-		description: "Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool",
-		scope: 'server',
-	}),
-	...definePermission('queue:manage-all-notes', {
-		description: "Edit or delete anyone's notes on queued layers. Writing notes, and managing your own, only needs queue:write",
-		scope: 'server',
-	}),
-	...definePermission('queue:manage-tags', {
-		description: 'Create and edit layer tags from the queue, without needing settings access',
-		scope: 'global',
-	}),
-	...definePermission('queue:request-layers', {
-		description: 'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
-		scope: 'layer-requests',
-	}),
-	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'server' }),
+	...definePermission('queue:write', 'server'),
+	...definePermission('queue:force-write', 'server'),
+	...definePermission('queue:manage-all-notes', 'server'),
+	...definePermission('queue:manage-tags', 'global'),
+	...definePermission('queue:request-layers', 'layer-requests'),
+	...definePermission('vote:manage', 'server'),
 
-	...definePermission('global-settings:read', { description: 'View global settings and the audit log', scope: 'global' }),
-	...definePermission('global-settings:write', {
-		description: 'Edit global settings, optionally restricted to specific setting paths. Implies global-settings:read',
-		scope: 'global-settings-write',
-	}),
-	...definePermission('server-settings:read', {
-		description: 'View server settings. Never includes the RCON/SFTP connection details',
-		scope: 'server-settings',
-	}),
-	...definePermission('server-settings:write', {
-		description: 'Edit non-sensitive server settings, optionally restricted to specific setting paths. Implies server-settings:read',
-		scope: 'server-settings-write',
-	}),
-	...definePermission('server-settings:write-sensitive', {
-		description: 'View and edit the RCON/SFTP connection details of a server',
-		scope: 'server-settings',
-	}),
+	...definePermission('global-settings:read', 'global'),
+	...definePermission('global-settings:write', 'global-settings-write'),
+	...definePermission('server-settings:read', 'server-settings'),
+	...definePermission('server-settings:write', 'server-settings-write'),
+	...definePermission('server-settings:write-sensitive', 'server-settings'),
 
-	...definePermission('filters:create', { description: 'Create new filters', scope: 'global' }),
-	...definePermission('filters:write-all', {
-		description: 'Delete or modify any filter, change their owners, and add/remove contributors',
-		scope: 'global',
-	}),
-	...definePermission('filters:write', { description: 'Modify a filter', scope: 'filter' }),
-	...definePermission('filters:manage', {
-		description: 'Manage a filters owner and contributors, and delete the filter',
-		scope: 'filter',
-	}),
+	...definePermission('filters:create', 'global'),
+	...definePermission('filters:write-all', 'global'),
+	...definePermission('filters:write', 'filter'),
+	...definePermission('filters:manage', 'filter'),
 
-	...definePermission('squad-server:view', {
-		description: "View a server's dashboard: its roster, chat, queue and match history",
-		scope: 'server',
-	}),
-	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'server' }),
-	...definePermission('squad-server:disable-slm-updates', {
-		description: 'Disable updates from slm to the game-server',
-		scope: 'server',
-	}),
-	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'server' }),
-	...definePermission('squad-server:manage-players', {
-		description: 'Kill players, disband squads, remove players from squads, demote commanders, and manage team swaps',
-		scope: 'server',
-	}),
-	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'server' }),
-	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'server' }),
-	...definePermission('squad-server:kick-players', {
-		description: 'Kick players from the server (no timeout; they may rejoin immediately)',
-		scope: 'server',
-	}),
-	...definePermission('squad-server:timeout-players', {
-		description: 'Kick players with a timeout barring them from rejoining, up to the granted maximum duration',
-		scope: 'timeout',
-	}),
-	...definePermission('squad-server:view-console', {
-		description:
-			"Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, " +
-			'including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the ' +
-			'dashboard does. Read-only: it cannot issue commands.',
-		scope: 'server',
-	}),
+	...definePermission('squad-server:view', 'server'),
+	...definePermission('squad-server:end-match', 'server'),
+	...definePermission('squad-server:disable-slm-updates', 'server'),
+	...definePermission('squad-server:turn-fog-off', 'server'),
+	...definePermission('squad-server:manage-players', 'server'),
+	...definePermission('squad-server:warn-players', 'server'),
+	...definePermission('squad-server:broadcast', 'server'),
+	...definePermission('squad-server:kick-players', 'server'),
+	...definePermission('squad-server:timeout-players', 'timeout'),
+	...definePermission('squad-server:view-console', 'server'),
 
-	...definePermission('sandbox:control', {
-		description:
-			'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. ' +
-			'Has no effect on a server backed by a real squad server.',
-		scope: 'server',
-	}),
+	...definePermission('sandbox:control', 'server'),
 
-	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
+	...definePermission('battlemetrics:write-flags', 'global'),
 
-	...definePermission('users:manage-steam-links', {
-		description:
-			"Link a player's steam account to a discord account on their behalf, and remove links made that way. Linking " +
-			'grants that discord identity whatever the linked player is entitled to in game, and grants the player whatever ' +
-			'that discord account holds through its roles, so it decides who both of them are. Nobody needs this to link ' +
-			'their own accounts.',
-		scope: 'global',
-	}),
+	...definePermission('users:manage-steam-links', 'global'),
 
-	...definePermission('admin:manage-servers', {
-		description: 'Manage the server registry: create servers, start/stop them and set the default server',
-		scope: 'global',
-	}),
-	...definePermission('plugins:manage', {
-		description: 'Start, stop and configure plugins. Plugins run with full SLM access, so treat this like admin access',
-		scope: 'global',
-	}),
-	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
-	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
+	...definePermission('admin:manage-servers', 'global'),
+	...definePermission('plugins:manage', 'global'),
+	...definePermission('admin:delete-servers', 'global'),
+	...definePermission('admin:restart-slm', 'global'),
 
-	...definePermission('ping-admins', { description: 'Request the attention of admins in the chat', scope: 'server' }),
+	...definePermission('ping-admins', 'server'),
 
 	// Deliberately not role-grantable as a bare expression: `plugin:action` on its own would mean every action of
 	// every plugin, which is not something anyone means to grant. Roles name them one at a time under pluginGrants.
-	...definePermission('plugin:action', {
-		description: "An action a plugin defines for itself. Granted per plugin and per action under a role's plugin grants",
-		scope: 'plugin-action',
-	}),
+	...definePermission('plugin:action', 'plugin-action'),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMISSION_DEFINITION]
 export type PermissionType = KnownPermission['type']

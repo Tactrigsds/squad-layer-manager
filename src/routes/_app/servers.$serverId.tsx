@@ -12,6 +12,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UP from '@/models/user-presence'
 import * as RootRouter from '@/root-router'
@@ -35,7 +36,7 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 	},
 
 	head: ({ loaderData }) => ({
-		meta: [{ title: loaderData?.displayName ? `SLM - ${loaderData?.displayName}` : undefined }],
+		meta: [{ title: loaderData?.displayName ? tr.text(APP_Msgs.pageTitle(loaderData.displayName)) : undefined }],
 	}),
 
 	onEnter() {

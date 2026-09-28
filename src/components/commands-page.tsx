@@ -92,8 +92,8 @@ function PinButton({ cmdId, pinned }: { cmdId: string; pinned: boolean }) {
 			size="sm"
 			className="h-6 w-6 p-0 shrink-0"
 			aria-pressed={pinned}
-			aria-label={pinned ? 'Unpin command' : 'Pin command'}
-			title={pinned ? 'Unpin from the top of this page' : 'Pin to the top of this page'}
+			aria-label={tr.text(pinned ? CMD_Msgs.unpinCommandLabel() : CMD_Msgs.pinCommandLabel())}
+			title={tr.text(pinned ? CMD_Msgs.unpinCommandHint() : CMD_Msgs.pinCommandHint())}
 			onClick={() => ClientOnlySettings.Actions.toggleCommandPinned(cmdId)}
 		>
 			<Icons.Pin className={cn('h-3.5 w-3.5', pinned ? 'fill-current' : 'text-muted-foreground')} />
@@ -547,10 +547,11 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[], plugi
 	const pinned = pinnedCommands.filter((id) => id in settings.commands || pluginById.has(id))
 	const pinnedSet = new Set(pinned)
 	if (pinned.length > 0) {
+		const label = tr.text(CMD_Msgs.pinnedTocSection())
 		sections.push({
 			id: PINNED_SECTION_ID,
-			label: 'Pinned',
-			entries: pinned.map((cmdId) => entry(PINNED_SECTION_ID, cmdId, 'Pinned')),
+			label,
+			entries: pinned.map((cmdId) => entry(PINNED_SECTION_ID, cmdId, label)),
 		})
 	}
 
@@ -560,15 +561,18 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[], plugi
 		...pluginCommands.filter((c) => c.config.quickReference).map((c) => c.id),
 	].filter((id) => !pinnedSet.has(id))
 	if (quickRef.length > 0) {
+		const label = tr.text(CMD_Msgs.quickReference())
 		sections.push({
 			id: QUICK_REF_SECTION_ID,
-			label: 'Quick Reference',
-			entries: quickRef.map((cmdId) => entry(QUICK_REF_SECTION_ID, cmdId, 'Quick Reference')),
+			label,
+			entries: quickRef.map((cmdId) => entry(QUICK_REF_SECTION_ID, cmdId, label)),
 		})
 	}
 
-	for (const { section, label, ids } of CMDH.splitCommandsBySection(CMD.COMMAND_IDS)) {
-		const id = `section:${section}`
+	for (const section of CMDH.splitCommandsBySection(CMD.COMMAND_IDS)) {
+		const { ids } = section
+		const id = `section:${section.section}`
+		const label = tr.text(section.label)
 		sections.push({ id, label, entries: ids.map((cmdId) => entry(id, cmdId, label)) })
 	}
 

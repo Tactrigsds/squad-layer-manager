@@ -104,3 +104,9 @@ export const unknownFlag = def('Unknown flag')
 export const unknownFlagHint = def('Unknown flag: {id}', (id: string) => ({ id }))
 
 export const flagPicker = def('Flag')
+
+export const selectFlags = def('Select flags...')
+
+export const manageFlagsItem = def('Manage Flags...')
+
+export const addFlagsItem = def('Add Flags...')

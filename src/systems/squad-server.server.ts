@@ -23,6 +23,7 @@ import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as I18n from '@/messages/i18n'
 import * as SS_Msgs from '@/messages/server-state.messages'
@@ -1205,7 +1206,7 @@ export function reasonRequirementError(
 ): { code: 'err:reason-required'; msg: string } | null {
 	if (hasReason) return null
 	const required = action === 'warn' || Settings.GLOBAL_SETTINGS.requireReasonFor.some((a) => a === action)
-	if (required) return { code: 'err:reason-required', msg: `A reason is required for ${AAR.ADMIN_ACTIONS[action].displayName}.` }
+	if (required) return { code: 'err:reason-required', msg: `A reason is required for ${AAR_Msgs.actionNames[action].original}.` }
 	return null
 }
 

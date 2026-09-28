@@ -3,8 +3,12 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
+import * as TUT_Msgs from '@/messages/tutorials.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { rootRouter } from '@/root-router'
+import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 
 // The tutorial tour overlay: a root portal that dims the dashboard, spotlights the anchored element, and shows the
@@ -408,21 +412,19 @@ function Card(props: {
 			>
 				{stepNo}
 			</div>
-			<div className="mb-0.5 text-[11px] text-text-3">
-				Step {stepNo} of {total}
-			</div>
+			<div className="mb-0.5 text-[11px] text-text-3">{tr.text(TUT_Msgs.stepCounter(stepNo, total))}</div>
 			<div className="mb-2.5 h-[3px] overflow-hidden rounded-full bg-ground">
 				<div className={`h-full ${accent}`} style={{ width: `${(stepNo / Math.max(1, total)) * 100}%` }} />
 			</div>
 			<h3 className={`text-sm font-semibold ${notReady || failed ? 'text-warn' : ''}`}>
-				{failed ? 'Something went wrong' : rendered.title}
+				{failed ? tr.text(APP_Msgs.somethingWentWrong()) : rendered.title}
 			</h3>
 			{/* a block, not a <p>: step copy marks its own paragraphs and lists, and the spacing rules here are what
 			    give an unmarked single-paragraph body and a multi-paragraph one the same top margin */}
 			<div
 				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-text [&_a]:text-info [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4`}
 			>
-				{failed ? 'That step could not be set up. Retry, or exit the tutorial.' : notReady ? state.msg : rendered.body}
+				{failed ? tr.text(TUT_Msgs.stepFailedBlurb()) : notReady ? state.msg : rendered.body}
 			</div>
 			<div className="mt-3 flex items-center justify-between gap-2">
 				<button
@@ -430,7 +432,7 @@ function Card(props: {
 					className="rounded px-1 py-1 text-xs text-text-3 hover:text-text"
 					onClick={() => void Tour.Actions.exit()}
 				>
-					Exit
+					{tr.text(TUT_Msgs.exit())}
 				</button>
 				<div className="flex items-center gap-1.5">
 					<CardActions
@@ -461,19 +463,19 @@ function CardActions(props: {
 	if (notReady || failed) {
 		return (
 			<button type="button" className="rounded-md bg-info px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.reset()}>
-				Retry
+				{tr.text(APP_Msgs.retry())}
 			</button>
 		)
 	}
 	if (staging) {
-		return <span className="px-1 text-xs text-text-3">Preparing…</span>
+		return <span className="px-1 text-xs text-text-3">{tr.text(TUT_Msgs.preparing())}</span>
 	}
 	// the button belongs to the transition OUT of this step; the last step always finishes on a button
 	const showNext = isLast || Tour.transitionOutOf(state.scenarioId, state.stepIdx).type === 'next'
 	if (!showNext) return null
 	return (
 		<button type="button" className="rounded-md bg-info px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
-			{isLast ? 'Finish' : 'Next'}
+			{tr.text(isLast ? TUT_Msgs.finish() : UI_Msgs.nextPage())}
 		</button>
 	)
 }
@@ -492,13 +494,13 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 			{tocOpen && <Toc state={state} run={run} onPick={() => setTocOpen(false)} />}
 			<div
 				role="group"
-				aria-label="Tutorial navigation"
+				aria-label={tr.text(TUT_Msgs.navigation())}
 				className="flex items-center gap-0.5 rounded-lg border border-line-soft bg-ground p-1 shadow-2xl"
 			>
 				<button
 					type="button"
-					title="Contents"
-					aria-label="Contents"
+					title={tr.text(TUT_Msgs.contents())}
+					aria-label={tr.text(TUT_Msgs.contents())}
 					className={`${NAV_BTN} ${tocOpen ? 'bg-ground text-white' : ''}`}
 					onClick={() => setTocOpen((open) => !open)}
 				>
@@ -506,8 +508,8 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 				</button>
 				<button
 					type="button"
-					title="Previous step"
-					aria-label="Previous step"
+					title={tr.text(TUT_Msgs.previousStep())}
+					aria-label={tr.text(TUT_Msgs.previousStep())}
 					className={NAV_BTN}
 					disabled={idx === 0}
 					onClick={() => void Tour.Actions.jump(idx - 1)}
@@ -516,8 +518,8 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 				</button>
 				<button
 					type="button"
-					title="Reset this step"
-					aria-label="Reset this step"
+					title={tr.text(TUT_Msgs.resetStep())}
+					aria-label={tr.text(TUT_Msgs.resetStep())}
 					className={NAV_BTN}
 					onClick={() => Tour.Actions.reset()}
 				>
@@ -525,8 +527,8 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 				</button>
 				<button
 					type="button"
-					title="Next step"
-					aria-label="Next step"
+					title={tr.text(TUT_Msgs.nextStep())}
+					aria-label={tr.text(TUT_Msgs.nextStep())}
 					className={NAV_BTN}
 					disabled={idx >= total - 1}
 					onClick={() => void Tour.Actions.jump(idx + 1)}
@@ -552,13 +554,13 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 		.filter((item) => !q || item.title.toLowerCase().includes(q))
 	return (
 		<nav
-			aria-label="Tutorial contents"
+			aria-label={tr.text(TUT_Msgs.tableOfContents())}
 			className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-line-soft bg-ground shadow-2xl"
 		>
 			<input
 				type="search"
-				aria-label="Search steps"
-				placeholder="Search steps"
+				aria-label={tr.text(TUT_Msgs.searchSteps())}
+				placeholder={tr.text(TUT_Msgs.searchSteps())}
 				autoFocus
 				className="m-2 rounded border border-line-soft bg-zinc-950 px-2 py-1 text-xs text-text placeholder:text-text-3 focus:outline-none"
 				onChange={(event) => setQuery(event.currentTarget.value)}
@@ -595,15 +597,13 @@ function DockedCard({ serverId }: { serverId: string }) {
 			className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto' }}
 		>
-			<div className="text-xs text-text">
-				<span className="font-semibold text-white">Tutorial paused.</span> Return to the dashboard to continue where you left off.
-			</div>
+			<div className="text-xs text-text">{tr.richText(TUT_Msgs.paused())}</div>
 			<button
 				type="button"
 				className="whitespace-nowrap rounded-md bg-info px-2.5 py-1 text-xs text-white"
 				onClick={() => void rootRouter.navigate({ to: '/servers/$serverId', params: { serverId } })}
 			>
-				Back to dashboard
+				{tr.text(TUT_Msgs.backToDashboard())}
 			</button>
 		</div>
 	)

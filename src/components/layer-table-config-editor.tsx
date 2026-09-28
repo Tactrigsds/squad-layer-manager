@@ -45,7 +45,7 @@ export default function LayerTableConfigEditor({
 	const columnOptions = cfg
 		? Object.values(cfg.defs)
 				.filter((d) => d.table !== 'virtual')
-				.map((d) => ({ value: d.name, label: d.displayName ?? d.name }))
+				.map((d) => ({ value: d.name, label: tr.text(LC_Msgs.columnName(d)) }))
 		: []
 
 	function patch(next: Partial<LayerTableConfig>) {

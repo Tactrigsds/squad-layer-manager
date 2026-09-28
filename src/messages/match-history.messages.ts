@@ -72,3 +72,17 @@ export const breakdownSelectTeamHint = def("Shift-click to also select that team
 export const breakdownSelectBothHint = def('Ctrl+Shift-click to select the group on both teams')
 
 export const breakdownUnmatchedGroups = def('{count} unmatched', (count: number) => ({ count }))
+
+export const showMoreMatches = def('Show {count} more', (count: number) => ({ count }))
+
+export const minutesAgo = def('{count, plural, one {# minute ago} other {# minutes ago}}', (count: number) => ({ count }))
+
+export const hoursAgo = def('{count, plural, one {# hour ago} other {# hours ago}}', (count: number) => ({ count }))
+
+// a match's start as time since, then how long it ran
+export const startedAndLasted = def('{ago} - {minutes, plural, one {# minute} other {# minutes}}', (ago: string, minutes: number) => ({
+	ago,
+	minutes,
+}))
+
+export const startedUnknownLength = def('{ago} - unknown length', (ago: string) => ({ ago }))
