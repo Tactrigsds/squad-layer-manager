@@ -766,6 +766,28 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				const res = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 0 })
 				return res.code === 'ok' ? res.data : null
 			},
+			fetchUsernamesNoTag: async (players) => {
+				const ctx = resolveCtx(getBaseCtx(), serverId)
+				const rows = await ctx
+					.db()
+					.select({ eosId: Schema.players.eosId, username: Schema.players.username, usernameNoTag: Schema.players.usernameNoTag })
+					.from(Schema.players)
+					.where(
+						E.and(
+							E.inArray(
+								Schema.players.eosId,
+								players.map((p) => p.eos),
+							),
+							E.isNotNull(Schema.players.usernameNoTag),
+						),
+					)
+				const usernames = new Map(players.map((p) => [p.eos, p.username]))
+				const res = new Map<SM.PlayerId, string>()
+				for (const row of rows) {
+					if (row.usernameNoTag && usernames.get(row.eosId) === row.username) res.set(row.eosId, row.usernameNoTag)
+				}
+				return res
+			},
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up:
 		// one delivery, and the parser's wait for the tick it is accumulating to go quiet. A static prior only:
@@ -881,7 +903,15 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 					return
 				}
 				const ctx = eventCtx(evtCtx, signal)
-				await ctx.db().update(Schema.players).set({ username: event.newUsername }).where(E.eq(Schema.players.eosId, event.player))
+				await ctx
+					.db()
+					.update(Schema.players)
+					.set({
+						username: event.newUsername,
+						// still valid if only the tag changed
+						usernameNoTag: sql`CASE WHEN substr(${event.newUsername}, -length(${Schema.players.usernameNoTag})) = ${Schema.players.usernameNoTag} THEN ${Schema.players.usernameNoTag} END`,
+					})
+					.where(E.eq(Schema.players.eosId, event.player))
 			}),
 		)
 		.subscribe()
@@ -1998,6 +2028,7 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 				steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
 				eosId: player.ids.eos,
 				username: player.ids.username,
+				usernameNoTag: player.ids.usernameNoTag,
 				epicId: player.ids.epic,
 			})
 			playerId = SM.PlayerIds.getPlayerId(player.ids)
@@ -2096,7 +2127,11 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 				target: Schema.players.eosId,
 				set: {
 					steamId: sql`excluded.steamId`,
-					username: sql`excluded.username`,
+					// a join log only knows the tagless name, and reports it as the username too. Keep the stored
+					// tagged username while it still ends in that name.
+					username: sql`CASE WHEN excluded.username = excluded.usernameNoTag AND substr(${Schema.players.username}, -length(excluded.username)) = excluded.username THEN ${Schema.players.username} ELSE excluded.username END`,
+					// polled players never carry it, so only a join log may set it
+					usernameNoTag: sql`coalesce(excluded.usernameNoTag, ${Schema.players.usernameNoTag})`,
 					modifiedAt: new Date(),
 				},
 			})
