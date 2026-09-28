@@ -50,6 +50,7 @@ function TabBar<T extends string>({
 					key={tab.value}
 					type="button"
 					role="tab"
+					data-tour={`primary-tab-${tab.value}`}
 					id={titleId(tab.value)}
 					aria-selected={value === tab.value}
 					aria-controls={bodyId(tab.value)}

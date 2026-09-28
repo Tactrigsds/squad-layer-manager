@@ -56,7 +56,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 	const [legendSlot, setLegendSlot] = React.useState<HTMLElement | null>(null)
 
 	return (
-		<Card className={cn('w-full', props.className)}>
+		<Card data-tour="teams-breakdown" className={cn('w-full', props.className)}>
 			<CardHeader className="whitespace-nowrap">
 				<CardTitle className="flex items-center gap-1.5 shrink-0">
 					<Icons.BarChart2 className="h-3.5 w-3.5" />
@@ -81,7 +81,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 				)}
 				<BreakdownHelp interactive={selectedMatchOrdinal === null} />
 			</CardHeader>
-			<CardContent className="px-2.5 py-1.5">
+			<CardContent data-tour="teams-breakdown-chart" className="px-2.5 py-1.5">
 				{!hasData ? (
 					<div className="text-text-3 text-sm text-center py-3">{tr.text(MH_Msgs.noChartData())}</div>
 				) : (
@@ -217,6 +217,7 @@ function TeamBreakdown(props: {
 					<PopoverTrigger asChild>
 						<button
 							type="button"
+							data-tour="breakdown-unmatched"
 							aria-label={tr.text(MH_Msgs.breakdownUnmatchedGroups(unmatchedSeries.length))}
 							className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm"
 						>

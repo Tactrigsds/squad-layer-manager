@@ -89,7 +89,7 @@ function TimeoutsWindow() {
 	}
 
 	return (
-		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
+		<div data-tour="timeouts-window" className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{tr.text(SM_Msgs.activeTimeoutsTitle())}</DraggableWindowTitle>
 				<DraggableWindowClose />
@@ -111,7 +111,7 @@ function TimeoutsWindow() {
 						</TableHeader>
 						<TableBody>
 							{timeouts.map((t) => (
-								<TableRow key={t.id}>
+								<TableRow key={t.id} data-tour="timeout-row">
 									<TableCell className="align-top">
 										<TimeoutPlayer timeout={t} stores={t.issuedServerId ? storesByServer.get(t.issuedServerId) : undefined} />
 									</TableCell>

@@ -20,6 +20,9 @@ export const leave = def('Leave')
 export const completed = def('Completed')
 export const inProgress = def('In progress')
 export const noneAvailable = def('No tutorials are available on this install.')
+// standing up a run's server, which takes a while: on the button pressed, and on a card shown wherever the reader is
+export const settingUpShort = def('Setting up…')
+export const settingUp = def('Setting up the {tutorial} tutorial…', (tutorial: string) => ({ tutorial }))
 
 // The dialog a page opens with the tutorials it recommends. Dismissing it is per user and permanent, so the
 // wording has to be clear that this is the last time it asks.
@@ -39,6 +42,10 @@ export const scenarios = {
 	'layer-queue': {
 		name: def('The layer queue'),
 		summary: def('Learn the basics of queue editing.'),
+	},
+	'player-management': {
+		name: def('Player management'),
+		summary: def('Find, warn, kick, time out and move players.'),
 	},
 }
 

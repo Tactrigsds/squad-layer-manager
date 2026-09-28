@@ -1,5 +1,6 @@
-// registers the layer-queue scenario with the tour engine
+// registers the tutorial scenarios with the tour engine
 import '@/systems/tutorials/layer-queue.steps'
+import '@/systems/tutorials/player-management.steps'
 
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'

@@ -33,6 +33,8 @@ const TUTORIALS_TO = '/tutorials'
 // premise loss must persist across a few frames before it regresses: Radix dismiss-and-reopen churn can unmount an
 // anchor for a frame during a legitimate transition, and regressing on that would make the tour twitchy
 const PREMISE_LOSS_GRACE_MS = 150
+// how often a prepare runs again while its anchor stays hidden
+const PREPARE_RETRY_MS = 500
 
 // ============================== run data sources ==============================
 
@@ -75,8 +77,8 @@ type TextMsg = Msgs.Variants.Textable
 //              all carrying the app's real team colours so the card matches what the queue renders
 //   icons      the icon of the control the copy is describing, rendered inline at text size, so the reader
 //              matches the sentence to the screen by shape. Written <grip></grip>: ICU has no self-closing tags.
-//   links      the in-app filters page and the layer data docs, both opened in a new tab so the tour, which
-//              pauses whenever the dashboard route is left, keeps running.
+//   links      in-app pages and docs, all opened in a new tab so the tour, which pauses whenever the dashboard route
+//              is left, keeps running.
 export type TourTag =
 	| 'p'
 	| 'ul'
@@ -98,14 +100,18 @@ export type TourTag =
 	| 'gear'
 	| 'sword'
 	| 'repeat'
+	| 'play'
 	| 'addFilter'
 	| 'hideRepeats'
 	| 'tutorialPoolIcon'
 	| 'largeLayersIcon'
 	| 'filtersPage'
+	| 'commandsPage'
 	| 'scoresDocs'
+	| 'groupingsDocs'
 
 const SCORES_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/layer_data.md'
+const GROUPINGS_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#6-player-groupings'
 
 const teamName =
 	(color: string): Msgs.TagRenderer =>
@@ -150,6 +156,7 @@ const tourTr = tr.withTags({
 	gear: icon(Icons.Settings),
 	sword: icon(Icons.Sword),
 	repeat: icon(Icons.Repeat, 'text-repeat-violation'),
+	play: icon(Icons.Play, 'text-ok'),
 	addFilter: icon(Icons.Edit),
 	tutorialPoolIcon: () => TUT.TUTORIAL_FILTERS.pool.emoji,
 	largeLayersIcon: () => TUT.TUTORIAL_FILTERS.large.emoji,
@@ -161,7 +168,9 @@ const tourTr = tr.withTags({
 			` ${tr.text(F_Msgs.hideRepeats())}`,
 		),
 	filtersPage: link('/filters'),
+	commandsPage: link('/commands'),
 	scoresDocs: link(SCORES_DOCS_URL),
+	groupingsDocs: link(GROUPINGS_DOCS_URL),
 })
 
 // a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape; a body may be rich
@@ -203,6 +212,8 @@ export type AdvanceFromPrevious = Transition & {
 	// must respect ctx.signal. Absent = the transition carries no state a later step observes (pure narration, or a
 	// transient interaction like a hover).
 	simulate?: (ctx: SimulateCtx) => void | Promise<void>
+	// the Next button advances too, for a step whose action only exists in some layouts
+	allowNext?: boolean
 }
 
 // A step a jump can restore server state at: `stage` names an idempotent server checkpoint stage that RESETS the
@@ -234,6 +245,11 @@ export type Step = {
 	checkpoint?: Checkpoint
 	// absent = { type: 'next' }. Step 0's is never consulted: nothing precedes it.
 	advanceFromPrevious?: AdvanceFromPrevious
+	// Puts back presentational state the reader may have changed that would hide the step's anchor, like a table row
+	// inside a collapsed group. Runs on entry, before narration, and again whenever the anchor stops being laid out
+	// while the step is narrated. Sync, idempotent, and a no-op while the anchor is visible, so it never undoes a
+	// choice the step does not depend on.
+	prepare?: (run: RunStores) => void
 }
 
 // the transition into steps[idx]; past-the-end reads as a Next so the last step's card shows Finish
@@ -376,13 +392,18 @@ export type TourState =
 	// off the dashboard: overlay collapses to a docked card. stepIdx is where narration resumes.
 	| { code: 'paused'; scenarioId: TUT.ScenarioId; stepIdx: number }
 
-export type TourStore = { state: TourState }
+// `starting` is the tutorial whose server is being stood up, from the click until the first step is narrated. That
+// can take a while, and until it is done there is no step for the overlay to show.
+export type TourStore = { state: TourState; starting: TUT.ScenarioId | null }
 
-export const Store = Zus.createStore<TourStore>()(() => ({ state: { code: 'idle' } }))
+export const Store = Zus.createStore<TourStore>()(() => ({ state: { code: 'idle' }, starting: null }))
 
 export namespace Sel {
 	export function state(s: TourStore) {
 		return s.state
+	}
+	export function starting(s: TourStore) {
+		return s.starting
 	}
 	// the active step, or undefined when idle
 	export function stepIdx(s: TourStore): number | undefined {
@@ -477,6 +498,7 @@ async function enterStep(idx: number) {
 		if (res.code !== 'ok') return set({ code: 'stage-failed', scenarioId, stepIdx: idx })
 	}
 
+	step.prepare?.(run)
 	set({ code: 'narrating', scenarioId, stepIdx: idx })
 	recordProgress(scenarioId, step.id)
 	wireStep(step, idx)
@@ -542,6 +564,24 @@ function wireStep(step: Step, idx: number) {
 				}),
 		)
 	}
+
+	const prepare = step.prepare
+	const anchor = resolveAnchor(run, step.anchor)
+	if (prepare && anchor) {
+		stepSub.add(
+			domInput(anchorSelector(anchor))
+				.pipe(
+					Rx.map((els) => els.some((el) => el.getClientRects().length > 0)),
+					Rx.distinctUntilChanged(),
+					// The same grace as a premise, since a rerender can unmount the anchor for a frame. Retried while it stays
+					// hidden, because putting back one thing (the teams tab) can reveal the next (a folded squad).
+					Rx.switchMap((shown) => (shown ? Rx.EMPTY : Rx.timer(PREMISE_LOSS_GRACE_MS, PREPARE_RETRY_MS))),
+				)
+				.subscribe(() => {
+					if (Sel.stepIdx(Store.getState()) === idx) prepare(run)
+				}),
+		)
+	}
 }
 
 // Walk backward to the nearest step whose premise holds and re-enter it. Step 0 has no premise, so the walk
@@ -589,12 +629,17 @@ async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
 }
 
 async function doStart(scenarioId: TUT.ScenarioId) {
-	if (active) await doExit()
-	const res = await TutorialsClient.Actions.start(scenarioId)
-	if (res.code !== 'ok') return res
-	await attach(scenarioId, res.serverId)
-	await enterStep(0)
-	return res
+	Store.setState({ starting: scenarioId })
+	try {
+		if (active) await doExit()
+		const res = await TutorialsClient.Actions.start(scenarioId)
+		if (res.code !== 'ok') return res
+		await attach(scenarioId, res.serverId)
+		await enterStep(0)
+		return res
+	} finally {
+		Store.setState({ starting: null })
+	}
 }
 
 // Pick a tutorial up where the reader left it. The server is stood up again only if there isn't one already: a run
@@ -602,21 +647,26 @@ async function doStart(scenarioId: TUT.ScenarioId) {
 // jump does the work, and does as little of it as it can -- a checkpoint whose queue already matches dispatches
 // nothing, and a simulate whose state already holds is skipped.
 async function doResume(scenarioId: TUT.ScenarioId, stepId: string) {
-	const existing = TutorialsClient.runState()
-	const reuse = existing.code === 'active' && existing.scenarioId === scenarioId ? existing.serverId : null
-	if (reuse) {
-		if (active?.scenarioId !== scenarioId) {
-			teardown()
-			await attach(scenarioId, reuse)
+	Store.setState({ starting: scenarioId })
+	try {
+		const existing = TutorialsClient.runState()
+		const reuse = existing.code === 'active' && existing.scenarioId === scenarioId ? existing.serverId : null
+		if (reuse) {
+			if (active?.scenarioId !== scenarioId) {
+				teardown()
+				await attach(scenarioId, reuse)
+			}
+		} else {
+			const res = await doStart(scenarioId)
+			if (res.code !== 'ok') return res
 		}
-	} else {
-		const res = await doStart(scenarioId)
-		if (res.code !== 'ok') return res
+		const idx = active?.steps.findIndex((step) => step.id === stepId) ?? -1
+		// a step id from before the curriculum changed points at nothing; starting over beats landing somewhere arbitrary
+		await doJump(idx === -1 ? 0 : idx)
+		return { code: 'ok' as const }
+	} finally {
+		Store.setState({ starting: null })
 	}
-	const idx = active?.steps.findIndex((step) => step.id === stepId) ?? -1
-	// a step id from before the curriculum changed points at nothing; starting over beats landing somewhere arbitrary
-	await doJump(idx === -1 ? 0 : idx)
-	return { code: 'ok' as const }
 }
 
 function doNext() {
@@ -773,6 +823,7 @@ export namespace Actions {
 // console access for dev-instance verification: the tour's controls and the run's data sources
 if (import.meta.env.DEV && typeof window !== 'undefined') {
 	;(window as any).__tourActions = Actions
+	;(window as any).__tourState = () => Store.getState().state
 	;(window as any).__tourRun = () => {
 		const run = activeRun()
 		return run && { run, squadServer: frameManager.getState(run.squadServer) }

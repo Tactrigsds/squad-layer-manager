@@ -226,3 +226,159 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await expect(entry.getByRole('button', { name: 'Leave' })).toHaveCount(0)
 	})
 })
+
+// The player management tutorial on the same app, after the layer queue journey has exited its run. Its sections act
+// on the roster for real (kicks, timeouts, swaps, a switch request), so what this checks is that doing what a card
+// asks moves the tour on, and that a jump into a section undoes what the earlier ones did to the roster.
+test('the player management tutorial, acted on and navigated out of order', async ({ page }) => {
+	test.setTimeout(300_000)
+
+	const PM_TUTORIAL = 'Player management'
+	const row = (name: string) => page.locator(`[data-tour="teams-panel"] [data-tour="player-row"][data-tour-player="${name}"]`)
+	// several titles contain another ("Timeouts", "Active timeouts"), so an entry, named "<number> <title>", is
+	// matched whole
+	async function jumpToExact(title: string) {
+		await overlay(page).getByRole('button', { name: 'Contents' }).click()
+		const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })
+		await contents.getByRole('searchbox', { name: 'Search steps' }).fill(title)
+		await contents
+			.getByRole('button', { name: new RegExp(`^\\d+ ${title}$`) })
+			.first()
+			.click()
+		await onStep(page, title)
+	}
+	// right-clicks a cell that is not the name, which would open the player's own menu rather than the row's
+	async function playerAction(name: string, item: string) {
+		await row(name).locator('td').nth(3).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: item, exact: true }).click()
+	}
+
+	await test.step('the index page starts a run', async () => {
+		await page.goto(app.loginUrl(USER, '/tutorials'))
+		const entry = page.getByRole('listitem').filter({ hasText: PM_TUTORIAL })
+		await entry.getByRole('button', { name: 'Start', exact: true }).click({ timeout: 20_000 })
+		await expect(page).toHaveURL(new RegExp(`/servers/tutorial-${USER.discordId}`), { timeout: 60_000 })
+		await onStep(page, 'Welcome')
+	})
+
+	await test.step('the match history holds the matches played before the reader arrived', async () => {
+		await jumpToExact('Look back at a match')
+		const rows = page.locator('[data-tour="mh-row"]')
+		// the two the run played during setup, and the reader's own
+		await expect(rows).toHaveCount(3)
+		await expect(rows.first().locator('[data-tour="mh-time"]')).toContainText('m)')
+		await page.locator('[data-tour="mh-row"]:has(+ [data-tour-current])').click()
+		await onStep(page, 'Viewing a past match')
+		await jumpToExact('Back to live')
+		await page.locator('[data-tour="activity-live"]').click()
+		await onStep(page, 'Earlier days')
+		await expect(page.locator('[data-tour="activity-live"]')).toHaveCount(0)
+	})
+
+	await test.step('kicking from the actions menu moves the tour on', async () => {
+		await jumpToExact('Kick')
+		await expect(row('Novak')).toBeVisible()
+		await playerAction('Novak', 'Kick')
+		await page.getByRole('alertdialog').getByRole('button', { name: 'Kick', exact: true }).click()
+		await onStep(page, 'Kicking from in game')
+		await expect(row('Novak')).toHaveCount(0)
+		// the in-game commands link to their own entries on the commands page
+		const link = overlay(page).getByRole('link').first()
+		await expect(link).toHaveAttribute('href', `/commands#${encodeURIComponent('section:moderation/command:kick')}`)
+		await expect(link).toHaveAttribute('target', '_blank')
+	})
+
+	await test.step('a jump replays the timeout, and cancelling it moves the tour on', async () => {
+		await jumpToExact('Timeouts')
+		const timeouts = page.locator('[data-tour="timeouts-window"]')
+		await expect(timeouts.getByText('Ruiz')).toBeVisible()
+		await timeouts
+			.getByRole('button', { name: /cancel/i })
+			.first()
+			.click()
+		await onStep(page, 'Timeouts from in game')
+		await expect(timeouts.getByText('Ruiz')).toHaveCount(0)
+	})
+
+	await test.step('jumping back into the section undoes the kick', async () => {
+		await jumpToExact('Kick')
+		await expect(row('Novak')).toBeVisible()
+		await expect(row('Ruiz')).toBeVisible()
+	})
+
+	await test.step('swap next opens an edit that saving ends', async () => {
+		await jumpToExact('Swap next')
+		await playerAction('Tanaka', 'Swap Next')
+		await onStep(page, 'Team swaps')
+		const swaps = page.locator('[data-tour="swaps-panel"]')
+		await expect(swaps.locator('[data-tour="swap-badge"]').filter({ hasText: 'Tanaka' })).toBeVisible()
+		await jumpToExact('Save')
+		await swaps.locator('[data-tour="swaps-save"]').click()
+		await expect(overlay(page).getByRole('heading', { name: 'Swap now', exact: true })).toBeVisible({ timeout: 45_000 })
+		await expect(swaps.locator('[data-tour="swap-badge"]').filter({ hasText: 'Tanaka' })).toBeVisible()
+	})
+
+	await test.step('a player waiting to switch is moved by switch now', async () => {
+		// the checkpoint clears the saved swap and has a sandbox player type the switch command
+		await jumpToExact('Switch now')
+		const requests = page.locator('[data-tour="switch-requests-window"]')
+		await expect(requests.getByText('Brightwater')).toBeVisible()
+		await expect(page.locator('[data-tour="swaps-panel"]')).toHaveCount(0)
+		await requests.locator('[data-tour="switch-now"]').first().click()
+		await onStep(page, 'Switching from in game')
+		await expect(requests.getByText('No switch requests.')).toBeVisible()
+	})
+
+	await test.step('exiting ends the run', async () => {
+		await overlay(page).getByRole('button', { name: 'Exit' }).click()
+		await expect(overlay(page)).toHaveCount(0)
+	})
+})
+
+// Every step of every tutorial the index page lists, reached the way a reader jumping around the contents would:
+// each jump rebuilds the step's state through its checkpoint and the replays before it, and the card then has to
+// show that step with its anchor on screen. The journeys above act on a handful of steps; this is what catches an
+// anchor that no longer resolves, or a checkpoint that no longer sets a step up, anywhere else. Failures are soft,
+// so one run reports every broken step.
+test('every step of every tutorial sets up and finds its anchor', async ({ page }) => {
+	test.setTimeout(20 * 60_000)
+
+	await page.goto(app.loginUrl(USER, '/tutorials'))
+	const entries = page.getByRole('listitem')
+	await expect(entries.first()).toBeVisible({ timeout: 20_000 })
+	const names = (await entries.locator('span.font-medium').allInnerTexts()).map((name) => name.trim())
+	expect(names.length).toBeGreaterThan(0)
+
+	for (const name of names) {
+		await test.step(name, async () => {
+			await page.goto(app.loginUrl(USER, '/tutorials'))
+			const entry = page.getByRole('listitem').filter({ hasText: name })
+			await entry
+				.getByRole('button', { name: /^(Start|Replay)$/ })
+				.first()
+				.click({ timeout: 20_000 })
+			const counter = overlay(page).getByText(/^Step 1 of \d+$/)
+			await expect(counter).toBeVisible({ timeout: 90_000 })
+			const total = Number(/of (\d+)/.exec(await counter.innerText())![1])
+
+			for (let stepNo = 1; stepNo <= total; stepNo++) {
+				await overlay(page).getByRole('button', { name: 'Contents' }).click()
+				const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })
+				const entryButton = contents.getByRole('button', { name: new RegExp(`^${stepNo} `) })
+				const title = (await entryButton.innerText()).replace(/^\d+\s*/, '').trim()
+				await entryButton.click()
+
+				const card = overlay(page).locator('[data-tour-anchor]')
+				await expect(card.getByText(`Step ${stepNo} of ${total}`)).toBeVisible({ timeout: 60_000 })
+				await expect(card.getByText('Preparing…')).toHaveCount(0, { timeout: 60_000 })
+				const where = `${name}, step ${stepNo} "${title}"`
+				// a failed or not-ready stage both leave a Retry on the card
+				await expect.soft(card.getByRole('button', { name: 'Retry' }), `${where} could not be set up`).toHaveCount(0)
+				await expect.soft(card, `${where} lost its anchor`).toHaveAttribute('data-tour-anchor', /^(found|none)$/, { timeout: 15_000 })
+			}
+
+			await overlay(page).getByRole('button', { name: 'Exit' }).click()
+			await expect(overlay(page)).toHaveCount(0)
+		})
+	}
+})

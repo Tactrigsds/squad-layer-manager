@@ -4,7 +4,9 @@ import * as E from 'drizzle-orm'
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
+import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
+import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
@@ -25,9 +27,13 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueueSys from '@/systems/layer-queue.server'
+import * as MatchHistory from '@/systems/match-history.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as SwitchRequests from '@/systems/switch-requests.server'
+import * as Teamswaps from '@/systems/teamswaps.server'
+import * as Timeouts from '@/systems/timeouts.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 
@@ -45,6 +51,7 @@ let log!: CS.Logger
 // owner. Wide enough to feed LayerQueueSys.dispatchOp (its SideEffectCtx); resolveCtx supplies the whole managed
 // server at runtime. A helper needing less narrows, per the minimum-ctx rule.
 export type StageCtx = C.Db &
+	C.ManagedServer &
 	SQS.Ctx &
 	LQ.Ctx &
 	MH.Ctx &
@@ -59,6 +66,8 @@ type ScenarioDef<S extends string> = {
 	// instance policy: every scenario states its own pacing, because the emulator's defaults are tuned for realism,
 	// not narration (a ~30s post-match wait and constant tick chatter)
 	pacing: { postMatchDelayMs: number; tickChatter: boolean }
+	// how many players larger a /switch sender's team must be to move at once; the server default when absent
+	instantSwapLead?: number
 	// the saved queue the server boots with. Seeded declaratively through createServerEntry rather than dispatched
 	// after enable: at creation there is no client, no vote and no sync to reproduce the production way.
 	initialQueue: (owner: bigint) => LL.List
@@ -232,11 +241,327 @@ const layerQueue = defScenario({
 	},
 })
 
+// ---- player management ----
+
+const ROSTER = TUT.PM_TUTORIAL_ROSTER
+
+// how long a player the roster restore rejoins has to show up on SLM's own roster before the stage gives up
+const ROSTER_SETTLE_TIMEOUT_MS = 30_000
+
+// A restored player only counts once the managed server's event pipeline holds them on the team the scenario put
+// them on. That roster is what kills, chat and commands are resolved against, and until the pipeline is synced it
+// drops every event, so anything a stage makes a player do before then never happens as far as SLM is concerned.
+async function waitForRosterSettled(ctx: StageCtx, flipped: boolean) {
+	const deadline = Date.now() + ROSTER_SETTLE_TIMEOUT_MS
+	while (!ctx.signal.aborted) {
+		const eventState = ctx.server.eventState
+		const players = [...(eventState.currTeams?.players.values() ?? [])]
+		const settled =
+			eventState.syncState.type === 'synced' &&
+			ROSTER.every((spec) => players.some((p) => p.ids.username === spec.name && p.teamId === rosterTeam(spec, flipped)))
+		if (settled) return
+		if (Date.now() > deadline) throw new Error('the tutorial roster did not settle on the managed server')
+		await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
+		await new Promise((resolve) => setTimeout(resolve, 250))
+	}
+}
+
+// The raw team a roster player is on. PM_TUTORIAL_ROSTER gives the one for the match the reader plays; each roll
+// swaps every player's raw team, so during the odd number of rolls the history is played across, it is the other.
+function rosterTeam(spec: TUT.PMRosterPlayer, flipped: boolean): 1 | 2 {
+	if (!flipped) return spec.team
+	return spec.team === 1 ? 2 : 1
+}
+
+// Puts every roster player back where the scenario starts them: connected, on their team, in their squad, in their
+// admin-list groups. Timeouts go first, since a rejoining player who still holds one is kicked straight back out.
+// Idempotent: a player already where they belong is left alone, so a restore of an untouched roster does nothing.
+async function restoreRoster(ctx: StageCtx, flipped = false) {
+	const world = ctx.sandbox.emu.world
+	const rosterIds = ROSTER.map((spec) => world.findPlayer(spec.name)?.eos ?? ctx.sandbox.players.get(spec.name)?.eos).filter(
+		(id): id is string => !!id,
+	)
+	for (const timeout of await Timeouts.getActiveTimeouts(ctx, rosterIds)) {
+		await Timeouts.cancelTimeout(ctx, { timeoutId: timeout.id, actor: { type: 'system' } })
+	}
+
+	for (const spec of ROSTER) {
+		const connected = world.findPlayer(spec.name)
+		// a kick takes the player off the world but not out of the sandbox's own name map
+		if (!connected) ctx.sandbox.players.delete(spec.name)
+		const team = rosterTeam(spec, flipped)
+		const player = connected ?? Verbs.joinPlayer(ctx.sandbox, spec.name, team)
+		if (player.teamId !== team) world.setTeam(player, team)
+		const squadSpec = spec.squad
+		if (squadSpec === null) {
+			if (player.squadId !== null) world.leaveSquad(player)
+		} else {
+			const squad = world.squads.find((sq) => sq.teamId === team && sq.name === squadSpec)
+			const leads = ROSTER.find((other) => other.squad === squadSpec)?.name === spec.name
+			if (!squad) {
+				if (leads) world.createSquad(player, squadSpec)
+			} else if (player.squadId !== squad.squadId) {
+				world.joinSquad(player, squad)
+			}
+		}
+		const groups = ctx.sandbox.list.memberships.get(spec.name)
+		if (!groups || groups.size !== spec.groups.length || spec.groups.some((g) => !groups.has(g))) {
+			await Verbs.execute(ctx.sandbox, 'set-player-groups', { name: spec.name, groups: spec.groups })
+		}
+	}
+	// a squad member rejoining before their leader has recreated the squad is placed on the second pass
+	for (const spec of ROSTER) {
+		if (spec.squad === null) continue
+		const player = world.findPlayer(spec.name)
+		const squad = world.squads.find((sq) => sq.teamId === rosterTeam(spec, flipped) && sq.name === spec.squad)
+		if (player && squad && player.squadId !== squad.squadId) world.joinSquad(player, squad)
+	}
+	await waitForRosterSettled(ctx, flipped)
+}
+
+// What happened on the server before the reader arrived, so the activity log, the player details and the K/W/D
+// column have something to show. It also sets up the players the tour later acts on: Ruiz teamkills and is warned
+// for it before being timed out, and Novak is abusive in chat before being kicked.
+type BackstoryBeat =
+	| { kill: [victim: string, attacker: string] }
+	| { chat: [player: string, channel: 'ChatAll' | 'ChatTeam' | 'ChatSquad' | 'ChatAdmin', message: string] }
+	| { rcon: string }
+	| { cam: string }
+
+// Written after real chat on a live server, turned up a little. Nothing here looks like a chat command, since the
+// sandbox runs the install's real command handling and a line like that would fire one.
+const BACKSTORY: BackstoryBeat[] = [
+	{ chat: ['Hollis', 'ChatAll', 'gl hf'] },
+	{ chat: ['Kestrel', 'ChatSquad', 'rally is up behind the church, spawn on it'] },
+	{ chat: ['Okafor', 'ChatSquad', 'BOAT PLZ'] },
+	{ kill: ['Hollis', 'Kestrel'] },
+	{ kill: ['Petrov', 'Marlow'] },
+	{ chat: ['Petrov', 'ChatTeam', 'enemy HAT is like 2m from our hab and nobody cares XD'] },
+	{ kill: ['Lindqvist', 'Ruiz'] },
+	{ chat: ['Ruiz', 'ChatAll', 'sorry'] },
+	{ kill: ['Kestrel', 'Adeyemi'] },
+	{ chat: ['Marlow', 'ChatTeam', 'COME PICK ME UP'] },
+	{ kill: ['Okafor', 'Ruiz'] },
+	{ chat: ['Okafor', 'ChatTeam', 'nice int, ruiz'] },
+	{ chat: ['Castellan', 'ChatTeam', 'hey guys i think we need more barbed wire'] },
+	{ chat: ['Adeyemi', 'ChatTeam', 'barbed wire wins games'] },
+	{ kill: ['Moreau', 'Lindqvist'] },
+	{ kill: ['Brightwater', 'Ruiz'] },
+	{ chat: ['Brightwater', 'ChatAll', "ruiz just tk'd me at main. AGAIN."] },
+	{ chat: ['Ruiz', 'ChatAll', 'sry tk'] },
+	{ chat: ['Kestrel', 'ChatAdmin', 'thats the third tk from ruiz this round'] },
+	{ rcon: 'AdminWarn "Ruiz" Stop teamkilling. The next one is a timeout.' },
+	{ chat: ['Ruiz', 'ChatAll', 'MY BAD, thought he was blufor lmao'] },
+	{ kill: ['Okafor', 'Castellan'] },
+	{ chat: ['Castellan', 'ChatAll', 'knifed three of your buds in a row. ill do it again'] },
+	{ kill: ['Adeyemi', 'Tanaka'] },
+	{ chat: ['Novak', 'ChatAll', 'u r all n00bs. cry more'] },
+	{ chat: ['Hollis', 'ChatAll', 'lol who is crying'] },
+	{ chat: ['Weiss', 'ChatAdmin', 'do we want to deal with novak or let it play out?'] },
+	{ cam: 'Weiss' },
+	{ kill: ['Quill', 'Kestrel'] },
+	{ chat: ['Novak', 'ChatAll', 'THIS SERVER IS TRASH AND SO ARE YOUR ADMINS'] },
+	{ rcon: 'AdminBroadcast Identify enemies by uniform or by using your map. Do not rely on nametags!' },
+	{ chat: ['Quill', 'ChatTeam', 'someone want to start a squad? we are down a medic'] },
+	{ chat: ['Sato', 'ChatAll', 'which way, please?'] },
+]
+
+// the log orders events by the time the server wrote them, so each beat gets a moment of its own
+const BACKSTORY_BEAT_MS = 100
+
+async function playBeats(ctx: StageCtx, beats: BackstoryBeat[]) {
+	const world = ctx.sandbox.emu.world
+	const player = (name: string) => world.findPlayer(name)!
+	for (const beat of beats) {
+		if (ctx.signal.aborted) return
+		if ('kill' in beat) {
+			const [victim, attacker] = beat.kill
+			// a teamkill's wound reads as a second teamkill in the log
+			if (player(victim).teamId !== player(attacker).teamId) world.woundPlayer(player(victim), player(attacker))
+			world.killPlayer(player(victim), player(attacker))
+		} else if ('chat' in beat) {
+			const [name, channel, message] = beat.chat
+			world.chat(player(name), channel, message)
+		} else if ('rcon' in beat) {
+			world.handleCommand(beat.rcon)
+		} else if ('cam' in beat) {
+			world.possessAdminCam(player(beat.cam))
+		} else {
+			assertNever(beat)
+		}
+		await new Promise((resolve) => setTimeout(resolve, BACKSTORY_BEAT_MS))
+	}
+}
+
+// ---- the match history ----
+
+// The two matches played before the reader's, each with a little of the same server's life in it, and which raw
+// team won. The raw teams swap between them, so the same raw winner is a different side each time: one side winning
+// both is exactly what a balance plugin watches for, and would put its alert over the history. Played for real so their outcome, K/D, layer and who set it are all what SLM recorded, then moved back in
+// time (see backdatePastMatches). Two, because a roll swaps every player's raw team and two put them back.
+const PAST_MATCHES: { beats: BackstoryBeat[]; winnerTeamId: 1 | 2; startedAgoMin: number; lastedMin: number }[] = [
+	{
+		winnerTeamId: 2,
+		startedAgoMin: 138,
+		lastedMin: 64,
+		beats: [
+			{ chat: ['Weiss', 'ChatAll', 'gl hf, play the objective'] },
+			{ kill: ['Kestrel', 'Hollis'] },
+			{ kill: ['Marlow', 'Petrov'] },
+			{ chat: ['Sato', 'ChatAll', 'donde estan los britons'] },
+			{ kill: ['Tanaka', 'Castellan'] },
+			{ kill: ['Lindqvist', 'Moreau'] },
+			{ chat: ['Okafor', 'ChatTeam', 'HAB ON ME AT UNIVERSITY'] },
+			{ kill: ['Adeyemi', 'Kestrel'] },
+			{ kill: ['Ruiz', 'Quill'] },
+			{ kill: ['Brightwater', 'Hollis'] },
+			{ chat: ['Brightwater', 'ChatAll', 'my back ith bwoken'] },
+			{ chat: ['Hollis', 'ChatAll', 'good fight'] },
+		],
+	},
+	{
+		winnerTeamId: 2,
+		startedAgoMin: 68,
+		lastedMin: 57,
+		beats: [
+			{ chat: ['Castellan', 'ChatTeam', 'barbed wire staged down inside bushes on yeho?'] },
+			{ kill: ['Hollis', 'Marlow'] },
+			{ kill: ['Petrov', 'Kestrel'] },
+			{ kill: ['Quill', 'Lindqvist'] },
+			{ chat: ['Quill', 'ChatAll', 'with a shovel?'] },
+			{ kill: ['Moreau', 'Tanaka'] },
+			{ kill: ['Kestrel', 'Castellan'] },
+			{ chat: ['Marlow', 'ChatAll', 'NICE TRADE LOL'] },
+			{ kill: ['Adeyemi', 'Okafor'] },
+			{ chat: ['Kestrel', 'ChatAll', 'good fight'] },
+		],
+	},
+]
+
+// Gives the matches just played a history: each one starts `startedAgoMin` before now and runs `lastedMin`, with
+// its events spread across that span in their original order. Its rows are written, then the managed server's
+// match history is reloaded and the events cache dropped, so nothing keeps the times it had before.
+async function backdatePastMatches(ctx: StageCtx) {
+	const now = Date.now()
+	const past = ctx.matchHistory.recentMatches.filter((match) => !match.isCurrentMatch).slice(-PAST_MATCHES.length)
+	for (const [i, match] of past.entries()) {
+		const plan = PAST_MATCHES[i]
+		// the match the server boots on was already running when SLM connected, so it has no recorded start
+		const oldStart = (match.startTime ?? match.createdAt)?.getTime()
+		const oldEnd = match.status === 'post-game' && match.endTime !== 'unknown' ? match.endTime.getTime() : undefined
+		if (oldStart === undefined || oldEnd === undefined) continue
+		const newStart = now - plan.startedAgoMin * 60_000
+		const newEnd = newStart + plan.lastedMin * 60_000
+		const oldSpan = Math.max(1, oldEnd - oldStart)
+		await ctx
+			.db()
+			.update(Schema.matchHistory)
+			.set({ startTime: new Date(newStart), endTime: new Date(newEnd), createdAt: new Date(newStart) })
+			.where(E.eq(Schema.matchHistory.id, match.historyEntryId))
+		// the log reads server events and SLM's own (app) events together, so both move. What the roll records
+		// after the match ends is pinned to the end, rather than landing after the next match began.
+		const rescaled = (column: typeof Schema.serverEvents.time | typeof Schema.appEvents.time) =>
+			E.sql`cast(${newStart} + (min(max(${column} - ${oldStart}, 0), ${oldSpan}) * ${newEnd - newStart}) / ${oldSpan} as integer)`
+		await ctx
+			.db()
+			.update(Schema.serverEvents)
+			.set({ time: rescaled(Schema.serverEvents.time) })
+			.where(E.eq(Schema.serverEvents.matchId, match.historyEntryId))
+		await ctx
+			.db()
+			.update(Schema.appEvents)
+			.set({ time: rescaled(Schema.appEvents.time) })
+			.where(E.eq(Schema.appEvents.matchId, match.historyEntryId))
+		ctx.matchEventsCache.events.delete(match.historyEntryId)
+	}
+	await MatchHistory.loadState(ctx)
+	ctx.matchHistory.dispatchUpdate()
+}
+
+async function playMatchHistory(ctx: StageCtx) {
+	let flipped = false
+	for (const match of PAST_MATCHES) {
+		await restoreRoster(ctx, flipped)
+		await playBeats(ctx, match.beats)
+		await playMatch(ctx, { winnerTeamId: match.winnerTeamId })
+		flipped = !flipped
+	}
+}
+
+// Everything a section of the tour may have changed, undone: nobody kicked, timed out, moved, queued to swap or
+// waiting to switch, except `keepRequestFrom`, whose switch request survives so the stage that made it stays idempotent.
+async function resetRoster(ctx: StageCtx, keepRequestFrom?: string) {
+	// a switch or swap still in flight lands after the restore and undoes it, and holds its player's next request
+	const deadline = Date.now() + ROSTER_SETTLE_TIMEOUT_MS
+	while (ctx.switchRequests.swapping.size > 0 || ctx.teamswaps.session.state.swapping) {
+		if (ctx.signal.aborted) return
+		if (Date.now() > deadline) throw new Error('a team change on the tutorial server never finished')
+		await new Promise((resolve) => setTimeout(resolve, 250))
+	}
+	UserPresence.dispatchEndAllTeamswapEditing(ctx.serverId)
+	const swaps = ctx.teamswaps.session.state
+	if (swaps.savedSwaps.size > 0 || swaps.editedSwaps.size > 0) await Teamswaps.dispatchClearSwaps(ctx)
+	const kept = keepRequestFrom ? ctx.sandbox.emu.world.findPlayer(keepRequestFrom)?.eos : undefined
+	for (const request of [...ctx.switchRequests.state.requests]) {
+		if (request.playerId !== kept) await SwitchRequests.cancelSwitch(ctx, request.playerId)
+	}
+	await restoreRoster(ctx)
+}
+
+const playerManagement = defScenario({
+	id: 'player-management',
+	pacing: { postMatchDelayMs: 2000, tickChatter: false },
+	// the switch queue section needs a lone /switch to wait in line. Earlier sections leave the teams up to two apart,
+	// and the switch pass can act on a roster that has not caught up with the restore yet
+	instantSwapLead: 4,
+	// The first two are what the history rolls onto, so the set-by column shows a user on one and SLM on the other;
+	// the match the server boots on is the game server's own.
+	initialQueue: (owner) => [
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[1] }, { type: 'manual', userId: PEER_USER_ID }),
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[2] }, { type: 'generated' }),
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[0] }, { type: 'manual', userId: owner }),
+	],
+	setup: async (ctx) => {
+		await ensurePeerUser(ctx)
+		await playMatchHistory(ctx)
+		await restoreRoster(ctx)
+		await playBeats(ctx, BACKSTORY)
+		// last, because what a roll logs is written a moment after the roll itself settles
+		await backdatePastMatches(ctx)
+	},
+	stages: {
+		// Everything a later section of the tour may have changed, undone: nobody kicked, timed out, moved, queued
+		// to swap or waiting to switch. One stage for every checkpoint, since each section starts from the same roster.
+		'cp-roster': async (ctx) => {
+			await resetRoster(ctx)
+			return { code: 'ok' }
+		},
+		// A player asks to switch the way a real one would, by typing the command in chat. Also the checkpoint for
+		// the switch queue section, so it resets the roster first: the request only queues while the teams are even.
+		'switch-request': async (ctx) => {
+			const cmd = Settings.GLOBAL_SETTINGS.commands.requestSwitch
+			const trigger = cmd.enabled ? CMD.primaryTrigger(cmd) : undefined
+			if (!trigger) return { code: 'err:not-ready', msg: 'The switch command is turned off on this install.' }
+			const requester = TUT.PM_TUTORIAL_TARGETS.switchRequest
+			await resetRoster(ctx, requester)
+			const player = ctx.sandbox.emu.world.findPlayer(requester)
+			if (!player) return { code: 'err:not-ready', msg: `${requester} is not on the server.` }
+			if (!ctx.switchRequests.state.requests.some((r) => r.playerId === player.eos)) {
+				ctx.sandbox.emu.world.chat(player, 'ChatAll', CMD.triggerString(trigger))
+			}
+			return { code: 'ok' }
+		},
+	},
+})
+
 // annotated (not `satisfies`) so a stage lookup by the wire's string id resolves; defScenario still infers each
 // scenario's own stage keys for authoring, and assigning to the wider type keeps that check
-const SCENARIOS: Record<TUT.ScenarioId, ScenarioDef<string>> = { 'layer-queue': layerQueue }
+const SCENARIOS: Record<TUT.ScenarioId, ScenarioDef<string>> = { 'layer-queue': layerQueue, 'player-management': playerManagement }
 
-const SCENARIO_METAS: TUT.ScenarioMeta[] = [{ id: 'layer-queue', minutes: 10 }]
+const SCENARIO_METAS: TUT.ScenarioMeta[] = [
+	{ id: 'layer-queue', minutes: 10 },
+	{ id: 'player-management', minutes: 15 },
+]
 
 // scoped, so only the owner ever sees it in the picker; internal enough that the label need not be a message
 const DISPLAY_NAME = 'Tutorial'
@@ -285,7 +610,8 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string, owner: bigin
 	return { ...SquadServer.resolveCtx(base, serverId), sandbox, owner }
 }
 
-function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
+function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, nextLayerId: L.LayerId | null) {
+	const pacing = scenario.pacing
 	const settings = SettingsModels.PublicServerSettingsSchema.parse({})
 	const ids = filterIdsFor(owner)
 	return {
@@ -315,6 +641,10 @@ function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing
 					{ field: 'Faction' as const, within: 3, autogen: true, warn: true, crossTeam: true },
 				],
 			},
+		},
+		switchRequests: {
+			...settings.switchRequests,
+			instantSwapLead: scenario.instantSwapLead ?? settings.switchRequests.instantSwapLead,
 		},
 	}
 }
@@ -463,7 +793,7 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 		const created = await Settings.createServerEntry(ctx, {
 			id: serverId,
 			displayName: DISPLAY_NAME,
-			settings: buildSandboxSettings(owner, scenario.pacing, LL.getNextLayerId(initialQueue)),
+			settings: buildSandboxSettings(owner, scenario, LL.getNextLayerId(initialQueue)),
 			visibility: 'scoped',
 			ownerDiscordId: owner,
 			layerQueue: initialQueue,

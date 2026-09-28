@@ -91,7 +91,7 @@ function ServerChatEvents(props: {
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} className="flex flex-col gap-px pr-3 min-h-0 w-full">
+				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pr-3 min-h-0 w-full">
 					{noPlayersSelected && <div className="text-text-3 text-sm text-center py-6">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-text-3 text-sm text-center py-6">
@@ -353,13 +353,18 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an anonymous div
 		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
 		// alone once the panel is narrow.
-		<Card role="region" aria-label={tr.text(CHAT_Msgs.activityTitle())} className="flex flex-col h-full min-h-0 w-full @container">
+		<Card
+			role="region"
+			aria-label={tr.text(CHAT_Msgs.activityTitle())}
+			data-tour="activity-panel"
+			className="flex flex-col h-full min-h-0 w-full @container"
+		>
 			<CardHeader className="flex-shrink-0 whitespace-nowrap max-phone:flex-wrap max-phone:gap-y-1 max-phone:py-1.5">
 				<CardTitle className="flex items-center gap-1.5">
 					<Icons.LayoutList className="size-3.5" />
 					<span className="hidden @[520px]:inline">{tr.text(CHAT_Msgs.activityTitle())}</span>
 				</CardTitle>
-				<ButtonGroup>
+				<ButtonGroup data-tour="activity-match-nav">
 					<Button
 						variant="ghost"
 						size="icon-sm"
@@ -374,6 +379,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 					</Button>
 					{selectedMatchOrdinal !== null && (
 						<Button
+							data-tour="activity-live"
 							variant="ok"
 							size="sm"
 							onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
@@ -401,12 +407,14 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						))}
 					</ButtonGroup>
 				)}
-				<EventFilterSelect
-					value={eventFilterState}
-					onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
-					selectedOnly={selectedOnly}
-					onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
-				/>
+				<span data-tour="activity-filter" className="inline-flex">
+					<EventFilterSelect
+						value={eventFilterState}
+						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
+						selectedOnly={selectedOnly}
+						onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
+					/>
+				</span>
 				<span className="flex-1" />
 				{/* live-only readouts, and the historical controls need their header room */}
 				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}

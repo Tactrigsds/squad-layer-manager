@@ -2,10 +2,12 @@ import * as Icons from 'lucide-react'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import { Spinner } from '@/components/ui/spinner'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import type * as TUT from '@/models/tutorial.models'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { rootRouter } from '@/root-router'
 import { tr } from '@/systems/messages.client'
@@ -149,8 +151,25 @@ function useRenderedMsg(run: Tour.RunStores, msg: Tour.Step['msg']): Tour.Render
 
 export function TourOverlay() {
 	const state = Zus.useStore(Tour.Store, Tour.Sel.state)
-	if (state.code === 'idle') return null
+	const starting = Zus.useStore(Tour.Store, Tour.Sel.starting)
+	if (state.code === 'idle') return starting ? <StartingCard scenarioId={starting} /> : null
 	return <TourActive state={state} />
+}
+
+// Standing a tutorial's server up takes a while, and a run can be started from a dialog that closes on the click, so
+// the wait is shown here, wherever the reader is, rather than only on the button they pressed.
+function StartingCard({ scenarioId }: { scenarioId: TUT.ScenarioId }) {
+	const zIndex = useZIndex(ZI_OFFSETS.TOUR)
+	return createPortal(
+		<div
+			className="fixed bottom-3 left-3 flex items-center gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-xs text-text shadow-2xl"
+			style={{ zIndex }}
+		>
+			<Spinner />
+			{tr.text(TUT_Msgs.settingUp(tr.text(TUT_Msgs.scenarios[scenarioId].name())))}
+		</div>,
+		document.body,
+	)
 }
 
 function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }> }) {
@@ -244,6 +263,7 @@ function AnchoredStep(props: {
 				state={state}
 				step={step}
 				rendered={rendered}
+				anchor={anchorTarget === null ? 'none' : hasOutline ? 'found' : 'missing'}
 				anchorRect={hasOutline ? rect : null}
 				spotRect={hasSpotlight ? spotRect : null}
 				total={total}
@@ -380,6 +400,8 @@ function Card(props: {
 	state: AnchoredStepState
 	step: Tour.Step
 	rendered: Tour.RenderedStep
+	// whether the step's anchor is on screen, for the e2e suite to tell a centred card from one that lost its anchor
+	anchor: 'found' | 'missing' | 'none'
 	anchorRect: Rect | null
 	spotRect: Rect | null
 	total: number
@@ -404,6 +426,7 @@ function Card(props: {
 	return (
 		<div
 			ref={cardRef}
+			data-tour-anchor={props.anchor}
 			className="absolute w-max rounded-lg border border-line-soft bg-ground p-3.5 pt-4 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, card.w, card.h) }}
 		>
@@ -471,7 +494,8 @@ function CardActions(props: {
 		return <span className="px-1 text-xs text-text-3">{tr.text(TUT_Msgs.preparing())}</span>
 	}
 	// the button belongs to the transition OUT of this step; the last step always finishes on a button
-	const showNext = isLast || Tour.transitionOutOf(state.scenarioId, state.stepIdx).type === 'next'
+	const out = Tour.transitionOutOf(state.scenarioId, state.stepIdx)
+	const showNext = isLast || out.type === 'next' || !!out.allowNext
 	if (!showNext) return null
 	return (
 		<button type="button" className="rounded-md bg-info px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>

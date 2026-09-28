@@ -41,7 +41,7 @@ function SwitchRequestsWindow({ stores }: SwitchRequestsWindowProps) {
 		(s) => SRQClient.Sel.queueForTeam(1)(s).length > 0 && SRQClient.Sel.queueForTeam(2)(s).length > 0,
 	)
 	return (
-		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
+		<div data-tour="switch-requests-window" className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{tr.text(SRQ_Msgs.windowTitle())}</DraggableWindowTitle>
 				<DraggableWindowClose />
@@ -93,6 +93,7 @@ function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; cla
 					<span className="ml-auto shrink-0">
 						<PermissionDeniedTooltip denied={switchNowDenied}>
 							<Button
+								data-tour="switch-now"
 								variant="ghost"
 								size="icon"
 								className="h-6 w-6"

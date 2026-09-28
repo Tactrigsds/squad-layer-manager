@@ -343,7 +343,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
 	return (
-		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
+		<div data-tour="player-details-window" className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
 					{ids?.username ?? tr.text(SM_Msgs.playerDetailsTitle())}
@@ -391,7 +391,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+			<div data-tour="player-details-ids" className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="flex flex-col ">
 					<div className="inline-flex gap-2 items-baseline">
@@ -502,7 +502,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				)
 			)}
 			<Separator />
-			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
+			<div data-tour="player-details-activity" className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
 					<h3 className="inline">{tr.text(CHAT_Msgs.activityTitle())}</h3>
 					<EventFilterSelect
@@ -580,7 +580,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				</div>
 			</div>
 			{isOnline && (
-				<div className="px-3 py-2 border-t border-border/50">
+				<div data-tour="player-details-warn" className="px-3 py-2 border-t border-border/50">
 					<WarnChatBox
 						serverId={serverId}
 						playerIds={[playerId]}
@@ -999,7 +999,10 @@ function PlayerTags(props: {
 	if (!showIngame && !showFlags && !showGroupings) return null
 
 	return (
-		<div className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1.5 border-b border-border/50 px-3 py-2">
+		<div
+			data-tour="player-details-tags"
+			className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1.5 border-b border-border/50 px-3 py-2"
+		>
 			{showIngame && (
 				<>
 					<span className="fd-lbl-k2 pt-1">{tr.text(SM_Msgs.ingameTagsLabel())}</span>
