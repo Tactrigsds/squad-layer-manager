@@ -318,8 +318,9 @@ const QueryFieldsSchema = z.object({
 	playerRole: z.enum(PLAYER_ROLES).optional(),
 	users: z.array(z.string()).optional(),
 
-	// Superseded by the lists above, and only ever read on the way in: every saved query and every shared
-	// link written before they were lists still carries these, and folds into them (see foldSingles).
+	// The lists above, spelled as one value. Only ever read on the way in, folding into their lists (see
+	// foldSingles): a url writes a list of one this way (see compactSearch), and saved queries and shared links
+	// from before they were lists still carry them.
 	server: z.string().optional(),
 	player: z.string().optional(),
 	user: z.string().optional(),
@@ -331,7 +332,8 @@ const QueryFieldsSchema = z.object({
 	order: z.enum(['newest', 'oldest']).optional(),
 
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
-	// the activity feed's secondary filter, as a shortcut over event type. Absent means ALL (see feedFilterNode)
+	// the activity feed's secondary filter, as a shortcut over event type. Absent means the result type's own
+	// default, which parsing folds into absence (see defaultFeed)
 	feed: CHAT.SECONDARY_FILTER_STATE.optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
@@ -389,6 +391,7 @@ function foldSingles({ server, player, user, outcome, ...rest }: QueryFields): F
 		players: fold(rest.players, player),
 		users: fold(rest.users, user),
 		outcomes: fold(rest.outcomes, outcome),
+		feed: rest.feed === defaultFeed(rest.type) ? undefined : rest.feed,
 	}
 }
 
@@ -480,6 +483,26 @@ export function splitSearch(search: Search): { query: Query } & SearchExtras {
 }
 
 /**
+ * A search as its url spells it, as short as it parses back the same: `type` and `mode` are left out at their
+ * defaults, and a list of one is written as its single-valued param, which foldSingles reads back into the list.
+ */
+export function compactSearch(search: Search): Record<string, unknown> {
+	const { type, mode, feed, servers, players, users, outcomes, ...rest } = search
+	const listOrSingle = (listKey: string, singleKey: string, list: unknown[] | undefined) =>
+		list?.length === 1 ? { [singleKey]: list[0] } : { [listKey]: list }
+	return {
+		...(type === DEFAULT_QUERY.type ? {} : { type }),
+		...(mode === DEFAULT_QUERY.mode ? {} : { mode }),
+		...listOrSingle('servers', 'server', servers),
+		...listOrSingle('players', 'player', players),
+		...listOrSingle('users', 'user', users),
+		...listOrSingle('outcomes', 'outcome', outcomes),
+		...(feed === defaultFeed(type) ? {} : { feed }),
+		...rest,
+	}
+}
+
+/**
  * What a request for the history url answers with: the `contentType` param when it names one, else the type the
  * Accept header prefers, else the page. Types the header ranks equally go to the earliest in CONTENT_TYPES.
  */
@@ -559,7 +582,7 @@ export function activityLogQuery(args: { serverId: string; matchId: number; feed
 		...DEFAULT_QUERY,
 		servers: [args.serverId],
 		matchId: args.matchId,
-		feed: args.feed === 'ALL' ? undefined : args.feed,
+		feed: args.feed === 'DEFAULT' ? undefined : args.feed,
 		order: 'oldest',
 	}
 }
@@ -626,6 +649,22 @@ const NOT_TEAMKILL: F.CompNode = {
 	],
 }
 
+// DEFAULT for events, as the activity feed opens. ALL for players and matches, which read an event-type filter as
+// "containing such an event" (see QF.FIELD_DEFS.feed), and so do not offer this one.
+export function defaultFeed(type: ResultType): CHAT.SecondaryFilterState {
+	return type === 'events' ? 'DEFAULT' : 'ALL'
+}
+
+export function feedOf(query: Pick<Query, 'type' | 'feed'>): CHAT.SecondaryFilterState {
+	return query.feed ?? defaultFeed(query.type)
+}
+
+/** `query` as another result type, applying the same feed filter it did. */
+export function retyped(query: Query, type: ResultType): Query {
+	const feed = feedOf(query)
+	return { ...query, type, feed: feed === defaultFeed(type) ? undefined : feed }
+}
+
 /**
  * The activity feed's secondary filter as a node, so the history page offers the same six views.
  *
@@ -682,10 +721,8 @@ export function queryFilterNode(query: Query): Node {
 	}
 	if (query.users?.length) children.push(comp('user', query.users))
 	if (query.types && query.types.length > 0) children.push(comp('event.type', query.types))
-	if (query.feed) {
-		const node = feedFilterNode(query.feed)
-		if (node) children.push(node)
-	}
+	const feedNode = feedFilterNode(feedOf(query))
+	if (feedNode) children.push(feedNode)
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
 	if (query.chat) children.push(comp('chat.message', [query.chat]))
@@ -711,7 +748,7 @@ export function queryFilterNode(query: Query): Node {
 // the row anded onto its tree, the only narrowing that composes with anything a tree can hold.
 
 function narrowedTree(query: Query, extra: Node): Query {
-	return { ...query, type: 'events', q: { type: 'and', children: [queryFilterNode(query), extra] } }
+	return { ...retyped(query, 'events'), q: { type: 'and', children: [queryFilterNode(query), extra] } }
 }
 
 export function eventsForPlayer(query: Query, playerId: string): Query {
@@ -719,13 +756,13 @@ export function eventsForPlayer(query: Query, playerId: string): Query {
 	// On a players result, `players` and the `playerRole` qualifying it pick which rows show, as do `name` and
 	// `minMatches`; none of them filters the events a row counts (see queryFilterNode, groupPlayerRefs). So the row's
 	// player replaces them rather than being anded with them.
-	return { ...query, type: 'events', players: [playerId], playerRole: undefined, name: undefined, minMatches: undefined }
+	return { ...retyped(query, 'events'), players: [playerId], playerRole: undefined, name: undefined, minMatches: undefined }
 }
 
 export function eventsForMatch(query: Query, matchId: number): Query {
 	if (query.mode === 'advanced') return narrowedTree(query, { type: 'match-ids', neg: false, matchIds: [matchId] })
 	// every row of a matches result already passed the query's own `matchId`, if it has one, so this narrows it
-	return { ...query, type: 'events', matchId }
+	return { ...retyped(query, 'events'), matchId }
 }
 
 /** The same, for a results row by its key (`player:<eos id>` or `match:<id>`); undefined for a key of neither kind. */

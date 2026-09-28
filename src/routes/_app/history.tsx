@@ -14,6 +14,8 @@ import * as SettingsClient from '@/systems/settings.client'
 export const Route = createFileRoute('/_app/history')({
 	component: RouteComponent,
 	validateSearch: (search): HQ.Search => HQ.parseSearch(search),
+	// runs on the validated search, defaults filled in, just before it is written to the url
+	search: { middlewares: [({ search, next }) => HQ.compactSearch(next(search)) as HQ.Search] },
 	head: () => ({
 		meta: [{ title: 'SLM - History' }],
 	}),
@@ -29,7 +31,7 @@ function useBareVisitDefaults(search: HQ.Search) {
 	const bare = search.servers === undefined && JSON.stringify(search) === JSON.stringify(HQ.DEFAULT_QUERY)
 	React.useEffect(() => {
 		if (!bare || !defaultServer) return
-		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer], feed: 'DEFAULT' }, replace: true })
+		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer] }, replace: true })
 	}, [bare, defaultServer, navigate])
 }
 

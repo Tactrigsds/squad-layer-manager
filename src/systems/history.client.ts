@@ -23,7 +23,7 @@ export type QueryPageInput = {
  * outside the router's context, and a link is built from there too.
  */
 export function historyUrl(search: HQ.Search): string {
-	return new URL(`/history${TSR.defaultStringifySearch(search)}`, window.location.origin).href
+	return new URL(`/history${TSR.defaultStringifySearch(HQ.compactSearch(search))}`, window.location.origin).href
 }
 
 export type RowsLinkTarget = {
@@ -156,20 +156,25 @@ export function saveRailWidth(width: number) {
 // -------- recents --------
 // purely a convenience, so localStorage is the right home: per browser, survives nothing it shouldn't
 
-const RECENTS_KEY = 'slm:history:recents'
+const RECENTS_KEY = 'slm:history:recents:v2'
+// written while an events query without a feed meant ALL, where it now means DEFAULT; read once, then replaced
+const LEGACY_RECENTS_KEY = 'slm:history:recents'
 const MAX_RECENTS = 20
 
 export type Recent = { query: HQ.Query; at: number }
 
 export function loadRecents(): Recent[] {
 	try {
-		const raw = localStorage.getItem(RECENTS_KEY)
+		const current = localStorage.getItem(RECENTS_KEY)
+		const raw = current ?? localStorage.getItem(LEGACY_RECENTS_KEY)
 		if (!raw) return []
 		const parsed = JSON.parse(raw)
 		if (!Array.isArray(parsed)) return []
 		const recents: Recent[] = []
 		for (const entry of parsed) {
-			const query = HQ.QuerySchema.safeParse(entry?.query)
+			const stored = entry?.query
+			const legacyAll = current === null && stored && (stored.type ?? 'events') === 'events' && stored.feed === undefined
+			const query = HQ.QuerySchema.safeParse(legacyAll ? { ...stored, feed: 'ALL' } : stored)
 			if (query.success && typeof entry.at === 'number') recents.push({ query: query.data, at: entry.at })
 		}
 		return recents
@@ -184,6 +189,7 @@ export function pushRecent(query: HQ.Query) {
 	const next = [{ query, at: Date.now() }, ...rest].slice(0, MAX_RECENTS)
 	try {
 		localStorage.setItem(RECENTS_KEY, JSON.stringify(next))
+		localStorage.removeItem(LEGACY_RECENTS_KEY)
 	} catch {
 		// storage full or unavailable: recents are a convenience, not state
 	}

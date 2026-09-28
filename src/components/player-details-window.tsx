@@ -138,11 +138,10 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const groupColor = usePlayerGroupColor(playerId, undefined)
 	const steam = steamId ?? profile?.playerIds.steam
-	// the same secondary filter the framed window has, applied in sql rather than over a rendered feed. ALL is
-	// the absence of the filter, so it goes as undefined rather than as a preset matching everything.
+	// the same secondary filter the framed window has, applied in sql rather than over a rendered feed
 	const [feed, setFeed] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const eventsQuery = React.useMemo(
-		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'ALL' ? undefined : feed }),
+		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'DEFAULT' ? undefined : feed }),
 		[playerId, feed],
 	)
 
@@ -318,7 +317,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 			type: 'events',
 			servers: [serverId],
 			players: [playerId],
-			feed: filterState === 'ALL' ? undefined : filterState,
+			feed: filterState === 'DEFAULT' ? undefined : filterState,
 		},
 	}))
 	const feedCtx = useRenderCtx(stores, allEvents, { linkToRows, selectionText: useEventsSelectionText(filteredEvents) })
@@ -773,7 +772,7 @@ type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
 function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 	return RPC.orpc.history.query.infiniteOptions({
 		input: (cursor: EventCursor | undefined) => ({
-			query: { ...HQ.DEFAULT_QUERY, type: 'events' as const, server: serverId, player: playerId },
+			query: { ...HQ.DEFAULT_QUERY, type: 'events' as const, server: serverId, player: playerId, feed: 'ALL' as const },
 			cursor,
 			format: 'wire' as const,
 			// the feed shows a match-boundary row between matches, which no player filter would select
