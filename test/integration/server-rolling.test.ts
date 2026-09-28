@@ -307,8 +307,9 @@ describe('the event archive', () => {
 			db.close()
 		}
 
-		const allEvents = await client.history.query({ query: {} })
-		const onMap = await client.history.query({ query: { map: indexedMap } })
+		// basic mode's events default to the DEFAULT feed, which the advanced tree below does not apply
+		const allEvents = await client.history.query({ query: { feed: 'ALL' } })
+		const onMap = await client.history.query({ query: { feed: 'ALL', map: indexedMap } })
 		expect(onMap.code).toBe('ok')
 		if (allEvents.code !== 'ok' || allEvents.type !== 'events') return
 		if (onMap.code !== 'ok' || onMap.type !== 'events') return

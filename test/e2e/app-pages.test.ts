@@ -633,7 +633,7 @@ test.describe('history page', () => {
 	test('tells a kill apart by which end of it a player was on', async ({ app, page }) => {
 		const { attacker, victim } = await seedKill(app)
 		const kills = (eos: string, role: 'attacker' | 'victim') =>
-			historyUrl(app, `type=events&types=%5B%22PLAYER_DIED%22%5D&players=%5B%22${eos}%22%5D&playerRole=${role}`)
+			historyUrl(app, `type=events&feed=ALL&types=%5B%22PLAYER_DIED%22%5D&players=%5B%22${eos}%22%5D&playerRole=${role}`)
 		const total = page.getByText(/^\d+ results?$/)
 
 		await page.goto(kills(attacker, 'attacker'))
@@ -927,7 +927,9 @@ test.describe('history page', () => {
 		await page.getByRole('menuitem', { name: 'Copy link to selection' }).click()
 		await expect.poll(() => readClipboard(page)).toContain('sel=')
 		const link = await readClipboard(page)
-		expect(link).toContain('type=events')
+		// an events query, the url's default type, of the row's player alone
+		expect(link).not.toContain('type=')
+		expect(link).toMatch(/[?&]player=/)
 
 		await page.goto(link)
 		const selected = page.getByRole('region', { name: 'Event results' }).locator(':scope > [data-selected]')
@@ -945,7 +947,7 @@ test.describe('history page', () => {
 		await logRow.getByText(HISTORY_TALKER).click({ timeout: 20_000 })
 
 		const link = await dragAndCopyLink(page, lines)
-		expect(link).toMatch(/players=/)
+		expect(link).toMatch(/[?&]player=/)
 		await expectLinkSelects(page, link, lines)
 	})
 

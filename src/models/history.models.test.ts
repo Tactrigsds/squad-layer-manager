@@ -1,3 +1,4 @@
+import * as TSR from '@tanstack/react-router'
 import { describe, expect, test } from 'vitest'
 
 import * as HQ from './history.models'
@@ -138,5 +139,29 @@ describe('parseSearchParams', () => {
 		const bad = HQ.parseSearchParams(new URLSearchParams({ contentType: 'application/pdf', cursor: 'nope' }))
 		expect(bad.contentType).toBeUndefined()
 		expect(bad.cursor).toBeUndefined()
+	})
+})
+
+describe('compactSearch', () => {
+	const roundTrip = (search: HQ.Search) => HQ.parseSearchParams(new URLSearchParams(TSR.defaultStringifySearch(HQ.compactSearch(search))))
+
+	test('a url with defaults and lists of one left short reads back as the same search', () => {
+		const search = HQ.parseSearch({ servers: ['main'], players: ['76561198000000000'], to: 1790620086415, sel: ['a', '2'] })
+		expect(TSR.defaultStringifySearch(HQ.compactSearch(search))).not.toMatch(/type=|mode=|feed=|servers=|players=/)
+		expect(roundTrip(search)).toEqual(search)
+	})
+
+	test('keeps what differs from the defaults', () => {
+		const search = HQ.parseSearch({ type: 'matches', mode: 'advanced', servers: ['a', 'b'], outcomes: ['draw'], feed: 'CHAT' })
+		expect(roundTrip(search)).toEqual(search)
+	})
+
+	test('an events query spells out ALL, where players and matches leave it out as their own default', () => {
+		const events = HQ.parseSearch({ feed: 'ALL' })
+		expect(events.feed).toBe('ALL')
+		expect(roundTrip(events)).toEqual(events)
+		expect(HQ.feedOf(HQ.parseSearch({}))).toBe('DEFAULT')
+		expect(HQ.parseSearch({ type: 'players', feed: 'ALL' }).feed).toBeUndefined()
+		expect(HQ.feedOf(HQ.retyped(HQ.parseSearch({ type: 'players' }), 'events'))).toBe('ALL')
 	})
 })

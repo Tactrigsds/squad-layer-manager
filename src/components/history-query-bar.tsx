@@ -468,9 +468,8 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			return (
 				<EventFilterSelect
 					className="h-7 w-full justify-between"
-					value={draft.feed ?? 'ALL'}
-					// ALL is the absence of the filter, so it stays out of the url rather than riding in it
-					onValueChange={(value) => set({ feed: value === 'ALL' ? undefined : value })}
+					value={HQ.feedOf(draft)}
+					onValueChange={(value) => set({ feed: value === HQ.defaultFeed(draft.type) ? undefined : value })}
 				/>
 			)
 		case 'event-types':
