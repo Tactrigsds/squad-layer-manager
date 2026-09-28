@@ -177,13 +177,14 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 // the query alone. The row owns the flag because the row owns the clear, which has to put it back.
 function useTimeRange(props: { draft: HQ.Query; set: Set }) {
 	const [custom, setCustom] = React.useState(false)
+	const isSet = props.draft.from !== undefined || props.draft.to !== undefined
 	return {
 		custom,
 		setCustom,
 		// a datetime-local input will not render under ~158px, which is more than a row's control column has,
 		// so the row stacks when the two of them are showing
-		showCustom: custom || (props.draft.from !== undefined && !matchedPreset(props.draft)),
-		isSet: props.draft.from !== undefined || props.draft.to !== undefined,
+		showCustom: custom || (isSet && !matchedPreset(props.draft)),
+		isSet,
 		clear: () => {
 			setCustom(false)
 			props.set({ from: undefined, to: undefined })

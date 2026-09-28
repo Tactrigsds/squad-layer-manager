@@ -837,6 +837,7 @@ test.describe('history page', () => {
 		await expect(selected).toHaveCount(3, { timeout: 30_000 })
 		await expect(selected.first()).toBeInViewport()
 		await expect(rowWith(later)).toHaveCount(0)
+		await expect(page.getByLabel('To', { exact: true })).toHaveValue(/^\d{4}-\d\d-\d\dT\d\d:\d\d$/)
 
 		// a click on a time selects its row alone, and a second click on the only selected row clears it,
 		// and the url with it
