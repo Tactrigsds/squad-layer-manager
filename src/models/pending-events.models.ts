@@ -260,6 +260,8 @@ export type State = {
 		onNewGameDuringRoll: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; nextLayerId: L.LayerId | null }>
 		onNewGameDuringSync: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; isNewMatch: boolean }>
 		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
+		// the usernameNoTag an earlier join log recorded for each player, where the username still matches
+		fetchUsernamesNoTag: (players: { eos: SM.PlayerId; username: string }[]) => Promise<Map<SM.PlayerId, string>>
 		// Persists the event and returns it with the id the insert allocated. Every event this module emits goes
 		// through here first, so an event is on disk before any consumer (or our own state) ever sees it, and ids
 		// are handed out in emission order.
@@ -724,7 +726,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 		// PLAYER_RECONCILED is a roster backfill (from the teams poll) and mutates the roster identically to a connect.
 		case 'PLAYER_RECONCILED': {
 			const playerId = SM.PlayerIds.getPlayerId(event.player.ids)
-			if (teams.players.has(playerId)) {
+			if (event.type === 'PLAYER_CONNECTED' && teams.players.has(playerId)) {
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} ${event.type} but was already in the player list`)
 			}
 			teams.players.set(playerId, event.player)
@@ -843,6 +845,7 @@ async function* processPendingEvent(
 		state.staleTeamsFromDisconnect = null
 		const prior = stale ? { teams: stale.teams, sameMatch: stale.matchId === state.currentMatch.historyEntryId } : undefined
 		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads }, prior)
+		await backfillUsernamesNoTag(state, teams)
 
 		// The definitive roster always arrives via RESET. For a new match the roster-less NEW_GAME boundary was
 		// already emitted at RCON_CONNECTED; a same-match reconnect emits only this RESET.
@@ -874,6 +877,7 @@ async function* processPendingEvent(
 		// the stale pre-roll roster is a different match (never reuse squad ids), but its name-derived player ids carry over
 		const prior = state.currTeams ? { teams: state.currTeams, sameMatch: false } : undefined
 		const teams = initUniqueTeams(state, { players: teamedPlayers, squads: pendingEvent.teams.squads }, prior)
+		await backfillUsernamesNoTag(state, teams)
 		// The roster-less NEW_GAME(server-roll) boundary was emitted when the real-layer NEW_GAME log arrived; this
 		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
 		yield await createEvent(state, {
@@ -1188,8 +1192,17 @@ async function* processPendingEvent(
 			// took in first, not a second arrival. Happens whenever the log stream is delayed past the poll that
 			// carried them -- most visibly across a roll, where the RESET absorbs everyone who connected during
 			// the loading screen and the connect line can land after it.
-			if (state.currTeams.players.has(SM.PlayerIds.getPlayerId(player.ids))) {
+			const held = state.currTeams.players.get(SM.PlayerIds.getPlayerId(player.ids))
+			if (held) {
 				log.debug('Dropping PLAYER_CONNECTED for %s: already in the roster', SM.PlayerIds.prettyPrint(player.ids))
+				// the join log is the only source of usernameNoTag, so the held player may still lack it
+				if (held.ids.usernameNoTag !== player.ids.usernameNoTag) {
+					yield await createEvent(state, {
+						type: 'PLAYER_RECONCILED',
+						...base,
+						player: { ...held, ids: { ...held.ids, usernameNoTag: player.ids.usernameNoTag } },
+					})
+				}
 				break
 			}
 
@@ -1546,6 +1559,10 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	// the poll's roster as a set, so the REMOVE loop below is a lookup per player rather than a scan per player
 	const polledIds = new Set<SM.PlayerId>()
 	for (const player of nextTeams.players) polledIds.add(SM.PlayerIds.getPlayerId(player.ids))
+	const storedUsernamesNoTag = await fetchUsernamesNoTag(
+		state,
+		nextTeams.players.filter((p) => p.teamId != null && !state.currTeams!.players.has(SM.PlayerIds.getPlayerId(p.ids))),
+	)
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
 		const known = state.currTeams.players.get(playerId)
@@ -1576,7 +1593,9 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 		yield await createEvent(state, {
 			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
 			player: {
-				ids: nextPlayer.ids,
+				ids: storedUsernamesNoTag.has(playerId)
+					? { ...nextPlayer.ids, usernameNoTag: storedUsernamesNoTag.get(playerId) }
+					: nextPlayer.ids,
 				teamId: nextPlayer.teamId,
 				squadId: null,
 				isLeader: false,
@@ -1828,6 +1847,29 @@ async function* emitLeaveSquadEvents(
 				})
 			}
 		}
+	}
+}
+
+// A lookup failure only costs the tagless names, so it never blocks the roster.
+async function fetchUsernamesNoTag(state: State, players: Iterable<SM.Player>): Promise<Map<SM.PlayerId, string>> {
+	const missing: { eos: SM.PlayerId; username: string }[] = []
+	for (const p of players) {
+		if (!p.ids.usernameNoTag && p.ids.username) missing.push({ eos: SM.PlayerIds.getPlayerId(p.ids), username: p.ids.username })
+	}
+	if (missing.length === 0) return new Map()
+	try {
+		return await state.hooks.fetchUsernamesNoTag(missing)
+	} catch (err) {
+		state.log.warn({ err }, 'failed to fetch stored usernameNoTag values')
+		return new Map()
+	}
+}
+
+// Fills usernameNoTag for players whose join log we never saw. Mutates `teams`, which must not be shared yet.
+async function backfillUsernamesNoTag(state: State, teams: SM.LiveTeams) {
+	for (const [id, usernameNoTag] of await fetchUsernamesNoTag(state, teams.players.values())) {
+		const player = teams.players.get(id)!
+		teams.players.set(id, { ...player, ids: { ...player.ids, usernameNoTag } })
 	}
 }
 

@@ -59,6 +59,7 @@ function makeState(
 			nextLayerId: opts.layerId ?? LAYER_A,
 		}),
 		fetchLayersStatus: () => Promise.resolve(null),
+		fetchUsernamesNoTag: () => Promise.resolve(new Map()),
 		// stands in for the db insert: hands out ids in emission order, exactly as the autoincrement column does
 		createEvent: (event) => {
 			const id = Gen.next(eventIdCounter)
@@ -230,6 +231,17 @@ describe('PendingEvents', () => {
 			const reset = events.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset.state.players).toHaveLength(1)
 			expect([...reset.state.players.values()][0]).toMatchObject({ ids: { eos: 'eos-001' } })
+		})
+
+		it('RESET backfills usernameNoTag from a join log recorded earlier', async () => {
+			const { state } = makeState()
+			const fetchUsernamesNoTag = vi.fn().mockResolvedValue(new Map([['eos-001', 'One']]))
+			state.hooks.fetchUsernamesNoTag = fetchUsernamesNoTag
+			const events = await syncUp(state, { teams: makeTeams([makePlayer('eos-001', 1)]) })
+			expect(fetchUsernamesNoTag).toHaveBeenCalledWith([{ eos: 'eos-001', username: 'eos-001' }])
+			const reset = events.find((e) => e.type === 'RESET') as SE.Reset
+			expect(reset.state.players[0].ids.usernameNoTag).toBe('One')
+			expect(state.currTeams!.players.get('eos-001')!.ids.usernameNoTag).toBe('One')
 		})
 
 		it('RCON_CONNECTED is skipped when syncState is rolling', async () => {
@@ -821,6 +833,20 @@ describe('PendingEvents', () => {
 			expect(events.filter((e) => e.type === 'PLAYER_CONNECTED')).toEqual([])
 			expect([...state.currTeams!.players.values()].filter((p) => p.ids.eos === 'eos-001')).toHaveLength(1)
 		})
+
+		it('reconciles the usernameNoTag of a held player that lacks it, once', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+
+			PendingEvents.onLogEvent(state, makePlayerConnectedChain(300, 'eos-001', 'ctrl-001', 1))
+			const events = await collect(state)
+			const reconciled = events.filter((e) => e.type === 'PLAYER_RECONCILED') as SE.PlayerReconciled[]
+			expect(reconciled).toHaveLength(1)
+			expect(reconciled[0].player.ids).toMatchObject({ eos: 'eos-001', username: 'eos-001', usernameNoTag: 'Test Player' })
+			expect(state.currTeams!.players.get('eos-001')!.ids.usernameNoTag).toBe('Test Player')
+
+			PendingEvents.onLogEvent(state, makePlayerConnectedChain(400, 'eos-001', 'ctrl-001', 1))
+			expect(await collect(state)).toEqual([])
+		})
 	})
 
 	describe('PLAYER_DISCONNECTED', () => {
@@ -1043,6 +1069,33 @@ describe('PendingEvents', () => {
 			expect(connects[0].player.teamId).toBe(2)
 			expect(events.some((e) => e.type === 'PLAYER_RECONCILED')).toBe(false)
 			expect(state.currTeams!.players.has('eos-002')).toBe(true)
+		})
+
+		it("fills a polled arrival's usernameNoTag from a join log recorded earlier", async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			const fetchUsernamesNoTag = vi.fn().mockResolvedValue(new Map([['eos-002', 'Two']]))
+			state.hooks.fetchUsernamesNoTag = fetchUsernamesNoTag
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 200)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			expect(fetchUsernamesNoTag).toHaveBeenCalledWith([{ eos: 'eos-002', username: 'eos-002' }])
+			const connected = events.find((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
+			expect(connected.player.ids.usernameNoTag).toBe('Two')
+		})
+
+		it('still adds a polled arrival when the usernameNoTag lookup fails', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			state.hooks.fetchUsernamesNoTag = vi.fn().mockRejectedValue(new Error('db down'))
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 200)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const connected = events.find((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
+			expect(connected.player.ids.eos).toBe('eos-002')
+			expect(connected.player.ids.usernameNoTag).toBeUndefined()
 		})
 
 		it('emits PLAYER_RECONCILED (not PLAYER_CONNECTED) for a player we saw team-less who then gets a team', async () => {
