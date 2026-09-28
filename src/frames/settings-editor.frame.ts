@@ -392,6 +392,10 @@ export namespace Sel {
 		return Array.from(ids).sort()
 	}
 
+	export function globalDraft(...states: SettingsEditor[]): any {
+		return states.find((s) => s.kind === 'global')?.draft
+	}
+
 	// the per-section editor modes the table of contents keys off: a YAML-mode section renders no per-field anchors,
 	// so it collapses to a single leaf there
 	export function tocModes(...states: SettingsEditor[]) {

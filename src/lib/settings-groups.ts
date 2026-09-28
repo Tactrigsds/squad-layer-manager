@@ -97,6 +97,10 @@ export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
 	'rbac',
 ])
 
+// global list settings whose entries each get an anchor in the form and a row in the TOC, named and searchable by the
+// entry's own label (see tocEntries in settings-toc.tsx)
+export const TOC_ENTRY_PATHS: ReadonlySet<string> = new Set(['adminActionReasons', 'messageVariables'])
+
 // partition a section's child keys into the ones it renders directly and the ones that belong in its "Advanced"
 // disclosure, preserving the incoming order within each. `parentPath` is the dotted path of the section itself ('' at
 // the form root), since advanced-ness is declared per full path.

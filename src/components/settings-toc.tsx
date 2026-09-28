@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
+import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_ENTRY_PATHS, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
@@ -28,7 +28,11 @@ type Node = any
 // `writable`: the user's write grant overlaps this node's subtree. Rendered as a pencil marker (only when some
 // restriction exists on the page), so a path-restricted user can drill down to their editable settings even from a
 // fully collapsed tree.
-type TocNode = { id: string; label: string; path: string; writable: boolean; children: TocNode[] }
+// `keywords`: extra search terms beyond the label and path
+type TocNode = { id: string; label: string; path: string; keywords?: string[]; writable: boolean; children: TocNode[] }
+type TocEntry = { label: string; keywords: string[] }
+// entries of a TOC_ENTRY_PATHS list, read from the draft, by dotted path
+type EntriesByPath = ReadonlyMap<string, TocEntry[]>
 
 const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
 const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
@@ -46,9 +50,31 @@ function stripNullable(node: Node): Node {
 	return node
 }
 
+// the TOC rows for one TOC_ENTRY_PATHS list setting. Draft entries are unvalidated input, so every field is optional.
+function tocEntries(path: string, value: unknown): TocEntry[] {
+	if (!Array.isArray(value)) return []
+	switch (path) {
+		case 'adminActionReasons':
+			return value.map((r: { label?: string; keywords?: string[] }, i) => ({
+				label: r?.label || `#${i + 1}`,
+				keywords: r?.keywords ?? [],
+			}))
+		case 'messageVariables':
+			return value.map((v: { name?: string }, i) => ({ label: v?.name || `#${i + 1}`, keywords: [] }))
+		default:
+			return []
+	}
+}
+
 // idPrefix scopes anchor ids so per-server subtrees (`setting:server:<id>:*`) don't collide with global (`setting:*`);
 // it must match what SettingsForm emits for the same schema.
-function buildChildren(node: Node, path: (string | number)[], idPrefix: string, access: RBAC.SettingsWriteAccess): TocNode[] {
+function buildChildren(
+	node: Node,
+	path: (string | number)[],
+	idPrefix: string,
+	access: RBAC.SettingsWriteAccess,
+	entries?: EntriesByPath,
+): TocNode[] {
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
 	// top-level keys that render no field (see HIDDEN_SETTINGS_KEYS) get no TOC anchor either
@@ -66,7 +92,16 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string, 
 				label: settingLabel(childPath, key),
 				path: pathStr,
 				writable: RBAC.settingsPathOverlaps(access, childPath),
-				children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
+				children: recurse
+					? buildChildren(inner, childPath, idPrefix, access, entries)
+					: (entries?.get(pathStr) ?? []).map((e, i) => ({
+							id: `${idPrefix}${pathStr}.${i}`,
+							label: e.label,
+							path: `${pathStr}.${i}`,
+							keywords: e.keywords,
+							writable: RBAC.settingsPathOverlaps(access, [...childPath, i]),
+							children: [],
+						})),
 			}
 		})
 }
@@ -100,8 +135,11 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 
 function filterNode(node: TocNode, query: string): TocNode | null {
 	const children = node.children.map((c) => filterNode(c, query)).filter((c): c is TocNode => c !== null)
-	// match on the humanized label or the json path so users can search either
-	const selfMatch = node.label.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
+	// match on the humanized label, the json path or any keyword, so users can search by whichever they know
+	const selfMatch =
+		node.label.toLowerCase().includes(query) ||
+		node.path.toLowerCase().includes(query) ||
+		!!node.keywords?.some((k) => k.toLowerCase().includes(query))
 	if (selfMatch || children.length > 0) return { ...node, children }
 	return null
 }
@@ -321,13 +359,26 @@ export default function SettingsToc({
 		return map
 	}, [perms, servers])
 
+	const globalDraft = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.globalDraft)
+	// held apart so edits elsewhere in the global draft leave the entries, and the tree built from them, untouched
+	const adminActionReasons = globalDraft?.adminActionReasons
+	const messageVariables = globalDraft?.messageVariables
+	const globalEntries = React.useMemo((): EntriesByPath => {
+		const sources: Record<string, unknown> = { adminActionReasons, messageVariables }
+		return new Map([...TOC_ENTRY_PATHS].map((p) => [p, tocEntries(p, sources[p])]))
+	}, [adminActionReasons, messageVariables])
+
 	// the field anchors only exist in the GUI editor; in YAML mode a section collapses to a single leaf
 	const globalChildren = React.useMemo(
 		() =>
 			globalMode === 'yaml'
 				? []
-				: groupTocNodes(buildChildren(globalJsonSchema, [], 'setting:', globalWrite), GLOBAL_SETTINGS_GROUPS, 'setting:'),
-		[globalMode, globalWrite],
+				: groupTocNodes(
+						buildChildren(globalJsonSchema, [], 'setting:', globalWrite, globalEntries),
+						GLOBAL_SETTINGS_GROUPS,
+						'setting:',
+					),
+		[globalMode, globalWrite, globalEntries],
 	)
 
 	// unlike the global/server schemas these are only known at runtime, so the json-schema conversion happens here

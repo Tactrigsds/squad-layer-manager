@@ -38,6 +38,12 @@ export function sectionForAnchor(id: string): string | null {
 function resolveAnchorEl(id: string): HTMLElement | null {
 	const el = document.getElementById(id)
 	if (el) return el
+	// the nearest rendered ancestor setting, e.g. a list field in YAML mode, whose entries have no anchors of their own
+	const pathStart = id.lastIndexOf(':')
+	for (let cut = id.lastIndexOf('.'); cut > pathStart; cut = id.lastIndexOf('.', cut - 1)) {
+		const ancestor = document.getElementById(id.slice(0, cut))
+		if (ancestor) return ancestor
+	}
 	const section = sectionForAnchor(id)
 	return section && section !== id ? document.getElementById(section) : null
 }
