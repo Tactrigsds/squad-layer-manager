@@ -648,3 +648,38 @@ export function isCopyableIdKind(kind: string): kind is IdKind {
 export const copyIdHint = def('Copy {kind}', (kind: IdKind) => ({ kind: idKindLabels[kind] }))
 
 export const copiedFeedback = def('Copied!')
+
+// -------- shift+click shortcuts on the teams panel's cells --------
+
+export const squadCellHint = def('Shift+click: select all members of this squad')
+
+export const roleCellHint = def('Shift+click: select teammates with this role. Shift+Ctrl+click: both teams')
+
+export const groupCellHint = def('Shift+click: select teammates in this group. Shift+Ctrl+click: both teams')
+
+// the marker beside a squad leader's name
+export const squadLeaderMarker = def('(SL)')
+
+export const selectSquadCheckbox = def('Select squad {squadId}', (squadId: number) => ({ squadId }))
+
+export const selectUnassignedCheckbox = def('Select unassigned players')
+
+// -------- the K/W/D stats column --------
+
+export const statsKillsShort = def('K')
+
+export const statsWoundsShort = def('W')
+
+export const statsDeathsShort = def('D')
+
+export const sortWounds = def('Wounds')
+
+export const sortDeaths = def('Deaths')
+
+export const sortedByStat = def('Sorted by {stat}', (stat: string) => ({ stat }))
+
+export const sortByStatsHint = def('Sort by kills/wounds/deaths')
+
+export const sortDescending = def('Desc')
+
+export const sortAscending = def('Asc')

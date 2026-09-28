@@ -1,5 +1,6 @@
 import * as Templating from '@/lib/templating'
 import { z } from '@/lib/zod'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as LP from '@/models/labeled-presets.models'
 import type * as RBAC from '@/rbac.models'
 
@@ -23,7 +24,6 @@ export const REQUIRABLE_ADMIN_ACTION_TYPE = z.enum(['kill', 'kick', 'timeout', '
 export type RequirableAdminActionType = z.infer<typeof REQUIRABLE_ADMIN_ACTION_TYPE>
 
 export type AdminActionDescriptor = {
-	displayName: string
 	targetKind: 'players' | 'player' | 'squad'
 	permission: RBAC.PermissionType
 	// native: the RCON command already delivers the reason to the player(s); follow-up-warn: SLM sends an in-game warn after the action
@@ -31,26 +31,23 @@ export type AdminActionDescriptor = {
 }
 
 export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
-	warn: { displayName: 'Warn', targetKind: 'players', permission: 'squad-server:warn-players', reasonDelivery: 'native' },
-	broadcast: { displayName: 'Broadcast', targetKind: 'players', permission: 'squad-server:broadcast', reasonDelivery: 'native' },
-	kill: { displayName: 'Kill', targetKind: 'players', permission: 'squad-server:manage-players', reasonDelivery: 'native' },
+	warn: { targetKind: 'players', permission: 'squad-server:warn-players', reasonDelivery: 'native' },
+	broadcast: { targetKind: 'players', permission: 'squad-server:broadcast', reasonDelivery: 'native' },
+	kill: { targetKind: 'players', permission: 'squad-server:manage-players', reasonDelivery: 'native' },
 	// the AdminKick reason string carries the text, for both plain kicks and timeouts
-	kick: { displayName: 'Kick', targetKind: 'players', permission: 'squad-server:kick-players', reasonDelivery: 'native' },
-	timeout: { displayName: 'Timeout', targetKind: 'players', permission: 'squad-server:timeout-players', reasonDelivery: 'native' },
+	kick: { targetKind: 'players', permission: 'squad-server:kick-players', reasonDelivery: 'native' },
+	timeout: { targetKind: 'players', permission: 'squad-server:timeout-players', reasonDelivery: 'native' },
 	'remove-from-squad': {
-		displayName: 'Remove from Squad',
 		targetKind: 'players',
 		permission: 'squad-server:manage-players',
 		reasonDelivery: 'follow-up-warn',
 	},
 	'disband-squad': {
-		displayName: 'Disband Squad',
 		targetKind: 'squad',
 		permission: 'squad-server:manage-players',
 		reasonDelivery: 'follow-up-warn',
 	},
 	'demote-commander': {
-		displayName: 'Demote Commander',
 		targetKind: 'player',
 		permission: 'squad-server:manage-players',
 		reasonDelivery: 'follow-up-warn',
@@ -103,7 +100,7 @@ function checkApplicable(reason: AdminActionReason | undefined, action: AdminAct
 	if (reason.actionTexts[action] === undefined) {
 		return {
 			code: 'err:reason-not-applicable',
-			msg: `Admin action reason "${reason.label}" is not applicable to ${ADMIN_ACTIONS[action].displayName}`,
+			msg: `Admin action reason "${reason.label}" is not applicable to ${AAR_Msgs.actionNames[action].original}`,
 		}
 	}
 	return { code: 'ok', reason }

@@ -3,6 +3,8 @@
 // teamswaps.messages.tsx).
 import * as React from 'react'
 
+import type { SettingsGroupSlug } from '@/lib/settings-groups'
+import { humanize } from '@/lib/settings-labels'
 import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
 import type * as SETTINGS from '@/models/settings.models'
 
@@ -391,10 +393,6 @@ export const notPermittedToModifySetting = def('You are not permitted to modify 
 
 export const linkToSetting = def('Link to this setting')
 
-// -------- comments --------
-
-export const addComment = def('Add comment')
-export const editComment = def('Edit comment')
 export const settingComment = def('Setting comment')
 export const commentPlaceholder = def('Comment. Links are clickable.')
 export const showMore = def('more')
@@ -492,3 +490,66 @@ export const serverUnresolved = def(
 	'{count, plural, one {One server named here no longer exists} other {# servers named here no longer exist}}. The raw id is shown; pick another or remove it.',
 	(count: number) => ({ count }),
 )
+
+// -------- the emoji picker's categories --------
+
+export const emojiCategories = {
+	custom: def('Discord Emojis'),
+	suggested: def('Recently Used'),
+	smileys_people: def('Smileys & People'),
+	animals_nature: def('Animals & Nature'),
+	food_drink: def('Food & Drink'),
+	travel_places: def('Travel & Places'),
+	activities: def('Activities'),
+	objects: def('Objects'),
+	symbols: def('Symbols'),
+	flags: def('Flags'),
+}
+
+// -------- editor modes --------
+
+export const guiMode = def('GUI')
+
+export const yamlMode = def('YAML')
+
+// what a yaml editor is headed with when its caller names nothing more specific
+export const yamlEditorLabel = def('Settings')
+
+export const invalidJson = def('Invalid JSON')
+
+// -------- server pickers --------
+
+export const serverPicker = def('Server')
+
+export const serversPicker = def('Servers')
+
+// -------- setting and group names in the settings form and its table of contents --------
+
+export const settingsGroupNames: Record<SettingsGroupSlug, TString> = {
+	rbac: t('Permissions & Roles'),
+	'warns-and-broadcasts': t('Warns & Broadcasts'),
+	commands: t('In-game Commands'),
+	players: t('Players & Balance'),
+	layers: t('Layers'),
+	misc: t('Miscellaneous'),
+}
+
+// keyed by dotted settings path, for the paths whose humanized key reads wrong
+const SETTING_NAME_OVERRIDES: Record<string, TString> = {
+	messageVariables: t('Message Variables'),
+	requireReasonFor: t('Require a Reason'),
+	layerGeneration: t('Layer Generation Weights'),
+	// its group header already reads "Permissions & Roles"; the field itself is the role definitions
+	rbac: t('Roles'),
+	vote: t('Votes'),
+	// the chat config holds nothing but the feed's warn/broadcast suppression patterns
+	chat: t('Chat Feed Suppression'),
+	// per-server settings
+	connections: t('Connections'),
+	'connections.rcon': t('RCON'),
+	'connections.sftp': t('SFTP Log Source'),
+	'connections.token': t('Agent Token'),
+}
+
+// Every other setting is named after its humanized key, which stays English.
+export const settingName = def((path: (string | number)[], key: string) => SETTING_NAME_OVERRIDES[path.join('.')] ?? raw(humanize(key)))

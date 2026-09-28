@@ -1,4 +1,5 @@
 import { assertNever } from '@/lib/type-guards'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RBAC from '@/rbac.models'
 
 // A role's permissions are persisted across five parallel fields (`permissions` expressions, `maxTimeout`,
@@ -92,9 +93,9 @@ export function rowScope(type: string): RowScope {
 	return scope
 }
 
-export function permDescription(type: string): string | undefined {
-	if (type === ALL_PERMISSIONS) return 'Grants every permission (full access to everything)'
-	return RBAC.PERMISSION_DEFINITION[type as keyof typeof RBAC.PERMISSION_DEFINITION]?.description
+export function permDescription(type: string) {
+	if (type === ALL_PERMISSIONS) return RBAC_Msgs.allPermissionsDescription()
+	return RBAC_Msgs.permissionDescriptions[type as RBAC.PermissionType]?.()
 }
 
 // `!squad-server:timeout-players` isn't in the expression grammar, and negating a "up to N" cap is meaningless anyway:

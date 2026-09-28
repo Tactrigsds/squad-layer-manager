@@ -41,3 +41,33 @@ export const scenarios = {
 		summary: def('Learn the basics of queue editing.'),
 	},
 }
+
+// -------- the step card and its navigation --------
+
+export const stepCounter = def('Step {step} of {total}', (step: number, total: number) => ({ step, total }))
+
+export const stepFailedBlurb = def('That step could not be set up. Retry, or exit the tutorial.')
+
+export const exit = def('Exit')
+
+export const preparing = def('Preparing…')
+
+export const finish = def('Finish')
+
+export const navigation = def('Tutorial navigation')
+
+export const contents = def('Contents')
+
+export const previousStep = def('Previous step')
+
+export const resetStep = def('Reset this step')
+
+export const nextStep = def('Next step')
+
+export const tableOfContents = def('Tutorial contents')
+
+export const searchSteps = def('Search steps')
+
+export const paused = def(() => rt('<strong>Tutorial paused.</strong> Return to the dashboard to continue where you left off.'))
+
+export const backToDashboard = def('Back to dashboard')

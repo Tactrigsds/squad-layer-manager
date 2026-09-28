@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
@@ -17,6 +18,10 @@ const REQUESTER_STEAM_ID = '76561198000000002'
 const REQUESTER: TestUser = { discordId: 900000000000000002n, username: 'requester', steamIds: [REQUESTER_STEAM_ID] }
 
 let app: AppFixture
+
+function requestedMaps(item: ReturnType<typeof savedBackburner>[number]) {
+	return BB.parseTemplateParts(item.filter).maps
+}
 const admin = makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID })
 const requester = makePlayer({ name: ' test_requester', steam: REQUESTER_STEAM_ID })
 
@@ -61,7 +66,7 @@ describe('layer backburner via chat', () => {
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
 		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
-		expect(savedBackburner(app)[0].description).toBe('Fallujah')
+		expect(requestedMaps(savedBackburner(app)[0])).toEqual(['Fallujah'])
 		expect(warnsTo(app, admin).join('\n')).toContain('Layer request queued: Fallujah')
 
 		app.emu.rcon.commandLog.length = 0
@@ -98,7 +103,7 @@ describe('layer backburner via chat', () => {
 		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the first capped request', timeoutMs: 20_000 })
 
 		app.emu.world.chat(requester, 'ChatAll', cmd('reqlayer fallu'))
-		await app.waitFor(() => (savedBackburner(app).length === 1 && savedBackburner(app)[0].description === 'Fallujah') || null, {
+		await app.waitFor(() => (savedBackburner(app).length === 1 && requestedMaps(savedBackburner(app)[0]).join() === 'Fallujah') || null, {
 			label: 'the oldest request being evicted',
 			timeoutMs: 20_000,
 		})

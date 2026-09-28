@@ -329,7 +329,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={manageFlags} disabled={disabled}>
-				{props.label ?? 'Manage Flags...'}
+				{props.label ?? tr.text(BM_Msgs.manageFlagsItem())}
 			</Item>
 		</PermissionDeniedTooltip>
 	)
@@ -386,7 +386,7 @@ export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: str
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={addFlags} disabled={disabled}>
-				{props.label ?? 'Add Flags...'}
+				{props.label ?? tr.text(BM_Msgs.addFlagsItem())}
 			</Item>
 		</PermissionDeniedTooltip>
 	)

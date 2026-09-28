@@ -107,7 +107,7 @@ export function BmFlagMultiSelect({
 			>
 				<span className="flex flex-wrap items-center gap-1 min-w-0">
 					{value.length === 0 ? (
-						<span className="text-muted-foreground">{placeholder ?? 'Select flags...'}</span>
+						<span className="text-muted-foreground">{placeholder ?? tr.text(BM_Msgs.selectFlags())}</span>
 					) : (
 						value.map((id) => <FlagLabel key={id} id={id} flags={orgFlags} />)
 					)}
@@ -162,7 +162,7 @@ export function BmFlagSelect({
 	return (
 		<ComboBox
 			className={className}
-			title={title ?? 'Flag'}
+			title={title ?? tr.text(BM_Msgs.flagPicker())}
 			placeholder={placeholder}
 			value={value}
 			options={selectable}

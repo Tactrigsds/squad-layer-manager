@@ -222,3 +222,6 @@ export const discordChannelPickerMulti = def('channels')
 export const discordChannelUnresolved = def(
 	'This Discord channel is not one SLM can see (its id is shown). It may have been deleted, or the bot may not have access to it.',
 )
+
+// the grouping a discord channel picker narrows by: the category each channel sits under in the guild
+export const channelCategory = def('Category')

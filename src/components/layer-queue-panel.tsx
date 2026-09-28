@@ -17,6 +17,7 @@ import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as SETTINGS from '@/models/settings.models'
@@ -425,25 +426,23 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								>
 									<Icons.Save />
 									<span>
-										{forceSave
-											? 'Force Save'
-											: numEditors === 1 && isModified
-												? showWarnings
-													? 'Save Anyway'
-													: 'Save'
-												: showWarnings
-													? 'Finish Editing Anyway'
-													: 'Finish Editing'}
+										{tr.text(
+											forceSave
+												? UI_Msgs.forceSave()
+												: numEditors === 1 && isModified
+													? showWarnings
+														? UI_Msgs.saveAnyway()
+														: UI_Msgs.save()
+													: showWarnings
+														? UI_Msgs.finishEditingAnyway()
+														: UI_Msgs.finishEditing(),
+										)}
 									</span>
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>
 								<p>
-									{forceSave
-										? 'Save changes, even if others are still editing'
-										: isModified
-											? 'Save changes to the queue'
-											: 'Finish editing the queue'}
+									{tr.text(forceSave ? LL_Msgs.forceSaveHint() : isModified ? LL_Msgs.saveHint() : LL_Msgs.finishEditingHint())}
 								</p>
 							</TooltipContent>
 						</Tooltip>

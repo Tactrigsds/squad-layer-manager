@@ -1099,68 +1099,64 @@ export function itemsToLockForActivity(list: LL.List, activity: RootActivity): L
 
 export type AnyActivityNode = ST.Match.Node<(typeof ACTIVITIES_FLATTENED)[keyof typeof ACTIVITIES_FLATTENED]>
 
-type ActivityFormatCtx = { listOrIndex: LL.List | LL.ItemIndex; withItemName?: boolean }
+// The activities a presence is described by, highest priority first. UP_Msgs.activity words each one.
+export const DESCRIBED_ACTIVITIES = [
+	'EDITING_FILTER',
+	'EDITING_TEAMSWAPS',
+	'EDITING_LAYER_REQUESTS',
+	'SWITCHING_PLAYERS',
+	'WARNING_PLAYERS',
+	'REMOVING_FROM_SQUAD',
+	'DISBANDING_SQUAD',
+	'RESETTING_SQUAD_NAME',
+	'DEMOTING_COMMANDER',
+	'CHANGING_QUEUE_SETTINGS',
+	'ADDING_ITEM',
+	'GENERATING_VOTE',
+	'ADDING_ITEM_FROM_HISTORY',
+	'PASTE_ROTATION',
+	'EDITING_ITEM',
+	'CONFIGURING_VOTE',
+	'MOVING_ITEM',
+	'IDLE',
+] as const satisfies ActivityCode[]
+export type DescribedActivity = (typeof DESCRIBED_ACTIVITIES)[number]
 
-type ActivityMessageFormat = {
-	id: ActivityCode
-	format: string | ((node: ST.Match.Node, ctx: ActivityFormatCtx) => string | null)
-}
+// itemName is only set for the activities that act on one queue item, and only when asked for
+export type ActivityDescriptor = { id: DescribedActivity; itemName?: string }
 
-function resolveItemName(itemId: LL.ItemId, ctx: ActivityFormatCtx): string {
+const ITEM_ACTIVITIES = new Set<DescribedActivity>(['EDITING_ITEM', 'CONFIGURING_VOTE', 'MOVING_ITEM'])
+
+function resolveItemName(itemId: LL.ItemId, listOrIndex: LL.List | LL.ItemIndex): string {
 	let index: LL.ItemIndex
-	if (Array.isArray(ctx.listOrIndex)) {
-		const foundIndex = Obj.destrNullable(LL.findItemById(ctx.listOrIndex, itemId))?.index
+	if (Array.isArray(listOrIndex)) {
+		const foundIndex = Obj.destrNullable(LL.findItemById(listOrIndex, itemId))?.index
 		if (!foundIndex) {
-			console.warn(`Item ${itemId} not found in list`, ctx.listOrIndex)
+			console.warn(`Item ${itemId} not found in list`, listOrIndex)
 			index = { outerIndex: 0, innerIndex: null }
 		} else {
 			index = foundIndex
 		}
 	} else {
-		index = ctx.listOrIndex
+		index = listOrIndex
 	}
-	return index ? LL.getItemNumber(index) : 'Item'
+	return LL.getItemNumber(index)
 }
 
-const fmt = <K extends keyof typeof ACTIVITIES_FLATTENED>(
-	id: K,
-	format: string | ((node: ST.Match.Node<(typeof ACTIVITIES_FLATTENED)[K]>, ctx: ActivityFormatCtx) => string | null),
-): ActivityMessageFormat => ({ id, format: format as ActivityMessageFormat['format'] })
+const ACTIVITY_PRIORITY: Map<string, number> = new Map(DESCRIBED_ACTIVITIES.map((id, i) => [id, i]))
 
-// lower index -> higher priority
-export const ACTIVITY_MESSAGE_FORMATS: ActivityMessageFormat[] = [
-	fmt('EDITING_FILTER', 'Editing Filter'),
-	fmt('EDITING_TEAMSWAPS', 'Editing Scheduled Teamswaps'),
-	fmt('EDITING_LAYER_REQUESTS', 'Editing Layer Requests'),
-	fmt('SWITCHING_PLAYERS', 'Switching players Now'),
-	fmt('WARNING_PLAYERS', 'Warning players'),
-	fmt('REMOVING_FROM_SQUAD', 'Removing from squad'),
-	fmt('DISBANDING_SQUAD', 'Disbanding squad'),
-	fmt('RESETTING_SQUAD_NAME', 'Resetting squad name'),
-	fmt('DEMOTING_COMMANDER', 'Demoting commander'),
-	fmt('CHANGING_QUEUE_SETTINGS', 'Changing Pool Settings'),
-	fmt('ADDING_ITEM', 'Adding layers'),
-	fmt('GENERATING_VOTE', 'Generating vote'),
-	fmt('ADDING_ITEM_FROM_HISTORY', 'Adding layer from History'),
-	fmt('PASTE_ROTATION', 'Pasting rotation'),
-	fmt('EDITING_ITEM', (node, ctx) => (ctx.withItemName ? `Editing ${resolveItemName(node.opts.itemId, ctx)}` : 'Editing')),
-	fmt('CONFIGURING_VOTE', (node, ctx) =>
-		ctx.withItemName ? `Configuring vote for ${resolveItemName(node.opts.itemId, ctx)}` : 'Configuring vote',
-	),
-	fmt('MOVING_ITEM', (node, ctx) => (ctx.withItemName ? `Moving ${resolveItemName(node.opts.itemId, ctx)}` : 'Moving')),
-	fmt('IDLE', 'Editing Queue'),
-]
-
-const ACTIVITY_FORMAT_PRIORITY: Map<string, number> = new Map(ACTIVITY_MESSAGE_FORMATS.map((f, i) => [f.id, i]))
-
-export const getHumanReadableActivity = (activity: AnyActivityNode, listOrIndex: LL.List | LL.ItemIndex, withItemName?: boolean) => {
+export const describeActivity = (
+	activity: AnyActivityNode,
+	listOrIndex: LL.List | LL.ItemIndex,
+	withItemName?: boolean,
+): ActivityDescriptor | null => {
 	let bestIdx = Infinity
 	let bestNode: ST.Match.Node | null = null
 
 	const stack: ST.Match.Node[] = [activity as ST.Match.Node]
 	while (stack.length > 0) {
 		const node = stack.pop()!
-		const idx = ACTIVITY_FORMAT_PRIORITY.get(node.id)
+		const idx = ACTIVITY_PRIORITY.get(node.id)
 		if (idx !== undefined && idx < bestIdx) {
 			bestIdx = idx
 			bestNode = node
@@ -1177,8 +1173,9 @@ export const getHumanReadableActivity = (activity: AnyActivityNode, listOrIndex:
 	}
 
 	if (!bestNode) return null
-	const { format } = ACTIVITY_MESSAGE_FORMATS[bestIdx]
-	return typeof format === 'string' ? format : format(bestNode, { listOrIndex, withItemName })
+	const id = DESCRIBED_ACTIVITIES[bestIdx]
+	if (!withItemName || !ITEM_ACTIVITIES.has(id)) return { id }
+	return { id, itemName: resolveItemName((bestNode.opts as { itemId: LL.ItemId }).itemId, listOrIndex) }
 }
 
 // -------- transient presence events --------
@@ -1213,17 +1210,6 @@ export const PRESENCE_EVENT_ACTIONS = [
 ] as const
 export type PresenceEventAction = (typeof PRESENCE_EVENT_ACTIONS)[number]
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }
-
-export const getAttributedHumanReadableActivity = (
-	activity: AnyActivityNode,
-	listOrIndex: LL.List | LL.ItemIndex,
-	displayName: string,
-	withItemName?: boolean,
-) => {
-	const activityText = getHumanReadableActivity(activity, listOrIndex, withItemName)
-	if (!activityText) return null
-	return `${displayName} is ${activityText.toLowerCase()}`
-}
 
 export type Ctx = CS.Ctx & {
 	userPresence: {

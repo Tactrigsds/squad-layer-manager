@@ -31,7 +31,7 @@ export function WarnReasonsSub(props: {
 		SettingsClient.PublicSettingsStore,
 		(s) => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
 	)
-	const label = props.label ?? 'Warn'
+	const label = props.label ?? tr.text(AAR_Msgs.actionNames.warn)
 	const disabled = !!props.denied || props.disabled
 
 	if (!hasReasons) {
@@ -101,7 +101,7 @@ export function ReasonPicker(props: {
 		// why instead of silently rendering nothing
 		if (props.required) {
 			return (
-				<p className="text-xs text-destructive">{tr.text(AAR_Msgs.noReasonsConfigured(AAR.ADMIN_ACTIONS[props.action].displayName))}</p>
+				<p className="text-xs text-destructive">{tr.text(AAR_Msgs.noReasonsConfigured(tr.text(AAR_Msgs.actionNames[props.action])))}</p>
 			)
 		}
 		return null

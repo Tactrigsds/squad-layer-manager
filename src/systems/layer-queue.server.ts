@@ -10,6 +10,7 @@ import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as I18n from '@/messages/i18n'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
@@ -1345,7 +1346,8 @@ const handleSideEffect = Instr.spanOp(
 					UserPresenceSys.dispatchEndAllLayerRequestEditing(ctx.serverId)
 				}
 				const matchId = (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null
-				const describe = (item: BB.BackburnerItem) => BB.describeTemplate(item.filter, backburnerFilterName)
+				const describe = (item: BB.BackburnerItem) =>
+					BB.describeTemplate(I18n.translatorFor(I18n.DEFAULT_LOCALE), item.filter, backburnerFilterName)
 				const prevIds = new Set(se.prevItems.map((item) => item.itemId))
 				const nextIds = new Set(se.items.map((item) => item.itemId))
 				const added = se.items.filter((item) => !prevIds.has(item.itemId))

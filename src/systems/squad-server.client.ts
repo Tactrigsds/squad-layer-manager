@@ -8,9 +8,10 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import * as Cookies from '@/systems/app-routes.client'
@@ -141,7 +142,7 @@ export function readReasonInput(opts: {
 	const presetReasonLabel = opts.presetRef.current || undefined
 	const reason = presetReasonLabel ? undefined : opts.customRef?.current.trim() || undefined
 	if (opts.required && !presetReasonLabel && !reason) {
-		toast.error(...tr.toast(SM_Msgs.reasonRequired(AAR.ADMIN_ACTIONS[opts.action].displayName)))
+		toast.error(...tr.toast(SM_Msgs.reasonRequired(tr.text(AAR_Msgs.actionNames[opts.action]))))
 		return null
 	}
 	return { reason, presetReasonLabel }

@@ -779,10 +779,10 @@ function ServerSettingsSection({
 						</div>
 						<div role="group" aria-label={tr.text(SETTINGS_Msgs.serverEditorModeLabel())} className="fd-grp">
 							<Button size="sm" data-state={mode === 'gui' ? 'on' : 'off'} onClick={() => switchMode('gui')}>
-								GUI
+								{tr.text(SETTINGS_Msgs.guiMode())}
 							</Button>
 							<Button size="sm" data-state={mode === 'yaml' ? 'on' : 'off'} onClick={() => switchMode('yaml')}>
-								YAML
+								{tr.text(SETTINGS_Msgs.yamlMode())}
 							</Button>
 						</div>
 					</div>
@@ -867,14 +867,14 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 									data-state={mode === 'gui' ? 'on' : 'off'}
 									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'gui')}
 								>
-									GUI
+									{tr.text(SETTINGS_Msgs.guiMode())}
 								</Button>
 								<Button
 									size="sm"
 									data-state={mode === 'yaml' ? 'on' : 'off'}
 									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'yaml')}
 								>
-									YAML
+									{tr.text(SETTINGS_Msgs.yamlMode())}
 								</Button>
 							</div>
 							<Button size="sm" variant="outline" onClick={onCancel}>
@@ -1013,10 +1013,10 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 						</div>
 						<div role="group" aria-label={tr.text(SETTINGS_Msgs.globalEditorModeLabel())} className="fd-grp">
 							<Button size="sm" data-state={mode === 'gui' ? 'on' : 'off'} onClick={() => switchMode('gui')}>
-								GUI
+								{tr.text(SETTINGS_Msgs.guiMode())}
 							</Button>
 							<Button size="sm" data-state={mode === 'yaml' ? 'on' : 'off'} onClick={() => switchMode('yaml')}>
-								YAML
+								{tr.text(SETTINGS_Msgs.yamlMode())}
 							</Button>
 						</div>
 					</div>

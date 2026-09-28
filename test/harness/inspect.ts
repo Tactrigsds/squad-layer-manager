@@ -1,5 +1,5 @@
 import type { EmuPlayer } from '@/emulator'
-import * as BB from '@/models/backburner.models'
+import type * as BB from '@/models/backburner.models'
 import * as MH from '@/models/match-history.models'
 
 import type { AppFixture } from './app-fixture'
@@ -18,12 +18,11 @@ export function savedQueue(app: AppFixture, serverId: string = app.serverId): { 
 	}
 }
 
-export function savedBackburner(app: AppFixture): { itemId: string; description: string }[] {
+export function savedBackburner(app: AppFixture): { itemId: string; filter: Parameters<typeof BB.describeTemplate>[1] }[] {
 	const db = app.readDb()
 	try {
 		const row = db.prepare(`SELECT backburner FROM servers WHERE id = ?`).get(app.serverId) as { backburner: string }
-		const items = JSON.parse(row.backburner).json as { itemId: string; filter: Parameters<typeof BB.describeTemplate>[0] }[]
-		return items.map((item) => ({ itemId: item.itemId, description: BB.describeTemplate(item.filter) }))
+		return JSON.parse(row.backburner).json
 	} finally {
 		db.close()
 	}

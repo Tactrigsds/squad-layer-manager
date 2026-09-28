@@ -84,3 +84,32 @@ export const compact = def('Compact')
 export const compactHint = def('Collapse short maps and lists onto one line')
 
 export const done = def('Done')
+
+export const confirm = def('Confirm')
+
+export const search = def('Search...')
+
+export const showLess = def('Show less')
+
+export const expand = def('Expand')
+
+export const collapse = def('Collapse')
+
+export const addComment = def('Add comment')
+
+export const editComment = def('Edit comment')
+
+// -------- shared edit sessions --------
+
+// The save button of anything several users edit at once. It only saves once nobody else is still editing; until
+// then it only ends the viewer's own part in the session.
+
+export const forceSave = def('Force Save')
+
+export const save = def('Save')
+
+export const saveAnyway = def('Save Anyway')
+
+export const finishEditing = def('Finish Editing')
+
+export const finishEditingAnyway = def('Finish Editing Anyway')

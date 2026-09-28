@@ -9,6 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import * as DH from '@/lib/display-helpers.ts'
 import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
+import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 import { LOADING, POPOVER_SIZING_CLASSES } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
@@ -321,7 +323,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						)}
 						<CommandInput
 							ref={inputRef}
-							placeholder={props.searchPlaceholder ?? 'Search...'}
+							placeholder={props.searchPlaceholder ?? tr.text(UI_Msgs.search())}
 							value={inputValue}
 							onValueChange={onInputChange}
 						/>

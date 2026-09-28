@@ -215,3 +215,9 @@ export const submit = def('Submit')
 export const voteMode = def('Vote')
 export const setLayerMode = def('Set Layer')
 export const submitCount = def('Submit · {count} layers', (count: number) => ({ count }))
+
+export const addMultipleLayers = def('Add Multiple Layers')
+
+export const showRawInput = def('Show Raw Input')
+
+export const hideRawInput = def('Hide Raw Input')

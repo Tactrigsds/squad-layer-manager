@@ -96,3 +96,64 @@ export const filterPicker = def('filter')
 export const selectFilter = def('Select filter...')
 
 export const clearOtherConstraints = def('Remove all other constraints and select this one')
+
+export const satisfiableHint = def('This request has matching layers')
+
+export const unsatisfiableHint = def('No layers match this request right now; it stays queued for later')
+
+export const customConditions = def('{count, plural, one {# custom condition} other {# custom conditions}}', (count: number) => ({ count }))
+
+export const noMatchingLayers = def('No layers in the pool match this request')
+
+export const matchingLayers = def('{count, plural, one {# layer matches} other {# layers match}}', (count: number) => ({ count }))
+
+// -------- describing a request --------
+
+export const versus = def('{left} vs {right}', (left: string, right: string) => ({ left, right }))
+
+export const matchupPart = def(
+	'{left} vs {right}{locked, select, yes { (locked)} other {}}',
+	(left: string, right: string, locked: boolean) => ({
+		left,
+		right,
+		locked: locked ? 'yes' : 'no',
+	}),
+)
+
+// a matchup side that constrains nothing
+export const anySide = def('any')
+
+export const excludedFilter = def('not {name}', (name: string) => ({ name }))
+
+export const extraConditions = def('+{count, plural, one {# custom condition} other {# custom conditions}}', (count: number) => ({ count }))
+
+export const anyLayer = def('any layer')
+
+export const summaryLine = def(
+	'{index}. {description}{own, select, yes { (yours)} other {}}',
+	(index: number, description: string, own: boolean) => ({
+		index,
+		description,
+		own: own ? 'yes' : 'no',
+	}),
+)
+
+// -------- resolving a /reqlayer request --------
+
+export const nothingRequested = def('Nothing requested')
+
+export const ambiguousMap = def('"{token}" matches {count} maps', (token: string, count: number) => ({ token, count }))
+
+export const ambiguousFilter = def('"{token}" matches {count} filters', (token: string, count: number) => ({ token, count }))
+
+export const tooManyTeamValues = def(
+	'{column, select, Faction {At most two factions can be requested (a matchup)} Alliance {At most two alliances can be requested (a matchup)} other {At most two units can be requested (a matchup)}}',
+	(column: 'Faction' | 'Alliance' | 'Unit') => ({ column }),
+)
+
+export const tooManyValues = def(
+	'{column, select, layer {Only one layer can be requested} map {Only one map can be requested} gamemode {Only one gamemode can be requested} version {Only one version can be requested} collection {Only one collection can be requested} other {Only one size can be requested}}',
+	(column: 'layer' | 'map' | 'gamemode' | 'version' | 'collection' | 'size') => ({ column }),
+)
+
+export const unknownRequest = def('Unknown request "{token}"', (token: string) => ({ token }))

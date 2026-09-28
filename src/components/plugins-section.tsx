@@ -345,14 +345,14 @@ function PluginSettingsEditor({
 					variant={mode === 'gui' ? 'secondary' : 'ghost'}
 					onClick={() => SettingsEditorFrame.Actions.setMode(stores, 'gui')}
 				>
-					GUI
+					{tr.text(SETTINGS_Msgs.guiMode())}
 				</Button>
 				<Button
 					size="sm"
 					variant={mode === 'yaml' ? 'secondary' : 'ghost'}
 					onClick={() => SettingsEditorFrame.Actions.setMode(stores, 'yaml')}
 				>
-					YAML
+					{tr.text(SETTINGS_Msgs.yamlMode())}
 				</Button>
 			</div>
 			{mode === 'gui' ? (

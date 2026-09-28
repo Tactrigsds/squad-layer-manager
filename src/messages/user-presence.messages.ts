@@ -1,3 +1,4 @@
+import { assertNever } from '@/lib/type-guards'
 import { def, t, type TString } from '@/models/messages.models'
 import type * as UP from '@/models/user-presence'
 
@@ -44,3 +45,51 @@ export const displayNameWithYou = def('{name}{isYou, select, yes { (You)} other 
 	name,
 	isYou: isYou ? 'yes' : 'no',
 }))
+
+// -------- what a user is doing --------
+
+export const activity = def((a: UP.ActivityDescriptor) => {
+	switch (a.id) {
+		case 'EDITING_FILTER':
+			return t('Editing Filter')
+		case 'EDITING_TEAMSWAPS':
+			return t('Editing Scheduled Teamswaps')
+		case 'EDITING_LAYER_REQUESTS':
+			return t('Editing Layer Requests')
+		case 'SWITCHING_PLAYERS':
+			return t('Switching players Now')
+		case 'WARNING_PLAYERS':
+			return t('Warning players')
+		case 'REMOVING_FROM_SQUAD':
+			return t('Removing from squad')
+		case 'DISBANDING_SQUAD':
+			return t('Disbanding squad')
+		case 'RESETTING_SQUAD_NAME':
+			return t('Resetting squad name')
+		case 'DEMOTING_COMMANDER':
+			return t('Demoting commander')
+		case 'CHANGING_QUEUE_SETTINGS':
+			return t('Changing Pool Settings')
+		case 'ADDING_ITEM':
+			return t('Adding layers')
+		case 'GENERATING_VOTE':
+			return t('Generating vote')
+		case 'ADDING_ITEM_FROM_HISTORY':
+			return t('Adding layer from History')
+		case 'PASTE_ROTATION':
+			return t('Pasting rotation')
+		case 'EDITING_ITEM':
+			return a.itemName === undefined ? t('Editing') : t('Editing {item}', { item: a.itemName })
+		case 'CONFIGURING_VOTE':
+			return a.itemName === undefined ? t('Configuring vote') : t('Configuring vote for {item}', { item: a.itemName })
+		case 'MOVING_ITEM':
+			return a.itemName === undefined ? t('Moving') : t('Moving {item}', { item: a.itemName })
+		case 'IDLE':
+			return t('Editing Queue')
+		default:
+			assertNever(a.id)
+	}
+})
+
+// a queue item's badge naming who is working on it; activity is the lowercased text of the activity message
+export const attributedActivity = def('{name} is {activity}...', (name: string, activity: string) => ({ name, activity }))

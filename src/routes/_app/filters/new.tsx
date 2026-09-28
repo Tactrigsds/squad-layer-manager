@@ -4,9 +4,12 @@ import React from 'react'
 import FilterNew from '@/components/filter-new'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
+import * as APP_Msgs from '@/messages/app.messages'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import type * as F from '@/models/filter.models'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
@@ -34,7 +37,7 @@ export const Route = createFileRoute('/_app/filters/new')({
 		return { frameKey, frameInput }
 	},
 	head: () => ({
-		meta: [{ title: `SLM - New Filter` }],
+		meta: [{ title: tr.text(APP_Msgs.pageTitle(tr.text(F_Msgs.newFilter()))) }],
 	}),
 })
 

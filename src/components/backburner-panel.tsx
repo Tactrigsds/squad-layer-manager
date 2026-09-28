@@ -20,6 +20,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as BB_Msgs from '@/messages/backburner.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CB from '@/models/constraint-builders'
@@ -103,7 +104,7 @@ export default function BackburnerPanel(props: StoresProp) {
 		setForceSave(false)
 	}
 
-	const saveButtonLabel = forceSave ? 'Force Save' : numEditors <= 1 && modified ? 'Save' : 'Finish Editing'
+	const saveButtonLabel = tr.text(forceSave ? UI_Msgs.forceSave() : numEditors <= 1 && modified ? UI_Msgs.save() : UI_Msgs.finishEditing())
 
 	DndKit.useDragEnd(
 		React.useCallback(
@@ -459,11 +460,7 @@ function BackburnerRow(
 					<TooltipTrigger asChild>
 						<span className={cn('size-[7px] shrink-0 rounded-full', props.satisfiable ? 'bg-ok' : 'bg-warn')} />
 					</TooltipTrigger>
-					<TooltipContent>
-						{props.satisfiable
-							? 'This request has matching layers'
-							: 'No layers match this request right now; it stays queued for later'}
-					</TooltipContent>
+					<TooltipContent>{tr.text(props.satisfiable ? BB_Msgs.satisfiableHint() : BB_Msgs.unsatisfiableHint())}</TooltipContent>
 				</Tooltip>
 			)}
 			<TemplateDisplay filter={item.filter} className="min-w-0 flex-1 truncate" />
@@ -519,7 +516,7 @@ function RequestOwner(props: { source: BB.BackburnerItem['source'] }) {
 // what a template constrains, LayerDisplay-style but without team color-coding
 function TemplateDisplay(props: { filter: F.FilterNode; className?: string }) {
 	const filterEntities = FilterEntityClient.useFilterEntities()
-	const parts = BB.templateDisplayParts(props.filter, (id) => filterEntities.get(id)?.name)
+	const parts = BB.templateDisplayParts(tr, props.filter, (id) => filterEntities.get(id)?.name)
 	return (
 		<span className={cn('font-mono text-sm', props.className)} title={parts.map((part) => part.text).join(' \u00b7 ')}>
 			{parts.map((part, index) => {
@@ -619,10 +616,7 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 	}
 
 	// parts the form doesn't edit but a chat request may carry; preserved on save
-	const extras = [
-		...preserved.sizes,
-		...(preserved.other.length > 0 ? [`${preserved.other.length} custom condition${preserved.other.length === 1 ? '' : 's'}`] : []),
-	]
+	const extras = [...preserved.sizes, ...(preserved.other.length > 0 ? [tr.text(BB_Msgs.customConditions(preserved.other.length))] : [])]
 
 	const menuGridClass = 'grid grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2'
 
@@ -808,7 +802,7 @@ function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
 	if (count === null) return null
 	return (
 		<span className={cn('mr-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
-			{count === 0 ? 'No layers in the pool match this request' : `${count} layer${count === 1 ? '' : 's'} match`}
+			{tr.text(count === 0 ? BB_Msgs.noMatchingLayers() : BB_Msgs.matchingLayers(count))}
 		</span>
 	)
 }

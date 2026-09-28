@@ -5,7 +5,10 @@ import HistoryPage from '@/components/history-page'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
+import * as HistoryMsgs from '@/messages/history.messages'
 import * as HQ from '@/models/history.models'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 // The whole query lives in the url's search params: running a query navigates, and loading a saved or
@@ -15,7 +18,7 @@ export const Route = createFileRoute('/_app/history')({
 	component: RouteComponent,
 	validateSearch: (search): HQ.Search => HQ.parseSearch(search),
 	head: () => ({
-		meta: [{ title: 'SLM - History' }],
+		meta: [{ title: tr.text(APP_Msgs.pageTitle(tr.text(HistoryMsgs.pageTitle()))) }],
 	}),
 })
 

@@ -7,7 +7,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_ENTRY_PATHS, TOC_LEAF_PATHS } from '@/lib/settings-groups'
-import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import { z } from '@/lib/zod'
@@ -15,6 +14,7 @@ import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
@@ -89,7 +89,7 @@ function buildChildren(
 			const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
 			return {
 				id: `${idPrefix}${pathStr}`,
-				label: settingLabel(childPath, key),
+				label: tr.text(SETTINGS_Msgs.settingName(childPath, key)),
 				path: pathStr,
 				writable: RBAC.settingsPathOverlaps(access, childPath),
 				children: recurse
@@ -122,7 +122,7 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 			return [
 				{
 					id: `${idPrefix}group:${group.slug}`,
-					label: group.label,
+					label: tr.text(SETTINGS_Msgs.settingsGroupNames[group.slug]),
 					path: `group:${group.slug}`,
 					writable: children.some((c) => c.writable),
 					children,
@@ -189,7 +189,7 @@ function TocItem({
 					type="button"
 					className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
 					onClick={() => toggle(node.id)}
-					aria-label={isOpen ? 'Collapse' : 'Expand'}
+					aria-label={tr.text(isOpen ? UI_Msgs.collapse() : UI_Msgs.expand())}
 				>
 					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
 				</button>

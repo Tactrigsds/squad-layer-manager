@@ -292,6 +292,12 @@ export const toggleForceSave = def('Toggle force save')
 
 export const toggleForceSaveHint = def('Toggle Force save (Save even if others are still editing)')
 
+export const forceSaveHint = def('Save changes, even if others are still editing')
+
+export const saveHint = def('Save changes to the queue')
+
+export const finishEditingHint = def('Finish editing the queue')
+
 export const poolConfiguration = def('Pool Configuration')
 
 export const upNext = def('Up Next')

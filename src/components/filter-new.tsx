@@ -120,7 +120,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 					<div className="space-y-2">
 						<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
 							{(field) => {
-								const label = 'Name'
+								const label = tr.text(F_Msgs.nameLabel())
 								function handleNameChange(name: string) {
 									field.handleChange(name)
 									if (!!form.getFieldValue('id').trim() && form.getFieldMeta('id')!.isDirty) return
@@ -180,7 +180,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 						<div className="flex gap-4">
 							<form.Field name="emoji">
 								{(field) => {
-									const label = 'Emoji'
+									const label = tr.text(F_Msgs.emojiLabel())
 									return (
 										<div className="flex flex-col space-y-2">
 											<Label htmlFor={field.name}>{label}</Label>
@@ -205,7 +205,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 								validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
 							>
 								{(field) => {
-									const label = 'Alert Message'
+									const label = tr.text(F_Msgs.alertMessageLabel())
 									return (
 										<div className="flex flex-col space-y-2 grow">
 											<Label htmlFor={field.name}>{label}</Label>
@@ -236,7 +236,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 						<div className="flex gap-4">
 							<form.Field name="invertedEmoji">
 								{(field) => {
-									const label = 'Emoji'
+									const label = tr.text(F_Msgs.emojiLabel())
 									return (
 										<div className="flex flex-col space-y-2">
 											<Label htmlFor={field.name}>{label}</Label>
@@ -261,7 +261,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 								validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
 							>
 								{(field) => {
-									const label = 'Alert Message'
+									const label = tr.text(F_Msgs.alertMessageLabel())
 									return (
 										<div className="flex flex-col space-y-2 grow">
 											<Label htmlFor={field.name}>{label}</Label>
@@ -290,7 +290,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 				{/* Right Column - Description */}
 				<form.Field name="description" validators={{ onChange: F.DescriptionSchema }}>
 					{(field) => {
-						const label = 'Description'
+						const label = tr.text(F_Msgs.descriptionLabel())
 						return (
 							<div className="flex flex-col space-y-2">
 								<Label htmlFor={field.name}>{label}</Label>

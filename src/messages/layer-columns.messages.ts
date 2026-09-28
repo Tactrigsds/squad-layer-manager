@@ -1,4 +1,4 @@
-import { def, t, type TString } from '@/models/messages.models'
+import { def, raw, t, type TString } from '@/models/messages.models'
 
 // The layer-table and layer-generation config editors: how a column's display and a generation pick are described.
 
@@ -171,3 +171,30 @@ export const vehicleTypeDescriptions: Record<string, TString> = {
 	UH: t('Utility helicopters for troop transport and logistics.'),
 	ULTV: t('Motorbikes, quads and other ultralight runabouts.'),
 }
+
+// -------- column names --------
+
+// the built-in columns' names. A column added through the layer db config names itself with its own displayName
+const builtInColumnNames: Partial<Record<string, TString>> = {
+	id: t('ID'),
+	Map: t('Map'),
+	Layer: t('Layer'),
+	Size: t('Size'),
+	Gamemode: t('Gamemode'),
+	LayerVersion: t('Version'),
+	Collection: t('Collection'),
+	Faction_1: t('T1'),
+	Faction_2: t('T2'),
+	Unit_1: t('Unit T1'),
+	Unit_2: t('Unit T2'),
+	Alliance_1: t('Alliance T1'),
+	Alliance_2: t('Alliance T2'),
+	Vehicle_1: t('Vehicle T1'),
+	Vehicle_2: t('Vehicle T2'),
+	VehicleType_1: t('Vehicle type T1'),
+	VehicleType_2: t('Vehicle type T2'),
+}
+
+export const columnName = def(
+	(column: { name: string; displayName?: string }) => builtInColumnNames[column.name] ?? raw(column.displayName ?? column.name),
+)

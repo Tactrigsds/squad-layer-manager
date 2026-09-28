@@ -92,3 +92,6 @@ export const trackingFlag = def('tracking')
 
 // the same control's empty state, so it reads "tracking select a flag" rather than naming colors twice
 export const trackNoFlag = def('select a flag')
+
+// the bucket for players no rule matched
+export const ungrouped = def('Other')

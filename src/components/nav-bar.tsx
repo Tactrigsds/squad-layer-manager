@@ -343,8 +343,8 @@ export default function NavBar() {
 				<TabsList
 					variant="seg"
 					options={[
-						{ value: 'layers', label: 'Layers & Teams' },
-						{ value: 'secondary', label: 'Server Activity' },
+						{ value: 'layers', label: tr.text(APP_Msgs.dashboardLayersTab()) },
+						{ value: 'secondary', label: tr.text(APP_Msgs.dashboardActivityTab()) },
 					]}
 					active={activeDashboardTab}
 					setActive={SquadServerClient.DashboardTabActions.setSide}

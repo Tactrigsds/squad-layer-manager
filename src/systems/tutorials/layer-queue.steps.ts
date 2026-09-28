@@ -234,7 +234,7 @@ function simAddNote(ctx: Tour.SimulateCtx) {
 	LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, {
 		op: 'add-note',
 		noteId: LNote.createNoteId(),
-		text: 'Tutorial note',
+		text: tr.text(M.seededNote()),
 	})
 }
 

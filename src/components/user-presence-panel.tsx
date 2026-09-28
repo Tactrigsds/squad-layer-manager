@@ -326,7 +326,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			const activityForText = matchActivityForStatusText?.(presence.activityState)
 			if (eventText) activityText = eventText
 			else if (activityForText) {
-				activityText = UP.getHumanReadableActivity(activityForText, layerList)
+				activityText = activityTextOf(UP.describeActivity(activityForText, layerList))
 			}
 			return { clientId, user, presence, activityText }
 		})
@@ -411,7 +411,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 									const { clientId, user, presence } = entry
 									const eventText = userEventText.get(user.discordId)
 									const activityText =
-										eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+										eventText ??
+										activityTextOf(presence.activityState ? UP.describeActivity(presence.activityState, layerList) : null)
 									return (
 										<div key={clientId} className="flex items-center gap-2">
 											<PresenceAvatar
@@ -558,4 +559,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			)}
 		</div>
 	)
+}
+
+function activityTextOf(described: UP.ActivityDescriptor | null) {
+	return described && tr.text(UP_Msgs.activity(described))
 }

@@ -46,7 +46,8 @@ function formatRoleName(role: RBAC.Role) {
 }
 
 function getPermissionDescription(permType: string) {
-	return RBAC.PERMISSION_DEFINITION[permType as keyof typeof RBAC.PERMISSION_DEFINITION]?.description || permType
+	const description = RBAC_Msgs.permissionDescriptions[permType as RBAC.PermissionType]
+	return description ? tr.text(description()) : permType
 }
 
 function permKey(perm: RBAC.Permission & Partial<RBAC.PermissionTrace>) {
@@ -148,7 +149,7 @@ function RoleSection(props: {
 					))}
 					{(hiddenCount > 0 || showAll) && (
 						<Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setShowAll(!showAll)}>
-							{showAll ? 'Show fewer' : `...see all ${props.perms.length}`}
+							{tr.text(showAll ? RBAC_Msgs.showFewerPermissions() : RBAC_Msgs.showAllPermissions(props.perms.length))}
 						</Button>
 					)}
 				</div>

@@ -40,14 +40,6 @@ export const TEAM_COLUMNS = TeamColumnSchema.options
 export const PHYSICAL_TEAM_COLUMNS = ['Alliance', 'Faction', 'Unit'] as const satisfies TeamColumn[]
 export type PhysicalTeamColumn = (typeof PHYSICAL_TEAM_COLUMNS)[number]
 
-export const TEAM_COLUMN_LABELS: Record<TeamColumn, string> = {
-	Alliance: 'Alliance',
-	Faction: 'Faction',
-	Unit: 'Unit',
-	Vehicle: 'Vehicle',
-	VehicleType: 'Vehicle type',
-}
-
 export const TeamQuantifierSchema = z.enum(['either', 'both'])
 export type TeamQuantifier = z.infer<typeof TeamQuantifierSchema>
 
@@ -474,13 +466,14 @@ export function columnsInGroup(group: SubjectColumnGroup, cfg = LC.BASE_COLUMN_C
 // what the operator dropdown offers: each entry maps to a (comp type, neg) pair, so negated forms
 // (!=, not in, >=, ...) and null tests (eq against the constant null) need no operators of their own
 
+export type CompOpKey = 'eq' | 'neq' | 'in' | 'notin' | 'lt' | 'gt' | 'lte' | 'gte' | 'inrange' | 'outrange'
+
 export type CompOpSelectOption = {
-	key: string
-	label: string
-	// one-line explanation of the operator, shown alongside the (necessarily terse) label in the select
-	description: string
+	key: CompOpKey
 	type: CompType
 	neg: boolean
+	// eq/neq on a float column, which only test against null
+	nullTest: boolean
 }
 
 export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSelectOption[] {
@@ -489,70 +482,21 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	// exact equality against a numeric constant is unreliable. There are no dedicated null-test
 	// operators — null is selected as a value.
 	const options: CompOpSelectOption[] = [
-		{
-			key: 'eq',
-			label: '=',
-			description: floatDomain
-				? 'Matches when the value is missing. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
-				: 'Matches when the value is exactly the one given.',
-			type: 'eq',
-			neg: false,
-		},
-		{
-			key: 'neq',
-			label: '!=',
-			description: floatDomain
-				? 'Matches when the value is present. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
-				: 'Matches when the value is anything other than the one given.',
-			type: 'eq',
-			neg: true,
-		},
+		{ key: 'eq', type: 'eq', neg: false, nullTest: floatDomain },
+		{ key: 'neq', type: 'eq', neg: true, nullTest: floatDomain },
 	]
 	// `in` uses exact equality, so skip it for floats (and it's redundant for booleans)
 	if (!floatDomain && (!domain || domain.kind !== 'boolean')) {
-		options.push(
-			{ key: 'in', label: 'in', description: 'Matches when the value is any one of the listed values.', type: 'in', neg: false },
-			{
-				key: 'notin',
-				label: 'not in',
-				description: 'Matches when the value is none of the listed values.',
-				type: 'in',
-				neg: true,
-			},
-		)
+		options.push({ key: 'in', type: 'in', neg: false, nullTest: false }, { key: 'notin', type: 'in', neg: true, nullTest: false })
 	}
 	if (!domain || domain.kind === 'number') {
 		options.push(
-			{ key: 'lt', label: '<', description: 'Matches when the value is less than the one given.', type: 'lt', neg: false },
-			{ key: 'gt', label: '>', description: 'Matches when the value is greater than the one given.', type: 'gt', neg: false },
-			{
-				key: 'lte',
-				label: '<=',
-				description: 'Matches when the value is less than or equal to the one given.',
-				type: 'gt',
-				neg: true,
-			},
-			{
-				key: 'gte',
-				label: '>=',
-				description: 'Matches when the value is greater than or equal to the one given.',
-				type: 'lt',
-				neg: true,
-			},
-			{
-				key: 'inrange',
-				label: '[..]',
-				description: 'Matches when the value falls between the two bounds given, inclusive.',
-				type: 'inrange',
-				neg: false,
-			},
-			{
-				key: 'outrange',
-				label: '![..]',
-				description: 'Matches when the value falls outside the two bounds given.',
-				type: 'inrange',
-				neg: true,
-			},
+			{ key: 'lt', type: 'lt', neg: false, nullTest: false },
+			{ key: 'gt', type: 'gt', neg: false, nullTest: false },
+			{ key: 'lte', type: 'gt', neg: true, nullTest: false },
+			{ key: 'gte', type: 'lt', neg: true, nullTest: false },
+			{ key: 'inrange', type: 'inrange', neg: false, nullTest: false },
+			{ key: 'outrange', type: 'inrange', neg: true, nullTest: false },
 		)
 	}
 	return options

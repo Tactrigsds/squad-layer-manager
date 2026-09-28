@@ -4,10 +4,12 @@ import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
+import * as BB_Msgs from '@/messages/backburner.messages'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns'
+import type * as Msgs from '@/models/messages.models'
 import * as USR from '@/models/users.models'
 
 export const ItemIdSchema = z.string().min(1)
@@ -382,13 +384,13 @@ export function templateFromLayer(layer: Partial<L.KnownLayer>): F.FilterNode {
 	return buildTemplateFilter(parts)
 }
 
-function describeMatchupSide(spec: F.MatchupTeamSpec): string {
+function describeMatchupSide(tr: Msgs.Translator, spec: F.MatchupTeamSpec): string {
 	const bits: string[] = []
 	for (const column of Object.keys(spec) as F.TeamColumn[]) {
 		const values = spec[column]
 		if (values && values.length > 0) bits.push(values.map(String).join('/'))
 	}
-	return bits.length > 0 ? bits.join(' ') : 'any'
+	return bits.length > 0 ? bits.join(' ') : tr.text(BB_Msgs.anySide())
 }
 
 // one rendered condition of a template. filterId is set on the filter-entity conditions so a UI can show the
@@ -398,28 +400,33 @@ export type TemplateDisplayPart = { text: string; filterId?: string; excluded?: 
 
 // the segments a template renders as (rows, chat listings): map/gamemode/version/... values verbatim, team
 // pairs as "A vs B", filter names resolved by the caller, and a count for anything unrecognized
-export function templateDisplayParts(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): TemplateDisplayPart[] {
+export function templateDisplayParts(
+	tr: Msgs.Translator,
+	filter: F.FilterNode,
+	getFilterName?: (id: string) => string | undefined,
+): TemplateDisplayPart[] {
 	const parts = parseTemplateParts(filter)
 	const values = [...parts.layers, ...parts.maps, ...parts.gamemodes, ...parts.versions, ...parts.collections, ...parts.sizes]
 	const out: TemplateDisplayPart[] = values.map((text) => ({ text }))
 	for (const values of [parts.factions, parts.alliances, parts.units]) {
 		if (values.length === 1) out.push({ text: values[0] })
-		else if (values.length >= 2) out.push({ text: `${values[0]} vs ${values[1]}` })
+		else if (values.length >= 2) out.push({ text: tr.text(BB_Msgs.versus(values[0], values[1])) })
 	}
 	if (parts.matchup && matchupHasValues(parts.matchup)) {
 		const [a, b] = parts.matchup.teams
-		out.push({ text: `${describeMatchupSide(a)} vs ${describeMatchupSide(b)}${parts.matchup.locked ? ' (locked)' : ''}` })
+		out.push({ text: tr.text(BB_Msgs.matchupPart(describeMatchupSide(tr, a), describeMatchupSide(tr, b), parts.matchup.locked)) })
 	}
 	for (const id of parts.filterIds) out.push({ text: getFilterName?.(id) ?? id, filterId: id })
-	for (const id of parts.excludedFilterIds) out.push({ text: `not ${getFilterName?.(id) ?? id}`, filterId: id, excluded: true })
+	for (const id of parts.excludedFilterIds)
+		out.push({ text: tr.text(BB_Msgs.excludedFilter(getFilterName?.(id) ?? id)), filterId: id, excluded: true })
 	if (parts.other.length > 0) {
-		out.push({ text: `+${parts.other.length} custom condition${parts.other.length === 1 ? '' : 's'}` })
+		out.push({ text: tr.text(BB_Msgs.extraConditions(parts.other.length)) })
 	}
-	return out.length > 0 ? out : [{ text: 'any layer' }]
+	return out.length > 0 ? out : [{ text: tr.text(BB_Msgs.anyLayer()) }]
 }
 
-export function describeTemplate(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): string {
-	return templateDisplayParts(filter, getFilterName)
+export function describeTemplate(tr: Msgs.Translator, filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): string {
+	return templateDisplayParts(tr, filter, getFilterName)
 		.map((part) => part.text)
 		.join(', ')
 }
@@ -436,10 +443,10 @@ export type ResolvedRequest = {
 // known values when nothing matched, the values it matched when too many did.
 export type ResolveTokensResult =
 	| { code: 'ok'; value: ResolvedRequest }
-	| { code: 'err:empty'; msg: string }
-	| { code: 'err:unknown-token'; token: string; msg: string; suggestions: string[] }
-	| { code: 'err:ambiguous-token'; token: string; msg: string; suggestions: string[] }
-	| { code: 'err:too-many'; column: string; msg: string }
+	| { code: 'err:empty'; msg: Msgs.Variants.Textable }
+	| { code: 'err:unknown-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
+	| { code: 'err:ambiguous-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
+	| { code: 'err:too-many'; column: string; msg: Msgs.Variants.Textable }
 
 type TokenTarget =
 	| { kind: 'layer' | 'map' | 'gamemode' | 'version' | 'collection' | 'size' | 'faction' | 'alliance' | 'unit'; value: string }
@@ -467,7 +474,7 @@ export function resolveRequestTokens(input: {
 }): ResolveTokensResult {
 	const { components, filterEntities } = input
 	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
-	if (tokens.length === 0) return { code: 'err:empty', msg: 'Nothing requested' }
+	if (tokens.length === 0) return { code: 'err:empty', msg: BB_Msgs.nothingRequested() }
 
 	// exact lookup: normalized token -> canonical target. earlier entries win, so category priority is
 	// insertion order: gamemodes, factions, alliances, units, sizes, versions, maps (incl. abbreviations)
@@ -519,7 +526,7 @@ export function resolveRequestTokens(input: {
 			return {
 				code: 'err:ambiguous-token',
 				token,
-				msg: `"${token}" matches ${mapMatches.count} maps`,
+				msg: BB_Msgs.ambiguousMap(token, mapMatches.count),
 				suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
@@ -537,7 +544,7 @@ export function resolveRequestTokens(input: {
 			return {
 				code: 'err:ambiguous-token',
 				token,
-				msg: `"${token}" matches ${filterMatches.count} filters`,
+				msg: BB_Msgs.ambiguousFilter(token, filterMatches.count),
 				suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
@@ -577,11 +584,14 @@ export function resolveRequestTokens(input: {
 			return {
 				code: 'err:too-many',
 				column,
-				msg: `At most two ${column.toLowerCase()}s can be requested (a matchup)`,
+				msg: BB_Msgs.tooManyTeamValues(column as F.PhysicalTeamColumn),
 			}
 		}
 	}
-	const singleValued: [string, 'layers' | 'maps' | 'gamemodes' | 'versions' | 'collections' | 'sizes'][] = [
+	const singleValued: [
+		Parameters<typeof BB_Msgs.tooManyValues>[0],
+		'layers' | 'maps' | 'gamemodes' | 'versions' | 'collections' | 'sizes',
+	][] = [
 		['layer', 'layers'],
 		['map', 'maps'],
 		['gamemode', 'gamemodes'],
@@ -591,7 +601,7 @@ export function resolveRequestTokens(input: {
 	]
 	for (const [label, key] of singleValued) {
 		if (parts[key].length > 1) {
-			return { code: 'err:too-many', column: label, msg: `Only one ${label} can be requested` }
+			return { code: 'err:too-many', column: label, msg: BB_Msgs.tooManyValues(label) }
 		}
 	}
 
@@ -623,7 +633,7 @@ function unknownToken(
 	exact: Map<string, TokenTarget>,
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
-): { msg: string; suggestions: string[] } {
+): { msg: Msgs.Variants.Textable; suggestions: string[] } {
 	// every way a token can be written, paired with how it is named back: the exact vocabulary (values and their
 	// abbreviations) plus the two things that also match loosely
 	const candidates = [
@@ -640,16 +650,18 @@ function unknownToken(
 		if (suggestions.length === MAX_SUGGESTIONS) break
 	}
 	// the suggestions are offered as choices, so naming the closest one here says it twice
-	return { msg: `Unknown request "${token}"`, suggestions }
+	return { msg: BB_Msgs.unknownRequest(token), suggestions }
 }
 
 export function getLayerRequestSummary(
+	tr: Msgs.Translator,
 	items: BackburnerItem[],
 	getFilterName?: (id: string) => string | undefined,
 	owner?: USR.GuiOrChatUserId,
 ): string[] {
 	return items.map((item, index) => {
-		const own = owner && sameOwner(item.source, owner) ? ' (yours)' : ''
-		return `${index + 1}. ${describeTemplate(item.filter, getFilterName)}${own}`
+		return tr.text(
+			BB_Msgs.summaryLine(index + 1, describeTemplate(tr, item.filter, getFilterName), !!owner && sameOwner(item.source, owner)),
+		)
 	})
 }

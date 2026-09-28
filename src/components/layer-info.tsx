@@ -117,8 +117,12 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 					<span data-tour="layer-info-tabs">
 						<TabsList
 							options={[
-								{ value: 'details', label: 'Details' },
-								{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+								{ value: 'details', label: tr.text(L_Msgs.detailsTab()) },
+								{
+									value: 'scores',
+									label: tr.text(L_Msgs.scoresTab()),
+									disabled: !hasScores && tr.text(L_Msgs.scoresUnavailable()),
+								},
 							]}
 							active={tab}
 							setActive={setTab}
@@ -135,7 +139,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 						options={[
 							{ value: 'team1', label: `1 ${layer.Faction_1}` },
 							{ value: 'team2', label: `2 ${layer.Faction_2}` },
-							{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+							{ value: 'scores', label: tr.text(L_Msgs.scoresTab()), disabled: !hasScores && tr.text(L_Msgs.scoresUnavailable()) },
 						]}
 						active={availableTab === 'details' ? 'team1' : availableTab}
 						setActive={setTab}

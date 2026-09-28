@@ -3,6 +3,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
@@ -20,6 +21,7 @@ import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswaps.models'
@@ -136,7 +138,7 @@ type Exchange = { code: 'ok'; chat: ChatCtx } | { code: 'done'; result: HandlerR
 // the sender lookup and reply helpers every chat message needs before anything can be decided about it
 async function openExchange(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage): Promise<Exchange> {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType).success) {
-		return { code: 'done', result: { code: 'err:invalid-chat-channel', msg: 'Invalid chat channel' } }
+		return { code: 'done', result: { code: 'err:invalid-chat-channel', msg: baseCtx.tr.text(CMD_Msgs.invalidChatChannel()) } }
 	}
 
 	async function reply(opts: SR.WarnInput) {
@@ -381,16 +383,17 @@ function nearMiss(opts: Omit<NearMissResult, 'code'>): NearMissResult {
 
 // A squad is picked back as "<team> <squad number>" rather than by name: both tokens are unambiguous, and the pair
 // re-assigns to the same argument window whatever the caller originally typed (see assignArgTokens).
-function squadChoices(teamId: SM.TeamId, squads: SM.Squad[]): CMD.ArgChoice[] {
+function squadChoices(tr: Msgs.Translator, teamId: SM.TeamId, squads: SM.Squad[]): CMD.ArgChoice[] {
 	return squads.map((squad) => ({
 		tokens: [String(teamId), String(squad.squadId)],
-		label: `${squad.squadName} (team ${teamId} squad ${squad.squadId})`,
+		label: tr.text(CMD_Msgs.squadChoice(squad.squadName, teamId, squad.squadId)),
 	}))
 }
 
 // resolves a [team] <squad> token window: team falls back to the caller's team; squad by "cmd" alias,
 // in-game number, or unique name substring
 function resolveSquadArg(
+	tr: Msgs.Translator,
 	teamsState: TeamsState,
 	currentMatch: MH.MatchDetails,
 	sender: SM.Player,
@@ -401,7 +404,7 @@ function resolveSquadArg(
 
 	let rawTeamId: SM.TeamId | null = null
 	if (!teamInput) {
-		if (!sender.teamId) return { code: 'err', msg: 'You are not on a team; specify one explicitly' }
+		if (!sender.teamId) return { code: 'err', msg: tr.text(CMD_Msgs.notOnTeamSpecifyOne()) }
 		rawTeamId = sender.teamId
 	} else {
 		rawTeamId = resolveTeamToken(currentMatch, teamInput)
@@ -409,7 +412,7 @@ function resolveSquadArg(
 			return nearMiss({
 				// both teams are always offered, so telling the caller how to name one is a line spent on advice the
 				// prompt underneath makes unnecessary
-				msg: `Unknown team "${teamInput}"`,
+				msg: tr.text(CMD_Msgs.unknownTeam(teamInput)),
 				typed: teamInput,
 				cause: 'no-match',
 				// the squad token is carried through, so picking a team only replaces the team half of the window
@@ -427,10 +430,10 @@ function resolveSquadArg(
 	let matchedSquad: SM.Squad | null = null
 	if (squadInput.toLowerCase() === 'cmd') {
 		matchedSquad = squadsOnTeam.find((s) => SM.isCommandSquad(s)) ?? null
-		if (!matchedSquad) return { code: 'err', msg: `No command squad found on team ${teamLabel}` }
+		if (!matchedSquad) return { code: 'err', msg: tr.text(CMD_Msgs.noCommandSquad(teamLabel)) }
 	} else if (!isNaN(squadNum)) {
 		matchedSquad = squadsOnTeam.find((s) => s.squadId === squadNum) ?? null
-		if (!matchedSquad) return { code: 'err', msg: `No squad ${squadNum} found on team ${teamLabel}` }
+		if (!matchedSquad) return { code: 'err', msg: tr.text(CMD_Msgs.noSquadNumbered(squadNum, teamLabel)) }
 	} else {
 		const squadMatchRes = Str.simpleUniqueStringMatch(
 			squadsOnTeam.map((s) => s.squadName.toLowerCase()),
@@ -438,10 +441,11 @@ function resolveSquadArg(
 		)
 		if (squadMatchRes.code === 'err:not-found') {
 			return nearMiss({
-				msg: `No squad matches "${squadInput}" on team ${teamLabel}`,
+				msg: tr.text(CMD_Msgs.noSquadMatches(squadInput, teamLabel)),
 				typed: squadInput,
 				cause: 'no-match',
 				choices: squadChoices(
+					tr,
 					rawTeamId,
 					Str.nearestBy(squadInput, squadsOnTeam, (s) => s.squadName, CMD.MAX_CHOICES),
 				),
@@ -456,7 +460,7 @@ function resolveSquadArg(
 				msg: `${squadMatchRes.count} squads match "${squadInput}"`,
 				typed: squadInput,
 				cause: 'ambiguous',
-				choices: squadChoices(rawTeamId, matched.slice(0, CMD.MAX_CHOICES)),
+				choices: squadChoices(tr, rawTeamId, matched.slice(0, CMD.MAX_CHOICES)),
 			})
 		}
 		matchedSquad = squadsOnTeam[squadMatchRes.matched]
@@ -522,7 +526,7 @@ async function resolveArgDefs(
 	let currentMatch: MH.MatchDetails | undefined
 	if (defs.some((d) => d.kind === 'player' || d.kind === 'recent-player' || d.kind === 'squad')) {
 		const teamsRes = await ctx.squadRcon.teams.get(ctx)
-		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
+		if (teamsRes.code !== 'ok') return { code: 'err', msg: ctx.tr.text(CMD_Msgs.teamsFetchFailed()) }
 		teamsState = teamsRes
 	}
 	// a team token is read against the current layer's factions and ordinal, which the roster doesn't carry
@@ -601,7 +605,7 @@ async function resolveArgDefs(
 				if (teamId === null) {
 					const hard = collect(def, {
 						code: 'err:near-miss',
-						msg: `Unknown team "${window[0]}"`,
+						msg: ctx.tr.text(CMD_Msgs.unknownTeam(window[0])),
 						typed: window[0],
 						cause: 'no-match',
 						choices: ([1, 2] as const).map((id) => ({ tokens: [String(id)], label: describeTeam(currentMatch!, id) })),
@@ -613,7 +617,7 @@ async function resolveArgDefs(
 				break
 			}
 			case 'squad': {
-				const res = resolveSquadArg(teamsState!, currentMatch!, sender, window)
+				const res = resolveSquadArg(ctx.tr, teamsState!, currentMatch!, sender, window)
 				if (res.code === 'err:near-miss') {
 					const hard = collect(def, res)
 					if (hard) return hard
@@ -689,13 +693,13 @@ async function resolveFlagArg(
 	const asked =
 		res.code === 'err:not-found'
 			? await h.nearMiss('flag', {
-					msg: `No flag matches found for "${typed}"`,
+					msg: h.ctx.tr.text(CMD_Msgs.noFlagMatches(typed)),
 					typed,
 					cause: 'no-match',
 					choices: flagChoices(Str.nearestBy(typed, flags, (f) => f.name, CMD.MAX_CHOICES)),
 				})
 			: await h.nearMiss('flag', {
-					msg: `Multiple(${res.count}) flag matches found for "${typed}".`,
+					msg: h.ctx.tr.text(CMD_Msgs.ambiguousFlag(res.count, typed)),
 					typed,
 					cause: 'ambiguous',
 					choices: flagChoices(
@@ -939,10 +943,11 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			else toB.push(playerId)
 		}
 
-		const parts = [toA.length > 0 ? `${toA.length} to ${destA}` : null, toB.length > 0 ? `${toB.length} to ${destB}` : null].filter(
-			Boolean,
-		)
-		const header = `Swaps: ${parts.join(', ')}`
+		const parts = [
+			...(toA.length > 0 ? [h.ctx.tr.text(CMD_Msgs.swapsToDestination(toA.length, destA))] : []),
+			...(toB.length > 0 ? [h.ctx.tr.text(CMD_Msgs.swapsToDestination(toB.length, destB))] : []),
+		]
+		const header = h.ctx.tr.text(CMD_Msgs.swapsSummary(parts))
 
 		if (swaps.size <= 8) {
 			const teamsStateRes = await h.ctx.squadRcon.teams.get(h.ctx)
@@ -950,11 +955,11 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, (p) => p.ids, playerId)?.ids.username ?? playerId
 			const lines = [header]
 			if (toA.length > 0) {
-				lines.push(`\nto ${destA}:`)
+				lines.push('\n' + h.ctx.tr.text(CMD_Msgs.swapsToDestinationHeading(destA)))
 				for (const id of toA) lines.push(getName(id))
 			}
 			if (toB.length > 0) {
-				lines.push(`\nto ${destB}:`)
+				lines.push('\n' + h.ctx.tr.text(CMD_Msgs.swapsToDestinationHeading(destB)))
 				for (const id of toB) lines.push(getName(id))
 			}
 			await h.reply(lines.join('\n'))
@@ -1022,7 +1027,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
 			return await h.error(
 				'note-required',
-				`Flag "${flagToUpdate.name}" requires a reason: ${CMD.formatUsage('flag', Settings.GLOBAL_SETTINGS.commands.flag)}`,
+				h.ctx.tr.text(CMD_Msgs.flagNeedsReason(flagToUpdate.name, CMD.formatUsage('flag', Settings.GLOBAL_SETTINGS.commands.flag))),
 			)
 		}
 		const targetIds = target.ids
@@ -1034,7 +1039,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const res = await Battlemetrics.addPlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToUpdate.id])
 		if (res.code === 'err:no-flags') return { code: 'ok' }
 		if (res.code === 'player-already-has-flag') {
-			return await h.error(res.code, `Player "${targetIds.username}" is already assigned flag "${flagToUpdate.name}"`)
+			return await h.error(res.code, h.ctx.tr.text(CMD_Msgs.flagAlreadyAssigned(targetIds.username, flagToUpdate.name)))
 		}
 		if (res.code === 'ok') {
 			const note = BM.flagChangeNote({
@@ -1050,10 +1055,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 					return false
 				})
 			await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, targetIds.eos)
-			await h.reply(
-				`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile` +
-					(noteAdded ? '' : ', but failed to post the accompanying note'),
-			)
+			await h.reply(CMD_Msgs.flagAdded(flagToUpdate.name, targetIds.username, noteAdded))
 			return { code: 'ok' }
 		}
 		assertNever(res)
@@ -1092,10 +1094,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return false
 			})
 		await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, target.ids.eos)
-		await h.reply(
-			`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile` +
-				(noteAdded ? '' : ', but failed to post the accompanying note'),
-		)
+		await h.reply(CMD_Msgs.flagRemoved(flagToRemove.name, target.ids.username, noteAdded))
 		return { code: 'ok' }
 	},
 
@@ -1155,7 +1154,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const actionsFor = (r: AAR.AdminActionReason) =>
 			AAR.ADMIN_ACTION_TYPE.options
 				.filter((a) => r.actionTexts[a] !== undefined)
-				.map((a) => AAR.ADMIN_ACTIONS[a].displayName)
+				.map((a) => h.ctx.tr.text(AAR_Msgs.actionNames[a]))
 				.join(', ')
 		const entries = reasons.map((r) => {
 			const head = `${r.label} (${r.keywords.join(', ')})`
@@ -1188,7 +1187,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		// the kill notify delivers the rendered reason verbatim (see h.ctx.tr.warn(SM_Msgs.notifyKilled()))
 		const reason = applied && AAR.renderAppliedReason(applied)
 		await SquadServer.killPlayersAction(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), reason, applied?.label)
-		await h.reply(applied?.label ? `Killed ${target.ids.username} for ${applied.label}` : `Killed ${target.ids.username}`)
+		await h.reply(CMD_Msgs.killedPlayer(target.ids.username, applied?.label))
 		return { code: 'ok' }
 	},
 
@@ -1201,11 +1200,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
 		const reason = applied && AAR.renderAppliedReason(applied)
 		await SquadServer.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
-		await h.reply(
-			`Killed "${squad.squadName}" (${players.length} player${players.length !== 1 ? 's' : ''})${
-				applied?.label ? ` for ${applied.label}` : ''
-			}`,
-		)
+		await h.reply(CMD_Msgs.killedSquad(squadSubjectLabel(h, squad.squadName, players.length), applied?.label))
 		return { code: 'ok' }
 	},
 
@@ -1255,7 +1250,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	kickSquad: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
-		return await executeKick(h, players, args.reason, squadSubjectLabel(squad.squadName, players.length), squad.squadName)
+		return await executeKick(h, players, args.reason, squadSubjectLabel(h, squad.squadName, players.length), squad.squadName)
 	},
 
 	timeout: async (h, args) => {
@@ -1270,7 +1265,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			players,
 			args.duration,
 			args.reason,
-			squadSubjectLabel(squad.squadName, players.length),
+			squadSubjectLabel(h, squad.squadName, players.length),
 			squad.squadName,
 		)
 	},
@@ -1294,7 +1289,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const timeoutChoices = (timeouts: typeof distinct) => timeouts.map((t) => ({ tokens: [t.playerId], label: t.username ?? t.playerId }))
 		if (matchedPlayerIds.size === 0) {
 			return await h.nearMiss('player', {
-				msg: `No active timeout matches "${token}"`,
+				msg: h.ctx.tr.text(CMD_Msgs.noTimeoutMatch(token)),
 				typed: token,
 				cause: 'no-match',
 				choices: timeoutChoices(Str.nearestBy(token, distinct, (t) => t.username ?? '', CMD.MAX_CHOICES)),
@@ -1324,7 +1319,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			// the argument's window is the request, and a pick replaces all of it
 			const offending = resolveRes.token
 			return await h.nearMiss('request', {
-				msg: resolveRes.msg,
+				msg: h.ctx.tr.text(resolveRes.msg),
 				typed: offending,
 				cause: resolveRes.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
 				choices: resolveRes.suggestions.slice(0, CMD.MAX_CHOICES).map((suggestion) => ({
@@ -1334,7 +1329,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				})),
 			})
 		}
-		if (resolveRes.code !== 'ok') return await h.error('invalid-request', resolveRes.msg)
+		if (resolveRes.code !== 'ok') return await h.error('invalid-request', h.ctx.tr.text(resolveRes.msg))
 		const source = await resolveChatOwner(h)
 		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {
 			source,
@@ -1364,7 +1359,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return { code: 'ok' }
 		}
 		const owner = await resolveChatOwner(h)
-		const pages = Arr.paged(BB.getLayerRequestSummary(items, LayerQueue.backburnerFilterName, owner), 4).map((page) => page.join('\n'))
+		const pages = Arr.paged(BB.getLayerRequestSummary(h.ctx.tr, items, LayerQueue.backburnerFilterName, owner), 4).map((page) =>
+			page.join('\n'),
+		)
 		for (const page of pages) await h.reply(page)
 		return { code: 'ok' }
 	},
@@ -1387,7 +1384,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
 		}
 		await LayerQueue.removeBackburnerRequestsFromChat(h.ctx, { itemIds: [target.itemId], source: owner })
-		await h.reply(BB_Msgs.removed(BB.describeTemplate(target.filter, LayerQueue.backburnerFilterName)))
+		await h.reply(BB_Msgs.removed(BB.describeTemplate(h.ctx.tr, target.filter, LayerQueue.backburnerFilterName)))
 		return { code: 'ok' }
 	},
 }
@@ -1413,8 +1410,8 @@ async function requireReasonGuard(h: HandlerCtx, action: AAR.AdminActionType, ha
 	return rr ? await h.error('reason-required', rr.msg) : null
 }
 
-function squadSubjectLabel(squadName: string, playerCount: number) {
-	return `"${squadName}" (${playerCount} player${playerCount !== 1 ? 's' : ''})`
+function squadSubjectLabel(h: HandlerCtx, squadName: string, playerCount: number) {
+	return h.ctx.tr.text(CMD_Msgs.squadSubject(squadName, playerCount))
 }
 
 async function executeKick(
@@ -1468,13 +1465,13 @@ async function executeTimeout(
 	if (skipped.length === targets.length) {
 		return await h.error(
 			'already-timed-out',
-			targets.length === 1 ? lastErrMsg : `All ${targets.length} players already have active timeouts`,
+			targets.length === 1 ? lastErrMsg : h.ctx.tr.text(CMD_Msgs.allAlreadyTimedOut(targets.length)),
 		)
 	}
 	await h.reply(
 		[
-			`Timed out ${subjectLabel} for ${ZodUtils.formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
-			...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
+			h.ctx.tr.text(CMD_Msgs.timedOut(subjectLabel, ZodUtils.formatHumanTime(durationMs), reason?.label)),
+			...(skipped.length > 0 ? [h.ctx.tr.text(CMD_Msgs.timeoutsSkipped(skipped))] : []),
 		].join('\n'),
 	)
 	return { code: 'ok' }

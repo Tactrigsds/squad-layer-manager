@@ -40,7 +40,7 @@ export function ServerSelect(props: {
 		<>
 			<ComboBox
 				className={props.className}
-				title={props.title ?? 'Server'}
+				title={props.title ?? tr.text(SETTINGS_Msgs.serverPicker())}
 				value={props.value ?? undefined}
 				options={optionsFor(servers, selected)}
 				disabled={props.disabled}
@@ -65,7 +65,7 @@ export function ServerMultiSelect(props: {
 		<>
 			<ComboBoxMulti
 				className={props.className}
-				title={props.title ?? 'Servers'}
+				title={props.title ?? tr.text(SETTINGS_Msgs.serversPicker())}
 				values={props.values}
 				options={optionsFor(servers, props.values)}
 				selectionLimit={props.selectionLimit}

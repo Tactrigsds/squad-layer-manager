@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
@@ -280,7 +281,9 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 									<TableRow>
 										<TableCell colSpan={8} className="text-center">
 											<Button variant="ghost" size="sm" onClick={() => setShowFullDay(!showFullDay)} className="text-text-3">
-												{showFullDay ? 'Show less' : `Show ${currentEntries.length - MATCH_LIMIT} more`}
+												{tr.text(
+													showFullDay ? UI_Msgs.showLess() : MH_Msgs.showMoreMatches(currentEntries.length - MATCH_LIMIT),
+												)}
 											</Button>
 										</TableCell>
 									</TableRow>
@@ -781,17 +784,15 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 
 	// Calculate time difference from now
 	const difference = dateFns.differenceInHours(new Date(), startTime)
-	let timeDifferenceText = ''
-	if (difference === 0) {
-		timeDifferenceText = `${Math.floor(dateFns.differenceInMinutes(new Date(), startTime))} minutes ago`
-	} else {
-		timeDifferenceText = `${Math.floor(difference)} hours ago`
-	}
+	const ago = tr.text(
+		difference === 0
+			? MH_Msgs.minutesAgo(Math.floor(dateFns.differenceInMinutes(new Date(), startTime)))
+			: MH_Msgs.hoursAgo(Math.floor(difference)),
+	)
 
 	const matchLengthMinutes = gameRuntime !== undefined ? Math.round(gameRuntime / (1000 * 60)) : undefined
-	const matchLengthText = matchLengthMinutes ? ` - ${matchLengthMinutes} minutes` : ' - unknown length'
 	return (
-		<span title={`${timeDifferenceText}${matchLengthText}`}>
+		<span title={tr.text(matchLengthMinutes ? MH_Msgs.startedAndLasted(ago, matchLengthMinutes) : MH_Msgs.startedUnknownLength(ago))}>
 			{formattedStartTime}
 			<span className="text-text-3">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
 		</span>

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
+import * as I18n from '@/messages/i18n'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 
 const components = L.StaticLayerComponents
+const tr = I18n.translatorFor(I18n.DEFAULT_LOCALE)
 
 function resolve(tokens: string[], filterEntities: { id: string; name: string }[] = []) {
 	return BB.resolveRequestTokens({ tokens, components, filterEntities })
@@ -77,7 +79,7 @@ describe('resolveRequestTokens', () => {
 		const res = resolve(['gorodokk'])
 		expect(res.code).toBe('err:unknown-token')
 		if (res.code !== 'err:unknown-token') throw new Error('unreachable')
-		expect(res.msg).toContain('Unknown request "gorodokk"')
+		expect(tr.text(res.msg)).toContain('Unknown request "gorodokk"')
 		expect(res.suggestions[0]).toBe('Gorodok')
 		// a map is both its own exact key and a fuzzy candidate, so it can rank twice
 		expect(new Set(res.suggestions).size).toBe(res.suggestions.length)
@@ -95,7 +97,7 @@ describe('resolveRequestTokens', () => {
 		const res = resolve(['gorodok', 'fallu'])
 		expect(res.code).toBe('err:too-many')
 		if (res.code !== 'err:too-many') throw new Error('unreachable')
-		expect(res.msg).toContain('Only one map')
+		expect(tr.text(res.msg)).toContain('Only one map')
 	})
 
 	it('rejects an empty request', () => {
@@ -294,9 +296,9 @@ describe('template parts', () => {
 	it('describes templates from their parts', () => {
 		const res = resolve(['fallu', 'adf', 'pla'])
 		if (res.code !== 'ok') throw new Error('expected ok')
-		expect(BB.describeTemplate(res.value.filter)).toBe('Fallujah, ADF vs PLA')
-		expect(BB.describeTemplate(FB.and([FB.includedIn('f1')]), () => 'Cool Maps')).toBe('Cool Maps')
-		expect(BB.describeTemplate(FB.and([]))).toBe('any layer')
+		expect(BB.describeTemplate(tr, res.value.filter)).toBe('Fallujah, ADF vs PLA')
+		expect(BB.describeTemplate(tr, FB.and([FB.includedIn('f1')]), () => 'Cool Maps')).toBe('Cool Maps')
+		expect(BB.describeTemplate(tr, FB.and([]))).toBe('any layer')
 	})
 })
 

@@ -17,6 +17,7 @@ import * as HistoryFrame from '@/frames/history.frame'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
@@ -192,7 +193,7 @@ function CompEditor(props: EditorProps & { node: F.EditableCompNode; path: Histo
 				<SelectContent>
 					{HQ.COLUMN_KEYS.map((key) => (
 						<SelectItem key={key} value={key}>
-							{HQ.COLUMN_DEFS[key].displayName}
+							{tr.text(HistoryMsgs.columnNames[key])}
 						</SelectItem>
 					))}
 				</SelectContent>
@@ -205,7 +206,7 @@ function CompEditor(props: EditorProps & { node: F.EditableCompNode; path: Histo
 					<SelectContent>
 						{opOptions.map((o) => (
 							<SelectItem key={o.key} value={o.key}>
-								{o.label}
+								{tr.text((def?.domain.kind === 'text' && HistoryMsgs.textCompOpLabels[o.key]) || F_Msgs.compOpLabels[o.key])}
 							</SelectItem>
 						))}
 					</SelectContent>

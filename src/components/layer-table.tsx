@@ -49,6 +49,7 @@ import type { CheckedState } from '@radix-ui/react-checkbox'
 
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import { tr } from '@/systems/messages.client'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
@@ -111,10 +112,10 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 						sort && 'text-text [&_svg]:text-text',
 					)}
 					data-sort={!!sort}
-					title={colDef.displayName}
+					title={tr.text(LC_Msgs.columnName(colDef))}
 					onClick={handleClick}
 				>
-					{colDef.shortName ?? colDef.displayName}
+					{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}
 					{!sort && <ArrowUpDown className="opacity-0 group-hover/th:opacity-100" />}
 					{sort?.direction === 'ASC' && <ArrowUp />}
 					{sort?.direction === 'DESC' && <ArrowDown />}
@@ -691,8 +692,8 @@ export function LayerTableControlPanel(props: {
 								size="sm"
 								variant="default"
 								className="fd-btn-ghost fd-btn-ico"
-								title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
-								aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
+								title={tr.text(rawSetDialogOpen ? L_Msgs.hideRawInput() : L_Msgs.showRawInput())}
+								aria-label={tr.text(rawSetDialogOpen ? L_Msgs.hideRawInput() : L_Msgs.showRawInput())}
 								pressed={rawSetDialogOpen}
 								onClick={() => setRawSetDialogOpen((prev) => !prev)}
 								disabled={!!forceSelectDenied}

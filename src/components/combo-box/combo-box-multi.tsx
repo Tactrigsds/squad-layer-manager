@@ -600,7 +600,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
 								>
 									<SquareCheck className="h-4 w-4" />
-									<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
+									<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : tr.text(UI_Msgs.confirm())}</span>
 								</Button>
 							</div>
 						)}

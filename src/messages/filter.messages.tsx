@@ -431,3 +431,85 @@ export const matchup = def('Matchup')
 // the picker's constraint rail, and the button that opens it on a phone
 export const constraints = def('Constraints')
 export const filtersButton = def('Filters')
+
+// -------- the filter details form --------
+
+export const nameLabel = def('Name')
+
+export const emojiLabel = def('Emoji')
+
+export const alertMessageLabel = def('Alert Message')
+
+export const descriptionLabel = def('Description')
+
+export const unsavedChangesConfirm = def('You have unsaved changes. Are you sure you want to leave?')
+
+// -------- the filter tree editor --------
+
+export const compareToNull = def('Compare to null')
+
+export const clearNull = def('Clear null')
+
+export const matchupLockedHint = def(
+	'Team order locked: matches only as configured, left on team 1 and right on team 2. Click to allow either order.',
+)
+
+export const matchupUnlockedHint = def(
+	'Either team order matches: the two sides are interchangeable. Click to lock them to team 1 and team 2.',
+)
+
+// -------- the operator select --------
+
+export const teamColumnNames: Record<F.TeamColumn, TString> = {
+	Alliance: t('Alliance'),
+	Faction: t('Faction'),
+	Unit: t('Unit'),
+	Vehicle: t('Vehicle'),
+	VehicleType: t('Vehicle type'),
+}
+
+// the same, as a team-generic column's picker offers it: "Faction (Both)"
+export const teamColumnQuantified = def('{column} ({quantifier})', (column: string, quantifier: string) => ({ column, quantifier }))
+
+export const teamColumnBoth = def('{column} (Both)', (column: string) => ({ column }))
+
+export const teamColumnEither = def('{column} (Either)', (column: string) => ({ column }))
+
+export const compOpLabels: Record<F.CompOpKey, TString> = {
+	eq: t('='),
+	neq: t('!='),
+	in: t('in'),
+	notin: t('not in'),
+	lt: t('<'),
+	gt: t('>'),
+	lte: t('<='),
+	gte: t('>='),
+	inrange: t('[..]'),
+	outrange: t('![..]'),
+}
+
+export const compOpDescriptions: Record<F.CompOpKey, TString> = {
+	eq: t('Matches when the value is exactly the one given.'),
+	neq: t('Matches when the value is anything other than the one given.'),
+	in: t('Matches when the value is any one of the listed values.'),
+	notin: t('Matches when the value is none of the listed values.'),
+	lt: t('Matches when the value is less than the one given.'),
+	gt: t('Matches when the value is greater than the one given.'),
+	lte: t('Matches when the value is less than or equal to the one given.'),
+	gte: t('Matches when the value is greater than or equal to the one given.'),
+	inrange: t('Matches when the value falls between the two bounds given, inclusive.'),
+	outrange: t('Matches when the value falls outside the two bounds given.'),
+}
+
+// eq/neq on a decimal column, where they only test against null
+export const nullTestDescriptions: Partial<Record<F.CompOpKey, TString>> = {
+	eq: t(
+		'Matches when the value is missing. Exact equality is unreliable on a decimal column, so this operator only tests against no value.',
+	),
+	neq: t(
+		'Matches when the value is present. Exact equality is unreliable on a decimal column, so this operator only tests against no value.',
+	),
+}
+
+export const compOpDescription = (option: F.CompOpSelectOption) =>
+	(option.nullTest && nullTestDescriptions[option.key]) || compOpDescriptions[option.key]

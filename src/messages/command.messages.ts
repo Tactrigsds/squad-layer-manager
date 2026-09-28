@@ -468,3 +468,103 @@ export const pluginTriggerTakenBy = def(
 	'The plugin declares this trigger, but {owner} already owns it, so it does nothing. Set a different one here.',
 	(owner: string) => ({ owner }),
 )
+
+export const pinnedTocSection = def('Pinned')
+
+export const pinCommandLabel = def('Pin command')
+
+export const unpinCommandLabel = def('Unpin command')
+
+export const pinCommandHint = def('Pin to the top of this page')
+
+export const unpinCommandHint = def('Unpin from the top of this page')
+
+// -------- in-game replies to moderation and swap commands --------
+
+export const swapsSummary = def('Swaps: {parts}', (parts: string[]) => ({ parts: parts.join(', ') }))
+
+export const swapsToDestination = def('{count} to {destination}', (count: number, destination: string) => ({ count, destination }))
+
+export const swapsToDestinationHeading = def('to {destination}:', (destination: string) => ({ destination }))
+
+export const flagNeedsReason = def('Flag "{flag}" requires a reason: {usage}', (flag: string, usage: string) => ({ flag, usage }))
+
+export const flagAlreadyAssigned = def(
+	'Player "{username}" is already assigned flag "{flag}"',
+	(username: string | undefined, flag: string) => ({
+		username,
+		flag,
+	}),
+)
+
+export const flagAdded = def(
+	'Added flag "{flag}" to {username}\'s BM profile{noteAdded, select, yes {} other {, but failed to post the accompanying note}}',
+	(flag: string, username: string | undefined, noteAdded: boolean) => ({ flag, username, noteAdded: noteAdded ? 'yes' : 'no' }),
+)
+
+export const flagRemoved = def(
+	'Removed flag "{flag}" from {username}\'s BM profile{noteAdded, select, yes {} other {, but failed to post the accompanying note}}',
+	(flag: string, username: string | undefined, noteAdded: boolean) => ({ flag, username, noteAdded: noteAdded ? 'yes' : 'no' }),
+)
+
+export const killedPlayer = def(
+	'Killed {username}{hasReason, select, yes { for {reason}} other {}}',
+	(username: string | undefined, reason?: string) => ({
+		username,
+		reason,
+		hasReason: reason ? 'yes' : 'no',
+	}),
+)
+
+export const killedSquad = def('Killed {subject}{hasReason, select, yes { for {reason}} other {}}', (subject: string, reason?: string) => ({
+	subject,
+	reason,
+	hasReason: reason ? 'yes' : 'no',
+}))
+
+// a squad as the subject of a moderation reply
+export const squadSubject = def(
+	'"{squadName}" ({count, plural, one {# player} other {# players}})',
+	(squadName: string, count: number) => ({
+		squadName,
+		count,
+	}),
+)
+
+export const allAlreadyTimedOut = def('All {count} players already have active timeouts', (count: number) => ({ count }))
+
+export const timedOut = def(
+	'Timed out {subject} for {duration}{hasReason, select, yes { for {reason}} other {}}',
+	(subject: string, duration: string, reason?: string) => ({ subject, duration, reason, hasReason: reason ? 'yes' : 'no' }),
+)
+
+export const timeoutsSkipped = def('Skipped (already timed out): {players}', (players: string[]) => ({ players: players.join(', ') }))
+
+// -------- resolving a command's arguments --------
+
+export const invalidChatChannel = def('Invalid chat channel')
+
+export const notOnTeamSpecifyOne = def('You are not on a team; specify one explicitly')
+
+export const unknownTeam = def('Unknown team "{team}"', (team: string) => ({ team }))
+
+export const noCommandSquad = def('No command squad found on team {team}', (team: string) => ({ team }))
+
+export const noSquadNumbered = def('No squad {squad} found on team {team}', (squad: number, team: string) => ({ squad, team }))
+
+export const noSquadMatches = def('No squad matches "{squad}" on team {team}', (squad: string, team: string) => ({ squad, team }))
+
+export const squadChoice = def('{squadName} (team {teamId} squad {squadId})', (squadName: string, teamId: number, squadId: number) => ({
+	squadName,
+	teamId,
+	squadId,
+}))
+
+export const teamsFetchFailed = def('Failed to fetch the current teams (RCON error)')
+
+export const noFlagMatches = def('No flag matches found for "{typed}"', (typed: string) => ({ typed }))
+
+export const ambiguousFlag = def('Multiple({count}) flag matches found for "{typed}".', (count: number, typed: string) => ({
+	count,
+	typed,
+}))

@@ -18,6 +18,7 @@ import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -592,7 +593,7 @@ function CommentButton(props: NodeProps) {
 		props.stores.filterEditor,
 		Zus.useShallow((s) => [!!EditFrame.Sel.comment(props.nodeId)(s), EditFrame.Sel.commentEdited(props.nodeId)(s)] as const),
 	)
-	const label = hasComment ? 'Edit comment' : 'Add comment'
+	const label = tr.text(hasComment ? UI_Msgs.editComment() : UI_Msgs.addComment())
 	return (
 		<Tooltip help>
 			<TooltipTrigger asChild>
@@ -642,7 +643,8 @@ const SUMMARY_VALUE_LIMIT = 4
 
 function columnLabel(column: string | undefined, cfg: ColConfig) {
 	if (!column) return undefined
-	return LC.getColumnDef(column, cfg)?.displayName ?? column
+	const def = LC.getColumnDef(column, cfg)
+	return def ? tr.text(LC_Msgs.columnName(def)) : column
 }
 
 function valueText(value: F.Value) {
@@ -688,7 +690,7 @@ function SubjectSummary(props: { arg: F.EditableScalarArg | undefined; cfg: ColC
 	const arg = props.arg
 	if (arg?.type === 'team-column' && arg.column) {
 		const quantifier = tr.text(F_Msgs.teamQuantifierNames[arg.quantifier ?? 'either'])
-		return <ColumnWord>{`${F.TEAM_COLUMN_LABELS[arg.column]} (${quantifier})`}</ColumnWord>
+		return <ColumnWord>{tr.text(F_Msgs.teamColumnQuantified(tr.text(F_Msgs.teamColumnNames[arg.column]), quantifier))}</ColumnWord>
 	}
 	const label = arg?.type === 'column' ? columnLabel(arg.column, props.cfg) : undefined
 	return label ? <ColumnWord>{label}</ColumnWord> : <Incomplete />
@@ -1030,10 +1032,8 @@ export type ComparisonHandle = Clearable & Focusable
 // A team column's displayName is the layer table's compact header ('T1'), which names nothing on its own in a
 // value picker: "Selected T1s (0)". Every picker on a team dimension names itself by the dimension and, for a
 // concrete side, which side.
-const TEAM_DIMENSION_BY_COLUMN: Record<string, { label: string; team: 1 | 2 }> = Object.fromEntries(
-	F.TEAM_COLUMNS.flatMap((column) =>
-		([1, 2] as const).map((team) => [F.resolveTeamColumn(column, team), { label: F.TEAM_COLUMN_LABELS[column], team }]),
-	),
+const TEAM_DIMENSION_BY_COLUMN: Record<string, { column: F.TeamColumn; team: 1 | 2 }> = Object.fromEntries(
+	F.TEAM_COLUMNS.flatMap((column) => ([1, 2] as const).map((team) => [F.resolveTeamColumn(column, team), { column, team }])),
 )
 
 // A single comparison node: [anchor column] [operator] [value(s)]. The anchor (args[0]) determines
@@ -1106,11 +1106,15 @@ export function Comparison(props: {
 
 	// a team-generic anchor carries its quantifier in the column box beside the picker, so the side is not the
 	// picker's to say; a concrete one has no other label
-	const teamDimension = anchorTeamColumn
-		? { label: F.TEAM_COLUMN_LABELS[anchorTeamColumn], team: undefined }
+	const teamDimensionColumn = anchorTeamColumn
+		? { column: anchorTeamColumn, team: undefined }
 		: anchorColumn
 			? TEAM_DIMENSION_BY_COLUMN[anchorColumn]
 			: undefined
+	const teamDimension = teamDimensionColumn && {
+		label: tr.text(F_Msgs.teamColumnNames[teamDimensionColumn.column]),
+		team: teamDimensionColumn.team,
+	}
 	const valuesTitle = props.valuesTitle ?? teamDimension?.label
 	const valuesAriaLabel =
 		props.valuesAriaLabel ??
@@ -1149,7 +1153,7 @@ export function Comparison(props: {
 	const allowedBaseCols = props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols
 	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({
 		value: c,
-		label: LC.getColumnDef(c, cfg)?.displayName ?? c,
+		label: columnLabel(c, cfg) ?? c,
 	})
 	const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label)
 
@@ -1164,13 +1168,13 @@ export function Comparison(props: {
 		// Faction's, omit the family prefix) so the four variants read uniformly
 		const teamGroup = F.TEAM_COLUMNS.flatMap((tc): ComboBoxOption<string>[] => [
 			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 1))
-				? [{ value: F.resolveTeamColumn(tc, 1), label: `${F.TEAM_COLUMN_LABELS[tc]} T1` }]
+				? [{ value: F.resolveTeamColumn(tc, 1), label: tr.text(F_Msgs.teamColumnForTeam(tr.text(F_Msgs.teamColumnNames[tc]), 1)) }]
 				: []),
 			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 2))
-				? [{ value: F.resolveTeamColumn(tc, 2), label: `${F.TEAM_COLUMN_LABELS[tc]} T2` }]
+				? [{ value: F.resolveTeamColumn(tc, 2), label: tr.text(F_Msgs.teamColumnForTeam(tr.text(F_Msgs.teamColumnNames[tc]), 2)) }]
 				: []),
-			{ value: teamColumnValue(tc, 'both'), label: `${F.TEAM_COLUMN_LABELS[tc]} (Both)` },
-			{ value: teamColumnValue(tc, 'either'), label: `${F.TEAM_COLUMN_LABELS[tc]} (Either)` },
+			{ value: teamColumnValue(tc, 'both'), label: tr.text(F_Msgs.teamColumnBoth(tr.text(F_Msgs.teamColumnNames[tc]))) },
+			{ value: teamColumnValue(tc, 'either'), label: tr.text(F_Msgs.teamColumnEither(tr.text(F_Msgs.teamColumnNames[tc]))) },
 		])
 		const rest = allowedBaseCols
 			.filter((c) => !teamBaseCols.has(c))
@@ -1203,7 +1207,7 @@ export function Comparison(props: {
 
 	const columnBox = columnEditable ? (
 		<ComboBox
-			title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
+			title={props.columnLabel ?? (columnDef && tr.text(LC_Msgs.columnName(columnDef))) ?? tr.text(F_Msgs.columnPicker())}
 			className={componentStyles}
 			allowEmpty
 			value={currentColumnValue}
@@ -1242,7 +1246,7 @@ export function Comparison(props: {
 		/>
 	) : (
 		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-			{props.columnLabel ?? columnDef?.displayName}
+			{props.columnLabel ?? (columnDef && tr.text(LC_Msgs.columnName(columnDef)))}
 		</span>
 	)
 	// operator options come from the subject's domain once one is set, otherwise the full set is offered
@@ -1253,7 +1257,11 @@ export function Comparison(props: {
 			className={cn(operatorSelectClass, componentStyles, props.operatorClassName)}
 			title={tr.text(F_Msgs.operatorPicker())}
 			value={F.compOpSelectionKey(node)}
-			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
+			options={opOptions.map((o) => ({
+				value: o.key,
+				label: tr.text(F_Msgs.compOpLabels[o.key]),
+				description: tr.text(F_Msgs.compOpDescription(o)),
+			}))}
 			ref={codeBoxRef}
 			// like the subject, hand focus onward to the value editor once an operator is picked
 			preventCloseAutoFocus={handOffFocusToValue}
@@ -1321,7 +1329,7 @@ export function Comparison(props: {
 				const d = F.columnValueDomain(c, cfg)
 				return d && domain && F.domainsCompatible(d, domain)
 			})
-			.map((c) => ({ value: c, label: LC.getColumnDef(c, cfg)?.displayName ?? c }))
+			.map((c) => ({ value: c, label: columnLabel(c, cfg) ?? c }))
 	}
 	// segmented control to pick whether a slot compares against a constant value or another column
 	const operandKindSelector = (index: number, isColumn: boolean) => {
@@ -1365,7 +1373,7 @@ export function Comparison(props: {
 			<Button
 				size="icon"
 				variant={isNull ? 'secondary' : 'ghost'}
-				title={isNull ? 'Clear null' : 'Compare to null'}
+				title={tr.text(isNull ? F_Msgs.clearNull() : F_Msgs.compareToNull())}
 				onClick={() =>
 					setNode(
 						Im.produce((c) => {
@@ -1706,7 +1714,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			ref={props.ref}
 			allowEmpty
 			className={props.className}
-			title={props.title ?? (props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
+			title={props.title ?? columnLabel(props.column, undefined) ?? ''}
 			placeholder={props.placeholder}
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
@@ -1747,7 +1755,7 @@ export function StringInConfig(props: {
 	}, [props.column, props.allowedValues])
 	return (
 		<ComboBoxMulti
-			title={props.title ?? (props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
+			title={props.title ?? columnLabel(props.column, undefined) ?? ''}
 			ariaLabel={props.ariaLabel}
 			emptyLabel={props.emptyLabel}
 			ref={props.ref}
@@ -1780,8 +1788,8 @@ function TeamSpecConfig(props: {
 			{(props.columns ?? F.TEAM_COLUMNS).map((teamColumn) => (
 				<StringInConfig
 					key={teamColumn}
-					title={F.TEAM_COLUMN_LABELS[teamColumn]}
-					emptyLabel={tr.text(F_Msgs.anyTeamColumn(F.TEAM_COLUMN_LABELS[teamColumn]))}
+					title={tr.text(F_Msgs.teamColumnNames[teamColumn])}
+					emptyLabel={tr.text(F_Msgs.anyTeamColumn(tr.text(F_Msgs.teamColumnNames[teamColumn])))}
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
@@ -1869,11 +1877,7 @@ export function MatchupConfig(props: {
 							{node.locked ? <Icons.Lock /> : <Icons.LockOpen />}
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>
-						{node.locked
-							? 'Team order locked: matches only as configured, left on team 1 and right on team 2. Click to allow either order.'
-							: 'Either team order matches: the two sides are interchangeable. Click to lock them to team 1 and team 2.'}
-					</TooltipContent>
+					<TooltipContent>{tr.text(node.locked ? F_Msgs.matchupLockedHint() : F_Msgs.matchupUnlockedHint())}</TooltipContent>
 				</Tooltip>
 				<span className="whitespace-nowrap text-[10px] text-muted-foreground">{node.locked ? 'order locked' : 'either order'}</span>
 			</div>
@@ -1942,7 +1946,7 @@ function InListConfig(props: {
 			/>
 			{columns.map((c) => (
 				<span key={c.column} className="flex items-center px-2 py-1 bg-secondary rounded-md text-sm">
-					{LC.getColumnDef(c.column, cfg)?.displayName ?? c.column}
+					{columnLabel(c.column, cfg) ?? c.column}
 					<button type="button" onClick={() => removeColumn(c.column)} className="ml-1">
 						<Icons.X className="h-3 w-3" />
 					</button>

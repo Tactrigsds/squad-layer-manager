@@ -237,3 +237,5 @@ export const regenerateAll = def('Regenerate All')
 export const generate = def('Generate')
 export const enableUnique = def('Enable unique constraint')
 export const disableUnique = def('Disable unique constraint')
+
+export const createVote = def('Create Vote')

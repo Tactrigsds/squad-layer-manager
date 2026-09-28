@@ -3,7 +3,9 @@ import * as React from 'react'
 
 import { LayerInfo } from '@/components/layer-info'
 import * as DH from '@/lib/display-helpers.ts'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as L from '@/models/layer'
+import { tr } from '@/systems/messages.client'
 
 export const Route = createFileRoute('/layers/$layerId/$tab')({
 	component: RouteComponent,
@@ -24,7 +26,7 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 		return { layer, tab }
 	},
 	head: ({ match }) => ({
-		meta: [{ title: 'SLM - ' + DH.displayLayer(match.context.layer) }],
+		meta: [{ title: tr.text(APP_Msgs.pageTitle(DH.displayLayer(match.context.layer))) }],
 	}),
 	caseSensitive: true,
 	shouldReload: true,

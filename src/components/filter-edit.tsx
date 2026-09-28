@@ -130,7 +130,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 		shouldBlockFn: () => {
 			if (!filterModified && !form.state.isDirty) return false
 
-			const shouldLeave = confirm('You have unsaved changes. Are you sure you want to leave?')
+			const shouldLeave = confirm(tr.text(F_Msgs.unsavedChangesConfirm()))
 			return !shouldLeave
 		},
 	})
@@ -258,7 +258,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 								<div className="space-y-2">
 									<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
 										{(field) => {
-											const label = 'Name'
+											const label = tr.text(F_Msgs.nameLabel())
 											return (
 												<div className="flex flex-col space-y-2">
 													<Label htmlFor={field.name}>{label}</Label>
@@ -289,7 +289,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 									<div className="flex gap-4">
 										<form.Field name="emoji">
 											{(field) => {
-												const label = 'Emoji'
+												const label = tr.text(F_Msgs.emojiLabel())
 												return (
 													<div className="flex flex-col space-y-2">
 														<Label htmlFor={field.name}>{label}</Label>
@@ -314,7 +314,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 										</form.Field>
 										<form.Field name="alertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
 											{(field) => {
-												const label = 'Alert Message'
+												const label = tr.text(F_Msgs.alertMessageLabel())
 												return (
 													<div className="flex flex-col space-y-2 grow">
 														<Label htmlFor={field.name}>{label}</Label>
@@ -347,7 +347,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 									<div className="flex gap-4">
 										<form.Field name="invertedEmoji">
 											{(field) => {
-												const label = 'Emoji'
+												const label = tr.text(F_Msgs.emojiLabel())
 												return (
 													<div className="flex flex-col space-y-2">
 														<Label htmlFor={field.name}>{label}</Label>
@@ -372,7 +372,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 										</form.Field>
 										<form.Field name="invertedAlertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
 											{(field) => {
-												const label = 'Alert Message'
+												const label = tr.text(F_Msgs.alertMessageLabel())
 												return (
 													<div className="flex flex-col space-y-2 grow">
 														<Label htmlFor={field.name}>{label}</Label>
@@ -404,7 +404,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 							<div className="flex gap-2">
 								<form.Field name="description" validators={{ onChange: F.DescriptionSchema.nullable() }}>
 									{(field) => {
-										const label = 'Description'
+										const label = tr.text(F_Msgs.descriptionLabel())
 										return (
 											<div className="flex flex-col space-y-2 grow">
 												<Label htmlFor={field.name}>{label}</Label>
