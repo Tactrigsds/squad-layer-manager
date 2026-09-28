@@ -37,7 +37,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
+import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
@@ -1730,6 +1730,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	const label$ = scopeValue(row$, 'label')
 	const keywords$ = scopeValue(row$, 'keywords')
 	const actionTexts$ = scopeValue(row$, 'actionTexts')
+	const { idPrefix } = React.useContext(FormOptionsContext)
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
 	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
 	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
@@ -1763,7 +1764,8 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	}
 
 	return (
-		<TableRow>
+		// the cell padding keeps the anchor highlight ring, drawn just outside the row, clear of the neighbouring rows' inputs
+		<TableRow id={`${idPrefix}adminActionReasons.${idx}`} className="scroll-mt-2 [&>td]:py-1.5">
 			<TableCell className="align-top gap-0.5 h-full">
 				<TextInputField
 					value$={label$}
@@ -3717,8 +3719,19 @@ function ArrayItem({
 		arr[idx] = v
 		parentOnChange(arr)
 	}
+	const { idPrefix } = React.useContext(FormOptionsContext)
+	const pathStr = path.join('.')
+	const isTocEntry = TOC_ENTRY_PATHS.has(pathStr)
 	return (
-		<div className={cn('flex gap-2', isPrimitive ? 'items-center' : 'items-start')}>
+		<div
+			id={isTocEntry ? `${idPrefix}${pathStr}.${idx}` : undefined}
+			className={cn(
+				'flex gap-2',
+				isPrimitive ? 'items-center' : 'items-start',
+				// inset so the anchor highlight ring doesn't sit on the item's own border
+				isTocEntry && 'scroll-mt-2 rounded-md -mx-1 p-1',
+			)}
+		>
 			<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
 				<FieldControl node={items} path={[...path, idx]} value$={value$} reset$={reset$} onChange={onChange} />
 			</div>
