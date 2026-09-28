@@ -17,7 +17,7 @@ function adminRule(adminGroup: string, group: string): PG.GroupRule {
 
 // matches nothing unless the test says otherwise, so each case names only the facts it is about
 function facts(over: Partial<PG.PlayerFacts> = {}): PG.PlayerFacts {
-	return { flags: [], adminGroups: [], isAdmin: false, username: '', discordRoles: [], ...over }
+	return { flags: [], adminGroups: [], isAdmin: false, username: '', tag: undefined, discordRoles: [], ...over }
 }
 
 // a player carrying the given flags and no admin-list membership
@@ -107,6 +107,25 @@ describe('resolveGroup', () => {
 		it('rejects an uncompilable pattern at the schema', () => {
 			expect(PG.GroupRuleSchema.safeParse({ type: 'name-regex', pattern: '([unclosed', group: 'Clan' }).success).toBe(false)
 			expect(PG.GroupRuleSchema.safeParse({ type: 'name-regex', pattern: '^\\[TT\\]', group: 'Clan' }).success).toBe(true)
+		})
+	})
+
+	describe('tag-regex', () => {
+		const g: PG.Grouping = { rules: [{ type: 'tag-regex', pattern: '^\\[TT\\]$', group: 'Clan' }], groups: {} }
+
+		it('matches the tag, not the rest of the name', () => {
+			expect(PG.resolveGroup(g, facts({ username: '[TT] Pete', tag: '[TT]' }))).toBe('Clan')
+			expect(PG.resolveGroup(g, facts({ username: '[XX] [TT]', tag: '[XX]' }))).toBeUndefined()
+		})
+
+		it('never matches a player whose tag is unknown', () => {
+			const any: PG.Grouping = { rules: [{ type: 'tag-regex', pattern: '.*', group: 'Clan' }], groups: {} }
+			expect(PG.resolveGroup(any, facts({ username: '[TT] Pete' }))).toBeUndefined()
+		})
+
+		it('derives the tag from the roster entry', () => {
+			const player = { ids: { username: '[TT] Pete', usernameNoTag: 'Pete' }, isAdmin: false }
+			expect(PG.resolveGroup(g, PG.playerFacts(player, []))).toBe('Clan')
 		})
 	})
 

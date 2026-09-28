@@ -98,8 +98,15 @@ export namespace PlayerIds {
 			eos: Arr.includes(fields, 'eos') ? z.string() : z.string().optional(),
 			epic: Arr.includes(fields, 'epic') ? z.string() : z.string().optional(),
 			playerController: Arr.includes(fields, 'playerController') ? z.string() : z.string().optional(),
-			tag: Arr.includes(fields, 'tag') ? z.string().nullable() : z.string().nullable().optional(),
 		}) as any
+	}
+
+	// The clan tag is whatever the in-game name carries ahead of the tagless name from the join log. Undefined when
+	// the player has no tag, or when we never saw their join log and so can't tell.
+	export function getTag(ids: { username?: string; usernameNoTag?: string }): string | undefined {
+		const { username, usernameNoTag } = ids
+		if (!username || !usernameNoTag || !username.endsWith(usernameNoTag)) return undefined
+		return username.slice(0, username.length - usernameNoTag.length).trim() || undefined
 	}
 
 	export const IdQuerySchema = IdFields()
@@ -152,19 +159,10 @@ export namespace PlayerIds {
 				ids[key] = value
 			}
 		}
-		const username = opts.username?.trim()
-		const usernameNoTag = opts.usernameNoTag?.trim()
-		if (username && usernameNoTag) {
-			const lenDiff = Math.max(username.length - usernameNoTag.length, 0)
-			const tag = username.slice(0, lenDiff).trim() || undefined
-			if (tag) {
-				ids.tag = tag
-			}
-		}
 		return Obj.trimUndefined({
 			...ids,
-			usernameNoTag,
-			username,
+			usernameNoTag: opts.usernameNoTag?.trim(),
+			username: opts.username?.trim(),
 			playerController: opts.playerController?.trim(),
 			eos: opts.eos?.trim() ?? ids.eos,
 		})

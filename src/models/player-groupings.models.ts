@@ -1,7 +1,7 @@
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import type * as BM from '@/models/battlemetrics.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 
 // Compiled once per distinct pattern rather than per player per render: a rule is evaluated against every player on
 // the roster, and the pattern only changes when settings do. Patterns that don't compile cache as null and never match,
@@ -55,6 +55,12 @@ export const GroupRuleSchema = z.discriminatedUnion('type', [
 		pattern: PatternSchema,
 		group: z.string().trim().min(1),
 	}),
+	// the player's clan tag matches, case-insensitively. Players whose tag we don't know match no such rule.
+	z.object({
+		type: z.literal('tag-regex'),
+		pattern: PatternSchema,
+		group: z.string().trim().min(1),
+	}),
 	// a role on the discord account the player has linked their steam account to. Players who have linked nothing
 	// match no such rule, which is the same outcome as holding none of the role.
 	z.object({
@@ -66,7 +72,14 @@ export const GroupRuleSchema = z.discriminatedUnion('type', [
 export type GroupRule = z.infer<typeof GroupRuleSchema>
 export type GroupRuleSource = GroupRule['type']
 
-export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list', 'server-admin', 'name-regex', 'discord-role']
+export const GROUP_RULE_SOURCES: GroupRuleSource[] = [
+	'battlemetrics',
+	'admin-list',
+	'server-admin',
+	'name-regex',
+	'tag-regex',
+	'discord-role',
+]
 
 // What a rule matches against. Sourced per player and per server: the admin list is the server's own, so the same
 // grouping can put a player in different groups on different servers, which is the point of it being server config.
@@ -75,6 +88,7 @@ export type PlayerFacts = {
 	adminGroups: string[]
 	isAdmin: boolean
 	username: string
+	tag: string | undefined
 	// role ids on the linked discord account; empty when the player has linked none
 	discordRoles: string[]
 }
@@ -82,7 +96,7 @@ export type PlayerFacts = {
 // The roster fields a rule can match on. Structural rather than SM.Player so a RecentPlayer satisfies it too: a
 // player who has disconnected still has a name, an admin list and a linked discord account.
 export type PlayerFactsSource = {
-	ids: { username: string }
+	ids: { username: string; usernameNoTag?: string }
 	isAdmin: boolean
 	adminGroups?: string[]
 	discordRoles?: string[]
@@ -96,6 +110,7 @@ export function playerFacts(player: PlayerFactsSource, flags: BM.PlayerFlag[]): 
 		adminGroups: player.adminGroups ?? [],
 		isAdmin: player.isAdmin,
 		username: player.ids.username,
+		tag: SM.PlayerIds.getTag(player.ids),
 		discordRoles: player.discordRoles ?? [],
 	}
 }
@@ -212,6 +227,8 @@ function matchesRule(rule: GroupRule, facts: PlayerFacts): boolean {
 			return facts.isAdmin
 		case 'name-regex':
 			return compilePattern(rule.pattern)?.test(facts.username) ?? false
+		case 'tag-regex':
+			return facts.tag !== undefined && (compilePattern(rule.pattern)?.test(facts.tag) ?? false)
 		case 'discord-role':
 			return facts.discordRoles.includes(rule.roleId)
 		default:

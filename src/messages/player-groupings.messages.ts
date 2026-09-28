@@ -8,6 +8,7 @@ export const groupRuleSourceLabels: Record<PG.GroupRuleSource, TString> = {
 	'admin-list': t('Admin group'),
 	'server-admin': t('Server admin'),
 	'name-regex': t('Name matches'),
+	'tag-regex': t('Tag matches'),
 	'discord-role': t('Discord role'),
 }
 
@@ -17,6 +18,9 @@ export const groupRuleSourceHints: Record<PG.GroupRuleSource, TString> = {
 	'admin-list': t("Membership of a group in the server's admin list. Not every group makes its members admins."),
 	'server-admin': t('Holds an admin-identifying permission on the server, from any admin-list group.'),
 	'name-regex': t('Case-insensitive regular expression against the in-game name. Unanchored, so it matches anywhere in the name.'),
+	'tag-regex': t(
+		"Case-insensitive regular expression against the player's clan tag. Players with no tag, or whose tag is not known yet, never match.",
+	),
 	'discord-role': t('A role on the discord account the player linked their steam account to.'),
 }
 
@@ -62,6 +66,8 @@ export const serverAdminRuleValue = def('Any admin-list group that makes them an
 
 // the example is a clan tag, which is what a name pattern is almost always for
 export const namePatternPlaceholder = def('Name pattern, e.g. ^\\[TT\\]')
+
+export const tagPatternPlaceholder = def('Tag pattern, e.g. ^\\[TT\\]$')
 
 export const invalidNamePattern = def('Not a valid regular expression')
 
