@@ -616,6 +616,18 @@ describe('RconEvents', () => {
 	})
 })
 
+describe('PlayerIds.getTag', () => {
+	it('is the part of the name ahead of the tagless name', () => {
+		expect(SM.PlayerIds.getTag({ username: '[TT] Pete', usernameNoTag: 'Pete' })).toBe('[TT]')
+	})
+
+	it('is undefined for an untagged name, or when the tagless name is unknown or stale', () => {
+		expect(SM.PlayerIds.getTag({ username: 'Pete', usernameNoTag: 'Pete' })).toBeUndefined()
+		expect(SM.PlayerIds.getTag({ username: '[TT] Pete' })).toBeUndefined()
+		expect(SM.PlayerIds.getTag({ username: '[TT] Bob', usernameNoTag: 'Pete' })).toBeUndefined()
+	})
+})
+
 describe('PlayerIds.findByUsernameLoose', () => {
 	const player = (eos: string, username: string) => ({ ids: { eos, username } })
 

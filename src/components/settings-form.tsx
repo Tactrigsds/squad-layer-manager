@@ -534,6 +534,7 @@ function emptyRuleFor(type: PG.GroupRuleSource, group: string): PG.GroupRule {
 		case 'server-admin':
 			return { type, group }
 		case 'name-regex':
+		case 'tag-regex':
 			return { type, pattern: '', group }
 		case 'discord-role':
 			return { type, roleId: '', group }
@@ -586,6 +587,7 @@ function RuleValueField({
 		case 'server-admin':
 			return <span className="text-xs text-muted-foreground">{tr.text(PG_Msgs.serverAdminRuleValue())}</span>
 		case 'name-regex':
+		case 'tag-regex':
 			return <RulePatternField rule={rule} idx={idx} value$={value$} reset$={reset$} onChange={onChange} />
 		case 'discord-role':
 			return (
@@ -611,7 +613,7 @@ function RulePatternField({
 	reset$,
 	onChange,
 }: {
-	rule: Extract<PG.GroupRule, { type: 'name-regex' }>
+	rule: Extract<PG.GroupRule, { type: 'name-regex' | 'tag-regex' }>
 	idx: number
 	value$: ValueState
 	reset$: Rx.Subject<void>
@@ -625,7 +627,7 @@ function RulePatternField({
 				reset$={reset$}
 				onChange={(next) => onChange(idx, { pattern: (next as string) ?? '' }, true)}
 				numeric={false}
-				placeholder={tr.text(PG_Msgs.namePatternPlaceholder())}
+				placeholder={tr.text(rule.type === 'tag-regex' ? PG_Msgs.tagPatternPlaceholder() : PG_Msgs.namePatternPlaceholder())}
 			/>
 			{invalid && <p className="text-xs text-destructive">{tr.text(PG_Msgs.invalidNamePattern())}</p>}
 		</div>
