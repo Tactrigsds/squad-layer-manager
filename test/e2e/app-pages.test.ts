@@ -824,10 +824,19 @@ test.describe('history page', () => {
 		await page.getByRole('menuitem', { name: 'Copy link to selection' }).click()
 		await expect.poll(() => readClipboard(page)).toContain('sel=')
 		const link = await readClipboard(page)
+		// bounded at the newest selected event, so events matching after the copy leave the selection on top
+		expect(new URL(link).searchParams.get('to')).toBe(await timeOf(lines[2]).getAttribute('data-dom-tip-time'))
+		const later = `zqselectionlater${Date.now()}`
+		app.emu.world.chat(await historyTalker(app), 'ChatAll', later)
+		await app.waitFor(() => searchableChatMatches(app, later) > 0 || undefined, {
+			label: `${later} to become searchable`,
+			timeoutMs: 30_000,
+		})
 
 		await page.goto(link)
 		await expect(selected).toHaveCount(3, { timeout: 30_000 })
 		await expect(selected.first()).toBeInViewport()
+		await expect(rowWith(later)).toHaveCount(0)
 
 		// a click on a time selects its row alone, and a second click on the only selected row clears it,
 		// and the url with it
