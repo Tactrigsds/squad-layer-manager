@@ -242,6 +242,10 @@ export type State = {
 	// synthesize the event from poll data instead of blocking team updates until the next RESET. Self-pruning.
 	unknownSquadStreaks: Map<string, number>
 
+	// uniqueId -> log time of each SQUAD_CREATED no poll has been issued since. A poll requested before that time
+	// can't contain the squad, so its absence there is not a disband. Pruned once a later poll is reconciled.
+	squadCreatedAtAwaitingPoll: Map<number, number>
+
 	// the roster at the moment of the last RCON disconnect. When the reconnect resolves to the SAME match, the
 	// reseeding RESET reuses these squads' uniqueIds (an RCON blip shouldn't make every squad look recreated) and
 	// backfills name-derived player ids (usernameNoTag) that polls can't provide. Consumed on the next sync.
@@ -305,6 +309,7 @@ export function init(opts: {
 		currTeams: null,
 		pollAbsenceStreaks: new Map(),
 		unknownSquadStreaks: new Map(),
+		squadCreatedAtAwaitingPoll: new Map(),
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		nonSyncedSince: null,
@@ -814,6 +819,7 @@ async function* processPendingEvent(
 		state.forcedTeamChanges.clear()
 		state.pollAbsenceStreaks.clear()
 		state.unknownSquadStreaks.clear()
+		state.squadCreatedAtAwaitingPoll.clear()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
 			yield await createEvent(state, {
@@ -896,6 +902,7 @@ async function* processPendingEvent(
 			// if the roll never completes. The absence streaks and unassigned set belong to the outgoing roster, reset them.
 			state.pollAbsenceStreaks.clear()
 			state.unknownSquadStreaks.clear()
+			state.squadCreatedAtAwaitingPoll.clear()
 			state.unassignedPlayers.clear()
 			state.expectedNewLayerId = state.nextLayerId
 			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
@@ -1287,6 +1294,7 @@ async function* processPendingEvent(
 				)
 			}
 
+			state.squadCreatedAtAwaitingPoll.set(squad.uniqueId, pendingEvent.time)
 			yield await createEvent(state, {
 				type: 'SQUAD_CREATED',
 				squad: squad,
@@ -1663,6 +1671,14 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	}
 	if (awaitingSquadCreated) return
 
+	const pollPredatesSquad = (uniqueId: number) => {
+		const createdAt = state.squadCreatedAtAwaitingPoll.get(uniqueId)
+		return createdAt !== undefined && createdAt >= event.polledAt
+	}
+	for (const [uniqueId, createdAt] of state.squadCreatedAtAwaitingPoll) {
+		if (createdAt < event.polledAt || !state.currTeams.squads.has(uniqueId)) state.squadCreatedAtAwaitingPoll.delete(uniqueId)
+	}
+
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
 		const currPlayer = state.currTeams.players.get(playerId)
@@ -1671,6 +1687,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			currPlayer?.squadId && SM.findSquadForPlayer(state.currTeams.squads, { squadId: currPlayer.squadId, teamId: currPlayer.teamId })
 
 		if (currSquad && (!squad || currSquad.uniqueId !== squad.uniqueId)) {
+			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			// currPlayer.squadId = null
 			emittedEvent = true
 			yield await createEvent(state, {
@@ -1686,6 +1703,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	for (const currSquad of state.currTeams.squads.values()) {
 		const nextSquad = nextSquads.find((s) => s.uniqueId === currSquad.uniqueId)
 		if (!nextSquad) {
+			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			disbandedSquads.add(currSquad.uniqueId)
 			emittedEvent = true
 			yield await createEvent(state, {
