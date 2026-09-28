@@ -144,6 +144,8 @@ export const RuntimeInfoSchema = z.object({
 	// the in-game commands this plugin contributes, for the commands page. Empty while it is not active, since a
 	// stopped plugin's command does not answer
 	commands: z.array(CMD.PluginCommandInfoSchema).prefault([]),
+	// admin overrides for those commands, by name. Kept while the plugin is stopped
+	commandConfigs: CMD.PluginCommandConfigsSchema.prefault({}),
 	permissions: z.array(PermissionInfoSchema).prefault([]),
 	source: SourceSchema,
 	// where a url-installed package was fetched from, and what refresh re-fetches

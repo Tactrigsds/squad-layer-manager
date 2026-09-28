@@ -696,6 +696,59 @@ export const PluginCommandConfigSchema = z.object({
 })
 export type PluginCommandConfig = z.infer<typeof PluginCommandConfigSchema>
 
+// One plugin's overrides, keyed by command name. A name with no entry runs under what the plugin declares.
+export const PluginCommandConfigsSchema = z.record(z.string(), PluginCommandConfigSchema)
+export type PluginCommandConfigs = z.infer<typeof PluginCommandConfigsSchema>
+
+export type PluginCommandConfigIssue = { name: string; index: number; message: string }
+
+/**
+ * What refuses a save of one plugin's overrides: a trigger without an allowed prefix, or one that core, another
+ * configured plugin command, or this plugin's own configs already hold. `others` are the other plugins' overrides,
+ * keyed by dispatch id. Declared defaults are not checked: resolvePluginCommandTriggers ranks them below these.
+ */
+export function pluginCommandConfigIssues(
+	pluginId: string,
+	configs: PluginCommandConfigs,
+	ctx: { core: AnyCommandConfigs; allowedPrefixes: readonly PrefixConfig[]; others: Record<string, PluginCommandConfig> },
+): PluginCommandConfigIssue[] {
+	const prefixList = ctx.allowedPrefixes.map((p) => p.prefix).join(', ')
+	const owner = new Map<string, string>()
+	for (const [id, config] of Object.entries(ctx.core)) {
+		for (const trigger of config.triggers) owner.set(triggerString(trigger).toLowerCase(), id)
+	}
+	for (const [id, config] of Object.entries(ctx.others)) {
+		for (const trigger of config.triggers) {
+			const key = trigger.toLowerCase()
+			if (!owner.has(key)) owner.set(key, id)
+		}
+	}
+	const issues: PluginCommandConfigIssue[] = []
+	for (const [name, config] of Object.entries(configs)) {
+		const id = pluginCommandId(pluginId, name)
+		config.triggers.forEach((string, index) => {
+			if (!ctx.allowedPrefixes.some((p) => string.startsWith(p.prefix))) {
+				issues.push({ name, index, message: `Trigger "${string}" must start with one of the allowed prefixes (${prefixList})` })
+			}
+			const key = string.toLowerCase()
+			const existing = owner.get(key)
+			if (existing !== undefined) {
+				issues.push({
+					name,
+					index,
+					message:
+						existing === id
+							? `Duplicate trigger "${string}"`
+							: `Trigger "${string}" is already used by the "${existing}" command. Pick a different string.`,
+				})
+				return
+			}
+			owner.set(key, id)
+		})
+	}
+	return issues
+}
+
 /**
  * What a plugin command actually runs under: the admin's stored config, or the plugin's declared defaults with
  * `defaultPrefix` attached. Read through rather than seeded, since a plugin is not active when settings load.
@@ -726,7 +779,7 @@ export type CommandConflict = { commandId: string; trigger: string; ownedBy: str
  *
  * Precedence is core, then plugin commands an admin has configured, then declared defaults. Configuring a trigger
  * is an explicit decision, so it outranks whatever another plugin happens to declare -- which is also what makes
- * editing `pluginCommands` a real fix rather than a race against load order.
+ * configuring a plugin's commands a real fix rather than a race against load order.
  */
 export function resolvePluginCommandTriggers<T extends { id: string; config: CommandConfig; configured: boolean }>(
 	core: AnyCommandConfigs,

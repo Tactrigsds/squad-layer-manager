@@ -11,6 +11,7 @@ import { useOpenServerConsoleWindow } from '@/components/server-console-window.h
 import SettingsForm from '@/components/settings-form'
 import { SettingsChangeList, SettingsSavePanel } from '@/components/settings-save-panel'
 import SettingsToc from '@/components/settings-toc'
+import { YamlEditorToolbar } from '@/components/settings-yaml-toolbar'
 import { StateBoundary } from '@/components/state-boundary'
 import { StickyGroup } from '@/components/sticky-group'
 import { Button } from '@/components/ui/button'
@@ -86,6 +87,13 @@ function RouteComponent() {
 	// managing plugins is grant enough on its own; global read otherwise carries the list as a read-only view
 	const canSeePlugins = globalAccess.canRead || !managePluginsDenied
 	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
+	// a plugin's section edits its config through the schema its manifest carries, so it waits for the manifest
+	const pluginIdsWithManifest = Zus.useStore(PluginsClient.Store, (s) =>
+		s.plugins
+			.filter((p) => s.manifests[p.id])
+			.map((p) => p.id)
+			.join(' '),
+	)
 	const servers = React.useMemo(
 		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id, RBAC.NO_SCOPED_SERVERS)),
 		[allServers, loggedInPerms],
@@ -104,8 +112,22 @@ function RouteComponent() {
 		if (globalAccess.canRead) {
 			keys.push(frameManager.ensureSetup(SettingsEditorFrame.frame, { kind: 'global', pageId }))
 		}
+		if (!managePluginsDenied && pluginIdsWithManifest) {
+			for (const pluginId of pluginIdsWithManifest.split(' ')) {
+				keys.push(frameManager.ensureSetup(SettingsEditorFrame.frame, { kind: 'plugin', pluginId, pageId }))
+			}
+		}
 		return keys
-	}, [servers, creatingNonce, globalAccess.canRead, manageServersDenied, canCreateServers, pageId])
+	}, [
+		servers,
+		creatingNonce,
+		globalAccess.canRead,
+		manageServersDenied,
+		canCreateServers,
+		managePluginsDenied,
+		pluginIdsWithManifest,
+		pageId,
+	])
 
 	// frame instances are otherwise reclaimed only when the FinalizationRegistry gets around to it, which can leave
 	// the global watch subscription and per-section drafts alive long after leaving the page (and every visit mints
@@ -241,7 +263,7 @@ function RouteComponent() {
 						)}
 						{canSeePlugins && (
 							<div id="section:plugins" className="scroll-mt-2 rounded-xl">
-								<PluginsSection canManage={!managePluginsDenied} />
+								<PluginsSection canManage={!managePluginsDenied} sectionKeys={sectionKeys} />
 							</div>
 						)}
 						{globalAccess.canRead &&
@@ -339,47 +361,6 @@ function AuditLogEntry({
 				{JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value), 2)}
 			</pre>
 		</details>
-	)
-}
-
-// Format/Reset/Save for a YAML-mode section. Lives in the editor's own header row (SchemaYamlEditor's `toolbar` slot)
-// rather than below it, so it stays reachable once the editor goes fullscreen and covers the page.
-function YamlEditorToolbar({
-	editorRef,
-	deniedPaths,
-	canSave,
-	saving,
-	onSave,
-}: {
-	editorRef: React.RefObject<SchemaYamlEditorHandle | null>
-	deniedPaths: string[]
-	canSave: boolean
-	saving: boolean
-	onSave: () => void
-}) {
-	return (
-		<>
-			{deniedPaths.length > 0 && (
-				<p className="min-w-0 truncate text-xs text-warn">
-					{tr.text(SETTINGS_Msgs.notPermittedToModify())}{' '}
-					{deniedPaths.map((p) => (
-						<code key={p} className="mx-0.5">
-							{p}
-						</code>
-					))}
-				</p>
-			)}
-			<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
-				<Icons.Braces className="h-4 w-4" />
-				{tr.text(SETTINGS_Msgs.format())}
-			</Button>
-			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>
-				{tr.text(SETTINGS_Msgs.reset())}
-			</Button>
-			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>
-				{saving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
-			</Button>
-		</>
 	)
 }
 

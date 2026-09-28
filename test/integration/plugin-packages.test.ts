@@ -239,7 +239,7 @@ describe('packaged plugins', () => {
 	// with "the pool matched no layers". A Fields.filterId field is a reference like a pool config is.
 	it('refuses to delete a filter a running plugin has configured', async () => {
 		await call('makeFilter', { id: 'hello-configured', owner: String(ADMIN_USER.discordId) })
-		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: 'hello-configured' } })
+		await client.plugins.updateSettings({ pluginId: 'hello', config: { greeting: 'hello', pool: 'hello-configured' } })
 
 		const refused = await app.waitFor(
 			async () => {
@@ -253,7 +253,7 @@ describe('packaged plugins', () => {
 		expect(refused.references).toContainEqual({ type: 'plugin-config', pluginId: 'hello', path: 'pool', via: [] })
 
 		// clearing the field releases it, so an admin is never stuck with a filter they cannot remove
-		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: '' } })
+		await client.plugins.updateSettings({ pluginId: 'hello', config: { greeting: 'hello', pool: '' } })
 		await app.waitFor(
 			async () => ((await call<{ code: string }>('dropFilter', { id: 'hello-configured' })).code === 'ok' ? true : undefined),
 			{ label: 'the reference to be released' },
@@ -416,6 +416,30 @@ describe('packaged plugins', () => {
 		expect(Inspect.warnsTo(app, outsider).join('\n')).not.toContain('hello me')
 		expect(Inspect.warnsTo(app, outsider).join('\n')).toContain('squad-server:end-match')
 		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('nobody-should-see-this')
+	})
+
+	it('runs a command under the triggers an admin configured on the plugin', async () => {
+		const hi = { triggers: ['/hi'], allowedChats: ['admin' as const], enabled: true, quickReference: false }
+		expect(await client.plugins.updateSettings({ pluginId: 'hello', commands: { hello: { ...hi, triggers: ['/help'] } } })).toMatchObject(
+			{
+				code: 'err:invalid-config',
+				message: expect.stringContaining('already used by the "help" command'),
+			},
+		)
+		expect(await client.plugins.updateSettings({ pluginId: 'hello', commands: { hello: hi } })).toMatchObject({ code: 'ok' })
+		const [row] = readRows<{ commands: string }>(`SELECT commands FROM plugins WHERE id = 'hello'`)
+		expect(JSON.parse(row.commands).json).toEqual({ hello: hi })
+
+		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_retuned', steam: ADMIN_STEAM_ID, teamId: 1 }))
+		await app.waitForRosterSync()
+		app.emu.world.chat(admin, 'ChatAdmin', '/hello declared-trigger')
+		app.emu.world.chat(admin, 'ChatAdmin', '/hi configured-trigger')
+		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('configured-trigger')), {
+			label: 'the reply to the configured trigger',
+		})
+		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('declared-trigger')
+
+		expect(await client.plugins.updateSettings({ pluginId: 'hello', commands: {} })).toMatchObject({ code: 'ok' })
 	})
 
 	// The caller identity the host threads onto an rpc ctx, and the check a procedure makes with it. Without

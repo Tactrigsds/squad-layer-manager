@@ -28,8 +28,8 @@ test.describe('plugins settings section', () => {
 		await expect(section.getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible()
 	})
 
-	// The config editor's mode lives in a module store rather than component state precisely so the TOC can
-	// see it: a YAML section renders no per-field anchors, so its node has to collapse to a leaf.
+	// A plugin's editor is a settings-editor section, so the TOC reads its mode off the frame like any other: a YAML
+	// section renders no per-field anchors, so its node has to collapse to a leaf.
 	test('the table of contents drops the plugin fields when its config switches to YAML', async ({ page, app }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/settings'))
 
@@ -44,6 +44,32 @@ test.describe('plugins settings section', () => {
 
 		await mode.getByRole('button', { name: 'GUI', exact: true }).click()
 		await expect(expander).toHaveCount(1)
+	})
+
+	// No save button of its own: the edit rides the page's shared save panel with every other section.
+	test('a config edit is saved through the shared save panel', async ({ page, app }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+
+		const field = page.locator(`[id="setting:plugin:${PLUGIN.id}:postRollReminder"]`)
+		const toggle = field.getByRole('switch')
+		await expect(toggle).toBeVisible({ timeout: 20_000 })
+		// either way round: a repeat of this test against the same app finds what it saved last time
+		const before = await toggle.getAttribute('aria-checked')
+		const after = before === 'true' ? 'false' : 'true'
+		await toggle.click()
+
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		const dialog = page.getByRole('alertdialog')
+		await expect(dialog.getByText('config.postRollReminder')).toBeVisible()
+		await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+		await expect(page.getByText(`${PLUGIN.name} configuration saved`)).toBeVisible()
+
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+		await expect(page.locator(`[id="setting:plugin:${PLUGIN.id}:postRollReminder"]`).getByRole('switch')).toHaveAttribute(
+			'aria-checked',
+			after,
+			{ timeout: 20_000 },
+		)
 	})
 
 	// last: it leaves the plugin stopped, and the dashboard's alerts come from it

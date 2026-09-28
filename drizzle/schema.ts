@@ -499,12 +499,14 @@ export const globalSettings = sqliteTable('globalSettings', {
 	settings: json('settings').notNull().default(superjson.serialize({})),
 })
 
-// installed-plugin state: whether it should run, and its config (encoded z.input shape, like globalSettings).
+// installed-plugin state: whether it should run, its config (encoded z.input shape, like globalSettings), and
+// admin overrides for its in-game commands, keyed by command name (CMD.PluginCommandConfigs).
 // The tables a plugin owns are its own business (p_<id>_*, see src/models/plugins.models.ts).
 export const plugins = sqliteTable('plugins', {
 	id: text('id').primaryKey(),
 	enabled: boolean('enabled').notNull().default(false),
 	config: json('config').notNull().default(superjson.serialize({})),
+	commands: json('commands').notNull().default(superjson.serialize({})),
 })
 
 export type Server = typeof servers.$inferSelect

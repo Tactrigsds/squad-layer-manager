@@ -144,7 +144,7 @@ describe('plugin host', () => {
 			code: 'ok',
 			status: 'active',
 		})
-		await client.plugins.updateConfig({
+		await client.plugins.updateSettings({
 			pluginId: 'teamkill-warns',
 			config: { enabledServers: [app.serverId], template: 'ALPHA {{attacker}} / {{weapon}}' },
 		})
@@ -155,7 +155,7 @@ describe('plugin host', () => {
 		})
 		expect(warnsTo(app, victim).join('\n')).toContain('ALPHA tk_attacker / BP_M4_M68')
 
-		await client.plugins.updateConfig({
+		await client.plugins.updateSettings({
 			pluginId: 'teamkill-warns',
 			config: { enabledServers: [app.serverId], template: 'BRAVO {{attacker}}' },
 		})

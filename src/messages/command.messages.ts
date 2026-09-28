@@ -309,12 +309,11 @@ export const commandDisabled = def('Command "{cmd}" is disabled', (cmd: string) 
 export const pluginCommandFailed = def('The {plugin} plugin could not run that command', (plugin: string) => ({ plugin }))
 
 export const pluginOwner = def('Provided by')
-export const pluginSettingsKey = def('Settings key')
 export const pluginsSectionLabel = def('Plugins')
 
 // Named rather than counted: which string was taken, and by what, is the whole of what an admin has to act on.
 export const pluginTriggerConflicts = def((conflicts: CMD.CommandConflict[]) =>
-	t('{list}. Set a different trigger under pluginCommands in global settings.', {
+	t("{list}. Set a different trigger in the plugin's commands, under Plugins in settings.", {
 		list: conflicts.map((c) => `"${c.trigger}" is already used by ${c.ownedBy}`).join('; '),
 	}),
 )
@@ -458,9 +457,7 @@ export const noLayerRequestNumber = def('No layer request #{number}', (number: n
 
 export const noLayerRequests = def('You have no layer requests queued')
 
-export const noPluginCommands = def('No plugin is contributing a command.')
-
-export const pluginCommandOrphans = def('Overrides for commands no running plugin declares. These do nothing.')
+export const pluginCommandOrphans = def('Overrides for commands this plugin no longer declares. These do nothing.')
 
 export const pluginCommandDropOverride = def('Remove')
 

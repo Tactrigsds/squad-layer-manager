@@ -7,16 +7,18 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingChange } from '@/lib/settings-diff'
 import { formatChangeValue } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SETTINGS from '@/models/settings.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-// A single Save/Reset control panel shared by every editable settings section (global settings + each server + the
-// new-server form). Sections are settings-editor frame instances; the panel derives everything it shows straight from
+// A single Save/Reset control panel shared by every editable settings section (global settings, each server, the
+// new-server form and each plugin). Sections are settings-editor frame instances; the panel derives everything it shows straight from
 // their stores, and commits every dirty GUI-mode section on Save (JSON mode keeps its own inline toolbar).
 
 // secrets (rcon/sftp passwords, server-agent token) must not be shown in plain text in the save confirmation. Redact by
@@ -74,6 +76,25 @@ type SectionView = {
 	deniedIds: string[]
 }
 
+function sectionLabel(
+	state: SettingsEditorFrame.SettingsEditor,
+	serverNames: Map<string, string>,
+	pluginNames: Map<string, string>,
+): string {
+	switch (state.kind) {
+		case 'global':
+			return tr.text(SETTINGS_Msgs.globalSettings())
+		case 'server':
+			return serverNames.get(state.serverId!) ?? state.serverId!
+		case 'new-server':
+			return state.newDisplayName.trim() || tr.text(SETTINGS_Msgs.newManagedServer())
+		case 'plugin':
+			return pluginNames.get(state.pluginId!) ?? state.pluginId!
+		default:
+			assertNever(state.kind)
+	}
+}
+
 export function SettingsSavePanel({
 	sectionKeys,
 	onDiscardNewServer,
@@ -86,18 +107,15 @@ export function SettingsSavePanel({
 	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
 
 	const sections: SectionView[] = React.useMemo(() => {
 		const nameById = new Map((servers ?? []).map((s) => [s.id, s.displayName]))
+		const pluginNameById = new Map(plugins.map((p) => [p.id, p.name]))
 		return sectionKeys.map((key, i): SectionView => {
 			const state = states[i]
 			const gui = state.mode === 'gui'
-			const label =
-				state.kind === 'global'
-					? tr.text(SETTINGS_Msgs.globalSettings())
-					: state.kind === 'server'
-						? (nameById.get(state.serverId!) ?? state.serverId!)
-						: state.newDisplayName.trim() || tr.text(SETTINGS_Msgs.newManagedServer())
+			const label = sectionLabel(state, nameById, pluginNameById)
 			// a new-server section always counts as one pending change while open; once created it no longer participates
 			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
 			const deniedIds = gui
@@ -105,7 +123,7 @@ export function SettingsSavePanel({
 				: []
 			return { key, state, label, changedCount, deniedIds }
 		})
-	}, [sectionKeys, states, perms, servers])
+	}, [sectionKeys, states, perms, servers, plugins])
 
 	let totalChanges = 0
 	let totalErrors = 0

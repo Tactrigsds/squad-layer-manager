@@ -5,20 +5,26 @@ import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
 import { toast } from '@/lib/toast'
-import type { z } from '@/lib/zod'
+import { assertNever } from '@/lib/type-guards'
+import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
+import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as CMD from '@/models/command.models'
+import type * as PLG from '@/models/plugins.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 import { frameManager } from './frame-manager'
 
-// One frame instance per editable section of the settings page (global settings, each server, the new-server form).
+// One frame instance per editable section of the settings page (global settings, each server, the new-server form,
+// each plugin).
 // The frame is the source of truth for the section's draft/mode/save state; components read via selectors and write
 // through Actions, so nothing needs to mirror render output into a store. Derived fields (changes/issues/valid) are
 // maintained by the frame's own update$ subscription, same as server-settings.partial does for modified/validationErrors.
@@ -26,16 +32,22 @@ import { frameManager } from './frame-manager'
 const NO_ISSUES: never[] = []
 const NO_PATHS: never[] = []
 
-export type Kind = 'global' | 'server' | 'new-server'
+export type Kind = 'global' | 'server' | 'new-server' | 'plugin'
 
 // pageId is minted per settings-page mount so every visit gets fresh instances (and a fresh raw-settings fetch);
 // nonce distinguishes successive "Add Managed Server" attempts within one visit
-export type Input = { pageId: string } & ({ kind: 'global' } | { kind: 'server'; serverId: string } | { kind: 'new-server'; nonce: string })
+export type Input = { pageId: string } & (
+	| { kind: 'global' }
+	| { kind: 'server'; serverId: string }
+	| { kind: 'new-server'; nonce: string }
+	| { kind: 'plugin'; pluginId: string }
+)
 
 export type SettingsEditor = {
 	sub: Rx.Subscription
 	kind: Kind
 	serverId: string | null
+	pluginId: string | null
 	mode: 'gui' | 'yaml'
 	// tells the form's uncontrolled inputs to re-read after a programmatic draft change (reset, yaml->gui carry-over)
 	reset$: Rx.Subject<void>
@@ -70,7 +82,7 @@ export type KeyProp = FRM.KeyProp<Types>
 
 export type Types = {
 	name: 'settingsEditor'
-	key: FRM.RawInstanceKey<{ kind: Kind; serverId?: string; pageId: string; nonce?: string }>
+	key: FRM.RawInstanceKey<{ kind: Kind; serverId?: string; pluginId?: string; pageId: string; nonce?: string }>
 	input: Input
 	state: SettingsEditor
 }
@@ -88,9 +100,64 @@ export const NEW_SERVER_DRAFT: z.input<typeof SETTINGS.ServerSettingsSchema> = {
 	adminLists: [],
 }
 
+// A plugin section edits the plugin's config and its command overrides as one document. Cached per manifest, since a
+// fresh schema per keystroke would be compiled again on every parse.
+export type PluginDraft = { config: Record<string, unknown>; commands: CMD.PluginCommandConfigs }
+const pluginSchemas = new WeakMap<PLG.Manifest, z.ZodType<any>>()
+const pluginShapeSchemas = new WeakMap<PLG.Manifest, z.ZodType<any>>()
+
+// the document's shape alone, without the command check, which a stored value may fail while still needing normalizing
+function pluginShapeSchema(manifest: PLG.Manifest): z.ZodType<any> {
+	let schema = pluginShapeSchemas.get(manifest)
+	if (!schema) {
+		schema = z.object({ config: manifest.configSchema, commands: CMD.PluginCommandConfigsSchema })
+		pluginShapeSchemas.set(manifest, schema)
+	}
+	return schema
+}
+
+// The command check reads the stores at parse time rather than being baked in: the core commands, allowed prefixes and
+// other plugins' overrides it checks against change underneath the draft. The frame re-derives when they do.
+export function pluginSchema(pluginId: string, manifest: PLG.Manifest): z.ZodType<any> {
+	let schema = pluginSchemas.get(manifest)
+	if (schema) return schema
+	schema = pluginShapeSchema(manifest).superRefine((val, ctx) => {
+		const settings = SettingsClient.PublicSettingsStore.getState()
+		if (!settings) return
+		const others: Record<string, CMD.PluginCommandConfig> = {}
+		for (const p of PluginsClient.Store.getState().plugins) {
+			if (p.id === pluginId) continue
+			for (const [name, config] of Object.entries(p.commandConfigs)) others[CMD.pluginCommandId(p.id, name)] = config
+		}
+		const issues = CMD.pluginCommandConfigIssues(pluginId, val.commands, {
+			core: settings.commands,
+			allowedPrefixes: settings.allowedPrefixes,
+			others,
+		})
+		for (const issue of issues) {
+			ctx.addIssue({ code: 'custom', message: issue.message, path: ['commands', issue.name, 'triggers', issue.index] })
+		}
+	})
+	pluginSchemas.set(manifest, schema)
+	return schema
+}
+
+const EMPTY_PLUGIN_SCHEMA = z.object({ config: z.record(z.string(), z.unknown()), commands: CMD.PluginCommandConfigsSchema })
+
 function editSchema(state: SettingsEditor): z.ZodType<any> {
-	if (state.kind === 'global') return SETTINGS.GlobalSettingsSchema
-	return state.sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
+	switch (state.kind) {
+		case 'global':
+			return SETTINGS.GlobalSettingsSchema
+		case 'plugin': {
+			const manifest = PluginsClient.Store.getState().manifests[state.pluginId!]
+			return manifest ? pluginSchema(state.pluginId!, manifest) : EMPTY_PLUGIN_SCHEMA
+		}
+		case 'server':
+		case 'new-server':
+			return state.sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
+		default:
+			assertNever(state.kind)
+	}
 }
 
 // The pending value in the encoded/input shape (same shape as `saved`), for diffing against the baseline. `saved` is
@@ -157,12 +224,13 @@ const setup: Frame['setup'] = (args) => {
 		sub: new Rx.Subscription(),
 		kind: input.kind,
 		serverId: input.kind === 'server' ? input.serverId : null,
+		pluginId: input.kind === 'plugin' ? input.pluginId : null,
 		mode: 'gui',
 		reset$: new Rx.Subject<void>(),
 		saved: isNew ? NEW_SERVER_DRAFT : undefined,
 		draft: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : undefined,
 		yamlValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
-		loading: input.kind === 'server',
+		loading: input.kind === 'server' || input.kind === 'plugin',
 		loadFailed: null,
 		denied: false,
 		sensitiveOmitted: false,
@@ -213,6 +281,13 @@ const setup: Frame['setup'] = (args) => {
 		void loadServerSettings(get, (p) => set(p), input.serverId, { seedDraft: true })
 	}
 
+	if (input.kind === 'plugin') {
+		// what the plugin schema validates against lives outside this frame, so a change there re-derives it
+		const rederive = () => set(deriveComputed(get()))
+		args.cleanup.push(SettingsClient.PublicSettingsStore.subscribe(rederive), PluginsClient.Store.subscribe(rederive))
+		void loadPluginSettings(get, (p) => set(p), input.pluginId, { seedDraft: true })
+	}
+
 	set(deriveComputed(get()))
 }
 
@@ -233,6 +308,25 @@ async function loadServerSettings(
 	if (opts.seedDraft && get().draft === undefined) set({ draft: settings })
 }
 
+async function loadPluginSettings(
+	get: () => SettingsEditor,
+	set: (p: Partial<SettingsEditor>) => void,
+	pluginId: string,
+	opts: { seedDraft: boolean },
+) {
+	const res = await RPC.orpc.plugins.getSettings.call({ pluginId })
+	if (!res || res.code !== 'ok') {
+		set({ loading: false, loadFailed: res?.code ?? 'error' })
+		return
+	}
+	const manifest = PluginsClient.Store.getState().manifests[pluginId]
+	const raw: PluginDraft = { config: res.config, commands: res.commands }
+	// stored as given, so fields the schema prefaults may be missing; normalized like the draft it is diffed against
+	const settings = manifest ? toEditShape(pluginShapeSchema(manifest), raw) : raw
+	set({ loading: false, loadFailed: null, saved: settings })
+	if (opts.seedDraft && get().draft === undefined) set({ draft: settings })
+}
+
 export const frame = frameManager.createFrame<Types>({
 	name: 'settingsEditor',
 	setup,
@@ -240,6 +334,7 @@ export const frame = frameManager.createFrame<Types>({
 		frameId,
 		kind: input.kind,
 		serverId: input.kind === 'server' ? input.serverId : undefined,
+		pluginId: input.kind === 'plugin' ? input.pluginId : undefined,
 		pageId: input.pageId,
 		nonce: input.kind === 'new-server' ? input.nonce : undefined,
 	}),
@@ -250,8 +345,20 @@ export namespace Sel {
 	export const dirty = (s: SettingsEditor) =>
 		s.kind === 'new-server' ? !s.created && (s.newId.trim().length > 0 || s.newDisplayName.trim().length > 0) : s.changes.length > 0
 	// DOM anchor prefix matching what SettingsForm emits for this section
-	export const idPrefix = (s: SettingsEditor) =>
-		s.kind === 'global' ? 'setting:' : s.kind === 'server' ? `setting:server:${s.serverId}:` : 'setting:server:__new__:'
+	export function idPrefix(s: SettingsEditor) {
+		switch (s.kind) {
+			case 'global':
+				return 'setting:'
+			case 'server':
+				return `setting:server:${s.serverId}:`
+			case 'new-server':
+				return 'setting:server:__new__:'
+			case 'plugin':
+				return `setting:plugin:${s.pluginId}:`
+			default:
+				assertNever(s.kind)
+		}
+	}
 
 	// what the page as a whole needs from its sections: `newServerCreated` collapses the new-server form once its save
 	// lands (the created server then renders as a regular section via the public-settings watch)
@@ -270,7 +377,7 @@ export namespace Sel {
 	export function commentedAnchorIds(...states: SettingsEditor[]): string[] {
 		const ids = new Set<string>()
 		for (const s of states) {
-			if (s.kind === 'new-server') continue
+			if (s.kind === 'new-server' || s.kind === 'plugin') continue
 			const prefix = idPrefix(s)
 			const comments: Record<string, string> | undefined = s.draft?.[SETTINGS.COMMENTS_KEY]
 			for (const path of Object.keys(comments ?? {})) {
@@ -289,18 +396,30 @@ export namespace Sel {
 	// so it collapses to a single leaf there
 	export function tocModes(...states: SettingsEditor[]) {
 		const serverModes: Record<string, 'gui' | 'yaml'> = {}
+		const pluginModes: Record<string, 'gui' | 'yaml'> = {}
 		let globalMode: 'gui' | 'yaml' = 'gui'
 		let newServerMode: 'gui' | 'yaml' = 'gui'
 		let creatingServer = false
 		for (const s of states) {
-			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
-			else if (s.kind === 'global') globalMode = s.mode
-			else {
-				newServerMode = s.mode
-				creatingServer = !s.created
+			switch (s.kind) {
+				case 'server':
+					serverModes[s.serverId!] = s.mode
+					break
+				case 'plugin':
+					pluginModes[s.pluginId!] = s.mode
+					break
+				case 'global':
+					globalMode = s.mode
+					break
+				case 'new-server':
+					newServerMode = s.mode
+					creatingServer = !s.created
+					break
+				default:
+					assertNever(s.kind)
 			}
 		}
-		return { serverModes, globalMode, newServerMode, creatingServer }
+		return { serverModes, pluginModes, globalMode, newServerMode, creatingServer }
 	}
 }
 
@@ -308,7 +427,8 @@ export namespace Sel {
 // settings.server.ts). Kept out of frame state because it depends on the (possibly role-simulated) client perms.
 // A comment change is checked, and reported, at the setting it annotates.
 export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission[]): string[] {
-	if (state.kind === 'new-server') return NO_PATHS
+	// a plugin section is only rendered for someone who may manage plugins, which covers all of it
+	if (state.kind === 'new-server' || state.kind === 'plugin') return NO_PATHS
 	const changed = Array.from(new Set(state.changes.map((c) => SETTINGS.settingPathForChange(c.path))))
 	if (state.kind === 'global') {
 		const access = RBAC.globalSettingsWriteAccess(perms)
@@ -438,6 +558,39 @@ export namespace Actions {
 					}
 					return true
 				}
+				case 'plugin': {
+					// stored in the input shape, like global settings
+					const draft = editSchema(state).encode(value) as PluginDraft
+					const res = await RPC.orpc.plugins.updateSettings.call({ pluginId: state.pluginId!, ...draft })
+					if (!res) return false
+					if (res.code === 'err:permission-denied') {
+						RbacClient.handlePermissionDenied(res)
+						return false
+					}
+					if (res.code === 'err:invalid-config') {
+						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
+						return false
+					}
+					if (res.code !== 'ok') {
+						toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
+						return false
+					}
+					const name = PluginsClient.Store.getState().plugins.find((p) => p.id === state.pluginId)?.name ?? state.pluginId!
+					toast(tr.text(PLUGINS_Msgs.configSaved(name)))
+					const draftAtSave = state.draft
+					await loadPluginSettings(
+						() => s.getState(),
+						(p) => s.setState(p),
+						state.pluginId!,
+						{ seedDraft: false },
+					)
+					const cur = s.getState()
+					if (cur.draft === draftAtSave && cur.saved !== undefined) {
+						s.setState({ draft: cur.saved })
+						cur.reset$.next()
+					}
+					return true
+				}
 				case 'new-server': {
 					if (!SS.ServerIdSchema.safeParse(state.newId).success || !state.newDisplayName.trim()) return false
 					const res = await RPC.orpc.settings.admin.createServer.call({
@@ -469,14 +622,16 @@ export namespace Actions {
 	}
 }
 
-// the section's draft as a value observable, which is how SettingsForm's fields read the document
-export function draftValueState(key: Key): Zus.ValueObservable<any> {
+// the section's draft as a value observable, which is how SettingsForm's fields read the document. `field` narrows
+// it to one top-level field, for a section that renders its draft as more than one form.
+export function draftValueState(key: Key, field?: string): Zus.ValueObservable<any> {
 	const store = Zus.resolveStore<SettingsEditor>(key)
+	const pick = (draft: any) => (field === undefined ? draft : draft?.[field])
 	const obs = Zus.toObservable(store).pipe(
-		Rx.map(([s]) => s.draft),
+		Rx.map(([s]) => pick(s.draft)),
 		Rx.distinctUntilChanged(),
 	)
-	return Object.assign(obs, { getValue: () => store.getState().draft })
+	return Object.assign(obs, { getValue: () => pick(store.getState().draft) })
 }
 
 // spelled as a selector rather than relying on the no-selector form, which hands back the bare state when a page
