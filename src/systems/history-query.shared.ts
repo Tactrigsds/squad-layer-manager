@@ -137,24 +137,34 @@ export async function resolveNamedUserIds(ctx: C.Db, name: string): Promise<stri
 const STEAM64_RE = /^7656\d{13}$/
 const EOS_ID_RE = /^[0-9a-f]{32}$/i
 
-// a ref is an eos id, a steam64 to resolve to one, or anything else, which reads as a name substring
+export function isPlayerIdRef(ref: string): boolean {
+	return STEAM64_RE.test(ref) || EOS_ID_RE.test(ref)
+}
+
+// a ref is a steam64, a 32-hex id, or anything else, which reads as a name substring. Eos and epic ids share the
+// 32-hex shape, so a hex ref is kept as an eos id and also resolved as an epic id.
 export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
-	const eosIds: string[] = []
+	const eosIds = new Set<string>()
 	const steam64s: bigint[] = []
+	const hexIds: string[] = []
 	for (const ref of refs) {
 		if (STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
-		else if (EOS_ID_RE.test(ref)) eosIds.push(ref)
-		else eosIds.push(...(await resolveNamedPlayerIds(ctx, ref)))
+		else if (EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
+		else for (const id of await resolveNamedPlayerIds(ctx, ref)) eosIds.add(id)
 	}
-	if (steam64s.length > 0) {
+	for (const id of hexIds) eosIds.add(id)
+	if (steam64s.length > 0 || hexIds.length > 0) {
+		const conds: E.SQL[] = []
+		if (steam64s.length > 0) conds.push(E.inArray(Schema.players.steamId, steam64s))
+		if (hexIds.length > 0) conds.push(E.inArray(Schema.players.epicId, hexIds))
 		const rows = await ctx
 			.db()
 			.select({ eosId: Schema.players.eosId })
 			.from(Schema.players)
-			.where(E.inArray(Schema.players.steamId, steam64s))
-		eosIds.push(...rows.map((r) => r.eosId))
+			.where(E.or(...conds))
+		for (const r of rows) eosIds.add(r.eosId)
 	}
-	return eosIds
+	return [...eosIds]
 }
 
 export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<string[]> {

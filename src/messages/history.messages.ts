@@ -72,7 +72,7 @@ export const fieldUser = def('SLM user')
 
 // the scope row's player picker, which searches names and accepts a pasted id
 export const playerSearchPlaceholder = def('Any player')
-export const playerSearchHint = def('Type a name, or paste an EOS / Steam64 id')
+export const playerSearchHint = def('Name, or Steam, EOS or Epic id')
 export const playerSearchShort = def('Keep typing to search names')
 
 // the same, for the SLM user who performed an action or had one taken against them

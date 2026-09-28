@@ -360,10 +360,13 @@ export const router = {
 		}
 	}),
 
-	// what the player field's combo-box lists as you type. Names rather than ids: nobody filters by an eos id
-	// they remembered, and the trigram index makes a substring needle an index lookup (resolveNamedPlayerIds).
+	// what the player field's combo-box lists as you type: a pasted steam, eos or epic id finds its player, and
+	// anything else is a name substring, which the trigram index makes an index lookup (resolveNamedPlayerIds)
 	searchPlayers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
-		const eosIds = await HistoryQuery.resolveNamedPlayerIds(ctx, input.needle)
+		const needle = input.needle.trim()
+		const eosIds = HistoryQuery.isPlayerIdRef(needle)
+			? await HistoryQuery.resolvePlayerRefs(ctx, [needle])
+			: await HistoryQuery.resolveNamedPlayerIds(ctx, needle)
 		if (eosIds.length === 0) return { code: 'ok' as const, players: [] }
 		const rows = await ctx
 			.db()
