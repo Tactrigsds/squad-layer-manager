@@ -129,8 +129,16 @@ function useFramedPlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFra
 // The same facts off any server: what the db recorded about the player, plus their battlemetrics profile.
 // One player rather than a list, because the frameless menu only ever opens on a single row.
 function useFramelessPlayerLinkIds(playerId: SM.PlayerId): PlayerLinkIds[] {
-	const { data: info } = useQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId } }))
-	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	const { data: info } = useQuery(
+		RPC.orpc.history.playerInfo.queryOptions({ input: { playerId }, select: (res) => RPC.selectLoaded(res) }),
+	)
+	const { data: bmData } = useQuery(
+		RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({
+			input: { playerId },
+			staleTime: Infinity,
+			select: (res) => RPC.selectLoaded(res),
+		}),
+	)
 	return React.useMemo(() => {
 		const known = info?.code === 'ok' ? info : undefined
 		return [

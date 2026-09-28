@@ -4,10 +4,12 @@ import { unionAll } from 'drizzle-orm/sqlite-core'
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { objKeys } from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
+import * as PA from '@/models/procedure-access.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -665,40 +667,12 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 	return perms
 }
 
-// TODO we should implement a version of this which only loads the relevant perms for the user
-export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	ctx: C.Db & USR.Ctx.Id & CS.AbortSignal,
-	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
-) {
-	const rbac = await getRbacForDiscordUser(ctx)
-	const perms = RBAC.fromTracedPermissions(rbac.perms)
-
-	const req: RBAC.PermissionReq<T> =
-		typeof reqOrPerms === 'object' && 'check' in reqOrPerms
-			? reqOrPerms
-			: {
-					check: 'all',
-					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-				}
-
-	return RBAC.tryDenyPermissions(perms, req, scopedServerIds)
+export async function tryDenyPermissionsForUser(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, req: RBAC.ReqInput) {
+	return RBAC.tryDenyPermissions(await getUserPermissions(ctx), req, scopedServerIds)
 }
 
-export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>(
-	ctx: C.Db & SM.Ctx.Ids & CS.ServerId & CS.AbortSignal,
-	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
-) {
-	const rbac = await getRbacForPlayer(ctx)
-	const perms = RBAC.fromTracedPermissions(rbac.perms)
-	const req: RBAC.PermissionReq<T> =
-		typeof reqOrPerms === 'object' && 'check' in reqOrPerms
-			? reqOrPerms
-			: {
-					check: 'all',
-					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-				}
-
-	return RBAC.tryDenyPermissions(perms, req, scopedServerIds)
+export async function tryDenyPermissionsForPlayer(ctx: C.Db & SM.Ctx.Ids & CS.ServerId & CS.AbortSignal, req: RBAC.ReqInput) {
+	return RBAC.tryDenyPermissions(RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms), req, scopedServerIds)
 }
 
 // Deliberately no `tryDenyPermissionsFor(Actor)` here: authorization happens at the entry point, where the identity
@@ -706,9 +680,25 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 // falls back to "no identity, so allow" would make every such check fail-open for any future caller that reaches it
 // without one. Checks that genuinely depend on loaded state stay where the state is, inside the transaction.
 
-// whether this user may look at `serverId` at all; see RBAC.canViewServer for why it is not a plain permission check
-export async function canViewServerForUser(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, serverId: string): Promise<boolean> {
-	return RBAC.canViewServer(await getUserPermissions(ctx), serverId, scopedServerIds)
+// For an entry point outside oRPC that does what a procedure does on the caller's behalf, so it requires exactly what
+// that procedure does
+export async function tryDenyProcedureAccess<P extends PA.CheckablePath>(
+	ctx: C.Db & USR.Ctx.Id & CS.AbortSignal,
+	path: P,
+	input: PA.AccessInput<P>,
+) {
+	return await tryDenyPermissionsForUser(ctx, PA.checkedReq(path, input))
+}
+
+// One read of the caller's perms, for checking many requirements against them: a response filtered row by row
+export async function getUserAccessCheck(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<(req: RBAC.ReqInput) => boolean> {
+	const perms = await getUserPermissions(ctx)
+	return (req) => RBAC.tryDenyPermissions(perms, req, scopedServerIds) === null
+}
+
+// every change to what this user holds, for a stream filtered by their access to recompute on
+export function userInvalidation$(discordId: bigint): Rx.Observable<RbacInvalidation> {
+	return invalidation$.pipe(Rx.filter((e) => e.scope === 'all' || e.discordId === discordId))
 }
 
 // for the aggregate (non-equality) checks: settings access, timeouts
@@ -767,8 +757,6 @@ export const orpcRouter = {
 	// the env-configured SUPER_USERS/SUPER_ROLES bootstrap, surfaced read-only in the settings rbac section.
 	// ids as strings so the snowflakes survive JSON
 	getSuperConfig: orpcBase.handler(async ({ context: ctx }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-		if (denyRes) return denyRes
 		return {
 			code: 'ok' as const,
 			superUsers: [...superUserIds].map(String),
@@ -779,14 +767,10 @@ export const orpcRouter = {
 	// guild role/member lookups powering the settings role-assignment pickers; gated behind global-settings editing
 	// since they surface guild role names and member identities
 	listGuildRoles: orpcBase.handler(async ({ context: ctx }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-		if (denyRes) return denyRes
 		return Discord.listGuildRolesDetailed()
 	}),
 
 	searchGuildMembers: orpcBase.input(z.object({ query: z.string() })).handler(async ({ context: ctx, input }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-		if (denyRes) return denyRes
 		const query = input.query.trim()
 		if (query.length === 0) return { code: 'ok' as const, members: [] }
 		return Discord.searchGuildMembers(query)
@@ -796,17 +780,6 @@ export const orpcRouter = {
 	// Either grant, unlike them: the channel picker also renders in a plugin's config, and an admin who can
 	// only manage plugins still has to be able to name a channel there.
 	listGuildChannels: orpcBase.handler(async ({ context: ctx }) => {
-		// the same permits globalSettingsRead() carries, plus plugins:manage. Spelled out because a
-		// PermissionReq is not itself a permit, so the two cannot be composed
-		const denyRes = await tryDenyPermissionsForUser(
-			ctx,
-			RBAC.permReq<'global-settings:read' | 'global-settings:write' | 'plugins:manage'>('any', [
-				RBAC.perm('global-settings:read'),
-				'global-settings:write',
-				RBAC.perm('plugins:manage'),
-			]),
-		)
-		if (denyRes) return denyRes
 		return Discord.listGuildChannels()
 	}),
 
@@ -814,8 +787,6 @@ export const orpcRouter = {
 	// unioned: an assignment names the list it means, so the picker has to offer the pair, and two lists defining the
 	// same group name are two different grants.
 	listAdminListGroups: orpcBase.handler(async ({ context: ctx }) => {
-		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-		if (denyRes) return denyRes
 		const lists = await Promise.all(
 			AdminList.configuredListIds()
 				.sort()

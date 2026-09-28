@@ -1,9 +1,13 @@
 import * as TSR from '@tanstack/react-router'
 import type * as React from 'react'
 
+import { RequireAccess } from '@/components/require-access'
 import { cn } from '@/lib/utils'
+import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
-import * as RbacClient from '@/systems/rbac.client'
+
+// where a plugin's settings render: the global settings, and the plugin section for plugins:manage alone
+const PLUGIN_SETTINGS_REQ = RBAC.Req.any(SETTINGS.Grants.globalSettingsRead(), RBAC.perm('plugins:manage'))
 
 /**
  * A link from a plugin's own UI to where it is configured: `slm/components/plugin-settings-link`.
@@ -23,16 +27,15 @@ export function PluginSettingsLink({
 	className?: string
 	children?: React.ReactNode
 }) {
-	const managePluginsDenied = RbacClient.usePermsCheck(RBAC.perm('plugins:manage'))
-	const globalAccess = RbacClient.useGlobalSettingsAccess()
-	if (!globalAccess.canRead && managePluginsDenied) return null
 	return (
-		<TSR.Link
-			to="/settings"
-			hash={path ? `setting:plugin:${pluginId}:${path}` : `section:plugin:${pluginId}`}
-			className={cn('underline-offset-2 hover:underline', className)}
-		>
-			{children}
-		</TSR.Link>
+		<RequireAccess req={PLUGIN_SETTINGS_REQ}>
+			<TSR.Link
+				to="/settings"
+				hash={path ? `setting:plugin:${pluginId}:${path}` : `section:plugin:${pluginId}`}
+				className={cn('underline-offset-2 hover:underline', className)}
+			>
+				{children}
+			</TSR.Link>
+		</RequireAccess>
 	)
 }

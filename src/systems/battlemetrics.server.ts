@@ -11,7 +11,6 @@ import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
@@ -20,7 +19,6 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
@@ -713,8 +711,6 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
-			if (denyRes) return denyRes
 			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)
@@ -772,8 +768,6 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
-			if (denyRes) return denyRes
 			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)

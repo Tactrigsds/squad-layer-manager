@@ -11,7 +11,7 @@ const [initialized$, setInitialized] = ReactRx.createSignal<boolean>()
 export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		RPC.observe('matchHistory.watchMatchHistoryState', () => RPC.orpc.matchHistory.watchMatchHistoryState.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
+			RPC.dropUnavailable(),
 			Rx.map(PartsSys.stripParts),
 		),
 	{ recentMatches: [] } satisfies MH.PublicMatchHistoryState,

@@ -11,7 +11,6 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
-import * as RBAC from '@/rbac.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -65,7 +64,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(serverId)
 	const numEditors = Zus.useStore(UPClient.Store, (s) => s.teamswapEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
-	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId }))
+	const manageDenied = RbacClient.useAccess('teamswaps.dispatchOp', { serverId })
 
 	const finishOrSave = () => {
 		const shouldSave = swapsModified && (numEditors <= 1 || forceSave)

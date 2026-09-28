@@ -1,4 +1,4 @@
-import { type AnyRouter, createRouterClient } from '@orpc/server'
+import { type AnyRouter, createRouterClient, isProcedure, os as orpcOs } from '@orpc/server'
 import { Mutex } from 'async-mutex'
 import { eq } from 'drizzle-orm'
 import { pathToFileURL } from 'node:url'
@@ -72,8 +72,7 @@ export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS
 
 export type ServerSetupFn = (ctx: ServerCtx<any>) => void
 
-// A plugin's rpc procedure context: the per-server ctx plus the signed-in user who made the call. Handlers
-// authorize against that user themselves (see slm/systems/rbac); the host only carries the identity here.
+// A plugin's rpc procedure context: the per-server ctx plus the signed-in user who made the call.
 export type RpcCtx<M extends PLG.Manifest<any> = PLG.Manifest> = ServerCtx<M> & USR.Ctx.Id
 
 // A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
@@ -487,9 +486,51 @@ export function getConfig<M extends PLG.Manifest<any>>(ctx: { plugin: PluginRef<
 
 // ---- rpc bridge (client <-> plugin server code) ----
 
+// What a plugin procedure requires of the signed-in caller, on the server the call is made against. The host has
+// already checked that the caller may view that server, so `Access.PUBLIC` means anyone who can.
+export type ProcedureAccess = RBAC.Access<{ serverId: string; input: any }>
+export type ProcedureMeta = { access?: ProcedureAccess }
+
+const AsyncGeneratorFunction = Object.getPrototypeOf(async function* () {}).constructor
+
+// The builder a plugin's procedures are made from. Its middleware enforces each procedure's declared access once the
+// input is validated, and answers a refused call with the denial: a stream yields it and ends.
+export function procedureBuilder<M extends PLG.Manifest<any>>() {
+	return orpcOs
+		.$config({ initialInputValidationIndex: Number.NEGATIVE_INFINITY })
+		.$context<RpcCtx<M>>()
+		.$meta<ProcedureMeta>({})
+		.use(async ({ context, procedure, path, next }, input, output) => {
+			const access = procedure['~orpc'].meta.access
+			if (!access) throw new Error(`plugin ${context.plugin.id}: procedure '${path.join('.')}' declares no access`)
+			const req = RBAC.Access.resolve(access, { serverId: context.serverId, input })
+			const denial = req ? await Rbac.tryDenyPermissionsForUser(context, req) : null
+			if (!denial) return next()
+			if (procedure['~orpc'].handler instanceof AsyncGeneratorFunction) {
+				return output(
+					(async function* () {
+						yield denial
+					})() as any,
+				)
+			}
+			return output(denial as any)
+		})
+}
+
+function undeclaredProcedures(router: AnyRouter, prefix: string[] = []): string[] {
+	if (isProcedure(router)) return (router['~orpc'].meta as ProcedureMeta).access ? [] : [prefix.join('.')]
+	return Object.entries(router).flatMap(([key, child]) => undeclaredProcedures(child as AnyRouter, [...prefix, key]))
+}
+
 export function registerRouter(ctx: Ctx<any>, router: AnyRouter) {
 	const rt = requireRuntime(ctx.plugin.id)
 	if (rt.router) throw new Error(`plugin ${ctx.plugin.id}: a router is already registered`)
+	const undeclared = undeclaredProcedures(router)
+	if (undeclared.length > 0) {
+		throw new Error(
+			`plugin ${ctx.plugin.id}: every procedure must declare its access in .meta({ access }). Missing: ${undeclared.join(', ')}`,
+		)
+	}
 	rt.router = router
 	ctx.cleanup.push(() => (rt.router = null))
 }
@@ -845,8 +886,6 @@ function purgeLeftoverData(pluginId: string): { code: 'ok'; tables: string[] } |
 // a hand-run install should not hang forever on a url that never answers
 const FETCH_BUDGET_MS = 60_000
 
-const manageReq = () => RBAC.permReq('all', [RBAC.perm('plugins:manage')])
-
 // The only two files a browser may fetch out of a package: its manifest module and its client
 // bundle. Matching against the names plugin.json declares is what keeps the server bundle (and
 // everything else on disk) unreachable.
@@ -871,8 +910,6 @@ export const router = {
 	}),
 
 	getSettings: orpcBase.input(z.object({ pluginId: z.string() })).handler(async ({ context: ctx, input }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-		if (denyRes) return denyRes
 		const rt = plugins.get(input.pluginId)
 		if (!rt) return { code: 'err:unknown-plugin' as const }
 		return { code: 'ok' as const, config: rt.configInput, commands: rt.commandConfigs }
@@ -882,8 +919,6 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: z.string(), enabled: z.boolean() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
 			return await lifecycleMtx.runExclusive(async () => {
@@ -911,8 +946,6 @@ export const router = {
 			}),
 		)
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
 			const parsed = input.config && rt.entry.manifest.configSchema.safeParse(input.config)
@@ -963,8 +996,6 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ url: z.url() }))
 		.handler(async ({ context: ctx, input, signal }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const res = await Pkgs.installFromUrl({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, input.url)
 			if (res.code !== 'ok') return res
 			await reloadPackages(ctx)
@@ -976,8 +1007,6 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: z.string() }))
 		.handler(async ({ context: ctx, input, signal }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const pkg = Pkgs.scan().find((p) => p.id === input.pluginId)
 			if (!pkg) return { code: 'err:unknown-plugin' as const }
 			const res = await Pkgs.refresh({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, pkg)
@@ -988,8 +1017,6 @@ export const router = {
 
 	// picks up whatever is in the plugins directory now: a hand-placed package, or a rebuilt bundle
 	rescan: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-		if (denyRes) return denyRes
 		await reloadPackages(ctx)
 		return { code: 'ok' as const }
 	}),
@@ -1000,8 +1027,6 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const res = purgeLeftoverData(input.pluginId)
 			if (res.code !== 'ok') return res
 			await AppEventsSys.persistAppEvent(
@@ -1026,8 +1051,6 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
-			if (denyRes) return denyRes
 			const rt = plugins.get(input.pluginId)
 			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
 			if (!rt && !brokenPackages.has(input.pluginId)) return { code: 'err:unknown-plugin' as const }

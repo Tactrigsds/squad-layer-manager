@@ -81,7 +81,7 @@ export function initChat(args: Args) {
 				})
 			},
 		},
-	).pipe(RPC.dropServerNotLoaded(), Rx.tap({ next: () => (previouslyConnected = true) }))
+	).pipe(RPC.dropUnavailable(), Rx.tap({ next: () => (previouslyConnected = true) }))
 
 	args.cleanup.push(
 		Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map((e) => [e]))).subscribe((events) => {

@@ -28,7 +28,6 @@ import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
-import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
@@ -37,7 +36,6 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -58,8 +56,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
@@ -70,8 +66,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			return await endVote(ctx, {
 				reason: 'ended-early',
 				endedBy: { discordId: ctx.user.discordId },
@@ -85,8 +79,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
 		}),
 
@@ -97,8 +89,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
 		}),
 

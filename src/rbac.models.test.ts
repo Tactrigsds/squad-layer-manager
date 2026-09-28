@@ -289,6 +289,60 @@ describe('tryDenyPermissions', () => {
 	})
 })
 
+describe('Req', () => {
+	const none = RBAC.NO_SCOPED_SERVERS
+	const view = RBAC.perm('squad-server:view', { serverId: 's1' })
+
+	it('an "any" passes on one met branch and otherwise reports every branch', () => {
+		const req = RBAC.Req.any(RBAC.perm('filters:create'), RBAC.Req.viewServer('s1'))
+		expect(RBAC.tryDenyPermissions([view], req, none)).toBeNull()
+		expect(RBAC.tryDenyPermissions([], req, none)).toEqual({
+			code: 'err:permission-denied',
+			checkType: 'any',
+			failures: ['filters:create', 'squad-server:view on s1'],
+		})
+	})
+
+	it('an "all" reports only the branches that fail, through nesting', () => {
+		const req = RBAC.Req.all(RBAC.Req.viewServer('s1'), RBAC.Req.any(RBAC.perm('filters:create'), RBAC.perm('history:query')))
+		expect(RBAC.tryDenyPermissions([view], req, none)?.failures).toEqual(['filters:create', 'history:query'])
+		expect(RBAC.tryDenyPermissions([view, RBAC.perm('history:query')], req, none)).toBeNull()
+	})
+
+	it('holding any grant is loose about servers, and viewing any server needs some server-scoped grant', () => {
+		const onOtherServer = RBAC.perm('queue:force-write', { serverId: 's2' })
+		expect(RBAC.tryDenyPermissions([onOtherServer], RBAC.Req.holdsAnyGrant('queue:force-write'), none)).toBeNull()
+		expect(RBAC.tryDenyPermissions([onOtherServer], RBAC.Req.viewAnyServer(), none)).toBeNull()
+		expect(RBAC.tryDenyPermissions([RBAC.perm('history:query')], RBAC.Req.viewAnyServer(), none)).not.toBeNull()
+	})
+
+	it('a timeout requirement compares against the cap, or asks for any grant when it names no duration', () => {
+		expect(RBAC.tryDenyPermissions([timeoutPerm(600_000)], RBAC.Req.timeout('s1'), none)).toBeNull()
+		expect(RBAC.tryDenyPermissions([timeoutPerm(600_000)], RBAC.Req.timeout('s1', 60_000), none)).toBeNull()
+		expect(RBAC.tryDenyPermissions([timeoutPerm(600_000)], RBAC.Req.timeout('s1', 3_600_000), none)).not.toBeNull()
+	})
+
+	it('a settings-write requirement reports only the paths that are not covered', () => {
+		const grant = RBAC.perm('global-settings:write', { paths: ['vote'] })
+		expect(RBAC.tryDenyPermissions([grant], RBAC.Req.settingsWrite(null, ['vote.voteDuration', 'queue']), none)?.failures).toEqual([
+			'global-settings:write missing paths: queue',
+		])
+	})
+})
+
+describe('Access', () => {
+	it('resolves the requirement a declaration checks up front, from its input', () => {
+		const access = RBAC.Access.req((i: { serverId: string }) => RBAC.Req.viewServer(i.serverId))
+		expect(RBAC.Access.resolve(access, { serverId: 's1' })).toEqual({ kind: 'view-server', serverId: 's1' })
+		expect(RBAC.Access.resolve(RBAC.Access.PUBLIC, undefined)).toBeNull()
+		expect(RBAC.Access.resolve(RBAC.Access.inHandler('why'), undefined)).toBeNull()
+		expect(RBAC.Access.resolve(RBAC.Access.inHandler('why', RBAC.perm('history:query')), undefined)).toEqual({
+			kind: 'perm',
+			perm: RBAC.perm('history:query'),
+		})
+	})
+})
+
 describe('canViewServer', () => {
 	it('is implied by any server-scoped grant on that server', () => {
 		expect(RBAC.canViewServer([RBAC.perm('queue:write', { serverId: 's1' })], 's1', RBAC.NO_SCOPED_SERVERS)).toBe(true)

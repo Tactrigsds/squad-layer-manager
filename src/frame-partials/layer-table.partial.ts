@@ -300,7 +300,9 @@ export namespace Sel {
 	// gates the write regardless, so the only cost of being wrong for a frame is an affordance that appears late
 	const canForceSelect = (...[, user, rbacStore]: PoolArgs) => {
 		const simulated = UsersClient.Sel.maybeLoggedInUser(user, rbacStore)
-		return !!simulated && RBAC.hasPermOnAnyServer(RBAC.fromTracedPermissions(simulated.perms), 'queue:force-write')
+		return (
+			!!simulated && !RBAC.tryDenyPermissionsForRbacUser(simulated, RBAC.Req.holdsAnyGrant('queue:force-write'), RBAC.NO_SCOPED_SERVERS)
+		)
 	}
 
 	export const rowSelectionStatus = RSel.memoizeFactory((rowId: L.LayerId) =>

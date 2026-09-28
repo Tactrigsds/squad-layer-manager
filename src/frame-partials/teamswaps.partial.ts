@@ -159,7 +159,7 @@ export function initTeamswaps(args: Args) {
 		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId }), {
 			apply: (update$) =>
 				update$.pipe(
-					RPC.dropServerNotLoaded(),
+					RPC.dropUnavailable(),
 					Rx.tap((update) => get().onUpdate(update)),
 				),
 		}).subscribe(),

@@ -24,7 +24,7 @@ import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client.ts'
-import * as RBAC from '@/rbac.models'
+import type * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -83,9 +83,9 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.size : null,
 	)
 	const hasPlayers = playerCount !== null && playerCount > 0
-	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match', { serverId: serverId }))
-	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates', { serverId: serverId }))
-	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off', { serverId: serverId }))
+	const endMatchDenied = RbacClient.useAccess('squadServer.endMatch', { serverId })
+	const disableUpdatesDenied = RbacClient.useAccess('layerQueue.toggleUpdatesToSquadServer', { serverId })
+	const disableFogOfWarDenied = RbacClient.useAccess('squadServer.toggleFogOfWar', { serverId })
 
 	const updatesToSquadServerDisabled = Zus.useStore(stores.squadServer!, (s) => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
@@ -98,7 +98,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const sandboxServersRes = SandboxClient.useSandboxServers()
 	const isSandbox = !!sandboxServersRes.data?.includes(serverId)
 	const openSandboxWindow = useOpenSandboxControlWindow({ serverId })
-	const consoleDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:view-console', { serverId: serverId }))
+	const consoleDenied = RbacClient.useAccess('serverConsole.watch', { serverId })
 	const openConsoleWindow = useOpenServerConsoleWindow({ serverId })
 
 	function disableFogOfWar() {

@@ -259,12 +259,8 @@ export const orpcRouter = {
 	// window at all. Derived from the running instances rather than from settings: those are the only servers
 	// `execute` can act on.
 	listSandboxServers: orpcBase.handler(async ({ context }) => {
-		const ids: string[] = []
-		for (const serverId of instances.keys()) {
-			if (await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId }))) continue
-			ids.push(serverId)
-		}
-		return ids.sort()
+		const canAccess = await Rbac.getUserAccessCheck(context)
+		return [...instances.keys()].filter((serverId) => canAccess(RBAC.perm('sandbox:control', { serverId }))).sort()
 	}),
 
 	// The control surface's own state: the puppets this sandbox knows by name and the emulated admin list. The
@@ -274,11 +270,6 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, input, signal }) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
-			if (denyRes) {
-				yield denyRes
-				return
-			}
 			const instance = instances.get(input.serverId)
 			if (!instance) {
 				yield { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
@@ -305,9 +296,6 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }).extend(SB.SandboxCommandSchema.shape))
 		.handler(async ({ context, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
-			if (denyRes) return denyRes
-
 			const instance = instances.get(input.serverId)
 			if (!instance) return { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
 

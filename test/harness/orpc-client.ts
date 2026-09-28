@@ -4,7 +4,7 @@ import type { RouterClient } from '@orpc/server'
 import { WebSocket } from 'ws'
 
 import * as AR from '@/app-routes'
-import type { OrpcAppRouter } from '@/server/orpc-app-router'
+import type * as PA from '@/models/procedure-access.models'
 
 import { ADMIN_USER, type AppFixture, type TestUser } from './app-fixture'
 
@@ -12,7 +12,7 @@ import { ADMIN_USER, type AppFixture, type TestUser } from './app-fixture'
 // user. The permission checks live inside the handlers, so a UI test can only ever show that the client hid a
 // button -- this is how a test says the server itself refuses.
 
-export type TestOrpcClient = RouterClient<OrpcAppRouter> & { close: () => void }
+export type TestOrpcClient = RouterClient<PA.ClientRouter> & { close: () => void }
 
 // Note on teardown: do NOT close a client while the app is still up. oRPC rejects whatever subscription the
 // socket was carrying, nothing is awaiting that promise by then, and vitest reports the unhandled rejection as a
@@ -44,7 +44,7 @@ export async function createOrpcClient(app: AppFixture, user: TestUser = ADMIN_U
 	})
 
 	const link = new RPCLink({ websocket: websocket as unknown as globalThis.WebSocket })
-	const client = createORPCClient<RouterClient<OrpcAppRouter>>(link)
+	const client = createORPCClient<RouterClient<PA.ClientRouter>>(link)
 	return Object.assign(client, { close: () => websocket.close() })
 }
 

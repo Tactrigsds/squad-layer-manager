@@ -2,10 +2,8 @@ import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as SC from '@/models/server-console.models'
-import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-import * as Rbac from '@/systems/rbac.server'
 
 // What each squad server is saying and being told, kept per server as a short tail. Every connection type feeds
 // this the same way, so the console reads identically whether the server is real, tunnelled through an agent, or
@@ -110,11 +108,6 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, input, signal }) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('squad-server:view-console', { serverId: input.serverId }))
-			if (denyRes) {
-				yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
-				return
-			}
 			const channel = channelFor(input.serverId)
 			log.info('Server %s: user %s opened the console', input.serverId, context.user.discordId)
 

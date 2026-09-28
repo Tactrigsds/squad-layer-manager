@@ -542,15 +542,10 @@ const publicRouter = {
 	}),
 }
 
-// requires global-settings:read (or any global-settings:write grant): full global settings object, for editing
+// the full global settings object, for editing
 const globalRouter = {
 	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant for display/editing
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-		if (denyRes) {
-			yield denyRes
-			return
-		}
 		yield* Rx.Ext.toAsyncGenerator(
 			settings$.pipe(
 				Rx.filter((e) => e.scope === 'global'),
@@ -620,9 +615,6 @@ const globalRouter = {
 		.meta({ type: 'mutation' })
 		.input(LTag.TagSchema)
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:manage-tags'))
-			if (denyRes) return denyRes
-
 			const existing = GLOBAL_SETTINGS.layerTags
 			if (LTag.labelConflict(existing, input.label, input.id)) {
 				return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
@@ -658,7 +650,7 @@ const globalRouter = {
 		}),
 }
 
-// requires server-settings:write for the given serverId; connections are always excluded
+// one server's settings, never including its connections
 const serverRouter = {
 	watchSettings: orpcBase
 		.meta({ logLevel: 'trace' })
@@ -679,9 +671,6 @@ const serverRouter = {
 		.handler(async ({ context: _ctx, input }) => {
 			if (!hasServerEntry(input.serverId)) return { code: 'err:server-not-found' as const }
 			const ctx = { ..._ctx, serverId: input.serverId }
-			const paths = input.ops.map((op) => op.path)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(input.serverId, paths))
-			if (denyRes) return denyRes
 
 			// the mutations are applied in place, so the before-state has to be taken first to have anything to diff
 			let changes: SettingChange[] = []
@@ -740,15 +729,12 @@ async function recordServerRegistry(
 	)
 }
 
-// registry management requires admin:manage-servers (admin:delete-servers for deleteServer); the raw per-server
-// settings endpoints are gated by the server-settings:* permissions instead
+// the server registry, and each server's raw settings
 const adminRouter = {
 	enableServer: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
 			const res = await SquadServer.enableServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'enabled', input.serverId)
 			return res
@@ -758,8 +744,6 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
 			const res = await SquadServer.disableServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'disabled', input.serverId)
 			return res
@@ -775,14 +759,6 @@ const adminRouter = {
 			}),
 		)
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
-			// creating a server means supplying its connection details, so it additionally requires a
-			// write-sensitive grant covering the new server id
-			const perms = await Rbac.getUserPermissions(ctx)
-			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id, scopedServerIds())) {
-				return RBAC.permissionDenied('all', [`server-settings:write-sensitive on ${input.id}`])
-			}
 			const res = await createServerEntry(ctx, input)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
 			return res
@@ -792,8 +768,6 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:delete-servers'))
-			if (denyRes) return denyRes
 			const deletedName = serverRegistry.get(input.serverId)?.displayName
 			const res = await SquadServer.deleteServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId, deletedName)
@@ -804,8 +778,6 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
-			if (denyRes) return denyRes
 			const res = await setDefaultServerEntry(ctx, input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'set-default', input.serverId)
 			return res
@@ -815,8 +787,6 @@ const adminRouter = {
 	// caller holds server-settings:write-sensitive
 	getRawSettings: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: ctx, input }) => {
 		const perms = await Rbac.getUserPermissions(ctx)
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('server-settings:read', { serverId: input.serverId }))
-		if (denyRes) return denyRes
 		const res = await getRawServerSettings(ctx, input.serverId)
 		if (res.code !== 'ok') return res
 		const settings = res.settings

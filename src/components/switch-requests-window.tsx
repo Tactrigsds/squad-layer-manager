@@ -9,7 +9,6 @@ import * as Zus from '@/lib/zustand'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
-import * as RBAC from '@/rbac.models'
 import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -65,7 +64,7 @@ function SwitchRequestsWindow({ stores }: SwitchRequestsWindowProps) {
 function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; className?: string; stores: SquadServerFrame.KeyProp }) {
 	const { fromTeam, stores } = props
 	const entries = Zus.useStore(stores.squadServer!, SRQClient.Sel.queueForTeam(fromTeam))
-	const switchNowDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: stores.squadServer!.serverId }))
+	const switchNowDenied = RbacClient.useAccess('switchRequests.switchNow', { serverId: stores.squadServer!.serverId })
 	return (
 		<div className={cn('flex flex-col gap-0.5 min-w-0', props.className)}>
 			<div className="flex items-center gap-1 pb-1 text-xs text-muted-foreground whitespace-nowrap">

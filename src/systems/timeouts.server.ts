@@ -16,6 +16,8 @@ import type * as CS from '@/models/context-shared'
 import type * as MH from '@/models/match-history.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
@@ -220,33 +222,45 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 	}
 }
 
+// A timeout names the player, the admin who issued it and why, so it is shown only to those who can see the server that
+// issued it. One whose server is gone is shown to anyone who can see any server.
+async function listVisibleActiveTimeouts(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<ActiveTimeoutRow[]> {
+	const [rows, canAccess] = await Promise.all([listActiveTimeouts(ctx), Rbac.getUserAccessCheck(ctx)])
+	return rows.filter((row) => canAccess(row.issuedServerId === null ? RBAC.Req.viewAnyServer() : RBAC.Req.viewServer(row.issuedServerId)))
+}
+
 export const router = {
 	listActiveTimeouts: orpcBase.handler(async ({ context: ctx }) => {
-		return await listActiveTimeouts(ctx)
+		return await listVisibleActiveTimeouts(ctx)
 	}),
 
 	watchActiveTimeouts: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: ctx }) {
-		yield await listActiveTimeouts(ctx)
-		for await (const _ of Rx.Ext.toAsyncGenerator(update$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
-			yield await listActiveTimeouts(ctx)
+		yield await listVisibleActiveTimeouts(ctx)
+		const changed$ = Rx.merge(update$, Rbac.userInvalidation$(ctx.user.discordId))
+		for await (const _ of Rx.Ext.toAsyncGenerator(changed$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
+			yield await listVisibleActiveTimeouts(ctx)
 		}
 	}),
 
-	cancelTimeout: orpcBase.input(z.object({ timeoutId: z.string() })).handler(async ({ context: ctx, input }) => {
-		// which server's grant applies is a property of the timeout, so the row is read before the check rather
-		// than taken from the request
-		const [timeout] = await ctx
-			.db()
-			.select({ issuedServerId: Schema.timeouts.issuedServerId })
-			.from(Schema.timeouts)
-			.where(E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()))
-		if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
-		if (denyRes) return denyRes
-		return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
-	}),
+	cancelTimeout: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ timeoutId: z.string() }))
+		.handler(async ({ context: ctx, input }) => {
+			// which server's grant applies is a property of the timeout, so the row is read before the check rather
+			// than taken from the request
+			const [timeout] = await ctx
+				.db()
+				.select({ issuedServerId: Schema.timeouts.issuedServerId })
+				.from(Schema.timeouts)
+				.where(E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()))
+			if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
+			if (denyRes) return denyRes
+			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
+		}),
 
 	timeoutPlayer: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z
 				.object({
@@ -264,8 +278,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(ctx.serverId, input.durationMs))
-			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('timeout', input, {
 				duration: ZodUtils.formatHumanTime(input.durationMs),
 				...(input.squadName ? { squadName: input.squadName } : {}),

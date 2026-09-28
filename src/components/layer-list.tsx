@@ -1386,7 +1386,7 @@ function ItemMenuItems(props: {
 	const user = UsersClient.useLoggedInUser()
 	const isPhone = Browser.useIsSmallViewport()
 	const configuredTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
-	const canManageTags = !RbacClient.usePermsCheck(RBAC.perm('queue:manage-tags'))
+	const canManageTags = !RbacClient.useAccess('settings.global.upsertLayerTag')
 	const appliedTags = item.type === 'single-list-item' ? (item.tags ?? []) : []
 	const availableTags = configuredTags.filter((t) => !appliedTags.includes(t.id))
 	const editActivity = {

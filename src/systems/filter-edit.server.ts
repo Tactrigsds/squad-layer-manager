@@ -16,14 +16,12 @@ import * as FE from '@/models/filter-edit.models'
 import * as F from '@/models/filter.models'
 import * as ATTRS from '@/models/otel-attrs'
 import type * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntitySys from '@/systems/filter-entity.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 
 const module = initModule('filter-edit')
@@ -129,9 +127,6 @@ export const orpcRouter = {
 			const session = sessions.get(input.filterId)
 			// the client dispatches against a session it is watching, so there is nothing sensible to apply to
 			if (!session) return { code: 'err:no-session' as const }
-
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(input.filterId))
-			if (denyRes) return denyRes
 
 			for (const op of input.ops) {
 				if (!Arr.includesEnum(FE.CLIENT_OP_CODE.options, op.code)) {

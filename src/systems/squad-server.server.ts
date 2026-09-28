@@ -152,16 +152,12 @@ export const orpcRouter = {
 	// non-broken yet have no managed server (still booting, or torn down by a fatal resource error), and everything served per-server
 	// needs one. The client gates the dashboard on this so it renders "unavailable" instead of hanging on silent streams.
 	watchLoadedServers: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
-		const obs = globalState.lifecycleUpdate$.pipe(
+		const obs = Rx.merge(globalState.lifecycleUpdate$, Rbac.userInvalidation$(context.user.discordId)).pipe(
 			Rx.startWith(null),
-			// servers the session may not view are omitted rather than listed-but-unusable, matching ctx$
+			// servers the session may not view are omitted rather than listed-but-unusable
 			Rx.switchMap(async () => {
-				const ids: string[] = []
-				for (const serverId of globalState.managedServers.keys()) {
-					if (!(await Rbac.canViewServerForUser(context, serverId))) continue
-					ids.push(serverId)
-				}
-				return ids
+				const canAccess = await Rbac.getUserAccessCheck(context)
+				return [...globalState.managedServers.keys()].filter((serverId) => canAccess(RBAC.Req.viewServer(serverId)))
 			}),
 			Rx.Ext.distinctDeepEquals(),
 			Rx.Ext.withAbortSignal(signal!),
@@ -228,14 +224,15 @@ export const orpcRouter = {
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
-	endMatch: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await tryCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
-		if (deniedRes) return deniedRes
-		return await endMatchAction(ctx, { type: 'slm-user', userId: ctx.user.discordId })
-	}),
+	endMatch: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			return await endMatchAction(ctx, { type: 'slm-user', userId: ctx.user.discordId })
+		}),
 
 	watchChatEvents: orpcBase
 		.meta({ logLevel: 'trace' })
@@ -301,31 +298,32 @@ export const orpcRouter = {
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
-	toggleFogOfWar: orpcBase.input(z.object({ serverId: z.string(), disabled: z.boolean() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await tryCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off', { serverId: ctx.serverId }))
-		if (denyRes) return denyRes
-		const serverStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
-		if (serverStatusRes.code !== 'ok') return serverStatusRes
-		await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
-		await emitAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.FogOfWarToggled>({
-				type: 'FOG_OF_WAR_TOGGLED',
-				actor: { type: 'slm-user', userId: ctx.user.discordId },
-				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
-				causeId: null,
-				enabled: !input.disabled,
-			}),
-		)
-		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, ctx.tr.broadcast(SS_Msgs.fogOff()))
-		}
-		return { code: 'ok' as const }
-	}),
+	toggleFogOfWar: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const serverStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
+			if (serverStatusRes.code !== 'ok') return serverStatusRes
+			await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
+			await emitAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.FogOfWarToggled>({
+					type: 'FOG_OF_WAR_TOGGLED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: ctx.serverId,
+					matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+					causeId: null,
+					enabled: !input.disabled,
+				}),
+			)
+			if (input.disabled) {
+				await SquadRcon.broadcast(ctx, ctx.tr.broadcast(SS_Msgs.fogOff()))
+			}
+			return { code: 'ok' as const }
+		}),
 
 	// The squad browser indexes servers by the name they report over RCON, so the lookup goes through the live
 	// server rather than the registry: an operator's display name for a server is their own and matches nothing.
@@ -349,6 +347,7 @@ export const orpcRouter = {
 	}),
 
 	warnPlayers: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z
 				.object({
@@ -378,8 +377,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('warn', input, input.taggedSquad ? { squadName: input.taggedSquad.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the input refine guarantees a reason was provided; narrow without asserting
@@ -415,27 +412,29 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
-	warnAdmins: orpcBase.input(z.object({ serverId: z.string(), message: z.string().min(1) })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await tryCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
-		if (denyRes) return denyRes
-		const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
-		if (teamsRes.code !== 'ok') return teamsRes
-		const admins = teamsRes.players
-			.filter((p) => {
-				if (!p.ids.steam) return false
-				return SM.AdminList.isAdminInAny(adminLists, p.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
-			})
-			.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		if (admins.length === 0) return { code: 'err:no-admins-online' as const }
-		// the warn already reaches every admin, so skip the meta-notification
-		await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { notifyAdmins: false })
-		return { code: 'ok' as const }
-	}),
+	warnAdmins: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string(), message: z.string().min(1) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
+			if (teamsRes.code !== 'ok') return teamsRes
+			const admins = teamsRes.players
+				.filter((p) => {
+					if (!p.ids.steam) return false
+					return SM.AdminList.isAdminInAny(adminLists, p.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+				})
+				.map((p) => SM.PlayerIds.getPlayerId(p.ids))
+			if (admins.length === 0) return { code: 'err:no-admins-online' as const }
+			// the warn already reaches every admin, so skip the meta-notification
+			await warnPlayers(ctx, admins, input.message, { type: 'slm-user', userId: ctx.user.discordId }, { notifyAdmins: false })
+			return { code: 'ok' as const }
+		}),
 
 	broadcast: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z
 				.object({
@@ -452,8 +451,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			let template = input.message
 			let presetLabel: string | undefined
 			if (input.presetReasonLabel) {
@@ -469,13 +466,12 @@ export const orpcRouter = {
 		}),
 
 	demoteCommander: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('demote-commander', input)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await demoteCommanderAction(ctx, input.playerId, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
@@ -483,6 +479,7 @@ export const orpcRouter = {
 		}),
 
 	disbandSquad: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z.object({
 				serverId: z.string(),
@@ -495,8 +492,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const currTeams = getCurrTeams(ctx)
 			const squad = currTeams && SM.findSquadForPlayer(currTeams.squads, { squadId: input.squadId, teamId: input.teamId })
 			const reasonRes = resolveReasonInput('disband-squad', input, squad ? { squadName: squad.squadName } : undefined)
@@ -506,13 +501,12 @@ export const orpcRouter = {
 		}),
 
 	removeFromSquad: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await removePlayersFromSquad(ctx, [input.playerId], { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
@@ -520,6 +514,7 @@ export const orpcRouter = {
 		}),
 
 	removePlayersFromSquad: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z.object({
 				serverId: z.string(),
@@ -531,8 +526,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('remove-from-squad', input)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await removePlayersFromSquad(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
@@ -540,6 +533,7 @@ export const orpcRouter = {
 		}),
 
 	kill: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z.object({
 				serverId: z.string(),
@@ -554,8 +548,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input, input.squadName ? { squadName: input.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / ctx.tr.warn(SM_Msgs.notifyKilled()))
@@ -566,6 +558,7 @@ export const orpcRouter = {
 
 	// a plain kick; timeouts (which bar the player from rejoining) go through timeouts.timeoutPlayer
 	kickPlayers: orpcBase
+		.meta({ type: 'mutation' })
 		.input(
 			z.object({
 				serverId: z.string(),
@@ -580,8 +573,6 @@ export const orpcRouter = {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kick', input, input.squadName ? { squadName: input.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await kickPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
@@ -589,13 +580,12 @@ export const orpcRouter = {
 		}),
 
 	renameSquad: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			await renameSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
@@ -1834,36 +1824,25 @@ export function resolveCtx<T extends object>(ctx: T, serverId: string) {
 	return withSignal(ctx, managedServer)
 }
 
-// Resolving a managed server for a request is also where the request is authorized to look at that server at all: every
-// per-server endpoint goes through here, so squad-server:view is enforced once rather than per handler. Action
-// permissions are still checked by the handler on top of this.
 export async function tryCtx<T extends C.Db & USR.Ctx.Id & CS.AbortSignal>(
 	ctx: T,
 	serverId: string,
-): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
+): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSignal<T>> } | SM.ServerNotLoaded> {
 	const managedServer = globalState.managedServers.get(serverId)
 	if (!managedServer) return SM.serverNotLoaded(serverId)
-	if (!(await Rbac.canViewServerForUser(ctx, serverId))) {
-		return RBAC.permissionDenied('all', [`squad-server:view on ${serverId}`])
-	}
 	return { code: 'ok', ctx: withSignal(ctx, managedServer) }
 }
 
 // like selectedServerCtx$, but keyed by an explicit serverId instead of a wsClientId's session selection
-// A server the session may not view resolves to null, exactly as one with no live managed server does, so every per-server
-// stream reports it as not loaded. Deliberate: to a user without squad-server:view the server is indistinguishable
-// from one that isn't running, which is also what listLoadedServerIds tells them, so the two agree.
 export function ctx$(wsClientId: string, serverId: string) {
 	return globalState.lifecycleUpdate$.pipe(
 		Rx.filter((id) => id === serverId),
 		Rx.startWith(serverId),
-		Rx.switchMap(async () => {
+		Rx.map(() => {
 			const managedServer = globalState.managedServers.get(serverId)
 			if (!managedServer) return null
 			const session = WsSessionSys.wsSessions.get(wsClientId)!
-			const ctx = { ...getBaseCtx(), ...session, ...managedServer }
-			if (!(await Rbac.canViewServerForUser(ctx, serverId))) return null
-			return ctx
+			return { ...getBaseCtx(), ...session, ...managedServer }
 		}),
 	)
 }

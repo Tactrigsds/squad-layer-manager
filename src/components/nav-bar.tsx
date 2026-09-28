@@ -40,12 +40,12 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
+import * as PageAccess from '@/systems/page-access.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SiteMode from '@/systems/site-mode.client'
@@ -111,13 +111,8 @@ export default function NavBar() {
 	)
 	const serverNavLinks = Zus.useStore(squadServerKey, (s) => s?.settings.saved.navLinks)
 
-	const showSettingsLink = Zus.useStore_Susp(
-		UsersClient.loggedInUserQueryOptions,
-		RbacClient.RbacStore,
-		SettingsClient.PublicSettingsStore,
-		RbacClient.Sel.settingsLinkVisible,
-	)
-	const historyDenied = RbacClient.usePermsCheck(RBAC.perm('history:query'))
+	const showSettingsLink = !PageAccess.usePageDenial('/_app/settings')
+	const historyDenied = PageAccess.usePageDenial('/_app/history')
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
 	const siteMode = SiteMode.useSiteMode()
 	// the desktop site on a phone: offer the way back to the phone layout

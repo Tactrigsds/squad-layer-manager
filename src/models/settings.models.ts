@@ -1273,46 +1273,26 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 }
 
 export namespace Grants {
-	export function globalSettingsRead() {
-		return RBAC.permReq<'global-settings:read' | 'global-settings:write'>('any', [
-			RBAC.perm('global-settings:read'),
-			'global-settings:write',
-		])
+	export function globalSettingsRead(): RBAC.Req {
+		return RBAC.Req.any(RBAC.perm('global-settings:read'), RBAC.Req.holdsAnyGrant('global-settings:write'))
 	}
 
-	export function writeGlobalSettingsPaths(paths: (SettingsPath | string)[]) {
-		const dottedPaths = paths.map(dottedSettingsPath).map(settingPathForChange)
-		return RBAC.permReq('all', [
-			(perms) => {
-				const access = RBAC.globalSettingsWriteAccess(perms)
-				const missing = dottedPaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
-				if (missing.length === 0) return
-				return `global-settings:write missing paths: ${missing.join(', ')}`
-			},
-		])
+	export function writeGlobalSettingsPaths(paths: (SettingsPath | string)[]): RBAC.Req {
+		return RBAC.Req.settingsWrite(null, paths.map(dottedSettingsPath).map(settingPathForChange))
 	}
 
-	export function writeServerSettingsPaths(serverId: string, paths: (SettingsPath | string)[]) {
+	// connections are never a path grant: editing them requires write-sensitive regardless of any write grant
+	export function writeServerSettingsPaths(serverId: string, paths: (SettingsPath | string)[]): RBAC.Req {
 		const dottedPaths = paths.map(dottedSettingsPath).map(settingPathForChange)
 		const isSensitive = (p: string) => p === 'connections' || p.startsWith('connections.')
-		const nonSensitivePaths = dottedPaths.filter((p) => !isSensitive(p))
-		const hasSensitivePaths = dottedPaths.some(isSensitive)
-
-		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
-			(perms, scoped) => {
-				const access = RBAC.serverSettingsWriteAccess(perms, serverId, scoped)
-				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
-				if (missing.length === 0) return
-				return `server-settings:write missing paths: ${missing.join(', ')}`
-			},
-			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
-			hasSensitivePaths
-				? (perms, scoped) => {
-						if (RBAC.canWriteSensitiveServerSettings(perms, serverId, scoped)) return
-						return `server-settings:write-sensitive on ${serverId}`
-					}
-				: undefined,
-		])
+		const reqs = [
+			RBAC.Req.settingsWrite(
+				serverId,
+				dottedPaths.filter((p) => !isSensitive(p)),
+			),
+		]
+		if (dottedPaths.some(isSensitive)) reqs.push(RBAC.Req.perm('server-settings:write-sensitive', { serverId }))
+		return RBAC.Req.all(...reqs)
 	}
 }
 

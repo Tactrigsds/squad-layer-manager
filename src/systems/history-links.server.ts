@@ -15,6 +15,7 @@ import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
 import * as History from '@/systems/history.server'
+import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // Quotes a linked history selection back into discord. A message in the home guild whose links to the history page
@@ -139,7 +140,7 @@ function ignoreGone(err: unknown) {
 // them here either, and is not told why.
 async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selectionLinksIn>): Promise<string[]> {
 	const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(message.author.id) }, signal: CleanupSys.shutdownSignal })
-	if (await History.denyUnlessHistoryQuery(ctx)) return []
+	if (await Rbac.tryDenyProcedureAccess(ctx, 'history.selectionText', undefined)) return []
 	const quotes: string[] = []
 	for (const link of links) {
 		const res = await History.selectionText(

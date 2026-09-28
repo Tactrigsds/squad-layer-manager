@@ -5,7 +5,6 @@ import React from 'react'
 import type * as RC from '@/components/feed/render-context'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 
 export type QueryPageInput = {
@@ -41,7 +40,7 @@ export type RowsLinkTarget = {
 export function useRowsLink(
 	target: (selection: RC.RowSelection, rows: Element[], group: string | undefined) => RowsLinkTarget | undefined,
 ): RC.RenderCtx['linkToRows'] {
-	const denied = RbacClient.usePermsCheck(RBAC.perm('history:query')) !== null
+	const denied = RbacClient.useAccess('history.query') !== null
 	const targetRef = React.useRef(target)
 	targetRef.current = target
 	const link = React.useCallback<NonNullable<RC.RenderCtx['linkToRows']>>((selection, rows, group) => {

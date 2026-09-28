@@ -4,13 +4,11 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
-import * as SETTINGS from '@/models/settings.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Otel from '@/systems/otel.server'
-import * as Rbac from '@/systems/rbac.server'
 
 const module = initModule('app-events')
 const orpcBase = getOrpcBase(module)
@@ -92,8 +90,6 @@ export const router = {
 	list: orpcBase
 		.input(z.object({ limit: z.number().int().min(1).max(200).default(50), before: z.number().optional() }))
 		.handler(async ({ context: ctx, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
-			if (denyRes) return denyRes
 			const rows = await ctx
 				.db()
 				.select()

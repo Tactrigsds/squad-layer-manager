@@ -10,7 +10,7 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
+import type * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
@@ -259,9 +259,6 @@ export const orpcRouter = {
 	// the link on one steam account, for the player details window. Behind the same permission as writing one: it
 	// puts a name to somebody who has not chosen to show it here.
 	getSteamAccountLink: orpcBase.input(z.object({ steamId: z.string() })).handler(async ({ context, input }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('users:manage-steam-links'))
-		if (denyRes) return denyRes
-
 		const parsed = ZodUtils.Steam64IdSchema.safeParse(input.steamId)
 		if (!parsed.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 
@@ -277,9 +274,6 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ steamId: z.string(), discordId: z.string() }))
 		.handler(async ({ context, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('users:manage-steam-links'))
-			if (denyRes) return denyRes
-
 			const steam = ZodUtils.Steam64IdSchema.safeParse(input.steamId)
 			if (!steam.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 			let discordId: bigint
@@ -334,9 +328,6 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ steamId: z.string() }))
 		.handler(async ({ context, input }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('users:manage-steam-links'))
-			if (denyRes) return denyRes
-
 			const steam = ZodUtils.Steam64IdSchema.safeParse(input.steamId)
 			if (!steam.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 

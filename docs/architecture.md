@@ -235,15 +235,58 @@ reference through ctx spreads:
 ### oRPC over a WebSocket
 
 All client-server communication is oRPC over a **single WebSocket**, not HTTP. The router is a flat object of
-per-system subrouters, each built from `getOrpcBase(module)`, which installs exactly one middleware: it wraps the
-handler in `spanOp` and narrows the connection-level signal down to the individual call.
+per-system subrouters, each built from `getOrpcBase(module)`, which installs two middlewares. The first wraps the
+handler in `spanOp` and narrows the connection-level signal down to the individual call. The second enforces the
+procedure's declared access (see below). Input is validated before either runs.
 
-The consequence worth internalising: **auth happens once, at the HTTP upgrade**, not per call. The ctx object minted
-there lives for the lifetime of the socket and is reused for every RPC over it.
+Site access (`site:authorized`) is checked once, at the HTTP upgrade. The ctx object minted there lives for the
+lifetime of the socket and is reused for every RPC over it. Everything past site access is checked per call.
 
-RBAC and db access are deliberately **not** middleware. Handlers call `Rbac.tryDeny*` themselves, returning a denial
-_value_ per the result-code convention, and attach a db explicitly. This is more verbose and more explicit; it also
-means you cannot tell whether a handler is permission-checked without reading it.
+Db access is deliberately **not** middleware. Handlers attach a db explicitly.
+
+### Declared access
+
+Every entry point states what it requires, as data, in one place per kind of entry point:
+
+| Entry point           | Declaration                                                   |
+| --------------------- | ------------------------------------------------------------- |
+| oRPC procedure        | `PROCEDURE_ACCESS` in `src/models/procedure-access.models.ts` |
+| page                  | `PAGE_ACCESS` in `src/systems/page-access.client.ts`          |
+| in-game command       | `access` on each `declareCommand` in `command.models.ts`      |
+| Discord slash command | `SLASH_COMMANDS` in `discord.server.ts`                       |
+| plugin procedure      | `.meta({ access })`, required when the router registers       |
+| plugin command        | `access` on the command declaration                           |
+
+The procedure and page manifests are keyed by router path and route id, and typed against them, so adding either
+without an entry is a type error.
+
+A declaration is an `RBAC.Access`:
+
+- `none` says there is nothing to check, and why: `public`, `self` (keyed to the caller) or `filtered` (the handler
+  narrows its answer row by row).
+- `req` is checked before the entry point runs, from its input alone.
+- `in-handler` is checked by the entry point itself, because it depends on state it has to load. Its optional
+  `before` is checked up front all the same.
+
+A requirement is an `RBAC.Req`: a tree of `perm`, `view-server`, `timeout`, `settings-write` and the other leaves,
+joined by `any` and `all`. It is data, so the same value is evaluated by the server's middleware, by the client to
+decide whether to offer an action (`RbacClient.useAccess`), and by the unit test that checks every entry refuses a
+user holding nothing. A denial names each unmet leaf.
+
+On the client, a subtree that is hidden or replaced on a denial goes inside `<RequireAccess>`, which mounts it only
+when access is held, so its hooks and queries never run for a user who would be refused. A control that stays
+rendered and is only disabled reads `RbacClient.useAccess` instead. Both take a procedure path, a page, or a
+requirement of their own.
+
+The middleware answers a refused call with the denial as its output, and records a refused mutation as a
+`PERMISSION_DENIED` app event. A refused stream yields the denial and holds, rather than ending, because the client
+resubscribes to a stream that ends. An open stream is re-checked whenever the caller's permissions are invalidated:
+losing access replaces what it sends with the denial, and regaining it ends the stream so the resubscription
+succeeds. The client's type for each checked procedure includes the denial (`PA.ClientRouter`), so every caller has
+to handle it.
+
+A server-side entry point outside oRPC that does what a procedure does on the caller's behalf checks that
+procedure's entry with `Rbac.tryDenyProcedureAccess`, so the two cannot drift.
 
 ## Client-side patterns
 

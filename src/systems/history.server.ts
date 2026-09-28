@@ -17,7 +17,6 @@ import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
@@ -29,7 +28,6 @@ import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as PluginsSys from '@/systems/plugins.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // The history page's server half. A query request is: authorize and resolve on the main thread
@@ -192,9 +190,6 @@ type QueryCtx = C.Db & USR.Ctx.Id & CS.AbortSignal
  * Refuses a user who may not query history (see RBAC `history:query`). Every entry point checks it for itself: the
  * rpc procedures here, the url's raw forms (fastify.server.ts) and the discord listener (history-links.server.ts).
  */
-export function denyUnlessHistoryQuery(ctx: QueryCtx) {
-	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('history:query'))
-}
 type Resolved = Extract<Awaited<ReturnType<typeof resolveForQuery>>, { code: 'ok' }>
 
 // one page of a players result, `page` counted from 0
@@ -270,8 +265,6 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			const denied = await denyUnlessHistoryQuery(ctx)
-			if (denied) return denied
 			const resolved = await resolveForQuery(ctx, input.query)
 			if (resolved.code !== 'ok') return resolved
 			const { node, bounds, unrecognisedLayerMatches } = resolved
@@ -326,8 +319,6 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			const denied = await denyUnlessHistoryQuery(ctx)
-			if (denied) return denied
 			return selectionText(
 				ctx,
 				input.query,
@@ -404,8 +395,6 @@ export const router = {
 	// -------- saved queries --------
 
 	listSaved: orpcBase.handler(async ({ context: ctx }) => {
-		const denied = await denyUnlessHistoryQuery(ctx)
-		if (denied) return denied
 		const rows = await ctx
 			.db()
 			.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
@@ -434,10 +423,9 @@ export const router = {
 	}),
 
 	save: orpcBase
+		.meta({ type: 'mutation' })
 		.input(z.object({ id: HQ.SAVED_QUERY_ID.optional() }).extend(HQ.SavedQueryUpdateSchema.shape))
 		.handler(async ({ input, context: ctx }) => {
-			const denied = await denyUnlessHistoryQuery(ctx)
-			if (denied) return denied
 			if (input.id) {
 				const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
 				if (!existing) return { code: 'err:not-found' as const }
@@ -460,15 +448,16 @@ export const router = {
 			return { code: 'ok' as const, id }
 		}),
 
-	deleteSaved: orpcBase.input(z.object({ id: HQ.SAVED_QUERY_ID })).handler(async ({ input, context: ctx }) => {
-		const denied = await denyUnlessHistoryQuery(ctx)
-		if (denied) return denied
-		const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
-		if (!existing) return { code: 'err:not-found' as const }
-		if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
-		await ctx.db().delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
-		return { code: 'ok' as const }
-	}),
+	deleteSaved: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ id: HQ.SAVED_QUERY_ID }))
+		.handler(async ({ input, context: ctx }) => {
+			const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+			if (!existing) return { code: 'err:not-found' as const }
+			if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
+			await ctx.db().delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+			return { code: 'ok' as const }
+		}),
 }
 
 function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.MatchDetails | undefined {

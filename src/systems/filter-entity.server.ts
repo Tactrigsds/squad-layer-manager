@@ -414,10 +414,6 @@ export const filtersRouter = {
 		.meta({ type: 'mutation' })
 		.input(F.NewFilterEntitySchema)
 		.handler(async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:create'))
-			if (denyRes) {
-				return denyRes
-			}
 			return await createFilter(ctx, { ...input, owner: ctx.user.discordId }, { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 	updateFilter: orpcBase
@@ -427,20 +423,12 @@ export const filtersRouter = {
 			const [id, update] = input
 			// resolved before the transaction, as createFilter and deleteFilter already do: the check reaches discord
 			// over the network to resolve the user's roles, and the tx lock is global
-			const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(id))
-			if (deniedRes) {
-				return deniedRes
-			}
 			return await updateFilter(ctx, id, update, { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 	deleteFilter: orpcBase
 		.meta({ type: 'mutation' })
 		.input(F.FilterEntityIdSchema)
 		.handler(async ({ input: idToDelete, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getWritePermReqForFilterEntity(idToDelete))
-			if (denyRes) {
-				return denyRes
-			}
 			return await deleteFilter(ctx, idToDelete, { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
@@ -455,11 +443,6 @@ export const filtersRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ filterId: F.FilterEntityIdSchema, newOwner: USR.UserIdSchema }))
 		.handler(async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.getManagePermReqForFilterEntity(input.filterId))
-			if (denyRes) {
-				return denyRes
-			}
-
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, input.filterId))
 				if (!rawFilter) {

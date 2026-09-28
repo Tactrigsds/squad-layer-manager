@@ -66,6 +66,9 @@ export namespace Http {
 
 export namespace Orpc {
 	export const PATH = 'slm.orpc.path'
+	// the kind of the procedure's access declaration: none, req or in-handler
+	export const ACCESS = 'slm.orpc.access'
+	export const DENIED = 'slm.orpc.denied'
 }
 
 // Shared by every byte/message counter, so throughput can be summed or split by direction uniformly.

@@ -10,7 +10,6 @@ import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import type * as Tgt from '@/messages/target'
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
@@ -275,7 +274,7 @@ function readFlagChanges(flagIds: string[], reasonsRef: React.MutableRefObject<R
 }
 
 function useManageFlagsAction(playerId: string) {
-	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
+	const denied = RbacClient.useAccess('battlemetrics.updateFlags')
 	const openDialog = useAlertDialog()
 	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(playerId)
 	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
@@ -337,7 +336,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 }
 
 function useAddFlagsAction(playerIds: string[], target: Tgt.Target) {
-	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
+	const denied = RbacClient.useAccess('battlemetrics.addFlags')
 	const openDialog = useAlertDialog()
 	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
 	const mutation = useMutation(RPC.orpc.battlemetrics.addFlags.mutationOptions())

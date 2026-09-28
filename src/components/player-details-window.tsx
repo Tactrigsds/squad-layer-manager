@@ -8,6 +8,7 @@ import { DiscordMemberSelect } from '@/components/discord-picker'
 import EventFilterSelect from '@/components/event-filter-select'
 import HistoryEvents from '@/components/history-events'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
+import { RequireAccess } from '@/components/require-access'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,7 +45,6 @@ import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -121,10 +121,18 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 // engine the history page queries. Everything that acts on a server (warns, menus, live status) needs the
 // framed variant.
 function FramelessPlayerDetails({ playerId }: { playerId: string }) {
-	const { data: info } = useQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId } }))
+	const { data: info } = useQuery(
+		RPC.orpc.history.playerInfo.queryOptions({ input: { playerId }, select: (res) => RPC.selectLoaded(res) }),
+	)
 	const username = info?.code === 'ok' ? info.username : undefined
 	const steamId = info?.code === 'ok' ? (info.steamId ?? undefined) : undefined
-	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	const { data: bmData } = useQuery(
+		RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({
+			input: { playerId },
+			staleTime: Infinity,
+			select: (res) => RPC.selectLoaded(res),
+		}),
+	)
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
@@ -224,7 +232,13 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const preloadHistory = () => {
 		void RPC.queryClient.prefetchInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	}
-	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	const { data: bmData } = useQuery(
+		RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({
+			input: { playerId },
+			staleTime: Infinity,
+			select: (res) => RPC.selectLoaded(res),
+		}),
+	)
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
@@ -588,15 +602,22 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 // The picker searches the home guild alone, so an account outside it cannot be linked -- one SLM cannot resolve
 // carries no name to show and no roles for a grouping rule to read.
 function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
-	const denied = RbacClient.usePermsCheck(RBAC.perm('users:manage-steam-links'))
+	return (
+		<RequireAccess access="users.getSteamAccountLink">
+			<PlayerDiscordLinkEditor steamId={steamId} />
+		</RequireAccess>
+	)
+}
+
+function PlayerDiscordLinkEditor({ steamId }: { steamId: string | undefined }) {
 	const discordEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.discordEnabled)
-	const linkQuery = UsersClient.useSteamAccountLink(denied ? undefined : steamId)
+	const linkQuery = UsersClient.useSteamAccountLink(steamId)
 	const assign = UsersClient.useAssignSteamLinkMutation()
 	const remove = UsersClient.useRemoveSteamLinkMutation()
 	const [picked, setPicked] = React.useState('')
 
 	// a link points at a home-guild member, which is nobody without the guild to resolve them from
-	if (denied || !steamId || !discordEnabled) return null
+	if (!steamId || !discordEnabled) return null
 	const link = linkQuery.data?.code === 'ok' ? linkQuery.data.link : null
 	const pending = assign.isPending || remove.isPending
 
@@ -661,6 +682,7 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 			disabled={refresh.isPending}
 			onClick={async () => {
 				const res = await refresh.mutateAsync({ playerIds: [playerId] })
+				if (res.code === 'err:permission-denied') return RbacClient.handlePermissionDenied(res)
 				if (res.failed.length > 0) toast.error(...tr.toast(BM_Msgs.refreshFailed()))
 			}}
 			className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:pointer-events-none"
@@ -969,7 +991,7 @@ function PlayerTags(props: {
 	groupings: BattlemetricsClient.PlayerGrouping[]
 }) {
 	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
-	const cannotManageFlags = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
+	const cannotManageFlags = RbacClient.useAccess('battlemetrics.updateFlags')
 	const flags = props.flags ?? []
 	const showIngame = !!props.isAdmin || props.adminGroups.length > 0
 	// an empty flag row survives only for someone who can add the first flag to it

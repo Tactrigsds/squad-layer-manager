@@ -444,6 +444,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return `SLM started${e.version ? ` (${e.version})` : ''}`
 		case 'APP_RESTARTED':
 			return 'restarted SLM'
+		case 'PERMISSION_DENIED':
+			return `was refused ${e.procedure}: ${e.failures.join(', ')}`
 		case 'BACKUP_CREATED': {
 			const size = `${(e.sizeBytes / 1024 / 1024).toFixed(1)} MB`
 			const upload = e.uploaded === undefined ? '' : e.uploaded ? ', uploaded offsite' : ', offsite upload FAILED'
