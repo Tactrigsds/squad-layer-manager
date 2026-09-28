@@ -340,8 +340,8 @@ function toDatetimeLocal(value: number | undefined): string {
 	return new Date(value - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
-// Searches names through the trigram index, but any text is a valid value: the engine reads a ref as an eos
-// id, a steam64, or a name substring (resolvePlayerRefs), so a needle nobody picked from the list still runs.
+// Searches by steam, eos or epic id, or by name through the trigram index, but any text is a valid value: the engine
+// reads a ref the same way (resolvePlayerRefs), so a needle nobody picked from the list still runs.
 function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) => void }) {
 	const [needle, setNeedle] = React.useState('')
 	const trimmed = needle.trim()
@@ -369,6 +369,7 @@ function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) =>
 		<ComboBoxMulti
 			title={tr.text(HistoryMsgs.fieldPlayer())}
 			emptyLabel={tr.text(HistoryMsgs.playerSearchPlaceholder())}
+			searchPlaceholder={tr.text(HistoryMsgs.playerSearchHint())}
 			className="w-full"
 			chipDisplay
 			inputValue={needle}

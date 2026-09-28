@@ -645,4 +645,22 @@ describe('the event archive', () => {
 		if (res.code !== 'ok') return
 		expect(res.players.some((p) => p.username?.includes('archive_subject'))).toBe(true)
 	})
+
+	it('searches players by steam and eos id', async () => {
+		const byName = await client.history.searchPlayers({ needle: 'archive_subject' })
+		if (byName.code !== 'ok') throw new Error(byName.code)
+		const subject = byName.players.find((p) => p.username?.includes('archive_subject'))!
+		const info = await client.history.playerInfo({ playerId: subject.eosId })
+		if (info.code !== 'ok') throw new Error(info.code)
+
+		for (const needle of [info.steamId!, subject.eosId, subject.eosId.toUpperCase()]) {
+			const res = await client.history.searchPlayers({ needle })
+			expect(res.code).toBe('ok')
+			if (res.code !== 'ok') return
+			expect(
+				res.players.map((p) => p.eosId),
+				needle,
+			).toEqual([subject.eosId])
+		}
+	})
 })

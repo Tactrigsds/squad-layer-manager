@@ -46,6 +46,7 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	// trigger text when nothing is selected. Defaults to a prompt, but callers where an empty selection
 	// is itself meaningful (a matchup dimension left unconstrained) can say what it means instead
 	emptyLabel?: string
+	searchPlaceholder?: string
 	selectionLimit?: number
 	disabled?: boolean
 	sort?: boolean
@@ -386,7 +387,11 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								)}
 							>
 								<div className="shrink-0 border-b">
-									<CommandInput value={inputValue} onValueChange={onInputChange} placeholder={tr.text(UI_Msgs.searchOptions())} />
+									<CommandInput
+										value={inputValue}
+										onValueChange={onInputChange}
+										placeholder={props.searchPlaceholder ?? tr.text(UI_Msgs.searchOptions())}
+									/>
 								</div>
 								{drillEntry ? (
 									<GroupDrillInHeader grouping={drillEntry.grouping} onBack={closeDrill} />
