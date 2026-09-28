@@ -126,7 +126,7 @@ describe('describeArgs', () => {
 	it('prepends the per-arg note to its kind description', () => {
 		const [flagArg] = argsOf('listFlags', configs.listFlags, seeds)
 		expect(flagArg.description).toContain('Lists every flag in the organization when omitted.')
-		expect(flagArg.description).toContain(I18n.ambient.text(CMDH.ARG_KIND_HELP.player.description))
+		expect(flagArg.description).toContain(I18n.ambient.text(CMDH.ARG_KIND_HELP['recent-player'].description))
 	})
 
 	it('keeps an argument described as typed while any trigger takes it', () => {

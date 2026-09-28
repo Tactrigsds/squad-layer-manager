@@ -473,7 +473,7 @@ function resolveSquadArg(
 
 // The players a mistyped token might have meant: the ones it actually matched when it matched too many, the closest
 // usernames when it matched none. Picked back as a player id, which resolves to exactly one player.
-function playerChoices(players: SM.Player[], typed: string, cause: CMD.NearMiss['cause']): CMD.ArgChoice[] {
+function playerChoices(players: SM.RecentPlayer[], typed: string, cause: CMD.NearMiss['cause']): CMD.ArgChoice[] {
 	const named = players.filter((p) => p.ids.username)
 	const picked =
 		cause === 'ambiguous'
@@ -525,7 +525,7 @@ async function resolveArgDefs(
 > {
 	let teamsState: TeamsState | undefined
 	let currentMatch: MH.MatchDetails | undefined
-	if (defs.some((d) => d.kind === 'player' || d.kind === 'squad')) {
+	if (defs.some((d) => d.kind === 'player' || d.kind === 'recent-player' || d.kind === 'squad')) {
 		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
 		teamsState = teamsRes
@@ -574,8 +574,15 @@ async function resolveArgDefs(
 			case 'text':
 				out[def.name] = window.join(' ')
 				break
-			case 'player': {
-				const res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsState!.players, (p) => p.ids, window[0])
+			case 'player':
+			case 'recent-player': {
+				let pool: SM.RecentPlayer[] = teamsState!.players
+				let res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(pool, (p) => p.ids, window[0])
+				// the live roster is tried first so a token that named an online player keeps naming them
+				if (def.kind === 'recent-player' && res.code === 'err:not-found') {
+					pool = [...ctx.server.chatState.interpolatedState.recentPlayers.values()]
+					res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(pool, (p) => p.ids, window[0])
+				}
 				if (res.code !== 'ok') {
 					const cause = res.code === 'err:not-found' ? ('no-match' as const) : ('ambiguous' as const)
 					const hard = collect(def, {
@@ -586,7 +593,7 @@ async function resolveArgDefs(
 								: `${res.count} players match "${window[0]}"`,
 						typed: window[0],
 						cause,
-						choices: playerChoices(teamsState!.players, window[0], cause),
+						choices: playerChoices(pool, window[0], cause),
 					})
 					if (hard) return hard
 					break
@@ -1439,7 +1446,7 @@ async function executeKick(
 // shared by the timeout commands and the fixed-duration timeout aliases
 async function executeTimeout(
 	h: HandlerCtx,
-	targets: SM.Player[],
+	targets: SM.RecentPlayer[],
 	durationMs: number,
 	resolvedReason: CMD.ResolvedReasonArg | undefined,
 	subjectLabel: string,

@@ -252,6 +252,40 @@ describe('in-game timeout duration cap', () => {
 	})
 })
 
+describe('timing out a player who has left', () => {
+	it('times them out, and kicks them when they come back', async () => {
+		const departed = app.emu.world.connectPlayer(makePlayer({ name: ' target_departed', teamId: 2 }))
+		await app.waitForRosterSync()
+		app.emu.world.disconnectPlayer(departed)
+		await app.waitForRosterSync()
+
+		app.emu.world.chat(superAdmin, 'ChatAdmin', cmd('timeout target_departed 1h'))
+		await app.waitFor(() => warnsTo(superAdmin).some((w) => w.includes('Timed out target_departed')), {
+			label: 'the timeout confirmation for the departed player',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.connectPlayer(departed)
+		await app.emu.expectCommand(new RegExp(`^AdminKick "${departed.eos}"`), { timeoutMs: 20_000 })
+	})
+
+	it('times them out from the web', async () => {
+		const departed = app.emu.world.connectPlayer(makePlayer({ name: ' target_departed_web', teamId: 2 }))
+		await app.waitForRosterSync()
+		app.emu.world.disconnectPlayer(departed)
+		await app.waitForRosterSync()
+
+		const client = await createOrpcClient(app)
+		const res = await client.timeouts.timeoutPlayer({ serverId: app.serverId, playerId: departed.eos, durationMs: HOUR })
+		expect(res.code).toBe('ok')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.connectPlayer(departed)
+		await app.emu.expectCommand(new RegExp(`^AdminKick "${departed.eos}"`), { timeoutMs: 20_000 })
+	})
+})
+
 describe('role assignment via in-game admin status', () => {
 	// the ingame-timeouter role reaches this admin only through includeIngameAdmins (their linked account has no other
 	// role), so being able to issue a timeout proves the admin-list-derived assignment actually grants its permissions

@@ -29,6 +29,12 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one player, so use enough of it to be unambiguous.',
 		),
 	},
+	'recent-player': {
+		syntax: 'name | id',
+		description: t(
+			'A player who is online or has played on the server this match, by ID (Steam, EOS or Epic) or by a piece of their username. Online players are matched first. The username has to match exactly one player, so use enough of it to be unambiguous.',
+		),
+	},
 	team: {
 		syntax: '1 | 2 | A | B | faction',
 		description: t(
@@ -220,6 +226,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 		case 'duration':
 			return { token: '2h' }
 		case 'player':
+		case 'recent-player':
 			return { token: 'Alice' }
 		case 'team':
 			return { token: '2', alt: { token: 'CAF', note: t('Naming the team by its faction') } }
