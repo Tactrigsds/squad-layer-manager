@@ -147,6 +147,21 @@ export function selectedRows(host: Element, selection: RC.RowSelection | undefin
 	return Array.from(host.children).slice(range[0], range[1] + 1)
 }
 
+/** The earliest and latest timestamps drawn in `rows`, folded-in events included. */
+export function timeSpanOf(rows: readonly Element[]): { min: number; max: number } | undefined {
+	let min = Infinity
+	let max = -Infinity
+	for (const row of rows) {
+		for (const element of row.querySelectorAll(`[${RC.TIP_TIME_ATTR}]`)) {
+			const time = Number(element.getAttribute(RC.TIP_TIME_ATTR))
+			if (!Number.isFinite(time)) continue
+			if (time < min) min = time
+			if (time > max) max = time
+		}
+	}
+	return min <= max ? { min, max } : undefined
+}
+
 export function paint(host: Element, selection: RC.RowSelection | undefined = scopeSelection(host)) {
 	const range = selection && bounds(host, selection)
 	if (!range) {

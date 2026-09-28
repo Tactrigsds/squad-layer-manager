@@ -404,6 +404,23 @@ export const DEFAULT_QUERY: Query = QuerySchema.parse({})
 export const RowSelectionParamSchema = z.tuple([z.coerce.string(), z.coerce.string()])
 export type RowSelectionParam = z.infer<typeof RowSelectionParamSchema>
 
+/**
+ * `query` bounded at the selection's end that the results start from, so the selection opens on the first page
+ * however many events match afterwards: `to` at its latest time when newest first, `from` at its earliest when
+ * oldest first. A bound the query already has is kept where it is tighter.
+ */
+export function boundToSelection(query: Query, span: { min: number; max: number }): Query {
+	const order = query.order ?? 'newest'
+	switch (order) {
+		case 'newest':
+			return { ...query, to: query.to === undefined ? span.max : Math.min(query.to, span.max) }
+		case 'oldest':
+			return { ...query, from: query.from === undefined ? span.min : Math.max(query.from, span.min) }
+		default:
+			assertNever(order)
+	}
+}
+
 // A position in the merged event order, where a page of events starts; exactly one id is set, per the family the
 // cursor sits in. A url only carries one for a page asked for as text: the page itself loads more in place.
 export const EventCursorSchema = z.object({

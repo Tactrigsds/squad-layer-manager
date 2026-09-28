@@ -3,6 +3,7 @@ import * as TSR from '@tanstack/react-router'
 import React from 'react'
 
 import type * as RC from '@/components/feed/render-context'
+import * as Selection from '@/components/feed/selection'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -36,6 +37,8 @@ export type RowsLinkTarget = {
  * A render ctx's `linkToRows`, for a feed that can name its rows as a history query, or none for a user who may not
  * open the history page. `target` is read when a link is asked for rather than closed over, so it may read anything
  * current without costing the feed a new ctx, which would rebuild its rows.
+ *
+ * The link is bounded in time at the selected rows (see HQ.boundToSelection), read off their drawn timestamps.
  */
 export function useRowsLink(
 	target: (selection: RC.RowSelection, rows: Element[], group: string | undefined) => RowsLinkTarget | undefined,
@@ -47,7 +50,9 @@ export function useRowsLink(
 		const res = targetRef.current(selection, rows, group)
 		if (!res) return undefined
 		const ends = res.ends ?? selection
-		return { url: historyUrl({ ...res.query, sel: [ends.anchor, ends.head] }), caveat: res.caveat }
+		const span = Selection.timeSpanOf(rows)
+		const query = span ? HQ.boundToSelection(res.query, span) : res.query
+		return { url: historyUrl({ ...query, sel: [ends.anchor, ends.head] }), caveat: res.caveat }
 	}, [])
 	return denied ? undefined : link
 }
