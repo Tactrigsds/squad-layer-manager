@@ -929,6 +929,32 @@ describe('PendingEvents', () => {
 
 			expect(events[0]).toMatchObject({ type: 'SQUAD_CREATED', squad: expect.objectContaining({ teamId: 2 }) })
 		})
+
+		it('a poll requested before the squad was created does not disband it', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+
+			PendingEvents.onRconEvent(state, {
+				type: 'SQUAD_CREATED',
+				time: 200,
+				squadId: 1,
+				squadName: 'Alpha',
+				teamName: 'Russian Ground Forces',
+				creatorIds: { eos: 'eos-001', playerController: 'ctrl_eos-001', username: 'eos-001' },
+			})
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)], []), 201, 199)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(202))
+			expect((await collect(state)).map((e) => e.type)).toEqual(['SQUAD_CREATED'])
+			const [squad] = state.currTeams!.squads.values()
+
+			const withSquad = makeTeams([makePlayer('eos-001', 1, { squadId: 1, isLeader: true })], [squad])
+			PendingEvents.onTeamsPolled(state, withSquad, 300)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			expect(await collect(state)).toEqual([])
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)], []), 400)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(401))
+			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_LEFT_SQUAD', 'SQUAD_DISBANDED']))
+		})
 	})
 
 	describe('SQUAD_RENAMED (rcon)', () => {
