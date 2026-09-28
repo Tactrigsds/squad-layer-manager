@@ -124,6 +124,8 @@ export type ArgDef =
 	| (ArgCommon & { kind: 'duration'; optional?: true })
 	// single token, resolved to a unique player by id or username substring
 	| (ArgCommon & { kind: 'player'; optional?: true })
+	// single token, like `player`, but falls back to anyone who has taken part in the current match
+	| (ArgCommon & { kind: 'recent-player'; optional?: true })
 	// single token naming a team: 1|2|A|B|faction of the current layer
 	| (ArgCommon & { kind: 'team'; optional?: true })
 	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
@@ -382,7 +384,7 @@ export const COMMAND_DECLARATIONS = {
 		section: 'flags',
 		permission: 'battlemetrics:write-flags',
 		args: [
-			{ kind: 'player', name: 'player' },
+			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag in your organization.') },
 			{
 				kind: 'text',
@@ -397,7 +399,7 @@ export const COMMAND_DECLARATIONS = {
 		section: 'flags',
 		permission: 'battlemetrics:write-flags',
 		args: [
-			{ kind: 'player', name: 'player' },
+			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag currently on the player.') },
 			{ kind: 'text', name: 'reason', optional: true, describe: t("Posted as a note on the player's BM profile.") },
 		],
@@ -406,7 +408,7 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('listFlags', {
 		section: 'flags',
 		permission: null,
-		args: [{ kind: 'player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
+		args: [{ kind: 'recent-player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('pingAdmins', {
@@ -512,7 +514,7 @@ export const COMMAND_DECLARATIONS = {
 		section: 'moderation',
 		permission: null,
 		args: [
-			{ kind: 'player', name: 'player' },
+			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 		],
@@ -833,17 +835,19 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 			? number
 			: D extends { kind: 'player' }
 				? SM.Player
-				: D extends { kind: 'team' }
-					? SM.TeamId
-					: D extends { kind: 'squad' }
-						? ResolvedSquadArg
-						: D extends { kind: 'text' }
-							? string
-							: D extends { kind: 'reason' }
-								? ResolvedReasonArg
-								: D extends { kind: 'preset-reason' }
-									? AAR.AdminActionReason
-									: never
+				: D extends { kind: 'recent-player' }
+					? SM.RecentPlayer
+					: D extends { kind: 'team' }
+						? SM.TeamId
+						: D extends { kind: 'squad' }
+							? ResolvedSquadArg
+							: D extends { kind: 'text' }
+								? string
+								: D extends { kind: 'reason' }
+									? ResolvedReasonArg
+									: D extends { kind: 'preset-reason' }
+										? AAR.AdminActionReason
+										: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
@@ -926,6 +930,7 @@ export function assignArgTokens(
 			case 'int':
 			case 'duration':
 			case 'player':
+			case 'recent-player':
 			case 'team':
 			case 'preset-reason': {
 				if (rem.length === 0) {

@@ -423,7 +423,10 @@ function FramedPlayerMenuItems({
 		},
 	)
 
-	const msgTarget: Tgt.Target = { kind: 'player', username: playerInfo?.username }
+	// timeouts outlive the connection, so a player who left mid-match can still be timed out
+	const recentPlayer = Zus.useStore(stores.squadServer, ChatPrt.Sel.recentPlayer(playerId))
+
+	const msgTarget: Tgt.Target = { kind: 'player', username: playerInfo?.username ?? recentPlayer?.ids.username }
 
 	const existingSwap = Zus.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
 
@@ -862,7 +865,7 @@ function FramedPlayerMenuItems({
 						</Item>
 					</PermissionDeniedTooltip>
 				),
-				isOnServer && (
+				(isOnServer || recentPlayer) && (
 					<PermissionDeniedTooltip key="timeout" denied={timeoutDenied}>
 						<Item className={DESTRUCTIVE_ITEM} onClick={timeout} disabled={!!timeoutDenied}>
 							{tr.text(SM_Msgs.timeoutLabel())}

@@ -11,6 +11,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
+import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import type * as MH from '@/models/match-history.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -106,7 +107,7 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 // unrendered template + vars (with the ORIGINAL duration); enforcement re-renders with the remaining one.
 export async function kickWithTimeout(
 	ctx: C.Db & C.ManagedServer & CS.AbortSignal,
-	opts: { target: SM.Player; durationMs: number; actor: AppEvents.Actor; reason?: AAR.AppliedReason },
+	opts: { target: SM.RecentPlayer; durationMs: number; actor: AppEvents.Actor; reason?: AAR.AppliedReason },
 ): Promise<{ code: 'ok'; timeoutId: string } | { code: 'err:already-timed-out'; msg: string }> {
 	const targetId = SM.PlayerIds.getPlayerId(opts.target.ids)
 	// stacking timeouts on one player is almost always a mistake (two admins reacting to the same incident);
@@ -272,8 +273,10 @@ export const router = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			const teamsRes = await ctx.squadRcon.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes
-			const target = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, input.playerId)
-			if (!target) return { code: 'err:player-not-found' as const, msg: 'Player is not on the server' }
+			const target =
+				SM.PlayerIds.find(teamsRes.players, (p) => p.ids, input.playerId) ??
+				CHAT.InterpolableState.findRecentPlayer(ctx.server.chatState.interpolatedState, { eos: input.playerId })
+			if (!target) return { code: 'err:player-not-found' as const, msg: 'Player has not been on the server this match' }
 			return await kickWithTimeout(ctx, {
 				target,
 				durationMs: input.durationMs,
