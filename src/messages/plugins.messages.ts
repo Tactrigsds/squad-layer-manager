@@ -22,13 +22,7 @@ export const enableLabel = def('{name} enabled', (name: string) => ({ name }))
 
 export const configEditorModeLabel = def('{name} configuration editor', (name: string) => ({ name }))
 
-export const saveConfig = def('Save')
-
-export const discardConfig = def('Discard')
-
 export const configSaved = def('{name} configuration saved', (name: string) => ({ name }))
-
-export const configInvalid = def('The configuration is not valid.')
 
 export const actionFailed = def('The request failed. Check the server logs.')
 
@@ -90,6 +84,8 @@ export const sourceLabels = {
 
 // The trigger, not the count: the string that was taken and what took it is the whole of what an admin acts on.
 export const commandTriggerTaken = def(
-	'The trigger "{trigger}" is already used by {owner}, so it does nothing here. Set a different one under pluginCommands in global settings.',
+	'The trigger "{trigger}" is already used by {owner}, so it does nothing here. Set a different one in this plugin\'s commands.',
 	(trigger: string, owner: string) => ({ trigger, owner }),
 )
+
+export const commandsTitle = def('Commands')

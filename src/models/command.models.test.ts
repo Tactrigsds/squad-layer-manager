@@ -576,7 +576,7 @@ describe('resolvePluginCommandTriggers', () => {
 		expect(conflicts).toEqual([{ commandId: 'plugin:b:roll', trigger: '/rolltoseed', ownedBy: 'plugin:a:roll' }])
 	})
 
-	// what makes editing pluginCommands a fix rather than a race against load order
+	// what makes configuring a plugin's commands a fix rather than a race against load order
 	it('lets a configured trigger beat another plugin declared default, whatever the order', () => {
 		const { kept, conflicts } = CMD.resolvePluginCommandTriggers(core, [
 			listing('plugin:a:roll', ['/rolltoseed']),

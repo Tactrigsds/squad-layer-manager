@@ -62,15 +62,12 @@ let loggedConflicts = ''
 // settled against core and against each other. A command whose triggers were all taken is gone from here: it
 // cannot be typed, so it must not be listed either.
 function pluginCommandListings(): CMDH.PluginCommandListing[] {
-	const declared = Plugins.commandDeclarations().map(({ id, decl }) => {
-		const stored = Settings.GLOBAL_SETTINGS.pluginCommands[id]
-		return {
-			id,
-			decl,
-			config: CMD.pluginCommandConfig(decl, stored, Settings.GLOBAL_SETTINGS.defaultPrefix),
-			configured: stored !== undefined,
-		}
-	})
+	const declared = Plugins.commandDeclarations().map(({ id, decl, stored }) => ({
+		id,
+		decl,
+		config: CMD.pluginCommandConfig(decl, stored, Settings.GLOBAL_SETTINGS.defaultPrefix),
+		configured: stored !== undefined,
+	}))
 	const { kept, conflicts } = CMD.resolvePluginCommandTriggers(Settings.GLOBAL_SETTINGS.commands, declared)
 	const signature = conflicts
 		.map((c) => `${c.commandId} ${c.trigger} ${c.ownedBy}`)
@@ -80,7 +77,7 @@ function pluginCommandListings(): CMDH.PluginCommandListing[] {
 		loggedConflicts = signature
 		for (const conflict of conflicts) {
 			log.warn(
-				'plugin command %s cannot use the trigger %s: %s already has it. Retune it under pluginCommands in global settings.',
+				"plugin command %s cannot use the trigger %s: %s already has it. Retune it under the plugin's commands in settings.",
 				conflict.commandId,
 				conflict.trigger,
 				conflict.ownedBy,

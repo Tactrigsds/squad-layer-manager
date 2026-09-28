@@ -189,17 +189,13 @@ function CommandDetails({
 }
 
 // A plugin command has no declared arguments to explain and no seeded settings entry to link to, so what is left
-// worth saying is which plugin owns it and the id an admin needs to configure it under `pluginCommands`.
-function PluginCommandDetails({ cmdId, plugin }: { cmdId: string; plugin: NonNullable<Entry['plugin']> }) {
+// worth saying is which plugin owns it.
+function PluginCommandDetails({ plugin }: { plugin: NonNullable<Entry['plugin']> }) {
 	return (
 		<dl className="space-y-2 border-l-2 pl-3 ml-1 text-sm">
 			<div>
 				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginOwner())}</dt>
 				<dd>{plugin.pluginName}</dd>
-			</div>
-			<div>
-				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginSettingsKey())}</dt>
-				<dd className="font-mono text-xs wrap-anywhere">{cmdId}</dd>
 			</div>
 		</dl>
 	)
@@ -259,7 +255,7 @@ function CommandEntry({
 			</p>
 			<CollapsibleContent>
 				{entry.plugin ? (
-					<PluginCommandDetails cmdId={cmdId} plugin={entry.plugin} />
+					<PluginCommandDetails plugin={entry.plugin} />
 				) : (
 					<CommandDetails cmdId={cmdId as CMD.CommandId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
 				)}
@@ -517,7 +513,7 @@ function pluginEntryInputs(settings: PublicSettings, plugins: PLG.RuntimeInfo[])
 	const declared = plugins.flatMap((info) =>
 		info.commands.map((decl): PluginEntryInput => {
 			const id = CMD.pluginCommandId(info.id, decl.name)
-			const stored = settings.pluginCommands[id]
+			const stored = info.commandConfigs[decl.name]
 			return {
 				id,
 				pluginName: info.name,

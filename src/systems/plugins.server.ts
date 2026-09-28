@@ -34,6 +34,7 @@ import * as FilterEntity from '@/systems/filter-entity.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as Pkgs from '@/systems/plugin-packages.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 // The plugin host: loads the installed plugins, runs their migrations, activates/deactivates them,
@@ -132,6 +133,8 @@ type Runtime = {
 	permissions: Map<string, PLG.PermissionInfo>
 	// in-game commands the plugin contributes, by declared name
 	commands: Map<string, PluginCommand>
+	// admin overrides for those commands, by name. Kept while the plugin is stopped, like its config
+	commandConfigs: CMD.PluginCommandConfigs
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
 }
@@ -215,15 +218,23 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 	const id = entry.manifest.id
 	if (plugins.has(id)) throw new Error(`duplicate plugin id: ${id}`)
 	const [raw] = await ctx.db().select().from(Schema.plugins).where(eq(Schema.plugins.id, id))
-	let row = raw ? (unsuperjsonify(Schema.plugins, raw) as { id: string; enabled: boolean; config: Record<string, unknown> }) : undefined
+	type Row = { id: string; enabled: boolean; config: Record<string, unknown>; commands: unknown }
+	let row = raw ? (unsuperjsonify(Schema.plugins, raw) as Row) : undefined
 	if (!row) {
-		row = { id, enabled: false, config: {} }
+		row = { id, enabled: false, config: {}, commands: {} }
 		await ctx
 			.db()
 			.insert(Schema.plugins)
-			.values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
+			.values(superjsonify(Schema.plugins, { id, enabled: false, config: {}, commands: {} }))
 	}
 	const mod = pluginModule(entry)
+	const commandConfigs = CMD.PluginCommandConfigsSchema.safeParse(row.commands ?? {})
+	if (!commandConfigs.success) {
+		mod.getLogger().warn(
+			'stored command overrides do not parse; running every command as declared:\n%s',
+			z.prettifyError(commandConfigs.error),
+		)
+	}
 	const rt: Runtime = {
 		entry,
 		ref: { id, manifest: entry.manifest },
@@ -240,6 +251,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		instances: new Map(),
 		permissions: new Map(),
 		commands: new Map(),
+		commandConfigs: commandConfigs.success ? commandConfigs.data : {},
 		router: null,
 	}
 	plugins.set(id, rt)
@@ -550,8 +562,13 @@ export type PluginCommandHandler = (ctx: ServerCtx<any>, input: PluginCommandInp
 
 export type PluginCommand = CMD.PluginCommandDeclaration & { handler: PluginCommandHandler }
 
-/** A plugin's command, as the dispatcher needs it: the declaration plus which plugin owns it. */
-export type RegisteredCommand = { id: string; pluginId: string; decl: CMD.PluginCommandDeclaration }
+/** A plugin's command, as the dispatcher needs it: the declaration, which plugin owns it, and the admin's override. */
+export type RegisteredCommand = {
+	id: string
+	pluginId: string
+	decl: CMD.PluginCommandDeclaration
+	stored: CMD.PluginCommandConfig | undefined
+}
 
 /**
  * Contributes an in-game command. The host owns matching, the chat and enabled gates and the permission check, so
@@ -571,7 +588,12 @@ export function commandDeclarations(): RegisteredCommand[] {
 	for (const rt of plugins.values()) {
 		if (rt.status !== 'active') continue
 		for (const command of rt.commands.values()) {
-			out.push({ id: CMD.pluginCommandId(rt.ref.id, command.name), pluginId: rt.ref.id, decl: command })
+			out.push({
+				id: CMD.pluginCommandId(rt.ref.id, command.name),
+				pluginId: rt.ref.id,
+				decl: command,
+				stored: rt.commandConfigs[command.name],
+			})
 		}
 	}
 	return out
@@ -705,13 +727,23 @@ function assertDdlWithinPrefix(driver: ReturnType<typeof DB.rawDriver>, before: 
 	}
 }
 
+/** Every other plugin's command overrides, keyed by dispatch id, stopped plugins included. */
+function otherCommandConfigs(pluginId: string): Record<string, CMD.PluginCommandConfig> {
+	const out: Record<string, CMD.PluginCommandConfig> = {}
+	for (const rt of plugins.values()) {
+		if (rt.ref.id === pluginId) continue
+		for (const [name, config] of Object.entries(rt.commandConfigs)) out[CMD.pluginCommandId(rt.ref.id, name)] = config
+	}
+	return out
+}
+
 // ---- persistence ----
 
 async function persistRow(ctx: C.Db, rt: Runtime) {
 	await ctx
 		.db()
 		.update(Schema.plugins)
-		.set(superjsonify(Schema.plugins, { enabled: rt.enabled, config: rt.configInput }))
+		.set(superjsonify(Schema.plugins, { enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
 		.where(eq(Schema.plugins.id, rt.ref.id))
 }
 
@@ -729,6 +761,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		error: rt.error,
 		hasClient: rt.entry.hasClient,
 		commands: rt.status === 'active' ? [...rt.commands.values()].map(({ handler: _handler, ...decl }) => decl) : [],
+		commandConfigs: rt.commandConfigs,
 		permissions: rt.status === 'active' ? [...rt.permissions.values()] : [],
 		source: rt.entry.source,
 		sourceUrl: rt.entry.sourceUrl,
@@ -746,6 +779,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		error: pkg.error,
 		hasClient: false,
 		commands: [],
+		commandConfigs: {},
 		permissions: [],
 		source: pkg.source,
 		sourceUrl: pkg.sourceUrl,
@@ -836,12 +870,12 @@ export const router = {
 		yield* Rx.Ext.toAsyncGenerator(obs)
 	}),
 
-	getConfig: orpcBase.input(z.object({ pluginId: z.string() })).handler(async ({ context: ctx, input }) => {
+	getSettings: orpcBase.input(z.object({ pluginId: z.string() })).handler(async ({ context: ctx, input }) => {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
 		if (denyRes) return denyRes
 		const rt = plugins.get(input.pluginId)
 		if (!rt) return { code: 'err:unknown-plugin' as const }
-		return { code: 'ok' as const, config: rt.configInput }
+		return { code: 'ok' as const, config: rt.configInput, commands: rt.commandConfigs }
 	}),
 
 	setEnabled: orpcBase
@@ -865,19 +899,38 @@ export const router = {
 			})
 		}),
 
-	updateConfig: orpcBase
+	// A plugin's config and command overrides, as the settings page saves them. Either may be left out to keep what
+	// is stored. Both are validated before either is written, so a save never lands half of an edit.
+	updateSettings: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string(), config: z.record(z.string(), z.unknown()) }))
+		.input(
+			z.object({
+				pluginId: z.string(),
+				config: z.record(z.string(), z.unknown()).optional(),
+				commands: CMD.PluginCommandConfigsSchema.optional(),
+			}),
+		)
 		.handler(async ({ context: ctx, input }) => {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
 			if (denyRes) return denyRes
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
-			const parsed = rt.entry.manifest.configSchema.safeParse(input.config)
-			if (!parsed.success) return { code: 'err:invalid-config' as const, message: z.prettifyError(parsed.error) }
-			rt.configInput = input.config
-			// active plugins read config through getConfig on every use, so this takes effect immediately
-			if (rt.status === 'active' || rt.status === 'activating') rt.config = parsed.data
+			const parsed = input.config && rt.entry.manifest.configSchema.safeParse(input.config)
+			if (parsed && !parsed.success) return { code: 'err:invalid-config' as const, message: z.prettifyError(parsed.error) }
+			if (input.commands) {
+				const issues = CMD.pluginCommandConfigIssues(rt.ref.id, input.commands, {
+					core: Settings.GLOBAL_SETTINGS.commands,
+					allowedPrefixes: Settings.GLOBAL_SETTINGS.allowedPrefixes,
+					others: otherCommandConfigs(rt.ref.id),
+				})
+				if (issues.length > 0) return { code: 'err:invalid-config' as const, message: issues.map((i) => i.message).join('\n') }
+				rt.commandConfigs = input.commands
+			}
+			if (input.config && parsed) {
+				rt.configInput = input.config
+				// active plugins read config through getConfig on every use, so this takes effect immediately
+				if (rt.status === 'active' || rt.status === 'activating') rt.config = parsed.data
+			}
 			await persistRow(ctx, rt)
 			update$.next(rt.ref.id)
 			return { code: 'ok' as const }

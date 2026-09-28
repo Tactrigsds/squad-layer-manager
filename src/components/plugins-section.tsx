@@ -1,23 +1,27 @@
-import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { toast } from 'sonner'
 
+import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
 import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
-import SettingsForm from '@/components/settings-form'
+import SettingsForm, { HelpTip } from '@/components/settings-form'
+import { SettingsChangeList } from '@/components/settings-save-panel'
+import { YamlEditorToolbar } from '@/components/settings-yaml-toolbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import * as Obj from '@/lib/object-utils'
-import * as Rx from '@/lib/rxjs'
+import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { cn } from '@/lib/utils'
 import type { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
+import * as CMD_Msgs from '@/messages/command.messages'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as CMD from '@/models/command.models'
@@ -27,9 +31,8 @@ import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-// The plugins area of the settings page. Deliberately self-contained: enable/disable applies
-// immediately (it starts/stops the plugin), and each plugin's config has its own save/discard,
-// outside the settings page's draft machinery.
+// The plugins area of the settings page. Enable/disable applies immediately (it starts/stops the plugin).
+// Each plugin's config and command overrides are a settings-editor section, saved with the rest of the page.
 //
 // Installing writes into SLM's plugins folder and runs that copy, so a plugin keeps working when its
 // source url does not. Refresh is the only thing that fetches again.
@@ -50,8 +53,9 @@ const STATUS_VARIANT = {
 	errored: 'destructive',
 } as const
 
-export function PluginsSection(props: { canManage: boolean }) {
+export function PluginsSection(props: { canManage: boolean; sectionKeys: SettingsEditorFrame.Key[] }) {
 	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const keyFor = (pluginId: string) => props.sectionKeys.find((k) => k.kind === 'plugin' && k.pluginId === pluginId)
 	return (
 		<Card>
 			<CardHeader>
@@ -61,7 +65,7 @@ export function PluginsSection(props: { canManage: boolean }) {
 			<CardContent className="space-y-4">
 				{plugins.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(PLUGINS_Msgs.noPlugins())}</p>}
 				{plugins.map((info) => (
-					<PluginRow key={info.id} info={info} canManage={props.canManage} />
+					<PluginRow key={info.id} info={info} canManage={props.canManage} settingsKey={keyFor(info.id)} />
 				))}
 				{props.canManage && <InstallPanel />}
 				{props.canManage && <LeftoverDataPanel />}
@@ -184,7 +188,7 @@ function useCommandConflicts(info: PLG.RuntimeInfo): CMD.CommandConflict[] {
 		const declared = plugins.flatMap((p) =>
 			p.commands.map((decl) => {
 				const id = CMD.pluginCommandId(p.id, decl.name)
-				const stored = settings.pluginCommands[id]
+				const stored = p.commandConfigs[decl.name]
 				return { id, config: CMD.pluginCommandConfig(decl, stored, settings.defaultPrefix), configured: stored !== undefined }
 			}),
 		)
@@ -194,7 +198,15 @@ function useCommandConflicts(info: PLG.RuntimeInfo): CMD.CommandConflict[] {
 	}, [settings, plugins, info.id])
 }
 
-function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: boolean }) {
+function PluginRow({
+	info,
+	canManage,
+	settingsKey,
+}: {
+	info: PLG.RuntimeInfo
+	canManage: boolean
+	settingsKey: SettingsEditorFrame.Key | undefined
+}) {
 	const [toggling, setToggling] = React.useState(false)
 	const manifest = Zus.useStore(PluginsClient.Store, (s) => s.manifests[info.id])
 
@@ -283,145 +295,299 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 					</Button>
 				</div>
 			)}
-			{canManage && manifest && <PluginConfigEditor pluginId={info.id} manifest={manifest} />}
+			{canManage && manifest && settingsKey && (
+				<PluginSettingsEditor stores={{ settingsEditor: settingsKey }} info={info} manifest={manifest} />
+			)}
 		</div>
 	)
 }
 
-function PluginConfigEditor({ pluginId, manifest }: { pluginId: string; manifest: PLG.Manifest }) {
-	const { data, refetch } = useQuery(RPC.orpc.plugins.getConfig.queryOptions({ input: { pluginId } }))
-	if (!data || !('code' in data) || data.code !== 'ok') return null
-	return (
-		<PluginConfigForm key={JSON.stringify(data.config)} pluginId={pluginId} manifest={manifest} saved={data.config} refetch={refetch} />
-	)
-}
-
-function PluginConfigForm(props: { pluginId: string; manifest: PLG.Manifest; saved: unknown; refetch: () => unknown }) {
-	const [value$] = React.useState(() => new Rx.BehaviorSubject<any>(Obj.deepClone(props.saved)))
-	const [reset$] = React.useState(() => new Rx.Subject<void>())
-	const [dirty, setDirty] = React.useState(false)
-	const [issues, setIssues] = React.useState<readonly z.core.$ZodIssue[] | undefined>()
-	const [saving, setSaving] = React.useState(false)
-	const mode = Zus.useStore(PluginsClient.ConfigEditorModeStore, (s) => s[props.pluginId] ?? 'gui')
-	// the editor re-syncs its contents whenever this changes by value, so it holds the draft as of the last
-	// deliberate reseed (entering yaml, discarding) rather than every keystroke
-	const [yamlSeed, setYamlSeed] = React.useState<any>(() => Obj.deepClone(props.saved))
-	const [yamlValid, setYamlValid] = React.useState(true)
+// The plugin's config and command overrides, as one settings-editor section. The GUI edits go through the settings
+// page's shared save panel; YAML mode edits both as one document and saves from its own toolbar, like every section.
+function PluginSettingsEditor({
+	stores,
+	info,
+	manifest,
+}: {
+	stores: SettingsEditorFrame.KeyProp
+	info: PLG.RuntimeInfo
+	manifest: PLG.Manifest
+}) {
+	const key = stores.settingsEditor
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const { mode, draft, saved, issues, changes, valid, saving } = state
 	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
+	const openDialog = useAlertDialog()
+	const [configValue$] = React.useState(() => SettingsEditorFrame.draftValueState(key, 'config'))
 
-	function onChange(next: any) {
-		value$.next(next)
-		setDirty(!Obj.deepEqual(next, props.saved))
-		const res = props.manifest.configSchema.safeParse(next)
-		setIssues(res.success ? undefined : res.error.issues)
+	if (saved === undefined || draft === undefined) return null
+	const current = draft as SettingsEditorFrame.PluginDraft
+
+	// the form renders the config on its own, so it is handed the issues that fall inside it, relative to it
+	const configIssues = issues.filter((i) => i.path[0] === 'config').map((i) => ({ ...i, path: i.path.slice(1) }))
+
+	async function handleYamlSave() {
+		if (!valid) return
+		const msg = tr.confirm(SETTINGS_Msgs.confirmSave())
+		const result = await openDialog({
+			title: msg.title,
+			content: <SettingsChangeList changes={changes} />,
+			buttons: [{ id: 'save', label: msg.confirmLabel }],
+		})
+		if (result === 'save') void SettingsEditorFrame.Actions.save(stores)
 	}
-
-	// null means the contents don't parse or don't validate; anything else already satisfies the schema
-	function onYamlChange(next: any) {
-		setYamlValid(next !== null)
-		if (next === null) return
-		value$.next(next)
-		setDirty(!Obj.deepEqual(next, props.saved))
-		setIssues(undefined)
-	}
-
-	function switchMode(next: 'gui' | 'yaml') {
-		if (next === 'yaml') {
-			setYamlSeed(Obj.deepClone(value$.getValue()))
-			setYamlValid(true)
-		}
-		PluginsClient.setConfigEditorMode(props.pluginId, next)
-	}
-
-	async function save() {
-		setSaving(true)
-		try {
-			const res = await RPC.orpc.plugins.updateConfig.call({ pluginId: props.pluginId, config: value$.getValue() })
-			if (res.code === 'ok') {
-				toast.success(tr.text(PLUGINS_Msgs.configSaved(props.manifest.name)))
-				props.refetch()
-			} else if (res.code === 'err:invalid-config') {
-				toast.error(tr.text(PLUGINS_Msgs.configInvalid()), { description: res.message })
-			} else {
-				toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
-			}
-		} catch {
-			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
-		} finally {
-			setSaving(false)
-		}
-	}
-
-	function discard() {
-		const restored = Obj.deepClone(props.saved)
-		value$.next(restored)
-		setYamlSeed(restored)
-		setYamlValid(true)
-		setDirty(false)
-		setIssues(undefined)
-		reset$.next()
-	}
-
-	const canSave = dirty && !issues && yamlValid
-	const actions = (
-		<>
-			<Button size="sm" onClick={() => void save()} disabled={!canSave || saving}>
-				{tr.text(PLUGINS_Msgs.saveConfig())}
-			</Button>
-			<Button size="sm" variant="outline" onClick={discard} disabled={saving || !dirty}>
-				{tr.text(PLUGINS_Msgs.discardConfig())}
-			</Button>
-		</>
-	)
 
 	return (
 		<div className="space-y-2">
-			<div
-				role="group"
-				aria-label={tr.text(PLUGINS_Msgs.configEditorModeLabel(props.manifest.name))}
-				className="flex items-center gap-1"
-			>
-				<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+			<div role="group" aria-label={tr.text(PLUGINS_Msgs.configEditorModeLabel(manifest.name))} className="flex items-center gap-1">
+				<Button
+					size="sm"
+					variant={mode === 'gui' ? 'secondary' : 'ghost'}
+					onClick={() => SettingsEditorFrame.Actions.setMode(stores, 'gui')}
+				>
 					GUI
 				</Button>
-				<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+				<Button
+					size="sm"
+					variant={mode === 'yaml' ? 'secondary' : 'ghost'}
+					onClick={() => SettingsEditorFrame.Actions.setMode(stores, 'yaml')}
+				>
 					YAML
 				</Button>
 			</div>
 			{mode === 'gui' ? (
 				<>
 					<SettingsForm
-						schema={props.manifest.configSchema}
-						value$={value$}
-						reset$={reset$}
-						onChange={onChange}
-						saved={props.saved}
-						idPrefix={`setting:plugin:${props.pluginId}:`}
-						issues={issues}
+						schema={manifest.configSchema}
+						value$={configValue$}
+						reset$={state.reset$}
+						onChange={(config: Record<string, unknown>) => SettingsEditorFrame.Actions.setDraft(stores, { ...current, config })}
+						saved={(saved as SettingsEditorFrame.PluginDraft).config}
+						idPrefix={`setting:plugin:${info.id}:`}
+						issues={configIssues.length > 0 ? configIssues : undefined}
 					/>
-					{dirty && <div className="flex items-center gap-2">{actions}</div>}
+					<PluginCommandsEditor
+						info={info}
+						commands={current.commands}
+						issues={issues}
+						onChange={(commands) => SettingsEditorFrame.Actions.setDraft(stores, { ...current, commands })}
+					/>
 				</>
 			) : (
 				<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
 					<SchemaYamlEditor
 						ref={editorRef}
-						schema={props.manifest.configSchema}
-						value={yamlSeed}
-						onValidChange={onYamlChange}
+						schema={SettingsEditorFrame.pluginSchema(info.id, manifest)}
+						value={draft}
+						onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid(stores, v)}
 						minHeightPx={250}
-						label={props.manifest.name}
+						label={manifest.name}
 						toolbar={
-							<>
-								<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
-									<Icons.Braces className="h-4 w-4" />
-									{tr.text(SETTINGS_Msgs.format())}
-								</Button>
-								{actions}
-							</>
+							<YamlEditorToolbar
+								editorRef={editorRef}
+								deniedPaths={NO_PATHS}
+								canSave={changes.length > 0 && valid}
+								saving={saving}
+								onSave={handleYamlSave}
+							/>
 						}
 					/>
 				</React.Suspense>
 			)}
+		</div>
+	)
+}
+
+const NO_PATHS: never[] = []
+
+type PluginCommandEntry = { id: string; decl: CMD.PluginCommandInfo; config: CMD.CommandConfig; configured: boolean }
+
+// The plugin's in-game commands, each at the config it runs under. Only a running plugin's commands are known, so a
+// stopped plugin shows none.
+function PluginCommandsEditor({
+	info,
+	commands,
+	issues,
+	onChange,
+}: {
+	info: PLG.RuntimeInfo
+	commands: CMD.PluginCommandConfigs
+	issues: readonly z.core.$ZodIssue[]
+	onChange: (next: CMD.PluginCommandConfigs) => void
+}) {
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+
+	// an override whose command the running plugin no longer declares: ignored at runtime, but only an admin can
+	// decide it is safe to drop. Unknowable while the plugin is stopped.
+	const orphans = info.status === 'active' ? Object.keys(commands).filter((name) => !info.commands.some((d) => d.name === name)) : []
+	if (!settings || (info.commands.length === 0 && orphans.length === 0)) return null
+
+	const entries = info.commands.map((decl): PluginCommandEntry => ({
+		id: CMD.pluginCommandId(info.id, decl.name),
+		decl,
+		config: CMD.pluginCommandConfig(decl, commands[decl.name], settings.defaultPrefix),
+		configured: commands[decl.name] !== undefined,
+	}))
+	const otherListings = plugins
+		.filter((p) => p.id !== info.id)
+		.flatMap((p) =>
+			p.commands.map((decl): PluginCommandEntry => ({
+				id: CMD.pluginCommandId(p.id, decl.name),
+				decl,
+				config: CMD.pluginCommandConfig(decl, p.commandConfigs[decl.name], settings.defaultPrefix),
+				configured: p.commandConfigs[decl.name] !== undefined,
+			})),
+		)
+	const { conflicts } = CMD.resolvePluginCommandTriggers(settings.commands, [...otherListings, ...entries])
+
+	// an unconfigured command materializes at its effective config, so editing one field does not silently pin the
+	// others at whatever the schema default happens to be
+	function patch(entry: PluginCommandEntry, next: Partial<CMD.PluginCommandConfig>) {
+		onChange({ ...commands, [entry.decl.name]: { ...(commands[entry.decl.name] ?? entry.config), ...next } })
+	}
+	function clear(name: string) {
+		const { [name]: _dropped, ...rest } = commands
+		onChange(rest)
+	}
+
+	return (
+		<section aria-label={tr.text(PLUGINS_Msgs.commandsTitle())} className="space-y-2">
+			<h3 className="text-sm font-medium">{tr.text(PLUGINS_Msgs.commandsTitle())}</h3>
+			{entries.map((entry) => (
+				<PluginCommandCard
+					key={entry.id}
+					idPrefix={`setting:plugin:${info.id}:commands.${entry.decl.name}`}
+					entry={entry}
+					conflicts={conflicts.filter((c) => c.commandId === entry.id)}
+					issues={issues.filter((i) => i.path[0] === 'commands' && i.path[1] === entry.decl.name)}
+					onPatch={(next) => patch(entry, next)}
+					onReset={() => clear(entry.decl.name)}
+				/>
+			))}
+			{orphans.length > 0 && (
+				<div className="space-y-1 rounded-md border border-dashed p-2">
+					<p className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.pluginCommandOrphans())}</p>
+					{orphans.map((name) => (
+						<div key={name} className="flex items-center gap-2">
+							<code className="text-xs">{name}</code>
+							<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => clear(name)}>
+								{tr.text(CMD_Msgs.pluginCommandDropOverride())}
+							</Button>
+						</div>
+					))}
+				</div>
+			)}
+		</section>
+	)
+}
+
+function PluginCommandCard({
+	idPrefix,
+	entry,
+	conflicts,
+	issues,
+	onPatch,
+	onReset,
+}: {
+	idPrefix: string
+	entry: PluginCommandEntry
+	conflicts: CMD.CommandConflict[]
+	// issues under this command, with paths from the section root: ['commands', name, 'triggers', index]
+	issues: readonly z.core.$ZodIssue[]
+	onPatch: (next: Partial<CMD.PluginCommandConfig>) => void
+	onReset: () => void
+}) {
+	const triggers = entry.config.triggers.map(CMD.triggerString)
+	// Only for a declared default. A configured trigger that collides is an issue, which refuses the save outright,
+	// and saying both would be noise.
+	const takenBy = (trigger: string) =>
+		entry.configured ? undefined : conflicts.find((c) => c.trigger.toLowerCase() === trigger.toLowerCase())?.ownedBy
+	const setTriggers = (next: string[]) => onPatch({ triggers: next })
+	return (
+		<div className="space-y-2 rounded-md border p-2">
+			<div className="flex flex-wrap items-baseline gap-2">
+				<span className="text-sm font-medium">{entry.decl.name}</span>
+				<div className="flex-1" />
+				{entry.configured && (
+					<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
+						{tr.text(CMD_Msgs.pluginCommandUseDeclared())}
+					</Button>
+				)}
+			</div>
+			<p className="text-xs text-muted-foreground">{entry.decl.description}</p>
+			<div className="space-y-1">
+				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+					{tr.text(CMD_Msgs.triggers())} <HelpTip text={tr.text(CMD_Msgs.triggersHelp())} />
+				</span>
+				{triggers.map((trigger, idx) => {
+					const owner = takenBy(trigger)
+					const triggerIssues = issues.filter((i) => i.path[2] === 'triggers' && i.path[3] === idx)
+					return (
+						<div
+							// oxlint-disable-next-line no-array-index-key
+							key={idx}
+							id={`${idPrefix}.triggers.${idx}`}
+							data-settings-error={triggerIssues.length > 0 ? '' : undefined}
+							className="space-y-0.5"
+						>
+							<div className="flex items-center gap-1">
+								<Input
+									className="h-7 w-40 text-xs"
+									defaultValue={trigger}
+									key={`${entry.configured}:${trigger}`}
+									placeholder={tr.text(CMD_Msgs.triggerStringPlaceholder())}
+									onBlur={(e) => setTriggers(triggers.map((t, i) => (i === idx ? e.target.value.trim() : t)))}
+								/>
+								{triggers.length > 1 && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs"
+										onClick={() => setTriggers(triggers.filter((_, i) => i !== idx))}
+									>
+										<Icons.X className="h-3 w-3" />
+									</Button>
+								)}
+							</div>
+							{owner && <p className="text-xs text-warn">{tr.text(CMD_Msgs.pluginTriggerTakenBy(owner))}</p>}
+							{triggerIssues.map((issue) => (
+								<p key={issue.message} className="text-xs text-destructive">
+									{issue.message}
+								</p>
+							))}
+						</div>
+					)
+				})}
+				<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTriggers([...triggers, ''])}>
+					{tr.text(SETTINGS_Msgs.addEntry())}
+				</Button>
+			</div>
+			<div className="flex flex-wrap items-center gap-4">
+				<div className="flex items-center gap-2">
+					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+						{tr.text(CMD_Msgs.allowedChats())} <HelpTip text={tr.text(CMD_Msgs.allowedChatsHelp())} />
+					</span>
+					<ComboBoxMulti
+						title={tr.text(CMD_Msgs.allowedChats())}
+						values={entry.config.allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: tr.text(CMD_Msgs.chatGroupLabels[group]) }))}
+						onSelect={(next) => onPatch({ allowedChats: typeof next === 'function' ? next(entry.config.allowedChats) : next })}
+					/>
+				</div>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Switch checked={entry.config.enabled} onCheckedChange={(v) => onPatch({ enabled: v })} />
+					{tr.text(CMD_Msgs.enabled())}
+				</label>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Checkbox checked={entry.config.quickReference} onCheckedChange={(v) => onPatch({ quickReference: v === true })} />
+					<span className="flex items-center gap-1">
+						{tr.text(CMD_Msgs.quickReference())}
+						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />
+					</span>
+				</label>
+			</div>
 		</div>
 	)
 }

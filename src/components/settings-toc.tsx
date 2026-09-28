@@ -285,7 +285,10 @@ export default function SettingsToc({
 	servers: { id: string; displayName: string }[]
 	sectionKeys: SettingsEditorFrame.Key[]
 }) {
-	const { globalMode, serverModes, newServerMode, creatingServer } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.tocModes)
+	const { globalMode, serverModes, pluginModes, newServerMode, creatingServer } = Zus.useStore(
+		...sectionKeys,
+		SettingsEditorFrame.Sel.tocModes,
+	)
 	const commentedIdList = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.commentedAnchorIds)
 	const commentedIds = React.useMemo(() => new Set(commentedIdList), [commentedIdList])
 	const [query, setQuery] = React.useState('')
@@ -331,7 +334,6 @@ export default function SettingsToc({
 	// rather than once for the module
 	const pluginInfos = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
 	const pluginManifests = Zus.useStore(PluginsClient.Store, (s) => s.manifests)
-	const pluginModes = Zus.useStore(PluginsClient.ConfigEditorModeStore, (s) => s)
 	const pluginNodes = React.useMemo(() => {
 		const write = canManagePlugins ? WRITE_ALL : WRITE_NONE
 		return pluginInfos.map((info): TocNode => {
