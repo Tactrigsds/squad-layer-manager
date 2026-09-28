@@ -923,11 +923,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(
-				ctx,
-				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
-			)
-			if (denyRes) return denyRes
 			// a user can only ever disable updates as themselves: the vote reason is SLM's alone
 			const disabled = input.disabled ? ({ type: 'manual', by: { type: 'slm-user', userId: ctx.user.discordId } } as const) : null
 			return await toggleUpdatesToSquadServer({ ctx, input: { disabled } })
@@ -943,11 +938,6 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(
-				ctx,
-				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
-			)
-			if (denyRes) return denyRes
 			await SquadRcon.setIngameVotingEnabled(ctx, true)
 			return await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote', inferred: false } } })
 		}),
@@ -1121,7 +1111,7 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id
 	const touchesOthers = targets.some((item) => !BB.sameOwner(item.source, owner))
 	const authReq = touchesOthers
 		? RBAC.perm('queue:write', { serverId: ctx.serverId })
-		: RBAC.permReq('any', [RBAC.perm('queue:write', { serverId: ctx.serverId }), RBAC.anyLayerRequestGrant(ctx.serverId)])
+		: RBAC.Req.any(RBAC.perm('queue:write', { serverId: ctx.serverId }), RBAC.Req.layerRequest(ctx.serverId))
 	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, authReq)
 	if (authRes) return authRes
 
@@ -1206,7 +1196,7 @@ export async function addBackburnerRequestFromChat(
 	ctx: C.Db & C.ManagedServer & CS.AbortSignal & SM.Ctx.Ids,
 	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
-	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.anyLayerRequestGrant(ctx.serverId))
+	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.Req.layerRequest(ctx.serverId))
 	if (denied) return denied
 	const serverState = await SquadServer.getServerState(ctx)
 	// in-game requests always carry the main pool filter; only the GUI can deliberately drop it

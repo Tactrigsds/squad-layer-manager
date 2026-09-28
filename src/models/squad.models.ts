@@ -1919,30 +1919,15 @@ export namespace LogEvents {
 	}
 }
 
-// grants for the squad-server:timeout-players permission. "up to N ms" is a comparator, not an equality match, so
-// these express the check as a callback over the caller's perms (see RBAC.maxTimeoutDurationMs).
+// grants for the squad-server:timeout-players permission, which is capped by duration rather than matched exactly
 export namespace Grants {
 	// a null serverId (a timeout whose issuing server is gone) can only be satisfied by an all-servers grant
-	export function anyTimeout(serverId: string | null) {
-		return RBAC.permReq('all', [
-			(perms, scoped) => {
-				if (RBAC.maxTimeoutDurationMs(perms, serverId, scoped) !== undefined) return
-				return `squad-server:timeout-players on ${serverId ?? 'all servers'}`
-			},
-		])
+	export function anyTimeout(serverId: string | null): RBAC.Req {
+		return RBAC.Req.timeout(serverId)
 	}
 
-	export function satisfyingTimeout(serverId: string, timeoutMs: number) {
-		return RBAC.permReq('all', [
-			(perms, scoped) => {
-				const max = RBAC.maxTimeoutDurationMs(perms, serverId, scoped)
-				if (max === null) return
-				if (max !== undefined && max >= timeoutMs) return
-				return `squad-server:timeout-players on ${serverId} where maxDurationMs >= ${ZodUtils.formatHumanTime(timeoutMs)}. Max found: ${
-					max === undefined ? 'none' : ZodUtils.formatHumanTime(max)
-				}`
-			},
-		])
+	export function satisfyingTimeout(serverId: string, timeoutMs: number): RBAC.Req {
+		return RBAC.Req.timeout(serverId, timeoutMs)
 	}
 }
 

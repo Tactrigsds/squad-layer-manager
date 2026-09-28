@@ -18,7 +18,6 @@ import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
-import * as Rbac from 'slm/systems/rbac'
 import * as SquadServer from 'slm/systems/squad-server'
 
 import manifest from './plugin.ts'
@@ -53,61 +52,81 @@ const os = Rpc.os<typeof manifest>()
 const FilterInput = z.object({ id: z.string(), owner: z.string() })
 
 export const router = {
-	stats: os.input(z.object({})).handler(async () => ({ activations })),
+	stats: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => ({ activations })),
 
-	// An rpc procedure is reachable by anyone who may use the site, so one that acts on the server has to
-	// authorize the caller itself. Reports who it saw, so the test can tell an allowed call from a refused one.
-	whoAmI: os.input(z.object({})).handler(async ({ context }) => {
-		const denial = await Rbac.checkCaller(context, RBAC.perm('squad-server:end-match', { serverId: context.serverId }))
-		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
-		return { code: 'ok' as const, discordId: String(context.user.discordId) }
-	}),
+	// Procedures declare what the caller needs and the host checks it before the handler runs, so these report who
+	// they saw only when the caller was allowed. The test tells an allowed call from a refused one by the answer.
+	whoAmI: os
+		.meta({ access: RBAC.Access.req(({ serverId }) => RBAC.perm('squad-server:end-match', { serverId })) })
+		.input(z.object({}))
+		.handler(async ({ context }) => ({ code: 'ok' as const, discordId: String(context.user.discordId) })),
 
 	// the same check against an action SLM knows nothing about beyond the id a role was granted
-	greetIfAllowed: os.input(z.object({})).handler(async ({ context }) => {
-		const denial = await Rbac.checkCaller(context, perms!.greet(context.serverId))
-		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
-		return { code: 'ok' as const, greeting: PluginConfig.get(context).greeting }
-	}),
-	makeFilter: os.input(FilterInput).handler(async ({ context, input }) =>
-		Filters.create(context, {
-			id: input.id,
-			name: 'Hello pool',
-			description: null,
-			filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
-			owner: BigInt(input.owner),
-			alertMessage: null,
-			emoji: null,
-			invertedAlertMessage: null,
-			invertedEmoji: null,
-		}),
-	),
+	greetIfAllowed: os
+		.meta({ access: RBAC.Access.req(({ serverId }) => perms!.greet(serverId)) })
+		.input(z.object({}))
+		.handler(async ({ context }) => ({ code: 'ok' as const, greeting: PluginConfig.get(context).greeting })),
+	makeFilter: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(FilterInput)
+		.handler(async ({ context, input }) =>
+			Filters.create(context, {
+				id: input.id,
+				name: 'Hello pool',
+				description: null,
+				filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
+				owner: BigInt(input.owner),
+				alertMessage: null,
+				emoji: null,
+				invertedAlertMessage: null,
+				invertedEmoji: null,
+			}),
+		),
 	renameFilter: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ id: z.string(), name: z.string() }))
 		.handler(async ({ context, input }) => Filters.update(context, input.id, { name: input.name })),
-	dropFilter: os.input(z.object({ id: z.string() })).handler(async ({ context, input }) => Filters.remove(context, input.id)),
-	filterIds: os.input(z.object({})).handler(async () => Filters.list().map((f) => f.id)),
+	dropFilter: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => Filters.remove(context, input.id)),
+	filterIds: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => Filters.list().map((f) => f.id)),
 
 	// the filter the query is constrained by is one the plugin made itself, which is the pairing worth
 	// covering: neither half is much use to a plugin without the other
-	inFilter: os.input(z.object({ filterId: z.string() })).handler(async ({ context, input }) => {
-		const res = await LayerQueries.query(context, {
-			pageSize: 5,
-			sort: null,
-			constraints: [CB.filterEntity('pool', input.filterId)],
-		})
-		return res.code === 'ok' ? { code: 'ok' as const, total: res.totalCount, collections: res.layers.map((l) => l.Collection) } : res
-	}),
+	inFilter: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ filterId: z.string() }))
+		.handler(async ({ context, input }) => {
+			const res = await LayerQueries.query(context, {
+				pageSize: 5,
+				sort: null,
+				constraints: [CB.filterEntity('pool', input.filterId)],
+			})
+			return res.code === 'ok' ? { code: 'ok' as const, total: res.totalCount, collections: res.layers.map((l) => l.Collection) } : res
+		}),
 	outOfPool: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ filterId: z.string(), layerIds: z.array(z.string()) }))
 		.handler(async ({ context, input }) =>
 			LayerQueries.outOfPool(context, { layerIds: input.layerIds, constraints: [CB.filterEntity('pool', input.filterId)] }),
 		),
 	layersExist: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ layerIds: z.array(z.string()) }))
 		.handler(async ({ context, input }) => LayerQueries.exists(context, input.layerIds)),
-	mapValues: os.input(z.object({})).handler(async ({ context }) => LayerQueries.componentValues(context, { column: 'Map' })),
+	mapValues: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => LayerQueries.componentValues(context, { column: 'Map' })),
 	drawVote: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ filterId: z.string(), seed: z.string(), presetLayerId: z.string() }))
 		.handler(async ({ context, input }) => {
 			const res = await LayerQueries.genVote(context, {
@@ -122,52 +141,70 @@ export const router = {
 		}),
 	// --- the automation surface: the queue, the event stream, ending a match, discord ---
 
-	savedQueue: os.input(z.object({})).handler(async ({ context }) =>
-		LayerQueue.getSavedQueue(context).map((item) => ({
-			itemId: item.itemId,
-			layerId: item.layerId,
-			source: item.source.type,
-			sourcePluginId: item.source.type === 'plugin' ? item.source.pluginId : null,
-		})),
-	),
+	savedQueue: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) =>
+			LayerQueue.getSavedQueue(context).map((item) => ({
+				itemId: item.itemId,
+				layerId: item.layerId,
+				source: item.source.type,
+				sourcePluginId: item.source.type === 'plugin' ? item.source.pluginId : null,
+			})),
+		),
 
 	// prepends a layer and keeps the rest, which is the shape a real caller uses: pass entries through to
 	// keep their items, hand back a bare id for a new one
 	prependLayer: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ layerId: z.string() }))
 		.handler(async ({ context, input }) => LayerQueue.editSaved(context, (entries) => [input.layerId, ...entries])),
 
-	dropFirstLayer: os.input(z.object({})).handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
+	dropFirstLayer: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
 
 	// resolves with the first event of `type` seen after subscribing, or null once `ms` has passed
-	nextEvent: os.input(z.object({ type: z.string(), ms: z.number() })).handler(async ({ context, input }) => {
-		return await new Promise<{ type: string } | null>((resolve) => {
-			const timer = setTimeout(() => {
-				sub.unsubscribe()
-				resolve(null)
-			}, input.ms)
-			const sub = SquadServer.events$(context).subscribe((event) => {
-				if (event.type !== input.type) return
-				clearTimeout(timer)
-				sub.unsubscribe()
-				resolve({ type: event.type })
+	nextEvent: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ type: z.string(), ms: z.number() }))
+		.handler(async ({ context, input }) => {
+			return await new Promise<{ type: string } | null>((resolve) => {
+				const timer = setTimeout(() => {
+					sub.unsubscribe()
+					resolve(null)
+				}, input.ms)
+				const sub = SquadServer.events$(context).subscribe((event) => {
+					if (event.type !== input.type) return
+					clearTimeout(timer)
+					sub.unsubscribe()
+					resolve({ type: event.type })
+				})
 			})
-		})
-	}),
+		}),
 
-	endMatch: os.input(z.object({})).handler(async ({ context }) => SquadServer.endMatch(context)),
+	endMatch: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => SquadServer.endMatch(context)),
 
 	postToDiscord: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ channelId: z.string(), content: z.string() }))
 		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.postMessage(input.channelId, input.content) })),
 
 	deleteFromDiscord: os
+		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ channelId: z.string(), messageId: z.string() }))
 		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.deleteMessage(input.channelId, input.messageId) })),
 
-	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
-		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
-	}),
+	greetings: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, input }) {
+			yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
+		}),
 }
 
 // an action this plugin defines for itself, so a role can be granted it without SLM knowing what it means.
@@ -189,9 +226,8 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		triggers: ['hello'],
 		allowedChats: ['admin'],
 		usage: '[name]',
+		access: RBAC.Access.req(({ serverId }) => RBAC.perm('squad-server:end-match', { serverId })),
 		handler: async (sctx, input) => {
-			const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
-			if (denial) return Rbac.describe(sctx, denial)
 			return `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`
 		},
 	})

@@ -210,6 +210,14 @@ export type AppStarted = z.infer<typeof AppStartedSchema>
 export const AppRestartedSchema = event('APP_RESTARTED', versionShape)
 export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
+// a mutation the caller was refused. audit-only: it answers who tried to do what they may not
+export const PermissionDeniedSchema = event('PERMISSION_DENIED', {
+	// the rpc procedure, as its router path
+	procedure: z.string(),
+	failures: z.array(z.string()),
+})
+export type PermissionDenied = z.infer<typeof PermissionDeniedSchema>
+
 // a periodic database backup (see backups.server.ts). audit-only: it records the snapshot that was taken and whether
 // it made it to the configured offsite target.
 export const BackupCreatedSchema = event('BACKUP_CREATED', {
@@ -442,6 +450,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerFlagsUpdatedSchema,
 	AppStartedSchema,
 	AppRestartedSchema,
+	PermissionDeniedSchema,
 	BackupCreatedSchema,
 	MapSetSchema,
 	PluginEventSchema,
@@ -521,6 +530,7 @@ export const APP_EVENT_META = {
 	USER_ACCOUNT_CHANGED: EM.meta<UserAccountChanged>(),
 	APP_STARTED: EM.meta<AppStarted>(),
 	APP_RESTARTED: EM.meta<AppRestarted>(),
+	PERMISSION_DENIED: EM.meta<PermissionDenied>(),
 	BACKUP_CREATED: EM.meta<BackupCreated>(),
 	PLUGIN_EVENT: EM.meta<PluginEvent>(),
 	PLUGIN_DATA_PURGED: EM.meta<PluginDataPurged>(),

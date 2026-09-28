@@ -442,7 +442,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 
 		const t = I18n.translatorForRequest(req.headers['accept-language'])
 		const ctx = getAuthedCtx(req)
-		const denied = await History.denyUnlessHistoryQuery(ctx)
+		const denied = await Rbac.tryDenyProcedureAccess(ctx, 'history.query', undefined)
 		if (denied)
 			return res
 				.status(403)

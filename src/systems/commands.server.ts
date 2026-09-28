@@ -226,17 +226,12 @@ async function runCommand(
 	const pluginCommand = CMD.isPluginCommandId(cmd) ? Plugins.commandDeclarations().find((c) => c.id === cmd) : undefined
 	if (CMD.isPluginCommandId(cmd) && !pluginCommand) return
 
-	// Authorization for a core command sits here, next to the allowed-chat and enabled gates: the declaration is
-	// exhaustive over CommandId, so one cannot reach its handler without having stated what it requires. A plugin's
-	// command authorizes inside its own handler (slm/systems/rbac), the way the comparator-scoped core commands
-	// below do, since neither can be settled before the arguments are.
+	// Authorization sits here, next to the allowed-chat and enabled gates: every declaration states its access, so no
+	// command reaches its handler without having said what it requires. What the arguments decide is the handler's.
 	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
-	const permission = pluginCommand ? null : CMD.COMMAND_DECLARATIONS[cmd as CMD.CommandId].permission
-	if (permission !== null) {
-		const required =
-			permission === 'battlemetrics:write-flags'
-				? RBAC.perm('battlemetrics:write-flags')
-				: RBAC.perm(permission, { serverId: ctx.serverId })
+	const access = pluginCommand ? pluginCommand.decl.access : CMD.COMMAND_DECLARATIONS[cmd as CMD.CommandId].access
+	const required = RBAC.Access.resolve(access, { serverId: ctx.serverId })
+	if (required) {
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer(ctx, required)
 		if (denyRes) return await chat.error('permission-denied', ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
 	}

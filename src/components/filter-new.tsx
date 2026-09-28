@@ -12,7 +12,6 @@ import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
-import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -96,7 +95,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 	})
 
 	const isValidFilter = Zus.useStore(props.stores.filterEditor, (s) => s.valid)
-	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
+	const createDenied = RbacClient.useAccess('filters.createFilter')
 
 	const submitBtn = (
 		<form.Subscribe>

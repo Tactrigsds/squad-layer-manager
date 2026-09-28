@@ -11,7 +11,9 @@ import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PLG from '@/models/plugins.models'
+import type * as PA from '@/models/procedure-access.models'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
 import * as ApiRegistry from '@/systems/plugin-api-registry.client'
@@ -252,23 +254,26 @@ function unwrap(res: unknown): unknown {
 	return res
 }
 
+// every procedure may answer with the permission denial its declared access gives
+type PluginClient<TRouter extends AnyRouter> = RouterClient<PA.AllDeniable<TRouter>>
+
 /**
  * A typed client over the plugin's non-streaming procedures, inferred from its router type:
  * `Rpc.client<typeof router>(ctx, serverId).things({ ... })`.
  */
-export function client<TRouter extends AnyRouter>(ctx: ClientCtx<any>, serverId: string): RouterClient<TRouter> {
+export function client<TRouter extends AnyRouter>(ctx: ClientCtx<any>, serverId: string): PluginClient<TRouter> {
 	const link: ClientLink<Record<never, never>> = {
 		async call(path, input) {
 			return unwrap(await RPC.orpc.plugins.rpcCall.call({ pluginId: ctx.plugin.id, path: [...path], serverId, input }))
 		},
 	}
-	return createORPCClient(link as never) as RouterClient<TRouter>
+	return createORPCClient(link as never) as PluginClient<TRouter>
 }
 
 /**
  * Stores over the plugin's streaming procedures, inferred the same way. Deep-equal arguments share one
- * instance. Values are unwrapped, and read as undefined before the first value or while the server is
- * not loaded, so selectors stay total.
+ * instance. Values are unwrapped, and read as undefined before the first value, while the server is
+ * not loaded, or while the user is refused, so selectors stay total.
  */
 export function stores<TRouter extends AnyRouter>(ctx: ClientCtx<any>): Stores<TRouter> {
 	const families = new Map<string, (serverId: string, input: unknown) => Zus.ValueObservable<unknown>>()
@@ -296,7 +301,11 @@ function streamFamily(ctx: ClientCtx<any>, name: string) {
 			() => RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, path: [name], serverId, input: JSON.parse(inputKey) }),
 			// a plugin's stream may be a finite iterable by design
 			{ finite: true },
-		).pipe(Rx.map((res) => (res && typeof res === 'object' && 'code' in res && res.code === 'ok' ? res.data : undefined))),
+		).pipe(
+			Rx.map((res) => (res && typeof res === 'object' && 'code' in res && res.code === 'ok' ? res.data : undefined)),
+			// refused by the plugin's own declared access, which reads the same as no value
+			Rx.map((data) => (RBAC.isPermissionDenied(data) ? undefined : data)),
+		),
 	)
 	// Wrapped so getValue is total: a raw StateObservable throws NoSubscribersError before its first
 	// subscriber and hands back a StatePromise before its first value, and consumers (selectors, the

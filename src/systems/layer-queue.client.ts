@@ -14,16 +14,14 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 export const [useNextLayerSyncState, nextLayerSyncState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		RPC.observe('layerQueue.watchNextLayerSyncState', () => RPC.orpc.layerQueue.watchNextLayerSyncState.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
+			RPC.dropUnavailable(),
 		),
 	{ code: 'synced' } as LQ.NextLayerSyncState,
 )
 
 export const [useIngameVote, ingameVote$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
-		RPC.observe('layerQueue.watchIngameVote', () => RPC.orpc.layerQueue.watchIngameVote.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		),
+		RPC.observe('layerQueue.watchIngameVote', () => RPC.orpc.layerQueue.watchIngameVote.call({ serverId })).pipe(RPC.dropUnavailable()),
 	null as LQ.IngameVote | null,
 )
 

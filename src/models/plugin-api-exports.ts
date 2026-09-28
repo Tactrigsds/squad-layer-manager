@@ -171,7 +171,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'toNormedTeamId',
 		'toNormedTeamProp',
 	],
-	'slm/models/rbac': ['describePermit', 'perm', 'permReq'],
+	'slm/models/rbac': ['Access', 'Req', 'describePermit', 'perm'],
 	'slm/models/server-events': [],
 	'slm/models/squad': [],
 	'slm/plugin/client': ['definePluginClient'],

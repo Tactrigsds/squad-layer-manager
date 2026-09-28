@@ -73,7 +73,7 @@ export const Route = createFileRoute('/_app/settings')({
 
 function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
-	const managePluginsDenied = RbacClient.usePermsCheck(RBAC.perm('plugins:manage'))
+	const managePluginsDenied = RbacClient.useAccess('plugins.getSettings')
 	const globalAccess = RbacClient.useGlobalSettingsAccess()
 	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
@@ -449,7 +449,7 @@ function ServersSection({
 	onAddServer: () => void
 	onCancelCreate: () => void
 }) {
-	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
+	const deleteServersDenied = RbacClient.useAccess('settings.admin.deleteServer')
 	const openDialog = useAlertDialog()
 
 	const onDenied = { onSuccess: (res: any) => res?.code === 'err:permission-denied' && RbacClient.handlePermissionDenied(res) }
@@ -622,7 +622,7 @@ function ServerRow({
 	onSetDefault: (server: PublicServer) => void
 	onDelete: (server: PublicServer) => void
 }) {
-	const consoleDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:view-console', { serverId: server.id }))
+	const consoleDenied = RbacClient.useAccess('serverConsole.watch', { serverId: server.id })
 	const openConsoleWindow = useOpenServerConsoleWindow({ serverId: server.id })
 
 	return (

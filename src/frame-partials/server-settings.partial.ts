@@ -71,7 +71,7 @@ export function initServerSettings(args: Args) {
 
 	args.cleanup.push(
 		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId }))
-			.pipe(RPC.dropServerNotLoaded())
+			.pipe(RPC.dropUnavailable())
 			.subscribe(([settings, source]) => {
 				const updated = Obj.structuralMerge(get().saved, settings)
 				set({ saved: updated, edited: updated, ops: [] })

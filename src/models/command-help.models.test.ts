@@ -4,6 +4,7 @@ import * as I18n from '@/messages/i18n'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
+import * as RBAC from '@/rbac.models'
 
 function reason(label: string, actions: AAR.AdminActionType[]): AAR.AdminActionReason {
 	return {
@@ -201,7 +202,7 @@ describe('resolveHelpListing', () => {
 			description: 'Roll to seed now.',
 			triggers: ['rolltoseed'],
 			allowedChats: ['admin'] as CMD.ChatGroup[],
-			permission: null,
+			access: RBAC.Access.PUBLIC,
 			quickReference: true,
 		}
 		const plugin = { id: CMD.pluginCommandId('a-plugin', 'rolltoseed'), decl, config: CMD.pluginCommandConfig(decl, undefined, P) }

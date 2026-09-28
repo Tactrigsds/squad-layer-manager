@@ -6,10 +6,10 @@ import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
+import * as PA from '@/models/procedure-access.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
-import type { PublicSettings } from '@/systems/settings.server'
 import * as UsersClient from '@/systems/users.client'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
@@ -17,15 +17,17 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	toast.error(...tr.toast(RBAC_Msgs.permissionDenied(res)))
 }
 
-export function usePermsCheck<T extends RBAC.PermissionType>(
-	req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
-): RBAC.PermissionDeniedResponse | null {
+export function usePermsCheck(req: RBAC.ReqInput): RBAC.PermissionDeniedResponse | null {
 	return Zus.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
 }
 
-// for the affordances rendered where no server is in scope; see RBAC.hasPermOnAnyServer for why that is acceptable
-export function useAnyServerPermsCheck(type: RBAC.ServerPermissionType): RBAC.PermissionDeniedResponse | null {
-	return usePermsCheck((perms) => (RBAC.hasPermOnAnyServer(perms, type) ? undefined : type))
+// Whether the user may make this call, by the same entry the server enforces, so an affordance gates on exactly what
+// the call behind it requires. `input` is only the fields the entry reads.
+export function useAccess<P extends PA.CheckablePath>(
+	path: P,
+	...[input]: PA.AccessInput<P> extends void ? [] : [input: PA.AccessInput<P>]
+): RBAC.PermissionDeniedResponse | null {
+	return usePermsCheck(PA.checkedReq(path, input as PA.AccessInput<P>))
 }
 
 // the logged-in user's effective (non-negated) permissions, for the aggregate settings-access checks below
@@ -118,19 +120,13 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter((p) => !RBAC.isSamePerm(p, perm)) }),
 }))
 
-const SERVER_REGISTRY_REQ: RBAC.PermissionReq<RBAC.PermissionType> = {
-	check: 'any',
-	permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers')],
-}
-
 export namespace Sel {
 	// indirected rather than passed straight in: users.client and this module import each other, so reading
 	// UsersClient.Sel at module-init time would depend on which of the two the bundler evaluates first
 	const loggedInUser = (...args: [user: RBAC.UserWithRbac, rbacStore: RbacStore]) => UsersClient.Sel.loggedInUser(...args)
 
-	export const permsCheck = RSel.memoizeFactory(
-		<T extends RBAC.PermissionType>(req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>) =>
-			RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req, RBAC.NO_SCOPED_SERVERS)),
+	export const permsCheck = RSel.memoizeFactory((req: RBAC.ReqInput) =>
+		RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req, RBAC.NO_SCOPED_SERVERS)),
 	)
 
 	export const loggedInUserPerms = RSel.createDeepSelector([loggedInUser], (user): RBAC.Permission[] =>
@@ -155,22 +151,6 @@ export namespace Sel {
 	export const simulateControls = RSel.createSelector(
 		[(store: RbacStore) => store.simulate, (store: RbacStore) => store.setSimulate],
 		(simulate, setSimulate) => ({ simulate, setSimulate }),
-	)
-
-	type SettingsLinkArgs = [user: RBAC.UserWithRbac, rbacStore: RbacStore, publicSettings: PublicSettings | undefined]
-
-	// the Settings link is shown when the user can reach anything on that page: the server registry, the global
-	// settings, or the settings of any one server
-	export const settingsLinkVisible = RSel.createSelector(
-		[(...[user, rbac]: SettingsLinkArgs) => loggedInUser(user, rbac), (...[, , settings]: SettingsLinkArgs) => settings?.servers],
-		(user, servers) => {
-			if (!RBAC.tryDenyPermissionsForRbacUser(user, SERVER_REGISTRY_REQ, RBAC.NO_SCOPED_SERVERS)) return true
-			const perms = RBAC.fromTracedPermissions(user.perms)
-			return (
-				RBAC.canReadGlobalSettings(perms) ||
-				(servers ?? []).some((server) => RBAC.canReadServerSettings(perms, server.id, RBAC.NO_SCOPED_SERVERS))
-			)
-		},
 	)
 
 	// ------- the permissions dialog's views over the user's own (unsimulated) rbac -------

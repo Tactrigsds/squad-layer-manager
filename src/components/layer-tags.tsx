@@ -27,7 +27,6 @@ import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as LTag from '@/models/layer-tags.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -361,5 +360,5 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 }
 
 function useCanManageTags() {
-	return !RbacClient.usePermsCheck(RBAC.perm('queue:manage-tags'))
+	return !RbacClient.useAccess('settings.global.upsertLayerTag')
 }

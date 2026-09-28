@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import { RequireAccess } from '@/components/require-access'
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -11,12 +12,11 @@ import * as F_Msgs from '@/messages/filter.messages'
 import * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
-import * as RBAC from '@/rbac.models'
+import type * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
-import * as RbacClient from '@/systems/rbac.client'
 
 import EmojiDisplay from './emoji-display'
 import { FilterPoolFilterFor, FilterReferenceCount } from './filter-references'
@@ -88,10 +88,19 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	)
 }
 
+function NewFilterDenied({ denied }: { denied: RBAC.PermissionDeniedResponse }) {
+	return (
+		<PermissionDeniedTooltip denied={denied}>
+			<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
+				<Icons.Plus />
+				<span>{tr.text(F_Msgs.newFilter())}</span>
+			</span>
+		</PermissionDeniedTooltip>
+	)
+}
+
 export default function FiltersIndex() {
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
-
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const references = FilterEntityClient.useFilterReferences()
 	const isPoolFilter = (filter: F.FilterEntity) => (references.get(filter.id) ?? []).some(FR.isPoolFilterReference)
@@ -107,19 +116,12 @@ export default function FiltersIndex() {
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typo.H2}>{tr.text(F_Msgs.filtersHeading())}</h2>
-				{createDenied ? (
-					<PermissionDeniedTooltip denied={createDenied}>
-						<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
-							<Icons.Plus />
-							<span>{tr.text(F_Msgs.newFilter())}</span>
-						</span>
-					</PermissionDeniedTooltip>
-				) : (
+				<RequireAccess page="/_app/filters/new" fallback={NewFilterDenied}>
 					<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
 						<Icons.Plus />
 						<span>{tr.text(F_Msgs.newFilter())}</span>
 					</Link>
-				)}
+				</RequireAccess>
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{filters.map((entity) => (

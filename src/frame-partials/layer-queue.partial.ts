@@ -179,7 +179,7 @@ export function initLayerQueue(args: Args) {
 		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }), {
 			apply: (update$) =>
 				update$.pipe(
-					RPC.dropServerNotLoaded(),
+					RPC.dropUnavailable(),
 					Rx.tap((update) => get().handleServerUpdate(update)),
 				),
 		}).subscribe(),

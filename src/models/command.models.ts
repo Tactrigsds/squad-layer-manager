@@ -7,7 +7,7 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import { t, type TString } from '@/models/messages.models'
 import type * as SM from '@/models/squad.models.ts'
-import type * as RBAC from '@/rbac.models'
+import * as RBAC from '@/rbac.models'
 
 export const CHAT_GROUPS = z.enum(['admin', 'public'])
 export type ChatGroup = z.infer<typeof CHAT_GROUPS>
@@ -151,27 +151,35 @@ function assertValidArgDefs(id: string, args: readonly ArgDef[]) {
 	})
 }
 
-// What the dispatcher requires before running a command. `null` means the command needs no up-front permission:
-// either it only reads, or its grant is a comparator ("a timeout up to N") or depends on the target's owner, both of
-// which can only be checked once the arguments are resolved -- those commands check in their handler instead.
-//
-// Required rather than optional on purpose: a new command must state its answer, so one can't be added unguarded.
-export type CommandPermission = RBAC.ServerPermissionType | 'battlemetrics:write-flags' | null
+// What the dispatcher requires before running a command, evaluated against the server it runs on. Required on purpose: a
+// new command must state its answer, so one can't be added unguarded. What a command's arguments decide (a timeout's
+// duration against the caller's cap, whose request is being removed) is checked by its handler, under `in-handler`.
+export type CommandAccess = RBAC.Access<{ serverId: string }>
+
+const { Access } = RBAC
+
+function onServer(type: RBAC.ServerPermissionType): CommandAccess {
+	return Access.req((i: { serverId: string }) => RBAC.Req.perm(type, { serverId: i.serverId }))
+}
+
+const TIMEOUT_ACCESS = Access.inHandler("the duration is checked against the caller's cap once it is parsed", (i: { serverId: string }) =>
+	RBAC.Req.timeout(i.serverId),
+)
 
 function declareCommand<Id extends string, const Args extends readonly ArgDef[]>(
 	id: Id,
-	opts: { section: CommandSection; permission: CommandPermission; args: Args; defaults: CommandConfig },
+	opts: { section: CommandSection; access: CommandAccess; args: Args; defaults: CommandConfig },
 ) {
 	assertValidArgDefs(id, opts.args)
 	return {
 		[id]: {
 			id,
 			section: opts.section,
-			permission: opts.permission,
+			access: opts.access,
 			defaults: opts.defaults,
 			args: opts.args,
 		},
-	} as { [K in Id]: { id: Id; section: CommandSection; permission: CommandPermission; defaults: CommandConfig; args: Args } }
+	} as { [K in Id]: { id: Id; section: CommandSection; access: CommandAccess; defaults: CommandConfig; args: Args } }
 }
 
 const SWAP_DESTINATION_HELP = t(
@@ -183,7 +191,7 @@ const SWAP_DESTINATION_HELP = t(
 export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
 		section: 'general',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [
 			{
 				kind: 'string',
@@ -207,7 +215,7 @@ export const COMMAND_DECLARATIONS = {
 	// do it would leave everyone who has not linked yet unable to.
 	...declareCommand('linkSteamAccount', {
 		section: 'general',
-		permission: null,
+		access: Access.SELF,
 		args: [
 			{
 				kind: 'string',
@@ -220,7 +228,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('requestFeedback', {
 		section: 'general',
-		permission: null,
+		access: Access.PUBLIC,
 		// queue numbers accept dotted forms like "2.1", so this stays a string arg
 		args: [
 			{
@@ -235,7 +243,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('startVote', {
 		section: 'votes',
-		permission: 'vote:manage',
+		access: onServer('vote:manage'),
 		args: [],
 		defaults: {
 			allowedChats: ['admin'],
@@ -246,43 +254,43 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('abortVote', {
 		section: 'votes',
-		permission: 'vote:manage',
+		access: onServer('vote:manage'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['abortvote', 'av'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('endVoteEarly', {
 		section: 'votes',
-		permission: 'vote:manage',
+		access: onServer('vote:manage'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['endvote', 'ev'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('showNext', {
 		section: 'general',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['shownext', 'sn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('enableSlmUpdates', {
 		section: 'votes',
-		permission: 'squad-server:disable-slm-updates',
+		access: onServer('squad-server:disable-slm-updates'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['enableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disableSlmUpdates', {
 		section: 'votes',
-		permission: 'squad-server:disable-slm-updates',
+		access: onServer('squad-server:disable-slm-updates'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['disableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('getSlmUpdatesEnabled', {
 		section: 'votes',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['slmstatus'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestLayer', {
 		section: 'layerRequests',
-		permission: null,
+		access: Access.inHandler('how many requests a caller may hold is capped per grant, and counted against the queue'),
 		args: [
 			{
 				kind: 'text',
@@ -302,13 +310,13 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('listLayerRequests', {
 		section: 'layerRequests',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['reqs', 'listreqs'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeLayerRequest', {
 		section: 'layerRequests',
-		permission: null,
+		access: Access.inHandler("removing your own request is free, and removing someone else's needs queue:write"),
 		args: [
 			{
 				kind: 'int',
@@ -322,7 +330,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('swapNow', {
 		section: 'teamswaps',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
@@ -331,7 +339,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('swapNext', {
 		section: 'teamswaps',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
@@ -340,7 +348,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('swapSquadNow', {
 		section: 'teamswaps',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
@@ -349,7 +357,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('swapSquadNext', {
 		section: 'teamswaps',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
@@ -358,31 +366,31 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('swaps', {
 		section: 'teamswaps',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['swaps'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('clearSwaps', {
 		section: 'teamswaps',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['clearswaps'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestSwitch', {
 		section: 'switchRequests',
-		permission: null,
+		access: Access.SELF,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['switch'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('cancelSwitch', {
 		section: 'switchRequests',
-		permission: null,
+		access: Access.SELF,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['cancelswitch'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('flag', {
 		section: 'flags',
-		permission: 'battlemetrics:write-flags',
+		access: Access.req(RBAC.Req.perm('battlemetrics:write-flags')),
 		args: [
 			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag in your organization.') },
@@ -397,7 +405,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('removeFlag', {
 		section: 'flags',
-		permission: 'battlemetrics:write-flags',
+		access: Access.req(RBAC.Req.perm('battlemetrics:write-flags')),
 		args: [
 			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag currently on the player.') },
@@ -407,19 +415,19 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('listFlags', {
 		section: 'flags',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [{ kind: 'recent-player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('pingAdmins', {
 		section: 'moderation',
-		permission: 'ping-admins',
+		access: onServer('ping-admins'),
 		defaults: { enabled: true, allowedChats: ['public', 'admin'], triggers: ['admin'], quickReference: true },
 		args: [{ kind: 'text', name: 'message', describe: t('The message you want to send to the admins.') }],
 	}),
 	...declareCommand('warn', {
 		section: 'moderation',
-		permission: 'squad-server:warn-players',
+		access: onServer('squad-server:warn-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'warn' },
@@ -428,13 +436,13 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('listWarnReasons', {
 		section: 'moderation',
-		permission: null,
+		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['warnreasons', 'warns'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('warnSquad', {
 		section: 'moderation',
-		permission: 'squad-server:warn-players',
+		access: onServer('squad-server:warn-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'warn' },
@@ -443,7 +451,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('kill', {
 		section: 'moderation',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
@@ -452,7 +460,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('killSquad', {
 		section: 'moderation',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
@@ -461,7 +469,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('removeFromSquad', {
 		section: 'moderation',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true },
@@ -470,7 +478,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('disbandSquad', {
 		section: 'moderation',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'disband-squad', optional: true },
@@ -479,7 +487,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('demoteCommander', {
 		section: 'moderation',
-		permission: 'squad-server:manage-players',
+		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'demote-commander', optional: true },
@@ -488,13 +496,13 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('broadcast', {
 		section: 'messaging',
-		permission: 'squad-server:broadcast',
+		access: onServer('squad-server:broadcast'),
 		args: [{ kind: 'reason', name: 'reason', action: 'broadcast' }],
 		defaults: { allowedChats: ['admin'], triggers: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
 		section: 'moderation',
-		permission: 'squad-server:kick-players',
+		access: onServer('squad-server:kick-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
@@ -503,7 +511,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('kickSquad', {
 		section: 'moderation',
-		permission: 'squad-server:kick-players',
+		access: onServer('squad-server:kick-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
@@ -512,7 +520,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('timeout', {
 		section: 'moderation',
-		permission: null,
+		access: TIMEOUT_ACCESS,
 		args: [
 			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'duration', name: 'duration' },
@@ -522,7 +530,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	...declareCommand('timeoutSquad', {
 		section: 'moderation',
-		permission: null,
+		access: TIMEOUT_ACCESS,
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'duration', name: 'duration' },
@@ -533,7 +541,7 @@ export const COMMAND_DECLARATIONS = {
 	// the target may be offline, so the arg is a plain token resolved against players with active timeouts
 	...declareCommand('clearTimeout', {
 		section: 'moderation',
-		permission: null,
+		access: Access.inHandler('needs the timeout row to know which server issued it'),
 		args: [
 			{
 				kind: 'string',
@@ -662,6 +670,8 @@ export type PluginCommandDeclaration = {
 	// what follows the trigger, for the usage line, e.g. '<duration>'. Omit for a command taking nothing
 	usage?: string
 	quickReference?: boolean
+	// what the caller needs, checked by the host before the handler runs
+	access: CommandAccess
 }
 
 // The declaration as it reaches the browser, for the commands page. A PluginCommandDeclaration is assignable to

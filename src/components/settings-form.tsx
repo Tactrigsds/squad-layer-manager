@@ -439,7 +439,9 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 	const groupingIds = Object.keys(value)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	// the union across running servers -- fetched once here rather than per rule row
-	const adminGroupsQuery = useQuery(RPC.orpc.squadServer.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
+	const adminGroupsQuery = useQuery(
+		RPC.orpc.squadServer.listAdminListGroups.queryOptions({ staleTime: 60_000, select: (res) => RPC.selectLoaded(res) }),
+	)
 	const adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING = adminGroupsQuery.data
 		? adminGroupsQuery.data.map((name) => ({ value: name, label: name }))
 		: LOADING

@@ -5,8 +5,8 @@
  * const Perms = Permissions.register(ctx, {
  *   roll: { scope: 'server', description: 'Roll the server to a seeding layer' },
  * })
- * // later, in a command or rpc handler
- * const denial = await Rbac.checkPlayer(ctx, input.player, Perms.roll(ctx.serverId))
+ * // later, as what a procedure or command requires
+ * os.meta({ access: RBAC.Access.req(({ serverId }) => Perms.roll(serverId)) })
  * ```
  *
  * Reuse a core permission where one fits (`squad-server:end-match` for anything deciding what plays next,

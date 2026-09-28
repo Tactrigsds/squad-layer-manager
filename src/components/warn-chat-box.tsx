@@ -11,7 +11,6 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import type * as SM from '@/models/squad.models'
-import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -56,7 +55,7 @@ export default function WarnChatBox({
 		() => WarnChat.focusWhenVisible(() => textareaRef.current),
 	)
 	const username = UsersClient.useLoggedInUser()?.displayName
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
+	const warnDenied = RbacClient.useAccess('squadServer.warnPlayers', { serverId })
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const pending = warnPlayersMutation.isPending
 	const targetsAreAllAdmins = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.allTargetsAreAdmins(playerIds))

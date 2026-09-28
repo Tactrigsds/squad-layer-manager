@@ -5,6 +5,7 @@ import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import type * as L from '@/models/layer'
 import type * as USR from '@/models/users.models'
+import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
@@ -18,12 +19,11 @@ import * as Rbac from '@/systems/rbac.server'
 const MAX_LAYER_MATCHES = 100_000
 
 export async function visibleServerIds(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<string[]> {
-	const servers = await ctx.db().select({ id: Schema.servers.id }).from(Schema.servers)
-	const visible: string[] = []
-	for (const { id } of servers) {
-		if (await Rbac.canViewServerForUser(ctx, id)) visible.push(id)
-	}
-	return visible
+	const [servers, canAccess] = await Promise.all([
+		ctx.db().select({ id: Schema.servers.id }).from(Schema.servers),
+		Rbac.getUserAccessCheck(ctx),
+	])
+	return servers.flatMap(({ id }) => (canAccess(RBAC.Req.viewServer(id)) ? [id] : []))
 }
 
 export type RewriteResult = { code: 'ok'; node: HQ.Node; unrecognisedLayerMatches: number } | HistoryQuery.QueryError

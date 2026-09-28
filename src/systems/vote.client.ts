@@ -7,7 +7,7 @@ import * as PartSys from '@/systems/parts.client'
 
 const voteStateCold$ = (serverId: string) =>
 	RPC.observe('vote.watchUpdates', () => RPC.orpc.vote.watchUpdates.call({ serverId })).pipe(
-		RPC.dropServerNotLoaded(),
+		RPC.dropUnavailable(),
 		Rx.tap((update) => {
 			if (update.code === 'initial-state' && update.state) {
 				PartSys.stripParts(update.state)

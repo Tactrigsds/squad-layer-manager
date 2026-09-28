@@ -34,6 +34,7 @@ export namespace Actions {
 
 export const [usePlayerBmData, playerBmData$] = ReactRx.bindWithDefault<BM.PublicPlayerBmData>(
 	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
+		RPC.dropUnavailable(),
 		Rx.scan((acc, update) => ({ ...acc, [update.playerId]: update.data }), {} as BM.PublicPlayerBmData),
 	),
 	{},
@@ -131,12 +132,14 @@ export function usePlayerGroupings(playerId: string, player: PG.PlayerFactsSourc
 export function setup() {
 	playerBmData$.subscribe()
 
-	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).subscribe((update) => {
-		RPC.queryClient.setQueryData(
-			RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
-			update.data,
-		)
-	})
+	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call())
+		.pipe(RPC.dropUnavailable())
+		.subscribe((update) => {
+			RPC.queryClient.setQueryData(
+				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
+				update.data,
+			)
+		})
 
 	void (async () => {
 		const orgFlagsRes = await RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))

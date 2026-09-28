@@ -2,13 +2,10 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import React from 'react'
 
 import HistoryPage from '@/components/history-page'
-import { PermissionDeniedPanel } from '@/components/permission-denied-tooltip'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HQ from '@/models/history.models'
-import * as RBAC from '@/rbac.models'
-import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 // The whole query lives in the url's search params: running a query navigates, and loading a saved or
@@ -37,13 +34,6 @@ function useBareVisitDefaults(search: HQ.Search) {
 }
 
 function RouteComponent() {
-	// the server refuses the queries themselves; this is so the page says why rather than showing failures
-	const denied = RbacClient.usePermsCheck(RBAC.perm('history:query'))
-	if (denied) return <PermissionDeniedPanel denied={denied} />
-	return <HistoryRoute />
-}
-
-function HistoryRoute() {
 	const search = Route.useSearch()
 	const navigate = useNavigate()
 	useBareVisitDefaults(search)

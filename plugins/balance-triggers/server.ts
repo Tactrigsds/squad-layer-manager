@@ -4,6 +4,7 @@ import * as z from 'zod'
 
 import * as RxExt from 'slm/lib/rxjs-ext'
 import * as MH from 'slm/models/match-history'
+import * as RBAC from 'slm/models/rbac'
 import type * as P from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
@@ -30,24 +31,27 @@ export const router = {
 	// a watch stream, not a one-shot: emits current events on subscribe and re-reads on each pulse
 	// events plus the match they should be described against: which side a normalized team is reads
 	// differently per match, and the dashboard alert speaks about the one being played
-	activeEvents: os.input(z.object({})).handler(async function* ({ context }) {
-		const events$ = Rx.merge(Rx.of(context.serverId), update$).pipe(
-			Rx.filter((serverId) => serverId === context.serverId),
-			Rx.switchMap(async () => {
-				const history = await MatchHistory.getRecentMatches(context)
-				const current = await MatchHistory.getCurrentMatch(context)
-				// the alert speaks about the match just played, so it needs to know which that was: every
-				// event still in the session is streamed, because the match history decorates all of them
-				const lastPlayed = history.findLast((m) => m.status === 'post-game')
-				return {
-					events: await activeEvents(context),
-					current: current ? { layerId: current.layerId, ordinal: current.ordinal } : null,
-					lastPlayedMatchId: lastPlayed?.historyEntryId ?? null,
-				}
-			}),
-		)
-		yield* RxExt.toAsyncGenerator(events$)
-	}),
+	activeEvents: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async function* ({ context }) {
+			const events$ = Rx.merge(Rx.of(context.serverId), update$).pipe(
+				Rx.filter((serverId) => serverId === context.serverId),
+				Rx.switchMap(async () => {
+					const history = await MatchHistory.getRecentMatches(context)
+					const current = await MatchHistory.getCurrentMatch(context)
+					// the alert speaks about the match just played, so it needs to know which that was: every
+					// event still in the session is streamed, because the match history decorates all of them
+					const lastPlayed = history.findLast((m) => m.status === 'post-game')
+					return {
+						events: await activeEvents(context),
+						current: current ? { layerId: current.layerId, ordinal: current.ordinal } : null,
+						lastPlayedMatchId: lastPlayed?.historyEntryId ?? null,
+					}
+				}),
+			)
+			yield* RxExt.toAsyncGenerator(events$)
+		}),
 }
 
 export async function activate(ctx: P.Ctx<typeof manifest>) {

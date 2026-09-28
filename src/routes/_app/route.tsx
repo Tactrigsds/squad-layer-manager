@@ -3,11 +3,13 @@ import React from 'react'
 
 import DesktopOnly from '@/components/desktop-only'
 import NavBar from '@/components/nav-bar'
+import { PermissionDeniedPanel } from '@/components/permission-denied-tooltip'
 import { useCoarsePointer, useIsSmallViewport } from '@/lib/browser'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import * as PageAccess from '@/systems/page-access.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 export const Route = createFileRoute('/_app')({
@@ -27,6 +29,7 @@ function RouteComponent() {
 	// the phone layout covers the dashboard; every other page opens as the desktop page, by choice. A narrow viewport
 	// with a mouse is a small or zoomed desktop window, which can't switch to the desktop site, so it gets the page as-is
 	const desktopOnly = isPhone && isTouch && !isOnServerDashboard && !isOnServers
+	const denied = PageAccess.useCurrentPageDenial()
 	return (
 		<div
 			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden data-phone:h-screen data-phone:overflow-hidden"
@@ -35,7 +38,7 @@ function RouteComponent() {
 		>
 			<NavBar />
 			<div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhone ? '' : 'p-2.5')}>
-				{desktopOnly ? <DesktopOnly /> : <Outlet />}
+				{desktopOnly ? <DesktopOnly /> : denied ? <PermissionDeniedPanel denied={denied} /> : <Outlet />}
 			</div>
 		</div>
 	)

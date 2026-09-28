@@ -310,17 +310,24 @@ hand.
 
 ```ts
 // server.ts
+import * as RBAC from 'slm/models/rbac'
 import * as Rpc from 'slm/plugin/rpc.server'
 
 const os = Rpc.os<typeof manifest>()
 
 export const router = {
 	// a plain handler is a call
-	count: os.input(z.object({})).handler(async ({ context }) => (await context.db().select().from(S.greetings)).length),
+	count: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => (await context.db().select().from(S.greetings)).length),
 	// an async generator is a stream
-	greetings: os.input(z.object({})).handler(async function* ({ context }) {
-		yield await context.db().select().from(S.greetings)
-	}),
+	greetings: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async function* ({ context }) {
+			yield await context.db().select().from(S.greetings)
+		}),
 }
 
 export async function activate(ctx: P.Ctx<typeof manifest>) {
@@ -340,8 +347,9 @@ const streams = Rpc.stores<typeof router>(ctx) // generator procedures, as store
 bundle. `Rpc.stores` gives a keyed family: `streams.greetings(serverId, {})` returns one store per set of
 arguments, shared between every caller that passes equal ones.
 
-`context.user` is the signed-in user who made the call. The host checks only that they may use SLM at all, so a
-procedure that changes anything has to authorize them itself. See "Permissions" below.
+Every procedure declares what its caller needs in `.meta({ access })`, and the host checks it before the handler
+runs. Registering a router with a procedure that declares nothing fails. `context.user` is the signed-in user who
+made the call. See "Permissions" below.
 
 ## The client entry
 
@@ -414,12 +422,11 @@ stand on its own. The event's `payload` is yours and is stored as-is, which is w
 ## In-game commands
 
 A plugin can contribute a command admins run from in-game chat. The host owns trigger matching, the
-admin/public chat rule and the enabled gate.
+admin/public chat rule, the enabled gate and the access check.
 
 ```ts
 import * as Commands from 'slm/plugin/commands'
 import * as RBAC from 'slm/models/rbac'
-import * as Rbac from 'slm/systems/rbac'
 
 Commands.register(ctx, {
 	name: 'rolltoseed',
@@ -427,9 +434,9 @@ Commands.register(ctx, {
 	// unprefixed. The default prefix is attached unless an admin configures the command
 	triggers: ['rolltoseed'],
 	allowedChats: ['admin'],
+	// checked against the player who typed it, on the server they typed it on
+	access: RBAC.Access.req(({ serverId }) => RBAC.perm('squad-server:end-match', { serverId })),
 	handler: async (sctx, input) => {
-		const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
-		if (denial) return Rbac.describe(sctx, denial)
 		// input.text is everything typed after the trigger; input.player is who typed it
 		return 'Preparing a seed roll.'
 	},
@@ -439,8 +446,7 @@ Commands.register(ctx, {
 Returned text is warned back to the caller. The handler is given the ctx of whichever server the command was
 typed on, so it reads that server's state without being registered per server.
 
-Authorization is the handler's job, not the host's, and being in admin chat is not authorization: that is
-Squad's admin list, not SLM's roles. See "Permissions" below.
+Being in admin chat is not authorization: that is Squad's admin list, not SLM's roles. See "Permissions" below.
 
 A plugin command takes the words after its trigger as they were typed: `input.text`, or `input.args` split on
 spaces. The typed arguments core commands declare (players, squads, durations, reasons, and the prompts that
@@ -460,30 +466,42 @@ is how an admin resolves a collision between two installed plugins.
 
 ## Permissions
 
-SLM's permissions are checked where the identity is: against the player who typed a command, or against the
-signed-in user behind an rpc call. Nothing about a plugin is gated up front, because what an action requires
-often depends on the arguments it was given. SLM's own timeout and queue commands work the same way.
+Every procedure and command declares its access, and the host checks it before the handler runs:
 
 ```ts
 import * as RBAC from 'slm/models/rbac'
+
+// anyone who can view the server the call is made against (the host checks that first)
+os.meta({ access: RBAC.Access.PUBLIC })
+// a permission on that server
+os.meta({ access: RBAC.Access.req(({ serverId }) => RBAC.perm('queue:write', { serverId })) })
+// either of two
+os.meta({ access: RBAC.Access.req(({ serverId }) => RBAC.Req.any(RBAC.perm('queue:write', { serverId }), Perms.giveaway(serverId))) })
+```
+
+A refused call answers with the permission denial. A refused stream yields it and ends. A refused command warns
+it back in the server's own language.
+
+`RBAC.perm(type, args)` builds one permission. A server-scoped permission carries the server it applies to, so a
+grant on one server never satisfies a check against another: pass `{ serverId }`, not the type on its own.
+`RBAC.Req.any(...)` and `RBAC.Req.all(...)` combine several.
+
+Where the arguments decide what is needed, declare what is needed regardless with
+`RBAC.Access.inHandler(why, before)`, and check the rest in the handler:
+
+```ts
 import * as Rbac from 'slm/systems/rbac'
 
-// in a command handler
-const denial = await Rbac.checkPlayer(ctx, input.player, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
+// in a command handler, against the player who typed it
+const denial = await Rbac.checkPlayer(ctx, input.player, RBAC.Req.timeout(ctx.serverId, durationMs))
 if (denial) return Rbac.describe(ctx, denial)
 
-// in an rpc handler
+// in an rpc handler, against the signed-in caller
 const denial = await Rbac.checkCaller(context, RBAC.perm('queue:write', { serverId: context.serverId }))
 if (denial) return denial
 ```
 
-Both return the denial, or null when the caller may proceed. `Rbac.describe` renders one in the server's own
-language, which is what a command warns back; an rpc procedure can hand the structured response to its own
-client instead.
-
-`RBAC.perm(type, args)` builds one requirement. A server-scoped permission carries the server it applies to, so
-a grant on one server never satisfies a check against another: pass `{ serverId: ctx.serverId }`, not the type
-on its own. `RBAC.permReq('any', [...])` and `permReq('all', [...])` combine several.
+Both return the denial, or null when the caller may proceed.
 
 Reuse an existing permission where one fits. `squad-server:end-match` for anything that decides what plays next,
 `queue:write` for queue edits, `squad-server:warn-players` for warns. Admins already grant these, and a plugin
@@ -501,7 +519,7 @@ const Perms = Permissions.register(ctx, {
 	giveaway: { scope: 'server', description: 'Run a giveaway on a server' },
 })
 // asks for a server because the declaration said the action is about one; a 'global' action takes nothing
-const denial = await Rbac.checkCaller(context, Perms.giveaway(context.serverId))
+os.meta({ access: RBAC.Access.req(({ serverId }) => Perms.giveaway(serverId)) })
 ```
 
 `global` and `server` are the only scopes. A comparator ("up to N") or a path-restricted grant is something the

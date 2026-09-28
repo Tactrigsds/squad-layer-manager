@@ -8,7 +8,7 @@ import * as SLL from '@/models/shared-layer-list'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
-import { savedQueue } from '../harness/inspect'
+import { refusals, savedQueue } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -100,9 +100,8 @@ describe('serverConsole.watch', () => {
 			label: 'the denial',
 		})
 
-		expect(first.code).toBe('err:permission-denied')
 		// and it denies by refusing to send anything, not by sending the traffic with a flag attached
-		expect(first.events).toEqual([])
+		expect(first).toEqual({ code: 'err:permission-denied', checkType: 'all', failures: ['squad-server:view-console'] })
 	})
 
 	it('streams the traffic to a user who holds view-console', async () => {
@@ -111,7 +110,7 @@ describe('serverConsole.watch', () => {
 			label: 'the console backlog',
 		})
 
-		expect(first.code).toBe('ok')
+		if (first.code !== 'ok') throw new Error(`expected the backlog, got ${first.code}`)
 		// the app polls the server on a timer, so a slice that has been up has rcon traffic behind it already
 		expect(first.events.length).toBeGreaterThan(0)
 		expect(first.events.some((e) => e.type === 'rcon')).toBe(true)
@@ -142,11 +141,21 @@ describe('serverConsole.watch', () => {
 				label: 'the restart to reach the same subscription',
 				timeoutMs: 60_000,
 			})
+			// every later test here acts on this server, so it is handed back loaded rather than merely starting
+			await app.waitFor(
+				async () => {
+					const loaded = await firstYield((signal) => adminClient.squadServer.watchLoadedServers(undefined, { signal }), {
+						label: 'the loaded servers',
+					})
+					return loaded.includes(app.serverId) || null
+				},
+				{ label: 'the server to load again', timeoutMs: 90_000 },
+			)
 		} finally {
 			ac.abort()
 			await collecting
 		}
-	}, 120_000)
+	}, 180_000)
 
 	it('carries what a player said in game', async () => {
 		const client = consoleReaderClient
@@ -167,6 +176,26 @@ describe('serverConsole.watch', () => {
 		)
 
 		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
+	})
+})
+
+// Every procedure declares what it requires, and the base middleware enforces the declaration before the handler runs.
+describe('declared access', () => {
+	it('refuses a procedure whose handler checks nothing itself', async () => {
+		expect(await dashboardOnlyClient.history.searchPlayers({ needle: 'integ' })).toEqual({
+			code: 'err:permission-denied',
+			checkType: 'all',
+			failures: ['history:query'],
+		})
+	})
+
+	it('records a refused mutation in the audit log', async () => {
+		const res = await dashboardOnlyClient.settings.admin.enableServer({ serverId: app.serverId })
+		expect(res).toMatchObject({ code: 'err:permission-denied', failures: ['admin:manage-servers'] })
+		expect(refusals(app, DASHBOARD_ONLY.discordId)).toContainEqual({
+			procedure: 'settings.admin.enableServer',
+			failures: ['admin:manage-servers'],
+		})
 	})
 })
 
@@ -203,7 +232,7 @@ describe('a server with no recorded match', () => {
 })
 
 // A layer whose mod the server does not have cannot load, so the queue refuses it outright. Unlike the pool, no
-// permission lifts it: the admin here holds queue:force-write and is still turned away. Last in the file because
+// permission lifts it: the admin here holds queue:force-write and is still turned away. Late in the file because
 // the accepted case saves a queue.
 describe('installedMods', () => {
 	const addOp = (layerId: L.LayerId) => ({
@@ -231,5 +260,47 @@ describe('installedMods', () => {
 		await app.waitFor(async () => savedQueue(app).find((item) => item.layerId === LAYERS.gorodokAas) ?? null, {
 			label: 'the queued layer',
 		})
+	}, 60_000)
+})
+
+// A stream is checked for as long as it is open, not only when it is opened: losing access mid-stream replaces what it
+// sends with the denial, and regaining it ends the stream so the client's resubscription is the one that succeeds.
+// Last in the file because it edits the rbac settings, though it puts them back.
+describe('revoking access from an open stream', () => {
+	async function setDashboardOnlyPerms(permissions: string[]) {
+		const current = await firstYield((signal) => adminClient.settings.global.watchSettings(undefined, { signal }), {
+			label: 'the global settings',
+		})
+		if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+		const rbac = structuredClone(current.rbac)!
+		rbac.roles!['dashboard-only'].permissions = permissions
+		const res = await adminClient.settings.global.updateSettings({ rbac })
+		if (res.code !== 'ok') throw new Error(`could not update the settings: ${res.code}`)
+	}
+
+	it('yields the denial on revocation and ends once access is back', async () => {
+		const received: { code?: string }[] = []
+		const ac = new AbortController()
+		let ended = false
+		const collecting = (async () => {
+			for await (const update of await dashboardOnlyClient.layerQueue.watchOps({ serverId: app.serverId }, { signal: ac.signal })) {
+				received.push(update as { code?: string })
+			}
+			ended = true
+		})().catch(() => {})
+
+		try {
+			await app.waitFor(() => received.some((u) => u.code === 'init') || null, { label: 'the queue state' })
+
+			await setDashboardOnlyPerms(['site:authorized'])
+			await app.waitFor(() => received.some((u) => u.code === 'err:permission-denied') || null, { label: 'the denial' })
+
+			await setDashboardOnlyPerms(['site:authorized', 'squad-server:view'])
+			await app.waitFor(() => ended || null, { label: 'the stream to end' })
+		} finally {
+			ac.abort()
+			await collecting
+		}
+		expect(received.at(-1)).toMatchObject({ code: 'err:permission-denied', failures: [`squad-server:view on ${app.serverId}`] })
 	}, 60_000)
 })

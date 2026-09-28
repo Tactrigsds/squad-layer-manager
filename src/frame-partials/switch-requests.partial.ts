@@ -28,7 +28,7 @@ export function initSwitchRequests(args: Args) {
 
 	args.cleanup.push(
 		RPC.observe('switchRequests.watchUpdates', () => RPC.orpc.switchRequests.watchUpdates.call({ serverId }))
-			.pipe(RPC.dropServerNotLoaded())
+			.pipe(RPC.dropUnavailable())
 			.subscribe((update) => {
 				set({ requests: update.requests, swapping: update.swapping })
 			}),

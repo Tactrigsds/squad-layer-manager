@@ -55,13 +55,11 @@ export const [useServerAvailability, serverAvailability$] = ReactRx.bind('squadS
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
 export const [useLayersStatus, layersStatus$] = ReactRx.bind('squadServer.layersStatus', (serverId: string) =>
 	RPC.observe('squadServer.watchLayersStatus', () => RPC.orpc.squadServer.watchLayersStatus.call({ serverId })).pipe(
-		RPC.dropServerNotLoaded(),
+		RPC.dropUnavailable(),
 	),
 )
 export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind('squadServer.serverInfoRes', (serverId: string) =>
-	RPC.observe('squadServer.watchServerInfo', () => RPC.orpc.squadServer.watchServerInfo.call({ serverId })).pipe(
-		RPC.dropServerNotLoaded(),
-	),
+	RPC.observe('squadServer.watchServerInfo', () => RPC.orpc.squadServer.watchServerInfo.call({ serverId })).pipe(RPC.dropUnavailable()),
 )
 export const [useServerInfo, serverInfo$] = ReactRx.bind('squadServer.serverInfo', (serverId: string) =>
 	serverInfoRes$(serverId).pipe(Rx.map((res) => (res.code === 'ok' ? res.data : null))),
@@ -69,12 +67,12 @@ export const [useServerInfo, serverInfo$] = ReactRx.bind('squadServer.serverInfo
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind('squadServer.serverRolling', (serverId: string) =>
 	RPC.observe('squadServer.watchServerRolling', () => RPC.orpc.squadServer.watchServerRolling.call({ serverId })).pipe(
-		RPC.dropServerNotLoaded(),
+		RPC.dropUnavailable(),
 	),
 )
 
 export const [useTickRate, tickRate$] = ReactRx.bind('squadServer.tickRate', (serverId: string) =>
-	RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(RPC.dropServerNotLoaded()),
+	RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(RPC.dropUnavailable()),
 )
 
 // Asked for on the click rather than kept warm: the link carries a steam lobby id that the server replaces as

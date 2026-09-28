@@ -2,6 +2,7 @@ import * as Arr from '@/lib/array-utils'
 import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { z } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
@@ -426,40 +427,84 @@ export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedP
 	}
 }
 
-export function permissionDenied(checkType: PermissionReq['check'], failures: string[]): PermissionDeniedResponse {
-	return {
-		code: 'err:permission-denied',
-		checkType,
-		failures,
-	}
-}
-
-// failures are pre-rendered to human-readable strings (a permission type, or a callback's message) rather than
-// carrying the structured Permission. That keeps the response shallow and non-generic, which matters: the richer
-// shape overflowed oRPC's client type-transform and got silently dropped from complex handlers' return unions.
+// failures are pre-rendered to human-readable strings rather than carrying the structured Req. That keeps the
+// response shallow and non-generic, which matters: the richer shape overflowed oRPC's client type-transform and got
+// silently dropped from complex handlers' return unions.
 export type PermissionDeniedResponse = {
 	code: 'err:permission-denied'
-	checkType: PermissionReq['check']
+	checkType: 'all' | 'any'
 	failures: string[]
 }
 
-// `scoped` is the scoped-server set from the check that evaluates this callback (see tryDenyPermissions): a callback
-// that consults a server-scoped matcher must pass it through, exactly as the equality-matched path does.
-export type PermitCheckerCallback = (perms: Permission[], scoped: ReadonlySet<string>) => string | undefined
+export function permissionDenied(checkType: 'all' | 'any', failures: string[]): PermissionDeniedResponse {
+	return { code: 'err:permission-denied', checkType, failures }
+}
 
-// permissions whose args carry a serverId. The bare-string permit form matches on type alone, which for these would
-// mean "holds this on *some* server" -- a sandbox-only grant would satisfy a check against a production server. So
-// they are excluded from that form and must be passed as a built `perm(type, { serverId })`.
-export type ServerAwarePermissionType = ServerPermissionType | 'squad-server:timeout-players' | 'queue:request-layers'
+export function isPermissionDenied(value: unknown): value is PermissionDeniedResponse {
+	return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'err:permission-denied'
+}
 
-export type PermitChecker<T extends PermissionType = PermissionType> =
-	| Permission<T>
-	| PermitCheckerCallback
-	| Exclude<T, ServerAwarePermissionType>
+// ============================== requirements ==============================
+// What an action requires, as data. Every requirement is one of these nodes, so it can be listed, shared between
+// client and server, and evaluated against a set of perms without running anyone's code.
 
-export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: PermitChecker<T>[] }
-export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
-	return { check, permits: permits.filter((v) => Boolean(v)) as PermitChecker<T>[] }
+export type Req =
+	// subsumption: the caller's grants cover this one (see permSubsumedBy)
+	| { kind: 'perm'; perm: Permission }
+	// holds a grant of this type in any form: on any server, for any paths, up to any cap. Deliberately loose, for an
+	// affordance with no server in scope; the server-scoped check is `Req.perm(type, { serverId })`
+	| { kind: 'holds'; type: PermissionType }
+	| { kind: 'view-server'; serverId: string }
+	// can view at least one server's dashboard, which is what seeing any live player data comes down to
+	| { kind: 'view-any-server' }
+	// durationMs absent = any timeout grant at all
+	| { kind: 'timeout'; serverId: string | null; durationMs?: number }
+	| { kind: 'layer-request'; serverId: string }
+	// null serverId = global settings. paths are dotted and already mapped to the path a change is authorized by
+	| { kind: 'settings-write'; serverId: string | null; paths: string[] }
+	| { kind: 'any'; reqs: Req[] }
+	| { kind: 'all'; reqs: Req[] }
+
+// a bare Permission is accepted wherever a Req is, as shorthand for Req.perm
+export type ReqInput = Req | Permission
+
+// Req.perm shadows the module's perm() inside the namespace
+const perm_ = perm
+
+export namespace Req {
+	export function perm<T extends PermissionType>(
+		type: T,
+		...args: undefined extends PermArgs<T> ? [scopeOpts?: PermArgs<T>] : [scopeOpts: PermArgs<T>]
+	): Req {
+		return { kind: 'perm', perm: (perm_ as (type: T, scopeOpts?: PermArgs<T>) => Permission<T>)(type, args[0]) }
+	}
+	export function holdsAnyGrant(type: PermissionType): Req {
+		return { kind: 'holds', type }
+	}
+	export function viewServer(serverId: string): Req {
+		return { kind: 'view-server', serverId }
+	}
+	export function viewAnyServer(): Req {
+		return { kind: 'view-any-server' }
+	}
+	export function timeout(serverId: string | null, durationMs?: number): Req {
+		return { kind: 'timeout', serverId, durationMs }
+	}
+	export function layerRequest(serverId: string): Req {
+		return { kind: 'layer-request', serverId }
+	}
+	export function settingsWrite(serverId: string | null, paths: string[]): Req {
+		return { kind: 'settings-write', serverId, paths }
+	}
+	export function any(...reqs: ReqInput[]): Req {
+		return { kind: 'any', reqs: reqs.map(of) }
+	}
+	export function all(...reqs: ReqInput[]): Req {
+		return { kind: 'all', reqs: reqs.map(of) }
+	}
+	export function of(input: ReqInput): Req {
+		return 'kind' in input ? input : { kind: 'perm', perm: input }
+	}
 }
 
 // -------- plugin actions --------
@@ -476,66 +521,109 @@ export function pluginAction(pluginId: string, permission: string, serverId: str
 	return perm('plugin:action', { pluginId, permission, serverId })
 }
 
-// how a failed static permit is described in a denial response
+// how a failed permission is described in a denial response
 export function describePermit<T extends PermissionType>(permit: Permission<T> | T): string {
 	if (typeof permit === 'string') return permit
 	if (permit.type === 'plugin:action') return `${permit.args.pluginId}:${permit.args.permission}`
 	return permit.type
 }
 
-export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
-	user: UserWithRbac,
-	req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
-	scoped: ReadonlySet<string>,
-): PermissionDeniedResponse | null {
-	const perms = fromTracedPermissions(user.perms)
-	return tryDenyPermissions(perms, req, scoped)
+// the human-readable reason each unmet part of `req` gives; empty when `perms` satisfy it
+function reqFailures(perms: Permission[], req: Req, scoped: ReadonlySet<string>): string[] {
+	switch (req.kind) {
+		case 'perm':
+			return permSubsumedBy(req.perm, perms, scoped) ? [] : [describePermit(req.perm)]
+		case 'holds':
+			return perms.some((p) => p.type === req.type) ? [] : [req.type]
+		case 'view-server':
+			return canViewServer(perms, req.serverId, scoped) ? [] : [`squad-server:view on ${req.serverId}`]
+		case 'view-any-server':
+			return perms.some((p) => isServerScoped(p.type)) ? [] : ['squad-server:view on any server']
+		case 'timeout': {
+			const max = maxTimeoutDurationMs(perms, req.serverId, scoped)
+			if (req.durationMs === undefined) {
+				return max !== undefined ? [] : [`squad-server:timeout-players on ${req.serverId ?? 'all servers'}`]
+			}
+			if (max === null || (max !== undefined && max >= req.durationMs)) return []
+			const found = max === undefined ? 'none' : ZodUtils.formatHumanTime(max)
+			return [
+				`squad-server:timeout-players on ${req.serverId ?? 'all servers'} where maxDurationMs >= ${ZodUtils.formatHumanTime(req.durationMs)}. Max found: ${found}`,
+			]
+		}
+		case 'layer-request':
+			return maxLayerRequests(perms, req.serverId, scoped) !== undefined ? [] : [`queue:request-layers on ${req.serverId}`]
+		case 'settings-write': {
+			const access = req.serverId === null ? globalSettingsWriteAccess(perms) : serverSettingsWriteAccess(perms, req.serverId, scoped)
+			const missing = req.paths.filter((p) => !settingsPathAllowed(access, p))
+			if (missing.length === 0) return []
+			const perm = req.serverId === null ? 'global-settings:write' : 'server-settings:write'
+			return [`${perm} missing paths: ${missing.join(', ')}`]
+		}
+		case 'all':
+			return req.reqs.flatMap((r) => reqFailures(perms, r, scoped))
+		case 'any': {
+			if (req.reqs.length === 0) return ['an empty "any" requirement, which nothing satisfies']
+			const failures: string[] = []
+			for (const r of req.reqs) {
+				const f = reqFailures(perms, r, scoped)
+				if (f.length === 0) return []
+				failures.push(...f)
+			}
+			return failures
+		}
+		default:
+			assertNever(req)
+	}
 }
 
-export function tryDenyPermissions<T extends PermissionType>(
-	_userPerms: Permission[],
-	_req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+export function tryDenyPermissions(perms: Permission[], input: ReqInput, scoped: ReadonlySet<string>): PermissionDeniedResponse | null {
+	const req = Req.of(input)
+	const failures = reqFailures(perms, req, scoped)
+	if (failures.length === 0) return null
+	return permissionDenied(req.kind === 'any' ? 'any' : 'all', failures)
+}
+
+export function tryDenyPermissionsForRbacUser(
+	user: UserWithRbac,
+	req: ReqInput,
 	scoped: ReadonlySet<string>,
-) {
-	// just in case
-	const userPerms = fromTracedPermissions(_userPerms as unknown as TracedPermission[])
-	let failures: string[] = []
+): PermissionDeniedResponse | null {
+	return tryDenyPermissions(fromTracedPermissions(user.perms), req, scoped)
+}
 
-	let req: PermissionReq<T>
-	if (typeof _req === 'object' && 'check' in _req) {
-		req = _req
-	} else {
-		req = { check: 'all', permits: Array.isArray(_req) ? _req : [_req] }
+// ============================== access declarations ==============================
+// What an entry point (an rpc procedure, a command, an interaction, a page) requires before it runs. Every entry
+// point states one, so whether it is guarded is answered by its declaration rather than by reading its body.
+
+type ReqSource<I> = ReqInput | ((input: I) => ReqInput)
+
+export type Access<I = void> =
+	// nothing to check. `public`: data every signed-in user may see. `self`: keyed to the caller. `filtered`: narrowed
+	// to what the caller may see, row by row
+	| { kind: 'none'; why: 'public' | 'self' | 'filtered' }
+	// decided before the entry point runs, from its input alone
+	| { kind: 'req'; req: ReqSource<I> }
+	// decided by the entry point itself, because it depends on state it has to load first. `before` is checked up front
+	// all the same, so the entry point only has to add what the loaded state decides
+	| { kind: 'in-handler'; why: string; before?: ReqSource<I> }
+
+export namespace Access {
+	export const PUBLIC = { kind: 'none', why: 'public' } as const
+	export const SELF = { kind: 'none', why: 'self' } as const
+	export const FILTERED = { kind: 'none', why: 'filtered' } as const
+	export function req<const R extends ReqSource<any>>(req: R) {
+		return { kind: 'req' as const, req }
+	}
+	export function inHandler<const R extends ReqSource<any> | undefined = undefined>(why: string, before?: R) {
+		return { kind: 'in-handler' as const, why, before: before as R }
 	}
 
-	for (const reqPerm of req.permits) {
-		if (typeof reqPerm === 'function') {
-			const errorMessage = reqPerm(userPerms, scoped)
-			if (errorMessage) {
-				failures.push(errorMessage)
-			}
-		} else {
-			const hasPerm =
-				typeof reqPerm === 'string'
-					? userPerms.some((userPerm) => userPerm.type === reqPerm)
-					: permSubsumedBy(reqPerm, userPerms, scoped)
-			if (!hasPerm) {
-				failures.push(describePermit(reqPerm))
-			}
-		}
+	// the requirement to check before running, or null when there is none to check up front
+	export function resolve<I>(access: Access<I>, input: I): Req | null {
+		const source = access.kind === 'req' ? access.req : access.kind === 'in-handler' ? access.before : undefined
+		if (source === undefined) return null
+		return Req.of(typeof source === 'function' ? source(input) : source)
 	}
-
-	let failure: boolean
-	if (req.check === 'all') {
-		failure = failures.length > 0
-	} else if (req.check === 'any') {
-		failure = failures.length === req.permits.length
-	} else {
-		assertNever(req.check)
-	}
-
-	if (!failure) return null
-	return { code: 'err:permission-denied' as const, failures, checkType: req.check }
 }
 
 // a permission-shaped value for the structural comparison/manipulation helpers. Looser than the discriminated
@@ -564,17 +652,11 @@ export function isSamePerm(perm1: PermLike, perm2: PermLike) {
 	return arePermsEqual(Obj.selectProps(perm1, ['args', 'scope', 'type']), Obj.selectProps(perm2, ['args', 'scope', 'type']))
 }
 
-export function getWritePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
-	return {
-		check: 'any',
-		permits: [perm('filters:write', { filterId: id }), perm('filters:write-all')],
-	}
+export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Req {
+	return Req.any(perm('filters:write', { filterId: id }), perm('filters:write-all'))
 }
-export function getManagePermReqForFilterEntity(id: F.FilterEntityId): PermissionReq {
-	return {
-		check: 'any',
-		permits: [perm('filters:manage', { filterId: id }), perm('filters:write-all')],
-	}
+export function getManagePermReqForFilterEntity(id: F.FilterEntityId): Req {
+	return Req.any(perm('filters:manage', { filterId: id }), perm('filters:write-all'))
 }
 
 // the effective max kick-timeout duration a set of perms grants on `serverId`: undefined = no grant at all,
@@ -611,23 +693,6 @@ export function maxLayerRequests(perms: Permission[], serverId: string | null, s
 // squad-server:view on its own is therefore the read-only grant.
 export function canViewServer(perms: Permission[], serverId: string, scoped: ReadonlySet<string>): boolean {
 	return perms.some((p) => isServerScoped(p.type) && serverIdMatches(p.args as { serverId: string | null } | undefined, serverId, scoped))
-}
-
-// "holds this on at least one server", for the two client affordances that have no server in scope: the layer
-// table's force-select toggle and the row selectability the query stream marks. Deliberately loose, and
-// deliberately not spellable as a bare-string permit -- the authoritative check is the server-scoped one the
-// queue handler runs (see layer-queue.server dispatchOp), which rejects the write regardless of what the UI offered.
-export function hasPermOnAnyServer(perms: Permission[], type: ServerPermissionType): boolean {
-	return perms.some((p) => p.type === type)
-}
-
-// "holds any layer-request grant on this server". A comparator perm, so it can't ride the equality-matched
-// permission path (and its bare-string form is barred, which is the point: it would ignore the server).
-export function anyLayerRequestGrant(serverId: string): PermitCheckerCallback {
-	return (perms, scoped) => {
-		if (maxLayerRequests(perms, serverId, scoped) !== undefined) return
-		return `queue:request-layers on ${serverId}`
-	}
 }
 
 // ============================== settings access ==============================

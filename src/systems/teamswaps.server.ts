@@ -23,7 +23,6 @@ import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as USR from '@/models/users.models'
-import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
@@ -31,7 +30,6 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
-import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
@@ -463,8 +461,6 @@ export const orpcRouter = {
 			if (!source?.discordId || source.discordId !== ctx.user.discordId) {
 				return { code: 'err:invalid-source' as const }
 			}
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
-			if (denyRes) return denyRes
 			await dispatchOp(ctx, [input], { sourceWsClientId: context.wsClientId })
 		}),
 }

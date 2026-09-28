@@ -6,7 +6,9 @@ import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import { toNormalizedEmoji } from '@/models/discord.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
@@ -135,7 +137,7 @@ export async function setup() {
 	}
 	homeGuildName = res.guild.name
 
-	await res.guild.commands.set([{ name: RESTART_SLM_COMMAND, description: 'Kill the SLM process so its container manager restarts it' }])
+	await res.guild.commands.set(Object.entries(SLASH_COMMANDS).map(([name, command]) => ({ name, description: command.description })))
 	client.on('interactionCreate', (interaction) => void handleInteraction(interaction))
 
 	const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
@@ -189,47 +191,75 @@ async function postedFromUpdate(updated: D.Message | D.PartialMessage, homeGuild
 	}
 }
 
-const RESTART_SLM_COMMAND = 'restart-slm'
 // how long to wait for graceful shutdown before forcing the exit
 const RESTART_FORCE_EXIT_TIMEOUT = 10_000
 
+type SlashCommandCtx = C.Db & USR.Ctx.Id & CS.AbortSignal
+type SlashCommand = {
+	description: string
+	// what the discord user running it needs, checked before `run`
+	access: RBAC.Access
+	run: (ctx: SlashCommandCtx, interaction: D.ChatInputCommandInteraction) => Promise<void>
+}
+
+// the slash commands registered in the home guild
+const SLASH_COMMANDS: Record<string, SlashCommand> = {
+	'restart-slm': {
+		description: 'Kill the SLM process so its container manager restarts it',
+		access: RBAC.Access.req(RBAC.perm('admin:restart-slm')),
+		run: restartSlm,
+	},
+}
+
 async function handleInteraction(interaction: D.Interaction) {
-	if (!interaction.isChatInputCommand() || interaction.commandName !== RESTART_SLM_COMMAND) return
+	if (!interaction.isChatInputCommand()) return
+	const command = SLASH_COMMANDS[interaction.commandName]
+	if (!command) return
 	try {
-		// dynamic import: rbac.server statically imports this module
-		const Rbac = await import('@/systems/rbac.server')
 		const ctx = DB.addPooledDb({
 			...CS.init(),
 			user: { discordId: BigInt(interaction.user.id) },
 			// TODO is this the best we can do?
 			signal: CleanupSys.shutdownSignal,
 		})
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:restart-slm'))
-		if (denyRes) {
-			await interaction.reply({ content: 'You are not authorized to restart SLM.', flags: D.MessageFlags.Ephemeral })
-			return
+		const req = RBAC.Access.resolve(command.access, undefined)
+		if (req) {
+			// dynamic import: rbac.server statically imports this module
+			const Rbac = await import('@/systems/rbac.server')
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, req)
+			if (denyRes) {
+				await interaction.reply({
+					content: `You are not authorized to run /${interaction.commandName}. Missing: ${denyRes.failures.join(', ')}`,
+					flags: D.MessageFlags.Ephemeral,
+				})
+				return
+			}
 		}
-		await interaction.reply({ content: 'Shutting down SLM. It should be restarted shortly.' })
-		log.warn('restart-slm invoked by %s (%s), shutting down', interaction.user.username, interaction.user.id)
-		await AppEventsSys.persistAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.AppRestarted>({
-				type: 'APP_RESTARTED',
-				actor: { type: 'slm-user', userId: ctx.user.discordId },
-				serverId: null,
-				matchId: null,
-				causeId: null,
-				version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
-			}),
-		)
-		setTimeout(() => process.exit(1), RESTART_FORCE_EXIT_TIMEOUT)
-		process.kill(process.pid, 'SIGTERM')
+		await command.run(ctx, interaction)
 	} catch (err) {
-		log.error({ err }, 'Failed to handle %s command', RESTART_SLM_COMMAND)
+		log.error({ err }, 'Failed to handle %s command', interaction.commandName)
 		if (interaction.isRepliable() && !interaction.replied) {
 			await interaction.reply({ content: 'Something went wrong.', flags: D.MessageFlags.Ephemeral }).catch(() => {})
 		}
 	}
+}
+
+async function restartSlm(ctx: SlashCommandCtx, interaction: D.ChatInputCommandInteraction) {
+	await interaction.reply({ content: 'Shutting down SLM. It should be restarted shortly.' })
+	log.warn('restart-slm invoked by %s (%s), shutting down', interaction.user.username, interaction.user.id)
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.AppRestarted>({
+			type: 'APP_RESTARTED',
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
+		}),
+	)
+	setTimeout(() => process.exit(1), RESTART_FORCE_EXIT_TIMEOUT)
+	process.kill(process.pid, 'SIGTERM')
 }
 
 export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessToken) {

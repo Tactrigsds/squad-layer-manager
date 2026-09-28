@@ -88,6 +88,23 @@ export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	}
 }
 
+// the procedures a user was refused and what they lacked, from the audit log
+export function refusals(app: AppFixture, userId: bigint): { procedure: string; failures: string[] }[] {
+	const db = app.readDb()
+	try {
+		const rows = db.prepare(`SELECT data FROM appEvents WHERE type = 'PERMISSION_DENIED' AND actorUserId = ?`).all(userId.toString()) as {
+			data: string
+		}[]
+		return rows.map((row) => {
+			const parsed = JSON.parse(row.data)
+			const data = parsed.json ?? parsed
+			return { procedure: data.procedure, failures: data.failures }
+		})
+	} finally {
+		db.close()
+	}
+}
+
 // how many chat messages a history search over this text will find. The fts index joined to the event index
 // the query anchors on, because the two are written separately and only their intersection is reachable: an
 // event whose player the app has not persisted yet is dropped from the event index and never retried, while

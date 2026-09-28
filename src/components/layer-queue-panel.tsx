@@ -634,9 +634,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
 	const updatesDisabled = Zus.useStore(props.stores.squadServer!, (s) => s.settings.saved.updatesToSquadServerDisabled)
 	const { enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
-	const enableUpdatesDenied = RbacClient.usePermsCheck(
-		RBAC.perm('squad-server:disable-slm-updates', { serverId: props.stores.squadServer!.serverId }),
-	)
+	const enableUpdatesDenied = RbacClient.useAccess('layerQueue.toggleUpdatesToSquadServer', { serverId })
 	if (!updatesDisabled) return null
 
 	return (

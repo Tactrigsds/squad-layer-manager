@@ -77,6 +77,7 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	PLAYER_FLAGS_UPDATED: { playerId: 'eos1', added: [], removed: [] },
 	APP_STARTED: {},
 	APP_RESTARTED: {},
+	PERMISSION_DENIED: { procedure: 'squadServer.endMatch', failures: ['squad-server:end-match'] },
 	BACKUP_CREATED: { filename: 'b.db', sizeBytes: 1 },
 	MAP_SET: { layerId: 'GD-RAAS-V1:USA-CA:RGF-CA', reason: 'override', overrode: { type: 'rcon' } },
 	PLUGIN_EVENT: { pluginId: 'p', name: 'thing', message: 'a thing happened', payload: {} },

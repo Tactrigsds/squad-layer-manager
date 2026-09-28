@@ -11,9 +11,9 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as RPC_Msgs from '@/messages/rpc.messages'
+import type * as PA from '@/models/procedure-access.models'
 import * as SM from '@/models/squad.models'
-import type * as RBAC from '@/rbac.models'
-import type { OrpcAppRouter } from '@/server/orpc-app-router'
+import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 
@@ -59,7 +59,7 @@ const orpcLink = new RPCLink({
 	],
 })
 
-const _orpcClient: RouterClient<OrpcAppRouter> = createORPCClient(orpcLink)
+const _orpcClient: RouterClient<PA.ClientRouter> = createORPCClient(orpcLink)
 websocket.addEventListener('close', () => {
 	console.log('WebSocket close event')
 })
@@ -329,17 +329,18 @@ export function observe<T, R = T>(tag: string, task: () => Promise<Rx.Observable
 }
 
 /**
- * Drops the err:server-not-loaded value every per-server stream can emit (see SquadServer.stream$), so consumers
- * keep their original payload type. Losing the managed server isn't this layer's problem to report: the dashboard gates itself on
- * squadServer.watchLoadedServers and swaps in the unavailable view, and the stream resumes on its own once the managed server is
- * back. Holding rather than erroring is what makes that recovery automatic.
+ * Drops the err:server-not-loaded value every per-server stream can emit (see SquadServer.stream$), and the denial one
+ * yields while the caller may not view the server, so consumers keep their original payload type. Neither is this
+ * layer's problem to report: the dashboard gates itself on squadServer.watchLoadedServers, which omits both, and swaps
+ * in the unavailable view. The stream holds rather than erroring and resumes once the server or the access is back,
+ * which is what makes that recovery automatic.
  */
-export function dropServerNotLoaded<T>(): Rx.OperatorFunction<T | SM.ServerNotLoaded, T> {
-	return Rx.filter((value): value is T => !SM.isServerNotLoaded(value))
+export function dropUnavailable<T>(): Rx.OperatorFunction<T | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse, T> {
+	return Rx.filter((value): value is T => !SM.isServerNotLoaded(value) && !RBAC.isPermissionDenied(value))
 }
 
 /**
- * The query-side counterpart to dropServerNotLoaded: reads err:server-not-loaded as "no data". Every endpoint that can
+ * The query-side counterpart to dropUnavailable: reads err:server-not-loaded as "no data". Every endpoint that can
  * return it is reachable only from the server dashboard, which unmounts itself when the server goes away, so the only
  * way a component sees this is a teardown race it is already on its way out of.
  *
@@ -348,6 +349,6 @@ export function dropServerNotLoaded<T>(): Rx.OperatorFunction<T | SM.ServerNotLo
  */
 export function selectLoaded<T>(res: T | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse): T | undefined {
 	if (SM.isServerNotLoaded(res)) return undefined
-	if (res && typeof res === 'object' && 'code' in res && res.code === 'err:permission-denied') return undefined
+	if (RBAC.isPermissionDenied(res)) return undefined
 	return res as T
 }
