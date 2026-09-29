@@ -425,6 +425,8 @@ export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<
 		playerCount: rawInfo.PlayerCount_I,
 		queueLength: rawInfo.PublicQueue_I,
 		maxQueueLength: rawInfo.PublicQueueLimit_I,
+		reserveSlots: rawInfo.PlayerReserveCount_I,
+		reserveQueueLength: rawInfo.ReservedQueue_I,
 	}
 
 	return {

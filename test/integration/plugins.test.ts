@@ -12,7 +12,8 @@ import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/or
 // rpc stream, and deactivation over oRPC. The disable step kills the plugin's subscriptions, so it is
 // last. Two RAAS layers in the queue give the trigger two same-session matches to fire on; the seed
 // layer the emulator boots on is a session breaker and never counts. The third pins the match the
-// teamkill test runs on: generation can land on a Training layer, where teamkill-warns stays silent.
+// teamkill and afk-kicker tests run on: generation can land on a Training layer, where teamkill-warns
+// stays silent and afk-kicker judges by inactivity instead of squad membership.
 //
 // teamkill-warns rides along as the second subject, for the one thing balance-triggers cannot show: it
 // is enabled here with an empty enabledServers, so every warn it sends proves the host contract that a
@@ -163,6 +164,46 @@ describe('plugin host', () => {
 		await app.waitFor(() => warnsTo(app, victim).find((w) => w.includes('BRAVO')), {
 			label: 'the teamkill warn rendered from the edited template',
 		})
+	})
+
+	it('afk-kicker warns and then kicks the squadless player a full server needs gone, and nobody else', async () => {
+		const world = app.emu.world
+		const idler = world.connectPlayer(makePlayer({ name: ' afk_idler', teamId: 1 }))
+		// everyone else in a squad, so the idler is the only candidate
+		for (const teamId of [1, 2]) {
+			const members = world.playerList().filter((p) => p !== idler && p.teamId === teamId)
+			const [leader, ...rest] = members
+			if (!leader) continue
+			const squad = world.createSquad(leader, `AFK_TEST_${teamId}`)
+			for (const p of rest) world.joinSquad(p, squad)
+		}
+		await app.waitForRosterSync()
+		const squadded = world.playerList().filter((p) => p !== idler)
+
+		await client.plugins.setEnabled({ pluginId: 'afk-kicker', enabled: true })
+		await client.plugins.updateSettings({
+			pluginId: 'afk-kicker',
+			config: { enabledServers: [app.serverId], squadlessWindow: '2s', warnInterval: '1h', warning: 'PERIODIC', finalWarning: 'FINAL' },
+		})
+		try {
+			// full with nobody waiting: warned, not kicked
+			world.maxPlayers = world.players.size
+			await app.waitFor(() => warnsTo(app, idler).find((w) => w.includes('PERIODIC')), { label: 'the periodic AFK warning' })
+			expect(world.players.has(idler.eos)).toBe(true)
+
+			world.publicQueue = 1
+			await app.waitFor(() => (world.players.has(idler.eos) ? undefined : true), { label: 'the AFK player being kicked' })
+		} finally {
+			world.publicQueue = 0
+			world.maxPlayers = 100
+		}
+
+		expect(warnsTo(app, idler).at(-1)).toContain('FINAL')
+		for (const p of squadded) expect(world.players.has(p.eos)).toBe(true)
+		const kicks = readRows<{ actorPluginId: string | null }>(`SELECT actorPluginId FROM appEvents WHERE type = 'PLAYER_KICKED'`)
+		expect(kicks.map((k) => k.actorPluginId)).toEqual(['afk-kicker'])
+
+		await client.plugins.setEnabled({ pluginId: 'afk-kicker', enabled: false })
 	})
 
 	it('disabling over oRPC deactivates the plugin and stops evaluation', async () => {

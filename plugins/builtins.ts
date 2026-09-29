@@ -2,6 +2,7 @@ import { clients, manifests } from 'virtual:slm-dev-plugins'
 
 import type { BuiltinClientPlugin } from '@/systems/plugins.client'
 
+import afkKicker from './afk-kicker/plugin.ts'
 import balanceTriggers from './balance-triggers/plugin.ts'
 import teamkillWarns from './teamkill-warns/plugin.ts'
 
@@ -13,6 +14,7 @@ import teamkillWarns from './teamkill-warns/plugin.ts'
 const SHIPPED: BuiltinClientPlugin[] = [
 	{ manifest: balanceTriggers, client: () => import('./balance-triggers/client.tsx') },
 	{ manifest: teamkillWarns },
+	{ manifest: afkKicker },
 ]
 
 export const BUILTIN_PLUGIN_CLIENTS: BuiltinClientPlugin[] = [...SHIPPED, ...discoverSourceClients()]

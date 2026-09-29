@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type * as PLG from '@/models/plugins.models'
 import type { BuiltinPlugin, ServerModule } from '@/systems/plugins.server'
 
+import afkKicker from './afk-kicker/plugin.ts'
 import balanceTriggers from './balance-triggers/plugin.ts'
 import teamkillWarns from './teamkill-warns/plugin.ts'
 
@@ -21,6 +22,11 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
 	{
 		manifest: teamkillWarns,
 		server: () => import('./teamkill-warns/server.ts'),
+		hasClient: false,
+	},
+	{
+		manifest: afkKicker,
+		server: () => import('./afk-kicker/server.ts'),
 		hasClient: false,
 	},
 ]
