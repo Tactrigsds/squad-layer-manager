@@ -217,7 +217,7 @@ export const PROCEDURE_ACCESS = {
 	'changelog.get': Access.SELF,
 	'changelog.getStatus': Access.SELF,
 	'changelog.markSeen': Access.SELF,
-	'changelog.setNotify': Access.SELF,
+	'changelog.setPrefs': Access.SELF,
 } satisfies { [P in ProcedurePath]: RBAC.Access<ProcedureInput<P>> }
 
 // ---------------------------------------------------------------- types ----------------------------------------------------------------

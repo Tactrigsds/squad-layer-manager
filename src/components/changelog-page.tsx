@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import * as ChangelogFrame from '@/frames/changelog.frame'
@@ -17,8 +17,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CL_Msgs from '@/messages/changelog.messages'
-import type * as CL from '@/models/changelog.models'
-import * as ChangelogClient from '@/systems/changelog.client'
+import * as CL from '@/models/changelog.models'
 import { tr } from '@/systems/messages.client'
 
 // The What's new page: every release this build ships, newest first, with the changes not yet in a release on top.
@@ -95,8 +94,7 @@ function Header(props: { stores: ChangelogFrame.KeyProp }) {
 	const version = Zus.useStore(props.stores.changelog, ChangelogFrame.Sel.latestVersion)
 	const pending = Zus.useStore(props.stores.changelog, ChangelogFrame.Sel.pendingCount)
 	const loaded = Zus.useStore(props.stores.changelog, (s) => s.data !== null)
-	const showOps = Zus.useStore(props.stores.changelog, (s) => s.showOps)
-	const status = useQuery(ChangelogClient.statusQueryOptions)
+	const prefs = Zus.useStore(props.stores.changelog, (s) => s.prefs)
 	const onSearch = useDebounced<string>({
 		delay: 150,
 		onChange: React.useCallback((query: string) => ChangelogFrame.Actions.setQuery(props.stores, query), [props.stores]),
@@ -125,19 +123,32 @@ function Header(props: { stores: ChangelogFrame.KeyProp }) {
 				<div className="flex items-center gap-2">
 					<Switch
 						id={opsId}
-						checked={showOps}
-						onCheckedChange={(checked) => ChangelogFrame.Actions.setShowOps(props.stores, checked)}
+						disabled={!prefs}
+						checked={prefs?.showOperatorNotes ?? false}
+						onCheckedChange={(checked) => void ChangelogFrame.Actions.setPrefs(props.stores, { showOperatorNotes: checked })}
 					/>
 					<Label htmlFor={opsId}>{tr.text(CL_Msgs.operatorNotes())}</Label>
 				</div>
 				<div className="flex items-center gap-2">
-					<Switch
-						id={notifyId}
-						disabled={!status.data}
-						checked={status.data?.notify ?? true}
-						onCheckedChange={(checked) => void ChangelogClient.Actions.setNotify(checked)}
-					/>
 					<Label htmlFor={notifyId}>{tr.text(CL_Msgs.notifyMe())}</Label>
+					<Select
+						disabled={!prefs}
+						value={prefs?.notifyLevel ?? 'headline'}
+						onValueChange={(notifyLevel) =>
+							void ChangelogFrame.Actions.setPrefs(props.stores, { notifyLevel: notifyLevel as CL.NotifyLevel })
+						}
+					>
+						<SelectTrigger id={notifyId} className="w-44">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{CL.NOTIFY_LEVELS.map((level) => (
+								<SelectItem key={level} value={level}>
+									{tr.text(CL_Msgs.notifyLevels[level]())}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				</div>
 			</div>
 		</header>

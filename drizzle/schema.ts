@@ -652,6 +652,10 @@ export const changelogUserState = sqliteTable('changelogUserState', {
 		.primaryKey()
 		.references(() => users.discordId, { onDelete: 'cascade' }),
 	seenAt: timestamp('seenAt').notNull(),
-	// the dot in the nav and the notice after an upgrade
-	notify: boolean('notify').notNull().default(true),
+	// which unseen entries light the dot in the nav and the notice after an upgrade
+	notifyLevel: text('notifyLevel', { enum: ['off', 'headline', 'all'] })
+		.notNull()
+		.default('headline'),
+	// shows operator notes on the What's new page, and counts them toward the unseen dot
+	showOperatorNotes: boolean('showOperatorNotes').notNull().default(false),
 })

@@ -1,3 +1,4 @@
+import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as TUT from '@/models/tutorial.models'
 
@@ -52,7 +53,15 @@ export type Release = { version: string | null; date: string | null; entries: En
 export type ServedEntry = Entry & { firstServedAt: number }
 export type ServedRelease = Omit<Release, 'entries'> & { entries: ServedEntry[] }
 
-export type UserState = { seenAt: number; notify: boolean }
+// which unseen entries a user is told about: none, the headline ones, or minor ones as well
+export const NOTIFY_LEVELS = ['off', 'headline', 'all'] as const
+export const NotifyLevelSchema = z.enum(NOTIFY_LEVELS)
+export type NotifyLevel = z.infer<typeof NotifyLevelSchema>
+
+export const PrefsSchema = z.object({ notifyLevel: NotifyLevelSchema, showOperatorNotes: z.boolean() })
+export type Prefs = z.infer<typeof PrefsSchema>
+
+export type UserState = Prefs & { seenAt: number }
 
 export function compareVersions(a: string, b: string): number {
 	const pa = a.split('.').map(Number)
@@ -86,16 +95,27 @@ export function sortEntries(entries: Entry[]): Entry[] {
 	return entries.toSorted((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id.localeCompare(b.id))
 }
 
-// what the dot and the menu count: headline changes for users. Operators get their notes in the boot log.
-export function countsTowardUnseen(entry: Entry): boolean {
-	return entry.audience === 'users' && !entry.minor
+// whether an unseen entry counts toward the dot and the menu count for a user with these preferences
+export function notifiesAbout(entry: Entry, prefs: Prefs): boolean {
+	if (entry.audience === 'operators' && !prefs.showOperatorNotes) return false
+	switch (prefs.notifyLevel) {
+		case 'off':
+			return false
+		case 'headline':
+			return !entry.minor
+		case 'all':
+			return true
+		default:
+			assertNever(prefs.notifyLevel)
+	}
 }
 
-export function countUnseen(releases: readonly ServedRelease[], seenAt: number): number {
+export function countUnseen(releases: readonly ServedRelease[], state: UserState): number {
+	if (state.notifyLevel === 'off') return 0
 	let count = 0
 	for (const release of releases) {
 		for (const entry of release.entries) {
-			if (entry.firstServedAt > seenAt && countsTowardUnseen(entry)) count++
+			if (entry.firstServedAt > state.seenAt && notifiesAbout(entry, state)) count++
 		}
 	}
 	return count

@@ -74,7 +74,7 @@ async function readUserState(ctx: C.Db, userId: bigint): Promise<CL.UserState> {
 				.onConflictDoUpdate({ target: Schema.changelogUserState.userId, set: { userId } })
 				.returning()
 		)[0]
-	return { seenAt: row.seenAt.getTime(), notify: row.notify }
+	return { seenAt: row.seenAt.getTime(), notifyLevel: row.notifyLevel, showOperatorNotes: row.showOperatorNotes }
 }
 
 export const orpcRouter = {
@@ -86,7 +86,7 @@ export const orpcRouter = {
 
 	getStatus: orpcBase.meta({ logLevel: 'trace' }).handler(async ({ context }) => {
 		const state = await readUserState(context, context.user.discordId)
-		return { version, notify: state.notify, unseen: CL.countUnseen(releases, state.seenAt) }
+		return { version, unseen: CL.countUnseen(releases, state) }
 	}),
 
 	// `upTo` is the newest entry the page showed rather than the time of the call, so an entry that arrives while the
@@ -105,15 +105,15 @@ export const orpcRouter = {
 			return { code: 'ok' as const }
 		}),
 
-	setNotify: orpcBase
+	setPrefs: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ notify: z.boolean() }))
+		.input(CL.PrefsSchema.partial().refine((p) => Object.keys(p).length > 0, { message: 'nothing to set' }))
 		.handler(async ({ context, input }) => {
 			await readUserState(context, context.user.discordId)
 			await context
 				.db()
 				.update(Schema.changelogUserState)
-				.set({ notify: input.notify })
+				.set(input)
 				.where(E.eq(Schema.changelogUserState.userId, context.user.discordId))
 			return { code: 'ok' as const }
 		}),
