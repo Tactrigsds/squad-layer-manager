@@ -9,13 +9,14 @@ import * as ChangelogFiles from '@/systems/changelog-files.server'
 // `--base <ref>`, which also checks the pull request records what it changes:
 //
 // - a PR whose commits are all background types (refactor, test, ci, style, chore, docs, build) needs nothing
-// - any other PR adds a fragment to changes/, or says `Changelog: none` in its description or a commit message
+// - any other PR adds a fragment to changes/, or says `Changelog: none` in its description or a commit message,
+//   optionally followed by a reason on the same line
 // - a PR with a breaking commit (`feat!:`, `fix(scope)!:`) adds an operators fragment, and cannot opt out
 //
 // The PR description comes in through the PR_BODY environment variable.
 
 const BACKGROUND_TYPES = new Set(['refactor', 'test', 'ci', 'style', 'chore', 'docs', 'build'])
-const OPT_OUT = /^changelog:\s*none\s*$/im
+const OPT_OUT = /^changelog:\s*none(?![\w-])/im
 const CONVENTIONAL = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<breaking>!)?:/
 
 const args = parseArgs({ options: { base: { type: 'string' } } })
@@ -30,8 +31,10 @@ problems.push(...loaded.errors)
 
 const base = args.values.base
 if (base) {
+	// `..` for the log, since `...` there is the symmetric difference and would count the base's own commits on a
+	// branch that is behind it. The diff's `...` is from the merge base, which is what we want.
 	const range = `${base}...HEAD`
-	const commits = git('log', '--no-merges', '--format=%x1e%s%x1f%B', range)
+	const commits = git('log', '--no-merges', '--format=%x1e%s%x1f%B', `${base}..HEAD`)
 		.split('\x1e')
 		.filter(Boolean)
 		.map((raw) => {
@@ -56,7 +59,9 @@ if (base) {
 	if (added.length === 0 && !optedOut && needsFragment.length > 0) {
 		problems.push(
 			'this PR changes more than background code but adds no fragment to changes/. Add one (see changes/README.md), ' +
-				`or put "Changelog: none" in the PR description or a commit message if nobody using or running SLM would notice. Commits:\n    ${needsFragment.map((c) => c.subject).join('\n    ')}`,
+				'or put "Changelog: none" in the PR description or a commit message if nobody using or running SLM would notice. ' +
+				'A reason can follow on the same line: "Changelog: none, fixes a bug that never shipped". ' +
+				`Commits:\n    ${needsFragment.map((c) => c.subject).join('\n    ')}`,
 		)
 	}
 }

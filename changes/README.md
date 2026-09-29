@@ -13,7 +13,8 @@ It does if someone could notice it without reading the code or the logs:
   (a long or irreversible migration)
 
 Refactors, tests, CI, internal docs and fixes to bugs that never shipped do not. Put `Changelog: none` in the PR
-description or a commit message instead, so the choice is written down. The pre-push hook only sees commit messages. A PR made only of `refactor`, `test`, `ci`, `style`, `chore`,
+description or a commit message instead, so the choice is written down. A reason can follow on the same line:
+`Changelog: none, fixes a bug that never shipped`. The pre-push hook only sees commit messages. A PR made only of `refactor`, `test`, `ci`, `style`, `chore`,
 `docs` or `build` commits needs neither.
 
 A breaking commit (`feat!:`) always needs an `operators` fragment saying what an upgrade has to do.

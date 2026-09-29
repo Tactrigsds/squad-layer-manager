@@ -239,7 +239,7 @@ Whenever we add or modify integration/e2e tests, or behavior which may affect on
 
 When a change is something a user or operator could notice without reading the code or the logs, add a fragment
 to `changes/` in the same PR. changes/README.md has the format and the test for what counts. Write it for the people
-it affects, following the prose rules above. Otherwise put `Changelog: none` in the PR description. A breaking
+it affects, following the prose rules above. Otherwise put `Changelog: none` in the PR description, followed by a short reason on the same line. A breaking
 change (`!` in the commit subject) always needs an `operators` fragment saying what an upgrade has to do.
 
 # Migrations
