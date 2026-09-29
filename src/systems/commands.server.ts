@@ -18,7 +18,6 @@ import * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
-import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
@@ -381,26 +380,28 @@ function nearMiss(opts: Omit<NearMissResult, 'code'>): NearMissResult {
 	return { code: 'err:near-miss', ...opts }
 }
 
-// A squad is picked back as "<team> <squad number>" rather than by name: both tokens are unambiguous, and the pair
-// re-assigns to the same argument window whatever the caller originally typed (see assignArgTokens).
+// A squad is picked back as "<team>:<squad number>" rather than by name, which is unambiguous whoever picks it.
 function squadChoices(tr: Msgs.Translator, teamId: SM.TeamId, squads: SM.Squad[]): CMD.ArgChoice[] {
 	return squads.map((squad) => ({
-		tokens: [String(teamId), String(squad.squadId)],
+		tokens: [`${teamId}:${squad.squadId}`],
 		label: tr.text(CMD_Msgs.squadChoice(squad.squadName, teamId, squad.squadId)),
 	}))
 }
 
-// resolves a [team] <squad> token window: team falls back to the caller's team; squad by "cmd" alias,
-// in-game number, or unique name substring
+// resolves a `[team:]squad` token: team falls back to the caller's team; squad by "cmd" alias, in-game number, or
+// unique name substring. The first colon always separates the team, so a squad name containing one is reached by a
+// piece of the name that doesn't.
 function resolveSquadArg(
 	tr: Msgs.Translator,
 	teamsState: TeamsState,
 	currentMatch: MH.MatchDetails,
 	sender: SM.Player,
-	window: string[],
+	token: string,
 ): { code: 'ok'; value: CMD.ResolvedSquadArg } | { code: 'err'; msg: string } | NearMissResult {
-	const teamInput = window.length === 2 ? window[0] : undefined
-	const squadInput = window.length === 2 ? window[1] : window[0]
+	const colon = token.indexOf(':')
+	const teamInput = colon === -1 ? undefined : token.slice(0, colon)
+	const squadInput = colon === -1 ? token : token.slice(colon + 1)
+	if (teamInput === '' || squadInput === '') return { code: 'err', msg: tr.text(CMD_Msgs.malformedSquad(token)) }
 
 	let rawTeamId: SM.TeamId | null = null
 	if (!teamInput) {
@@ -415,9 +416,9 @@ function resolveSquadArg(
 				msg: tr.text(CMD_Msgs.unknownTeam(teamInput)),
 				typed: teamInput,
 				cause: 'no-match',
-				// the squad token is carried through, so picking a team only replaces the team half of the window
+				// the squad half is carried through, so picking a team only replaces the team half of the token
 				choices: ([1, 2] as const).map((teamId) => ({
-					tokens: [String(teamId), squadInput],
+					tokens: [`${teamId}:${squadInput}`],
 					label: describeTeam(currentMatch, teamId),
 				})),
 			})
@@ -532,11 +533,7 @@ async function resolveArgDefs(
 	// a team token is read against the current layer's factions and ordinal, which the roster doesn't carry
 	if (teamsState || defs.some((d) => d.kind === 'team')) currentMatch = await MatchHistory.getCurrentMatch(ctx)
 
-	const preds: CMD.AssignPredicates = {
-		isTeamToken: (t) => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
-		isPresetToken: (action, t) => !!LP.findByKeyword(AAR.reasonsForAction(Settings.GLOBAL_SETTINGS.adminActionReasons, action), t),
-	}
-	const assignRes = CMD.assignArgTokens(defs, tokens, preds)
+	const assignRes = CMD.assignArgTokens(defs, tokens)
 	if (assignRes.code === 'err:missing-arg') return assignRes
 
 	const out: Record<string, unknown> = {}
@@ -617,7 +614,7 @@ async function resolveArgDefs(
 				break
 			}
 			case 'squad': {
-				const res = resolveSquadArg(ctx.tr, teamsState!, currentMatch!, sender, window)
+				const res = resolveSquadArg(ctx.tr, teamsState!, currentMatch!, sender, window[0])
 				if (res.code === 'err:near-miss') {
 					const hard = collect(def, res)
 					if (hard) return hard

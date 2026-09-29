@@ -42,9 +42,9 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 		),
 	},
 	squad: {
-		syntax: '[team] squad',
+		syntax: 'squad | team:squad',
 		description: t(
-			'A squad by its in-game number, or "cmd" for the command squad. Prefix it with a team (1, 2, A, B, or the team\'s faction) to target the other team; without one, your own team is used.',
+			'A squad by its in-game number, a piece of its name, or "cmd" for the command squad. Your own team is used unless you prefix it with a team and a colon (1, 2, A, B, or the team\'s faction), as in 2:3 or B:cmd.',
 		),
 	},
 	text: { syntax: 'free text', description: t('Everything you type after this point, as-is.') },
@@ -231,7 +231,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 		case 'team':
 			return { token: '2', alt: { token: 'CAF', note: t('Naming the team by its faction') } }
 		case 'squad':
-			return { token: '3', alt: { token: '2 3', note: t("Targeting the other team's squad") } }
+			return { token: '3', alt: { token: '2:3', note: t("Targeting the other team's squad") } }
 		case 'text':
 			return { token: 'some text' }
 		case 'reason':

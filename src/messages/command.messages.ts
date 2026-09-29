@@ -544,7 +544,9 @@ export const timeoutsSkipped = def('Skipped (already timed out): {players}', (pl
 
 export const invalidChatChannel = def('Invalid chat channel')
 
-export const notOnTeamSpecifyOne = def('You are not on a team; specify one explicitly')
+export const notOnTeamSpecifyOne = def('You are not on a team; name one before the squad, like 2:3')
+
+export const malformedSquad = def('"{typed}" is not a squad. Use a squad like 3, or team:squad like 2:3', (typed: string) => ({ typed }))
 
 export const unknownTeam = def('Unknown team "{team}"', (team: string) => ({ team }))
 
