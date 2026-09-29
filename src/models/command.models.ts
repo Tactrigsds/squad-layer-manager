@@ -129,8 +129,8 @@ export type ArgDef =
 	| (ArgCommon & { kind: 'recent-player'; optional?: true })
 	// single token naming a team: 1|2|A|B|faction of the current layer
 	| (ArgCommon & { kind: 'team'; optional?: true })
-	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
-	| (ArgCommon & { kind: 'squad' })
+	// single token, `[team:]squad`; team = 1|2|A|B|faction, caller's team when omitted
+	| (ArgCommon & { kind: 'squad'; optional?: true })
 	// rest: raw remainder joined with spaces
 	| (ArgCommon & { kind: 'text'; optional?: true })
 	// rest: a single token must match one of a configured reason's keywords; 2+ tokens are a custom message
@@ -145,9 +145,6 @@ function assertValidArgDefs(id: string, args: readonly ArgDef[]) {
 	args.forEach((def, i) => {
 		if (REST_KINDS.includes(def.kind) && i !== args.length - 1) {
 			throw new Error(`command ${id}: rest arg "${def.name}" must be last`)
-		}
-		if (def.kind === 'squad' && args.slice(i + 1).some((d) => d.kind === 'squad')) {
-			throw new Error(`command ${id}: at most one squad arg is supported`)
 		}
 	})
 }
@@ -903,12 +900,6 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: AnyCommand
 	}
 }
 
-// a token that can name a squad without a roster: an in-game squad number or the "cmd" command-squad alias
-// (squad names are resolved against the roster server-side, so they aren't recognized here)
-function isSquadToken(token: string): boolean {
-	return /^\d+$/.test(token) || token.toLowerCase() === 'cmd'
-}
-
 export type ArgTokenWindows = Record<string, string[] | undefined>
 
 // where an argument's window sits in the token list, so a picked choice can be spliced back over exactly the
@@ -916,25 +907,16 @@ export type ArgTokenWindows = Record<string, string[] | undefined>
 export type ArgTokenRange = { start: number; len: number }
 export type ArgTokenRanges = Record<string, ArgTokenRange | undefined>
 
-export type AssignPredicates = {
-	// whether a token parses as a team specifier (1|2|A|B|faction of the current layer)
-	isTeamToken: (token: string) => boolean
-	// whether a token matches a configured reason (label/alias) applicable to the action
-	isPresetToken: (action: AAR.AdminActionType, token: string) => boolean
-}
-
-// splits the raw arg tokens into per-arg windows, enforcing required args. Pure; ctx-dependent knowledge
-// (teams, configured presets) is injected via predicates so the squad window sizing can disambiguate.
+// splits the raw arg tokens into per-arg windows, enforcing required args. Every kind but the rest kinds takes exactly
+// one token, so the split never depends on what the tokens say.
 export function assignArgTokens(
 	args: readonly ArgDef[],
 	tokens: string[],
-	preds: AssignPredicates,
 ): { code: 'ok'; windows: ArgTokenWindows; ranges: ArgTokenRanges } | { code: 'err:missing-arg'; argName: string } {
 	const windows: ArgTokenWindows = {}
 	const ranges: ArgTokenRanges = {}
 	let i = 0
-	for (let a = 0; a < args.length; a++) {
-		const def = args[a]
+	for (const def of args) {
 		const rem = tokens.slice(i)
 		switch (def.kind) {
 			case 'string':
@@ -943,6 +925,7 @@ export function assignArgTokens(
 			case 'player':
 			case 'recent-player':
 			case 'team':
+			case 'squad':
 			case 'preset-reason': {
 				if (rem.length === 0) {
 					if (!def.optional) return { code: 'err:missing-arg', argName: def.name }
@@ -966,29 +949,6 @@ export function assignArgTokens(
 				i = tokens.length
 				break
 			}
-			case 'squad': {
-				if (rem.length === 0) return { code: 'err:missing-arg', argName: def.name }
-				const next = args[a + 1]
-				let candidates = rem
-				if (next?.kind === 'preset-reason' && rem.length >= 2 && preds.isPresetToken(next.action, rem[rem.length - 1])) {
-					// the trailing token is a configured reason, so it can't be part of the squad spec
-					candidates = rem.slice(0, -1)
-				}
-				let windowLen: number
-				if (a === args.length - 1) {
-					// squad is the final arg (e.g. swapsquadnow): the whole remainder is the "[team] <squad>" spec
-					windowLen = Math.min(2, candidates.length)
-				} else {
-					// more args follow (duration, reason, ...), so a bare number is ambiguous (team or squad). Only take
-					// a [team] <squad> pair when the first token is a team AND the second is squad-like (a number or
-					// "cmd"); otherwise the first token is a squad on the caller's team and the rest belongs to later args.
-					windowLen = candidates.length >= 2 && preds.isTeamToken(candidates[0]) && isSquadToken(candidates[1]) ? 2 : 1
-				}
-				windows[def.name] = candidates.slice(0, windowLen)
-				ranges[def.name] = { start: i, len: windowLen }
-				i += windowLen
-				break
-			}
 			default:
 				def satisfies never
 		}
@@ -999,7 +959,7 @@ export function assignArgTokens(
 // -------- near misses --------
 
 // A replacement offered when a typed token doesn't resolve. `tokens` are spliced back over the argument's window
-// and resolved again, so they have to name the choice unambiguously: a steam id rather than a username, "1 3"
+// and resolved again, so they have to name the choice unambiguously: a steam id rather than a username, "1:3"
 // rather than a squad name.
 export type ArgChoice = { tokens: string[]; label: string }
 
@@ -1012,7 +972,7 @@ export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'am
 export const MAX_CHOICES = 3
 
 // Applies picked choices back over the tokens the caller typed. Right to left, since a choice's token count need
-// not match the window it replaces: a squad typed as one word comes back as "1 3".
+// not match the window it replaces: a corrected layer request comes back whole.
 export function spliceArgTokens(tokens: readonly string[], picks: { range: ArgTokenRange; tokens: string[] }[]): string[] {
 	const out = [...tokens]
 	for (const pick of picks.toSorted((a, b) => b.range.start - a.range.start)) {
@@ -1104,7 +1064,6 @@ export function resolveReasonArg(
 // whether an arg may be left out. `requiredReasonActions` (typically GlobalSettings.requireReasonFor) forces a
 // reason/preset-reason arg to count as required even when its declaration marks it optional.
 export function argOptional(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): boolean {
-	if (def.kind === 'squad') return false
 	if ((def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)) return false
 	return !!def.optional
 }
@@ -1116,7 +1075,6 @@ function argLabel(def: ArgDef): string {
 
 // renders a single arg's usage token, so signatures reflect the configured reason requirement
 export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
-	if (def.kind === 'squad') return '[team] <squad>'
 	return argOptional(def, requiredReasonActions) ? `[${argLabel(def)}]` : `<${argLabel(def)}>`
 }
 
@@ -1229,9 +1187,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	const expanded = Templating.renderTemplate(template, Object.fromEntries(refs.map((r) => [r.name, sentinel(r.name)])))
 	const tokens = expanded.split(/\s+/).filter((w) => w !== '')
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
-	// permissive predicates: a team can be named by the current layer's faction, which isn't knowable here, and
-	// treating no token as a configured reason keeps the squad window from being narrowed on a guess
-	const assigned = assignArgTokens(args, tokens, { isTeamToken: () => true, isPresetToken: () => false })
+	const assigned = assignArgTokens(args, tokens)
 	if (assigned.code === 'err:missing-arg') {
 		return { code: 'err:invalid-args', msg: `Missing <${assigned.argName}>. The command takes ${formatArgSignature(args)}`.trim() }
 	}
@@ -1297,7 +1253,7 @@ export function argTemplateSignature(
 ): { ref: string; arg: string }[] {
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
 	// one placeholder per argument, in order: every kind takes a single word except the rest kinds, which take the
-	// remainder, and squad, whose optional leading team is left out
+	// remainder
 	const template = args.map((def, i) => (REST_KINDS.includes(def.kind) ? `{{rest${i + 1}}}` : `{{arg${i + 1}}}`)).join(' ')
 	const res = resolveTriggerArgs(cmdId, template)
 	if (res.code !== 'ok') return []
@@ -1318,7 +1274,6 @@ export function formatTriggerSignature(
 	if (res.code !== 'ok') return ''
 	return res.params
 		.map((p) => {
-			if (p.wholeSlot && p.def.kind === 'squad') return formatArg(p.def)
 			const inner = p.wholeSlot ? argLabel(p.def) : p.ref.name
 			return p.hasDefault || argOptional(p.def, requiredReasonActions) ? `[${inner}]` : `<${inner}>`
 		})

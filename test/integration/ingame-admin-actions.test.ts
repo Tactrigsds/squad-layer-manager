@@ -177,6 +177,22 @@ describe('admin actions from in-game chat', () => {
 		expect(warnsTo(bystander)).toHaveLength(0)
 	})
 
+	it('warns a squad on the other team, named as team:squad', async () => {
+		const bravoLeader = app.emu.world.connectPlayer(makePlayer({ name: ' bravo_leader', teamId: 2 }))
+		app.emu.world.createSquad(bravoLeader, 'BRAVO')
+		await app.waitForRosterSync()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warnsquad 2:bravo tox'))
+
+		await app.waitFor(() => warnsTo(bravoLeader).some((w) => w.includes('(BRAVO)')), {
+			label: "a warn to the other team's squad",
+			timeoutMs: 20_000,
+		})
+		expect(warnsTo(leader)).toHaveLength(0)
+		expect(warnsTo(member)).toHaveLength(0)
+	})
+
 	it('kicks a single player, with the reason carried on the kick itself', async () => {
 		const nuisance = app.emu.world.connectPlayer(makePlayer({ name: ' nuisance', teamId: 2 }))
 		await app.waitForRosterSync()
