@@ -309,7 +309,7 @@ export const commandDisabled = def('Command "{cmd}" is disabled', (cmd: string) 
 export const pluginCommandFailed = def('The {plugin} plugin could not run that command', (plugin: string) => ({ plugin }))
 
 export const pluginOwner = def('Provided by')
-export const pluginsSectionLabel = def('Plugins')
+export const pluginSectionLabel = def('plugin: {name}', (name: string) => ({ name }))
 
 // Named rather than counted: which string was taken, and by what, is the whole of what an admin has to act on.
 export const pluginTriggerConflicts = def((conflicts: CMD.CommandConflict[]) =>

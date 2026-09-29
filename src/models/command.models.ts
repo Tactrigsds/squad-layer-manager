@@ -695,6 +695,12 @@ export function isPluginCommandId(id: string): boolean {
 	return id.startsWith(PLUGIN_COMMAND_PREFIX)
 }
 
+// plugin ids cannot contain a colon, so the first one after the prefix ends it
+export function pluginIdOfCommand(id: string): string {
+	const rest = id.slice(PLUGIN_COMMAND_PREFIX.length)
+	return rest.slice(0, rest.indexOf(':'))
+}
+
 export const PluginCommandConfigSchema = z.object({
 	triggers: z
 		.array(ZodUtils.BasicStrNoWhitespace)
