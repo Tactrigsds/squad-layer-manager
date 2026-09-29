@@ -71,6 +71,7 @@ import * as m0116 from './0116_plugin_command_configs'
 import * as m0117 from './0117_history_feed_default'
 import * as m0118 from './0118_layer_request_filters'
 import * as m0119 from './0119_squad_arg_single_token'
+import * as m0120 from './0120_match_layer_request_source'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -129,4 +130,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0117_history_feed_default', up: m0117.up },
 	{ name: '0118_layer_request_filters', up: m0118.up },
 	{ name: '0119_squad_arg_single_token', up: m0119.up },
+	{ name: '0120_match_layer_request_source', up: m0120.up },
 ]

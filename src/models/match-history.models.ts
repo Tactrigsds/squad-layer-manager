@@ -1,4 +1,5 @@
 import type { Mutex } from 'async-mutex'
+import superjson from 'superjson'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
@@ -9,7 +10,7 @@ import type * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -259,6 +260,15 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 			layerSource = { type: entry.setByType, userId: entry.setByUserId }
 			break
 		}
+
+		case 'layer-request': {
+			if (!entry.setByRequesters) throw new Error("Invalid match history: match setByRequesters is null but type is 'layer-request'")
+			layerSource = {
+				type: entry.setByType,
+				requesters: USR.GuiOrChatUserIdSchema.array().parse(superjson.parse(entry.setByRequesters)),
+			}
+			break
+		}
 		default: {
 			assertNever(entry.setByType)
 		}
@@ -369,6 +379,10 @@ export function layerParts(layerId: string): LayerParts {
 	}
 }
 
+function serializeRequesters(source: LL.Source) {
+	return source.type === 'layer-request' ? superjson.stringify(source.requesters) : undefined
+}
+
 export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): SchemaModels.MatchHistory {
 	let layerId = matchDetails.layerId
 	if (!L.isKnownLayer(layerId) && matchDetails.rawLayerCommandText) {
@@ -386,6 +400,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 		setByType: matchDetails.layerSource.type,
 		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
 		setByPluginId: matchDetails.layerSource.type === 'plugin' ? matchDetails.layerSource.pluginId : null,
+		setByRequesters: serializeRequesters(matchDetails.layerSource) ?? null,
 		...combatStatsToColumns(matchDetails.combatStats),
 		...layerParts(layerId),
 		endTime: null,
@@ -488,6 +503,7 @@ export function getNewMatchHistoryEntry(opts: {
 		setByType: source?.type ?? 'unknown',
 		setByUserId: source?.type === 'manual' ? source.userId : undefined,
 		setByPluginId: source?.type === 'plugin' ? source.pluginId : undefined,
+		setByRequesters: source ? serializeRequesters(source) : undefined,
 		lqItemId: opts.lqItem?.itemId,
 	}
 	return newEntry

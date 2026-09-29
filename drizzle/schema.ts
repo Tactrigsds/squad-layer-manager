@@ -52,12 +52,15 @@ export const matchHistory = sqliteTable(
 		layerTeam2Faction: text('layerTeam2Faction'),
 		layerTeam2Unit: text('layerTeam2Unit'),
 		setByType: text('setByType', {
-			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin'],
+			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin', 'layer-request'],
 		}).notNull(),
 		setByUserId: bigintText('setByUserId'),
 		// which plugin, when setByType is 'plugin'. Kept even after that plugin is uninstalled, so an old
 		// match still says what queued it.
 		setByPluginId: text('setByPluginId'),
+		// who asked for the layer, when setByType is 'layer-request'. A superjson string rather than a json column so
+		// every reader gets the same text back whether or not it runs the row through unsuperjsonify.
+		setByRequesters: text('setByRequesters'),
 		// The match's scoreline, tallied from a full event replay once the match is over. Stored because that
 		// replay is the only way to attribute a kill to a team -- neither serverEvents nor playerEventIndex carries
 		// one -- so every reader would otherwise pay for it, and columns rather than a blob because the history

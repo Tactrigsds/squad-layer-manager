@@ -29,9 +29,15 @@ export const SourceSchema = z.discriminatedUnion('type', [
 	// Squad's own vote, which picks the next layer itself and ignores whatever SLM set. Only ever the source of a
 	// played match, never of a queue item.
 	z.object({ type: z.literal('ingame-vote') }),
+	// a generated layer that satisfied one or more layer requests, naming everyone whose request it consumed
+	z.object({ type: z.literal('layer-request'), requesters: z.array(USR.GuiOrChatUserIdSchema) }),
 ])
 
 export type Source = z.infer<typeof SourceSchema>
+
+export function isGeneratedSource(source: Source) {
+	return source.type === 'generated' || source.type === 'layer-request'
+}
 
 export const ItemIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{6,24}$/)
 export type ItemId = z.infer<typeof ItemIdSchema>
@@ -761,6 +767,7 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	let afterModified = false
 	const allModifiedItems = ItemMut.getAllMutationIds(mutations)
 	for (const { item, index } of iterItems(layerList)) {
+		// a layer-request item keeps its requesters: who asked for the layer matters more than who reordered around it
 		if (item.source.type === 'generated') {
 			if (afterModified) {
 				replaceItem(layerList, index, { ...item, source: { type: 'manual', userId } })
