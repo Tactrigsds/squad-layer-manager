@@ -141,36 +141,36 @@ const setup: Frame['setup'] = (args) => {
 	AppliedFiltersPrt.initAppliedFiltersStore({ ...args, input: { context: 'add', extraFiltersScope: 'local' } })
 
 	// the partial seeds the configured selectable filters asynchronously (it waits for the filter entities);
-	// run after it to (1) start every chip disabled -- a template should only carry filters the user actively
-	// picked -- and (2) apply the edited template's own filter states, pulling them in as extras when needed.
-	// the pool filter is special: it rides the pool toggle (on by default for new requests) rather than a row
+	// run after it to start every chip disabled, then seed either the edited template's own filter states or, for a
+	// new request, the pool's layer request filters, pulling them in as extras when needed.
+	// the pool filter is special: it rides the pool toggle rather than a row
 	// the signal bounds the wait: entities that never arrive would leave this pending for the life of the page
 	void (async () => {
 		await Rx.Ext.firstValueFrom(FilterEntityClient.initializedFilterEntities$(), args.signal)
 		await Prom.sleep(0)
 		if (args.signal.aborted) return
-		const poolFilter = args.input.squadServer
-			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
-			: null
-		const seedFilterIds = parts.filterIds.filter((id) => id !== poolFilter?.filterId)
-		const seedExcludedIds = parts.excludedFilterIds.filter((id) => id !== poolFilter?.filterId)
-		const poolApplied =
-			!args.input.startingFilter || !poolFilter
-				? true
-				: poolFilter.mode === 'include'
-					? parts.filterIds.includes(poolFilter.filterId)
-					: parts.excludedFilterIds.includes(poolFilter.filterId)
+		const pool = args.input.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool : null
+		const seedStates = new Map<F.FilterEntityId, SETTINGS.AppliedFilterApplyAs>()
+		if (args.input.startingFilter) {
+			for (const id of parts.filterIds) seedStates.set(id, 'regular')
+			for (const id of parts.excludedFilterIds) seedStates.set(id, 'inverted')
+		} else if (pool) {
+			for (const { filterId, applyAs } of pool.layerRequestFilters) seedStates.set(filterId, applyAs)
+		}
+		let poolApplyAs: AppliedFiltersPrt.ApplyAs = 'disabled'
+		const poolFilter = pool?.poolFilter
+		const poolState = poolFilter && seedStates.get(poolFilter.filterId)
+		if (poolState) poolApplyAs = (poolState === 'regular') === (poolFilter.mode === 'include') ? 'regular' : 'inverted'
+		if (poolFilter) seedStates.delete(poolFilter.filterId)
 		Zus.resolveStore<State>(args.key).setState((state) => {
 			const filterStates = new Map(state.appliedFilters.filterStates)
 			for (const id of filterStates.keys()) filterStates.set(id, 'disabled')
-			for (const id of seedFilterIds) filterStates.set(id, 'regular')
-			for (const id of seedExcludedIds) filterStates.set(id, 'inverted')
-			return { appliedFilters: { ...state.appliedFilters, filterStates, poolApplied } }
+			for (const [id, applyAs] of seedStates) filterStates.set(id, applyAs)
+			return { appliedFilters: { ...state.appliedFilters, filterStates, poolApplyAs } }
 		})
-		const templateFilterIds = [...seedFilterIds, ...seedExcludedIds]
-		if (templateFilterIds.length > 0) {
+		if (seedStates.size > 0) {
 			AppliedFiltersPrt.Actions.selectExtraFilters({ appliedFilters: args.key }, (prev) =>
-				Array.from(new Set([...prev, ...templateFilterIds])),
+				Array.from(new Set([...prev, ...seedStates.keys()])),
 			)
 		}
 	})().catch(Prom.rethrowUnlessAborted)

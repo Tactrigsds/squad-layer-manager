@@ -69,6 +69,7 @@ import * as m0114 from './0114_history_query_permission'
 import * as m0115 from './0115_server_event_index'
 import * as m0116 from './0116_plugin_command_configs'
 import * as m0117 from './0117_history_feed_default'
+import * as m0118 from './0118_layer_request_filters'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -125,4 +126,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0115_server_event_index', up: m0115.up },
 	{ name: '0116_plugin_command_configs', up: m0116.up },
 	{ name: '0117_history_feed_default', up: m0117.up },
+	{ name: '0118_layer_request_filters', up: m0118.up },
 ]

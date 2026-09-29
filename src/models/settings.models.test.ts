@@ -26,6 +26,7 @@ describe('pool configuration schema', () => {
 			defaultSelectable: [{ filterId: 'a-filter', applyAs: 'inverted' }],
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
+			layerRequestFilters: [{ filterId: 'b-filter', applyAs: 'inverted' }],
 			skipWarningsForTags: ['planned:aaaaaa'],
 			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 		}

@@ -1043,7 +1043,7 @@ export const router = {
 		}),
 }
 
-// whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
+// whether a template has any solutions. Filters ride in the template itself (see BB.withFilters),
 // and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
 // blocked until the next match shouldn't be rejected outright.
 export async function isTemplateSatisfiable(
@@ -1200,8 +1200,8 @@ export async function addBackburnerRequestFromChat(
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.Req.layerRequest(ctx.serverId))
 	if (denied) return denied
 	const serverState = await SquadServer.getServerState(ctx)
-	// in-game requests always carry the main pool filter; only the GUI can deliberately drop it
-	const filter = BB.withPoolFilter(args.filter, serverState.settings.queue.mainPool.poolFilter)
+	// in-game requests always carry the layer request filters; only the GUI can deliberately drop them
+	const filter = BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters)
 	if (!(await isTemplateSatisfiable(ctx, filter))) {
 		return { code: 'err:no-solutions', msg: 'No layers in the current pool match this request' }
 	}

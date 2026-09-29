@@ -115,6 +115,7 @@ export function applyInitialPoolConfig(settings: SETTINGS.ServerSettings): SETTI
 				poolFilter: { filterId: 'main-pool', mode: 'include' },
 				indicateMatches: ['seeding', 'similar-factions'],
 				defaultSelectable: [{ filterId: 'no-mech-on-hilly', applyAs: 'disabled' }],
+				layerRequestFilters: [{ filterId: 'main-pool', applyAs: 'regular' }],
 			},
 		},
 	}

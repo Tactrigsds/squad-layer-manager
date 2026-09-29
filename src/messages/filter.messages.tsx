@@ -346,6 +346,7 @@ export const poolConfigKeyNames: Record<FR.PoolConfigKey, TString> = {
 	defaultSelectable: t('Selectable filters'),
 	warnFor: t('Warnings'),
 	constrainGeneration: t('Generation constraints'),
+	layerRequestFilters: t('Layer request filters'),
 }
 
 export const referencesHeading = def('References')

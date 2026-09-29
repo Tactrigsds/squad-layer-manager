@@ -50,8 +50,17 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 					createdAt: 2000,
 				},
 			],
+			filters: [
+				filter('no-training', 'No Training', FB.and([FB.neq('Gamemode', 'Training')])),
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			],
 			serverSettings: (s) => {
 				s.queue.mainPool.repeatRules = []
+				s.queue.mainPool.poolFilter = { filterId: 'no-training', mode: 'include' }
+				s.queue.mainPool.layerRequestFilters = [
+					{ filterId: 'no-training', applyAs: 'regular' },
+					{ filterId: 'raas-only', applyAs: 'regular' },
+				]
 			},
 		})
 	})
@@ -109,6 +118,29 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 			label: 'the removal being saved',
 			timeoutMs: 20_000,
 		})
+	})
+
+	test('a new request starts from the layer request filters', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		const panel = DB.queueSection(page)
+		await expect(panel.getByText('Layer Requests (2)')).toBeVisible({ timeout: 20_000 })
+
+		await panel.getByRole('button', { name: 'Edit layer requests' }).click()
+		await panel.getByRole('button', { name: 'Request layer' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Request a layer' })
+		// the generation filter arrives as an applied extra row, the pool filter as its pinned checkbox
+		await expect(dialog.getByRole('combobox', { name: 'filter' })).toHaveText('RAAS Only')
+		await expect(dialog.getByRole('checkbox', { name: 'Ctrl+Click to invert' })).toHaveAttribute('aria-checked', 'true')
+		await expect(dialog.getByRole('checkbox', { name: 'No Training' })).toHaveAttribute('aria-checked', 'true')
+
+		const mapField = dialog.getByRole('combobox', { name: 'Map' })
+		await mapField.click()
+		await page.getByRole('option', { name: 'Mutaha', exact: true }).click()
+		await dialog.getByRole('button', { name: 'Add request' }).click()
+
+		const row = panel.getByRole('listitem').filter({ hasText: 'Mutaha' })
+		await expect(row).toContainText('RAAS Only')
+		await expect(row).toContainText('No Training')
 	})
 })
 

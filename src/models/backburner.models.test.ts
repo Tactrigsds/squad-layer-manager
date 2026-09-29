@@ -170,16 +170,19 @@ describe('template merge helpers', () => {
 	})
 })
 
-describe('withPoolFilter', () => {
-	it('adds the pool filter per its mode, without duplicating', () => {
-		const base = FB.and([FB.eq('Map', 'Gorodok')])
-		const included = BB.withPoolFilter(base, { filterId: 'pool', mode: 'include' })
-		expect(BB.parseTemplateParts(included).filterIds).toEqual(['pool'])
-		expect(BB.withPoolFilter(included, { filterId: 'pool', mode: 'include' })).toBe(included)
-
-		const excluded = BB.withPoolFilter(base, { filterId: 'pool', mode: 'exclude' })
-		expect(BB.parseTemplateParts(excluded).excludedFilterIds).toEqual(['pool'])
-		expect(BB.withPoolFilter(base, null)).toBe(base)
+describe('withFilters', () => {
+	it('adds filters per their state, leaving ones the template already names alone', () => {
+		const base = FB.and([FB.eq('Map', 'Gorodok'), FB.excludedFrom('b')])
+		const added = BB.withFilters(base, [
+			{ filterId: 'a', applyAs: 'regular' },
+			{ filterId: 'b', applyAs: 'regular' },
+			{ filterId: 'c', applyAs: 'inverted' },
+		])
+		const parts = BB.parseTemplateParts(added)
+		expect(parts.filterIds).toEqual(['a'])
+		expect(parts.excludedFilterIds).toEqual(['b', 'c'])
+		expect(BB.withFilters(added, [{ filterId: 'a', applyAs: 'regular' }])).toBe(added)
+		expect(BB.withFilters(base, [])).toBe(base)
 	})
 })
 
