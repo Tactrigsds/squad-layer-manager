@@ -205,6 +205,27 @@ function dispatch() {
 			break
 		}
 
+		// PreToolUse on file edits. Several sessions share the main checkout, so an edit there lands in someone
+		// else's working tree; the user is asked instead of it going through silently.
+		case 'hook-guard-edit': {
+			const input = readHookInput()
+			const file = input.tool_input?.file_path ?? input.tool_input?.notebook_path
+			if (!file) break
+			const main = mainCheckout(input.cwd || cwd)
+			const resolved = path.resolve(input.cwd || cwd, file)
+			if (resolved !== main && !resolved.startsWith(main + path.sep)) break
+			process.stdout.write(
+				JSON.stringify({
+					hookSpecificOutput: {
+						hookEventName: 'PreToolUse',
+						permissionDecision: 'ask',
+						permissionDecisionReason: `${file} is in the main checkout, which other sessions share. Work in a worktree (EnterWorktree or \`pnpm worktree new\`) unless the user asked for this edit here.`,
+					},
+				}) + '\n',
+			)
+			break
+		}
+
 		case 'root':
 			process.stdout.write(WORKTREE_ROOT + '\n')
 			break

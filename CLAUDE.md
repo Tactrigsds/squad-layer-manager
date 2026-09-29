@@ -95,6 +95,24 @@ Run `pnpm run format` and `pnpm run check` (or a subset that typechecks your cha
 
 Once a goal or feature is complete, run `pnpm run lint:fix` and fix all lint errors as a cleanup step.
 
+# Worktrees and the shell
+
+Several sessions share the main checkout at once, each with uncommitted work. Do not edit, commit, stash or switch
+branches there unless the user asks for it. Start work with `EnterWorktree` or `pnpm worktree new <name>`, never a
+raw `git worktree add`: those two copy in node_modules and the gitignored artifacts (`assets/layer-engine.wasm`,
+`layer-db.json`) a build needs. When moving work out of the main checkout, remove the originals there afterwards.
+
+In a worktree session the Bash tool refuses any command it cannot prove stays inside the worktree. Keep commands
+flat:
+
+- one git or gh command per call, with no `$(...)` feeding it
+- no `for` loops, `xargs` or `bash script.sh` around git, pnpm, npx, sed or gh
+- multi-file edits as a script written to the scratchpad with Write and run as `python3 <file>`, not a heredoc
+
+Never `sleep N; tail` to wait on something. Run it with `run_in_background` and get notified when it exits, or use
+Monitor with an until-loop. Stop a background job with TaskStop. `pkill -f <pattern>` matches the calling shell's own
+command line and kills it.
+
 # Running the app in a worktree
 
 Full details in docs/dev_instances.md.
@@ -105,15 +123,21 @@ own instance instead, with its own database and an emulated Squad server:
 ```sh
 pnpm dev          # provisions the workspace, then starts the app, client and emulator
 pnpm dev --url    # just the URL, for reporting
+pnpm dev --wait   # block until a running `pnpm dev` answers
 pnpm emuctl help  # drive the emulated server: join, chat, end, cycle
+pnpm probe <path> # headless chromium against the instance: --shot, --target, --click, --eval, --script
 ```
 
 `pnpm dev` works from any checkout, including one made by a Git worktree command or an agent. It is long-lived, so an
 agent must start it as a tracked background job (`run_in_background`).
 
-`pnpm dev --url` prints the one URL the instance answers on, and it is the only one to hand anyone. Wait for the
-port to answer before opening it: a request that lands during boot bounces into the real Discord oauth flow, which
-looks like the bypass is broken when it is not.
+`pnpm dev --url` prints the one URL the instance answers on, and it is the only one to hand anyone. Run `pnpm dev
+--wait` before opening it: a request that lands during boot bounces into the real Discord oauth flow, which looks
+like the bypass is broken when it is not. Edits hot-reload, so there is no need to restart `pnpm dev` after one.
+
+When checking UI with `pnpm probe`, screenshot the element under test (`--target`) rather than the page, and read
+the result back only when a picture is the question. A still cannot show hover, overlays that eat pointer events,
+or gaps in a hit area: check those with `document.elementFromPoint` at the points that matter.
 
 Never point a development workspace at a real Squad server or the real BattleMetrics org. `pnpm dev` deliberately scrubs those,
 and re-adding them means an experiment drives production.
@@ -122,6 +146,9 @@ and re-adding them means an experiment drives production.
 
 Check for potential merge conflicts before pushing commits to a PR. For frontend changes, always include a link to
 the running dev server with the changes up.
+
+Treat every CI failure as a bug to find, including one that looks unrelated to the diff. Do not re-run a job and call
+it flaky: find the cause, or show the user the evidence that it is a known flake.
 
 # Server side
 
@@ -175,6 +202,9 @@ right up until the component is rendered inside a dialog or a draggable window. 
 other sticky headers, use the `StickyGroup` component instead of picking offsets yourself: it measures ancestor
 heights and assigns both the `top` offset and the z-index.
 
+Before building UI that shows data, look for an existing component that already displays the same kind of data
+(filter cards, layer displays, player rows) and reuse or extend it.
+
 Avoid controlled inputs and textareas: do not set `value`. Do the same for other latency-sensitive fields. Debounce
 inputs that would otherwise cause frequent re-renders.
 
@@ -198,6 +228,10 @@ data, re-pick the data so one fixture serves both before accepting a second boot
 Arrange through the harness, not inline: seeding via createAppFixture options, builders in test/harness/arrange.ts
 (queue, filter, role, ...), db and RCON readers in test/harness/inspect.ts (savedQueue, warnsTo, latestMatch, ...).
 Do not re-implement these in a test file.
+
+`pnpm test:integration` and `pnpm test:e2e [spec...]` need no environment setup. Extra args to `test:e2e` go to
+playwright. Nothing under test/harness may import `@/messages/i18n`: it imports JSON, which Playwright cannot load.
+Tests must not depend on `data/generated/messages`, which exists locally but not in CI.
 
 Whenever we add or modify integration/e2e tests, or behavior which may affect one or more existing tests integration/e2e tests, let's take extra care that we have not introduced any flaky/race condition behaviors, in either the test itself or the excercized logic. Run the relevant tests multiple times to catch any potential flakiness.
 

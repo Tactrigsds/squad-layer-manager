@@ -38,9 +38,10 @@ function getLegacyKey(): Buffer | undefined {
 	return buf.length === 32 ? buf : undefined
 }
 
-// Eagerly resolves the key so a missing/invalid SETTINGS_ENCRYPTION_KEY fails at boot rather than on the
-// first settings write.
+// Eagerly resolves the key so a missing, invalid or public SETTINGS_ENCRYPTION_KEY fails at boot rather than on
+// the first settings write.
 export function setup() {
+	Env.assertEncryptionKeyIsNotPublic()
 	getKey()
 }
 

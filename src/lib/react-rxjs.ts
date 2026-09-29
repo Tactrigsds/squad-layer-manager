@@ -88,10 +88,29 @@ export function bind<Args extends unknown[], T>(
 export function bind(tag: string, source: Rx.Observable<unknown> | ((...args: unknown[]) => Rx.Observable<unknown>), opts?: BindOpts) {
 	const ms = opts?.firstEmitTimeoutMs ?? DEFAULT_FIRST_EMIT_TIMEOUT
 	if (typeof source === 'function') {
-		return ReactRx.bind((...args: unknown[]) => {
+		const [hook, getState$] = ReactRx.bind((...args: unknown[]) => {
 			const guarded = ms === false ? Rx.identity : guardFirstEmit(`${tag}(${args.join(', ')})`, ms)
 			return source(...args).pipe(guarded)
 		})
+		return [hook, (...args: unknown[]) => handlePendingFirstValue(getState$(...args))]
 	}
-	return ReactRx.bind(source.pipe(ms === false ? Rx.identity : guardFirstEmit(tag, ms)))
+	const [hook, state$] = ReactRx.bind(source.pipe(ms === false ? Rx.identity : guardFirstEmit(tag, ms)))
+	return [hook, handlePendingFirstValue(state$)]
+}
+
+// Before its first value, getValue() returns a promise that rejects with NoSubscribersError if the last subscriber
+// leaves first. Callers that only sample it (useStore, getState) never await it, so each such promise gets a no-op
+// rejection handler here rather than surfacing as an unhandled rejection. Awaiting callers still see the rejection.
+const handledPending = new WeakSet<PromiseLike<unknown>>()
+function handlePendingFirstValue<S extends ReactRx.StateObservable<unknown>>(state$: S): S {
+	const getValue = state$.getValue
+	state$.getValue = () => {
+		const value = getValue()
+		if (value instanceof Promise && !handledPending.has(value)) {
+			handledPending.add(value)
+			value.then(undefined, () => {})
+		}
+		return value
+	}
+	return state$
 }

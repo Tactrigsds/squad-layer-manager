@@ -11,6 +11,10 @@ Look for opportunities to squash commits so that the commit history is easy to r
 
 Once the branch is up-to-date with origin/main and squashed, Run integration/e2e tests locally before filing the PR. If there are easily fixable issues, fix them before refiling. If there are issues that you cannot resolve easily yourself, bail out and ask for help.
 
+The test runs are long and main keeps moving. Fetch `origin/main` again right before `gh pr create` or a push, and rebase if it moved.
+
+In a worktree session, run each git and gh command as its own Bash call, with literal arguments. The worktree guard refuses `&&` chains containing git and any `$(...)`, such as `gh pr list --head "$(git branch --show-current)"`: read the branch name first, then pass it.
+
 ## PR Descriptions
 
 ALWAYS open the description with a simple explanation of the problem based on the initial user's prompt, and then briefly explain the solution. NEVER lead with an implementation inventory:

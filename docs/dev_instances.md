@@ -36,7 +36,12 @@ in them.
 
 `http://localhost:<client port>/?login=<user>`. Everything is behind it: the vite dev server proxies every api
 route, the websocket and each page request to the app, so the app's own port is an implementation detail. `pnpm dev
---url` prints it without starting the app.
+--url` prints it without starting the app. `pnpm dev --wait` blocks until a running `pnpm dev` answers, then prints
+it.
+
+`pnpm probe <path>` opens that URL in headless chromium, signed in, and prints page errors. `--shot <file>` takes a
+screenshot (`--target <selector>` for one element), `--click` and `--fill <selector>=<value>` drive the page, and
+`--eval` or `--script <file>` run code in it. The header of `scripts/probe.mjs` lists every option.
 
 The login is a super user from the workspace's database, resolved once during provisioning and kept in the slot
 registry. Discord oauth is off for a dev instance, so `?login=<username>` is how anyone signs in, and any username in

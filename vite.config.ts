@@ -49,9 +49,6 @@ function messageCatalogues(): Plugin {
 		buildStart() {
 			extractMessages()
 		},
-		configureServer(server) {
-			server.watcher.add(['src/**/*.ts', 'src/**/*.tsx', 'src/messages/locales/*.json'])
-		},
 		handleHotUpdate({ file }) {
 			if (
 				!file.startsWith(path.resolve('src') + path.sep) ||

@@ -21,6 +21,18 @@
 					}
 				]
 			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "Edit|Write|NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node \"$CLAUDE_PROJECT_DIR/scripts/worktree.mjs\" hook-guard-edit",
+						"timeout": 10
+					}
+				]
+			}
 		]
 	}
 }
