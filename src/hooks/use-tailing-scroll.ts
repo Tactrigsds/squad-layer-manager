@@ -23,13 +23,14 @@ function setOverflowAnchor(viewport: HTMLElement, value: 'auto' | 'none') {
  * produces: it fires a frame later and can observe growth that arrived in between, which would read as the
  * reader having scrolled away during a burst. The pin records the position it wrote, and the next scroll
  * event landing there is skipped. Any other scroll, whatever caused it, lands where geometry gives the right
- * answer: a clamp keeps a reader at the bottom at the bottom, and a find bar, focus or gesture that carries them
- * away is them leaving.
+ * answer: a find bar, focus or gesture that carries the reader away is them leaving.
  *
  * That scroll event is dispatched a frame after the scroll it reports, and the resize observer driving the pin runs
  * inside the gap. So the pin sits out any frame where the viewport is not where it last left it, and lets the event
  * still to come decide. Pinning over such a position would erase it, and the one coalesced event would report the
- * bottom the pin had just written.
+ * bottom the pin had just written. A viewport that moved to the bottom is the exception: that is a clamp as content
+ * shrank, or a reader arriving there, and either way they are tailing. Its event would be judged against any growth
+ * that lands before it is dispatched, and read as leaving, so the pin claims it instead.
  *
  * The browser's scroll anchoring is on only while the reader is parked. There it keeps the rows they are reading
  * still as rows above resize or a capped buffer drops rows off the top. While tailing that same correction would
@@ -80,7 +81,10 @@ export function useTailingScroll() {
 		// the position below belongs to whichever viewport is current, so a new one starts from where it sits
 		accountedTop.current = viewport.scrollTop
 		const settle = () => {
-			if (viewport.scrollTop !== accountedTop.current) return
+			if (viewport.scrollTop !== accountedTop.current) {
+				if (distanceFromBottom(viewport) > EDGE_THRESHOLD_PX) return
+				setTailing(true)
+			}
 			if (tailingRef.current) pin(viewport)
 		}
 		// content growth and viewport resize (panel, window) both need the same correction
@@ -89,7 +93,7 @@ export function useTailingScroll() {
 		resizeObserver.observe(viewport)
 		settle()
 		return () => resizeObserver.disconnect()
-	}, [viewport, content, pin])
+	}, [viewport, content, pin, setTailing])
 
 	React.useEffect(() => {
 		if (!viewport) return
