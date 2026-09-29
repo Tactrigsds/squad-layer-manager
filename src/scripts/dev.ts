@@ -1,4 +1,5 @@
 import * as childProcess from 'node:child_process'
+import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -13,6 +14,7 @@ const args = parseArgs({
 		'emu-only': { type: 'boolean', default: false },
 		'reset-data': { type: 'boolean', default: false },
 		url: { type: 'boolean', default: false },
+		wait: { type: 'boolean', default: false },
 		help: { type: 'boolean', short: 'h', default: false },
 		admins: { type: 'string' },
 		players: { type: 'string' },
@@ -23,7 +25,8 @@ const args = parseArgs({
 if (args.values.help) {
 	console.log(`usage: pnpm dev [options]
 
-  --url          provision if needed, then print the workspace URL
+  --url          provision if needed, then print only the workspace URL
+  --wait         block until a running \`pnpm dev\` answers, then print the workspace URL
   --reset-data   replace this workspace's isolated database before starting
   --emu-only     run only the emulator and its REPL
   --no-emu       do not start an emulator with the app
@@ -32,21 +35,43 @@ if (args.values.help) {
 	process.exit(0)
 }
 
+// Both only report, so they leave a provisioned workspace alone: a second provision racing a starting `pnpm dev`
+// fails on the database it is creating.
+if (args.values.url || args.values.wait) {
+	const existing = Slots.getSlot()
+	if (args.values.wait) {
+		if (!existing) {
+			console.error('this workspace has no dev slot; start `pnpm dev` first')
+			process.exit(1)
+		}
+		await waitForInstance(existing)
+		console.log(Slots.instanceUrl(existing))
+		process.exit(0)
+	}
+	if (existing && fs.existsSync(DevInstance.DEV_DB_PATH)) {
+		console.log(Slots.instanceUrl(existing))
+		process.exit(0)
+	}
+}
+
 const provisionArgs = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-init.ts']
 if (args.values['reset-data']) provisionArgs.push('--reset-data')
-const provision = childProcess.spawnSync(path.join(process.cwd(), 'node_modules/.bin/tsx'), provisionArgs, { stdio: 'inherit' })
+// --url's stdout is the url alone, so it can be captured
+const provision = childProcess.spawnSync(path.join(process.cwd(), 'node_modules/.bin/tsx'), provisionArgs, {
+	stdio: ['inherit', args.values.url ? process.stderr : 'inherit', 'inherit'],
+})
 if (provision.status !== 0) process.exit(provision.status ?? 1)
 
 const slot = Slots.requireSlot()
 const env = { ...process.env, ...DevInstance.envOverrides(slot) }
 const bin = (name: string) => path.join(process.cwd(), 'node_modules/.bin', name)
 
-extractMessages()
-
 if (args.values.url) {
 	console.log(Slots.instanceUrl(slot))
 	process.exit(0)
 }
+
+extractMessages()
 
 if (args.values['emu-only']) {
 	const emuArgs = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-emu.ts']
@@ -129,4 +154,24 @@ if (args.values['emu-only']) {
 
 	process.on('SIGINT', shutdown)
 	process.on('SIGTERM', shutdown)
+}
+
+// Both ports, since the client proxies to the app. vite listens on ::1 only, hence localhost over 127.0.0.1.
+async function waitForInstance(slot: Slots.Slot) {
+	const deadline = Date.now() + 180_000
+	const ports = [slot.ports.app, slot.ports.client]
+	while (Date.now() < deadline) {
+		const answered = await Promise.all(
+			ports.map((port) =>
+				fetch(`http://localhost:${port}/`, { redirect: 'manual', signal: AbortSignal.timeout(2_000) }).then(
+					(res) => res.status < 500,
+					() => false,
+				),
+			),
+		)
+		if (answered.every(Boolean)) return
+		await new Promise((resolve) => setTimeout(resolve, 500))
+	}
+	console.error(`the instance did not answer on ports ${ports.join(', ')} within 180s; check the \`pnpm dev\` output`)
+	process.exit(1)
 }

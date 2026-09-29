@@ -77,6 +77,9 @@ that checkout's isolated database. `pnpm dev --emu-only` runs only the emulator 
 Both the integration and e2e suites spawn a real app instance (child process, ephemeral db and ports) against
 an emulated squad server, so they need no external services, but they are slow relative to the unit tests.
 
+`test:e2e` rebuilds the engine only when `layer-engine/` has changed since the last build. Nix is optional:
+if the primary checkout has an untracked `flake.nix` and `nix` is installed, `test:e2e` runs inside its dev shell.
+
 `test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
 needs a client build to read. See [Browser support](docs/architecture.md#browser-support) for what each covers
 and where the supported-browser floor is set.

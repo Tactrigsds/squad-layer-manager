@@ -101,7 +101,14 @@ describe('the development encryption key', () => {
 	it('is refused in production, where it would encrypt nothing: it is public', async () => {
 		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
 		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${INSECURE_DEV_ENCRYPTION_KEY}\n`, { NODE_ENV: 'production' })
-		expect(() => Env.ensureEnvSetup()).toThrow(/development key/)
+		Env.ensureEnvSetup()
+		expect(() => Env.assertEncryptionKeyIsNotPublic()).toThrow(/development key/)
+	})
+
+	it('does not stop a production build or script, which never boots the server', async () => {
+		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
+		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${INSECURE_DEV_ENCRYPTION_KEY}\n`, { NODE_ENV: 'production' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
 
 	it('is fine outside production, which is the whole point of shipping it', async () => {
@@ -113,7 +120,8 @@ describe('the development encryption key', () => {
 
 	it('does not stop production booting with a real key', async () => {
 		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${KEY}\n`, { NODE_ENV: 'production' })
-		expect(() => Env.ensureEnvSetup()).not.toThrow()
+		Env.ensureEnvSetup()
+		expect(() => Env.assertEncryptionKeyIsNotPublic()).not.toThrow()
 	})
 })
 

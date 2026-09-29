@@ -42,7 +42,7 @@ declare module 'zod' {
 }
 
 // The key .env.example.dev ships, so a checkout boots without a key-generation step. It says what it is,
-// where a random-looking string would not; production refuses to start with it (see ensureEnvSetup).
+// where a random-looking string would not; the production server refuses to start with it (see assertEncryptionKeyIsNotPublic).
 export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
@@ -825,15 +825,21 @@ export function ensureEnvSetup() {
 	rawEnv.STEAM_ENABLED ??= String(rawEnv.STEAM_API_KEY !== undefined || steamIsAStub())
 
 	const toValidate = buildForValidation()
-	// both of these are what DEMO deliberately does, so they only guard a real deployment
+	// what DEMO deliberately does, so it only guards a real deployment
 	if (!demo && toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
 		throw new Error('QUERY_PARAM_AUTH_BYPASS=true is not allowed in production')
 	}
-	if (!demo && toValidate.NODE_ENV === 'production' && rawEnv.SETTINGS_ENCRYPTION_KEY === INSECURE_DEV_ENCRYPTION_KEY) {
-		throw new Error(
-			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
-		)
-	}
 
 	setup = true
+}
+
+// Only the server's boot calls this (via SecretBox.setup), so that builds and scripts run with NODE_ENV=production
+// against a dev .env still work.
+export function assertEncryptionKeyIsNotPublic() {
+	if (groups.demo.DEMO.parse(rawEnv.DEMO)) return
+	if (buildForValidation().NODE_ENV !== 'production') return
+	if (rawEnv.SETTINGS_ENCRYPTION_KEY !== INSECURE_DEV_ENCRYPTION_KEY) return
+	throw new Error(
+		'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
+	)
 }
