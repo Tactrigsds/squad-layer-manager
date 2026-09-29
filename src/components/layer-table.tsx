@@ -75,7 +75,6 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
 		size: LayerTablePrt.getColumnSize(colDef.name, isNumeric),
-		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
 			const sortingState = useTableFrame(stores, (table) => table.sort)
 			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
@@ -107,7 +106,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				<button
 					type="button"
 					className={cn(
-						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-left hover:text-text [&_svg]:size-2.5 [&_svg]:text-text-3',
+						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-left hover:text-text [&_svg]:size-2.5 [&_svg]:shrink-0 [&_svg]:text-text-3',
 						isNumeric && 'justify-end',
 						sort && 'text-text [&_svg]:text-text',
 					)}
@@ -115,7 +114,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 					title={tr.text(LC_Msgs.columnName(colDef))}
 					onClick={handleClick}
 				>
-					{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}
+					<span className="min-w-0 truncate">{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}</span>
 					{!sort && <ArrowUpDown className="opacity-0 group-hover/th:opacity-100" />}
 					{sort?.direction === 'ASC' && <ArrowUp />}
 					{sort?.direction === 'DESC' && <ArrowDown />}
@@ -139,7 +138,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			const matchDescriptors = info.row.original.matchDescriptors
 			if (colDef.name === 'Layer') {
 				return (
-					<div className="px-2 font-mono">
+					<div className="truncate px-2 font-mono" title={L.toLayer(info.row.original.id).Layer}>
 						<MapLayerDisplay
 							layer={L.toLayer(info.row.original.id).Layer}
 							extraLayerStyles={{
@@ -172,8 +171,10 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				),
 			)
 
-			const valueElt = (value: React.ReactNode) => (
-				<div className={cn('px-2', isNumeric && 'fd-num text-right font-mono text-xs', extraStyles)}>{value}</div>
+			const valueElt = (value: string) => (
+				<div className={cn('truncate px-2', isNumeric && 'fd-num text-right font-mono text-xs', extraStyles)} title={value}>
+					{value}
+				</div>
 			)
 			const value = info.getValue()
 			if (value === null || value === undefined) return emptyElt
@@ -356,6 +357,8 @@ export default function LayerTable(props: {
 	canToggleColumns?: boolean
 	// hide all but LayerTablePrt.COMPACT_VISIBLE_COLUMNS without touching stored visibility prefs
 	compact?: boolean
+	// compact whenever the full column set doesn't fit the table's container
+	autoCompact?: boolean
 }) {
 	const frameState = useTableFrame(
 		props.stores,
@@ -368,7 +371,14 @@ export default function LayerTable(props: {
 		})),
 	)
 
-	const columnVisibility = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.columnVisibility(props.compact ?? false))
+	const autoCompacted = Zus.useStore(props.stores.layerTable, (s) => !!props.autoCompact && LayerTablePrt.Sel.shouldAutoCompact(s))
+	const compact = !!props.compact || autoCompacted
+	const columnVisibility = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.columnVisibility(compact))
+	const layerTableKey = props.stores.layerTable
+	const wellRef = React.useMemo(
+		() => (props.autoCompact ? LayerTablePrt.Actions.observeAvailableWidth({ layerTable: layerTableKey }) : undefined),
+		[props.autoCompact, layerTableKey],
+	)
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const onColumnVisibilityChange = React.useCallback(LayerTablePrt.Actions.onColumnVisibilityChange(props.stores), [props.stores])
@@ -388,10 +398,8 @@ export default function LayerTable(props: {
 	const table = useReactTable({
 		data: page?.layers ?? [],
 		columns: React.useMemo(() => buildColDefs(frameState.colConfig, props.stores), [frameState.colConfig, props.stores]),
-		defaultColumn: {
-			size: 150,
-			minSize: 50,
-		},
+		// every column sets its own size. tanstack's default minSize would clamp the narrow ones
+		defaultColumn: { minSize: 0 },
 		pageCount: page?.pageCount ?? -1,
 		state: {
 			// sorting: tanstackState.tanstackSortingState,
@@ -415,7 +423,7 @@ export default function LayerTable(props: {
 		() => (
 			<TableRow className="pointer-events-none">
 				{columns.map((column) => (
-					<TableCell key={column.id} style={{ width: column.getSize() }} />
+					<TableCell key={column.id} />
 				))}
 			</TableRow>
 		),
@@ -432,16 +440,24 @@ export default function LayerTable(props: {
 
 	return (
 		<LayerTableCellCtx.Provider value={cellDisplayCtx}>
-			<div className={cn('flex flex-col gap-1.5 min-w-0', !props.compact && 'min-w-[660px]')}>
+			<div className="flex flex-col gap-1.5 min-w-0">
 				<LayerTableControlPanel {...props} table={table} />
 				{/*--------- table ---------*/}
-				<div className="fd-well overflow-hidden">
-					<Table className="[&_th]:px-0 [&_td]:px-0">
+				<div ref={wellRef} className="fd-well overflow-x-auto overflow-y-hidden">
+					<Table
+						className="table-fixed [&_th]:overflow-hidden [&_th]:px-0 [&_td]:overflow-hidden [&_td]:px-0"
+						style={{ minWidth: columns.reduce((width, column) => width + column.getSize(), 0) }}
+					>
+						<colgroup>
+							{columns.map((column) => (
+								<col key={column.id} style={column.id === 'Layer' ? undefined : { width: column.getSize() }} />
+							))}
+						</colgroup>
 						<TableHeader>
 							{table.getHeaderGroups().map((headerGroup) => (
 								<TableRow data-tour="table-sort" key={headerGroup.id}>
 									{headerGroup.headers.map((header) => (
-										<TableHead className="group/th" key={header.id} style={{ width: header.getSize() }}>
+										<TableHead className="group/th" key={header.id}>
 											{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 										</TableHead>
 									))}
@@ -553,11 +569,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 					}}
 				>
 					{visibleCells.map((cell) => (
-						<TableCell
-							className={cell.column.id === 'select' ? 'px-2!' : undefined}
-							key={cell.id}
-							style={{ width: cell.column.getSize() }}
-						>
+						<TableCell className={cell.column.id === 'select' ? 'px-2!' : undefined} key={cell.id}>
 							{flexRender(cell.column.columnDef.cell, cell.getContext())}
 						</TableCell>
 					))}

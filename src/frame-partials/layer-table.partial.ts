@@ -115,6 +115,8 @@ export type LayerTable = {
 	showSelectedLayers: boolean
 
 	columnVisibility: VisibilityState
+	// measured content width of the table's container, when the table auto-compacts
+	availableWidth: number | null
 
 	isFetching: boolean
 	// Which query input the table is showing an answer for. `requestedQuery` counts the distinct inputs the
@@ -167,6 +169,7 @@ export function initLayerTable(args: Args) {
 		showSelectedLayers: false,
 
 		columnVisibility: input.columnVisibility,
+		availableWidth: null,
 
 		pageData: null,
 		isFetching: false,
@@ -263,25 +266,36 @@ export type Types = FRM.FrameTypes & { state: Store & Predicates }
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = { layerTable: Key }
 
-const DEFAULT_COLUMN_SIZE = 150
+// The table renders with `table-layout: fixed`, so every column but Layer is exactly its size and Layer takes the
+// remainder, never less than LAYER_MIN_COLUMN_SIZE. That makes getFullTableWidth exact rather than an estimate.
+const DEFAULT_COLUMN_SIZE = 120
+const NUMERIC_COLUMN_SIZE = 56
+export const LAYER_MIN_COLUMN_SIZE = 240
 export const SELECT_COLUMN_SIZE = 40
 export const CONSTRAINTS_COLUMN_SIZE = 80
+const COLUMN_SIZES: Record<string, number> = {
+	Layer: LAYER_MIN_COLUMN_SIZE,
+	Size: 72,
+	Faction_1: 76,
+	Faction_2: 76,
+	Unit_1: 116,
+	Unit_2: 116,
+}
 
 export function getColumnSize(name: string, isNumeric: boolean): number {
-	return ({ Size: 100, Faction_1: 40, Faction_2: 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
+	return COLUMN_SIZES[name] ?? (isNumeric ? NUMERIC_COLUMN_SIZE : DEFAULT_COLUMN_SIZE)
 }
 
 // columns that stay visible in compact mode. the select and constraints(flag) columns aren't part
 // of columnVisibility state and always render
 export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2']
 
-// width the table wants when rendered with the given column visibility, derived from the same
-// size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
+// minimum width the table needs to render the given columns without scrolling
 export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
 	const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
 	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
 	for (const name of Object.keys(cfg.defs)) {
-		if (!columnVisibility[name]) continue
+		if (!columnVisibility[name] || LC.isVirtualColumn(name, cfg)) continue
 		width += getColumnSize(name, LC.isNumericColumn(name, ctx))
 	}
 	return width
@@ -359,6 +373,14 @@ export namespace Sel {
 			return { selectState, disabled }
 		},
 	)
+
+	// Compares against the full stored visibility rather than the compacted one, so toggling compact can't feed back
+	// into the decision.
+	export function shouldAutoCompact(store: Store) {
+		const table = store.layerTable
+		if (table.availableWidth === null) return false
+		return table.availableWidth < getFullTableWidth(table.colConfig, table.columnVisibility)
+	}
 
 	// compact mode hides all but COMPACT_VISIBLE_COLUMNS without touching the stored visibility prefs
 	export const columnVisibility = RSel.memoizeFactory((compact: boolean) =>
@@ -486,5 +508,22 @@ export namespace Actions {
 		const table = slice(stores)
 		const updated = typeof update === 'function' ? update(table.getState().showSelectedLayers) : update
 		table.setState({ showSelectedLayers: updated, sort: null, pageIndex: 0 })
+	}
+
+	// ref callback that keeps availableWidth in sync with the element's content width
+	export function observeAvailableWidth(stores: KeyProp) {
+		return (elt: HTMLElement | null) => {
+			if (!elt) return
+			const table = slice(stores)
+			const update = (width: number) => {
+				width = Math.floor(width)
+				if (table.getState().availableWidth !== width) table.setState({ availableWidth: width })
+			}
+			// measured in the commit phase so the first paint already has the right columns
+			update(elt.clientWidth)
+			const observer = new ResizeObserver((entries) => update(entries[entries.length - 1].contentRect.width))
+			observer.observe(elt)
+			return () => observer.disconnect()
+		}
 	}
 }
