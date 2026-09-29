@@ -6,7 +6,7 @@ import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
-import { appEventTypes, savedBackburner, savedQueue, warnsTo } from '../harness/inspect'
+import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedQueue, warnsTo } from '../harness/inspect'
 
 // The layer backburner's in-game surface, and the generation it feeds: /reqlayer requests are validated
 // against the pool, queued, listed, evicted at the per-user cap, and consumed by autogeneration when the
@@ -137,6 +137,7 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.layerId).toMatch(/^FL-/)
+		expect(generated.source).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
 
 		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'the request being consumed', timeoutMs: 20_000 })
 		expect(appEventTypes(app)).toContain('LAYER_REQUEST_CONSUMED')
@@ -159,5 +160,11 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.layerId).toMatch(/^SK-/)
+		// nothing was requested this time, so the item is plainly generated
+		expect(generated.source.type).toBe('generated')
+
+		const played = latestMatch(app)
+		expect(played.layerId).toBe(fallujah)
+		expect(matchSetBy(app, played.id)).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
 	})
 })

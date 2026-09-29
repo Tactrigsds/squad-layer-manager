@@ -82,6 +82,8 @@ function setByDisplay(item: LL.Item | undefined, setByUser: USR.User | undefined
 			return t('In-game vote')
 		case 'plugin':
 			return t('Set by {pluginId}', { pluginId: item.source.pluginId })
+		case 'layer-request':
+			return t('Layer request')
 		case 'manual':
 			return setByUser && item.source.userId === setByUser.discordId
 				? t('Set by {displayName}', { displayName: setByUser.displayName })
@@ -196,7 +198,7 @@ export const ownEditsDiscarded = def(() => ({
 // -------- where a queue item came from --------
 // Shown on the source avatar beside a queue item. A manual source names the user instead, so it has no entry here.
 
-export const sourceNames: Record<Exclude<LL.Source['type'], 'manual' | 'plugin'>, string> = {
+export const sourceNames: Record<Exclude<LL.Source['type'], 'manual' | 'plugin' | 'layer-request'>, string> = {
 	gameserver: 'Game Server',
 	unknown: 'Unknown',
 	generated: 'Generated',
@@ -207,6 +209,9 @@ export const sourceNames: Record<Exclude<LL.Source['type'], 'manual' | 'plugin'>
 export const setByPlugin = def('Set by {pluginName}', (pluginName: string) => ({ pluginName }))
 
 export const setByLabel = def('Set By')
+
+// a layer-request source names whoever asked for the layer, listed under this heading
+export const requestedBy = def('Layer requested by')
 
 // -------- the queue item controls --------
 

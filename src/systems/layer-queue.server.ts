@@ -508,7 +508,7 @@ const editSavedNow = Instr.spanOp(
 			itemId: item.itemId,
 			layerId: item.layerId,
 			isVote: item.type === 'vote-list-item',
-			generated: item.source.type === 'generated',
+			generated: LL.isGeneratedSource(item.source),
 		}))
 
 		const next: LL.Item[] = []
@@ -647,7 +647,14 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 			}
 		})()
 
-		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, { type: 'generated' })
+		const requesters: USR.GuiOrChatUserId[] = []
+		for (const item of ctx.layerQueue.session.state.savedBackburner) {
+			if (!generated.consumedItemIds.includes(item.itemId)) continue
+			if (requesters.some((r) => BB.sameOwner(r, item.source))) continue
+			requesters.push(item.source)
+		}
+		const source: LL.Source = requesters.length > 0 ? { type: 'layer-request', requesters } : { type: 'generated' }
+		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, source)
 		await dispatchOp(ctx, {
 			op: 'queue-item-generated',
 			item: nextQueueItem,

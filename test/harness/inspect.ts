@@ -1,6 +1,9 @@
+import superjson from 'superjson'
+
 import type { EmuPlayer } from '@/emulator'
 import type * as BB from '@/models/backburner.models'
 import * as MH from '@/models/match-history.models'
+import type * as USR from '@/models/users.models'
 
 import type { AppFixture } from './app-fixture'
 
@@ -8,7 +11,10 @@ import type { AppFixture } from './app-fixture'
 // fresh read-only connection, so it sees the app's latest committed write rather than a held snapshot.
 
 // the layerQueue column is superjson-encoded, so the payload sits under `.json`
-export function savedQueue(app: AppFixture, serverId: string = app.serverId): { type: string; itemId: string; layerId?: string }[] {
+export function savedQueue(
+	app: AppFixture,
+	serverId: string = app.serverId,
+): { type: string; itemId: string; layerId?: string; source: { type: string; requesters?: { steamId?: string }[] } }[] {
 	const db = app.readDb()
 	try {
 		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(serverId) as { layerQueue: string }
@@ -45,6 +51,20 @@ export function latestMatch(app: AppFixture): { id: number; layerId: string } {
 	const db = app.readDb()
 	try {
 		return db.prepare(`SELECT id, layerId FROM matchHistory ORDER BY id DESC LIMIT 1`).get() as { id: number; layerId: string }
+	} finally {
+		db.close()
+	}
+}
+
+// who set a match's layer, as recorded in its setBy columns
+export function matchSetBy(app: AppFixture, matchId: number): { type: string; requesters: USR.GuiOrChatUserId[] | null } {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT setByType, setByRequesters FROM matchHistory WHERE id = ?`).get(matchId) as {
+			setByType: string
+			setByRequesters: string | null
+		}
+		return { type: row.setByType, requesters: row.setByRequesters ? superjson.parse(row.setByRequesters) : null }
 	} finally {
 		db.close()
 	}

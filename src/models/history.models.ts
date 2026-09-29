@@ -17,7 +17,7 @@ export const RESULT_TYPES = ['events', 'players', 'matches'] as const
 export type ResultType = (typeof RESULT_TYPES)[number]
 
 export const MATCH_OUTCOMES = ['team1', 'team2', 'draw'] as const
-export const SET_BY_TYPES = ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin'] as const
+export const SET_BY_TYPES = ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin', 'layer-request'] as const
 export const EVENT_VARIANTS = ['normal', 'suicide', 'teamkill'] as const
 export const CHAT_CHANNELS = SM.CHAT_CHANNEL_TYPE.options
 
