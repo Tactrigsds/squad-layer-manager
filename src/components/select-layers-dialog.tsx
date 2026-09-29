@@ -35,10 +35,7 @@ import TabsList from './ui/tabs-list.tsx'
 
 type SelectMode = 'vote' | 'layers'
 
-// horizontal space the dialog consumes around the table: the constraint rail, its gap and border, and the
-// dialog's own padding
 const RAIL_WIDTH_PX = 318
-const DIALOG_HORIZONTAL_CHROME_PX = RAIL_WIDTH_PX + 60
 
 type SelectLayersDialogProps = {
 	title: string
@@ -112,19 +109,6 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	const user = useLoggedInUser()
 	const [submitted, setSubmitted] = React.useState(false)
 	const phone = Browser.useIsSmallViewport()
-
-	// collapse the table to its essential columns when the full set can't fit in the viewport.
-	// the breakpoint is derived from the table's own column sizes rather than hardcoded
-	const fullTableWidth = Zus.useStore(frameKey, (s) =>
-		LayerTablePrt.getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility),
-	)
-	const [compactTable, setCompactTable] = React.useState(false)
-	React.useLayoutEffect(() => {
-		const check = () => setCompactTable(window.innerWidth < fullTableWidth + DIALOG_HORIZONTAL_CHROME_PX)
-		check()
-		window.addEventListener('resize', check)
-		return () => window.removeEventListener('resize', check)
-	}, [fullTableWidth])
 
 	const canSubmit = Zus.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 	const selectedCount = Zus.useStore(frameKey, (s) => s.layerTable.selected.length)
@@ -235,7 +219,8 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 						canChangeRowsPerPage={false}
 						canToggleColumns
 						enableForceSelect
-						compact={compactTable || phone}
+						compact={phone}
+						autoCompact
 					/>
 				</div>
 				{!phone && (
