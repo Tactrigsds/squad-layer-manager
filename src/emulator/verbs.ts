@@ -202,6 +202,11 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			host.emu.endMatchAndRoll(winnerTeamId ? { winnerTeamId } : undefined)
 			return winnerTeamId ? `match ended, team ${winnerTeamId} won` : 'match ended'
 		}
+		case 'queue': {
+			const { count } = input as SB.SandboxVerbInput<'queue'>
+			world.publicQueue = count
+			return `public queue is now ${count}`
+		}
 		case 'vote': {
 			const { kind, choices } = input as SB.SandboxVerbInput<'vote'>
 			const resolved = choices.length > 0 ? choices : kind === 'layer' ? DEFAULT_VOTE_LAYERS : DEFAULT_VOTE_FACTIONS

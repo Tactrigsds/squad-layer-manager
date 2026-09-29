@@ -230,6 +230,17 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	queue: def({
+		usage: 'queue <count>',
+		summary: 'set how many players the server reports waiting in the public queue',
+		input: z.object({ count: z.int().min(0).max(MAX_PLAYERS) }),
+		tokens: ([count]) => {
+			const n = Number(count)
+			if (!count || !Number.isInteger(n)) throw new Error('usage: queue <count>')
+			return { count: n }
+		},
+		mutatesWorld: true,
+	}),
 	vote: def({
 		usage: 'vote [layer|faction] [choice ...]',
 		summary: "open one of the Squad server's own votes, as AdminEnableVoting does",

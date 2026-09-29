@@ -101,6 +101,7 @@ export function showServerInfo(info: {
 		PublicQueue_I: String(info.publicQueue),
 		PublicQueueLimit_I: String(info.publicQueueLimit),
 		ReservedQueue_I: '0',
+		PlayerReserveCount_I: '0',
 		BeaconPort_I: '15003',
 		TeamTwo_s: 'PLA_S_CombinedArms',
 		TeamOne_s: 'USA_S_CombinedArms',

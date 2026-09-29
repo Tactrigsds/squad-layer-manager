@@ -24,6 +24,8 @@ export const ServerRawInfoSchema = z.object({
 	PlayerCount_I: ZodUtils.ParsedIntSchema.default(0),
 	PublicQueue_I: ZodUtils.ParsedIntSchema.default(0),
 	PublicQueueLimit_I: ZodUtils.ParsedIntSchema.optional(),
+	PlayerReserveCount_I: ZodUtils.ParsedIntSchema.optional(),
+	ReservedQueue_I: ZodUtils.ParsedIntSchema.optional(),
 	// MapName_s: z.string(),
 	// GameMode_s: z.string(),
 	// GameVersion_s: z.string(),
@@ -53,6 +55,9 @@ export type ServerInfo = {
 	playerCount: number
 	queueLength?: number
 	maxQueueLength?: number
+	/** slots only reserved-slot holders can take, counted within maxPlayerCount */
+	reserveSlots?: number
+	reserveQueueLength?: number
 }
 
 // currentLayer here is SLM's record of what is playing -- the current match -- rather than the rcon read, so it is
