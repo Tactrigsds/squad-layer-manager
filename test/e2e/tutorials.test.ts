@@ -340,8 +340,15 @@ test('the player management tutorial, acted on and navigated out of order', asyn
 // show that step with its anchor on screen. The journeys above act on a handful of steps; this is what catches an
 // anchor that no longer resolves, or a checkpoint that no longer sets a step up, anywhere else. Failures are soft,
 // so one run reports every broken step.
+//
+// A jump's replays should never have an op refused: a refusal means a simulate ran against state other than the
+// one the checkpoint installed, and the step it builds is quietly wrong even when its anchor still resolves.
 test('every step of every tutorial sets up and finds its anchor', async ({ page }) => {
 	test.setTimeout(20 * 60_000)
+	const rejections: string[] = []
+	page.on('console', (m) => {
+		if (m.text().includes('rejected by the server')) rejections.push(m.text())
+	})
 
 	await page.goto(app.loginUrl(USER, '/tutorials'))
 	const entries = page.getByRole('listitem')
@@ -369,12 +376,14 @@ test('every step of every tutorial sets up and finds its anchor', async ({ page 
 				await entryButton.click()
 
 				const card = overlay(page).locator('[data-tour-anchor]')
-				await expect(card.getByText(`Step ${stepNo} of ${total}`)).toBeVisible({ timeout: 60_000 })
+				// the counter rather than the text, so a card that already moved past the step reports where it went
+				await expect(card.getByText(/^Step \d+ of \d+$/)).toHaveText(`Step ${stepNo} of ${total}`, { timeout: 60_000 })
 				await expect(card.getByText('Preparing…')).toHaveCount(0, { timeout: 60_000 })
 				const where = `${name}, step ${stepNo} "${title}"`
 				// a failed or not-ready stage both leave a Retry on the card
 				await expect.soft(card.getByRole('button', { name: 'Retry' }), `${where} could not be set up`).toHaveCount(0)
 				await expect.soft(card, `${where} lost its anchor`).toHaveAttribute('data-tour-anchor', /^(found|none)$/, { timeout: 15_000 })
+				expect.soft(rejections.splice(0), `${where} had ops refused while it was set up`).toEqual([])
 			}
 
 			await overlay(page).getByRole('button', { name: 'Exit' }).click()
