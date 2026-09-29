@@ -6,7 +6,7 @@ import type * as SM from '@/models/squad.models'
 
 // A bare "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
 export const chatGroupLabels: Record<CMD.ChatGroup, TString> = {
-	admin: t('admin only'),
+	admin: t('admin'),
 	public: t('public'),
 }
 
