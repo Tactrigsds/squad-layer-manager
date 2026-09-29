@@ -416,12 +416,14 @@ export function resolveHelpListing(
 // The commands page's fragment for a command's full listing: its entry under its own declared section. The page also
 // lists pinned and quick-reference copies, each under its own fragment, but a link from elsewhere wants the listing
 // carrying the arguments and examples.
-// the commands page's section for plugin-contributed commands. They belong to no declared section, so they get
-// one of their own, which the anchor has to agree on.
-export const PLUGINS_SECTION_ID = 'section:plugins'
+// the commands page's section for one plugin's commands. They belong to no declared section, so each plugin gets
+// one of its own, which the anchor has to agree on.
+export function pluginSectionId(pluginId: string): string {
+	return `section:plugin:${pluginId}`
+}
 
 export function commandsPageAnchor(cmdId: string): string {
-	if (CMD.isPluginCommandId(cmdId)) return `${PLUGINS_SECTION_ID}/command:${cmdId}`
+	if (CMD.isPluginCommandId(cmdId)) return `${pluginSectionId(CMD.pluginIdOfCommand(cmdId))}/command:${cmdId}`
 	return `section:${CMD.COMMAND_DECLARATIONS[cmdId as CMD.CommandId].section}/command:${cmdId}`
 }
 

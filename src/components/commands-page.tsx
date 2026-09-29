@@ -500,6 +500,7 @@ function pluginCommandEntry(sectionId: string, cmd: PluginEntryInput, sectionLab
 
 type PluginEntryInput = {
 	id: string
+	pluginId: PLG.PluginId
 	pluginName: string
 	decl: CMD.PluginCommandInfo
 	config: CMD.CommandConfig
@@ -516,6 +517,7 @@ function pluginEntryInputs(settings: PublicSettings, plugins: PLG.RuntimeInfo[])
 			const stored = info.commandConfigs[decl.name]
 			return {
 				id,
+				pluginId: info.id,
 				pluginName: info.name,
 				decl,
 				config: CMD.pluginCommandConfig(decl, stored, settings.defaultPrefix),
@@ -576,17 +578,21 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[], plugi
 		sections.push({ id, label, entries: ids.map((cmdId) => entry(id, cmdId, label)) })
 	}
 
-	// their own section rather than one of the declared ones: sections are the axis the page and `!help` navigate
+	// each plugin gets its own section rather than one of the declared ones: sections are the axis the page and `!help` navigate
 	// by, and a plugin cannot be given a say in what they are
-	if (pluginCommands.length > 0 || conflicts.length > 0) {
-		const label = tr.text(CMD_Msgs.pluginsSectionLabel())
+	for (const plugin of plugins) {
+		const commands = pluginCommands.filter((c) => c.pluginId === plugin.id)
+		const pluginConflicts = conflicts.filter((c) => CMD.pluginIdOfCommand(c.commandId) === plugin.id)
+		if (commands.length === 0 && pluginConflicts.length === 0) continue
+		const id = CMDH.pluginSectionId(plugin.id)
+		const label = tr.text(CMD_Msgs.pluginSectionLabel(plugin.name))
 		sections.push({
-			id: CMDH.PLUGINS_SECTION_ID,
+			id,
 			label,
 			// a shadowed trigger is not listed anywhere else on this page: it is not a command, so the section it
 			// would have appeared in is the only place left to say it exists
-			blurb: conflicts.length > 0 ? tr.text(CMD_Msgs.pluginTriggerConflicts(conflicts)) : undefined,
-			entries: pluginCommands.map((c) => pluginCommandEntry(CMDH.PLUGINS_SECTION_ID, c, label)),
+			blurb: pluginConflicts.length > 0 ? tr.text(CMD_Msgs.pluginTriggerConflicts(pluginConflicts)) : undefined,
+			entries: commands.map((c) => pluginCommandEntry(id, c, label)),
 		})
 	}
 
