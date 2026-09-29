@@ -12,17 +12,22 @@
 import React from 'react'
 
 import * as DH from '@/lib/display-helpers'
+import { withThrown } from '@/lib/error'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as I18n from '@/messages/i18n'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
+import * as DSTR from '@/models/destruction.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
+import * as SE from '@/models/server-events.models'
+import * as VEH from '@/models/vehicles.models'
 
 import { AppEventRow } from './app-event-rows'
 import * as Atoms from './atoms'
 import { Icon } from './icons'
-import type * as RC from './render-context'
+import * as RC from './render-context'
 
 const tr = I18n.ambient
 const trChat = tr.withTags({ label: (chunks) => chunks })
@@ -153,6 +158,9 @@ function ChatMessage(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnrich
 	)
 }
 
+// how many players a row names inline before it folds them into an expandable list
+const INLINE_PLAYER_LIMIT = 4
+
 // several standalone warns sharing the same text + source, collapsed into one entry. Few targets are named inline;
 // larger groups use an expandable <details> listing everyone warned.
 function WarnsAggregated(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'WARNS_AGGREGATED' }> }) {
@@ -160,7 +168,7 @@ function WarnsAggregated(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEn
 	const count = event.warns.length
 	const iconElt = <Icon name="AlertTriangle" className="h-4 w-4 text-warn shrink-0" />
 
-	if (count <= 4) {
+	if (count <= INLINE_PLAYER_LIMIT) {
 		const warnees = I18n.nodeList(
 			event.warns.map((warn, i) => (
 				// eslint-disable-next-line react/no-array-index-key
@@ -416,6 +424,143 @@ function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, {
 	)
 }
 
+type DestroyedEvent = Extract<CHAT.EventEnriched, { type: 'VEHICLE_DESTROYED' | 'DEPLOYABLE_DESTROYED' }>
+type TargetedEvent = DestroyedEvent | Extract<CHAT.EventEnriched, { type: 'FOB_RADIO_DAMAGED' }>
+
+// The owning side's faction, the vehicle's canonical name and its class. The blueprint is the tooltip, since two
+// camo copies of one vehicle read the same here.
+function TargetDisplay(props: { ctx: RC.RenderCtx; event: TargetedEvent }) {
+	const { ctx, event } = props
+	const target = SE.targetOf(event)
+	const [vehicleName] =
+		event.type === 'VEHICLE_DESTROYED'
+			? withThrown(() => VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(target.className)?.vehicle)
+			: [undefined]
+	const name = event.type === 'FOB_RADIO_DAMAGED' ? tr.text(CHAT_Msgs.fobRadio()) : (vehicleName ?? DSTR.prettyClassName(target.className))
+	const typeCode = event.type === 'VEHICLE_DESTROYED' && target.targetType ? LC.vehicleTypeShortCode(target.targetType) : undefined
+	return (
+		<span className="whitespace-nowrap">
+			{event.teamId !== null && (
+				<>
+					<Atoms.MatchTeamDisplay ctx={ctx} teamId={event.teamId} matchId={event.matchId} />{' '}
+				</>
+			)}
+			<span className="font-semibold cursor-help" {...{ [RC.TIP_ATTR]: target.className }}>
+				{name}
+			</span>
+			{typeCode && <span className="text-muted-foreground"> ({typeCode})</span>}
+		</span>
+	)
+}
+
+function Destroyed(props: { ctx: RC.RenderCtx; event: DestroyedEvent }) {
+	const { ctx, event } = props
+	const tone = event.variant === 'teamkill' ? 'text-danger' : event.variant === 'suicide' ? 'text-warn' : 'text-foreground'
+	const iconName = (() => {
+		if (event.type === 'DEPLOYABLE_DESTROYED') return 'Package' as const
+		switch (event.cause) {
+			case 'fire':
+			case 'ammo':
+				return 'Flame' as const
+			case 'collision':
+				return 'CarFront' as const
+			case 'weapon':
+				return 'Bomb' as const
+			default:
+				return assertNever(event.cause)
+		}
+	})()
+
+	const target = <TargetDisplay ctx={ctx} event={event} />
+	const weaponSuffix = event.weapon ? (
+		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.weapon))}</span>
+	) : undefined
+	const attacker = event.attacker ? <Atoms.PlayerDisplay ctx={ctx} showTeam player={event.attacker} matchId={event.matchId} /> : undefined
+
+	const message = (() => {
+		if (!attacker) return tr.richText(CHAT_Msgs.targetDestroyedUnattributed(target, event.cause))
+		switch (event.variant) {
+			case 'suicide':
+				return tr.richText(CHAT_Msgs.targetDestroyedByCrew(target, attacker, event.cause))
+			case 'teamkill':
+			case 'normal':
+			case null:
+				return tr.richText(CHAT_Msgs.targetDestroyedBy(target, attacker, event.variant === 'teamkill', weaponSuffix))
+			default:
+				return assertNever(event.variant)
+		}
+	})()
+
+	const crew = event.type === 'VEHICLE_DESTROYED' ? event.crew : []
+	const icon = <Icon name={iconName} className={`h-4 w-4 shrink-0 ${tone}`} />
+
+	if (crew.length > INLINE_PLAYER_LIMIT) {
+		return (
+			<Details
+				time={event.time}
+				icon={icon}
+				summary={
+					<>
+						{message}
+						<span className="text-muted-foreground">{tr.text(CHAT_Msgs.destroyedCrewCount(crew.length))}</span>
+					</>
+				}
+			>
+				<div className="ps-6 pt-1 flex flex-col gap-0.5">
+					{crew.map((player) => (
+						<Atoms.PlayerDisplay key={player.ids.eos} ctx={ctx} player={player} matchId={event.matchId} />
+					))}
+				</div>
+			</Details>
+		)
+	}
+
+	return (
+		<Atoms.EventLine time={event.time} icon={icon}>
+			{message}
+			{crew.length > 0 && (
+				<span className="text-muted-foreground">
+					{tr.richText(
+						CHAT_Msgs.destroyedCrew(
+							I18n.nodeList(
+								crew.map((player) => (
+									<Atoms.PlayerDisplay key={player.ids.eos} ctx={ctx} player={player} matchId={event.matchId} />
+								)),
+								tr.locale,
+							),
+						),
+					)}
+				</span>
+			)}
+		</Atoms.EventLine>
+	)
+}
+
+function RadioDamaged(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'FOB_RADIO_DAMAGED' }> }) {
+	const { ctx, event } = props
+	const tone = event.variant === 'teamkill' || event.bottomedOut ? 'text-danger' : 'text-warn'
+	const radio = <TargetDisplay ctx={ctx} event={event} />
+	const weaponSuffix = event.weapon ? (
+		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.weapon))}</span>
+	) : undefined
+	const message = event.attacker
+		? tr.richText(
+				CHAT_Msgs.radioDamagedBy(
+					radio,
+					event.bottomedOut,
+					<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.attacker} matchId={event.matchId} />,
+					event.variant === 'teamkill',
+					weaponSuffix,
+				),
+			)
+		: tr.richText(CHAT_Msgs.radioDamagedUnattributed(radio, event.bottomedOut))
+	return (
+		<Atoms.EventLine time={event.time} icon={<Icon name="RadioTower" className={`h-4 w-4 shrink-0 ${tone}`} />}>
+			{message}
+		</Atoms.EventLine>
+	)
+}
+
 /**
  * One feed row, or null when the event draws nothing.
  *
@@ -642,6 +787,11 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED':
 			return <WoundedOrDied ctx={ctx} event={event} />
+		case 'VEHICLE_DESTROYED':
+		case 'DEPLOYABLE_DESTROYED':
+			return <Destroyed ctx={ctx} event={event} />
+		case 'FOB_RADIO_DAMAGED':
+			return <RadioDamaged ctx={ctx} event={event} />
 		case 'MAP_SET':
 			return <MapSet ctx={ctx} event={event} />
 		case 'INGAME_VOTE_STARTED':

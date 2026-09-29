@@ -1732,6 +1732,130 @@ export namespace LogEvents {
 		},
 	})
 
+	// ---- vehicle and deployable damage. See destruction.models.ts for how these become destroyed events.
+
+	// The raw damage one component of a vehicle or deployable took, before armour. Carries the damage type, which
+	// the health lines below do not, and names the vehicle by its actor even when the health line names a player.
+	export const DamageAppliedDef = eventDef('DAMAGE_APPLIED', {
+		...BaseEventProperties,
+		actor: z.string(),
+		damage: z.number(),
+		damageType: z.string(),
+	})
+	export type DamageApplied = z.infer<(typeof DamageAppliedDef)['schema']>
+	export const DamageAppliedMatcher = createLogMatcher({
+		event: DamageAppliedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:TraceAndMessageClient|TakeDamage)\(\): (?:SQVehicleSeat|SQVehicle|ASQDeployable)::TakeDamage(?:\[\w+])? (\S+) for ([0-9.]+) damage \(type=(\S+)\)/,
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			actor: args[3],
+			damage: parseFloat(args[4]),
+			damageType: args[5],
+		}),
+	})
+
+	// A vehicle's health after a hit. `subject` is the vehicle's actor when it is empty, and an occupant's name when
+	// it is crewed. `causer` is a blueprint actor, or an occupant's name when the damage came from a crewed vehicle.
+	export const VehicleHealthChangedDef = eventDef('VEHICLE_HEALTH_CHANGED', {
+		...BaseEventProperties,
+		subject: z.string(),
+		damage: z.number(),
+		causer: z.string(),
+		instigatorIds: PlayerIds.IdFields('eos').nullable(),
+		health: z.number(),
+	})
+	export type VehicleHealthChanged = z.infer<(typeof VehicleHealthChangedDef)['schema']>
+	export const VehicleHealthChangedMatcher = createLogMatcher({
+		event: VehicleHealthChangedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]TraceAndMessageClient\(\): (.+?): (-?[0-9.]+) damage taken by causer (.+?) instigator \(Online Ids: .*\)(?: (EOS: \w+ \w+: \w+)| INVALID) health remaining (-?[0-9.]+)$/,
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			subject: args[3],
+			damage: parseFloat(args[4]),
+			causer: args[5],
+			instigatorIds: args[6] ? PlayerIds.parse({ idsStr: args[6] }) : null,
+			health: parseFloat(args[7]),
+		}),
+	})
+
+	// A deployable's health after a hit. The instigator is a name, with online ids only when a player was behind it.
+	export const DeployableHealthChangedDef = eventDef('DEPLOYABLE_HEALTH_CHANGED', {
+		...BaseEventProperties,
+		actor: z.string(),
+		damage: z.number(),
+		causer: z.string(),
+		instigatorIds: PlayerIds.IdFields('eos').nullable(),
+		health: z.number(),
+	})
+	export type DeployableHealthChanged = z.infer<(typeof DeployableHealthChangedDef)['schema']>
+	export const DeployableHealthChangedMatcher = createLogMatcher({
+		event: DeployableHealthChangedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]TakeDamage\(\): (\S+): (-?[0-9.]+) damage taken by causer (.+?) instigator .*?(?: \(Online IDs: ([^)]*)\))? health remaining (-?[0-9.]+)$/,
+		onMatch: (args) => {
+			const ids = args[6] && args[6].includes('EOS:') ? PlayerIds.parse({ idsStr: args[6] }) : null
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				actor: args[3],
+				damage: parseFloat(args[4]),
+				causer: args[5],
+				instigatorIds: ids?.eos ? ids : null,
+				health: parseFloat(args[7]),
+			}
+		},
+	})
+
+	// `pawn` is the vehicle's actor for its own seats, and a turret's actor for a turret seat. `assetClass` is always
+	// the vehicle's blueprint, which is the only link from a turret back to the vehicle it sits on.
+	export const VehicleEnteredDef = eventDef('VEHICLE_ENTERED', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.IdFields('eos', 'username'),
+		pawn: z.string(),
+		assetClass: z.string(),
+	})
+	export type VehicleEntered = z.infer<(typeof VehicleEnteredDef)['schema']>
+	export const VehicleEnteredMatcher = createLogMatcher({
+		event: VehicleEnteredDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]OnPossess\(\): PC=(.+?) \(Online IDs: ([^)]*)\) Entered Vehicle Pawn=(\S+) \(Asset Name = (\S+)\)/,
+		onMatch: (args) => {
+			const playerIds = PlayerIds.parse({ username: args[3], idsStr: args[4] })
+			if (!playerIds.eos) return null
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				playerIds,
+				pawn: args[5],
+				assetClass: args[6],
+			}
+		},
+	})
+
+	export const VehicleExitedDef = eventDef('VEHICLE_EXITED', {
+		...BaseEventProperties,
+		playerIds: PlayerIds.IdFields('eos', 'username'),
+	})
+	export type VehicleExited = z.infer<(typeof VehicleExitedDef)['schema']>
+	export const VehicleExitedMatcher = createLogMatcher({
+		event: VehicleExitedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]OnUnPossess\(\): PC=(.+?) \(Online IDs: ([^)]*)\) Exited Vehicle Pawn=/,
+		onMatch: (args) => {
+			const playerIds = PlayerIds.parse({ username: args[3], idsStr: args[4] })
+			if (!playerIds.eos) return null
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				playerIds,
+			}
+		},
+	})
+
 	const UnknownEventDef = eventDef('UNKNOWN', {
 		...BaseEventProperties,
 	})
@@ -1774,6 +1898,11 @@ export namespace LogEvents {
 		ForcedTeamChangeMatcher,
 		SquadDisbandedMatcher,
 		PlayerRemovedFromSquadMatcher,
+		DamageAppliedMatcher,
+		VehicleHealthChangedMatcher,
+		DeployableHealthChangedMatcher,
+		VehicleEnteredMatcher,
+		VehicleExitedMatcher,
 		UnknownEventMatcher,
 	] as const
 
@@ -1808,6 +1937,11 @@ export namespace LogEvents {
 		| ForcedTeamChange
 		| SquadDisbanded
 		| PlayerRemovedFromSquad
+		| DamageApplied
+		| VehicleHealthChanged
+		| DeployableHealthChanged
+		| VehicleEntered
+		| VehicleExited
 		| UnknownEvent
 
 	function parseTimestamp(raw: string) {

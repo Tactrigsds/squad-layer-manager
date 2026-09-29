@@ -14,6 +14,9 @@ export type FieldKey =
 	| 'types'
 	| 'variant'
 	| 'damageSource'
+	| 'target'
+	| 'vehicle'
+	| 'targetType'
 	| 'chat'
 	| 'channel'
 	| 'matchId'
@@ -67,6 +70,10 @@ export type FieldControl =
 	// the editor can reuse the pickers the rest of the app uses (options, groupings, icons)
 	| { kind: 'layer-part'; column: 'Map' | 'Gamemode' | 'Faction_1' }
 	| { kind: 'saved-filter' }
+	// a canonical vehicle, picked the way the layer filters pick one
+	| { kind: 'vehicle' }
+	// a vehicle type or a deployable type, whose options come from the layer data
+	| { kind: 'target-type' }
 	// names its query field for the same reason the range does: the control is no longer one-of-a-kind
 	| { kind: 'number'; field: 'minMatches' | 'matchId'; min?: number }
 	// a pair of query fields edited as one row, named here because the field's own key is neither of them
@@ -87,6 +94,9 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	types: { key: 'types', group: 'events', control: { kind: 'event-types' } },
 	variant: { key: 'variant', group: 'events', control: { kind: 'enum', options: HQ.EVENT_VARIANTS } },
 	damageSource: { key: 'damageSource', group: 'events', control: { kind: 'text' } },
+	target: { key: 'target', group: 'events', control: { kind: 'text' } },
+	vehicle: { key: 'vehicle', group: 'events', control: { kind: 'vehicle' } },
+	targetType: { key: 'targetType', group: 'events', control: { kind: 'target-type' } },
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },
 	channel: { key: 'channel', group: 'events', control: { kind: 'enum', options: HQ.CHAT_CHANNELS } },
 	matchId: { key: 'matchId', group: 'match', control: { kind: 'number', field: 'matchId', min: 1 } },

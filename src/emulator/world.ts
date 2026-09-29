@@ -323,6 +323,45 @@ export class World {
 		this.#log(Fmt.logDie(victim, attacker, 100, weapon))
 	}
 
+	// descending, as the engine hands them out
+	#nextInstanceId = 2147400000
+
+	// A vehicle taken from full health to destroyed in one hit, with its crew boarding first and bailing after, the
+	// way a real destruction reads. The health line names the first crew member, as the game does for a crewed one.
+	destroyVehicle(attacker: EmuPlayer, blueprint: string, crew: EmuPlayer[], weapon = 'BP_RPG7_Tandem_Heat_Proj2') {
+		const actor = `${blueprint}_C_${this.#nextInstanceId--}`
+		const causer = `${weapon}_C_${this.#nextInstanceId--}`
+		if (crew.length > 0) this.#log(...crew.map((p, seat) => Fmt.logVehicleEntered(p, actor, seat)))
+		this.#log(
+			Fmt.logVehicleDamageApplied(actor, 1050, 'BP_HAT_DamageType_C'),
+			Fmt.logVehicleHealth(crew[0]?.name.trim() ?? actor, 1050, causer, attacker, -50),
+			...crew.map((p, seat) => Fmt.logVehicleExited(p, actor, seat)),
+		)
+	}
+
+	destroyDeployable(attacker: EmuPlayer, blueprint: string, weapon = 'BP_M67Frag') {
+		const actor = `${blueprint}_C_${this.#nextInstanceId--}`
+		const causer = `${weapon}_C_${this.#nextInstanceId--}`
+		this.#log(
+			Fmt.logDeployableDamageApplied(actor, 500, 'BP_Fragmentation_DamageType_C'),
+			Fmt.logDeployableHealth(actor, 500, causer, attacker, 0),
+		)
+	}
+
+	// an attack on a radio: a first hit, then one taking it down to the minimum health radios stop at
+	damageRadio(attacker: EmuPlayer, blueprint: string, weapon = 'BP_RPG7_Tandem_Heat_Proj2') {
+		const actor = `${blueprint}_C_${this.#nextInstanceId--}`
+		const causer = `${weapon}_C_${this.#nextInstanceId--}`
+		this.#log(
+			Fmt.logDeployableDamageApplied(actor, 5000, 'BP_HAT_DamageType_C'),
+			Fmt.logDeployableHealth(actor, 50, causer, attacker, 250),
+		)
+		this.#log(
+			Fmt.logDeployableDamageApplied(actor, 22600, 'BP_HAT_DamageType_C'),
+			Fmt.logDeployableHealth(actor, 226, causer, attacker, 24),
+		)
+	}
+
 	reportTickRate(rate: number) {
 		this.#log(Fmt.logTickRate(rate))
 	}

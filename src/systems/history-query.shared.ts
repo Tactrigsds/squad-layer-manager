@@ -8,6 +8,7 @@ import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
+import * as VEH from '@/models/vehicles.models'
 import type * as C from '@/server/context'
 
 // Compiles a history query's node tree to sql. The whole vocabulary is projected -- serverEventIndex,
@@ -87,8 +88,8 @@ export const matchTime = sql<number>`coalesce(${mh.endTime}, ${mh.startTime}, ${
 
 // -------- resolution --------
 // Everything the sql can't say on its own, resolved once per query and keyed by node identity: layer
-// filters against the played-layer set, subqueries to id sets, steam64s to eos ids, damage-source names to
-// interned ids.
+// filters against the played-layer set, subqueries to id sets, steam64s to eos ids, blueprint names (damage
+// sources, destroyed targets, and the blueprints a canonical vehicle stands for) to interned ids.
 
 export type ResolvedArtifacts = {
 	matchSets: Map<HQ.Node, number[]>
@@ -97,6 +98,7 @@ export type ResolvedArtifacts = {
 	userValues: Map<HQ.Node, string[]>
 	// match.setByPlayer's refs as steam ids, which is how a layer request records its requesters
 	setBySteamIds: Map<HQ.Node, string[]>
+	// damageSources ids, for the columns holding one: event.damageSource, event.target and event.vehicle
 	damageSourceIds: Map<HQ.Node, number[]>
 	// the layer ids a layer-part predicate selects. Held as ids rather than as the matches that played them:
 	// the id is what every table already carries, and there are a few hundred of them against any number of
@@ -412,8 +414,12 @@ export async function resolveArtifacts(
 			played ??= await playedLayers(ctx, bounds)
 			artifacts.layerSets.set(node, layerIdsMatching(comp, column, played))
 		}
-		if (column === 'event.damageSource') {
-			const names = compValueList(comp).filter((v): v is string => typeof v === 'string')
+		if (column === 'event.damageSource' || column === 'event.target' || column === 'event.vehicle') {
+			let names = compValueList(comp).filter((v): v is string => typeof v === 'string')
+			if (column === 'event.vehicle') {
+				const classes = VEH.classesByVehicle(VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents))
+				names = names.flatMap((vehicle) => classes.get(vehicle) ?? [])
+			}
 			const rows =
 				names.length > 0 ? await ctx.db().select().from(Schema.damageSources).where(E.inArray(Schema.damageSources.name, names)) : []
 			artifacts.damageSourceIds.set(
@@ -605,15 +611,20 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 			return compileComp(comp, t.type, id)
 		case 'event.variant':
 			return compileComp(comp, t.variant, id)
-		case 'event.damageSource': {
+		case 'event.damageSource':
+		case 'event.target':
+		case 'event.vehicle': {
+			const col = column === 'event.damageSource' ? t.damageSourceId : t.targetId
 			const ids = art.damageSourceIds.get(node) ?? []
 			const hasNull = compValueList(comp).includes(null)
 			const parts: E.SQL[] = []
-			if (ids.length > 0) parts.push(E.inArray(t.damageSourceId, ids) as E.SQL)
-			if (hasNull) parts.push(sql`${t.damageSourceId} IS NULL`)
+			if (ids.length > 0) parts.push(E.inArray(col, ids) as E.SQL)
+			if (hasNull) parts.push(sql`${col} IS NULL`)
 			const cond = parts.length === 0 ? sql`0 = 1` : (E.or(...parts) as E.SQL)
 			return comp.neg ? negate(cond) : cond
 		}
+		case 'event.targetType':
+			return compileComp(comp, t.targetType, id)
 		case 'player':
 			return eventPlayerCond(t, comp, art.playerValues.get(node) ?? [])
 		// the same predicate narrowed to one end of the kill. Row-scoped inside the subselect on purpose: an
@@ -772,6 +783,9 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 		case 'eventId':
 		case 'event.variant':
 		case 'event.damageSource':
+		case 'event.target':
+		case 'event.vehicle':
+		case 'event.targetType':
 		case 'chat.message':
 		case 'chat.channel':
 		case 'event.attacker':
@@ -797,6 +811,9 @@ const EVENT_VALUED_COLUMNS = new Set<HQ.ColumnKey>([
 	'event.type',
 	'event.variant',
 	'event.damageSource',
+	'event.target',
+	'event.vehicle',
+	'event.targetType',
 	'chat.message',
 	'chat.channel',
 	'event.attacker',
@@ -922,6 +939,9 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'event.type':
 		case 'event.variant':
 		case 'event.damageSource':
+		case 'event.target':
+		case 'event.vehicle':
+		case 'event.targetType':
 		case 'chat.channel':
 		case 'event.attacker':
 		case 'event.victim':

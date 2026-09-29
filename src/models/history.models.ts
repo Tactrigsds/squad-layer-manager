@@ -40,7 +40,17 @@ export type ColumnDomain =
 	// free text; `eq` reads as "contains" (fts MATCH for chat)
 	| { kind: 'text' }
 
-export const DYNAMIC_ENUM_SOURCES = ['damageSources', 'servers', 'layers', 'maps', 'gamemodes', 'factions', 'units'] as const
+export const DYNAMIC_ENUM_SOURCES = [
+	'damageSources',
+	'servers',
+	'layers',
+	'maps',
+	'gamemodes',
+	'factions',
+	'units',
+	'vehicles',
+	'targetTypes',
+] as const
 export type DynamicEnumSource = (typeof DYNAMIC_ENUM_SOURCES)[number]
 
 export type ColumnDef = { key: ColumnKey; domain: ColumnDomain }
@@ -81,9 +91,18 @@ export const COLUMN_DEFS = {
 		domain: { kind: 'dynamic-enum', source: 'damageSources' },
 	},
 	// Who a kill was between. `player` matches an event the player is named in at all, which for a kill is
-	// both ends of it; these two say which end. Only PLAYER_DIED and PLAYER_WOUNDED record the distinction.
+	// both ends of it; these two say which end. PLAYER_DIED and PLAYER_WOUNDED record the distinction, and so
+	// does VEHICLE_DESTROYED, whose victims are the crew aboard.
 	'event.attacker': { key: 'event.attacker', domain: { kind: 'player' } },
 	'event.victim': { key: 'event.victim', domain: { kind: 'player' } },
+	// What a VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED destroyed, or a FOB_RADIO_DAMAGED hit, three ways: the exact
+	// blueprint, the canonical vehicle every camo and faction copy of it shares (the layer filters' Vehicle_*
+	// vocabulary), and its class (a vehicle type, or a DSTR.DeployableType). Only those events have one, so these read
+	// as false against everything else. A blueprint is in the damage sources' vocabulary, since a vehicle is often one
+	// of those too.
+	'event.target': { key: 'event.target', domain: { kind: 'dynamic-enum', source: 'damageSources' } },
+	'event.vehicle': { key: 'event.vehicle', domain: { kind: 'dynamic-enum', source: 'vehicles' } },
+	'event.targetType': { key: 'event.targetType', domain: { kind: 'dynamic-enum', source: 'targetTypes' } },
 	'chat.message': { key: 'chat.message', domain: { kind: 'text' } },
 	// which chat a message went to. Only CHAT_MESSAGE has one, so this reads as false against everything else
 	'chat.channel': { key: 'chat.channel', domain: { kind: 'enum', options: CHAT_CHANNELS } },
@@ -341,6 +360,9 @@ const QueryFieldsSchema = z.object({
 	feed: CHAT.SECONDARY_FILTER_STATE.optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
+	target: z.string().optional(),
+	vehicle: z.string().optional(),
+	targetType: z.string().optional(),
 	chat: z.string().optional(),
 	channel: z.enum(CHAT_CHANNELS).optional(),
 	layer: F.FilterNodeSchema.optional(),
@@ -640,6 +662,7 @@ function rangeNodes(column: string, min: number | undefined, max: number | undef
 }
 
 const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
+const DESTROYED_TYPES = ['VEHICLE_DESTROYED', 'DEPLOYABLE_DESTROYED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
@@ -687,6 +710,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				type: 'nor',
 				children: [
 					{ type: 'and', children: [comp('event.type', KILL_TYPES), NOT_TEAMKILL] },
+					comp('event.type', DESTROYED_TYPES),
 					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
 					comp('event.type', BOOKKEEPING_TYPES),
 				],
@@ -706,7 +730,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				],
 			}
 		case 'KILLFEED':
-			return comp('event.type', KILL_TYPES)
+			return comp('event.type', [...KILL_TYPES, ...DESTROYED_TYPES])
 		default:
 			assertNever(feed)
 	}
@@ -731,6 +755,9 @@ export function queryFilterNode(query: Query): Node {
 	if (feedNode) children.push(feedNode)
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
+	if (query.target) children.push(comp('event.target', [query.target]))
+	if (query.vehicle) children.push(comp('event.vehicle', [query.vehicle]))
+	if (query.targetType) children.push(comp('event.targetType', [query.targetType]))
 	if (query.chat) children.push(comp('chat.message', [query.chat]))
 	if (query.channel) children.push(comp('chat.channel', [query.channel]))
 	if (query.layer) children.push({ type: 'match-layer', neg: false, filter: query.layer })

@@ -133,3 +133,36 @@ describe('app event rows render on every path', () => {
 		expect(() => renderStatic(createElement(Row, { ctx: CTX, event }))).not.toThrow()
 	})
 })
+
+describe('a destroyed vehicle folds a large crew away', () => {
+	const destroyed = (crewSize: number) =>
+		({
+			type: 'VEHICLE_DESTROYED',
+			id: 'se1',
+			time: 1_700_000_000_000,
+			matchId: MATCH_ID,
+			vehicle: { className: 'BP_BTR80_Militia', instanceId: '1', targetType: null },
+			teamId: null,
+			cause: 'weapon',
+			damageType: null,
+			weapon: null,
+			variant: 'normal',
+			attacker: player('eos0', 'Attacker'),
+			crew: Array.from({ length: crewSize }, (_, i) => player(`eos${i + 1}`, `Crew${i + 1}`)),
+		}) as unknown as CHAT.EventEnriched
+
+	it('names a small crew inline', () => {
+		const html = renderToStaticMarkup(createElement(Row, { ctx: CTX, event: destroyed(2) }))
+		expect(html).not.toContain('<details')
+		expect(html).toContain('crew: ')
+		expect(() => renderStatic(createElement(Row, { ctx: CTX, event: destroyed(2) }))).not.toThrow()
+	})
+
+	it('counts a large crew and lists it on expand', () => {
+		const html = renderToStaticMarkup(createElement(Row, { ctx: CTX, event: destroyed(15) }))
+		expect(html).toContain('<details')
+		expect(html).toContain('crew of 15')
+		expect(html).toContain('Crew15')
+		expect(() => renderStatic(createElement(Row, { ctx: CTX, event: destroyed(15) }))).not.toThrow()
+	})
+})

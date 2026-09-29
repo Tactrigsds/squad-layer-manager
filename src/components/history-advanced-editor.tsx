@@ -20,6 +20,7 @@ import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
+import * as DSTR from '@/models/destruction.models'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
@@ -255,6 +256,11 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 			// thousands of interned blueprint names, and a query usually knows the one it wants: free text
 			case 'damageSources':
 				return undefined
+			// picked through the layer filters' own vehicle picker (see layerColumnFor)
+			case 'vehicles':
+				return L.StaticLayerComponents.vehicles ?? []
+			case 'targetTypes':
+				return DSTR.targetTypes(L.StaticLayerComponents.vehicleTypes)
 			default:
 				assertNever(def.domain.source)
 		}
@@ -276,6 +282,7 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 		return (
 			<StringInConfig
 				column={lcColumn}
+				title={tr.text(HistoryMsgs.columnNames[def.key])}
 				className="w-64"
 				values={values.filter((v): v is string => typeof v === 'string')}
 				setValues={(update) => {
@@ -333,6 +340,7 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 		return (
 			<StringEqConfig
 				column={lcColumn}
+				title={tr.text(HistoryMsgs.columnNames[def.key])}
 				className="w-48"
 				value={typeof value === 'string' ? value : undefined}
 				setValue={(v) => setScalar(1, v ?? undefined)}
@@ -378,9 +386,9 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 	)
 }
 
-// the layer-columns column a history layer dimension picks its values from. Faction and unit read off team
-// one's column: the value set is the same on either side, and the filter matches both (see LAYER_COLUMN_KEYS).
-function layerColumnFor(def: HQ.ColumnDef): LC.GroupByColumn | undefined {
+// the layer-columns column a history layer dimension, or the destroyed vehicle, picks its values from. Faction,
+// unit and vehicle read off team one's column: the value set is the same on either side, and the filter matches both (see LAYER_COLUMN_KEYS).
+function layerColumnFor(def: HQ.ColumnDef): LC.EnumColumn | undefined {
 	switch (def.key) {
 		case 'layer.layer':
 			return 'Layer'
@@ -392,6 +400,8 @@ function layerColumnFor(def: HQ.ColumnDef): LC.GroupByColumn | undefined {
 			return 'Faction_1'
 		case 'layer.unit':
 			return 'Unit_1'
+		case 'event.vehicle':
+			return 'Vehicle_1'
 		default:
 			return undefined
 	}

@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 import * as CHAT from '@/models/chat.models'
+import type * as HQ from '@/models/history.models'
+import * as L from '@/models/layer'
+import type * as SE from '@/models/server-events.models'
+import * as VEH from '@/models/vehicles.models'
 
 import { LAYERS } from '../harness/arrange'
 import { matchCombatStats, matchOrdinal } from '../harness/inspect'
@@ -645,6 +649,66 @@ describe('the event archive', () => {
 		expect(res.code).toBe('ok')
 		if (res.code !== 'ok') return
 		expect(res.players.some((p) => p.username?.includes('archive_subject'))).toBe(true)
+	})
+
+	// A WPMC tank, which no faction on the fixture's layers fields, so its side has to come from its crew.
+	it('records a destroyed vehicle with its crew, and finds it by vehicle, class and blueprint', async () => {
+		const hunter = app.emu.world.connectPlayer(makePlayer({ name: ' tank_hunter', teamId: 1 }))
+		const driver = app.emu.world.connectPlayer(makePlayer({ name: ' tank_driver', teamId: 2 }))
+		const gunner = app.emu.world.connectPlayer(makePlayer({ name: ' tank_gunner', teamId: 2 }))
+		await app.waitForRosterSync()
+		app.emu.world.destroyVehicle(hunter, 'BP_M60T_WPMC', [driver, gunner])
+		app.emu.world.destroyDeployable(hunter, 'BP_Ammocrate_RGF')
+		app.emu.world.damageRadio(hunter, 'BP_FOBRadio_RGF')
+
+		const recorded = await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					const row = db
+						.prepare(
+							`SELECT se.data AS data, sei.targetType AS targetType, ds.name AS target
+							 FROM serverEvents se JOIN serverEventIndex sei ON sei.serverEventId = se.id
+							 JOIN damageSources ds ON ds.id = sei.targetId
+							 WHERE se.type = 'VEHICLE_DESTROYED' ORDER BY se.id DESC LIMIT 1`,
+						)
+						.get() as { data: string; targetType: string | null; target: string } | undefined
+					const deployable = db.prepare(`SELECT 1 FROM serverEventIndex WHERE type = 'DEPLOYABLE_DESTROYED'`).get()
+					const radio = db.prepare(`SELECT count(*) AS n FROM serverEventIndex WHERE type = 'FOB_RADIO_DAMAGED'`).get() as {
+						n: number
+					}
+					return deployable && radio.n === 2 ? row : undefined
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'the destroyed vehicle, deployable and radio attack reaching the event index' },
+		)
+		const info = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get('BP_M60T_WPMC')!
+		expect(recorded.target).toBe('BP_M60T_WPMC')
+		expect(recorded.targetType).toBe(info.vehicleType)
+		const event = (JSON.parse(recorded.data) as { json: SE.VehicleDestroyed }).json
+		expect(event).toMatchObject({ teamId: 2, variant: 'normal', attacker: hunter.eos, cause: 'weapon' })
+		expect([...event.crew].sort()).toEqual([driver.eos, gunner.eos].sort())
+
+		const total = async (query: Partial<HQ.Query>) => {
+			const res = await client.history.query({ query: query as HQ.Query })
+			if (res.code !== 'ok' || res.type !== 'events') throw new Error(res.code)
+			return res
+		}
+		const byVehicle = await total({ feed: 'KILLFEED', vehicle: info.vehicle })
+		expect(byVehicle.total).toBe(1)
+		expect(byVehicle.rowsHtml[0]).toContain('destroyed by')
+		expect((await total({ feed: 'ALL', targetType: info.vehicleType })).total).toBeGreaterThan(0)
+		expect((await total({ feed: 'ALL', target: 'BP_M60T_WPMC' })).total).toBe(1)
+		expect((await total({ feed: 'ALL', targetType: 'AMMO' })).total).toBe(1)
+		// the crew are the vehicle's victims
+		expect((await total({ feed: 'ALL', players: [gunner.eos], playerRole: 'victim', types: ['VEHICLE_DESTROYED'] })).total).toBe(1)
+		// the default feed leaves destroyed vehicles to the killfeed, and shows radio attacks: its start and its bottoming out
+		expect((await total({ vehicle: info.vehicle })).total).toBe(0)
+		const radio = await total({ types: ['FOB_RADIO_DAMAGED'] })
+		expect(radio.total).toBe(2)
+		expect(radio.rowsHtml.join('')).toContain('minimum health')
 	})
 
 	it('searches players by steam and eos id', async () => {

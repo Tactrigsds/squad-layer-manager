@@ -65,6 +65,71 @@ export function vehicleTypeName(vehicleId: number, components: VehicleComponents
 	return components.vehicleTypes[components.vehicleTypeIds[vehicleId]]
 }
 
+// What the layer data knows of a vehicle blueprint, keyed by its class name without the `_C` suffix, which is
+// how the game log spells the actor (BP_M60T_WPMC). `vehicle` is the canonical name, undefined where no unit row
+// using the blueprint resolved to exactly one canonical vehicle.
+export type ClassInfo = { vehicle: string | undefined; vehicleType: string | undefined }
+
+const classIndexCache = new WeakMap<Record<string, SLL.Unit>, Map<string, ClassInfo>>()
+
+// Built over every unit, not one layer's two, because a vehicle can be on the field without its unit being
+// played (seed layers, admin-spawned vehicles). A blueprint shared by rows resolving to different canonical
+// vehicles keeps the first; camo and faction copies share one canonical vehicle, so this is rare.
+export function classIndex(factionUnits: Record<string, SLL.Unit>, components: Partial<VehicleComponents>): Map<string, ClassInfo> {
+	let index = classIndexCache.get(factionUnits)
+	if (index) return index
+	index = new Map()
+	const withData = hasVehicleData(components) ? components : undefined
+	for (const unit of Object.values(factionUnits)) {
+		const canonical = withData
+			? canonicalVehiclesForUnitRecord(unit.unitObjectName, unit.vehicles, withData)
+			: unit.vehicles.map(() => undefined)
+		unit.vehicles.forEach((row, i) => {
+			const id = canonical[i]
+			const info: ClassInfo = {
+				vehicle: id === undefined ? undefined : withData!.vehicles[id],
+				vehicleType: id === undefined ? undefined : vehicleTypeName(id, withData!),
+			}
+			for (const className of row.classNames) {
+				const key = className.replace(/_C$/, '')
+				const existing = index!.get(key)
+				if (!existing || (existing.vehicle === undefined && info.vehicle !== undefined)) index!.set(key, info)
+			}
+		})
+	}
+	classIndexCache.set(factionUnits, index)
+	return index
+}
+
+const classesByVehicleCache = new WeakMap<Map<string, ClassInfo>, Map<string, string[]>>()
+
+// the inverse of classIndex: every blueprint (without `_C`) that is a copy of one canonical vehicle
+export function classesByVehicle(index: Map<string, ClassInfo>): Map<string, string[]> {
+	let inverse = classesByVehicleCache.get(index)
+	if (inverse) return inverse
+	inverse = new Map()
+	for (const [className, info] of index) {
+		if (info.vehicle === undefined) continue
+		const classes = inverse.get(info.vehicle)
+		if (classes) classes.push(className)
+		else inverse.set(info.vehicle, [className])
+	}
+	classesByVehicleCache.set(index, inverse)
+	return inverse
+}
+
+const unitClassesCache = new WeakMap<SLL.Unit, Set<string>>()
+
+// the blueprints (without `_C`) a unit fields, for telling which side a vehicle belongs to
+export function unitClasses(unit: SLL.Unit): Set<string> {
+	let classes = unitClassesCache.get(unit)
+	if (!classes) {
+		classes = new Set(unit.vehicles.flatMap((row) => row.classNames.map((c) => c.replace(/_C$/, ''))))
+		unitClassesCache.set(unit, classes)
+	}
+	return classes
+}
+
 const unitRecordIndexCache = new WeakMap<readonly string[], Map<string, number>>()
 
 function unitRecordIndex(components: VehicleComponents): Map<string, number> {

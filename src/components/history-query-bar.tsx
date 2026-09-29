@@ -26,7 +26,9 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as DSTR from '@/models/destruction.models'
 import * as HQ from '@/models/history.models'
+import * as L from '@/models/layer'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -541,7 +543,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				<Input
 					autoFocus
 					className="h-7 w-full text-xs"
-					defaultValue={(draft[field.key as 'chat' | 'damageSource'] as string | undefined) ?? ''}
+					defaultValue={(draft[field.key as 'chat' | 'damageSource' | 'target'] as string | undefined) ?? ''}
 					onChange={(e) => set({ [field.key]: e.target.value || undefined })}
 				/>
 			)
@@ -555,6 +557,27 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					className="w-full"
 					value={draft[field.key as 'map' | 'gamemode' | 'faction']}
 					setValue={(v) => set({ [field.key]: v ?? undefined })}
+				/>
+			)
+		case 'vehicle':
+			return (
+				<StringEqConfig
+					column="Vehicle_1"
+					title={fieldLabel(field.key)}
+					className="w-full"
+					value={draft.vehicle}
+					setValue={(v) => set({ vehicle: v ?? undefined })}
+				/>
+			)
+		case 'target-type':
+			return (
+				<ComboBox
+					title={fieldLabel(field.key)}
+					allowEmpty
+					className="w-full"
+					value={draft.targetType}
+					options={DSTR.targetTypes(L.StaticLayerComponents.vehicleTypes)}
+					onSelect={(v) => set({ targetType: v ?? undefined })}
 				/>
 			)
 		case 'saved-filter':
@@ -655,6 +678,12 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldVariant())
 		case 'damageSource':
 			return tr.text(HistoryMsgs.fieldDamageSource())
+		case 'target':
+			return tr.text(HistoryMsgs.fieldTarget())
+		case 'vehicle':
+			return tr.text(HistoryMsgs.fieldVehicle())
+		case 'targetType':
+			return tr.text(HistoryMsgs.fieldTargetType())
 		case 'chat':
 			return tr.text(HistoryMsgs.fieldChat())
 		case 'channel':

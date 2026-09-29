@@ -37,6 +37,9 @@ export const fieldTo = def('To')
 export const fieldEventTypes = def('Event types')
 export const fieldVariant = def('Kill variant')
 export const fieldDamageSource = def('Damage source')
+export const fieldTarget = def('Target blueprint')
+export const fieldVehicle = def('Destroyed vehicle')
+export const fieldTargetType = def('Target type')
 export const fieldChat = def('Chat contains')
 export const fieldLayer = def('Layer filter')
 export const fieldMap = def('Map')
@@ -210,6 +213,9 @@ export const columnNames: Record<HQ.ColumnKey, TString> = {
 	'event.damageSource': t('Damage source'),
 	'event.attacker': t('Attacker'),
 	'event.victim': t('Victim'),
+	'event.target': t('Target blueprint'),
+	'event.vehicle': t('Destroyed vehicle'),
+	'event.targetType': t('Target type'),
 	'chat.message': t('Chat text'),
 	'chat.channel': t('Chat channel'),
 	'match.id': t('Match id'),

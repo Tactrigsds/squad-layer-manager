@@ -1380,6 +1380,17 @@ export const PublicServerSettingsSchema = z.object({
 			),
 		}),
 	),
+	skipDestroyedOnTrainingLayers: z
+		.boolean()
+		.prefault(true)
+		.meta(
+			SDoc.of({
+				label: t('Skip Destroyed Vehicles on Training Layers'),
+				description: t(
+					"Leave vehicles and deployables destroyed, and FOB radios attacked, on training layers (Jensen's Range) out of the feed and history. Players there crash and blow up vehicles on purpose, many times a match.",
+				),
+			}),
+		),
 	remindersAndAnnouncementsEnabled: z
 		.boolean()
 		.prefault(true)

@@ -231,6 +231,49 @@ export const playerDowned = def((victim: Rendered, wounded: boolean, attacker: R
 
 export const withWeapon = def(' with {weapon}', (weapon: string) => ({ weapon }))
 
+// -------- vehicles and deployables --------
+
+type DestroyedCause = 'weapon' | 'fire' | 'ammo' | 'collision'
+
+export const targetDestroyedBy = def((target: Rendered, attacker: Rendered, teammate: boolean, weapon?: Rendered) =>
+	rt('{target} destroyed by {teammate, select, yes {teammate } other {}}{attacker}{weapon}', {
+		target,
+		attacker,
+		teammate: teammate ? 'yes' : 'no',
+		weapon,
+	}),
+)
+
+// the attacker was aboard: a crash, most of the time
+export const targetDestroyedByCrew = def((target: Rendered, attacker: Rendered, cause: DestroyedCause) =>
+	rt('{target} {cause, select, collision {crashed by} other {destroyed by its own crew,}} {attacker}', { target, attacker, cause }),
+)
+
+export const targetDestroyedUnattributed = def((target: Rendered, cause: DestroyedCause) =>
+	rt('{target} {cause, select, fire {burned out} ammo {cooked off} collision {crashed} other {destroyed}}', { target, cause }),
+)
+
+export const destroyedCrew = def((crew: Rendered) => rt(' · crew: {crew}', { crew }))
+
+export const destroyedCrewCount = def(' · crew of {count}', (count: number) => ({ count }))
+
+export const fobRadio = def('FOB radio')
+
+// `bottomedOut` is the radio reaching the minimum health a radio is ever logged at
+export const radioDamagedBy = def((radio: Rendered, bottomedOut: boolean, attacker: Rendered, teammate: boolean, weapon?: Rendered) =>
+	rt(
+		'{radio} {bottomedOut, select, yes {taken down to minimum health} other {under attack}} by {teammate, select, yes {teammate } other {}}{attacker}{weapon}',
+		{ radio, bottomedOut: bottomedOut ? 'yes' : 'no', attacker, teammate: teammate ? 'yes' : 'no', weapon },
+	),
+)
+
+export const radioDamagedUnattributed = def((radio: Rendered, bottomedOut: boolean) =>
+	rt('{radio} {bottomedOut, select, yes {taken down to minimum health} other {under attack}}', {
+		radio,
+		bottomedOut: bottomedOut ? 'yes' : 'no',
+	}),
+)
+
 // -------- match boundaries --------
 
 export const newGameStarted = def('New game started')

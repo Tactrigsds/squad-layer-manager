@@ -224,7 +224,9 @@ export const playerEventIndex = sqliteTable(
 		// token is the weapon (BP_M240_M145), but by Die() it has usually been destroyed and what is left is the
 		// attacker's pawn (BP_Soldier_TLF_Gendarme_01, BP_Loach_CAS_Small). Measured on production: of 782
 		// distinct death tokens and 1161 wound tokens only 684 overlap. So group by this on PLAYER_WOUNDED for
-		// weapon breakdowns and on PLAYER_DIED for what the killer was running -- never across both at once.
+		// weapon breakdowns and on PLAYER_DIED for what the killer was running -- never across both at once. On a
+		// VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED it is the causer of the final hit: a projectile, a weapon, or the
+		// attacking vehicle.
 		//
 		// Interned rather than stored inline: the token averages ~20 bytes and combat is the bulk of this table,
 		// which over a five-year horizon is ~1GB of repeated strings against ~150MB of integers.
@@ -236,6 +238,11 @@ export const playerEventIndex = sqliteTable(
 		// variant, and last on purpose: sqlite trims a record at its final non-null column, so a column only
 		// chat rows fill costs nothing on the combat rows this table is mostly made of.
 		channel: text('channel'),
+		// What a VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED event destroyed, or a FOB_RADIO_DAMAGED hit: its blueprint, interned beside the damage
+		// sources since a vehicle is often one too, and its class (a layer-data vehicle type, or a
+		// DSTR.DeployableType). Last for the same reason as channel.
+		targetId: integer('targetId').references(() => damageSources.id),
+		targetType: text('targetType'),
 	},
 	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
 	// narrows to one contiguous range and a match filter is applied within it. On a WITHOUT ROWID table a
@@ -265,6 +272,8 @@ export const serverEventIndex = sqliteTable(
 		damageSourceId: integer('damageSourceId').references(() => damageSources.id),
 		variant: text('variant'),
 		channel: text('channel'),
+		targetId: integer('targetId').references(() => damageSources.id),
+		targetType: text('targetType'),
 	},
 	// Measured on production (1.0M events): the table is 63MB, time 16MB, matchId 12MB, (type, time) 32MB. The
 	// last turns a page of a rare type (NEW_GAME, ~1 in 1500) from a 46ms scan into a 1ms seek, and its total from

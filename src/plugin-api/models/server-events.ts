@@ -7,7 +7,11 @@
 export type {
 	AdminBroadcast,
 	ChatMessage,
+	DeployableDestroyed,
+	TargetActor,
+	DestroyedVariant,
 	Event,
+	FobRadioDamaged,
 	IngameVoteStarted,
 	MapSet,
 	NewGame,
@@ -35,4 +39,5 @@ export type {
 	SquadRenamed,
 	TeamsPolledUpdate,
 	UnpossessedAdminCamera,
+	VehicleDestroyed,
 } from '@/models/server-events.models'

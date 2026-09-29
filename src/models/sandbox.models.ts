@@ -215,6 +215,36 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	'destroy-vehicle': def({
+		usage: 'destroy-vehicle <attacker> <blueprint> [crew...]',
+		summary: 'a player destroys a vehicle, e.g. BP_BTR80_Militia, with the named players aboard',
+		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1), crew: z.array(PlayerNameSchema).prefault([]) }),
+		tokens: ([attacker, blueprint, ...crew]) => {
+			requireTokens([attacker, blueprint], 2, 'destroy-vehicle <attacker> <blueprint> [crew...]')
+			return { attacker, blueprint, crew }
+		},
+		mutatesWorld: true,
+	}),
+	'destroy-deployable': def({
+		usage: 'destroy-deployable <attacker> <blueprint>',
+		summary: 'a player destroys a deployable, e.g. BP_Ammocrate_RGF',
+		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1) }),
+		tokens: ([attacker, blueprint]) => {
+			requireTokens([attacker, blueprint], 2, 'destroy-deployable <attacker> <blueprint>')
+			return { attacker, blueprint }
+		},
+		mutatesWorld: true,
+	}),
+	'damage-radio': def({
+		usage: 'damage-radio <attacker> <blueprint>',
+		summary: 'a player attacks a FOB radio, e.g. BP_FOBRadio_RGF, down to its minimum health',
+		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1) }),
+		tokens: ([attacker, blueprint]) => {
+			requireTokens([attacker, blueprint], 2, 'damage-radio <attacker> <blueprint>')
+			return { attacker, blueprint }
+		},
+		mutatesWorld: true,
+	}),
 	end: def({
 		usage: 'end [1|2]',
 		summary: 'end the match, optionally naming the winning team',
