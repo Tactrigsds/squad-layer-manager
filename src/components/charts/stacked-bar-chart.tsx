@@ -81,7 +81,7 @@ export function StackedBarChart(props: {
 				</ul>
 				{props.legendExtra}
 			</div>
-			{props.legendTrailing && <span className="ml-auto">{props.legendTrailing}</span>}
+			{props.legendTrailing && <span className="ms-auto">{props.legendTrailing}</span>}
 		</div>
 	)
 

@@ -195,7 +195,7 @@ function QueueUpdatedRow(props: {
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
 			</summary>
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{changes.map((change) => (
 					<QueueChangeLine key={`${change.kind}:${change.itemId}`} ctx={ctx} change={change} />
 				))}
@@ -249,7 +249,7 @@ function TeamswapsUpdatedRow(props: {
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
 			</summary>
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{changes.map((change) => {
 					const player = playerFor(change.playerId)
 					// the swap's own actor is only worth naming when it wasn't the admin this event is attributed to
@@ -315,7 +315,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	// expandable list of the players involved (targets, or a disbanded squad's members)
 	const targetList =
 		matchId !== null && event.targetPlayers.length > 0 ? (
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{event.targetPlayers.map((player) => (
 					<Atoms.PlayerDisplay key={player.ids.eos} ctx={ctx} showTeam player={player} matchId={matchId} />
 				))}
@@ -599,7 +599,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		if (single || !targetList) {
 			return (
 				<div
-					className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline"
+					className="flex gap-2 py-1 text-xs w-full min-w-0 border-e-2 bg-linear-to-l to-transparent items-baseline"
 					style={containerStyle}
 				>
 					{header}
@@ -607,7 +607,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			)
 		}
 		return (
-			<details className="py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent" style={containerStyle}>
+			<details className="py-1 text-xs w-full min-w-0 border-e-2 bg-linear-to-l to-transparent" style={containerStyle}>
 				<summary className={SUMMARY_CLASS}>{header}</summary>
 				{targetList}
 			</details>

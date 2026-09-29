@@ -108,7 +108,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 			</div>
 			{!readOnly && (
 				<div className="flex items-center justify-end gap-2 px-6 py-3 border-t">
-					<div className="flex flex-col gap-2 mr-auto">
+					<div className="flex flex-col gap-2 me-auto">
 						{validationErrors &&
 							validationErrors.map((error) => (
 								<Alert key={error} variant="destructive">

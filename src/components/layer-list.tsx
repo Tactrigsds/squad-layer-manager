@@ -609,7 +609,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</TooltipTrigger>
 					<TooltipContent className="max-w-xs">
 						{tr.text(LL_Msgs.notNextLayerUnsavedBlurb(DH.toShortLayerNameFromId(serverNextLayer.id)))}
-						<Icons.Sword className="ml-1 inline h-3 w-3" />
+						<Icons.Sword className="ms-1 inline h-3 w-3" />
 					</TooltipContent>
 				</Tooltip>,
 			)
@@ -664,7 +664,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span data-mobile={isPhone} className="text-right font-mono text-text-3 data-[mobile=true]:hidden">
+					<span data-mobile={isPhone} className="text-end font-mono text-text-3 data-[mobile=true]:hidden">
 						{LL.getItemNumber(index)}
 					</span>
 					<button
@@ -1447,7 +1447,7 @@ function ItemMenuItems(props: {
 													LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId: tag.id })
 												}
 											>
-												<span className="mr-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+												<span className="me-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
 												{tag.label}
 											</Menu.Item>
 										))}

@@ -123,14 +123,14 @@ type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 // Edge strips (thin) and corner squares (on top), positioned absolutely within the fixed content box.
 const RESIZE_HANDLES: { dir: ResizeDir; className: string }[] = [
-	{ dir: 'n', className: 'top-0 left-0 right-0 h-1 cursor-ns-resize' },
-	{ dir: 's', className: 'bottom-0 left-0 right-0 h-1 cursor-ns-resize' },
-	{ dir: 'e', className: 'top-0 bottom-0 right-0 w-1 cursor-ew-resize' },
-	{ dir: 'w', className: 'top-0 bottom-0 left-0 w-1 cursor-ew-resize' },
-	{ dir: 'nw', className: 'top-0 left-0 h-2 w-2 cursor-nwse-resize' },
-	{ dir: 'se', className: 'bottom-0 right-0 h-2 w-2 cursor-nwse-resize' },
-	{ dir: 'ne', className: 'top-0 right-0 h-2 w-2 cursor-nesw-resize' },
-	{ dir: 'sw', className: 'bottom-0 left-0 h-2 w-2 cursor-nesw-resize' },
+	{ dir: 'n', className: 'top-0 inset-s-0 inset-e-0 h-1 cursor-ns-resize' },
+	{ dir: 's', className: 'bottom-0 inset-s-0 inset-e-0 h-1 cursor-ns-resize' },
+	{ dir: 'e', className: 'top-0 bottom-0 inset-e-0 w-1 cursor-ew-resize' },
+	{ dir: 'w', className: 'top-0 bottom-0 inset-s-0 w-1 cursor-ew-resize' },
+	{ dir: 'nw', className: 'top-0 inset-s-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'se', className: 'bottom-0 inset-e-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'ne', className: 'top-0 inset-e-0 h-2 w-2 cursor-nesw-resize' },
+	{ dir: 'sw', className: 'bottom-0 inset-s-0 h-2 w-2 cursor-nesw-resize' },
 ]
 
 interface DraggableWindowInstanceProps {
@@ -546,7 +546,7 @@ export function DraggableWindowDragBar({ className, children, ref, ...props }: D
 	)
 
 	return (
-		<div ref={combinedRef} className={cn('fd-win-h shrink-0', phone && 'h-(--nav-h) cursor-default pl-0', className)} {...props}>
+		<div ref={combinedRef} className={cn('fd-win-h shrink-0', phone && 'h-(--nav-h) cursor-default ps-0', className)} {...props}>
 			{phone && (
 				<button
 					type="button"

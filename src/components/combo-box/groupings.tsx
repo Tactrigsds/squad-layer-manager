@@ -15,7 +15,7 @@ const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 export function GroupTabs(props: { groups: readonly ResolvedGroup[]; label?: string; value: string; onChange: (group: string) => void }) {
 	return (
 		<div role="tablist" aria-label={props.label} className="flex shrink-0 items-center gap-1 overflow-x-auto px-1 py-1">
-			{props.label && <span className="shrink-0 pr-1 text-xs text-muted-foreground">{props.label}</span>}
+			{props.label && <span className="shrink-0 pe-1 text-xs text-muted-foreground">{props.label}</span>}
 			{[{ key: ALL_GROUPS, label: tr.text(UI_Msgs.allGroups()), prefix: '' }, ...props.groups].map((group) => (
 				<button
 					key={group.key}
@@ -132,7 +132,7 @@ export function GroupDrillIn(props: {
 			{rows.map((row) => (
 				<CommandItem key={row.key} value={row.key} keywords={[row.label]} onSelect={() => props.onPick(row.key)}>
 					<span className={cn('grow truncate', props.narrowed === row.key && 'font-medium')}>{row.label}</span>
-					<span className="ml-2 shrink-0 text-xs text-muted-foreground">{row.count}</span>
+					<span className="ms-2 shrink-0 text-xs text-muted-foreground">{row.count}</span>
 				</CommandItem>
 			))}
 		</CommandGroup>

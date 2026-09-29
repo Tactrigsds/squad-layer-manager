@@ -377,7 +377,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		</Tooltip>
 	)
 	const stateControls = (
-		<div className={cn('grid items-center', phone && 'ml-auto')}>
+		<div className={cn('grid items-center', phone && 'ms-auto')}>
 			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
 				<span className="fd-spin" />
 				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
@@ -649,7 +649,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 					</>
 				)}{' '}
 				<br />{' '}
-				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
+				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="me-1 inline-block">
 					<Button disabled={!!enableUpdatesDenied} size="sm" onClick={() => enableUpdates()}>
 						{tr.text(LL_Msgs.clickHere())}
 					</Button>

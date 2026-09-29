@@ -224,7 +224,7 @@ function PickRow({
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
-			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
+			<span className="w-6 text-end text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
 			<span className="min-w-0 truncate font-mono text-sm">{pickLabel(pickKey)}</span>
 			<span className="text-xs text-muted-foreground">{weightCount === 0 ? 'no weights' : `${weightCount} weighted`}</span>
 			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={onRemove}>
@@ -277,13 +277,13 @@ function WeightsSection({
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
-							<th scope="col" className="text-left font-normal">
+							<th scope="col" className="text-start font-normal">
 								{tr.text(LC_Msgs.valueColumn())}
 							</th>
-							<th scope="col" className="text-left font-normal">
+							<th scope="col" className="text-start font-normal">
 								{tr.text(LC_Msgs.weightColumn())}
 							</th>
-							<th scope="col" className="text-right font-normal">
+							<th scope="col" className="text-end font-normal">
 								{tr.text(LC_Msgs.shareColumn())}
 							</th>
 							<th scope="col" className="sr-only">
@@ -294,22 +294,22 @@ function WeightsSection({
 					<tbody>
 						{entries.map((entry) => (
 							<tr key={entry.value}>
-								<td className="py-0.5 pr-2 font-mono">
+								<td className="py-0.5 pe-2 font-mono">
 									{entry.value}
 									{/* a value the current layer set doesn't have (e.g. a map dropped by a game update): it can never be picked */}
 									{!possibleValues.includes(entry.value) && (
 										<span
-											className="ml-1.5 text-xs font-sans text-muted-foreground"
+											className="ms-1.5 text-xs font-sans text-muted-foreground"
 											title={tr.text(LC_Msgs.noLayersWithValue(column))}
 										>
 											{tr.text(LC_Msgs.unknownValue())}
 										</span>
 									)}
 								</td>
-								<td className="py-0.5 pr-2">
+								<td className="py-0.5 pe-2">
 									<WeightInput weight={entry.weight} onChange={(weight) => setWeight(entry.value, weight)} reset$={reset$} />
 								</td>
-								<td className="py-0.5 pr-2 text-right tabular-nums text-muted-foreground">
+								<td className="py-0.5 pe-2 text-end tabular-nums text-muted-foreground">
 									{totalWeight > 0 && possibleValues.includes(entry.value)
 										? `${((entry.weight / totalWeight) * 100).toFixed(1)}%`
 										: '-'}
@@ -385,10 +385,10 @@ function MatchupWeightsSection({
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
-							<th scope="col" className="text-left font-normal">
+							<th scope="col" className="text-start font-normal">
 								{tr.text(LC_Msgs.matchupColumn())}
 							</th>
-							<th scope="col" className="text-left font-normal">
+							<th scope="col" className="text-start font-normal">
 								{tr.text(LC_Msgs.weightColumn())}
 							</th>
 							<th scope="col" className="sr-only">
@@ -403,19 +403,19 @@ function MatchupWeightsSection({
 							const unknown = entry.teams.some((side) => !LC.isMatchupSideKnown(matchup, side))
 							return (
 								<tr key={entryKey}>
-									<td className="py-0.5 pr-2 font-mono">
+									<td className="py-0.5 pe-2 font-mono">
 										{text}
 										{/* a pairing the layer set doesn't have (e.g. a faction dropped by a game update): it can never be picked */}
 										{unknown && (
 											<span
-												className="ml-1.5 text-xs font-sans text-muted-foreground"
+												className="ms-1.5 text-xs font-sans text-muted-foreground"
 												title={tr.text(LC_Msgs.noLayersWithMatchup(label))}
 											>
 												{tr.text(LC_Msgs.unknownValue())}
 											</span>
 										)}
 									</td>
-									<td className="py-0.5 pr-2">
+									<td className="py-0.5 pe-2">
 										<WeightInput weight={entry.weight} onChange={(weight) => setWeight(entryKey, weight)} reset$={reset$} />
 									</td>
 									<td className="py-0.5">

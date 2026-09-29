@@ -106,7 +106,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				<button
 					type="button"
 					className={cn(
-						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-left hover:text-text [&_svg]:size-2.5 [&_svg]:shrink-0 [&_svg]:text-text-3',
+						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-start hover:text-text [&_svg]:size-2.5 [&_svg]:shrink-0 [&_svg]:text-text-3',
 						isNumeric && 'justify-end',
 						sort && 'text-text [&_svg]:text-text',
 					)}
@@ -172,7 +172,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			)
 
 			const valueElt = (value: string) => (
-				<div className={cn('truncate px-2', isNumeric && 'fd-num text-right font-mono text-xs', extraStyles)} title={value}>
+				<div className={cn('truncate px-2', isNumeric && 'fd-num text-end font-mono text-xs', extraStyles)} title={value}>
 					{value}
 				</div>
 			)

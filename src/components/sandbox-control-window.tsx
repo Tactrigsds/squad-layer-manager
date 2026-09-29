@@ -44,7 +44,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 		<section className="space-y-1.5">
 			<div className="flex items-center gap-2">
 				<h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-				{action && <div className="ml-auto">{action}</div>}
+				{action && <div className="ms-auto">{action}</div>}
 			</div>
 			{children}
 		</section>
@@ -144,7 +144,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 								}}
 							/>
 							<Button type="button" size="sm" variant="outline" className="h-8" disabled={full} onClick={() => void join()}>
-								<Icons.UserPlus className="mr-1 h-3.5 w-3.5" />
+								<Icons.UserPlus className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.join())}
 							</Button>
 						</div>
@@ -170,7 +170,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 								{tr.text(SB_Msgs.teamWins(2))}
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('cycle', {})}>
-								<Icons.Unplug className="mr-1 h-3.5 w-3.5" />
+								<Icons.Unplug className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.dropRcon())}
 							</Button>
 						</div>
@@ -180,7 +180,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 						title={tr.text(SB_Msgs.adminListSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openAdminList()}>
-								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
+								<Icons.ExternalLink className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}
@@ -192,7 +192,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 						title={tr.text(SB_Msgs.consoleSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openConsole()}>
-								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
+								<Icons.ExternalLink className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}

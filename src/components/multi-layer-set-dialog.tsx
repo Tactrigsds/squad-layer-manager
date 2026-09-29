@@ -56,7 +56,7 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 					<div className="relative">
 						<Textarea
 							onChange={onTextChange}
-							className="w-full min-h-75 pr-8 min-w overflow-x-auto text-sm font-mono"
+							className="w-full min-h-75 pe-8 min-w overflow-x-auto text-sm font-mono"
 							style={{ lineHeight: '1.5rem' }}
 							wrap="off"
 							placeholder={tr.text(L_Msgs.multiLayerPlaceholder())}

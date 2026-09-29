@@ -224,7 +224,7 @@ function RouteComponent() {
 				<div className="mx-auto flex w-full max-w-6xl">
 					{/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
 					    would only eat the content column, which needs the width more -- its server sections are master-detail. */}
-					<aside className="sticky top-0 h-[calc(100dvh-6rem)] w-52 md:w-56 shrink-0 overflow-hidden border-r border-line pr-2 shadow-[1px_0_0_var(--line-soft)]">
+					<aside className="sticky top-0 h-[calc(100dvh-6rem)] w-52 md:w-56 shrink-0 overflow-hidden border-e border-line pe-2 shadow-[1px_0_0_var(--line-soft)]">
 						<SettingsToc
 							showServers={!manageServersDenied || servers.length > 0}
 							showGlobal={globalAccess.canRead}
@@ -348,7 +348,7 @@ function AuditLogEntry({
 				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents_Msgs.describeAppEvent(event, playerName)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
 			</summary>
-			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
+			<pre className="mt-1 ms-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
 				{JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value), 2)}
 			</pre>
 		</details>
@@ -582,7 +582,7 @@ function ServerList({
 			</div>
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(SETTINGS_Msgs.addManagedServer())}
 				</Button>
 			)}
@@ -627,7 +627,7 @@ function ServerRow({
 			<button
 				type="button"
 				onClick={() => onSelect(server.id)}
-				className="flex min-w-0 grow flex-col gap-0.5 text-left"
+				className="flex min-w-0 grow flex-col gap-0.5 text-start"
 				aria-pressed={selected}
 			>
 				<span className="truncate text-sm font-medium">{server.displayName}</span>
@@ -755,7 +755,7 @@ function ServerSettingsSection({
 							</CardTitle>
 							<CardDescription>
 								{server.displayName} <span className="font-mono">({server.id})</span>
-								{server.broken && <span className="ml-2 text-destructive">{tr.text(SETTINGS_Msgs.serverBroken())}</span>}
+								{server.broken && <span className="ms-2 text-destructive">{tr.text(SETTINGS_Msgs.serverBroken())}</span>}
 							</CardDescription>
 							{access.write.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">

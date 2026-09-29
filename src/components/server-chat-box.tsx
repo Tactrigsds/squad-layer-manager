@@ -243,7 +243,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 			)}
 			<Button
 				size="icon-sm"
-				className="h-auto self-stretch shrink-0 max-phone:ml-auto max-phone:h-(--ctl) max-phone:self-center"
+				className="h-auto self-stretch shrink-0 max-phone:ms-auto max-phone:h-(--ctl) max-phone:self-center"
 				onClick={() => void send()}
 				disabled={sendDisabled}
 				title={tr.text(CHAT_Msgs.sendHint())}

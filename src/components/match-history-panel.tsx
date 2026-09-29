@@ -257,7 +257,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 				<Table ref={tableRef} className="[&_th]:h-[calc(var(--row)-2px)] [&_td]:h-[calc(var(--row)-2px)]">
 					<TableHeader>
 						<TableRow className={cn('font-medium', stacked && 'hidden')}>
-							<TableHead className="w-[34px] text-right"></TableHead>
+							<TableHead className="w-[34px] text-end"></TableHead>
 							<TableHead>{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}</TableHead>
@@ -417,7 +417,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		if (serverRolling) {
 			statusBadge = (
 				<Badge variant="info" className="flex items-center whitespace-nowrap">
-					<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
+					<Icons.Loader2 className="me-1 h-3 w-3 animate-spin" />
 					<span>{tr.text(MH_Msgs.switchingLayer())}</span>
 				</Badge>
 			)
@@ -546,7 +546,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					<Alert key={deco.regKey} variant={TINT_DISPLAY[tint].variant} className="w-full">
 						{deco.title && (
 							<AlertTitle className="flex items-center space-x-2">
-								{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 mr-2' })}
+								{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 me-2' })}
 								{deco.title}
 							</AlertTitle>
 						)}
@@ -616,8 +616,8 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 						</TableCell>
 					) : (
 						<>
-							<TableCell className="font-mono text-xs relative text-right">
-								<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pr-1.5">
+							<TableCell className="font-mono text-xs relative text-end">
+								<div className="opacity-0 group-data-[is-editing=true]:group-hover:opacity-100 absolute inset-0 flex items-center justify-end pe-1.5">
 									<Icons.GripVertical className="h-4 w-4" />
 								</div>
 								<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center gap-0.5 text-text-3">
@@ -714,9 +714,9 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 				<table className="font-mono text-xs border-separate border-spacing-x-3 border-spacing-y-0.5 -mx-1">
 					<thead>
 						<tr>
-							<th className="text-left font-medium text-text-3">{tr.text(MH_Msgs.scoreline())}</th>
+							<th className="text-start font-medium text-text-3">{tr.text(MH_Msgs.scoreline())}</th>
 							{sides.map((side) => (
-								<th key={side.teamId} className="text-right font-semibold" style={{ color: side.color }}>
+								<th key={side.teamId} className="text-end font-semibold" style={{ color: side.color }}>
 									{side.label}
 								</th>
 							))}
@@ -725,9 +725,9 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 					<tbody>
 						{SCORELINE_ROWS.map((row) => (
 							<tr key={row.key}>
-								<th className="text-left font-normal text-text-2">{tr.text(row.label())}</th>
+								<th className="text-start font-normal text-text-2">{tr.text(row.label())}</th>
 								{sides.map((side) => (
-									<td key={side.teamId} className="text-right tabular-nums">
+									<td key={side.teamId} className="text-end tabular-nums">
 										{row.value(side.stats)}
 									</td>
 								))}

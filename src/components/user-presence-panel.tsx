@@ -163,7 +163,7 @@ const PresenceAvatar = React.forwardRef<
 			{badge !== undefined && (
 				<span
 					className={cn(
-						'pointer-events-none absolute -bottom-1 -right-1 z-10 flex h-3 min-w-3 items-center justify-center rounded-full px-0.5 text-[8px] font-bold leading-none ring-1 ring-background',
+						'pointer-events-none absolute -bottom-1 -inset-e-1 z-10 flex h-3 min-w-3 items-center justify-center rounded-full px-0.5 text-[8px] font-bold leading-none ring-1 ring-background',
 						badgeCurrent ? 'bg-ok text-white' : 'bg-primary text-primary-foreground',
 					)}
 				>
@@ -457,7 +457,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 									<div
 										className={cn(
 											'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200',
-											'bg-accent pr-2',
+											'bg-accent pe-2',
 										)}
 									>
 										<div className="flex -space-x-1.5 shrink-0">
@@ -515,7 +515,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											onMouseOut={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, false)}
 											className={cn(
 												'inline-flex items-center gap-1.5 h-6 py-0 rounded-full transition-all duration-200 cursor-pointer',
-												activityText && 'bg-accent pr-2',
+												activityText && 'bg-accent pe-2',
 												!activityText && 'px-0',
 											)}
 										>

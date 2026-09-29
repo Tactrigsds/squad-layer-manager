@@ -79,7 +79,7 @@ function SheetBody(props: {
 		<SheetContext.Provider value={ctx}>
 			<div className="mx-auto mt-1.5 h-1 w-9 shrink-0 rounded-full bg-line-soft" />
 			{top ? (
-				<div className="flex min-h-10 shrink-0 items-center gap-1 border-b border-line pr-2">
+				<div className="flex min-h-10 shrink-0 items-center gap-1 border-b border-line pe-2">
 					<button
 						type="button"
 						onClick={() => setPages((current) => current.slice(0, -1))}
@@ -113,7 +113,7 @@ function SheetItem(props: { onClick?: () => void; disabled?: boolean; className?
 		<button
 			type="button"
 			disabled={props.disabled}
-			className={cn('fd-mi w-full text-left disabled:opacity-40', props.className)}
+			className={cn('fd-mi w-full text-start disabled:opacity-40', props.className)}
 			onClick={() => {
 				props.onClick?.()
 				sheet.close()
@@ -153,11 +153,11 @@ function SheetSubTrigger(props: { disabled?: boolean; children?: React.ReactNode
 		<button
 			type="button"
 			disabled={props.disabled}
-			className="fd-mi w-full text-left disabled:opacity-40"
+			className="fd-mi w-full text-start disabled:opacity-40"
 			onClick={() => sub && sheet.push({ title: props.children, content: sub.getContent() })}
 		>
 			{props.children}
-			<ChevronRightIcon className="ml-auto text-text-3" />
+			<ChevronRightIcon className="ms-auto text-text-3" />
 		</button>
 	)
 }

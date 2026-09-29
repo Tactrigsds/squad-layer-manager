@@ -83,7 +83,7 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 					setGeneration((prev) => prev + 1)
 				}}
 			>
-				<Icons.Trash className="mr-1 h-3 w-3" />
+				<Icons.Trash className="me-1 h-3 w-3" />
 				{tr.text(UI_Msgs.clearAll())}
 			</Button>
 		</div>
@@ -416,7 +416,7 @@ function AddFilterMenu(props: { draft: HQ.Query; shown: readonly QF.FieldKey[]; 
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="outline" size="sm" className="h-7 w-full border-dashed text-xs font-normal text-muted-foreground">
-					<Icons.Plus className="mr-1 h-3 w-3" />
+					<Icons.Plus className="me-1 h-3 w-3" />
 					{tr.text(HistoryMsgs.addFilter())}
 				</Button>
 			</DropdownMenuTrigger>

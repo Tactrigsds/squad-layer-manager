@@ -97,7 +97,7 @@ export function TrackingTooltip(props: {
 			style={{ zIndex, visibility: 'hidden' }}
 			onPointerEnter={props.onPointerEnter}
 			onPointerLeave={props.onPointerLeave}
-			className={cn('fd-tip fixed left-0 top-0', props.interactive ? 'pointer-events-auto' : 'pointer-events-none', props.className)}
+			className={cn('fd-tip fixed inset-s-0 top-0', props.interactive ? 'pointer-events-auto' : 'pointer-events-none', props.className)}
 		>
 			{props.content}
 		</div>,

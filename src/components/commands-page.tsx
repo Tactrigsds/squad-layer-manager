@@ -120,7 +120,7 @@ function CommandDetails({
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
 	return (
-		<div className="space-y-3 border-l-2 pl-3 ml-1">
+		<div className="space-y-3 border-s-2 ps-3 ms-1">
 			{args.length > 0 && (
 				<dl className="space-y-2">
 					{args.map((arg) => {
@@ -192,7 +192,7 @@ function CommandDetails({
 // worth saying is which plugin owns it.
 function PluginCommandDetails({ plugin }: { plugin: NonNullable<Entry['plugin']> }) {
 	return (
-		<dl className="space-y-2 border-l-2 pl-3 ml-1 text-sm">
+		<dl className="space-y-2 border-s-2 ps-3 ms-1 text-sm">
 			<div>
 				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginOwner())}</dt>
 				<dd>{plugin.pluginName}</dd>
@@ -780,13 +780,13 @@ export default function CommandsPage() {
 					    commands pass behind it as they scroll away. */}
 					<aside
 						style={{ zIndex: stickyZIndex }}
-						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-r bg-background pr-2"
+						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-e bg-background pe-2"
 					>
 						<div className="relative shrink-0 bg-background pt-2 pb-2">
-							<Icons.Search className="absolute left-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+							<Icons.Search className="absolute inset-s-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
 								ref={searchRef}
-								className="h-8 pl-7"
+								className="h-8 ps-7"
 								placeholder={tr.text(CMD_Msgs.searchCommands())}
 								onChange={(e) => {
 									setQuery(e.target.value)
@@ -805,11 +805,11 @@ export default function CommandsPage() {
 											<button
 												type="button"
 												onClick={() => navigateToEntry(section.id)}
-												className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
+												className="block w-full border-b border-border px-1 pb-1 text-start text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
 											>
 												{section.label}
 											</button>
-											<ul className="space-y-px pl-2 pt-1">
+											<ul className="space-y-px ps-2 pt-1">
 												{section.entries.map((entry) => (
 													<li key={entry.id}>
 														<button
@@ -817,7 +817,7 @@ export default function CommandsPage() {
 															data-toc-id={entry.id}
 															onClick={() => navigateToEntry(entry.id)}
 															className={cn(
-																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
+																'block w-full truncate rounded px-1 py-0.5 text-start font-mono text-sm hover:text-foreground',
 																entry.id === tocHighlightId
 																	? 'bg-accent text-accent-foreground font-medium'
 																	: 'text-muted-foreground',

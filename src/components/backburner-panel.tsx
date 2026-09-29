@@ -709,7 +709,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 	}
 
 	return (
-		<div className="w-64 shrink-0 space-y-2 border-l pl-4">
+		<div className="w-64 shrink-0 space-y-2 border-s ps-4">
 			<span className="text-sm font-medium">{tr.text(BB_Msgs.filtersHeading())}</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
@@ -801,7 +801,7 @@ function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
 	const count = Zus.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
 	if (count === null) return null
 	return (
-		<span className={cn('mr-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
+		<span className={cn('me-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
 			{tr.text(count === 0 ? BB_Msgs.noMatchingLayers() : BB_Msgs.matchingLayers(count))}
 		</span>
 	)

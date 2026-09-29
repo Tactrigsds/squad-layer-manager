@@ -173,7 +173,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] w-[1090px] max-w-[95vw]')}
 			showCloseButton={false}
 		>
-			<HeadlessDialogHeader className="m-0 flex-nowrap items-center pr-2 gap-2">
+			<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">
 				<HeadlessDialogTitle className="whitespace-nowrap">{props.title}</HeadlessDialogTitle>
 				{props.description && (
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
@@ -226,7 +226,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				{!phone && (
 					<div
 						data-tour="add-filters"
-						className="flex shrink-0 flex-col gap-2.5 border-l border-line pl-2.5 shadow-[-1px_0_0_var(--line-soft)]"
+						className="flex shrink-0 flex-col gap-2.5 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)]"
 						style={{ width: RAIL_WIDTH_PX }}
 					>
 						<div className="flex flex-col gap-1">

@@ -21,7 +21,7 @@ const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeS
 // align-top so a row whose events are expanded keeps its own columns beside the first of them, rather than
 // centring them against the whole expansion
 const CELL = 'px-2 py-1 align-top whitespace-nowrap'
-const NUM_CELL = `${CELL} text-right tabular-nums`
+const NUM_CELL = `${CELL} text-end tabular-nums`
 const ID_CELL = `${CELL} font-mono text-muted-foreground`
 
 /**
@@ -60,7 +60,7 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 			</tr>
 			<tr hidden {...{ [RC.ROW_EVENTS_PANEL_ATTR]: props.rowKey }} className="border-b border-border">
 				<td colSpan={props.columns} className="px-2 py-1">
-					<div {...{ [RC.ROW_EVENTS_SLOT_ATTR]: '' }} className="flex flex-col gap-0.5 pl-6" />
+					<div {...{ [RC.ROW_EVENTS_SLOT_ATTR]: '' }} className="flex flex-col gap-0.5 ps-6" />
 				</td>
 			</tr>
 		</>

@@ -86,14 +86,14 @@ export default function AboutPage() {
 						<Textarea
 							readOnly
 							tabIndex={-1}
-							className="text-xs font-mono pr-10 resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
+							className="text-xs font-mono pe-10 resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
 							rows={versionText.split('\n').length}
 							value={versionText}
 						/>
 						<Button
 							variant="ghost"
 							size="icon"
-							className="absolute top-1 right-1 h-6 w-6"
+							className="absolute top-1 inset-e-1 h-6 w-6"
 							onClick={async () => {
 								await navigator.clipboard.writeText(versionText)
 								toast(...tr.toast(APP_Msgs.copiedToClipboard(tr.text(APP_Msgs.versionInfoCopied()))))
@@ -111,7 +111,7 @@ export default function AboutPage() {
 				</CardHeader>
 				<CardContent className="space-y-5 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
 					<p>{tr.richText(APP_Msgs.acknowledgementsIntro())}</p>
-					<div className="space-y-3 border-l-2 border-border pl-4">
+					<div className="space-y-3 border-s-2 border-border ps-4">
 						<p>{tr.richText(APP_Msgs.acknowledgementsZero())}</p>
 						<p>{tr.richText(APP_Msgs.acknowledgementsRandyNewman())}</p>
 					</div>

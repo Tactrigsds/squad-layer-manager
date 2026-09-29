@@ -161,7 +161,7 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 				>
 					<Icons.ArrowLeftRight />
 				</Button>
-				<span className="text-right">{tr.text(L_Msgs.teamName(2))}</span>
+				<span className="text-end">{tr.text(L_Msgs.teamName(2))}</span>
 			</div>
 			<Button
 				data-empty={!anySet}
@@ -227,7 +227,7 @@ function MatchupOperator(props: {
 		<ComboBox
 			allowEmpty={false}
 			className={cn(
-				'w-9 justify-center gap-0.5 px-0! font-mono text-text-2 [&>span]:overflow-visible [&_svg]:ml-0 [&_svg]:size-3',
+				'w-9 justify-center gap-0.5 px-0! font-mono text-text-2 [&>span]:overflow-visible [&_svg]:ms-0 [&_svg]:size-3',
 				props.highlight && 'text-pri-hi',
 			)}
 			title={tr.text(F_Msgs.operatorPicker())}

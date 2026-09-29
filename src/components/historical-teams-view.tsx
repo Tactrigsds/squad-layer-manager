@@ -43,7 +43,7 @@ export default function HistoricalTeamsView(props: { stores: SquadServerFrame.Ke
 
 	return (
 		<ScrollArea className="h-full">
-			<div className="pr-4 @container">
+			<div className="pe-4 @container">
 				<p className="text-xs text-muted-foreground px-1 pb-2">{tr.text(CHAT_Msgs.historicalTeamsDescription())}</p>
 				<div className="grid grid-cols-1 @[560px]:grid-cols-2 gap-x-6 gap-y-4 items-start">
 					{teams.map((team) => (
@@ -62,7 +62,7 @@ function TeamColumn(props: { team: HistoricalTeam; matchId: number; stores: Squa
 			<h3 className="flex items-center gap-2 text-sm font-semibold border-b pb-1 mb-1.5">
 				<span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.display.color }} />
 				<span className="truncate">{team.display.label}</span>
-				<span className="ml-auto text-xs font-normal text-muted-foreground whitespace-nowrap">
+				<span className="ms-auto text-xs font-normal text-muted-foreground whitespace-nowrap">
 					{tr.text(CHAT_Msgs.teamPlayerCount(team.playerCount))}
 				</span>
 			</h3>
@@ -91,7 +91,7 @@ function TeamColumn(props: { team: HistoricalTeam; matchId: number; stores: Squa
 function MemberRow(props: { member: HistoricalMember; matchId: number; stores: SquadServerFrame.KeyProp }) {
 	const member = props.member
 	return (
-		<li className={cn('flex items-center gap-1.5 text-sm pl-2 min-w-0', !member.eligible && 'opacity-60')}>
+		<li className={cn('flex items-center gap-1.5 text-sm ps-2 min-w-0', !member.eligible && 'opacity-60')}>
 			{/* the context menu's actions target the live server, where this roster's players may no longer be */}
 			<PlayerDisplay
 				player={member.player}
@@ -100,7 +100,7 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 				className="min-w-0 truncate"
 				disableContextMenu
 			/>
-			<span className="ml-auto font-mono text-xs whitespace-nowrap" title={tr.text(CHAT_Msgs.scorelineHint())}>
+			<span className="ms-auto font-mono text-xs whitespace-nowrap" title={tr.text(CHAT_Msgs.scorelineHint())}>
 				{member.stats.kills}/{member.stats.wounds}/{member.stats.deaths}
 			</span>
 			{member.stats.teamkills > 0 && (
@@ -134,7 +134,7 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 					</TooltipTrigger>
 					<TooltipContent>
 						<p>{tr.text(CHAT_Msgs.notInBreakdown())}</p>
-						<ul className="list-disc pl-4 text-muted-foreground">
+						<ul className="list-disc ps-4 text-muted-foreground">
 							{member.exclusionReasons.map((reason) => (
 								<li key={reason}>{tr.text(CHAT_Msgs.exclusionReasonLabels[reason])}</li>
 							))}

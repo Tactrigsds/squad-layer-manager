@@ -124,7 +124,7 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 							disabled={pending}
 							onClick={() => void handleBegin()}
 						>
-							{expired ? <Icons.RotateCcw className="mr-2 h-4 w-4" /> : <Icons.Plus className="mr-2 h-4 w-4" />}
+							{expired ? <Icons.RotateCcw className="me-2 h-4 w-4" /> : <Icons.Plus className="me-2 h-4 w-4" />}
 							{expired ? tr.text(USR_Msgs.linkCodeRetry()) : tr.text(USR_Msgs.linkAccountAction())}
 						</Button>
 					)}
@@ -166,7 +166,7 @@ function CodePanel({ command, code, remaining, onCancel }: { command: string; co
 			<div className="mt-2 flex items-center gap-2">
 				<span className="min-w-0 flex-1 break-all font-mono text-lg font-semibold tracking-wide">{line}</span>
 				<Button type="button" size="sm" variant="outline" className="shrink-0" onClick={handleCopy}>
-					{copied ? <Icons.Check className="mr-1.5 h-3.5 w-3.5" /> : <Icons.Copy className="mr-1.5 h-3.5 w-3.5" />}
+					{copied ? <Icons.Check className="me-1.5 h-3.5 w-3.5" /> : <Icons.Copy className="me-1.5 h-3.5 w-3.5" />}
 					{tr.text(USR_Msgs.linkCodeCopy())}
 				</Button>
 			</div>

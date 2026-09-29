@@ -252,7 +252,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					>
 						{([leftTeam, rightTeam] as const).map((teamId, i) => (
 							// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
-							<TeamPlayerTable key={teamId} teamId={teamId} className={i === 1 ? 'pl-1.5' : undefined} stores={props.stores} />
+							<TeamPlayerTable key={teamId} teamId={teamId} className={i === 1 ? 'ps-1.5' : undefined} stores={props.stores} />
 						))}
 					</div>
 				) : (
@@ -329,7 +329,7 @@ function PhoneTeamsToolbar(props: {
 					) : (
 						phoneTeam
 					)}
-					<span className="ml-auto flex gap-[3px]">
+					<span className="ms-auto flex gap-[3px]">
 						{[0, 1, 2].map((i) => (
 							<span key={i} className={cn('block size-[5px] rounded-full', i === step ? 'bg-pri-hi' : 'bg-line-soft')} />
 						))}
@@ -339,7 +339,7 @@ function PhoneTeamsToolbar(props: {
 				<Button size="icon" className="relative shrink-0" onClick={props.onOpenSheet} title={tr.text(SM_Msgs.sortAndShow())}>
 					<Icons.SlidersHorizontal />
 					{active > 0 && (
-						<span className="absolute right-1 top-1 grid h-3.5 min-w-3.5 place-items-center rounded-sm bg-pri px-[3px] font-mono text-[10px] text-pri-text">
+						<span className="absolute inset-e-1 top-1 grid h-3.5 min-w-3.5 place-items-center rounded-sm bg-pri px-[3px] font-mono text-[10px] text-pri-text">
 							{active}
 						</span>
 					)}
@@ -440,10 +440,10 @@ function PhoneSortSheet(props: {
 		>
 			<div className="fd-mlabel">{tr.text(SM_Msgs.sortBy())}</div>
 			{PHONE_SORTS.filter((o) => !o.spoiler || showSpoilers).map((o) => (
-				<button key={o.key} type="button" className={cn(row, 'w-full text-left')} onClick={() => pick(o.sort)}>
+				<button key={o.key} type="button" className={cn(row, 'w-full text-start')} onClick={() => pick(o.sort)}>
 					<span className="fd-rad" data-state={activeKey === o.key ? 'checked' : undefined} />
 					{o.label()}
-					<span className="ml-auto font-mono text-xs text-text-3">{o.sort.desc ? '↓' : '↑'}</span>
+					<span className="ms-auto font-mono text-xs text-text-3">{o.sort.desc ? '↓' : '↑'}</span>
 				</button>
 			))}
 			<div className="fd-msep" />
@@ -455,7 +455,7 @@ function PhoneSortSheet(props: {
 					onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
 				/>
 				{tr.text(SM_Msgs.selectedOnly())}
-				<span className="ml-auto font-mono text-xs text-text-3">{selectedCount}</span>
+				<span className="ms-auto font-mono text-xs text-text-3">{selectedCount}</span>
 			</label>
 			<label className={row}>
 				<Switch checked={adminsOnly} onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)} />
@@ -464,7 +464,7 @@ function PhoneSortSheet(props: {
 			<label className={row} title={tr.text(SM_Msgs.showSpoilersHint())}>
 				<Switch checked={showSpoilers} onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)} />
 				{tr.text(SM_Msgs.showSpoilers())}
-				<span className="ml-auto font-mono text-xs text-text-3">{tr.text(SM_Msgs.spoilersOnHint())}</span>
+				<span className="ms-auto font-mono text-xs text-text-3">{tr.text(SM_Msgs.spoilersOnHint())}</span>
 			</label>
 			<div className="fd-msep" />
 			<div className="fd-mlabel">{tr.text(SM_Msgs.filterLabel())}</div>
@@ -580,7 +580,7 @@ function PhoneSelectionBar({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	return (
 		<>
 			<div
-				className="fixed inset-x-2 flex items-center gap-1.5 rounded-[3px] border border-line-soft bg-panel-hi py-1.5 pl-3 pr-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+				className="fixed inset-x-2 flex items-center gap-1.5 rounded-[3px] border border-line-soft bg-panel-hi py-1.5 ps-3 pe-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
 				style={{ zIndex, bottom: 'calc(var(--tabbar-h) + 8px)' }}
 			>
 				<span className="min-w-0 flex-1 truncate font-bold">{label}</span>
@@ -640,7 +640,7 @@ function PhoneSwapsSummary(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Nor
 		<button
 			type="button"
 			onClick={(e) => open(e.currentTarget)}
-			className="flex min-h-(--ctl) w-full items-center gap-2.5 rounded-[3px] border border-[rgba(230,180,34,0.35)] bg-[rgba(230,180,34,0.10)] pl-3 pr-1.5 text-left"
+			className="flex min-h-(--ctl) w-full items-center gap-2.5 rounded-[3px] border border-[rgba(230,180,34,0.35)] bg-[rgba(230,180,34,0.10)] ps-3 pe-1.5 text-start"
 		>
 			<Icons.ArrowLeftRight className="size-4 shrink-0 text-warn" />
 			<span className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -1055,7 +1055,7 @@ function StatsColumnHeader({
 								</React.Fragment>
 							))}
 						</span>
-						<Icons.ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
+						<Icons.ArrowUpDown className="ms-1 h-3 w-3 text-muted-foreground" />
 					</button>
 				</PopoverTrigger>
 				<PopoverContent side="top" align="start" className="w-auto p-1" onClick={(e) => e.stopPropagation()}>
@@ -1094,7 +1094,7 @@ function StatsColumnHeader({
 							))}
 							<button
 								type="button"
-								className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ml-auto"
+								className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ms-auto"
 								onClick={() => {
 									column.clearSorting()
 									setOpen(false)
@@ -1589,7 +1589,7 @@ function SquadGroupHeaderRow(props: {
 		TeamsPanelPrt.Actions.toggleSquadCollapsed({ teamsPanel: props.stores.squadServer! }, props.info.key)
 	}
 	const chevron = (
-		<Icons.ChevronDown className={cn('ml-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90')} />
+		<Icons.ChevronDown className={cn('ms-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90')} />
 	)
 	const { squad, creatorName, faction, totalSize } = props.info
 	const shownCount = props.playerIds.length
@@ -1759,7 +1759,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 		const flat = !(props.getSquadGroup && squadGroupsEnabled)
 		const spoilers = cells.some((c) => c.column.id === 'role' || c.column.id === 'stats')
 		return (
-			<TableCell colSpan={cells.length} className="h-auto! px-2.5! pr-1! py-1.5 whitespace-normal">
+			<TableCell colSpan={cells.length} className="h-auto! px-2.5! pe-1! py-1.5 whitespace-normal">
 				<div className="flex items-center gap-1">
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 						<div className="flex items-center gap-2 min-w-0">
@@ -1772,7 +1772,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 							{cell('tks')}
 						</div>
 						{spoilers && (
-							<div className="flex items-center gap-2 min-w-0 pl-7 text-xs text-text-2">
+							<div className="flex items-center gap-2 min-w-0 ps-7 text-xs text-text-2">
 								<span className="min-w-0 truncate">{cell('role')}</span>
 								<span className="flex-1" />
 								{cell('stats')}
@@ -2245,7 +2245,7 @@ function SwapsPanel({
 
 	return (
 		<div data-tour="swaps-panel" className={cn('grid grid-cols-[1fr_auto_1fr] items-start divide-x divide-line', className)}>
-			<TeamSwapsDisplay teamId={leftTeam} className="pr-2" stores={stores} />
+			<TeamSwapsDisplay teamId={leftTeam} className="pe-2" stores={stores} />
 			<div className="flex flex-col items-center gap-1 px-2">
 				<div className="flex items-center gap-1">
 					<Tooltip help>
@@ -2318,7 +2318,7 @@ function SwapsPanel({
 				</div>
 				<TeamsAfterSwap leftTeam={leftTeam} rightTeam={rightTeam} stores={stores} />
 			</div>
-			<TeamSwapsDisplay teamId={rightTeam} align="right" className="pl-2" stores={stores} />
+			<TeamSwapsDisplay teamId={rightTeam} align="right" className="ps-2" stores={stores} />
 		</div>
 	)
 }
@@ -2388,7 +2388,7 @@ function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; st
 				<button
 					type="button"
 					onClick={() => TSWClient.Actions.removeSwap(props.stores, [playerId])}
-					className="ml-0.5 opacity-70 hover:opacity-100"
+					className="ms-0.5 opacity-70 hover:opacity-100"
 					title={tr.text(SM_Msgs.deleteSwapAction())}
 				>
 					<Icons.X className="size-2.5" />

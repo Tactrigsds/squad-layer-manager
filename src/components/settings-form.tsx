@@ -282,7 +282,7 @@ function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: 
 				<p key={i} className="flex items-start gap-1 text-xs font-medium text-destructive">
 					<Icons.CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 wrap-break-word">
-						{iss.path !== pathStr && <code className="mr-1 text-[10px] opacity-70">{iss.path.slice(pathStr.length + 1)}</code>}
+						{iss.path !== pathStr && <code className="me-1 text-[10px] opacity-70">{iss.path.slice(pathStr.length + 1)}</code>}
 						{iss.message}
 					</span>
 				</p>
@@ -521,7 +521,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGrouping}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(PG_Msgs.addGrouping())}
 				</Button>
 			</div>
@@ -938,7 +938,7 @@ function GroupingCard({
 					</div>
 				)}
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(PG_Msgs.addRule())}
 				</Button>
 			</div>
@@ -1034,7 +1034,7 @@ function GroupColorRow({
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => setCustom(e.currentTarget.value.trim(), true)}
-					className="w-full min-w-0 bg-transparent py-1 pr-2 font-mono text-xs outline-none"
+					className="w-full min-w-0 bg-transparent py-1 pe-2 font-mono text-xs outline-none"
 				/>
 			</InputGroup>
 			{flags.length > 0 && (
@@ -1387,7 +1387,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 			})}
 			<div className="flex items-center gap-2">
 				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(CMD_Msgs.addTrigger())}
 				</Button>
 			</div>
@@ -1403,7 +1403,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							{signature.map(({ ref, arg }) => (
 								<span key={ref} className="whitespace-nowrap">
 									<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
-									<span className="ml-1 font-mono">{arg}</span>
+									<span className="ms-1 font-mono">{arg}</span>
 								</span>
 							))}
 						</div>
@@ -2248,7 +2248,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 								type="button"
 								size="icon"
 								variant="ghost"
-								className="ml-auto h-7 w-7 text-destructive"
+								className="ms-auto h-7 w-7 text-destructive"
 								title={tr.text(SM_Msgs.deleteAdminList(name))}
 								onClick={() =>
 									update((v) => {
@@ -2346,7 +2346,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" size="sm" variant="outline" className="h-8" disabled={!canAdd} onClick={addList}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(SM_Msgs.addAdminList())}
 				</Button>
 			</div>
@@ -2526,7 +2526,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 				<div className="flex items-center justify-between">
 					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.roleCount(roleIds.length))}</p>
 					<Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={clearAll}>
-						<Icons.Trash2 className="mr-1 h-4 w-4" />
+						<Icons.Trash2 className="me-1 h-4 w-4" />
 						{tr.text(RBAC_Msgs.clearAllRoles())}
 					</Button>
 				</div>
@@ -2540,7 +2540,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 							type="button"
 							onClick={() => setSelected(id)}
 							className={cn(
-								'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left font-mono text-sm',
+								'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-start font-mono text-sm',
 								id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
 							)}
 						>
@@ -2654,10 +2654,10 @@ function RoleDetail({
 					type="button"
 					size="sm"
 					variant="ghost"
-					className="ml-auto text-destructive"
+					className="ms-auto text-destructive"
 					onClick={() => update((r) => withRoleRemoved(r, roleId))}
 				>
-					<Icons.Trash2 className="mr-1 h-4 w-4" />
+					<Icons.Trash2 className="me-1 h-4 w-4" />
 					{tr.text(RBAC_Msgs.deleteRole())}
 				</Button>
 			</div>
@@ -3927,7 +3927,7 @@ function RecordEntry({
 				) : (
 					<Input className="font-mono h-8 max-w-[16rem]" defaultValue={entryKey} onBlur={(e) => onRename(e.target.value.trim())} />
 				)}
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ml-auto" onClick={onRemove}>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ms-auto" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
 				</Button>
 			</div>
@@ -4287,7 +4287,7 @@ function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEd
 	}
 	return (
 		<div
-			className={cn('my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground', writable && 'cursor-text')}
+			className={cn('my-1 flex items-start gap-1 border-s-2 border-muted ps-2 text-xs text-muted-foreground', writable && 'cursor-text')}
 			onClick={editAtClick}
 		>
 			<RichText
@@ -4403,10 +4403,10 @@ function useLocalEditorSchema(pathStr: string): z.ZodType | undefined {
 }
 
 // the GUI/YAML segmented control the settings-page section headers use, scaled down to sit in a field's header row.
-// `ml-auto` pins it to the right end of that row, where the page-level control sits in its own header.
+// `ms-auto` pins it to the right end of that row, where the page-level control sits in its own header.
 function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
-		<div className="ml-auto flex items-center rounded-md border p-0.5">
+		<div className="ms-auto flex items-center rounded-md border p-0.5">
 			{(['gui', 'yaml'] as const).map((option) => (
 				<Button
 					key={option}
@@ -4638,7 +4638,7 @@ function LeafField({
 				// every side without shifting the content column
 				'space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
 				isBoolean && 'flex items-center justify-between space-y-0 gap-4',
-				hasError && 'border-l-2 border-destructive',
+				hasError && 'border-s-2 border-destructive',
 				!writable && 'opacity-60',
 			)}
 		>

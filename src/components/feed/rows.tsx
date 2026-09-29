@@ -34,7 +34,7 @@ const CHANNEL_STYLES = {
 } as const
 
 const MESSAGE_ROW_CLASS =
-	'flex gap-1.5 py-[3px] pr-1.5 text-xs text-text w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline'
+	'flex gap-1.5 py-[3px] pe-1.5 text-xs text-text w-full min-w-0 border-e-2 bg-linear-to-l to-transparent items-baseline'
 
 function messageRowStyle(style: { color: string; gradientColor: string }): React.CSSProperties {
 	return { borderRightColor: style.color, backgroundImage: `linear-gradient(to left, ${style.gradientColor}, transparent)` }
@@ -170,7 +170,7 @@ function WarnsAggregated(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEn
 
 	return (
 		<Details time={event.time} icon={iconElt} summary={tr.richText(CHAT_Msgs.playerCountWarned(count, event.reason))}>
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{event.warns.map((warn, i) => (
 					// eslint-disable-next-line react/no-array-index-key
 					<Atoms.PlayerDisplay key={i} ctx={ctx} showTeam player={warn.player} matchId={event.matchId} />
@@ -502,7 +502,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 							<Atoms.MatchTeamDisplay ctx={ctx} matchId={event.matchId} teamId={event.squad.teamId} />,
 						),
 					)}
-					{event.squad.locked ? <Icon name="Lock" className="h-3 w-3 text-danger inline-block ml-1" /> : null}
+					{event.squad.locked ? <Icon name="Lock" className="h-3 w-3 text-danger inline-block ms-1" /> : null}
 				</Atoms.EventLine>
 			)
 		case 'PLAYER_BANNED':

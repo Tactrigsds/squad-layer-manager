@@ -162,7 +162,7 @@ function StartingCard({ scenarioId }: { scenarioId: TUT.ScenarioId }) {
 	const zIndex = useZIndex(ZI_OFFSETS.TOUR)
 	return createPortal(
 		<div
-			className="fixed bottom-3 left-3 flex items-center gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-xs text-text shadow-2xl"
+			className="fixed bottom-3 inset-s-3 flex items-center gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-xs text-text shadow-2xl"
 			style={{ zIndex }}
 		>
 			<Spinner />
@@ -431,7 +431,7 @@ function Card(props: {
 			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, card.w, card.h) }}
 		>
 			<div
-				className={`absolute -left-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
+				className={`absolute -inset-s-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
 			>
 				{stepNo}
 			</div>
@@ -445,7 +445,7 @@ function Card(props: {
 			{/* a block, not a <p>: step copy marks its own paragraphs and lists, and the spacing rules here are what
 			    give an unmarked single-paragraph body and a multi-paragraph one the same top margin */}
 			<div
-				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-text [&_a]:text-info [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4`}
+				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-text [&_a]:text-info [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:ps-4`}
 			>
 				{failed ? tr.text(TUT_Msgs.stepFailedBlurb()) : notReady ? state.msg : rendered.body}
 			</div>
@@ -514,7 +514,7 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 	const idx = state.stepIdx
 	const total = Tour.stepCount(state.scenarioId)
 	return (
-		<div className="absolute bottom-3 left-3" style={{ pointerEvents: 'auto' }}>
+		<div className="absolute bottom-3 inset-s-3" style={{ pointerEvents: 'auto' }}>
 			{tocOpen && <Toc state={state} run={run} onPick={() => setTocOpen(false)} />}
 			<div
 				role="group"
@@ -579,7 +579,7 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 	return (
 		<nav
 			aria-label={tr.text(TUT_Msgs.tableOfContents())}
-			className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-line-soft bg-ground shadow-2xl"
+			className="absolute bottom-full inset-s-0 mb-2 flex w-80 flex-col rounded-lg border border-line-soft bg-ground shadow-2xl"
 		>
 			<input
 				type="search"
@@ -601,9 +601,9 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 								onPick()
 								void Tour.Actions.jump(i)
 							}}
-							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-xs hover:bg-ground ${current ? 'bg-ground text-white' : 'text-text'}`}
+							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-start text-xs hover:bg-ground ${current ? 'bg-ground text-white' : 'text-text'}`}
 						>
-							<span className={`w-6 shrink-0 text-right font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>
+							<span className={`w-6 shrink-0 text-end font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>
 								{i + 1}
 							</span>
 							<span className="truncate">{title}</span>
@@ -618,7 +618,7 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 function DockedCard({ serverId }: { serverId: string }) {
 	return (
 		<div
-			className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-text shadow-2xl"
+			className="absolute bottom-3 inset-s-3 inset-e-3 flex items-center justify-between gap-2.5 rounded-lg border border-line-soft bg-ground p-3 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto' }}
 		>
 			<div className="text-xs text-text">{tr.richText(TUT_Msgs.paused())}</div>

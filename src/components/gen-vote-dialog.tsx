@@ -187,7 +187,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const varyBy = (
 		<div className="flex flex-wrap items-center gap-1.5">
-			<span className="text-text-3 mr-0.5">{tr.text(V_Msgs.varyBy())}</span>
+			<span className="text-text-3 me-0.5">{tr.text(V_Msgs.varyBy())}</span>
 			{V.GenVote.CHOICE_COMPARISON_KEY.options.map((key) => {
 				const included = includedConstraintKeys.includes(key)
 				const unique = uniqueConstraintKeys.includes(key)
@@ -309,7 +309,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								: 'grid-cols-[26px_minmax(0,1fr)_auto_auto] min-h-[calc(var(--row)+6px)]',
 						)}
 					>
-						<span className="text-right font-mono text-text-3">{index + 1}.</span>
+						<span className="text-end font-mono text-text-3">{index + 1}.</span>
 						{phone ? (
 							<span className="flex min-w-0 flex-col gap-1">
 								{layer}
@@ -386,7 +386,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 				className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] w-[1080px] max-w-[95vw]')}
 				showCloseButton={false}
 			>
-				<HeadlessDialogHeader className="m-0 flex-nowrap items-center pr-2 gap-2">
+				<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">
 					<HeadlessDialogTitle className="whitespace-nowrap">{props.title}</HeadlessDialogTitle>
 					{props.description && (
 						<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
@@ -427,7 +427,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							{choiceRows}
 							{addChoice}
 						</div>
-						<div className="flex w-[300px] shrink-0 flex-col gap-2.5 border-l border-line pl-3 shadow-[-1px_0_0_var(--line-soft)]">
+						<div className="flex w-[300px] shrink-0 flex-col gap-2.5 border-s border-line ps-3 shadow-[-1px_0_0_var(--line-soft)]">
 							{configEditor}
 							<div className="flex-1" />
 							<div className="flex items-center justify-end gap-2 whitespace-nowrap">

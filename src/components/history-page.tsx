@@ -204,7 +204,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 						<span className="min-w-0 flex-1">{runButton}</span>
 					</div>
 					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
+					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pe-1">
 						<HistoryQueryBar draft={draft} set={set} />
 					</div>
 				</RailResizer>
@@ -234,7 +234,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 					role="separator"
 					aria-orientation="vertical"
 					aria-label={tr.text(HistoryMsgs.resizeBuilder())}
-					className="-ml-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent hover:bg-line-soft"
+					className="-ms-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent hover:bg-line-soft"
 					onPointerDown={(e) => {
 						dragFrom.current = { x: e.clientX, width }
 						e.currentTarget.setPointerCapture(e.pointerId)
@@ -252,7 +252,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 						HistoryClient.saveRailWidth(width)
 					}}
 				/>
-				<div className="flex min-w-0 flex-1 flex-col gap-2 border-l border-line pl-2.5 shadow-[-1px_0_0_var(--line-soft)]">
+				<div className="flex min-w-0 flex-1 flex-col gap-2 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)]">
 					{props.children}
 				</div>
 			</div>
@@ -447,7 +447,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 	return useHistoryRenderCtx(matches, { loadRowEvents, lateMatch, serverId: HQ.soleServerId(query), linkToRows, selectionText })
 }
 
-const HEADER_CELL = 'px-2 py-1 text-left font-medium'
+const HEADER_CELL = 'px-2 py-1 text-start font-medium'
 
 // A column header that sorts. Clicking runs the query rather than only editing the draft: the results are
 // already on screen, so a header that waited for Run would read as dead.
@@ -494,7 +494,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 			column={column}
 			label={label}
 			sort={sort}
-			className="text-right"
+			className="text-end"
 			onSort={(next) => props.onRun({ ...props.query, sort: next })}
 		/>
 	)
@@ -515,7 +515,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('matches', tr.text(HistoryMsgs.colMatches()))}
 							{sortHeader('chatMessages', tr.text(HistoryMsgs.colChat()))}
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
-							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
+							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
@@ -562,7 +562,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('killDiff', tr.text(HistoryMsgs.colKillDiff()))}
 							{sortHeader('duration', tr.text(HistoryMsgs.colDuration()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
-							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
+							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
@@ -609,7 +609,7 @@ function RecentMenu(props: { onLoad: () => void }) {
 						key={recent.at}
 						to="/history"
 						search={recent.query}
-						className="block w-full max-w-96 truncate px-2 py-1 text-left text-xs hover:bg-accent"
+						className="block w-full max-w-96 truncate px-2 py-1 text-start text-xs hover:bg-accent"
 						onClick={(e) => {
 							if (isPlainNavigationClick(e)) props.onLoad()
 						}}
@@ -658,7 +658,7 @@ function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => v
 							<TSR.Link
 								to="/history"
 								search={query.query}
-								className="grow truncate text-left"
+								className="grow truncate text-start"
 								onClick={(e) => {
 									if (!isPlainNavigationClick(e)) return
 									if (mine) props.onLoadOwn({ id: query.id, name: query.name, visibility: query.visibility })
@@ -667,7 +667,7 @@ function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => v
 							>
 								<span className="font-medium">{query.name}</span>
 								{!mine && query.ownerName && (
-									<span className="ml-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
+									<span className="ms-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
 								)}
 							</TSR.Link>
 							{mine && (

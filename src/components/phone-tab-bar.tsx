@@ -33,7 +33,7 @@ export default function PhoneTabBar(props: {
 				>
 					<s.icon className="size-6" />
 					{props.badges?.[s.value] !== undefined && (
-						<span className="absolute top-2 left-[calc(50%+8px)] grid min-w-4 h-4 place-items-center rounded-full bg-[#414144] px-1 font-mono text-2xs text-text">
+						<span className="absolute top-2 inset-s-[calc(50%+8px)] grid min-w-4 h-4 place-items-center rounded-full bg-[#414144] px-1 font-mono text-2xs text-text">
 							{props.badges[s.value]}
 						</span>
 					)}

@@ -110,7 +110,7 @@ function NicknameForm(props: { onOpenChange?: (newState: boolean) => void }) {
 					{tr.text(UI_Msgs.cancel())}
 				</Button>
 				<Button onClick={handleSave} disabled={!isChanged || !isValid || updateNicknameMutation.isPending}>
-					{updateNicknameMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{updateNicknameMutation.isPending && <Icons.Loader2 className="me-2 h-4 w-4 animate-spin" />}
 					{updateNicknameMutation.isPending ? tr.text(USR_Msgs.saving()) : tr.text(USR_Msgs.save())}
 				</Button>
 			</DialogFooter>

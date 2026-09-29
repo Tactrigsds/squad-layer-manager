@@ -71,7 +71,7 @@ function ServerChatEvents(props: {
 
 	return (
 		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
-			<SubtreeFindBar stores={find.stores} className="absolute right-3 top-1" />
+			<SubtreeFindBar stores={find.stores} className="absolute inset-e-3 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
 				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
 					<span className="fd-spin size-6!" />
@@ -91,7 +91,7 @@ function ServerChatEvents(props: {
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pr-3 min-h-0 w-full">
+				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pe-3 min-h-0 w-full">
 					{noPlayersSelected && <div className="text-text-3 text-sm text-center py-6">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-text-3 text-sm text-center py-6">
@@ -120,7 +120,7 @@ function ServerChatEvents(props: {
 					onClick={() => scrollToBottom()}
 					size="sm"
 					style={{ zIndex: scrollToBottomZIndex }}
-					className="absolute bottom-0 left-0 right-0 w-full"
+					className="absolute bottom-0 inset-s-0 inset-e-0 w-full"
 					title={tr.text(CHAT_Msgs.scrollToBottom())}
 				>
 					<Icons.ChevronDown />
@@ -419,7 +419,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				{/* live-only readouts, and the historical controls need their header room */}
 				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col p-2 pr-1.5 pb-2">
+			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col p-2 pe-1.5 pb-2">
 				<div className="flex-1 min-h-0">
 					{selectedMatchOrdinal !== null && historicalView === 'teams' ? (
 						<div className="min-w-[350px] h-full flex flex-col">

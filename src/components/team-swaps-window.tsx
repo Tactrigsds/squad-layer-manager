@@ -80,7 +80,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>
 					{tr.text(SM_Msgs.teamSwapsTitle())}
-					{numEditors > 1 && <span className="ml-1 font-normal text-muted-foreground">({numEditors})</span>}
+					{numEditors > 1 && <span className="ms-1 font-normal text-muted-foreground">({numEditors})</span>}
 				</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -249,7 +249,7 @@ function SwapRow({
 	return (
 		<div
 			className={cn(
-				'grid min-h-(--row) grid-cols-[minmax(0,1fr)_auto_var(--ctl)] items-center gap-2 border-b border-[#2d2d2f] bg-[rgba(230,180,34,0.10)] pl-3',
+				'grid min-h-(--row) grid-cols-[minmax(0,1fr)_auto_var(--ctl)] items-center gap-2 border-b border-[#2d2d2f] bg-[rgba(230,180,34,0.10)] ps-3',
 				mutation.added && 'shadow-[inset_3px_0_0_var(--ok)]',
 				mutation.removed && 'opacity-60',
 			)}

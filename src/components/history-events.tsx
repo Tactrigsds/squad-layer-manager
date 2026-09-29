@@ -179,7 +179,7 @@ function OrderToggle(props: { order: 'newest' | 'oldest'; onReorder: (order: 'ne
 			className="h-6 px-2 text-xs font-normal text-muted-foreground"
 			onClick={() => props.onReorder(newest ? 'oldest' : 'newest')}
 		>
-			{newest ? <Icons.ArrowDown className="mr-1 h-3 w-3" /> : <Icons.ArrowUp className="mr-1 h-3 w-3" />}
+			{newest ? <Icons.ArrowDown className="me-1 h-3 w-3" /> : <Icons.ArrowUp className="me-1 h-3 w-3" />}
 			{tr.text(newest ? HistoryMsgs.orderNewest() : HistoryMsgs.orderOldest())}
 		</Button>
 	)

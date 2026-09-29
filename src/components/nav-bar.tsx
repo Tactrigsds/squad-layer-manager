@@ -161,7 +161,7 @@ export default function NavBar() {
 	const languageItems = (
 		<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
 			<DropdownMenuRadioItem value={MessagesClient.AUTO}>
-				<Icons.Languages className="mr-2" />
+				<Icons.Languages className="me-2" />
 				{tr.text(APP_Msgs.languageAuto())}
 			</DropdownMenuRadioItem>
 			{MessagesClient.availableLocales().map((locale) => (
@@ -260,7 +260,7 @@ export default function NavBar() {
 				<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 			</Avatar>
 			{unseenChanges > 0 && (
-				<span aria-hidden className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
+				<span aria-hidden className="absolute -top-0.5 -inset-e-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
 			)}
 		</span>
 	)
@@ -562,7 +562,7 @@ function PhoneMenu(props: {
 			<DropdownMenuContent
 				align="start"
 				sideOffset={0}
-				className="w-[290px] max-w-[calc(100vw-32px)] h-[calc(100dvh-var(--nav-h))] overflow-y-auto rounded-none border-l-0 border-b-0"
+				className="w-[290px] max-w-[calc(100vw-32px)] h-[calc(100dvh-var(--nav-h))] overflow-y-auto rounded-none border-s-0 border-b-0"
 			>
 				<DropdownMenuLabel>{tr.text(APP_Msgs.navPages())}</DropdownMenuLabel>
 				{props.pageItems}

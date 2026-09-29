@@ -65,7 +65,7 @@ const triggerClass =
 // standard compact display for the operator (comparison-type) select: its options are short symbols
 // (=, [..], not in), so it gets tight padding, a collapsed chevron gap, and a smaller chevron. px-1 is
 // important so container padding rules (e.g. the filter menu grid) can't stretch it back out.
-const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ml-0 [&_svg]:size-3'
+const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
 export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
@@ -573,7 +573,7 @@ function NodeComment(props: NodeProps) {
 	const collapsed = truncated && !expanded
 
 	return (
-		<div className="my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground">
+		<div className="my-1 flex items-start gap-1 border-s-2 border-muted ps-2 text-xs text-muted-foreground">
 			<RichText
 				text={collapsed ? flattened : comment}
 				maxLength={collapsed ? COMMENT_PREVIEW_LENGTH : undefined}
@@ -824,7 +824,7 @@ function NodeSummaryButton(props: { onClick: () => void; children: React.ReactNo
 			type="button"
 			data-node-summary=""
 			onClick={props.onClick}
-			className="min-w-0 rounded-sm px-1 text-left text-sm leading-6 hover:bg-accent"
+			className="min-w-0 rounded-sm px-1 text-start text-sm leading-6 hover:bg-accent"
 		>
 			{props.children}
 		</button>
@@ -1947,7 +1947,7 @@ function InListConfig(props: {
 			{columns.map((c) => (
 				<span key={c.column} className="flex items-center px-2 py-1 bg-secondary rounded-md text-sm">
 					{columnLabel(c.column, cfg) ?? c.column}
-					<button type="button" onClick={() => removeColumn(c.column)} className="ml-1">
+					<button type="button" onClick={() => removeColumn(c.column)} className="ms-1">
 						<Icons.X className="h-3 w-3" />
 					</button>
 				</span>
@@ -2010,7 +2010,7 @@ function LayersInConfig(props: {
 			)}
 			<div className="w-max">
 				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
-					<Icons.Edit className="h-4 w-4 mr-2" />
+					<Icons.Edit className="h-4 w-4 me-2" />
 					{filteredValues.length === 0 ? tr.text(F_Msgs.selectLayers()) : tr.text(F_Msgs.editLayers())}
 				</Button>
 				<SelectLayersDialog

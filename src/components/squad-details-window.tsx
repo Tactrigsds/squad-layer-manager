@@ -161,9 +161,9 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 				<DraggableWindowTitle>
 					{isDefaultName ? displayName : <span className="font-semibold">{displayName}</span>}
 					{teamId != null && (
-						<span className="text-muted-foreground font-normal ml-1">
+						<span className="text-muted-foreground font-normal ms-1">
 							({currentMatch && <MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={teamId} stores={stores} />}
-							{liveSquad?.locked && <Icons.Lock className="h-3 w-3 inline ml-1" aria-label={tr.text(SM_Msgs.squadLocked())} />})
+							{liveSquad?.locked && <Icons.Lock className="h-3 w-3 inline ms-1" aria-label={tr.text(SM_Msgs.squadLocked())} />})
 						</span>
 					)}
 				</DraggableWindowTitle>
@@ -244,7 +244,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								onClick={() => scrollToBottom()}
 								variant="secondary"
 								style={{ zIndex: aboveChatZIndex }}
-								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
+								className="absolute bottom-0 inset-s-0 inset-e-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 								title={tr.text(CHAT_Msgs.scrollToBottom())}
 							>
 								<Icons.ChevronDown className="h-3 w-3" />

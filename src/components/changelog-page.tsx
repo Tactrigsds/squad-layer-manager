@@ -112,13 +112,13 @@ function Header(props: { stores: ChangelogFrame.KeyProp }) {
 				<div className="relative w-full sm:w-80">
 					<Input
 						type="search"
-						className="pl-9"
+						className="ps-9"
 						placeholder={tr.text(CL_Msgs.searchPlaceholder())}
 						aria-label={tr.text(CL_Msgs.searchPlaceholder())}
 						onChange={(e) => onSearch(e.target.value)}
 					/>
 					{/* after the input so it paints over the input's background */}
-					<Icons.Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Icons.Search className="pointer-events-none absolute top-1/2 inset-s-3 size-4 -translate-y-1/2 text-muted-foreground" />
 				</div>
 				<div className="flex items-center gap-2">
 					<Switch
@@ -172,7 +172,7 @@ function ReleaseSection(props: { release: ChangelogFrame.VisibleRelease }) {
 					{release.date ? formatDate(release.date) : tr.text(CL_Msgs.notYetReleasedBlurb())}
 				</span>
 				{release.unseenCount > 0 && (
-					<span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
+					<span className="ms-auto rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
 						{tr.text(CL_Msgs.newCount(release.unseenCount))}
 					</span>
 				)}
@@ -197,13 +197,13 @@ function MinorEntries(props: { entries: ChangelogFrame.VisibleEntry[] }) {
 	const hash = TSR.useLocation({ select: (location) => location.hash })
 	if (props.entries.length === 0) return null
 	return (
-		<Collapsible className="pl-26 max-sm:pl-0" defaultOpen={props.entries.some((entry) => entry.id === hash)}>
+		<Collapsible className="ps-26 max-sm:ps-0" defaultOpen={props.entries.some((entry) => entry.id === hash)}>
 			<CollapsibleTrigger className="group flex items-center gap-1.5 py-1 text-sm text-muted-foreground hover:text-foreground">
 				<Icons.ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" />
 				{tr.text(CL_Msgs.smallerChanges(props.entries.length))}
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<ul className="mt-1 flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+				<ul className="mt-1 flex list-disc flex-col gap-1 ps-5 text-sm text-muted-foreground">
 					{props.entries.map((entry) => (
 						<li
 							key={entry.id}
@@ -265,7 +265,7 @@ function EntryRow(props: { entry: ChangelogFrame.VisibleEntry; linkedTo: boolean
 					</span>
 				</div>
 				{entry.body && (
-					<div className="text-sm text-muted-foreground [&_a]:underline [&_code]:font-mono [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:pl-5">
+					<div className="text-sm text-muted-foreground [&_a]:underline [&_code]:font-mono [&_ol]:list-decimal [&_ol]:ps-5 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:ps-5">
 						<Markdown components={BODY_COMPONENTS}>{entry.body}</Markdown>
 					</div>
 				)}

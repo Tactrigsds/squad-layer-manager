@@ -24,9 +24,9 @@ const ContextMenuSubTrigger = React.forwardRef<
 		inset?: boolean
 	}
 >(({ className, inset, children, ...props }, ref) => (
-	<ContextMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'pl-7', className)} {...props}>
+	<ContextMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'ps-7', className)} {...props}>
 		{children}
-		<ChevronRightIcon className="ml-auto" />
+		<ChevronRightIcon className="ms-auto" />
 	</ContextMenuPrimitive.SubTrigger>
 ))
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName
@@ -92,7 +92,7 @@ const ContextMenuItem = React.forwardRef<
 		inset?: boolean
 	}
 >(({ className, inset, ...props }, ref) => (
-	<ContextMenuPrimitive.Item ref={ref} className={cn('fd-mi relative', inset && 'pl-7', className)} {...props} />
+	<ContextMenuPrimitive.Item ref={ref} className={cn('fd-mi relative', inset && 'ps-7', className)} {...props} />
 ))
 ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName
 
@@ -100,8 +100,8 @@ const ContextMenuCheckboxItem = React.forwardRef<
 	React.ElementRef<typeof ContextMenuPrimitive.CheckboxItem>,
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.CheckboxItem>
 >(({ className, children, checked, ...props }, ref) => (
-	<ContextMenuPrimitive.CheckboxItem ref={ref} className={cn('fd-mi relative pl-7', className)} checked={checked} {...props}>
-		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
+	<ContextMenuPrimitive.CheckboxItem ref={ref} className={cn('fd-mi relative ps-7', className)} checked={checked} {...props}>
+		<span className="absolute inset-s-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
 			<ContextMenuPrimitive.ItemIndicator>
 				<CheckIcon className="h-4 w-4" />
 			</ContextMenuPrimitive.ItemIndicator>
@@ -115,8 +115,8 @@ const ContextMenuRadioItem = React.forwardRef<
 	React.ElementRef<typeof ContextMenuPrimitive.RadioItem>,
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.RadioItem>
 >(({ className, children, ...props }, ref) => (
-	<ContextMenuPrimitive.RadioItem ref={ref} className={cn('fd-mi relative pl-7', className)} {...props}>
-		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
+	<ContextMenuPrimitive.RadioItem ref={ref} className={cn('fd-mi relative ps-7', className)} {...props}>
+		<span className="absolute inset-s-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
 			<ContextMenuPrimitive.ItemIndicator>
 				<DotFilledIcon className="h-4 w-4 fill-current" />
 			</ContextMenuPrimitive.ItemIndicator>
@@ -132,7 +132,7 @@ const ContextMenuLabel = React.forwardRef<
 		inset?: boolean
 	}
 >(({ className, inset, ...props }, ref) => (
-	<ContextMenuPrimitive.Label ref={ref} className={cn('fd-mlabel', inset && 'pl-7', className)} {...props} />
+	<ContextMenuPrimitive.Label ref={ref} className={cn('fd-mlabel', inset && 'ps-7', className)} {...props} />
 ))
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName
 

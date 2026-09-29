@@ -183,7 +183,7 @@ export function ManageFlagsDialogContent(props: {
 					title={addable.length === 0 ? tr.text(BM_Msgs.hasEveryFlag()) : undefined}
 					onClick={() => setPicking(true)}
 				>
-					<Icons.Plus className="mr-1 h-3 w-3" />
+					<Icons.Plus className="me-1 h-3 w-3" />
 					{tr.text(BM_Msgs.addFlag())}
 				</Button>
 			)}
@@ -258,7 +258,7 @@ export function AddFlagsDialogContent(props: {
 					disabled={addable.length === 0}
 					onClick={() => setPicking(true)}
 				>
-					<Icons.Plus className="mr-1 h-3 w-3" />
+					<Icons.Plus className="me-1 h-3 w-3" />
 					{tr.text(BM_Msgs.addFlag())}
 				</Button>
 			)}

@@ -53,7 +53,7 @@ const ScrollBar = React.forwardRef<
 			className={cn(
 				// on a touch screen the scrollbar overlays the content it would otherwise hide, and the finger scrolls anyway
 				'flex touch-none select-none pointer-coarse:hidden',
-				orientation === 'vertical' && 'h-full w-2.5 border-l border-l-transparent p-px',
+				orientation === 'vertical' && 'h-full w-2.5 border-s border-s-transparent p-px',
 				orientation === 'horizontal' && 'h-2.5 flex-col border-t border-t-transparent p-px',
 				className,
 			)}

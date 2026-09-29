@@ -15,7 +15,7 @@ import * as RC from './render-context'
  * For a selectable host: how its selected rows, and the timestamps a selection is dragged from, look. Every row is
  * inset by the selection's edge, selected or not, so selecting never shifts the text.
  */
-export const HOST_CLASS = '[&>*]:pl-1.5 [&>[data-selected]]:bg-info/15 [&>[data-selected]]:shadow-[inset_2px_0_0_var(--color-info)]'
+export const HOST_CLASS = '[&>*]:ps-1.5 [&>[data-selected]]:bg-info/15 [&>[data-selected]]:shadow-[inset_2px_0_0_var(--color-info)]'
 
 // Keyed by host (see RC.SELECTABLE_ATTR): a feed's own scope id, or for the events under a results row, the scope
 // and that row's key.

@@ -57,8 +57,8 @@ export function DescriptionBox(props: { ref: React.Ref<DescriptionBoxHandle>; pl
 			className={cn(
 				'pointer-events-none absolute max-h-48 space-y-1 overflow-hidden rounded-md border bg-popover p-3 text-popover-foreground shadow-md',
 				placement === 'right'
-					? 'left-full top-0 ml-1.5 w-64 data-[flipped=true]:left-auto data-[flipped=true]:right-full data-[flipped=true]:ml-0 data-[flipped=true]:mr-1.5'
-					: 'bottom-full left-0 mb-1.5 w-full data-[flipped=true]:bottom-auto data-[flipped=true]:top-full data-[flipped=true]:mb-0 data-[flipped=true]:mt-1.5',
+					? 'inset-s-full top-0 ms-1.5 w-64 data-[flipped=true]:inset-s-auto data-[flipped=true]:inset-e-full data-[flipped=true]:ms-0 data-[flipped=true]:me-1.5'
+					: 'bottom-full inset-s-0 mb-1.5 w-full data-[flipped=true]:bottom-auto data-[flipped=true]:top-full data-[flipped=true]:mb-0 data-[flipped=true]:mt-1.5',
 				props.className,
 			)}
 		>

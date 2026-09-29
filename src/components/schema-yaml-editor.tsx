@@ -213,10 +213,10 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 				style={isFullscreen ? { zIndex: contentBaseZIndex } : { height: props.minHeightPx ?? 400 }}
 			>
 				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
-				<div className="flex min-h-7 items-center gap-2 pr-9">
-					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? tr.text(SETTINGS_Msgs.yamlEditorLabel())}</h3>
+				<div className="flex min-h-7 items-center gap-2 pe-9">
+					<h3 className={cn(Typo.Small, 'ms-[45px]')}>{props.label ?? tr.text(SETTINGS_Msgs.yamlEditorLabel())}</h3>
 					{/* the switch sits last so it lands in the same place whether or not the caller gave us a toolbar */}
-					<div className="ml-auto flex min-w-0 items-center gap-2">
+					<div className="ms-auto flex min-w-0 items-center gap-2">
 						{props.toolbar}
 						<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
 					</div>
@@ -227,7 +227,7 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 							type="button"
 							size="icon"
 							variant="ghost"
-							className="absolute top-0 right-0 h-7 w-7"
+							className="absolute top-0 inset-e-0 h-7 w-7"
 							style={{ zIndex: contentBaseZIndex + ZI_OFFSETS.MINOR_CEILING }}
 							onClick={() => setIsFullscreen((v) => !v)}
 						>

@@ -65,7 +65,7 @@ function TabBar<T extends string>({
 					{tab.count !== undefined && <span className="fd-tab-cnt">{tab.count}</span>}
 				</button>
 			))}
-			{trailing && <span className="ml-auto flex min-w-0 items-end gap-2 pb-1">{trailing}</span>}
+			{trailing && <span className="ms-auto flex min-w-0 items-end gap-2 pb-1">{trailing}</span>}
 		</div>
 	)
 }
@@ -147,7 +147,7 @@ function QueueCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => vo
 				<CardTitle id={titleId('queue')} data-tour="queue-editors">
 					{tr.text(APP_Msgs.queueTab(queueLength))}
 				</CardTitle>
-				<span className="ml-auto flex min-w-0 items-center gap-2">
+				<span className="ms-auto flex min-w-0 items-center gap-2">
 					<QueuePresence stores={props.stores} />
 				</span>
 			</CardHeader>
@@ -172,7 +172,7 @@ function TeamsCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => vo
 			<StickyGroup stickyRef={titleRef}>
 				<CardHeader ref={titleRef}>
 					<CardTitle id={titleId('teams')}>{tr.text(APP_Msgs.teamsTab(playerCount))}</CardTitle>
-					<span className="ml-auto flex min-w-0 items-center gap-2">
+					<span className="ms-auto flex min-w-0 items-center gap-2">
 						<TeamsPresence stores={props.stores} />
 					</span>
 				</CardHeader>

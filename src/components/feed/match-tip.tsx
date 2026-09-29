@@ -56,7 +56,7 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 				</button>
 				<button
 					type="button"
-					className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground hover:text-foreground"
+					className="ms-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground hover:text-foreground"
 					disabled={!L.isKnownLayer(details.layerId)}
 					onClick={() => openOrFocusWindow(WINDOW_ID.enum['layer-info'], { layerId: details.layerId, tab: 'details' })}
 				>

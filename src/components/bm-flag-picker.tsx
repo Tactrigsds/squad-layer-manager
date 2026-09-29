@@ -112,7 +112,7 @@ export function BmFlagMultiSelect({
 						value.map((id) => <FlagLabel key={id} id={id} flags={orgFlags} />)
 					)}
 				</span>
-				<Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+				<Icons.ChevronsUpDown className="ms-2 h-4 w-4 shrink-0 opacity-50" />
 			</Button>
 		</ComboBoxMulti>
 	)

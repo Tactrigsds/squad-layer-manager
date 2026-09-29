@@ -142,7 +142,7 @@ function BlockEditor(
 				<RemoveButton stores={props.stores} path={path} />
 			</div>
 			{node.children.length > 0 && (
-				<div className={cn('ml-1.5 flex flex-col gap-1 border-l-2 pl-2', depthColors[depth % depthColors.length])}>
+				<div className={cn('ms-1.5 flex flex-col gap-1 border-s-2 ps-2', depthColors[depth % depthColors.length])}>
 					{node.children.map((child, i) => (
 						<NodeEditor key={[...path, i].join('/')} stores={props.stores} node={child} path={[...path, i]} depth={depth + 1} />
 					))}
@@ -483,7 +483,7 @@ function SubqueryEditor(props: EditorProps & { node: HQ.EditableSubqueryNode; pa
 				</Select>
 				<RemoveButton stores={props.stores} path={path} />
 			</div>
-			<div className={cn('ml-1.5 border-l-2 pl-2', depthColors[depth % depthColors.length])}>
+			<div className={cn('ms-1.5 border-s-2 ps-2', depthColors[depth % depthColors.length])}>
 				<NodeEditor stores={props.stores} node={node.filter} path={[...path, 'f']} depth={depth + 1} />
 			</div>
 		</div>

@@ -172,7 +172,7 @@ function ColumnRow({
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
-			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
+			<span className="w-6 text-end text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
 			<span className="min-w-0 truncate font-mono text-sm">{col.name}</span>
 			<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
 				<Switch checked={col.visible ?? true} onCheckedChange={onToggleVisible} />

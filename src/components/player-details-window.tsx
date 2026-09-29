@@ -348,7 +348,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
 					{ids?.username ?? tr.text(SM_Msgs.playerDetailsTitle())}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
-						<span className="text-muted-foreground font-normal ml-1">
+						<span className="text-muted-foreground font-normal ms-1">
 							(
 							{livePlayer.teamId !== null && currentMatch ? (
 								<>
@@ -468,7 +468,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
 							<dd>
 								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
-								{matchPlayer.isLeader && <span className="ml-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
+								{matchPlayer.isLeader && <span className="ms-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
 							</dd>
 						</div>
 						<div>
@@ -550,7 +550,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							disabled={isLoadingOlder}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
+							className="absolute top-0 inset-s-0 inset-e-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={tr.text(CHAT_Msgs.loadOlderEvents())}
 						>
 							{isLoadingOlder ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
@@ -560,7 +560,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 					{historyRequested && !eventsQuery.hasNextPage && !isLoadingOlder && isAtTop && (
 						<div
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute top-0 left-0 right-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
+							className="absolute top-0 inset-s-0 inset-e-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
 						>
 							{tr.text(CHAT_Msgs.noMoreEvents())}
 						</div>
@@ -570,7 +570,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							onClick={() => scrollToBottom()}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
+							className="absolute bottom-0 inset-s-0 inset-e-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={tr.text(CHAT_Msgs.scrollToBottom())}
 						>
 							<Icons.ChevronDown className="h-3 w-3" />
@@ -708,7 +708,7 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 				<Button
 					size="sm"
 					variant="ghost"
-					className="h-6 px-2 ml-auto shrink-0"
+					className="h-6 px-2 ms-auto shrink-0"
 					title={tr.text(SM_Msgs.cancelTimeoutHint())}
 					onClick={async () => {
 						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })

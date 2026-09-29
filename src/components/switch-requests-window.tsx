@@ -52,8 +52,8 @@ function SwitchRequestsWindow({ stores }: SwitchRequestsWindowProps) {
 					<p className="py-2 text-sm text-muted-foreground">{tr.text(SRQ_Msgs.noRequests())}</p>
 				) : (
 					<div className="grid grid-cols-2 divide-x divide-border pt-2">
-						<DirectionColumn fromTeam={1} mutualReady={mutualReady} className="pr-2" stores={stores} />
-						<DirectionColumn fromTeam={2} mutualReady={mutualReady} className="pl-2" stores={stores} />
+						<DirectionColumn fromTeam={1} mutualReady={mutualReady} className="pe-2" stores={stores} />
+						<DirectionColumn fromTeam={2} mutualReady={mutualReady} className="ps-2" stores={stores} />
 					</div>
 				)}
 			</ScrollArea>
@@ -82,7 +82,7 @@ function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; cla
 						props.mutualReady && entry.position === 1 && 'outline-dashed outline-1 outline-amber-500/60',
 					)}
 				>
-					<span className="w-4 text-right text-xs text-muted-foreground tabular-nums shrink-0">{entry.position}</span>
+					<span className="w-4 text-end text-xs text-muted-foreground tabular-nums shrink-0">{entry.position}</span>
 					<span className="min-w-0 truncate">
 						{entry.player ? (
 							<PlayerDisplay player={entry.player} stores={stores} />
@@ -90,7 +90,7 @@ function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; cla
 							<span className="text-muted-foreground">{entry.playerId}</span>
 						)}
 					</span>
-					<span className="ml-auto shrink-0">
+					<span className="ms-auto shrink-0">
 						<PermissionDeniedTooltip denied={switchNowDenied}>
 							<Button
 								data-tour="switch-now"
