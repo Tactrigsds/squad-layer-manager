@@ -688,6 +688,8 @@ function RuleRow({
 	// name exists yet: group names come from the rules themselves, so a half-typed name is already an "existing" group
 	// and the field would turn into a combo box under the keystroke that created it.
 	const [namingNewGroup, setNamingNewGroup] = React.useState(groupNames.length === 0)
+	// only a row the operator switched to naming takes focus, not every fresh row on mount
+	const [focusGroupName, setFocusGroupName] = React.useState(false)
 	// switching source discards the old source's field: the variants share only `group`, and a stale `flag` sitting on an
 	// admin-list rule would be written straight back out again
 	function setSource(type: PG.GroupRuleSource) {
@@ -741,6 +743,7 @@ function RuleRow({
 						onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
 						numeric={false}
 						placeholder={tr.text(PG_Msgs.groupNamePlaceholder())}
+						autoFocus={focusGroupName}
 					/>
 					{groupNames.length > 0 && (
 						<Button
@@ -773,8 +776,10 @@ function RuleRow({
 					]}
 					onSelect={(next) => {
 						if (!next) return
-						if (next === ADD_NEW_GROUP) setNamingNewGroup(true)
-						else onChange(idx, { group: next })
+						if (next === ADD_NEW_GROUP) {
+							setNamingNewGroup(true)
+							setFocusGroupName(true)
+						} else onChange(idx, { group: next })
 					}}
 				/>
 			)}
@@ -3337,6 +3342,7 @@ function TextInputField({
 	numeric,
 	secret,
 	placeholder,
+	autoFocus,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
@@ -3344,6 +3350,7 @@ function TextInputField({
 	numeric: boolean
 	secret?: boolean
 	placeholder?: string
+	autoFocus?: boolean
 }) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
@@ -3363,6 +3370,7 @@ function TextInputField({
 			ref={ref}
 			type={secret ? 'password' : numeric ? 'number' : 'text'}
 			placeholder={placeholder}
+			autoFocus={autoFocus}
 			defaultValue={format(value$.getValue())}
 			onChange={(e) => push(numeric ? (e.currentTarget.value === '' ? '' : e.currentTarget.valueAsNumber) : e.currentTarget.value)}
 		/>
