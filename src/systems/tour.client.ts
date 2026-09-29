@@ -111,7 +111,7 @@ export type TourTag =
 	| 'groupingsDocs'
 
 const SCORES_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/layer_data.md'
-const GROUPINGS_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#6-player-groupings'
+const GROUPINGS_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#6-player-grouping-modes'
 
 const teamName =
 	(color: string): Msgs.TagRenderer =>

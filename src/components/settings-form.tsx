@@ -535,7 +535,13 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 		type: 'relative-to-drag-item',
 		slots: [{ position, dragItem: { type: 'grouping-rule', id: ruleDragId(groupingId, idx) } }],
 	})
-	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
+	return (
+		<li
+			ref={drop.ref}
+			data-over={drop.isDropTarget}
+			className="col-span-full my-0.5 h-1 rounded bg-primary data-[over=false]:invisible"
+		/>
+	)
 }
 
 // sentinel option: leaves the list and lets a name be typed instead
@@ -700,7 +706,7 @@ function RuleRow({
 		<li
 			ref={drag.ref}
 			data-dragging={drag.isDragging}
-			className="grid grid-cols-[auto_1.5rem_7rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md bg-background data-[dragging=true]:opacity-40"
+			className="col-span-full grid grid-cols-subgrid items-center rounded-md bg-background data-[dragging=true]:opacity-40"
 		>
 			<button
 				type="button"
@@ -713,7 +719,18 @@ function RuleRow({
 			<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}.</span>
 			<Select value={rule.type} onValueChange={(next) => setSource(next as PG.GroupRuleSource)}>
 				<SelectTrigger className="h-8" aria-label={tr.text(PG_Msgs.ruleSource())}>
-					<SelectValue />
+					{/* every label stacked in one cell, so the trigger is as wide as the widest in any locale */}
+					<span className="grid">
+						{PG.GROUP_RULE_SOURCES.map((source) => (
+							<span
+								key={source}
+								aria-hidden={source !== rule.type}
+								className={cn('col-start-1 row-start-1', source !== rule.type && 'invisible')}
+							>
+								{tr.text(PG_Msgs.groupRuleSourceLabels[source])}
+							</span>
+						))}
+					</span>
 				</SelectTrigger>
 				<SelectContent>
 					{PG.GROUP_RULE_SOURCES.map((source) => (
@@ -882,42 +899,44 @@ function GroupingCard({
 				<p className="text-xs text-muted-foreground">{tr.text(PG_Msgs.rulesBlurb())}</p>
 				{rules.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(PG_Msgs.noRules())}</p>}
 				{rules.length > 0 && (
-					// column headers, aligned to the same grid template as RuleRow
-					<div className="grid grid-cols-[auto_1.5rem_7rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-0 text-xs font-medium text-muted-foreground">
-						<span />
-						<span />
-						<span />
-						<span>{tr.text(PG_Msgs.matchesColumn())}</span>
-						<span />
-						<span>{tr.text(PG_Msgs.mappedGroupingColumn())}</span>
-						<span />
+					// the headers and every rule row are subgrids of this one, so the `auto` source column fits its widest label
+					<div className="grid grid-cols-[auto_1.5rem_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] gap-x-2">
+						<div className="col-span-full grid grid-cols-subgrid items-center text-xs font-medium text-muted-foreground">
+							<span />
+							<span />
+							<span />
+							<span>{tr.text(PG_Msgs.matchesColumn())}</span>
+							<span />
+							<span>{tr.text(PG_Msgs.groupColumn())}</span>
+							<span />
+						</div>
+						<ol className="col-span-full grid grid-cols-subgrid">
+							{rules.map((rule, idx) => (
+								// oxlint-disable-next-line no-array-index-key
+								<React.Fragment key={idx}>
+									<RuleDropSeparator position="before" groupingId={groupingId} idx={idx} />
+									<RuleRow
+										rule={rule}
+										idx={idx}
+										groupingId={groupingId}
+										groupNames={groupNames}
+										groupColors={groupColors}
+										usedFlags={rules.flatMap((r) => (r.type === 'battlemetrics' ? [r.flag] : []))}
+										usedAdminGroups={rules.flatMap((r) => (r.type === 'admin-list' ? [r.adminGroup] : []))}
+										usedRoleIds={rules.flatMap((r) => (r.type === 'discord-role' ? [r.roleId] : []))}
+										adminGroupOptions={adminGroupOptions}
+										value$={value$}
+										reset$={reset$}
+										onReplace={replaceRule}
+										onChange={changeRule}
+										onRemove={() => removeRule(idx)}
+									/>
+								</React.Fragment>
+							))}
+							<RuleDropSeparator position="after" groupingId={groupingId} idx={rules.length - 1} />
+						</ol>
 					</div>
 				)}
-				<ol>
-					{rules.map((rule, idx) => (
-						// oxlint-disable-next-line no-array-index-key
-						<React.Fragment key={idx}>
-							<RuleDropSeparator position="before" groupingId={groupingId} idx={idx} />
-							<RuleRow
-								rule={rule}
-								idx={idx}
-								groupingId={groupingId}
-								groupNames={groupNames}
-								groupColors={groupColors}
-								usedFlags={rules.flatMap((r) => (r.type === 'battlemetrics' ? [r.flag] : []))}
-								usedAdminGroups={rules.flatMap((r) => (r.type === 'admin-list' ? [r.adminGroup] : []))}
-								usedRoleIds={rules.flatMap((r) => (r.type === 'discord-role' ? [r.roleId] : []))}
-								adminGroupOptions={adminGroupOptions}
-								value$={value$}
-								reset$={reset$}
-								onReplace={replaceRule}
-								onChange={changeRule}
-								onRemove={() => removeRule(idx)}
-							/>
-						</React.Fragment>
-					))}
-					{rules.length > 0 && <RuleDropSeparator position="after" groupingId={groupingId} idx={rules.length - 1} />}
-				</ol>
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
 					{tr.text(PG_Msgs.addRule())}

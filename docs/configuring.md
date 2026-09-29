@@ -42,7 +42,7 @@ the lists that apply to it. See [2.2](#22-server-admin-lists).
 The groups in your admin list do more than mark who is an admin. You can also:
 
 - assign [SLM roles](#34-assigning-roles) to the members of a group
-- [colour players by group](#6-player-groupings) in the players panel and the activity charts
+- [colour players by group](#6-player-grouping-modes) in the players panel and the activity charts
 
 When you add your first real admin list, add it to the `admins` role as well. The default assignment names only the
 sandbox's own list, so a new list grants nobody the `admins` role until you name it there. See
@@ -267,12 +267,12 @@ aliases used to be.
 See [command_triggers.md](command_triggers.md) for the template syntax, what happens to words the caller leaves out,
 and the limits on what a trigger can reach.
 
-### 6. Player groupings
+### 6. Player grouping modes
 
-A _player grouping_ sorts players into named, coloured groups, for administration and for monitoring balance.
+A _grouping mode_ sorts players into named, coloured groups, for administration and for monitoring balance.
 Configure them under _Players & Balance_.
 
-A grouping is an ordered list of rules, and a player joins the group of the first rule they match.
+A grouping mode is an ordered list of rules, and a player joins the group of the first rule they match.
 
 A rule can match on:
 
@@ -281,11 +281,11 @@ A rule can match on:
 - a regex on the player's username, which includes any tags they have configured
 - a discord role, if the player's steam account is linked to their discord account
 
-Here is a grouping keyed on admin list groups:
+Here is a grouping mode keyed on admin list groups:
 
 ![player_groupings](configuring_screenshots/player_groupings.png)
 
-And here is TacTrig's grouping for monitoring balance:
+And here is TacTrig's grouping mode for monitoring balance:
 
 ![player_groupings_balance](configuring_screenshots/player_groupings_balance.png)
 
@@ -297,7 +297,7 @@ SLM then colour-codes the usernames of grouped players wherever they appear:
 
 ![color_coded_usernames](configuring_screenshots/color_coded_usernames.png)
 
-The players panel and the activity charts pick which grouping to show, and the stats panel breaks the population
+The players panel and the activity charts pick which grouping mode to show, and the stats panel breaks the population
 down by it:
 
 ![teams_breakdown](configuring_screenshots/teams_breakdown.png)

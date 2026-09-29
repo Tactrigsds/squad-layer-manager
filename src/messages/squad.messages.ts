@@ -381,7 +381,7 @@ export const timeoutsTab = def('Timeouts')
 
 export const timeoutsTabHint = def('Show active kick timeouts')
 
-export const groupingLabel = def('Grouping')
+export const groupingLabel = def('Grouping mode')
 
 export const allGroupings = def('All')
 
@@ -491,7 +491,7 @@ export const ingameTagsLabel = def('Ingame')
 
 export const bmFlagsTagsLabel = def('BM flags')
 
-export const groupingTagsLabel = def('SLM groupings')
+export const groupingTagsLabel = def('SLM groups')
 
 export const adminTag = def('Admin')
 

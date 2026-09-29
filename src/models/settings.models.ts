@@ -404,7 +404,7 @@ export const GlobalSettingsSchema = z
 				"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
 			),
 		playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
-			'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
+			'Named ways of sorting players into coloured groups. Each grouping mode is an ordered list of rules assigning players to groups, highest priority first; the players panel and activity charts pick which grouping mode to show.',
 		),
 		teamAttribution: TA.SettingsSchema.prefault(TA.DEFAULT_SETTINGS).describe(
 			'How players of a finished match are attributed to a team for the historical team breakdown: each player counts for the team they ' +
