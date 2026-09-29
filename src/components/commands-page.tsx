@@ -77,7 +77,7 @@ export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string;
 	}
 	return (
 		<div className="flex items-center gap-1">
-			<code className="px-2 py-1 bg-muted rounded text-sm font-mono">{cmdString}</code>
+			<code className="px-2 py-1 bg-muted rounded text-sm font-mono ltr-isolate">{cmdString}</code>
 			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={tr.text(CMD_Msgs.copyCommand(cmdString))}>
 				<Icons.Copy className="h-3 w-3" />
 			</Button>
@@ -120,7 +120,7 @@ function CommandDetails({
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
 	return (
-		<div className="space-y-3 border-l-2 pl-3 ml-1">
+		<div className="space-y-3 border-s-2 ps-3 ms-1">
 			{args.length > 0 && (
 				<dl className="space-y-2">
 					{args.map((arg) => {
@@ -130,14 +130,14 @@ function CommandDetails({
 						return (
 							<div key={arg.name} className="text-sm">
 								<dt className="flex flex-wrap items-baseline gap-2">
-									<code className="font-mono text-xs bg-muted rounded px-1 py-0.5">
+									<code className="font-mono text-xs bg-muted rounded px-1 py-0.5 ltr-isolate">
 										{fixed ? arg.name : arg.optional ? `[${arg.name}]` : `<${arg.name}>`}
 									</code>
 									{fixed ? (
 										<span className="text-xs text-muted-foreground font-mono">{tr.text(CMD_Msgs.fixedArg(arg.fixed))}</span>
 									) : (
 										<>
-											<span className="text-xs text-muted-foreground font-mono">{arg.syntax}</span>
+											<span className="text-xs text-muted-foreground font-mono ltr-isolate">{arg.syntax}</span>
 											{arg.optional && <span className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.optionalArg())}</span>}
 										</>
 									)}
@@ -192,7 +192,7 @@ function CommandDetails({
 // worth saying is which plugin owns it.
 function PluginCommandDetails({ plugin }: { plugin: NonNullable<Entry['plugin']> }) {
 	return (
-		<dl className="space-y-2 border-l-2 pl-3 ml-1 text-sm">
+		<dl className="space-y-2 border-s-2 ps-3 ms-1 text-sm">
 			<div>
 				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginOwner())}</dt>
 				<dd>{plugin.pluginName}</dd>
@@ -245,7 +245,7 @@ function CommandEntry({
 				})}
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
-						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3" />}
+						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3 rtl:-scale-x-100" />}
 						{tr.text(CMD_Msgs.detailsToggle())}
 					</Button>
 				</CollapsibleTrigger>
@@ -327,17 +327,17 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 	const description = entry.plugin ? entry.plugin.decl.description : tr.text(CMD_Msgs.descriptions[entry.cmdId as CMD.CommandId])
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
-			<div className="flex items-center justify-between gap-1">
-				<code className="truncate font-mono text-sm font-medium" title={string}>
+			<div className="flex flex-wrap items-center justify-between gap-x-1">
+				<code className="min-w-0 truncate font-mono text-sm font-medium ltr-isolate" title={string}>
 					{string}
 				</code>
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
+					className="ms-auto h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
 					onClick={() => onDetails(CMDH.commandsPageAnchor(entry.cmdId))}
 				>
-					{tr.text(CMD_Msgs.detailsToggle())} <Icons.ArrowRight className="h-3 w-3" />
+					{tr.text(CMD_Msgs.detailsToggle())} <Icons.ArrowRight className="h-3 w-3 rtl:-scale-x-100" />
 				</Button>
 			</div>
 			<p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
@@ -780,13 +780,13 @@ export default function CommandsPage() {
 					    commands pass behind it as they scroll away. */}
 					<aside
 						style={{ zIndex: stickyZIndex }}
-						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-r bg-background pr-2"
+						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-fit min-w-52 max-w-64 shrink-0 flex-col self-start border-e bg-background pe-2"
 					>
 						<div className="relative shrink-0 bg-background pt-2 pb-2">
-							<Icons.Search className="absolute left-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+							<Icons.Search className="absolute inset-s-2 top-[1.15rem] -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
 								ref={searchRef}
-								className="h-8 pl-7"
+								className="h-8 ps-7"
 								placeholder={tr.text(CMD_Msgs.searchCommands())}
 								onChange={(e) => {
 									setQuery(e.target.value)
@@ -805,11 +805,11 @@ export default function CommandsPage() {
 											<button
 												type="button"
 												onClick={() => navigateToEntry(section.id)}
-												className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
+												className="block w-full border-b border-border px-1 pb-1 text-start text-xs font-semibold uppercase tracking-wide break-words text-foreground hover:text-foreground/70"
 											>
 												{section.label}
 											</button>
-											<ul className="space-y-px pl-2 pt-1">
+											<ul className="space-y-px ps-2 pt-1">
 												{section.entries.map((entry) => (
 													<li key={entry.id}>
 														<button
@@ -817,14 +817,14 @@ export default function CommandsPage() {
 															data-toc-id={entry.id}
 															onClick={() => navigateToEntry(entry.id)}
 															className={cn(
-																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
+																'block w-full truncate rounded px-1 py-0.5 text-start font-mono text-sm hover:text-foreground',
 																entry.id === tocHighlightId
 																	? 'bg-accent text-accent-foreground font-medium'
 																	: 'text-muted-foreground',
 															)}
 															title={entry.label}
 														>
-															{entry.label}
+															<bdi>{entry.label}</bdi>
 														</button>
 													</li>
 												))}

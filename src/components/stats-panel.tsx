@@ -12,8 +12,11 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Chart from '@/lib/chart'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as MH_Msgs from '@/messages/match-history.messages'
+import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -25,6 +28,8 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 
 // The Teams Breakdown panel. `wide` is the two-column dashboard's form: the legend rides in the title bar and the two
 // teams face each other as mirrored bars. Narrow stacks them, for a side column or a phone.
+const trTooltip = tr.withTags({ label: (chunks) => <span className="font-semibold">{chunks}</span> })
+
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wide?: boolean; className?: string }) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
@@ -57,12 +62,12 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 
 	return (
 		<Card data-tour="teams-breakdown" className={cn('w-full', props.className)}>
-			<CardHeader className="whitespace-nowrap">
+			<CardHeader className="flex-wrap gap-y-0.5 whitespace-nowrap">
 				<CardTitle className="flex items-center gap-1.5 shrink-0">
 					<Icons.BarChart2 className="h-3.5 w-3.5" />
 					{tr.text(MH_Msgs.teamBreakdowns())}
 				</CardTitle>
-				{props.wide && <span ref={setLegendSlot} className="flex items-center min-w-0 overflow-hidden" />}
+				{props.wide && <span ref={setLegendSlot} className="flex items-center min-w-0" />}
 				<span className="flex-1" />
 				{hasData && groupings.ids.length > 1 && (
 					<span className="flex gap-0.5">
@@ -161,7 +166,7 @@ function TeamBreakdown(props: {
 			: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
 					const originalIndex = keptIndices[datum.seriesIndex]
 					let group = chartSeries[datum.seriesIndex].label
-					if (group === 'Other') group = TeamsPanelPrt.FILTER_NONE
+					if (group === tr.text(PG_Msgs.ungrouped())) group = TeamsPanelPrt.FILTER_NONE
 					if (modifiers.shift) {
 						const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
 						SquadServerFrame.Actions.selectPlayerIds(
@@ -187,11 +192,9 @@ function TeamBreakdown(props: {
 				<span className="font-semibold">{breakdown.rows[datum.rowIndex].label}</span>
 				<span className="flex items-center gap-1.5">
 					<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
-					<span>
-						<span className="font-semibold">{series.label}</span>: {datum.value}
-					</span>
+					<span>{trTooltip.richText(UI_Msgs.labelValue(series.label, datum.value))}</span>
 				</span>
-				{members.length > 0 && <span className="text-text-2">{members.map((member) => member.name).join(', ')}</span>}
+				{members.length > 0 && <span className="text-text-2">{MsgFmt.formatList(members.map((member) => member.name))}</span>}
 			</div>
 		)
 	}

@@ -16,7 +16,9 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as LTag from '@/models/layer-tags.models'
+import { t } from '@/models/messages.models'
 import * as PG from '@/models/player-groupings.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as TA from '@/models/team-attribution.models'
@@ -92,28 +94,47 @@ export function settingPathForChange(path: string): string {
 // settings GUI; rbac.server converts them to bigint at the boundary
 const RoleAssignmentsSchema = z
 	.object({
-		discordRoleIds: z.array(ZodUtils.ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
-		discordUserIds: z.array(ZodUtils.ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
-		everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
+		discordRoleIds: z
+			.array(ZodUtils.ParsableBigIntSchema)
+			.prefault([])
+			.meta(SDoc.of({ label: t('Discord Role IDs'), description: t('Discord role ids whose members are granted this role') })),
+		discordUserIds: z
+			.array(ZodUtils.ParsableBigIntSchema)
+			.prefault([])
+			.meta(SDoc.of({ label: t('Discord User IDs'), description: t('Discord user ids granted this role') })),
+		everyMember: z
+			.boolean()
+			.prefault(false)
+			.meta(SDoc.of({ label: t('Every Member'), description: t('Grant this role to every member of the Discord server') })),
 		ingameAdminLists: z
 			.array(SM.AdminListIdSchema)
 			.prefault([])
-			.describe(
-				'Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list ' +
-					"places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers " +
-					'that actually use the named list.',
+			.meta(
+				SDoc.of({
+					label: t('In-game Admin Lists'),
+					description: t(
+						"Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers that actually use the named list.",
+					),
+				}),
 			),
 		adminListGroups: z
 			.array(
 				z.object({
-					listId: SM.AdminListIdSchema.describe('The admin list the group belongs to'),
-					groupId: z.string().min(1).describe('The group name within that list'),
+					listId: SM.AdminListIdSchema.meta(SDoc.of({ label: t('List ID'), description: t('The admin list the group belongs to') })),
+					groupId: z
+						.string()
+						.min(1)
+						.meta(SDoc.of({ label: t('Group ID'), description: t('The group name within that list') })),
 				}),
 			)
 			.prefault([])
-			.describe(
-				'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, ' +
-					'admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
+			.meta(
+				SDoc.of({
+					label: t('Admin List Groups'),
+					description: t(
+						'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
+					),
+				}),
 			),
 	})
 	.prefault({})
@@ -122,94 +143,158 @@ const ServerSettingsGrantSchema = z.object({
 	access: z
 		.enum(['read', 'write', 'write-sensitive'])
 		.prefault('write')
-		.describe(
-			'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
+		.meta(
+			SDoc.of({
+				label: t('Access'),
+				description: t(
+					'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
+				),
+			}),
 		),
-	serverIds: z.array(z.string()).prefault([]).describe('Server ids this grant applies to; empty = all servers'),
+	serverIds: z
+		.array(z.string())
+		.prefault([])
+		.meta(SDoc.of({ label: t('Server IDs'), description: t('Server ids this grant applies to; empty = all servers') })),
 	paths: z
 		.array(SettingsGrantPathSchema)
 		.prefault([])
-		.describe(
-			'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
+		.meta(
+			SDoc.of({
+				label: t('Paths'),
+				description: t(
+					'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
+				),
+			}),
 		),
 })
 
 // A server-scoped permission restricted to specific servers. The unrestricted (all-servers) form is the bare
 // expression in `permissions`, so a grant here always names at least one server.
 const ServerGrantSchema = z.object({
-	permission: RBAC.SERVER_PERMISSION_TYPE.describe('The server-scoped permission this grant covers'),
-	serverIds: z.array(z.string()).min(1).describe('Server ids this grant applies to'),
+	permission: RBAC.SERVER_PERMISSION_TYPE.meta(
+		SDoc.of({ label: t('Permission'), description: t('The server-scoped permission this grant covers') }),
+	),
+	serverIds: z
+		.array(z.string())
+		.min(1)
+		.meta(SDoc.of({ label: t('Server IDs'), description: t('Server ids this grant applies to') })),
 })
 
 // An action a plugin declares, granted to this role. Stored as plain strings rather than validated against a
 // live registry: plugins load long after settings do, so a grant has to survive its plugin being stopped,
 // uninstalled or not yet activated. An id nothing declares simply grants nothing.
 const PluginGrantSchema = z.object({
-	pluginId: z.string().min(1).describe('The plugin that declares the action'),
-	permission: z.string().min(1).describe('The action, as the plugin declares it'),
+	pluginId: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Plugin ID'), description: t('The plugin that declares the action') })),
+	permission: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Permission'), description: t('The action, as the plugin declares it') })),
 	serverIds: z
 		.array(z.string())
 		.prefault([])
-		.describe('Server ids this grant applies to; empty = all servers, which is also what a plugin-wide action needs'),
+		.meta(
+			SDoc.of({
+				label: t('Server IDs'),
+				description: t('Server ids this grant applies to; empty = all servers, which is also what a plugin-wide action needs'),
+			}),
+		),
 })
 
 const RoleConfigSchema = z.object({
 	permissions: z
 		.array(RBAC.ROLE_PERMISSION_EXPRESSION)
 		.prefault([])
-		.describe(
-			'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); ' +
-				'use the settings-grants below for restricted grants.',
+		.meta(
+			SDoc.of({
+				label: t('Permissions'),
+				description: t(
+					'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); use the settings-grants below for restricted grants.',
+				),
+			}),
 		),
 	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched), so the timeout cap
 	// is its own field. Absent = the role cannot issue timeouts; negation doesn't apply, drop the field instead.
-	maxTimeout: ZodUtils.HumanTime.optional().describe(
-		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
+	maxTimeout: ZodUtils.HumanTime.optional().meta(
+		SDoc.of({
+			label: t('Max Timeout'),
+			description: t(
+				'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
+			),
+		}),
 	),
 	maxLayerRequests: z
 		.number()
 		.int()
 		.positive()
 		.optional()
-		.describe(
-			'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
+		.meta(
+			SDoc.of({
+				label: t('Max Layer Requests'),
+				description: t(
+					'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
+				),
+			}),
 		),
 	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
 	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
 	globalSettingsGrants: z
 		.array(SettingsGrantPathSchema)
 		.prefault([])
-		.describe(
-			'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). ' +
-				'Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
+		.meta(
+			SDoc.of({
+				label: t('Global Settings Grants'),
+				description: t(
+					'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
+				),
+			}),
 		),
 	serverSettingsGrants: z
 		.array(ServerSettingsGrantSchema)
 		.prefault([])
-		.describe(
-			"Restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. " +
-				'Matching "!server-settings:*" denials in permissions override these.',
+		.meta(
+			SDoc.of({
+				label: t('Server Settings Grants'),
+				description: t(
+					'Restricted server-settings grants. Any grant also lets the role view the server\'s (non-sensitive) settings. Matching "!server-settings:*" denials in permissions override these.',
+				),
+			}),
 		),
 	serverGrants: z
 		.array(ServerGrantSchema)
 		.prefault([])
-		.describe(
-			'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. ' +
-				'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
+		.meta(
+			SDoc.of({
+				label: t('Server Grants'),
+				description: t(
+					'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
+				),
+			}),
 		),
 	pluginGrants: z
 		.array(PluginGrantSchema)
 		.prefault([])
-		.describe(
-			'Actions the installed plugins define for themselves. Each names the plugin and the action; a grant for a plugin ' +
-				'that is not running does nothing, and is kept so stopping a plugin does not lose it.',
+		.meta(
+			SDoc.of({
+				label: t('Plugin Grants'),
+				description: t(
+					'Actions the installed plugins define for themselves. Each names the plugin and the action; a grant for a plugin that is not running does nothing, and is kept so stopping a plugin does not lose it.',
+				),
+			}),
 		),
-	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
+	assignments: RoleAssignmentsSchema.meta(
+		SDoc.of({ label: t('Assignments'), description: t('Which discord roles/users/members are granted this role') }),
+	),
 })
 
 export const RbacSettingsSchema = z
 	.object({
-		roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe('Defined roles, keyed by id.'),
+		roles: z
+			.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema)
+			.prefault({})
+			.meta(SDoc.of({ label: t('Roles'), description: t('Defined roles, keyed by id.') })),
 	})
 	.superRefine((val, ctx) => {
 		// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
@@ -324,8 +409,8 @@ export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; drop
 
 export const NavLinkSchema = z.array(
 	z.object({
-		label: z.string(),
-		url: z.url(),
+		label: z.string().meta(SDoc.of({ label: t('Label') })),
+		url: z.url().meta(SDoc.of({ label: t('URL') })),
 	}),
 )
 
@@ -337,20 +422,33 @@ export const GlobalSettingsSchema = z
 			.string()
 			.prefault('green')
 			.nullable()
-			.describe(
-				"Any CSS colour. Draws the top navigation bar's bottom border, and the accent under the letters of the logo and the favicon, " +
-					'so instances are distinguishable at a glance and in the browser tab. Set to null for the plain mark and a default border.',
+			.meta(
+				SDoc.of({
+					label: t('Top Bar Color'),
+					description: t(
+						"Any CSS colour. Draws the top navigation bar's bottom border, and the accent under the letters of the logo and the favicon, so instances are distinguishable at a glance and in the browser tab. Set to null for the plain mark and a default border.",
+					),
+				}),
 			),
-		adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-			'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that ' +
-				'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} ' +
-				"(timeouts only), {{squadName}} (the target squad's name when the action targets a whole squad, empty otherwise) " +
-				'and any Message Variables below.',
+		adminActionReasons: AAR.AdminActionReasonsSchema.meta(
+			SDoc.of({
+				label: t('Admin Action Reasons'),
+				description: t(
+					"Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that action, so every reason needs at least one. The text reaches the player verbatim and takes '{{label}},' '{{duration}}' (timeouts only), '{{squadName}}' (the target squad's name when the action targets a whole squad, empty otherwise) and any Message Variables below.",
+				),
+			}),
 		),
 		requireReasonFor: z
 			.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE)
 			.prefault([])
-			.describe('Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.'),
+			.meta(
+				SDoc.of({
+					label: t('Require a Reason'),
+					description: t(
+						'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
+					),
+				}),
+			),
 		messageVariables: z
 			.array(
 				z.object({
@@ -359,26 +457,39 @@ export const GlobalSettingsSchema = z
 						.trim()
 						.regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
 							error: 'Letters, digits and underscore only; must not start with a digit',
-						}),
-					value: z.string(),
+						})
+						.meta(SDoc.of({ label: t('Name') })),
+					value: z.string().meta(SDoc.of({ label: t('Value') })),
 				}),
 			)
 			.prefault([])
-			.describe(
-				'Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz"). A value is ' +
-					'itself a template, so it can reference the other variables here, as long as the references do not form a cycle.',
+			.meta(
+				SDoc.of({
+					label: t('Message Variables'),
+					description: t(
+						'Custom variables usable in any admin action reason as \'{{name}}\' (e.g. name "discord", value "discord.gg/xyz"). A value is itself a template, so it can reference the other variables here, as long as the references do not form a cycle.',
+					),
+				}),
 			),
-		chat: CHAT.ChatConfigSchema.prefault({}).describe(
-			'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
+		chat: CHAT.ChatConfigSchema.prefault({}).meta(
+			SDoc.of({
+				label: t('Chat Feed Suppression'),
+				description: t('What the live chat feed leaves out. Neither list changes what is actually sent in-game.'),
+			}),
 		),
-		logFilePollInterval: ZodUtils.HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+		logFilePollInterval: ZodUtils.HumanTime.prefault('1s').meta(
+			SDoc.of({ label: t('Log File Poll Interval'), description: t('How often a local-file log source checks the log for new lines.') }),
+		),
 		seedSandboxServer: z
 			.boolean()
 			.prefault(true)
-			.describe(
-				'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so ' +
-					'it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any ' +
-					'existing sandbox alone; delete it from the server registry to be rid of it.',
+			.meta(
+				SDoc.of({
+					label: t('Seed Sandbox Server'),
+					description: t(
+						'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any existing sandbox alone; delete it from the server registry to be rid of it.',
+					),
+				}),
 			),
 		tickRateThresholds: z
 			.object({
@@ -386,66 +497,111 @@ export const GlobalSettingsSchema = z
 					.number()
 					.positive()
 					.prefault(60)
-					.describe('At or above this tick rate the live server tick rate displays as good (green)'),
+					.meta(
+						SDoc.of({
+							label: t('Good'),
+							description: t('At or above this tick rate the live server tick rate displays as good (green)'),
+						}),
+					),
 				warning: z
 					.number()
 					.positive()
 					.prefault(50)
-					.describe(
-						'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+					.meta(
+						SDoc.of({
+							label: t('Warning'),
+							description: t(
+								'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+							),
+						}),
 					),
 			})
 			.prefault({})
-			.describe('Thresholds for coloring the live server tick rate display'),
+			.meta(SDoc.of({ label: t('Tick Rate Thresholds'), description: t('Thresholds for coloring the live server tick rate display') })),
 		playerFlagsRequiringNote: z
 			.array(z.uuid())
 			.prefault([])
-			.describe(
-				"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
+			.meta(
+				SDoc.of({
+					label: t('Player Flags Requiring a Note'),
+					description: t(
+						"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
+					),
+				}),
 			),
-		playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
-			'Named ways of sorting players into coloured groups. Each grouping mode is an ordered list of rules assigning players to groups, highest priority first; the players panel and activity charts pick which grouping mode to show.',
+		playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).meta(
+			SDoc.of({
+				label: t('Player Grouping Modes'),
+				description: t(
+					'Named ways of sorting players into coloured groups. Each grouping mode is an ordered list of rules assigning players to groups, highest priority first; the players panel and activity charts pick which grouping mode to show.',
+				),
+			}),
 		),
-		teamAttribution: TA.SettingsSchema.prefault(TA.DEFAULT_SETTINGS).describe(
-			'How players of a finished match are attributed to a team for the historical team breakdown: each player counts for the team they ' +
-				'spent the most time on. These thresholds carve marginal players out of the breakdown chart; carved-out players still appear in ' +
-				'the historical teams view, flagged. Players who never joined a squad or never took part in a kill or wound are always carved out.',
+		teamAttribution: TA.SettingsSchema.prefault(TA.DEFAULT_SETTINGS).meta(
+			SDoc.of({
+				label: t('Team Attribution'),
+				description: t(
+					'How players of a finished match are attributed to a team for the historical team breakdown: each player counts for the team they spent the most time on. These thresholds carve marginal players out of the breakdown chart; carved-out players still appear in the historical teams view, flagged. Players who never joined a squad or never took part in a kill or wound are always carved out.',
+				),
+			}),
 		),
-		navLinks: NavLinkSchema.optional().describe(
-			'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
+		navLinks: NavLinkSchema.optional().meta(
+			SDoc.of({
+				label: t('Nav Links'),
+				description: t(
+					'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
+				),
+			}),
 		),
-		warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
+		warnOnSlmStart: z
+			.boolean()
+			.prefault(false)
+			.meta(SDoc.of({ label: t('Warn on SLM Start'), description: t('Warn all in-game admins when SLM starts or restarts.') })),
 		discord: z
 			.object({
 				expandHistoryLinks: z
 					.boolean()
 					.prefault(true)
-					.describe(
-						'Reply to a message linking a selection on the history page with the selected events as text. Only for a poster who can ' +
-							'use SLM, and only from the servers they can see. Needs Message Content Intent switched on for the bot in the discord ' +
-							'developer portal.',
+					.meta(
+						SDoc.of({
+							label: t('Expand History Links'),
+							description: t(
+								'Reply to a message linking a selection on the history page with the selected events as text. Only for a poster who can use SLM, and only from the servers they can see. Needs Message Content Intent switched on for the bot in the discord developer portal.',
+							),
+						}),
 					),
 			})
 			.prefault({})
-			.describe("What SLM's discord bot does in your discord server."),
+			.meta(SDoc.of({ label: t('Discord'), description: t("What SLM's discord bot does in your discord server.") })),
 		allowedPrefixes: z
 			.array(CMD.PrefixConfigSchema)
 			.min(1)
 			.prefault([{ prefix: CMD.DEFAULT_PREFIX, replyToUnknown: true }])
-			.describe('Prefixes an in-game command may start with. Every command trigger must begin with one of these.'),
-		defaultPrefix: CMD.PrefixSchema.prefault(CMD.DEFAULT_PREFIX).describe(
-			'The allowed prefix that commands introduced by future SLM versions are seeded with',
+			.meta(
+				SDoc.of({
+					label: t('Allowed Prefixes'),
+					description: t('Prefixes an in-game command may start with. Every command trigger must begin with one of these.'),
+				}),
+			),
+		defaultPrefix: CMD.PrefixSchema.prefault(CMD.DEFAULT_PREFIX).meta(
+			SDoc.of({
+				label: t('Default Prefix'),
+				description: t('The allowed prefix that commands introduced by future SLM versions are seeded with'),
+			}),
 		),
-		commands: CMD.AllCommandConfigSchema,
+		commands: CMD.AllCommandConfigSchema.meta(SDoc.of({ label: t('Commands') })),
 		adminLists: z
 			.record(SM.AdminListIdSchema, SM.AdminListDefSchema)
 			.prefault({})
-			.describe(
-				'The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, ' +
-					'and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role ' +
-					"assignment say which list's groups it means.",
+			.meta(
+				SDoc.of({
+					label: t('Admin Lists'),
+					description: t(
+						"The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role assignment say which list's groups it means.",
+					),
+				}),
 			),
-		rbac: RbacSettingsSchema,
+		rbac: RbacSettingsSchema.meta(SDoc.of({ label: t('Roles') })),
 		layerTable: LQY.LayerTableConfigSchema.prefault({
 			orderedColumns: [
 				{ name: 'id', visible: false },
@@ -479,15 +635,19 @@ export const GlobalSettingsSchema = z
 					args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }],
 				},
 			],
-		}).describe('Configures the appearance of the layers table and layer select menu'),
-		layerTags: LTag.TagsSchema,
+		}).meta(SDoc.of({ label: t('Layer Table'), description: t('Configures the appearance of the layers table and layer select menu') })),
+		layerTags: LTag.TagsSchema.meta(SDoc.of({ label: t('Layer Tags') })),
 		layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 			pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
-		}).describe(
-			"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick " +
-				'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
+		}).meta(
+			SDoc.of({
+				label: t('Layer Generation Weights'),
+				description: t(
+					"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.",
+				),
+			}),
 		),
-		comments: SettingsCommentsSchema.optional(),
+		comments: SettingsCommentsSchema.optional().meta(SDoc.of({ label: t('Comments') })),
 	})
 	.superRefine((val, ctx) => {
 		const allowedPrefixes = val.allowedPrefixes ?? [{ prefix: CMD.DEFAULT_PREFIX, replyToUnknown: true }]
@@ -685,10 +845,10 @@ export const POOL_FILTER_MODE = z.enum(['include', 'exclude'])
 export type PoolFilterMode = z.infer<typeof POOL_FILTER_MODE>
 
 export const PoolFilterSettingSchema = z.object({
-	filterId: F.FilterEntityIdSchema,
-	mode: POOL_FILTER_MODE.meta({
-		description: 'Whether layers matching this filter are included in the pool or excluded from it',
-	}),
+	filterId: F.FilterEntityIdSchema.meta(SDoc.of({ label: t('Filter ID') })),
+	mode: POOL_FILTER_MODE.meta(
+		SDoc.of({ label: t('Mode'), description: t('Whether layers matching this filter are included in the pool or excluded from it') }),
+	),
 })
 export type PoolFilterSetting = z.infer<typeof PoolFilterSettingSchema>
 
@@ -696,10 +856,13 @@ export const APPLIED_FILTER_APPLY_AS = z.enum(['regular', 'inverted'])
 export type AppliedFilterApplyAs = z.infer<typeof APPLIED_FILTER_APPLY_AS>
 
 export const AppliedFilterSettingSchema = z.object({
-	filterId: F.FilterEntityIdSchema,
-	applyAs: APPLIED_FILTER_APPLY_AS.meta({
-		description: 'Whether the filter applies to layers matching it (regular) or layers NOT matching it (inverted)',
-	}),
+	filterId: F.FilterEntityIdSchema.meta(SDoc.of({ label: t('Filter ID') })),
+	applyAs: APPLIED_FILTER_APPLY_AS.meta(
+		SDoc.of({
+			label: t('Apply as'),
+			description: t('Whether the filter applies to layers matching it (regular) or layers NOT matching it (inverted)'),
+		}),
+	),
 })
 export type AppliedFilterSetting = z.infer<typeof AppliedFilterSettingSchema>
 
@@ -707,26 +870,38 @@ export const SELECTABLE_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabl
 export type SelectableFilterApplyAs = z.infer<typeof SELECTABLE_FILTER_APPLY_AS>
 
 export const SelectableFilterSettingSchema = z.object({
-	filterId: F.FilterEntityIdSchema,
-	applyAs: SELECTABLE_FILTER_APPLY_AS.meta({
-		description:
-			'The state the filter starts in during layer selection: applied (regular), applied inverted, or offered but not applied (disabled)',
-	}),
+	filterId: F.FilterEntityIdSchema.meta(SDoc.of({ label: t('Filter ID') })),
+	applyAs: SELECTABLE_FILTER_APPLY_AS.meta(
+		SDoc.of({
+			label: t('Apply as'),
+			description: t(
+				'The state the filter starts in during layer selection: applied (regular), applied inverted, or offered but not applied (disabled)',
+			),
+		}),
+	),
 })
 export type SelectableFilterSetting = z.infer<typeof SelectableFilterSettingSchema>
 
 // warn and indicate default on rather than off: every rule warned and indicated before either was configurable, so
 // an existing rule that says nothing about them must keep doing both.
 export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
-	indicate: z.boolean().prefault(true).meta({
-		description: 'Mark layers violating this rule wherever layers are displayed',
-	}),
-	warn: z.boolean().prefault(true).meta({
-		description: 'Users should be warned before saving or before the layer violating this repeat rule is played',
-	}),
-	autogen: z.boolean().optional().meta({
-		description: 'Apply this rule when autogenerating layers',
-	}),
+	indicate: z
+		.boolean()
+		.prefault(true)
+		.meta(SDoc.of({ label: t('Indicate'), description: t('Mark layers violating this rule wherever layers are displayed') })),
+	warn: z
+		.boolean()
+		.prefault(true)
+		.meta(
+			SDoc.of({
+				label: t('Warn'),
+				description: t('Users should be warned before saving or before the layer violating this repeat rule is played'),
+			}),
+		),
+	autogen: z
+		.boolean()
+		.optional()
+		.meta(SDoc.of({ label: t('Apply to Generation'), description: t('Apply this rule when autogenerating layers') })),
 })
 
 export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
@@ -734,73 +909,156 @@ export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
 export const PoolConfigurationSchema = z.object({
 	poolFilter: PoolFilterSettingSchema.nullable()
 		.prefault(null)
-		.meta({
-			description:
-				'The single filter defining pool membership. Out-of-pool layers can only be queued by users with the queue:force-write permission, ' +
-				'are warned about, and are never autogenerated. The filter entity must have both its match and miss indicators (emoji + alert message) configured.',
-		}),
-	indicateMatches: z.array(F.FilterEntityIdSchema).prefault([]).meta({
-		description: "Layers matching these filters display the filter's match indicator",
-	}),
-	indicateMisses: z.array(F.FilterEntityIdSchema).prefault([]).meta({
-		description: "Layers NOT matching these filters display the filter's miss indicator",
-	}),
-	defaultSelectable: z.array(SelectableFilterSettingSchema).prefault([]).meta({
-		description: 'Filters offered during layer selection, starting in the given state',
-	}),
-	warnFor: z.array(AppliedFilterSettingSchema).prefault([]).meta({
-		description: 'Warn when a layer matching the filter in the given state is queued or about to be played',
-	}),
-	constrainGeneration: z.array(AppliedFilterSettingSchema).prefault([]).meta({
-		description: 'Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter',
-	}),
-	layerRequestFilters: z.array(AppliedFilterSettingSchema).prefault([]).meta({
-		description:
-			'Layer requests carry these filters in the given state. Requests made in game always do; the request dialog starts with them applied.',
-	}),
+		.meta(
+			SDoc.of({
+				label: t('Pool Filter'),
+				description: t(
+					'The single filter defining pool membership. Out-of-pool layers can only be queued by users with the queue:force-write permission, are warned about, and are never autogenerated. The filter entity must have both its match and miss indicators (emoji + alert message) configured.',
+				),
+			}),
+		),
+	indicateMatches: z
+		.array(F.FilterEntityIdSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({ label: t('Indicate Matches'), description: t("Layers matching these filters display the filter's match indicator") }),
+		),
+	indicateMisses: z
+		.array(F.FilterEntityIdSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({ label: t('Indicate Misses'), description: t("Layers NOT matching these filters display the filter's miss indicator") }),
+		),
+	defaultSelectable: z
+		.array(SelectableFilterSettingSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({
+				label: t('Selectable by Default'),
+				description: t('Filters offered during layer selection, starting in the given state'),
+			}),
+		),
+	warnFor: z
+		.array(AppliedFilterSettingSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({
+				label: t('Warn For'),
+				description: t('Warn when a layer matching the filter in the given state is queued or about to be played'),
+			}),
+		),
+	constrainGeneration: z
+		.array(AppliedFilterSettingSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({
+				label: t('Constrain Generation'),
+				description: t('Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter'),
+			}),
+		),
+	layerRequestFilters: z
+		.array(AppliedFilterSettingSchema)
+		.prefault([])
+		.meta(
+			SDoc.of({
+				label: t('Layer Request Filters'),
+				description: t(
+					'Layer requests carry these filters in the given state. Requests made in game always do; the request dialog starts with them applied.',
+				),
+			}),
+		),
 	skipWarningsForTags: z
 		.array(LTag.TagIdSchema)
 		.prefault([])
-		.meta({
-			description:
-				'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the next-layer message ' +
-				'admins are shown in game. Being out of pool still gates saving on queue:force-write.',
-		}),
-	repeatRules: z
-		.array(RepeatRuleConfigSchema)
-		.describe(
-			'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is ' +
-				'broken, constrain autogeneration, or both.',
+		.meta(
+			SDoc.of({
+				label: t('Skip Warnings for Tags'),
+				description: t(
+					'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the next-layer message admins are shown in game. Being out of pool still gates saving on queue:force-write.',
+				),
+			}),
 		),
+	repeatRules: z.array(RepeatRuleConfigSchema).meta(
+		SDoc.of({
+			label: t('Repeat Rules'),
+			description: t(
+				'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is broken, constrain autogeneration, or both.',
+			),
+		}),
+	),
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
 export const RconConnectionSchema = z.object({
-	host: z.string().min(1),
-	port: z.number().min(1).max(65535),
-	password: z.string().min(1),
+	host: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Host') })),
+	port: z
+		.number()
+		.min(1)
+		.max(65535)
+		.meta(SDoc.of({ label: t('Port') })),
+	password: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Password') })),
 })
 export type RconConnection = z.infer<typeof RconConnectionSchema>
 
 export const SftpLogConnectionSchema = z.object({
-	host: z.string().min(1),
-	port: z.number().min(1).max(65535),
-	username: z.string().min(1),
-	password: z.string().min(1),
-	logFile: z.string().min(1),
-	pollInterval: ZodUtils.HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
-	reconnectInterval: ZodUtils.HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
+	host: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Host') })),
+	port: z
+		.number()
+		.min(1)
+		.max(65535)
+		.meta(SDoc.of({ label: t('Port') })),
+	username: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Username') })),
+	password: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Password') })),
+	logFile: z
+		.string()
+		.min(1)
+		.meta(SDoc.of({ label: t('Log File') })),
+	pollInterval: ZodUtils.HumanTime.prefault('1s').meta(
+		SDoc.of({ label: t('Poll Interval'), description: t('How often to poll the remote log file over SFTP for new lines.') }),
+	),
+	reconnectInterval: ZodUtils.HumanTime.prefault('5s').meta(
+		SDoc.of({ label: t('Reconnect Interval'), description: t('How long to wait between SFTP reconnection attempts.') }),
+	),
 	maxReconnectAttempts: z
 		.int()
 		.min(1)
 		.prefault(10)
-		.describe('How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.'),
+		.meta(
+			SDoc.of({
+				label: t('Max Reconnect Attempts'),
+				description: t('How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.'),
+			}),
+		),
 })
 
 export const SandboxConnectionSchema = z.object({
-	type: z.literal('sandbox'),
-	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
-	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+	type: z.literal('sandbox').meta(SDoc.of({ label: t('Type') })),
+	serverName: z
+		.string()
+		.min(1)
+		.prefault('SLM Sandbox')
+		.meta(SDoc.of({ label: t('Server Name'), description: t('The name the emulated server reports over RCON.') })),
+	maxPlayers: z
+		.int()
+		.min(2)
+		.max(200)
+		.prefault(100)
+		.meta(SDoc.of({ label: t('Max Players'), description: t('The player slot count the emulated server reports.') })),
 	// Pacing overrides for scenario-driven sandboxes (tutorials). Absent means the emulator's realistic defaults:
 	// a ~30s post-match wait and constant tick chatter. A tutorial turns the wait down so a staged roll is quick
 	// and silences the chatter so the narrated log stays legible.
@@ -808,12 +1066,33 @@ export const SandboxConnectionSchema = z.object({
 		.int()
 		.min(0)
 		.optional()
-		.describe('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
-	tickChatter: z.boolean().optional().describe('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
+		.meta(
+			SDoc.of({
+				label: t('Post-match Delay (ms)'),
+				description: t('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
+			}),
+		),
+	tickChatter: z
+		.boolean()
+		.optional()
+		.meta(
+			SDoc.of({
+				label: t('Tick Chatter'),
+				description: t('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
+			}),
+		),
 	// The layer the emulated server should hold as next at boot. A scenario-seeded sandbox sets this to its queue
 	// head so SLM's first reconcile sees the head already staged, rather than the emulator's default seed -- which
 	// it would otherwise pull into the queue as an external layer change and displace what the scenario seeded.
-	nextLayerId: z.string().optional().describe('Layer id the emulated server holds as next at boot. Omit for the emulator default.'),
+	nextLayerId: z
+		.string()
+		.optional()
+		.meta(
+			SDoc.of({
+				label: t('Next Layer ID'),
+				description: t('Layer id the emulated server holds as next at boot. Omit for the emulator default.'),
+			}),
+		),
 })
 
 // How SLM reaches a squad server, as four mutually-exclusive modes:
@@ -826,23 +1105,31 @@ export const SandboxConnectionSchema = z.object({
 //                  loopback RCON socket, so every layer below this one behaves as it does against a real
 //                  server. Nothing here is reachable from the network and nothing outbound is real; see
 //                  src/systems/sandbox.server.ts.
-export const ServerConnectionSchema = z.discriminatedUnion('type', [
-	z.object({
-		type: z.literal('local'),
-		logFile: z.string().min(1),
-		rcon: RconConnectionSchema,
-	}),
-	z.object({
-		type: z.literal('sftp'),
-		rcon: RconConnectionSchema,
-		sftp: SftpLogConnectionSchema,
-	}),
-	z.object({
-		type: z.literal('server-agent'),
-		token: z.string().default('dev'),
-	}),
-	SandboxConnectionSchema,
-])
+export const ServerConnectionSchema = z
+	.discriminatedUnion('type', [
+		z.object({
+			type: z.literal('local').meta(SDoc.of({ label: t('Type') })),
+			logFile: z
+				.string()
+				.min(1)
+				.meta(SDoc.of({ label: t('Log File') })),
+			rcon: RconConnectionSchema.meta(SDoc.of({ label: t('RCON') })),
+		}),
+		z.object({
+			type: z.literal('sftp').meta(SDoc.of({ label: t('Type') })),
+			rcon: RconConnectionSchema.meta(SDoc.of({ label: t('RCON') })),
+			sftp: SftpLogConnectionSchema.meta(SDoc.of({ label: t('SFTP Log Source') })),
+		}),
+		z.object({
+			type: z.literal('server-agent').meta(SDoc.of({ label: t('Type') })),
+			token: z
+				.string()
+				.default('dev')
+				.meta(SDoc.of({ label: t('Agent Token') })),
+		}),
+		SandboxConnectionSchema,
+	])
+	.meta(SDoc.of({ options: { local: t('Local file'), sftp: t('SFTP'), 'server-agent': t('Server agent'), sandbox: t('Sandbox') } }))
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 
@@ -851,11 +1138,20 @@ export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 // no user-facing control offers it, though the raw JSON editor can express it like any other value.
 export const SlmUpdatesDisabledSchema = z.discriminatedUnion('type', [
 	// `by` is null for settings written before disabling recorded who did it
-	z.object({ type: z.literal('manual'), by: AppEvents.ActorSchema.nullable() }),
+	z.object({
+		type: z.literal('manual').meta(SDoc.of({ label: t('Type') })),
+		by: AppEvents.ActorSchema.nullable().meta(SDoc.of({ label: t('Disabled By') })),
+	}),
 	// `inferred` marks the reason as deduced rather than observed: SLM never saw the vote's log lines, it saw the
 	// server stop having a next layer, which is what enabling voting does. Everything treats the two the same; only
 	// what is shown to an admin differs, since a guess should not be stated as fact.
-	z.object({ type: z.literal('ingame-vote'), inferred: z.boolean().prefault(false) }),
+	z.object({
+		type: z.literal('ingame-vote').meta(SDoc.of({ label: t('Type') })),
+		inferred: z
+			.boolean()
+			.prefault(false)
+			.meta(SDoc.of({ label: t('Inferred') })),
+	}),
 ])
 export type SlmUpdatesDisabled = z.infer<typeof SlmUpdatesDisabledSchema>
 
@@ -865,7 +1161,12 @@ export const QueueSettingsSchema = z.object({
 		.min(1)
 		.max(100)
 		.prefault(20)
-		.describe('How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.'),
+		.meta(
+			SDoc.of({
+				label: t('Max Queue Size'),
+				description: t('How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.'),
+			}),
+		),
 	// unset by default; the inner prefault is what the field fills in when it is switched back on
 	lowQueueWarningThreshold: z
 		.number()
@@ -873,14 +1174,22 @@ export const QueueSettingsSchema = z.object({
 		.prefault(1)
 		.nullable()
 		.prefault(null)
-		.describe(
-			'Admins are warned after a map roll when the queue holds this many items or fewer. Unset to never warn about a short queue.',
+		.meta(
+			SDoc.of({
+				label: t('Low Queue Warning Threshold'),
+				description: t(
+					'Admins are warned after a map roll when the queue holds this many items or fewer. Unset to never warn about a short queue.',
+				),
+			}),
 		),
-	adminQueueReminderInterval: ZodUtils.HumanTime.prefault('10m').describe(
-		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
+	adminQueueReminderInterval: ZodUtils.HumanTime.prefault('10m').meta(
+		SDoc.of({
+			label: t('Admin Queue Reminder Interval'),
+			description: t('How often to remind admins to maintain the queue. Low queue warnings happen half as often.'),
+		}),
 	),
-	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
-		'Which layers this server considers playable, and which of them it warns about.',
+	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).meta(
+		SDoc.of({ label: t('Main Pool'), description: t('Which layers this server considers playable, and which of them it warns about.') }),
 	),
 	layerRequests: z
 		.object({
@@ -889,10 +1198,20 @@ export const QueueSettingsSchema = z.object({
 				.int()
 				.positive()
 				.prefault(50)
-				.describe('Maximum number of layer requests the backburner may hold across all users'),
+				.meta(
+					SDoc.of({
+						label: t('Max Total'),
+						description: t('Maximum number of layer requests the backburner may hold across all users'),
+					}),
+				),
 		})
 		.prefault({})
-		.describe('Limits on the backburner, where layers players request in-game wait to be picked up.'),
+		.meta(
+			SDoc.of({
+				label: t('Layer Requests'),
+				description: t('Limits on the backburner, where layers players request in-game wait to be picked up.'),
+			}),
+		),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
@@ -906,96 +1225,172 @@ export const PublicServerSettingsSchema = z.object({
 	locale: z
 		.string()
 		.prefault('en')
-		.describe(
-			'The language this server talks to its players in: warnings, broadcasts and the in-game vote. A BCP-47 tag such as "en" or ' +
-				'"de". Falls back to English wherever a message has not been translated. Does not affect the web app, which follows each ' +
-				"viewer's own browser.",
+		.meta(
+			SDoc.of({
+				label: t('Locale'),
+				description: t(
+					'The language this server talks to its players in: warnings, broadcasts and the in-game vote. A BCP-47 tag such as "en" or "de". Falls back to English wherever a message has not been translated. Does not affect the web app, which follows each viewer\'s own browser.',
+				),
+			}),
 		),
-	navLinks: NavLinkSchema.prefault([]).describe(
-		'Links shown in the navbar links dropdown while this server is selected, below the global ones.',
+	navLinks: NavLinkSchema.prefault([]).meta(
+		SDoc.of({
+			label: t('Nav Links'),
+			description: t('Links shown in the navbar links dropdown while this server is selected, below the global ones.'),
+		}),
 	),
 	installedMods: z
 		.array(z.string().min(1))
 		.min(1)
 		.prefault([...DEFAULT_INSTALLED_MODS])
-		.describe(
-			'The layer collections this game server has installed, by catalog name. A layer from a collection not listed here cannot ' +
-				'load, so SLM refuses to queue it, never generates one, and never offers one as a vote choice. OWI is vanilla Squad.',
+		.meta(
+			SDoc.of({
+				label: t('Installed Mods'),
+				description: t(
+					'The layer collections this game server has installed, by catalog name. A layer from a collection not listed here cannot load, so SLM refuses to queue it, never generates one, and never offers one as a vote choice. OWI is vanilla Squad.',
+				),
+			}),
 		),
 	adminLists: z
 		.array(SM.AdminListIdSchema)
 		.prefault([])
-		.describe(
-			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up ' +
-				'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
+		.meta(
+			SDoc.of({
+				label: t('Admin Lists'),
+				description: t(
+					'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
+				),
+			}),
 		),
 	updatesToSquadServerDisabled: SlmUpdatesDisabledSchema.nullable()
 		.prefault(null)
-		.describe(
-			'Why SLM is not writing the next layer to this server over RCON, or null when it is. The queue still runs and still tracks ' +
-				'what is played; SLM just never sets the map itself, and stops sending the recurring in-game reminders and announcements ' +
-				'that describe the queue as the rotation. For running SLM alongside something else that owns the rotation.',
+		.meta(
+			SDoc.of({
+				label: t('SLM Updates Disabled'),
+				opaque: true,
+				description: t(
+					'Why SLM is not writing the next layer to this server over RCON, or null when it is. The queue still runs and still tracks what is played; SLM just never sets the map itself, and stops sending the recurring in-game reminders and announcements that describe the queue as the rotation. For running SLM alongside something else that owns the rotation.',
+				),
+			}),
 		),
 	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
 	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
 	// ServerSettingsSchema its encodability -- and the settings editor needs that to show ZodUtils.HumanTime fields as
 	// "5s" rather than 5000.
-	queue: QueueSettingsSchema.prefault({}),
+	queue: QueueSettingsSchema.prefault({}).meta(SDoc.of({ label: t('Queue') })),
 	vote: z
 		.object({
-			voteDuration: ZodUtils.HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
-			startVoteReminderThreshold: ZodUtils.HumanTime.prefault('20m').describe(
-				'How far into a match admins start being reminded that no vote has been started yet.',
+			voteDuration: ZodUtils.HumanTime.prefault('180s').meta(
+				SDoc.of({ label: t('Vote Duration'), description: t('How long a vote stays open before it is tallied.') }),
 			),
-			voteReminderInterval: ZodUtils.HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
-			internalVoteReminderInterval: ZodUtils.HumanTime.prefault('15s').describe(
-				'How often admins are reminded to vote while an internal (admin-only) vote is open.',
+			startVoteReminderThreshold: ZodUtils.HumanTime.prefault('20m').meta(
+				SDoc.of({
+					label: t('Start Vote Reminder Threshold'),
+					description: t('How far into a match admins start being reminded that no vote has been started yet.'),
+				}),
+			),
+			voteReminderInterval: ZodUtils.HumanTime.prefault('30s').meta(
+				SDoc.of({ label: t('Vote Reminder Interval'), description: t('How often players are reminded to vote while a vote is open.') }),
+			),
+			internalVoteReminderInterval: ZodUtils.HumanTime.prefault('15s').meta(
+				SDoc.of({
+					label: t('Internal Vote Reminder Interval'),
+					description: t('How often admins are reminded to vote while an internal (admin-only) vote is open.'),
+				}),
 			),
 			autoStartVoteDelay: ZodUtils.HumanTime.prefault('20m')
 				.nullable()
-				.describe(
-					'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
+				.meta(
+					SDoc.of({
+						label: t('Auto Start Vote Delay'),
+						description: t(
+							'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
+						),
+					}),
 				),
-			autoStartVoteCutoff: ZodUtils.HumanTime.prefault('30m').describe(
-				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long ' +
-					'does not open a vote nobody is around for.',
+			autoStartVoteCutoff: ZodUtils.HumanTime.prefault('30m').meta(
+				SDoc.of({
+					label: t('Auto Start Vote Cutoff'),
+					description: t(
+						'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long does not open a vote nobody is around for.',
+					),
+				}),
 			),
 			voteDisplayProps: z
 				.array(DH.LAYER_DISPLAY_PROP)
 				.prefault(['map', 'gamemode'])
-				.describe('Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.'),
-			finalVoteReminder: ZodUtils.HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
+				.meta(
+					SDoc.of({
+						label: t('Vote Display Options'),
+						description: t(
+							'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
+						),
+					}),
+				),
+			finalVoteReminder: ZodUtils.HumanTime.prefault('10s').meta(
+				SDoc.of({ label: t('Final Vote Reminder'), description: t('How long before a vote closes the last-chance reminder is sent.') }),
+			),
 		})
-		.prefault({}),
+		.prefault({})
+		.meta(SDoc.of({ label: t('Votes') })),
 	overrideAdminSetNextLayer: z
 		.boolean()
 		.prefault(false)
-		.describe(
-			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight ' +
-				'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
+		.meta(
+			SDoc.of({
+				label: t('Override Admin-set Next Layer'),
+				description: t(
+					'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
+				),
+			}),
 		),
 	warnOnNextLayerChange: z
 		.boolean()
 		.prefault(false)
-		.describe('Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.'),
+		.meta(
+			SDoc.of({
+				label: t('Warn on Next Layer Change'),
+				description: t('Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.'),
+			}),
+		),
 	warnOnGuiTeamswaps: z
 		.boolean()
 		.prefault(false)
-		.describe(
-			'Warn all in-game admins when someone swaps players, or edits the queued swaps, from the web dashboard. Swaps made with an ' +
-				'in-game command never warn: every admin has already read the command in admin chat.',
+		.meta(
+			SDoc.of({
+				label: t('Warn on GUI Teamswaps'),
+				description: t(
+					'Warn all in-game admins when someone swaps players, or edits the queued swaps, from the web dashboard. Swaps made with an in-game command never warn: every admin has already read the command in admin chat.',
+				),
+			}),
 		),
-	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').describe(
-		'How long after a map rolls before the post-roll announcements: the next layer, whether the queue is running low, and any ' +
-			'reminders plugins add.',
+	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').meta(
+		SDoc.of({
+			label: t('Post Roll Announcements Timeout'),
+			description: t(
+				'How long after a map rolls before the post-roll announcements: the next layer, whether the queue is running low, and any reminders plugins add.',
+			),
+		}),
 	),
-	fogOffDelay: ZodUtils.HumanTime.prefault('25s').describe(
-		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+	fogOffDelay: ZodUtils.HumanTime.prefault('25s').meta(
+		SDoc.of({
+			label: t('Fog Off Delay'),
+			description: t(
+				'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+			),
+		}),
 	),
 	remindersAndAnnouncementsEnabled: z
 		.boolean()
 		.prefault(true)
-		.describe('Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.'),
+		.meta(
+			SDoc.of({
+				label: t('Reminders and Announcements'),
+				description: t(
+					'Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.',
+				),
+			}),
+		),
 	switchRequests: z
 		.object({
 			instantSwapLead: z
@@ -1003,29 +1398,49 @@ export const PublicServerSettingsSchema = z.object({
 				.int()
 				.min(0)
 				.prefault(1)
-				.describe(
-					"How many players larger a /switch sender's own team must be than the other for the switch to happen immediately. " +
-						'Requests that do not meet this are queued, and the queue drains by the same rule (or by pairing waiters from both ' +
-						'sides). 0 lets even teams switch instantly; higher values queue more.',
+				.meta(
+					SDoc.of({
+						label: t('Team Size Lead for Instant Switch'),
+						description: t(
+							"How many players larger a /switch sender's own team must be than the other for the switch to happen immediately. Requests that do not meet this are queued, and the queue drains by the same rule (or by pairing waiters from both sides). 0 lets even teams switch instantly; higher values queue more.",
+						),
+					}),
 				),
 		})
-		.prefault({}),
+		.prefault({})
+		.meta(SDoc.of({ label: t('Switch Requests') })),
 
 	rconCacheTTL: z
 		.object({
-			layersStatus: ZodUtils.HumanTime.prefault('5s').describe(
-				'How stale the cached current/next layer may be before a read refetches it over RCON.',
+			layersStatus: ZodUtils.HumanTime.prefault('5s').meta(
+				SDoc.of({
+					label: t('Layer Status'),
+					description: t('How stale the cached current/next layer may be before a read refetches it over RCON.'),
+				}),
 			),
-			serverInfo: ZodUtils.HumanTime.prefault('10s').describe(
-				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
+			serverInfo: ZodUtils.HumanTime.prefault('10s').meta(
+				SDoc.of({
+					label: t('Server Info'),
+					description: t('How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.'),
+				}),
 			),
-			teams: ZodUtils.HumanTime.prefault('5s').describe(
-				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+			teams: ZodUtils.HumanTime.prefault('5s').meta(
+				SDoc.of({
+					label: t('Teams'),
+					description: t(
+						'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
+					),
+				}),
 			),
 		})
 		.prefault({})
-		.describe(
-			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+		.meta(
+			SDoc.of({
+				label: t('RCON Cache TTL'),
+				description: t(
+					'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
+				),
+			}),
 		),
 })
 
@@ -1053,12 +1468,15 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', m
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
-	connections: ServerConnectionSchema.describe(
-		'How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, ' +
-			'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and ' +
-			"handles both, so the RCON password lives in the agent's config rather than here.",
+	connections: ServerConnectionSchema.meta(
+		SDoc.of({
+			label: t('Connections'),
+			description: t(
+				"How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and handles both, so the RCON password lives in the agent's config rather than here.",
+			),
+		}),
 	),
-	comments: SettingsCommentsSchema.optional(),
+	comments: SettingsCommentsSchema.optional().meta(SDoc.of({ label: t('Comments') })),
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>

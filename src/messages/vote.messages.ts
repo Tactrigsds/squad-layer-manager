@@ -19,13 +19,12 @@ export const started = def(
 					if (choice) return [choice.layerId]
 					return []
 				})
-		const lines = MsgFmt.voteChoicesLines(layerIds, undefined, displayProps).join('\n')
 		// the vote config editor previews the broadcast the server would actually send, so text serves both
 		return {
 			text: ({ locale }) =>
 				t('Vote for the next layer{internal, select, yes { (internal)} other {}}:\n{lines}\nYou have {duration} to vote.\n', {
 					internal: state.voterType === 'internal' ? 'yes' : 'no',
-					lines,
+					lines: MsgFmt.voteChoicesLines(layerIds, locale, undefined, displayProps).join('\n'),
 					duration: MsgFmt.formatInterval(duration, { round: 'second', locale }),
 				}),
 		}
@@ -78,22 +77,18 @@ export const voteReminder = def(
 		finalReminder = false,
 		displayProps: DH.LayerDisplayProp[],
 	) => {
-		const lines = MsgFmt.voteChoicesLines(
-			state.choiceIds.flatMap((id) => {
-				const choice = voteItem.choices.find((choice) => choice.itemId === id)
-				if (choice) return [choice.layerId]
-				return []
-			}),
-			undefined,
-			displayProps,
-		).join('\n')
+		const layerIds = state.choiceIds.flatMap((id) => {
+			const choice = voteItem.choices.find((choice) => choice.itemId === id)
+			if (choice) return [choice.layerId]
+			return []
+		})
 
 		return {
 			broadcast: ({ locale }) =>
 				t('{final, select, yes {VOTE NOW: {duration} left to cast your vote!} other {{duration} to cast your vote!}}\n{lines}', {
 					final: finalReminder ? 'yes' : 'no',
 					duration: MsgFmt.formatInterval(timeLeft, { round: 'second', locale }),
-					lines,
+					lines: MsgFmt.voteChoicesLines(layerIds, locale, undefined, displayProps).join('\n'),
 				}),
 		}
 	},

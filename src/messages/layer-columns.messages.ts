@@ -23,15 +23,20 @@ export const unusedWeightsHint = def(
 	() => ({}),
 )
 
-// reads as "<n> weighted"
-export const weightedCount = def('weighted')
+export const weightedCount = def('{count, plural, =0 {no weights} other {# weighted}}', (count: number) => ({ count }))
 
 export const discardWeights = def('Discard')
 
 // -------- one pick's weights --------
 
-// reads as "<column> weights"
-export const weightsHeading = def('weights')
+export const weightsHeading = def('{pick} weights', (pick: string) => ({ pick }))
+
+export type MatchupPick = 'AllianceMatchup' | 'FactionMatchup' | 'UnitMatchup' | 'FactionUnitMatchup'
+
+export const matchupPick = def(
+	'{matchup, select, AllianceMatchup {Alliance matchup} FactionMatchup {Faction matchup} UnitMatchup {Unit matchup} other {Faction + unit matchup}}',
+	(matchup: MatchupPick) => ({ matchup }),
+)
 
 export const columnWeightsHint = def(
 	'Pick {pickOrder}. Unlisted {column} values weigh {defaultWeight}. Shares assume every value is available in the pool.',

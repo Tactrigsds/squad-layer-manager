@@ -100,6 +100,8 @@ await Instr.spanOp('main', { module }, async () => {
 	CleanupSys.setup()
 	// before anything resolves a locale: the landing pages and every player-facing warn negotiate against these
 	Catalogues.register()
+	// history results render on the server in the viewer's locale, which in development may be a pseudo-locale
+	if (ENV.NODE_ENV === 'development') await Catalogues.registerPseudo()
 	// layer components/factionunit configs are consumed synchronously all over the app (including
 	// while parsing config), so they load before everything else
 	await LayerData.setup()

@@ -16,6 +16,7 @@ import * as Obj from '@/lib/object-utils'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as LL from '@/models/layer-list.models'
@@ -95,7 +96,7 @@ function ValidationWarningsDisplay(props: {
 						<div className="flex flex-col gap-1">
 							{unsupportedModWarnings.map((warning) => (
 								<div key={warning.item.itemId} className="flex items-center gap-2 text-sm">
-									<span className="font-mono text-muted-foreground">{LL.getItemNumber(warning.index)}</span>
+									<span className="font-mono text-muted-foreground ltr-isolate">{LL.getItemNumber(warning.index)}</span>
 									<ShortLayerName layerId={warning.item.layerId} teamParity={warning.parity} />
 									<span className="text-muted-foreground">{warning.collection}</span>
 								</div>
@@ -128,7 +129,7 @@ function ValidationWarningsDisplay(props: {
 										onMouseOver={onMouseOver}
 										onMouseOut={onMouseOut}
 									>
-										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
+										<span className="font-mono text-muted-foreground ltr-isolate">{LL.getItemNumber(index)}</span>
 										<ShortLayerName layerId={item.layerId} teamParity={parity} matchDescriptors={descriptors} />
 										{descriptors.map((descriptor) => {
 											const constraint = constraints.find(
@@ -175,7 +176,7 @@ function ValidationWarningsDisplay(props: {
 										onMouseOver={onMouseOver}
 										onMouseOut={onMouseOut}
 									>
-										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
+										<span className="font-mono text-muted-foreground ltr-isolate">{LL.getItemNumber(index)}</span>
 										<ShortLayerName layerId={item.layerId} teamParity={parity} />
 										{warnings.map((warning) => {
 											const constraint = constraints.find((c) => c.id === warning.constraintId)
@@ -368,7 +369,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					variant="ghost"
 					className={cn('col-start-1 row-start-1', idleHidden)}
 				>
-					<Icons.Undo />
+					<Icons.Undo className="rtl:-scale-x-100" />
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent>
@@ -377,7 +378,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		</Tooltip>
 	)
 	const stateControls = (
-		<div className={cn('grid items-center', phone && 'ml-auto')}>
+		<div className={cn('grid items-center', phone && 'ms-auto')}>
 			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
 				<span className="fd-spin" />
 				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
@@ -621,7 +622,7 @@ export function IngameVoteAlert(props: { stores: SquadServerFrame.KeyProp }) {
 			<AlertTitle>{tr.text(LL_Msgs.inGameVoteRunning())}</AlertTitle>
 			<AlertDescription>
 				{tr.text(LL_Msgs.inGameVoteBlurb())}
-				{ingameVote.choices.length > 0 && <> {tr.text(LL_Msgs.currentlyVotingBetween(ingameVote.choices.join(', ')))}</>}
+				{ingameVote.choices.length > 0 && <> {tr.text(LL_Msgs.currentlyVotingBetween(MsgFmt.formatList(ingameVote.choices)))}</>}
 			</AlertDescription>
 		</Alert>
 	)
@@ -640,21 +641,23 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 		<Alert variant="destructive">
 			<AlertTitle>{tr.text(LL_Msgs.slmUpdatesDisabled())}</AlertTitle>
 			<AlertDescription>
-				{tr.text(LL_Msgs.slmUpdatesDisabledBy())} <DisabledReason reason={updatesDisabled} />.{' '}
+				{tr.richText(LL_Msgs.slmUpdatesDisabledBy(<DisabledReason reason={updatesDisabled} />))}{' '}
 				{/* during a vote the server's next layer is whatever the vote last wrote, so reporting it as the next layer
 				    would be stating something that is still being decided */}
-				{nextLayer && updatesDisabled.type !== 'ingame-vote' && (
-					<>
-						{tr.text(LL_Msgs.currentNextLayerIs())} <ShortLayerName layerId={nextLayer.id} />.
-					</>
-				)}{' '}
-				<br />{' '}
-				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
-					<Button disabled={!!enableUpdatesDenied} size="sm" onClick={() => enableUpdates()}>
-						{tr.text(LL_Msgs.clickHere())}
-					</Button>
-				</PermissionDeniedTooltip>
-				{tr.text(LL_Msgs.enableUpdatesCta(updatesDisabled.type === 'ingame-vote'))}
+				{nextLayer &&
+					updatesDisabled.type !== 'ingame-vote' &&
+					tr.richText(LL_Msgs.currentNextLayerIs(<ShortLayerName layerId={nextLayer.id} />))}
+				<br />
+				{tr.richText(
+					LL_Msgs.enableUpdatesCta(
+						<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="inline-block">
+							<Button disabled={!!enableUpdatesDenied} size="sm" onClick={() => enableUpdates()}>
+								{tr.text(LL_Msgs.clickHere())}
+							</Button>
+						</PermissionDeniedTooltip>,
+						updatesDisabled.type === 'ingame-vote',
+					),
+				)}
 			</AlertDescription>
 		</Alert>
 	)

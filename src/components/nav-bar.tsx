@@ -34,6 +34,7 @@ import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import { usePriorityPlus } from '@/hooks/use-priority-plus.ts'
 import { useIsDesktopSize, useIsMediumViewport, useIsSmallViewport } from '@/lib/browser.ts'
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
@@ -60,10 +61,11 @@ const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 type PageLink = { key: string; label: string; to: string; params?: Record<string, string>; search?: Record<string, string> }
 
 /**
- * The bar folds by width rather than scrolling. 1280 and up: every page link. 900 to 1279: the dashboard's tab
- * switch stays, links that stop fitting fold from the right into a More menu, Server Actions becomes an icon and
- * the server picker truncates. 640 to 899: every page link lives in a Pages menu and Explore Layers is an icon.
- * Below 640 the bar is the phone top bar: menu, the server name (or page title), Server Actions and the avatar.
+ * The bar folds by width rather than scrolling. Page links that do not fit, measured against their translated
+ * labels, fold from the right into a More menu, or into a Pages menu when none fit. Below 1100 the dashboard's tab
+ * switch takes the Server link's place, Server Actions becomes an icon and the server picker narrows. Below 900
+ * Explore Layers is an icon. Below 640 the bar is the phone top bar: menu, the server name (or page title), Server
+ * Actions and the avatar.
  */
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
@@ -137,10 +139,9 @@ export default function NavBar() {
 	]
 	// the tab switcher already covers "Server" in single-column mode
 	const visibleLinks = pageLinks.filter((link) => !(showDashboardTabs && link.key === 'server'))
-	// how many links the bar shows inline; the rest fold into More (or all of them into Pages)
-	const inlineCount = isDesktop ? visibleLinks.length : isMedium ? 3 : 0
-	const inlineLinks = visibleLinks.slice(0, inlineCount)
-	const foldedLinks = visibleLinks.slice(inlineCount)
+	const priorityPlus = usePriorityPlus(visibleLinks.length, !isSmall)
+	const inlineLinks = visibleLinks.slice(0, priorityPlus.fitCount)
+	const foldedLinks = visibleLinks.slice(priorityPlus.fitCount)
 
 	const pageMenuItems = (links: PageLink[]) =>
 		links.map((link) => (
@@ -161,7 +162,7 @@ export default function NavBar() {
 	const languageItems = (
 		<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
 			<DropdownMenuRadioItem value={MessagesClient.AUTO}>
-				<Icons.Languages className="mr-2" />
+				<Icons.Languages className="me-2" />
 				{tr.text(APP_Msgs.languageAuto())}
 			</DropdownMenuRadioItem>
 			{MessagesClient.availableLocales().map((locale) => (
@@ -242,7 +243,7 @@ export default function NavBar() {
 			<form action={AR.route('/logout')} method="POST">
 				<DropdownMenuItem asChild>
 					<button className="w-full" type="submit">
-						<Icons.LogOut />
+						<Icons.LogOut className="rtl:-scale-x-100" />
 						{tr.text(APP_Msgs.logOut())}
 					</button>
 				</DropdownMenuItem>
@@ -260,7 +261,7 @@ export default function NavBar() {
 				<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 			</Avatar>
 			{unseenChanges > 0 && (
-				<span aria-hidden className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
+				<span aria-hidden className="absolute -top-0.5 -inset-e-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
 			)}
 		</span>
 	)
@@ -369,41 +370,55 @@ export default function NavBar() {
 					setActive={SquadServerClient.DashboardTabActions.setSide}
 				/>
 			)}
-			{inlineLinks.map((link) => (
-				<NavLink key={link.key} to={link.to} params={link.params} search={link.search}>
-					{link.label}
-				</NavLink>
-			))}
-			{foldedLinks.length > 0 && (
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="ghost" size="sm">
-							{inlineLinks.length > 0 ? tr.text(APP_Msgs.navMore()) : tr.text(APP_Msgs.navPages())}
+			<div ref={priorityPlus.boxRef} className="relative flex min-w-0 flex-1 items-center gap-3 overflow-x-clip">
+				<div ref={priorityPlus.measureRef} aria-hidden className="invisible absolute inset-s-0 top-0 flex w-max">
+					{visibleLinks.map((link) => (
+						<span key={link.key} className="fd-nav-link fd-nav-link-on">
+							{link.label}
+						</span>
+					))}
+					{[tr.text(APP_Msgs.navMore()), tr.text(APP_Msgs.navPages())].map((label) => (
+						<Button key={label} variant="ghost" size="sm" tabIndex={-1}>
+							{label}
 							<Icons.ChevronDown className="size-2.5!" />
 						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="start">
-						{pageMenuItems(foldedLinks)}
-						{mobileSwitchItem && inlineLinks.length === 0 && (
-							<>
-								<DropdownMenuSeparator />
-								{mobileSwitchItem}
-							</>
-						)}
-					</DropdownMenuContent>
-				</DropdownMenu>
-			)}
-			{isMedium ? (
-				<Button size="sm" onClick={() => setExploreLayersOpen(true)}>
-					{tr.text(APP_Msgs.exploreLayers())}
+					))}
+				</div>
+				{inlineLinks.map((link) => (
+					<NavLink key={link.key} to={link.to} params={link.params} search={link.search}>
+						{link.label}
+					</NavLink>
+				))}
+				{foldedLinks.length > 0 && (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant="ghost" size="sm" className="shrink-0">
+								{inlineLinks.length > 0 ? tr.text(APP_Msgs.navMore()) : tr.text(APP_Msgs.navPages())}
+								<Icons.ChevronDown className="size-2.5!" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start">
+							{pageMenuItems(foldedLinks)}
+							{mobileSwitchItem && inlineLinks.length === 0 && (
+								<>
+									<DropdownMenuSeparator />
+									{mobileSwitchItem}
+								</>
+							)}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
+				<Button
+					ref={priorityPlus.trailingRef}
+					size={isMedium ? 'sm' : 'icon-sm'}
+					className="shrink-0"
+					title={isMedium ? undefined : tr.text(APP_Msgs.exploreLayers())}
+					onClick={() => setExploreLayersOpen(true)}
+				>
+					{isMedium ? tr.text(APP_Msgs.exploreLayers()) : <Icons.Search />}
 				</Button>
-			) : (
-				<Button size="icon-sm" title={tr.text(APP_Msgs.exploreLayers())} onClick={() => setExploreLayersOpen(true)}>
-					<Icons.Search />
-				</Button>
-			)}
+			</div>
 			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
-			<span className="flex-1 min-w-3" />
 			{statusCluster}
 			{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} iconOnly={!isDesktop} />}
 			{isOnServerDashboard && squadServerKey && <JoinServerButton serverId={squadServerKey.serverId} />}
@@ -562,7 +577,7 @@ function PhoneMenu(props: {
 			<DropdownMenuContent
 				align="start"
 				sideOffset={0}
-				className="w-[290px] max-w-[calc(100vw-32px)] h-[calc(100dvh-var(--nav-h))] overflow-y-auto rounded-none border-l-0 border-b-0"
+				className="w-[290px] max-w-[calc(100vw-32px)] h-[calc(100dvh-var(--nav-h))] overflow-y-auto rounded-none border-s-0 border-b-0"
 			>
 				<DropdownMenuLabel>{tr.text(APP_Msgs.navPages())}</DropdownMenuLabel>
 				{props.pageItems}

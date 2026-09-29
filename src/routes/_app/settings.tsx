@@ -37,6 +37,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as MsgFmt from '@/messages/format'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as AppEvents from '@/models/app-events.models'
@@ -224,7 +225,7 @@ function RouteComponent() {
 				<div className="mx-auto flex w-full max-w-6xl">
 					{/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
 					    would only eat the content column, which needs the width more -- its server sections are master-detail. */}
-					<aside className="sticky top-0 h-[calc(100dvh-6rem)] w-52 md:w-56 shrink-0 overflow-hidden border-r border-line pr-2 shadow-[1px_0_0_var(--line-soft)]">
+					<aside className="sticky top-0 h-[calc(100dvh-6rem)] w-52 md:w-56 shrink-0 overflow-hidden border-e border-line pe-2 shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]">
 						<SettingsToc
 							showServers={!manageServersDenied || servers.length > 0}
 							showGlobal={globalAccess.canRead}
@@ -342,13 +343,15 @@ function AuditLogEntry({
 	return (
 		<details className="border-b py-1 last:border-0 group">
 			<summary className="flex gap-2 items-baseline text-sm cursor-pointer list-none">
-				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(event.time).toLocaleString()}</span>
+				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform rtl:rotate-180 group-open:rotate-90" />
+				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+					{MsgFmt.formatDate(event.time, 'dateTime')}
+				</span>
 				<span className="font-medium whitespace-nowrap">{actorName}</span>
 				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents_Msgs.describeAppEvent(event, playerName)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
 			</summary>
-			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
+			<pre className="mt-1 ms-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs ltr-isolate">
 				{JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value), 2)}
 			</pre>
 		</details>
@@ -582,7 +585,7 @@ function ServerList({
 			</div>
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(SETTINGS_Msgs.addManagedServer())}
 				</Button>
 			)}
@@ -620,18 +623,18 @@ function ServerRow({
 		<div
 			id={`section:server:${server.id}`}
 			className={cn(
-				'flex scroll-mt-2 items-center gap-3 rounded-md border px-2.5 py-2',
+				'flex scroll-mt-2 flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-2.5 py-2',
 				selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
 			)}
 		>
 			<button
 				type="button"
 				onClick={() => onSelect(server.id)}
-				className="flex min-w-0 grow flex-col gap-0.5 text-left"
+				className="flex min-w-32 flex-1 flex-col gap-0.5 text-start"
 				aria-pressed={selected}
 			>
 				<span className="truncate text-sm font-medium">{server.displayName}</span>
-				<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
+				<span className="truncate font-mono text-xs text-muted-foreground ltr-isolate">{server.id}</span>
 			</button>
 			<ServerStatusBadge state={lifecycleState(server, inflight)} />
 			<PermissionDeniedTooltip denied={consoleDenied}>
@@ -661,7 +664,7 @@ function ServerRow({
 					<Button
 						size="sm"
 						variant={server.enabled ? 'destructive' : 'outline'}
-						className={cn('w-28', server.broken && 'invisible')}
+						className={cn('min-w-28', server.broken && 'invisible')}
 						disabled={busy || server.broken}
 						title={server.enabled ? tr.text(SETTINGS_Msgs.disconnectServerHint()) : tr.text(SETTINGS_Msgs.connectServerHint())}
 						onClick={() => onToggle(server)}
@@ -754,14 +757,14 @@ function ServerSettingsSection({
 								)}
 							</CardTitle>
 							<CardDescription>
-								{server.displayName} <span className="font-mono">({server.id})</span>
-								{server.broken && <span className="ml-2 text-destructive">{tr.text(SETTINGS_Msgs.serverBroken())}</span>}
+								{server.displayName} <bdi className="font-mono">({server.id})</bdi>
+								{server.broken && <span className="ms-2 text-destructive">{tr.text(SETTINGS_Msgs.serverBroken())}</span>}
 							</CardDescription>
 							{access.write.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
 									{tr.text(SETTINGS_Msgs.onlyModifiable())}{' '}
 									{access.write.paths.map((p) => (
-										<code key={p} className="mx-0.5">
+										<code key={p} className="mx-0.5 ltr-isolate">
 											{p}
 										</code>
 									))}
@@ -995,7 +998,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								<p className="text-xs text-muted-foreground">
 									{tr.text(SETTINGS_Msgs.onlyModifiable())}{' '}
 									{writeAccess.paths.map((p) => (
-										<code key={p} className="mx-0.5">
+										<code key={p} className="mx-0.5 ltr-isolate">
 											{p}
 										</code>
 									))}

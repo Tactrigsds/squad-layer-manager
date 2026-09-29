@@ -94,7 +94,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									{tr.text(V_Msgs.displayLayer())}
 								</Label>
 							</div>
-							<div className="ml-[18px] grid gap-1">
+							<div className="ms-[18px] grid gap-1">
 								<div className="flex items-center gap-1.5">
 									<Checkbox
 										id="map"

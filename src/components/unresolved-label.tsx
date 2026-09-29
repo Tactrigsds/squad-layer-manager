@@ -9,7 +9,7 @@ export function UnresolvedLabel({ id }: { id: string }) {
 	return (
 		<span className="inline-flex items-center gap-1.5 text-warn dark:text-warn">
 			<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
-			<span className="font-mono">{id}</span>
+			<span className="font-mono ltr-isolate">{id}</span>
 		</span>
 	)
 }

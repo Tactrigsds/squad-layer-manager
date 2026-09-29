@@ -305,7 +305,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
-				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="right" />}
+				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="end" />}
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}
@@ -350,7 +350,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							{!drillEntry && options === LOADING && (
 								<CommandGroup>
 									<CommandItem>
-										<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+										<LoaderCircle className="me-2 h-4 w-4 animate-spin" />
 									</CommandItem>
 								</CommandGroup>
 							)}
@@ -363,7 +363,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 											onSelect(undefined)
 										}}
 									>
-										<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
+										<Check className={cn('me-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
 										{DH.MISSING_DISPLAY}
 									</CommandItem>
 								</CommandGroup>
@@ -384,7 +384,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 												}}
 											>
 												<Check
-													className={cn('mr-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
+													className={cn('me-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
 												/>
 												{/* one line per row: too long ellipsizes rather than wrapping the list into a wall of text */}
 												<span className="min-w-0 flex-1 truncate">

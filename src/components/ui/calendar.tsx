@@ -63,7 +63,7 @@ function Calendar({
 					'select-none font-medium',
 					captionLayout === 'label'
 						? 'text-sm'
-						: '[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md pl-2 pr-1 text-sm [&>svg]:size-3.5',
+						: '[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm [&>svg]:size-3.5',
 					defaultClassNames.caption_label,
 				),
 				table: 'w-full border-collapse',
@@ -73,12 +73,12 @@ function Calendar({
 				week_number_header: cn('w-(--cell-size) select-none', defaultClassNames.week_number_header),
 				week_number: cn('text-muted-foreground select-none text-[0.8rem]', defaultClassNames.week_number),
 				day: cn(
-					'group/day relative aspect-square h-full w-full select-none p-0 text-center [&:first-child[data-selected=true]_button]:rounded-l-md [&:last-child[data-selected=true]_button]:rounded-r-md',
+					'group/day relative aspect-square h-full w-full select-none p-0 text-center [&:first-child[data-selected=true]_button]:rounded-s-md [&:last-child[data-selected=true]_button]:rounded-e-md',
 					defaultClassNames.day,
 				),
-				range_start: cn('bg-accent rounded-l-md', defaultClassNames.range_start),
+				range_start: cn('bg-accent rounded-s-md', defaultClassNames.range_start),
 				range_middle: cn('rounded-none', defaultClassNames.range_middle),
-				range_end: cn('bg-accent rounded-r-md', defaultClassNames.range_end),
+				range_end: cn('bg-accent rounded-e-md', defaultClassNames.range_end),
 				today: cn('bg-accent text-accent-foreground rounded-md data-[selected=true]:rounded-none', defaultClassNames.today),
 				outside: cn('text-muted-foreground aria-selected:text-muted-foreground', defaultClassNames.outside),
 				disabled: cn('text-muted-foreground opacity-50', defaultClassNames.disabled),
@@ -131,11 +131,11 @@ function CalendarRoot({ className, rootRef, ...props }: RootProps) {
 
 function CalendarChevron({ className, orientation, ...props }: ChevronProps) {
 	if (orientation === 'left') {
-		return <ChevronLeftIcon className={cn('size-4', className)} {...props} />
+		return <ChevronLeftIcon className={cn('size-4 rtl:-scale-x-100', className)} {...props} />
 	}
 
 	if (orientation === 'right') {
-		return <ChevronRightIcon className={cn('size-4', className)} {...props} />
+		return <ChevronRightIcon className={cn('size-4 rtl:-scale-x-100', className)} {...props} />
 	}
 
 	return <ChevronDownIcon className={cn('size-4', className)} {...props} />

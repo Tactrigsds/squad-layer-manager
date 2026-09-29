@@ -1,4 +1,4 @@
-import { def, t } from '@/models/messages.models'
+import { def, type Rendered, rt, t } from '@/models/messages.models'
 
 // What the shared widgets say about themselves, regardless of what they are showing. A combo box says "Search
 // options..." whether it holds layers or roles, so this vocabulary belongs to the widget rather than to any domain.
@@ -98,6 +98,14 @@ export const collapse = def('Collapse')
 export const addComment = def('Add comment')
 
 export const editComment = def('Edit comment')
+
+// -------- composition --------
+
+// a label and what it labels, "Reason: spamming". The tag spans the label and its punctuation, which a caller may style.
+export const labelValue = def((label: Rendered, value: Rendered) => rt('<label>{name}:</label> {value}', { name: label, value }))
+
+// the marker before an item of a numbered list
+export const listMarker = def('{position}.', (position: number) => ({ position }))
 
 // -------- shared edit sessions --------
 

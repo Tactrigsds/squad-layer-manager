@@ -80,7 +80,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				disabled={disabled || !canGoPrevious}
 				title={tr.text(UI_Msgs.firstPageHint())}
 			>
-				<Icons.ChevronsLeft />
+				<Icons.ChevronsLeft className="rtl:-scale-x-100" />
 			</Button>
 
 			<Button
@@ -90,7 +90,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				disabled={disabled || !canGoPrevious}
 				title={tr.text(UI_Msgs.previousPageShortHint())}
 			>
-				<Icons.ChevronLeft />
+				<Icons.ChevronLeft className="rtl:-scale-x-100" />
 			</Button>
 
 			<div className="flex items-center gap-1 whitespace-nowrap">
@@ -117,7 +117,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				disabled={disabled || !canGoNext}
 				title={tr.text(UI_Msgs.nextPageShortHint())}
 			>
-				<Icons.ChevronRight />
+				<Icons.ChevronRight className="rtl:-scale-x-100" />
 			</Button>
 
 			<Button
@@ -127,7 +127,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				disabled={disabled || !canGoNext}
 				title={tr.text(UI_Msgs.lastPageHint())}
 			>
-				<Icons.ChevronsRight />
+				<Icons.ChevronsRight className="rtl:-scale-x-100" />
 			</Button>
 		</div>
 	)

@@ -129,7 +129,7 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 			{...{ [Find.IGNORE_ATTR]: '' }}
 			className={cn('flex items-center gap-1 rounded-md border bg-background p-1 shadow-md', className)}
 		>
-			<Icons.Search className="ml-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<Icons.Search className="ms-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 			{/* deliberately not type="search": that gives escape a native meaning (chrome cancels the field, and can
 			    take the keystroke before any listener sees it) which competes with escape dismissing the bar. It also
 			    draws a clear widget duplicating the close button. */}
@@ -150,7 +150,7 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 			/>
 			<span
 				aria-live="polite"
-				className={cn('min-w-16 shrink-0 text-right text-xs tabular-nums', empty ? 'text-destructive' : 'text-muted-foreground')}
+				className={cn('min-w-16 shrink-0 text-end text-xs tabular-nums', empty ? 'text-destructive' : 'text-muted-foreground')}
 			>
 				{counter === null
 					? null

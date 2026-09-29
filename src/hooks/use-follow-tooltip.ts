@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import type * as Flt from '@/lib/floating'
+import * as Flt from '@/lib/floating'
 
 // A pinned tooltip sits a short gap away from the pointer, so moving onto it leaves both it and the trigger for a
 // frame or two. A close waits this long for the pointer to arrive at the other one.
@@ -237,5 +237,5 @@ export function useFollowTooltip(opts?: { pinnable?: boolean; delayMs?: number }
 function triggerCorner(el: HTMLElement | null): Flt.Point | null {
 	if (!el) return null
 	const rect = el.getBoundingClientRect()
-	return { x: rect.left, y: rect.bottom }
+	return { x: Flt.documentIsRtl() ? rect.right : rect.left, y: rect.bottom }
 }

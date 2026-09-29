@@ -6,7 +6,8 @@
 	"packageManager": "pnpm@10.22.0",
 	"scripts": {
 		"client:dev": "vite",
-		"lint": "oxlint --type-aware",
+		"lint": "oxlint --type-aware && pnpm run lint:logical-css",
+		"lint:logical-css": "tsx --tsconfig tsconfig.node.json src/scripts/lint-logical-css.ts",
 		"lint:fix": "oxlint --type-aware --fix-suggestions --fix-dangerously",
 		"preview": "vite preview",
 		"check": "tsx --tsconfig tsconfig.node.json src/scripts/extract-messages.ts --quiet && tsc -b",
@@ -90,6 +91,7 @@
 		"@opentelemetry/sdk-node": "^0.220.0",
 		"@opentelemetry/semantic-conventions": "^1.43.0",
 		"@orpc/otel": "^1.14.8",
+		"@radix-ui/react-direction": "^1.1.4",
 		"better-sqlite3": "^12.11.1",
 		"bufferutil": "^4.1.0",
 		"cnfast": "^0.0.8",

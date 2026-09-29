@@ -44,7 +44,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 		<section className="space-y-1.5">
 			<div className="flex items-center gap-2">
 				<h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-				{action && <div className="ml-auto">{action}</div>}
+				{action && <div className="ms-auto">{action}</div>}
 			</div>
 			{children}
 		</section>
@@ -144,7 +144,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 								}}
 							/>
 							<Button type="button" size="sm" variant="outline" className="h-8" disabled={full} onClick={() => void join()}>
-								<Icons.UserPlus className="mr-1 h-3.5 w-3.5" />
+								<Icons.UserPlus className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.join())}
 							</Button>
 						</div>
@@ -170,7 +170,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 								{tr.text(SB_Msgs.teamWins(2))}
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('cycle', {})}>
-								<Icons.Unplug className="mr-1 h-3.5 w-3.5" />
+								<Icons.Unplug className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.dropRcon())}
 							</Button>
 						</div>
@@ -180,7 +180,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 						title={tr.text(SB_Msgs.adminListSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openAdminList()}>
-								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
+								<Icons.ExternalLink className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}
@@ -192,7 +192,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 						title={tr.text(SB_Msgs.consoleSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openConsole()}>
-								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
+								<Icons.ExternalLink className="me-1 h-3.5 w-3.5" />
 								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}
@@ -222,7 +222,7 @@ function TeamCell({ player, run }: { player: PlayerRow; run: RunFn }) {
 			value={player.teamId ? String(player.teamId) : undefined}
 			onValueChange={(value) => void run('set-team', { name: player.name, teamId: Number(value) as 1 | 2 })}
 		>
-			<SelectTrigger className="h-7 w-[6rem]" aria-label={tr.text(SB_Msgs.teamPicker(player.name))}>
+			<SelectTrigger className="h-7 w-auto min-w-[6rem]" aria-label={tr.text(SB_Msgs.teamPicker(player.name))}>
 				<SelectValue placeholder={tr.text(SB_Msgs.noTeam())} />
 			</SelectTrigger>
 			<SelectContent>
@@ -373,7 +373,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 												title={tr.text(SB_Msgs.disconnectPlayer(p.name))}
 												onClick={() => void run('leave', { name: p.name })}
 											>
-												<Icons.LogOut className="h-3.5 w-3.5" />
+												<Icons.LogOut className="h-3.5 w-3.5 rtl:-scale-x-100" />
 											</Button>
 										</TableCell>
 									</TableRow>
@@ -392,7 +392,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								disabled={page === 0}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page - 1)}
 							>
-								<Icons.ChevronLeft className="h-3.5 w-3.5" />
+								<Icons.ChevronLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
 							</Button>
 							<span className="tabular-nums">
 								{page + 1} / {pageCount}
@@ -406,7 +406,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								disabled={page >= pageCount - 1}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page + 1)}
 							>
-								<Icons.ChevronRight className="h-3.5 w-3.5" />
+								<Icons.ChevronRight className="h-3.5 w-3.5 rtl:-scale-x-100" />
 							</Button>
 						</div>
 					)}
@@ -443,7 +443,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 					onValueChange={(name) => SandboxFrame.Actions.setSpeaker(stores, name)}
 					disabled={players.length === 0}
 				>
-					<SelectTrigger className="h-8 w-[9rem]">
+					<SelectTrigger className="h-8 w-auto min-w-[9rem] max-w-[14rem]">
 						<SelectValue placeholder={tr.text(SB_Msgs.speakerPlaceholder())} />
 					</SelectTrigger>
 					<SelectContent>

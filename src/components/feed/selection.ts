@@ -15,7 +15,8 @@ import * as RC from './render-context'
  * For a selectable host: how its selected rows, and the timestamps a selection is dragged from, look. Every row is
  * inset by the selection's edge, selected or not, so selecting never shifts the text.
  */
-export const HOST_CLASS = '[&>*]:pl-1.5 [&>[data-selected]]:bg-info/15 [&>[data-selected]]:shadow-[inset_2px_0_0_var(--color-info)]'
+export const HOST_CLASS =
+	'[&>*]:ps-1.5 [&>[data-selected]]:bg-info/15 [&>[data-selected]]:shadow-[inset_2px_0_0_var(--color-info)] rtl:[&>[data-selected]]:shadow-[inset_-2px_0_0_var(--color-info)]'
 
 // Keyed by host (see RC.SELECTABLE_ATTR): a feed's own scope id, or for the events under a results row, the scope
 // and that row's key.
@@ -65,8 +66,8 @@ export function adoptRowEvents(slot: Element, scopeId: string, rowKey: string) {
 
 // -------- the gutter --------
 //
-// A drag starts, and the timestamp menu opens, anywhere in a row's time gutter: from the row's left edge to the
-// right edge of its timestamp, over the row's full height. Hit-tested by position rather than by the element under
+// A drag starts, and the timestamp menu opens, anywhere in a row's time gutter: from the row's inline-start edge to
+// the inline-end edge of its timestamp, over the row's full height. Hit-tested by position rather than by the element under
 // the pointer, since a row's padding and the gaps between rows belong to no timestamp, and a press there would
 // otherwise miss.
 
@@ -116,8 +117,10 @@ export function gutterAt(host: Element, x: number, y: number): { row: Element; t
 		if (line.top <= y) time = candidate
 	}
 	if (!time) return null
-	const left = row.getBoundingClientRect().left
-	return x >= left && x <= time.getBoundingClientRect().right ? { row, time } : null
+	const rowRect = row.getBoundingClientRect()
+	const timeRect = time.getBoundingClientRect()
+	const inGutter = row.matches(':dir(rtl)') ? x <= rowRect.right && x >= timeRect.left : x >= rowRect.left && x <= timeRect.right
+	return inGutter ? { row, time } : null
 }
 
 /** The top-level row `node` belongs to, if it is inside `host`. */

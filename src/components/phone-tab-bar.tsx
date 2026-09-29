@@ -22,22 +22,23 @@ export default function PhoneTabBar(props: {
 	onSelect: (screen: Screen) => void
 }) {
 	return (
-		<nav className="grid shrink-0 grid-cols-4 h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content">
+		<nav className="grid shrink-0 grid-cols-4 min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content">
 			{SCREENS.map((s) => (
 				<button
 					key={s.value}
 					type="button"
 					data-state={props.active === s.value ? 'active' : 'inactive'}
+					title={s.label()}
 					onClick={() => props.onSelect(s.value)}
-					className="relative flex flex-col items-center justify-center gap-1 text-2xs font-semibold text-text-3 data-[state=active]:text-pri-hi data-[state=active]:shadow-[inset_0_2px_0_var(--pri)]"
+					className="relative flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-2xs font-semibold text-text-3 data-[state=active]:text-pri-hi data-[state=active]:shadow-[inset_0_2px_0_var(--pri)]"
 				>
-					<s.icon className="size-6" />
+					<s.icon className="size-6 shrink-0" />
 					{props.badges?.[s.value] !== undefined && (
-						<span className="absolute top-2 left-[calc(50%+8px)] grid min-w-4 h-4 place-items-center rounded-full bg-[#414144] px-1 font-mono text-2xs text-text">
+						<span className="absolute top-2 inset-s-[calc(50%+8px)] grid min-w-4 h-4 place-items-center rounded-full bg-[#414144] px-1 font-mono text-2xs text-text">
 							{props.badges[s.value]}
 						</span>
 					)}
-					<span>{s.label()}</span>
+					<span className="line-clamp-2 max-w-full text-center leading-tight break-words">{s.label()}</span>
 				</button>
 			))}
 		</nav>

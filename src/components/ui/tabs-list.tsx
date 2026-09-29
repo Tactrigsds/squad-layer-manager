@@ -11,7 +11,7 @@ export default function TabsList<T extends string>(props: {
 }) {
 	const seg = props.variant === 'seg'
 	return (
-		<div className={cn(seg ? 'fd-grp' : 'fd-tabs', props.className)}>
+		<div className={cn(seg ? 'fd-grp' : 'fd-tabs flex-wrap', props.className)}>
 			{props.options.map((option) => {
 				const isDisabled = !!option.disabled
 				const disabledMessage = typeof option.disabled === 'string' ? option.disabled : null

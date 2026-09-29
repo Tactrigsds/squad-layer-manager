@@ -42,7 +42,7 @@ export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string })
 			onClick={handleClick}
 		>
 			<span className={cn('font-mono text-muted-foreground', hidden)}>{SM_Msgs.idKindLabels[kind]}:</span>
-			<span className={cn('min-w-0 truncate font-mono', hidden)}>{id}</span>
+			<span className={cn('min-w-0 truncate font-mono ltr-isolate', hidden)}>{id}</span>
 			<Icons.Copy className={cn('h-3 w-3', hidden)} />
 			{copied && (
 				<span role="status" style={{ zIndex }} className="absolute inset-0 flex items-center justify-end font-mono whitespace-nowrap">

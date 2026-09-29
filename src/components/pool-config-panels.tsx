@@ -151,7 +151,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 			</span>
 			<div className="border rounded-md p-3 space-y-2">
 				<p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.poolFilterBlurb())}</p>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					<InvertToggle
 						pressed={poolFilter?.mode === 'exclude'}
 						onPressedChange={(pressed) => setMode(pressed ? 'exclude' : 'include')}
@@ -159,7 +159,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						disabled={!poolFilter || !!api.writeDenied}
 					/>
 					<FilterEntitySelect
-						className="w-[260px]"
+						className="w-[260px] max-w-full"
 						title={tr.text(SETTINGS_Msgs.poolFilter())}
 						filterId={poolFilter?.filterId ?? null}
 						onSelect={onSelect}
@@ -299,7 +299,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 								<Button variant="ghost" disabled={!!api.writeDenied} className="h-7 grow justify-start gap-1 px-1 font-normal">
 									{emoji ? <EmojiDisplay size="sm" emoji={emoji} /> : <Icons.Filter className="h-4 w-4 text-warn" />}
 									<span className="truncate">{entity.name}</span>
-									<Icons.ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 opacity-50" />
+									<Icons.ChevronsUpDown className="ms-auto h-3.5 w-3.5 shrink-0 opacity-50" />
 								</Button>
 							</FilterEntitySelect>
 							{config.emojiFor !== 'applyAs' && <MissingIndicatorWarning entity={entity} kind={config.emojiFor} />}
@@ -473,7 +473,7 @@ function RuleLabelCell(props: { label: string | undefined; disabled: boolean; on
 				onClick={() => setOpen(true)}
 				className="h-8 w-full justify-start border border-dashed px-3 font-normal text-muted-foreground"
 			>
-				<Icons.Plus className="mr-2 h-3 w-3" />
+				<Icons.Plus className="me-2 h-3 w-3" />
 				{tr.text(SETTINGS_Msgs.repeatRuleAddLabel())}
 			</Button>
 		)
@@ -709,7 +709,7 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 				</span>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
 					<Button size="sm" variant="outline" disabled={!!api.writeDenied} onClick={addRule}>
-						<Icons.Plus className="h-4 w-4 mr-2" />
+						<Icons.Plus className="h-4 w-4 me-2" />
 						{tr.text(SETTINGS_Msgs.addRepeatRule())}
 					</Button>
 				</PermissionDeniedTooltip>

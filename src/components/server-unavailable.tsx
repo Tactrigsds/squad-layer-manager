@@ -82,7 +82,7 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 								{otherServers.map((server) => (
 									<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
 										<Button variant="outline" className="w-full justify-start" size="lg">
-											<Home className="mr-2 h-4 w-4" />
+											<Home className="me-2 h-4 w-4" />
 											{server.displayName}
 										</Button>
 									</Link>
@@ -93,7 +93,7 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 						<div className="pt-2">
 							<Link to="/" className="block">
 								<Button className="w-full" size="lg">
-									<Home className="mr-2 h-4 w-4" />
+									<Home className="me-2 h-4 w-4" />
 									{tr.text(SS_Msgs.backToServersList())}
 								</Button>
 							</Link>

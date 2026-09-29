@@ -85,7 +85,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 						</Button>
 					))}
 				</div>
-				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+				<label className="ms-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
 					<Checkbox
 						checked={hideNoise}
 						aria-label={tr.text(SC_Msgs.hideNoise())}
@@ -106,7 +106,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 				</Button>
 			</div>
 			<div ref={find.scopeRef} className="relative min-h-0 grow bg-muted/30">
-				<SubtreeFindBar stores={find.stores} className="absolute right-3 top-2" />
+				<SubtreeFindBar stores={find.stores} className="absolute inset-e-3 top-2" />
 				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
 					<div ref={contentRef} className="p-1.5">
 						{events.length === 0 ? (
@@ -116,7 +116,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 								{events.map((event) => {
 									const { prefix, body, tone } = formatEvent(event)
 									return (
-										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
+										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight ltr-isolate">
 											<span className={cn('shrink-0', tone)}>{prefix}</span>
 											<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
 										</li>
@@ -131,7 +131,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 						onClick={() => scrollToBottom()}
 						variant="secondary"
 						style={{ zIndex: scrollToBottomZIndex }}
-						className="absolute bottom-0 left-0 right-0 h-6 w-full rounded-none bg-opacity-20! shadow-lg backdrop-blur-sm"
+						className="absolute bottom-0 inset-s-0 inset-e-0 h-6 w-full rounded-none bg-opacity-20! shadow-lg backdrop-blur-sm"
 						title={tr.text(CHAT_Msgs.scrollToBottom())}
 					>
 						<Icons.ChevronDown className="h-3 w-3" />

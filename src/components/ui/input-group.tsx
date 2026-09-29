@@ -15,8 +15,8 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
 				'group/input-group fd-inp relative flex w-full items-center gap-0 px-0',
 				'has-[>textarea]:h-auto',
 				// Variants based on alignment.
-				'has-[>[data-align=inline-start]]:[&>input]:pl-2',
-				'has-[>[data-align=inline-end]]:[&>input]:pr-2',
+				'has-[>[data-align=inline-start]]:[&>input]:ps-2',
+				'has-[>[data-align=inline-end]]:[&>input]:pe-2',
 				'has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:[&>input]:pb-3',
 				'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3',
 				'has-[[data-slot][aria-invalid=true]]:fd-inp-err',
@@ -32,8 +32,8 @@ const inputGroupAddonVariants = cva(
 	{
 		variants: {
 			align: {
-				'inline-start': 'order-first pl-2',
-				'inline-end': 'order-last pr-1.5',
+				'inline-start': 'order-first ps-2',
+				'inline-end': 'order-last pe-1.5',
 				'block-start': 'order-first w-full justify-start px-2 pt-2',
 				'block-end': 'order-last w-full justify-start px-2 pb-2',
 			},

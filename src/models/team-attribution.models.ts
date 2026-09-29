@@ -1,5 +1,7 @@
 import { z } from '@/lib/zod'
 import type * as CHAT from '@/models/chat.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import * as SM from '@/models/squad.models'
 
 // Which team a historical match's players count for: the team they spent the most time on, replayed from the
@@ -11,16 +13,26 @@ export const SettingsSchema = z.object({
 		.number()
 		.min(0)
 		.prefault(10)
-		.describe(
-			'Minimum time (minutes) a player must have spent on the team they are attributed to for the team breakdown chart to count them. 0 disables this cutoff.',
+		.meta(
+			SDoc.of({
+				label: t('Minimum Time on Team (minutes)'),
+				description: t(
+					'Minimum time (minutes) a player must have spent on the team they are attributed to for the team breakdown chart to count them. 0 disables this cutoff.',
+				),
+			}),
 		),
 	minTeamTimeShare: z
 		.number()
 		.min(0.5)
 		.max(1)
 		.prefault(0.6)
-		.describe(
-			'Minimum fraction of a player\'s total team time spent on the team they are attributed to, for players who switched teams mid-match. 0.6 means "at least 60% of their time on that team". 0.5 disables this cutoff.',
+		.meta(
+			SDoc.of({
+				label: t('Minimum Share of Match Time'),
+				description: t(
+					'Minimum fraction of a player\'s total team time spent on the team they are attributed to, for players who switched teams mid-match. 0.6 means "at least 60% of their time on that team". 0.5 disables this cutoff.',
+				),
+			}),
 		),
 })
 export type Settings = z.infer<typeof SettingsSchema>

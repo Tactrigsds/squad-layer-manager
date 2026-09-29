@@ -5,6 +5,8 @@ import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as USR from '@/models/users.models'
 
 import { assertNever } from './lib/type-guards'
@@ -266,14 +268,14 @@ export function recalculateNegations(perms: TracedPermission[]) {
 
 export const ROLE_PERMISSION_EXPRESSION = z.union([
 	ROLE_GRANTABLE_PERMISSION_TYPE,
-	z.literal('*').describe('include all'),
+	z.literal('*').meta(SDoc.of({ description: t('Every permission') })),
 	z
 		.string()
 		.regex(/^!/)
 		.refine((str) => ROLE_GRANTABLE_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
 			error: 'Negated permission must be a valid role-grantable permission type',
 		})
-		.describe('negated permissions. takes precedence wherever present for a user'),
+		.meta(SDoc.of({ description: t('A permission prefixed with ! is denied, and the denial takes precedence wherever it applies') })),
 ])
 
 export type RolePermissionExpression = z.infer<typeof ROLE_PERMISSION_EXPRESSION>

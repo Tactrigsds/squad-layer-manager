@@ -24,10 +24,10 @@ const DropdownMenuSubTrigger = React.forwardRef<
 		chevronLeft?: boolean
 	}
 >(({ className, inset, chevronLeft, children, ...props }, ref) => (
-	<DropdownMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'pl-7', className)} {...props}>
-		{chevronLeft && <ChevronLeftIcon />}
+	<DropdownMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'ps-7', className)} {...props}>
+		{chevronLeft && <ChevronLeftIcon className="rtl:-scale-x-100" />}
 		{children}
-		{!chevronLeft && <ChevronRightIcon className="ml-auto" />}
+		{!chevronLeft && <ChevronRightIcon className="ms-auto rtl:-scale-x-100" />}
 	</DropdownMenuPrimitive.SubTrigger>
 ))
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName
@@ -83,7 +83,7 @@ const DropdownMenuItem = React.forwardRef<
 		inset?: boolean
 	}
 >(({ className, inset, ...props }, ref) => (
-	<DropdownMenuPrimitive.Item ref={ref} className={cn(dropdownMenuItemClassesBase, inset && 'pl-7', className)} {...props} />
+	<DropdownMenuPrimitive.Item ref={ref} className={cn(dropdownMenuItemClassesBase, inset && 'ps-7', className)} {...props} />
 ))
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName
 
@@ -107,10 +107,10 @@ function DropdownMenuAccordion(props: { label: React.ReactNode; defaultOpen?: bo
 				}}
 			>
 				{props.label}
-				<ChevronRightIcon className={cn('ml-auto transition-transform', open && 'rotate-90')} />
+				<ChevronRightIcon className={cn('ms-auto transition-transform rtl:-scale-x-100', open && 'rotate-90 rtl:-rotate-90')} />
 			</DropdownMenuItem>
 			{open && (
-				<div ref={groupRef} role="group" className="ml-2.5 border-l border-line pl-1">
+				<div ref={groupRef} role="group" className="ms-2.5 border-s border-line ps-1">
 					{props.children}
 				</div>
 			)}
@@ -122,8 +122,8 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
 >(({ className, children, checked, ...props }, ref) => (
-	<DropdownMenuPrimitive.CheckboxItem ref={ref} className={cn('fd-mi relative pl-7', className)} checked={checked} {...props}>
-		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
+	<DropdownMenuPrimitive.CheckboxItem ref={ref} className={cn('fd-mi relative ps-7', className)} checked={checked} {...props}>
+		<span className="absolute inset-s-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
 			<DropdownMenuPrimitive.ItemIndicator>
 				<CheckIcon className="h-4 w-4" />
 			</DropdownMenuPrimitive.ItemIndicator>
@@ -137,8 +137,8 @@ const DropdownMenuRadioItem = React.forwardRef<
 	React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
 >(({ className, children, ...props }, ref) => (
-	<DropdownMenuPrimitive.RadioItem ref={ref} className={cn('fd-mi relative pl-7', className)} {...props}>
-		<span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
+	<DropdownMenuPrimitive.RadioItem ref={ref} className={cn('fd-mi relative ps-7', className)} {...props}>
+		<span className="absolute inset-s-1.5 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">
 			<DropdownMenuPrimitive.ItemIndicator>
 				<DotFilledIcon className="h-4 w-4 fill-current" />
 			</DropdownMenuPrimitive.ItemIndicator>
@@ -154,7 +154,7 @@ const DropdownMenuLabel = React.forwardRef<
 		inset?: boolean
 	}
 >(({ className, inset, ...props }, ref) => (
-	<DropdownMenuPrimitive.Label ref={ref} className={cn('fd-mlabel', inset && 'pl-7', className)} {...props} />
+	<DropdownMenuPrimitive.Label ref={ref} className={cn('fd-mlabel', inset && 'ps-7', className)} {...props} />
 ))
 DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName
 

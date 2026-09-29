@@ -126,7 +126,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 							]}
 							active={tab}
 							setActive={setTab}
-							className="h-7 ml-2"
+							className="h-7 ms-2"
 						/>
 					</span>
 				)}
@@ -340,7 +340,7 @@ function TeamInfoOnly({
 
 			{unit && unit.characteristics && unit.characteristics.length > 0 && (
 				<div className="mt-4">
-					<ul className="space-y-0.5 text-xs font-light ml-4 mt-2">
+					<ul className="space-y-0.5 text-xs font-light ms-4 mt-2">
 						{unit.characteristics.map((char) => (
 							<li key={char.description} className="list-disc">
 								{char.description}
@@ -362,7 +362,7 @@ function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfi
 			<h4 className="text-sm font-medium">{title}</h4>
 			{vehicles.length > 0 && (
 				<div className="grid grid-cols-[auto_auto_auto_auto] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
-					<div className="text-right font-medium" role="columnheader">
+					<div className="text-end font-medium" role="columnheader">
 						#
 					</div>
 					<div className="flex items-center font-medium" role="columnheader">
@@ -399,7 +399,7 @@ function IndividualVehicleRow({ vehicle, type }: { vehicle: SLL.Vehicle; type: s
 
 	return (
 		<>
-			<div className="text-right" role="cell">
+			<div className="text-end" role="cell">
 				{vehicle.count}
 			</div>
 			<div role="cell">{delayRespawnInfo}</div>
@@ -721,7 +721,7 @@ function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.
 		>
 			<div />
 			{scoreTypes.map((scoreType) => (
-				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
+				<div key={scoreType} className="mb-0.5 min-w-0 text-center text-xs font-medium leading-tight break-words">
 					{scoreType.replace(/_/g, ' ')}
 				</div>
 			))}

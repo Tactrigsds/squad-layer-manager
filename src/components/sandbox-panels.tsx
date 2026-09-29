@@ -50,7 +50,7 @@ export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFr
 		<div className={cn('min-h-0 rounded-md border bg-muted/30', className)}>
 			<ScrollArea className="h-full">
 				{cfg ? (
-					<pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
+					<pre className="p-2 font-mono text-xs whitespace-pre-wrap ltr-isolate">{cfg}</pre>
 				) : (
 					<p className="p-2 text-xs text-muted-foreground">{tr.text(SB_Msgs.adminListEmpty())}</p>
 				)}

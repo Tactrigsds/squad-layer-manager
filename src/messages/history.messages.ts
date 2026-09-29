@@ -10,6 +10,8 @@ export const tabMatches = def('Matches')
 
 export const modeBasic = def('Basic')
 export const modeAdvanced = def('Advanced')
+// marks a recent query built as a tree, among the other facts that describe it
+export const advancedQueryTag = def('advanced')
 export const switchToAdvanced = def('Build the query as a tree')
 export const switchToBasic = def('Build the query from fields')
 

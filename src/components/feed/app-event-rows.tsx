@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as I18n from '@/messages/i18n'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import type * as L from '@/models/layer'
@@ -54,14 +55,16 @@ function labelOf(ctx: RC.RenderCtx, userId: USR.UserId): string {
 function LayerNames(props: { ctx: RC.RenderCtx; layerIds: L.LayerId[] }) {
 	const shown = props.layerIds.slice(0, 3)
 	return (
-		<span className="inline-flex items-baseline gap-1 flex-wrap">
-			{shown.map((layerId, i) => (
-				<span key={layerId} className="inline-flex items-baseline">
-					<Atoms.ShortLayerName normalized={props.ctx.displayTeamsNormalized} layerId={layerId} />
-					{i < shown.length - 1 ? ',' : ''}
-				</span>
-			))}
-			{props.layerIds.length > shown.length && <span>{tr.text(AppEvents_Msgs.queueAndMore(props.layerIds.length - shown.length))}</span>}
+		<span>
+			{I18n.nodeList(
+				[
+					...shown.map((layerId) => (
+						<Atoms.ShortLayerName key={layerId} normalized={props.ctx.displayTeamsNormalized} layerId={layerId} />
+					)),
+					...(props.layerIds.length > shown.length ? [tr.text(AppEvents_Msgs.queueMore(props.layerIds.length - shown.length))] : []),
+				],
+				tr.locale,
+			)}
 		</span>
 	)
 }
@@ -162,21 +165,17 @@ function QueueUpdatedRow(props: {
 
 	const nextBefore = LL.getNextLayerId(appEvent.prevList)
 	const nextAfter = LL.getNextLayerId(appEvent.list)
-	const summary = (
-		<>
-			{headline}
-			{tr.text(AppEvents_Msgs.queueChangeCounts(counts))}
-			{nextAfter !== null && nextAfter !== nextBefore && (
-				<span className="inline-flex items-baseline gap-1">
-					{tr.richText(
-						AppEvents_Msgs.queueNextLayer(
-							appEvent.trigger === 'external-layer-change',
-							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
-						),
-					)}
-				</span>
-			)}
-		</>
+	const summary = tr.richText(
+		AppEvents_Msgs.queueSummary(
+			headline,
+			tr.text(AppEvents_Msgs.queueChangeCounts(counts)),
+			nextAfter !== null && nextAfter !== nextBefore
+				? {
+						external: appEvent.trigger === 'external-layer-change',
+						layer: <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
+					}
+				: undefined,
+		),
 	)
 	const icon = <EventIcon name="ListOrdered" className="text-info" />
 
@@ -195,7 +194,7 @@ function QueueUpdatedRow(props: {
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
 			</summary>
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{changes.map((change) => (
 					<QueueChangeLine key={`${change.kind}:${change.itemId}`} ctx={ctx} change={change} />
 				))}
@@ -249,7 +248,7 @@ function TeamswapsUpdatedRow(props: {
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
 			</summary>
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{changes.map((change) => {
 					const player = playerFor(change.playerId)
 					// the swap's own actor is only worth naming when it wasn't the admin this event is attributed to
@@ -315,7 +314,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 	// expandable list of the players involved (targets, or a disbanded squad's members)
 	const targetList =
 		matchId !== null && event.targetPlayers.length > 0 ? (
-			<div className="pl-6 pt-1 flex flex-col gap-0.5">
+			<div className="ps-6 pt-1 flex flex-col gap-0.5">
 				{event.targetPlayers.map((player) => (
 					<Atoms.PlayerDisplay key={player.ids.eos} ctx={ctx} showTeam player={player} matchId={matchId} />
 				))}
@@ -591,15 +590,12 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			</>
 		)
 
-		const containerStyle = {
-			borderRightColor: style.color,
-			backgroundImage: `linear-gradient(to left, ${style.gradientColor}, transparent)`,
-		}
+		const containerStyle = { borderInlineEndColor: style.color, '--row-tint': style.gradientColor } as React.CSSProperties
 		// a single/named-target warn is a flat line; a bulk warn keeps an expandable list of everyone warned
 		if (single || !targetList) {
 			return (
 				<div
-					className="flex gap-2 py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent items-baseline"
+					className="flex gap-2 py-1 text-xs w-full min-w-0 border-e-2 bg-linear-to-l rtl:bg-linear-to-r from-(--row-tint) to-transparent items-baseline"
 					style={containerStyle}
 				>
 					{header}
@@ -607,7 +603,10 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			)
 		}
 		return (
-			<details className="py-1 text-xs w-full min-w-0 border-r-2 bg-linear-to-l to-transparent" style={containerStyle}>
+			<details
+				className="py-1 text-xs w-full min-w-0 border-e-2 bg-linear-to-l rtl:bg-linear-to-r from-(--row-tint) to-transparent"
+				style={containerStyle}
+			>
 				<summary className={SUMMARY_CLASS}>{header}</summary>
 				{targetList}
 			</details>
@@ -644,12 +643,12 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
 	if (count <= 4 && matchId !== null && event.targetPlayers.length === count) {
-		const targets = event.targetPlayers.map((player, i) => (
-			<span key={player.ids.eos}>
-				{i > 0 ? ', ' : ''}
-				<Atoms.PlayerDisplay ctx={ctx} showTeam player={player} matchId={matchId} />
-			</span>
-		))
+		const targets = I18n.nodeList(
+			event.targetPlayers.map((player) => (
+				<Atoms.PlayerDisplay key={player.ids.eos} ctx={ctx} showTeam player={player} matchId={matchId} />
+			)),
+			tr.locale,
+		)
 		return (
 			<Atoms.EventLine time={event.time} icon={icon}>
 				{tr.richText(AppEvents_Msgs.actionOnNamedTargets(actorLabel, verb, targets, count, suffix))}

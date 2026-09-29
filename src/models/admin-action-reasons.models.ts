@@ -2,6 +2,8 @@ import * as Templating from '@/lib/templating'
 import { z } from '@/lib/zod'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as LP from '@/models/labeled-presets.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as RBAC from '@/rbac.models'
 
 // a kick removes the player from the server; a timeout additionally bars them from rejoining any SLM server
@@ -59,7 +61,12 @@ export const AdminActionReasonSchema = LP.LabeledPresetSchema.extend({
 	actionTexts: z
 		.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1))
 		.prefault({})
-		.describe('Per-action text. The reason is available for an action only if it has text for that action.'),
+		.meta(
+			SDoc.of({
+				label: t('Action Texts'),
+				description: t('Per-action text. The reason is available for an action only if it has text for that action.'),
+			}),
+		),
 }).refine((r) => Object.keys(r.actionTexts).length > 0, {
 	error: 'A reason must have text for at least one action',
 	path: ['actionTexts'],
@@ -111,9 +118,12 @@ function checkApplicable(reason: AdminActionReason | undefined, action: AdminAct
 // configured then, and so timeouts can re-render with the remaining duration substituted.
 export const AppliedReasonSchema = z.object({
 	// absent for custom (free-text) reasons
-	label: z.string().optional(),
-	template: z.string(),
-	vars: z.record(z.string(), z.string()),
+	label: z
+		.string()
+		.optional()
+		.meta(SDoc.of({ label: t('Label') })),
+	template: z.string().meta(SDoc.of({ label: t('Template') })),
+	vars: z.record(z.string(), z.string()).meta(SDoc.of({ label: t('Variables') })),
 })
 export type AppliedReason = z.infer<typeof AppliedReasonSchema>
 

@@ -9,6 +9,8 @@ import { z } from '@/lib/zod'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import * as V from '@/models/vote.models'
 
 import * as F from './filter.models'
@@ -22,16 +24,37 @@ import * as MH from './match-history.models'
 export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Unit', 'UnitMatchup', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
-	field: RepeatRuleFieldSchema,
-	label: z.string().min(1).max(100).optional().describe('What to call the rule wherever it is shown. Defaults to the field name.'),
-	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
-	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
+	field: RepeatRuleFieldSchema.meta(SDoc.of({ label: t('Field') })),
+	label: z
+		.string()
+		.min(1)
+		.max(100)
+		.optional()
+		.meta(SDoc.of({ label: t('Label'), description: t('What to call the rule wherever it is shown. Defaults to the field name.') })),
+	targetValues: z
+		.array(z.string())
+		.optional()
+		.meta(SDoc.of({ label: t('Target Values'), description: t('A "Whitelist" of values which the rule applies to') })),
+	within: z
+		.number()
+		.min(0)
+		.max(50)
+		.meta(
+			SDoc.of({
+				label: t('Within'),
+				description: t('the number of matches in which this rule applies. if 0, the rule should be ignored'),
+			}),
+		),
 	crossTeam: z
 		.boolean()
 		.optional()
-		.describe(
-			"For a team-specific field, pool both teams' values together: a value one team played counts as a repeat for the other team too. " +
-				'Ignored for fields that are not team-specific.',
+		.meta(
+			SDoc.of({
+				label: t('Cross-team'),
+				description: t(
+					"For a team-specific field, pool both teams' values together: a value one team played counts as a repeat for the other team too. Ignored for fields that are not team-specific.",
+				),
+			}),
 		),
 })
 export type RepeatRule = z.infer<typeof RepeatRuleSchema>
@@ -150,16 +173,21 @@ export type LayersQuerySortDirection = z.infer<typeof LAYERS_QUERY_SORT_DIRECTIO
 export const LayersQuerySortSchema = z
 	.discriminatedUnion('type', [
 		z.object({
-			type: z.literal('column'),
-			sortBy: z.string(),
-			direction: LAYERS_QUERY_SORT_DIRECTION.optional().prefault('ASC'),
+			type: z.literal('column').meta(SDoc.of({ label: t('Type') })),
+			sortBy: z.string().meta(SDoc.of({ label: t('Sort By') })),
+			direction: LAYERS_QUERY_SORT_DIRECTION.optional()
+				.prefault('ASC')
+				.meta(SDoc.of({ label: t('Direction') })),
 		}),
 		z.object({
-			type: z.literal('random'),
-			seed: z.string().optional(),
+			type: z.literal('random').meta(SDoc.of({ label: t('Type') })),
+			seed: z
+				.string()
+				.optional()
+				.meta(SDoc.of({ label: t('Seed') })),
 		}),
 	])
-	.describe('if not provided, no sorting will be done')
+	.meta(SDoc.of({ options: { column: t('By column'), random: t('Random') } }))
 
 export type LayersQuerySort = z.infer<typeof LayersQuerySortSchema>
 
@@ -710,11 +738,24 @@ export function getQueryCursorForItemIndex(index: ItemIndex): Cursor {
 }
 
 export const LayerTableConfigSchema = z.object({
-	orderedColumns: z.array(z.object({ name: z.string(), visible: z.boolean().optional().describe('default true') })),
-	defaultSortBy: LayersQuerySortSchema,
+	orderedColumns: z
+		.array(
+			z.object({
+				name: z.string().meta(SDoc.of({ label: t('Name') })),
+				visible: z
+					.boolean()
+					.optional()
+					.meta(SDoc.of({ label: t('Visible'), description: t('default true') })),
+			}),
+		)
+		.meta(SDoc.of({ label: t('Ordered Columns') })),
+	defaultSortBy: LayersQuerySortSchema.meta(SDoc.of({ label: t('Default Sort') })),
 	// must stay bidirectionally codec-able (no z.preprocess/one-way transforms): the settings system round-trips
 	// GlobalSettings through .encode() for the editor form, which throws on a unidirectional transform
-	extraLayerSelectMenuItems: z.array(F.EditableCompNodeSchema).optional(),
+	extraLayerSelectMenuItems: z
+		.array(F.EditableCompNodeSchema)
+		.optional()
+		.meta(SDoc.of({ label: t('Extra Layer Select Menu Items'), opaque: true })),
 })
 
 export type LayerTableConfig = z.infer<typeof LayerTableConfigSchema>

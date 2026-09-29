@@ -603,7 +603,19 @@ and interpolate the result, as `src/messages/format.ts` does.
 
 **Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
 ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players
-rather than for whoever is looking at the web app, so they are handed a locale explicitly.
+rather than for whoever is looking at the web app, so they are handed a locale explicitly. The browser also sets
+`<html lang dir>` from it, which the CSS relies on: layout uses logical properties (`ms-*`, `inset-s-*`,
+`text-start`), `pnpm lint` rejects physical ones, and `:lang()` rules in `theme.css` adjust casing, tracking, line
+height and fonts per script.
+
+**Pseudo-locales show what a translation would break.** Development builds carry `en-XA`, which pads every message by
+about 40% and accents it, and `ar-XB`, the same text right to left. Pick one from the language menu. A message still
+in plain English under `en-XA` is not going through the messages system.
+
+**Settings describe themselves.** A setting's name, description and option names are zod metadata beside the field,
+`.meta(SDoc.of({ label: t('Log File'), description: t('...') }))` (see `src/models/schema-docs.models.ts`). They
+survive `z.toJSONSchema`, so the settings form, its table of contents and the YAML editor's hover all read the same
+text. A unit test fails on any setting without a label. Mark a subtree `opaque` when it is edited as one value.
 
 ## The layer engine (rust/wasm)
 

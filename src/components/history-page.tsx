@@ -26,6 +26,7 @@ import * as HistoryFrame from '@/frames/history.frame'
 import * as Browser from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
@@ -33,6 +34,7 @@ import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -204,7 +206,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 						<span className="min-w-0 flex-1">{runButton}</span>
 					</div>
 					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
+					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pe-1">
 						<HistoryQueryBar draft={draft} set={set} />
 					</div>
 				</RailResizer>
@@ -234,7 +236,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 					role="separator"
 					aria-orientation="vertical"
 					aria-label={tr.text(HistoryMsgs.resizeBuilder())}
-					className="-ml-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent hover:bg-line-soft"
+					className="-ms-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent hover:bg-line-soft"
 					onPointerDown={(e) => {
 						dragFrom.current = { x: e.clientX, width }
 						e.currentTarget.setPointerCapture(e.pointerId)
@@ -242,8 +244,8 @@ function RailResizer(props: { children: React.ReactNode }) {
 					onPointerMove={(e) => {
 						const from = dragFrom.current
 						if (!from) return
-						// the rail is on the right, so dragging left widens it
-						const next = from.width + (from.x - e.clientX)
+						// the rail sits at the inline end, so dragging toward the inline start widens it
+						const next = from.width + (from.x - e.clientX) * (MessagesClient.textDirection() === 'rtl' ? -1 : 1)
 						setWidth(Math.min(HistoryClient.RAIL_WIDTH.max, Math.max(HistoryClient.RAIL_WIDTH.min, next)))
 					}}
 					onPointerUp={(e) => {
@@ -252,7 +254,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 						HistoryClient.saveRailWidth(width)
 					}}
 				/>
-				<div className="flex min-w-0 flex-1 flex-col gap-2 border-l border-line pl-2.5 shadow-[-1px_0_0_var(--line-soft)]">
+				<div className="flex min-w-0 flex-1 flex-col gap-2 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)] rtl:shadow-[1px_0_0_var(--line-soft)]">
 					{props.children}
 				</div>
 			</div>
@@ -368,7 +370,7 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 	return (
 		<div className="flex items-center gap-1 text-xs">
 			<Button variant="ghost" size="icon" className="h-6 w-6" disabled={props.page === 0} onClick={() => props.setPage(props.page - 1)}>
-				<Icons.ChevronLeft className="h-3 w-3" />
+				<Icons.ChevronLeft className="h-3 w-3 rtl:-scale-x-100" />
 			</Button>
 			<span className="tabular-nums">
 				{props.page + 1}/{lastPage + 1}
@@ -380,7 +382,7 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 				disabled={props.page >= lastPage}
 				onClick={() => props.setPage(props.page + 1)}
 			>
-				<Icons.ChevronRight className="h-3 w-3" />
+				<Icons.ChevronRight className="h-3 w-3 rtl:-scale-x-100" />
 			</Button>
 		</div>
 	)
@@ -447,7 +449,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 	return useHistoryRenderCtx(matches, { loadRowEvents, lateMatch, serverId: HQ.soleServerId(query), linkToRows, selectionText })
 }
 
-const HEADER_CELL = 'px-2 py-1 text-left font-medium'
+const HEADER_CELL = 'px-2 py-1 text-start font-medium'
 
 // A column header that sorts. Clicking runs the query rather than only editing the draft: the results are
 // already on screen, so a header that waited for Run would read as dead.
@@ -494,7 +496,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 			column={column}
 			label={label}
 			sort={sort}
-			className="text-right"
+			className="text-end"
 			onSort={(next) => props.onRun({ ...props.query, sort: next })}
 		/>
 	)
@@ -515,7 +517,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('matches', tr.text(HistoryMsgs.colMatches()))}
 							{sortHeader('chatMessages', tr.text(HistoryMsgs.colChat()))}
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
-							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
+							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
@@ -562,7 +564,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('killDiff', tr.text(HistoryMsgs.colKillDiff()))}
 							{sortHeader('duration', tr.text(HistoryMsgs.colDuration()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
-							<th className={`${HEADER_CELL} text-right`}>{tr.text(HistoryMsgs.colEvents())}</th>
+							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
 					<DomRowsBody
@@ -609,7 +611,7 @@ function RecentMenu(props: { onLoad: () => void }) {
 						key={recent.at}
 						to="/history"
 						search={recent.query}
-						className="block w-full max-w-96 truncate px-2 py-1 text-left text-xs hover:bg-accent"
+						className="block w-full max-w-96 truncate px-2 py-1 text-start text-xs hover:bg-accent"
 						onClick={(e) => {
 							if (isPlainNavigationClick(e)) props.onLoad()
 						}}
@@ -624,14 +626,14 @@ function RecentMenu(props: { onLoad: () => void }) {
 
 function describeQuery(query: HQ.Query): string {
 	const parts: string[] = [query.type]
-	if (query.servers?.length) parts.push(query.servers.join(', '))
-	if (query.players?.length) parts.push(query.players.join(', '))
+	if (query.servers?.length) parts.push(MsgFmt.formatList(query.servers, { type: 'disjunction' }))
+	if (query.players?.length) parts.push(MsgFmt.formatList(query.players, { type: 'disjunction' }))
 	if (query.chat) parts.push(`"${query.chat}"`)
-	if (query.types && query.types.length > 0) parts.push(query.types.join(', '))
+	if (query.types && query.types.length > 0) parts.push(MsgFmt.formatList(query.types, { type: 'disjunction' }))
 	for (const part of [query.map, query.gamemode, query.faction]) {
 		if (part) parts.push(part)
 	}
-	if (query.mode === 'advanced') parts.push(tr.text(HistoryMsgs.modeAdvanced()).toLowerCase())
+	if (query.mode === 'advanced') parts.push(tr.text(HistoryMsgs.advancedQueryTag()))
 	return parts.join(' · ')
 }
 
@@ -658,7 +660,7 @@ function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => v
 							<TSR.Link
 								to="/history"
 								search={query.query}
-								className="grow truncate text-left"
+								className="grow truncate text-start"
 								onClick={(e) => {
 									if (!isPlainNavigationClick(e)) return
 									if (mine) props.onLoadOwn({ id: query.id, name: query.name, visibility: query.visibility })
@@ -667,7 +669,7 @@ function SavedMenu(props: { onLoad: () => void; onLoadOwn: (saved: SavedAs) => v
 							>
 								<span className="font-medium">{query.name}</span>
 								{!mine && query.ownerName && (
-									<span className="ml-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
+									<span className="ms-2 text-muted-foreground">{tr.text(HistoryMsgs.sharedBy(query.ownerName))}</span>
 								)}
 							</TSR.Link>
 							{mine && (

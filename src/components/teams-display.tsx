@@ -43,7 +43,7 @@ export function TeamFactionDisplay(props: {
 	team: SM.TeamId
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
-	// Names the team ahead of its faction -- "Team A(current PLA)" rather than "PLA". Only for a header sitting over
+	// Names the team ahead of its faction -- "Team A (current PLA)" rather than "PLA". Only for a header sitting over
 	// the live roster, which is what makes "current" true.
 	leadWithTeamName?: boolean
 	hideCurrentWord?: boolean

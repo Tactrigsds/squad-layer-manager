@@ -7,6 +7,8 @@ import { tr } from '@/systems/messages.client'
 
 import { ALL_GROUPS, type GroupingBarEntry, type GroupPrefixRenderer, type ResolvedGroup, type ResolvedGrouping } from './options.ts'
 
+const trGrouping = tr.withTags({ label: (chunks) => chunks })
+
 // Mousedown is swallowed throughout so operating these never pulls focus out of the search input: the
 // user's next keystroke still types into the filter.
 const keepFocus = (e: React.MouseEvent) => e.preventDefault()
@@ -15,7 +17,7 @@ const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 export function GroupTabs(props: { groups: readonly ResolvedGroup[]; label?: string; value: string; onChange: (group: string) => void }) {
 	return (
 		<div role="tablist" aria-label={props.label} className="flex shrink-0 items-center gap-1 overflow-x-auto px-1 py-1">
-			{props.label && <span className="shrink-0 pr-1 text-xs text-muted-foreground">{props.label}</span>}
+			{props.label && <span className="shrink-0 pe-1 text-xs text-muted-foreground">{props.label}</span>}
 			{[{ key: ALL_GROUPS, label: tr.text(UI_Msgs.allGroups()), prefix: '' }, ...props.groups].map((group) => (
 				<button
 					key={group.key}
@@ -48,10 +50,14 @@ export function GroupingFacet(props: { grouping: ResolvedGrouping; current: Reso
 			className="flex w-full shrink-0 items-center justify-between gap-2 px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
 		>
 			<span className="truncate">
-				{props.grouping.label}:{' '}
-				<span className={cn(props.current && 'font-medium text-foreground')}>
-					{props.current?.label ?? tr.text(UI_Msgs.allGroups())}
-				</span>
+				{trGrouping.richText(
+					UI_Msgs.labelValue(
+						props.grouping.label,
+						<span className={cn(props.current && 'font-medium text-foreground')}>
+							{props.current?.label ?? tr.text(UI_Msgs.allGroups())}
+						</span>,
+					),
+				)}
 			</span>
 			<ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
 		</button>
@@ -102,7 +108,7 @@ export function GroupDrillInHeader(props: { grouping: ResolvedGrouping; onBack: 
 				aria-label={tr.text(UI_Msgs.backToOptions())}
 				className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 			>
-				<ChevronLeft className="h-3 w-3" />
+				<ChevronLeft className="h-3 w-3 rtl:-scale-x-100" />
 				{props.grouping.label}
 			</button>
 		</div>
@@ -132,7 +138,7 @@ export function GroupDrillIn(props: {
 			{rows.map((row) => (
 				<CommandItem key={row.key} value={row.key} keywords={[row.label]} onSelect={() => props.onPick(row.key)}>
 					<span className={cn('grow truncate', props.narrowed === row.key && 'font-medium')}>{row.label}</span>
-					<span className="ml-2 shrink-0 text-xs text-muted-foreground">{row.count}</span>
+					<span className="ms-2 shrink-0 text-xs text-muted-foreground">{row.count}</span>
 				</CommandItem>
 			))}
 		</CommandGroup>

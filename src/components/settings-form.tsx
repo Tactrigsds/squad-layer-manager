@@ -39,7 +39,6 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/lib/settings-groups'
-import { humanize } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
@@ -282,7 +281,9 @@ function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: 
 				<p key={i} className="flex items-start gap-1 text-xs font-medium text-destructive">
 					<Icons.CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 wrap-break-word">
-						{iss.path !== pathStr && <code className="mr-1 text-[10px] opacity-70">{iss.path.slice(pathStr.length + 1)}</code>}
+						{iss.path !== pathStr && (
+							<code className="me-1 text-[10px] opacity-70 ltr-isolate">{iss.path.slice(pathStr.length + 1)}</code>
+						)}
 						{iss.message}
 					</span>
 				</p>
@@ -334,7 +335,7 @@ function RbacSuperCallout() {
 					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.superUsersLabel())}</span>
 					{superUsers.map((id) => (
 						<span key={id} className="rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
-							{userMap.get(id)?.displayName ?? <span className="font-mono">{id}</span>}
+							{userMap.get(id)?.displayName ?? <span className="font-mono ltr-isolate">{id}</span>}
 						</span>
 					))}
 				</div>
@@ -355,7 +356,7 @@ function RbacSuperCallout() {
 										{role.name}
 									</>
 								) : (
-									<span className="font-mono">{id}</span>
+									<span className="font-mono ltr-isolate">{id}</span>
 								)}
 							</span>
 						)
@@ -521,7 +522,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGrouping}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(PG_Msgs.addGrouping())}
 				</Button>
 			</div>
@@ -751,7 +752,7 @@ function RuleRow({
 				reset$={reset$}
 				onChange={onChange}
 			/>
-			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rtl:-scale-x-100" />
 			{namingNewGroup ? (
 				<div className="flex min-w-0 items-center gap-1">
 					<TextInputField
@@ -938,7 +939,7 @@ function GroupingCard({
 					</div>
 				)}
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(PG_Msgs.addRule())}
 				</Button>
 			</div>
@@ -1034,7 +1035,7 @@ function GroupColorRow({
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => setCustom(e.currentTarget.value.trim(), true)}
-					className="w-full min-w-0 bg-transparent py-1 pr-2 font-mono text-xs outline-none"
+					className="w-full min-w-0 bg-transparent py-1 pe-2 font-mono text-xs outline-none ltr-isolate"
 				/>
 			</InputGroup>
 			{flags.length > 0 && (
@@ -1076,7 +1077,7 @@ export function HelpTip({ text, links }: { text: string; links?: { label: string
 								className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
 								onClick={() => SettingsNav.navigateToAnchor(link.anchor)}
 							>
-								<Icons.ArrowRight className="h-3 w-3 shrink-0" />
+								<Icons.ArrowRight className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
 								{link.label}
 							</button>
 						))}
@@ -1143,7 +1144,7 @@ function PrefixRow({
 			<span className="text-xs text-muted-foreground tabular-nums">#{index + 1}</span>
 			<Input
 				aria-label={tr.text(CMD_Msgs.prefixLabel(index + 1))}
-				className={cn('h-7 w-16 font-mono text-sm', invalid && 'border-destructive focus-visible:ring-destructive')}
+				className={cn('h-7 w-16 font-mono text-sm ltr-isolate', invalid && 'border-destructive focus-visible:ring-destructive')}
 				title={invalid ? CMD.PREFIX_ERROR : undefined}
 				value={draft}
 				onChange={(e) => setDraft(e.target.value)}
@@ -1387,7 +1388,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 			})}
 			<div className="flex items-center gap-2">
 				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(CMD_Msgs.addTrigger())}
 				</Button>
 			</div>
@@ -1402,8 +1403,8 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							<span>{tr.text(CMD_Msgs.takesArguments())}</span>
 							{signature.map(({ ref, arg }) => (
 								<span key={ref} className="whitespace-nowrap">
-									<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
-									<span className="ml-1 font-mono">{arg}</span>
+									<code className="rounded bg-muted px-1 py-0.5 font-mono ltr-isolate">{ref}</code>
+									<span className="ms-1 font-mono">{arg}</span>
 								</span>
 							))}
 						</div>
@@ -1527,7 +1528,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => push(e.currentTarget.value)}
-					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans"
+					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans ltr-isolate"
 				/>
 				<InputGroupAddon align="inline-end">
 					<InputGroupButton
@@ -1717,7 +1718,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 					placeholder={tr.text(LTag_Msgs.labelColumn())}
 					onBlur={(e) => commitLabel(e.target.value)}
 				/>
-				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground">{row.id}</p>}
+				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground ltr-isolate">{row.id}</p>}
 			</TableCell>
 			<TableCell className="align-top">
 				<Textarea
@@ -1748,7 +1749,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 						ref={colorRef}
 						defaultValue={row?.color ?? ''}
 						maxLength={7}
-						className="w-24 font-mono text-xs"
+						className="w-24 font-mono text-xs ltr-isolate"
 						onBlur={(e) => setFields({ color: e.target.value.trim() })}
 					/>
 				</div>
@@ -2248,7 +2249,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 								type="button"
 								size="icon"
 								variant="ghost"
-								className="ml-auto h-7 w-7 text-destructive"
+								className="ms-auto h-7 w-7 text-destructive"
 								title={tr.text(SM_Msgs.deleteAdminList(name))}
 								onClick={() =>
 									update((v) => {
@@ -2346,7 +2347,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" size="sm" variant="outline" className="h-8" disabled={!canAdd} onClick={addList}>
-					<Icons.Plus className="mr-1 h-4 w-4" />
+					<Icons.Plus className="me-1 h-4 w-4" />
 					{tr.text(SM_Msgs.addAdminList())}
 				</Button>
 			</div>
@@ -2516,7 +2517,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 						<p key={n} className="flex items-start gap-1.5 text-xs text-destructive">
 							<Icons.TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
 							<span>
-								<code className="text-[10px]">{i.path}</code> {i.message}
+								<code className="text-[10px] ltr-isolate">{i.path}</code> {i.message}
 							</span>
 						</p>
 					))}
@@ -2526,7 +2527,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 				<div className="flex items-center justify-between">
 					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.roleCount(roleIds.length))}</p>
 					<Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={clearAll}>
-						<Icons.Trash2 className="mr-1 h-4 w-4" />
+						<Icons.Trash2 className="me-1 h-4 w-4" />
 						{tr.text(RBAC_Msgs.clearAllRoles())}
 					</Button>
 				</div>
@@ -2540,7 +2541,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 							type="button"
 							onClick={() => setSelected(id)}
 							className={cn(
-								'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left font-mono text-sm',
+								'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-start font-mono text-sm',
 								id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
 							)}
 						>
@@ -2654,10 +2655,10 @@ function RoleDetail({
 					type="button"
 					size="sm"
 					variant="ghost"
-					className="ml-auto text-destructive"
+					className="ms-auto text-destructive"
 					onClick={() => update((r) => withRoleRemoved(r, roleId))}
 				>
-					<Icons.Trash2 className="mr-1 h-4 w-4" />
+					<Icons.Trash2 className="me-1 h-4 w-4" />
 					{tr.text(RBAC_Msgs.deleteRole())}
 				</Button>
 			</div>
@@ -3388,6 +3389,8 @@ function TextInputField({
 		<Input
 			ref={ref}
 			type={secret ? 'password' : numeric ? 'number' : 'text'}
+			// paths, hosts and urls are the common values, and would otherwise lose their leading slash to the far end
+			dir={secret || numeric ? undefined : 'auto'}
 			placeholder={placeholder}
 			autoFocus={autoFocus}
 			defaultValue={format(value$.getValue())}
@@ -3401,11 +3404,13 @@ function SelectField({
 	reset$,
 	onChange,
 	options,
+	node,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
+	node: Node
 }) {
 	const value = useFieldValue(value$)
 	return (
@@ -3416,7 +3421,7 @@ function SelectField({
 			<SelectContent>
 				{options.map((opt) => (
 					<SelectItem key={opt} value={opt}>
-						{opt}
+						{tr.text(SETTINGS_Msgs.settingOption(node, opt))}
 					</SelectItem>
 				))}
 			</SelectContent>
@@ -3432,6 +3437,7 @@ function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$:
 // discriminated union: a variant picker keyed to the discriminator const, plus the active branch's object fields
 // (the discriminator field itself is chosen by the picker, so it isn't rendered as an editable property).
 function DiscriminatedUnionField({
+	node,
 	path,
 	value$,
 	reset$,
@@ -3439,6 +3445,7 @@ function DiscriminatedUnionField({
 	branches,
 	discriminator,
 }: {
+	node: Node
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
@@ -3473,7 +3480,7 @@ function DiscriminatedUnionField({
 						const opt = String(b.properties[discriminator].const)
 						return (
 							<SelectItem key={opt} value={opt}>
-								{tr.text(SETTINGS_Msgs.settingName([...path, discriminator, opt], opt))}
+								{tr.text(SETTINGS_Msgs.settingOption(node, opt))}
 							</SelectItem>
 						)
 					})}
@@ -3489,18 +3496,20 @@ function EnumArrayField({
 	reset$,
 	onChange,
 	options,
+	node,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
+	node: Node
 }) {
 	const value = useFieldValue(value$) as any[]
 	return (
 		<ComboBoxMulti
 			title={tr.text(SETTINGS_Msgs.enumValuePicker())}
 			values={value ?? []}
-			options={options}
+			options={options.map((opt) => ({ value: opt, label: tr.text(SETTINGS_Msgs.settingOption(node, opt)) }))}
 			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
 		/>
 	)
@@ -3556,13 +3565,13 @@ function wrapNullable(
 }
 
 // placeholder for a text/number input: the schema default when there is one (doubles as a format hint, e.g. '5m'),
-// an example duration for HumanTime fields without one, otherwise the humanized field name
+// an example duration for HumanTime fields without one, otherwise the field's name
 function placeholderFor(node: Node, inner: Node, path: Path): string | undefined {
 	const def = effectiveDefault(node)
 	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
 	if (isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
 	const last = path[path.length - 1]
-	return typeof last === 'string' ? humanize(last) : undefined
+	return typeof last === 'string' ? tr.text(SETTINGS_Msgs.settingLabel(node, last)) : undefined
 }
 
 function FieldControl({
@@ -3593,6 +3602,7 @@ function FieldControl({
 	if (du) {
 		return (
 			<DiscriminatedUnionField
+				node={node}
 				path={path}
 				value$={value$}
 				reset$={reset$}
@@ -3607,7 +3617,7 @@ function FieldControl({
 	if (inner.enum && inner.type !== 'array') {
 		return wrapNullable(
 			nullable,
-			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />,
+			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={node} />,
 			inner,
 			value$,
 			reset$,
@@ -3700,7 +3710,7 @@ function ArrayField({
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
-		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />
+		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={items} />
 	}
 
 	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
@@ -3927,7 +3937,7 @@ function RecordEntry({
 				) : (
 					<Input className="font-mono h-8 max-w-[16rem]" defaultValue={entryKey} onBlur={(e) => onRename(e.target.value.trim())} />
 				)}
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ml-auto" onClick={onRemove}>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ms-auto" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
 				</Button>
 			</div>
@@ -4100,7 +4110,7 @@ function FieldResetControls({
 						}
 						onClick={() => resetTo(def.value)}
 					>
-						<Icons.CornerDownLeft className="h-3.5 w-3.5" />
+						<Icons.CornerDownLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
 					</TooltipButton>
 				</>
 			)}
@@ -4287,7 +4297,7 @@ function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEd
 	}
 	return (
 		<div
-			className={cn('my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground', writable && 'cursor-text')}
+			className={cn('my-1 flex items-start gap-1 border-s-2 border-muted ps-2 text-xs text-muted-foreground', writable && 'cursor-text')}
 			onClick={editAtClick}
 		>
 			<RichText
@@ -4370,7 +4380,7 @@ function AdvancedDisclosure({ paths, children }: { paths: string[]; children: Re
 				onClick={() => setExpanded((v) => !v)}
 				aria-expanded={open}
 			>
-				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
+				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open ? 'rotate-90' : 'rtl:rotate-180')} />
 				{tr.text(SETTINGS_Msgs.advanced())}
 				<span className="opacity-60">({paths.length})</span>
 				{hasIssue && <Icons.TriangleAlert className="h-3 w-3 text-destructive" />}
@@ -4403,10 +4413,10 @@ function useLocalEditorSchema(pathStr: string): z.ZodType | undefined {
 }
 
 // the GUI/YAML segmented control the settings-page section headers use, scaled down to sit in a field's header row.
-// `ml-auto` pins it to the right end of that row, where the page-level control sits in its own header.
+// `ms-auto` pins it to the right end of that row, where the page-level control sits in its own header.
 function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
-		<div className="ml-auto flex items-center rounded-md border p-0.5">
+		<div className="ms-auto flex items-center rounded-md border p-0.5">
 			{(['gui', 'yaml'] as const).map((option) => (
 				<Button
 					key={option}
@@ -4519,7 +4529,8 @@ function SectionField({
 	onChange: (v: any) => void
 }) {
 	const { inner } = stripNullable(node)
-	const description: string | undefined = node.description ?? inner.description
+	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
+	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
@@ -4542,8 +4553,8 @@ function SectionField({
 		>
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
-					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingName(path, name))}</legend>
-					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</legend>
+					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
 					<span className="contents" inert={!writable}>
 						<FieldResetControls
@@ -4567,7 +4578,7 @@ function SectionField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
+						label={tr.text(SETTINGS_Msgs.settingLabel(node, name))}
 						domId={domId}
 						path={path}
 						value$={value$}
@@ -4601,7 +4612,8 @@ function LeafField({
 	hasOverride: boolean
 }) {
 	const { inner } = stripNullable(node)
-	const description: string | undefined = node.description ?? inner.description
+	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
+	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
@@ -4638,14 +4650,14 @@ function LeafField({
 				// every side without shifting the content column
 				'space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
 				isBoolean && 'flex items-center justify-between space-y-0 gap-4',
-				hasError && 'border-l-2 border-destructive',
+				hasError && 'border-s-2 border-destructive',
 				!writable && 'opacity-60',
 			)}
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
-					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingName(path, name))}</Label>
-					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</Label>
+					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{!writable && (
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -4670,7 +4682,7 @@ function LeafField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
+						label={tr.text(SETTINGS_Msgs.settingLabel(node, name))}
 						domId={domId}
 						path={path}
 						value$={value$}
@@ -4794,7 +4806,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 	return (
 		<div className="space-y-1">
 			<textarea
-				className="w-full font-mono text-xs border rounded-md p-2 min-h-[6rem] bg-background"
+				className="w-full font-mono text-xs border rounded-md p-2 min-h-[6rem] bg-background ltr-isolate"
 				value={text}
 				onChange={(e) => {
 					setText(e.target.value)

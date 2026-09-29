@@ -14,13 +14,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type,
 				type={type}
 				className={cn(
 					'fd-inp w-full file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground',
-					rightElement && 'pr-8',
+					rightElement && 'pe-8',
 					className,
 				)}
 				ref={ref}
 				{...props}
 			/>
-			{rightElement && <div className="absolute right-2 flex items-center justify-center">{rightElement}</div>}
+			{rightElement && <div className="absolute inset-e-2 flex items-center justify-center">{rightElement}</div>}
 		</div>
 	)
 })

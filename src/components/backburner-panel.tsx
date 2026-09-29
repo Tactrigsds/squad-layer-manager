@@ -20,6 +20,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as BB_Msgs from '@/messages/backburner.messages'
+import * as MsgFmt from '@/messages/format'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
@@ -215,7 +216,7 @@ export default function BackburnerPanel(props: StoresProp) {
 											disabled={!modified}
 											onClick={() => LayerQueuePrt.Actions.resetBackburner(queueKey)}
 										>
-											<Icons.Undo2 />
+											<Icons.Undo2 className="rtl:-scale-x-100" />
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>{tr.text(BB_Msgs.revertToSaved())}</TooltipContent>
@@ -443,7 +444,7 @@ function BackburnerRow(
 			data-mutation={displayedMutation}
 			className={cn(
 				'flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50',
-				'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
+				'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
 				combineTarget && (props.combinable ? 'bg-pri/10 outline outline-1 outline-pri' : 'outline outline-1 outline-danger/50'),
 			)}
 		>
@@ -655,7 +656,9 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 						columns={F.PHYSICAL_TEAM_COLUMNS}
 					/>
 				</div>
-				{extras.length > 0 && <p className="text-xs text-muted-foreground">{tr.text(BB_Msgs.alsoConstrainedBy(extras.join(', ')))}</p>}
+				{extras.length > 0 && (
+					<p className="text-xs text-muted-foreground">{tr.text(BB_Msgs.alsoConstrainedBy(MsgFmt.formatList(extras)))}</p>
+				)}
 			</div>
 			<RequestFiltersColumn stores={props.stores} />
 		</div>
@@ -709,7 +712,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 	}
 
 	return (
-		<div className="w-64 shrink-0 space-y-2 border-l pl-4">
+		<div className="w-64 shrink-0 space-y-2 border-s ps-4">
 			<span className="text-sm font-medium">{tr.text(BB_Msgs.filtersHeading())}</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
@@ -801,7 +804,7 @@ function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
 	const count = Zus.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
 	if (count === null) return null
 	return (
-		<span className={cn('mr-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
+		<span className={cn('me-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
 			{tr.text(count === 0 ? BB_Msgs.noMatchingLayers() : BB_Msgs.matchingLayers(count))}
 		</span>
 	)

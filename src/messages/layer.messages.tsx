@@ -105,11 +105,11 @@ export const teamName = def((team: 'A' | 'B' | 1 | 2, faction?: string | null, i
 	const args = { slot: String(team), faction, hasFaction: faction ? 'yes' : 'no', isCurrent: isCurrent ? 'yes' : 'no' }
 	return {
 		text: t(
-			'{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}{faction})} other {}}',
+			'{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes { ({isCurrent, select, yes {current } other {}}{faction})} other {}}',
 			args,
 		),
 		richText: rt(
-			'<team>{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}</team>{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}<team>{faction}</team>)} other {}}',
+			'<team>{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}</team>{hasFaction, select, yes { ({isCurrent, select, yes {current } other {}}<team>{faction}</team>)} other {}}',
 			args,
 		),
 	}

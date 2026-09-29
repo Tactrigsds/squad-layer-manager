@@ -22,6 +22,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
@@ -106,7 +107,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				<button
 					type="button"
 					className={cn(
-						'flex w-full items-center gap-1 whitespace-nowrap px-2 text-left hover:text-text [&_svg]:size-2.5 [&_svg]:shrink-0 [&_svg]:text-text-3',
+						'flex w-full items-center gap-1 px-2 text-start hover:text-text [&_svg]:size-2.5 [&_svg]:shrink-0 [&_svg]:text-text-3',
 						isNumeric && 'justify-end',
 						sort && 'text-text [&_svg]:text-text',
 					)}
@@ -114,7 +115,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 					title={tr.text(LC_Msgs.columnName(colDef))}
 					onClick={handleClick}
 				>
-					<span className="min-w-0 truncate">{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}</span>
+					<span className="min-w-0 line-clamp-2 break-words">{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}</span>
 					{!sort && <ArrowUpDown className="opacity-0 group-hover/th:opacity-100" />}
 					{sort?.direction === 'ASC' && <ArrowUp />}
 					{sort?.direction === 'DESC' && <ArrowDown />}
@@ -172,7 +173,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			)
 
 			const valueElt = (value: string) => (
-				<div className={cn('truncate px-2', isNumeric && 'fd-num text-right font-mono text-xs', extraStyles)} title={value}>
+				<div className={cn('truncate px-2', isNumeric && 'fd-num text-end font-mono text-xs', extraStyles)} title={value}>
 					{value}
 				</div>
 			)
@@ -715,7 +716,7 @@ export function LayerTableControlPanel(props: {
 						</PermissionDeniedTooltip>
 					)}
 
-					<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
+					<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
 
 					{/*--------- show selected ---------*/}
 					<div data-tour="table-show-selected" className="flex items-center gap-1.5">
@@ -943,7 +944,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-text-2 [&_strong]:font-semibold [&_strong]:text-foreground">
 						{(frameState.totalRowCount ?? 0) > 0 ? (
-							tr.richText(L_Msgs.matchedLayers((frameState.totalRowCount ?? 0).toLocaleString()))
+							tr.richText(L_Msgs.matchedLayers(MsgFmt.formatNumber(frameState.totalRowCount ?? 0)))
 						) : (
 							<span className="font-semibold text-foreground">{tr.text(L_Msgs.noLayersMatched())}</span>
 						)}

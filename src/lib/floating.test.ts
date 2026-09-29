@@ -19,6 +19,11 @@ describe('followPoint', () => {
 		expect(Flt.followPoint({ x: 990, y: 790 }, SIZE, VIEWPORT, { offset: 10, margin: 0 })).toEqual({ x: 780, y: 680 })
 	})
 
+	it('trails toward the inline end, which is the left in a right-to-left page', () => {
+		expect(Flt.followPoint({ x: 500, y: 100 }, SIZE, VIEWPORT, { offset: 10, margin: 0, rtl: true })).toEqual({ x: 290, y: 110 })
+		expect(Flt.followPoint({ x: 100, y: 100 }, SIZE, VIEWPORT, { offset: 10, margin: 0, rtl: true })).toEqual({ x: 110, y: 110 })
+	})
+
 	it('keeps its distance from the bounds', () => {
 		const placed = Flt.followPoint({ x: 995, y: 795 }, SIZE, VIEWPORT, { offset: 10, margin: 8 })
 		expect(placed).toEqual({ x: 785, y: 685 })

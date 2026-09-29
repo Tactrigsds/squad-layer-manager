@@ -37,7 +37,7 @@ export default function EventFilterSelect(props: {
 				<Button variant={props?.variant ?? 'outline'} size="sm" className={cn('h-8 max-phone:h-(--ctl-sm) gap-2', props.className)}>
 					<Icons.Filter className="h-4 w-4" />
 					<span className="text-xs">{tr.text(labels[props.value])}</span>
-					<Icons.ChevronDown className="h-3 w-3 ml-1" />
+					<Icons.ChevronDown className="h-3 w-3 ms-1" />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">

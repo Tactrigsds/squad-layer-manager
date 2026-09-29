@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import { LAYERS_QUERY_SORT_DIRECTION } from '@/models/layer-queries.models'
@@ -172,7 +173,7 @@ function ColumnRow({
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
-			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
+			<span className="w-6 text-end text-xs tabular-nums text-muted-foreground">{tr.text(UI_Msgs.listMarker(index + 1))}</span>
 			<span className="min-w-0 truncate font-mono text-sm">{col.name}</span>
 			<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
 				<Switch checked={col.visible ?? true} onCheckedChange={onToggleVisible} />
@@ -209,7 +210,7 @@ function SortSection({
 						patch({ defaultSortBy: type === 'random' ? { type: 'random' } : { type: 'column', sortBy: '', direction: 'ASC' } })
 					}}
 				>
-					<SelectTrigger className="w-[140px]">
+					<SelectTrigger className="w-auto min-w-[140px]">
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>

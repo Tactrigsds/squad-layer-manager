@@ -1,6 +1,8 @@
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import type * as BM from '@/models/battlemetrics.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import * as SM from '@/models/squad.models'
 
 // Compiled once per distinct pattern rather than per player per render: a rule is evaluated against every player on
@@ -29,46 +31,91 @@ const PatternSchema = z
 
 // A rule assigns players matching one source-specific attribute to a group. Sources are independent: rules from
 // different ones sit in the same priority order and a grouping may mix them freely.
-export const GroupRuleSchema = z.discriminatedUnion('type', [
-	// a flag on the player's battlemetrics profile
-	z.object({
-		type: z.literal('battlemetrics'),
-		flag: z.string(),
-		group: z.string().trim().min(1),
-	}),
-	// membership of a group in the server's admin list (`Group=<adminGroup>:<perms>`). Not every admin-list group makes
-	// its members admins -- a reserve-slot group like Whitelist is exactly the sort of thing worth grouping on.
-	z.object({
-		type: z.literal('admin-list'),
-		adminGroup: z.string().trim().min(1),
-		group: z.string().trim().min(1),
-	}),
-	// holds an admin-identifying permission on the server, whichever admin-list group granted it. The union of every
-	// `admin-list` rule an operator could write is not the same thing: this stays correct as the admin list gains groups.
-	z.object({
-		type: z.literal('server-admin'),
-		group: z.string().trim().min(1),
-	}),
-	// the player's in-game name matches, case-insensitively. Substring by default, since the use is clan tags.
-	z.object({
-		type: z.literal('name-regex'),
-		pattern: PatternSchema,
-		group: z.string().trim().min(1),
-	}),
-	// the player's clan tag matches, case-insensitively. Players whose tag we don't know match no such rule.
-	z.object({
-		type: z.literal('tag-regex'),
-		pattern: PatternSchema,
-		group: z.string().trim().min(1),
-	}),
-	// a role on the discord account the player has linked their steam account to. Players who have linked nothing
-	// match no such rule, which is the same outcome as holding none of the role.
-	z.object({
-		type: z.literal('discord-role'),
-		roleId: z.string().trim().min(1),
-		group: z.string().trim().min(1),
-	}),
-])
+export const GroupRuleSchema = z
+	.discriminatedUnion('type', [
+		// a flag on the player's battlemetrics profile
+		z.object({
+			type: z.literal('battlemetrics').meta(SDoc.of({ label: t('Type') })),
+			flag: z.string().meta(SDoc.of({ label: t('Flag') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+		// membership of a group in the server's admin list (`Group=<adminGroup>:<perms>`). Not every admin-list group makes
+		// its members admins -- a reserve-slot group like Whitelist is exactly the sort of thing worth grouping on.
+		z.object({
+			type: z.literal('admin-list').meta(SDoc.of({ label: t('Type') })),
+			adminGroup: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Admin Group') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+		// holds an admin-identifying permission on the server, whichever admin-list group granted it. The union of every
+		// `admin-list` rule an operator could write is not the same thing: this stays correct as the admin list gains groups.
+		z.object({
+			type: z.literal('server-admin').meta(SDoc.of({ label: t('Type') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+		// the player's in-game name matches, case-insensitively. Substring by default, since the use is clan tags.
+		z.object({
+			type: z.literal('name-regex').meta(SDoc.of({ label: t('Type') })),
+			pattern: PatternSchema.meta(SDoc.of({ label: t('Pattern') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+		// the player's clan tag matches, case-insensitively. Players whose tag we don't know match no such rule.
+		z.object({
+			type: z.literal('tag-regex').meta(SDoc.of({ label: t('Type') })),
+			pattern: PatternSchema.meta(SDoc.of({ label: t('Pattern') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+		// a role on the discord account the player has linked their steam account to. Players who have linked nothing
+		// match no such rule, which is the same outcome as holding none of the role.
+		z.object({
+			type: z.literal('discord-role').meta(SDoc.of({ label: t('Type') })),
+			roleId: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Role ID') })),
+			group: z
+				.string()
+				.trim()
+				.min(1)
+				.meta(SDoc.of({ label: t('Group') })),
+		}),
+	])
+	.meta(
+		SDoc.of({
+			options: {
+				battlemetrics: t('BM flag'),
+				'admin-list': t('Admin group'),
+				'server-admin': t('Server admin'),
+				'name-regex': t('Name matches'),
+				'tag-regex': t('Tag matches'),
+				'discord-role': t('Discord role'),
+			},
+		}),
+	)
 export type GroupRule = z.infer<typeof GroupRuleSchema>
 export type GroupRuleSource = GroupRule['type']
 
@@ -117,23 +164,31 @@ export function playerFacts(player: PlayerFactsSource, flags: BM.PlayerFlag[]): 
 
 // A group's color either follows one of its own flags -- so a recolour in battlemetrics reaches the UI without anyone
 // editing settings -- or is pinned to a literal. The `flag` variant stores only the reference, never a copy of the color.
-export const GroupColorSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('flag'), flag: z.string() }),
-	z.object({ type: z.literal('custom'), color: z.string() }),
-])
+export const GroupColorSchema = z
+	.discriminatedUnion('type', [
+		z.object({ type: z.literal('flag').meta(SDoc.of({ label: t('Type') })), flag: z.string().meta(SDoc.of({ label: t('Flag') })) }),
+		z.object({ type: z.literal('custom').meta(SDoc.of({ label: t('Type') })), color: z.string().meta(SDoc.of({ label: t('Color') })) }),
+	])
+	.meta(SDoc.of({ options: { flag: t('Flag color'), custom: t('Custom color') } }))
 export type GroupColor = z.infer<typeof GroupColorSchema>
 
 // Presentation for a group. Group membership comes from the rules, so nothing here can affect who lands where.
 export const GroupSchema = z.object({
-	color: GroupColorSchema,
+	color: GroupColorSchema.meta(SDoc.of({ label: t('Color') })),
 })
 export type Group = z.infer<typeof GroupSchema>
 
 // One named way of bucketing players: an ordered rule list plus presentation for the groups those rules name.
 // Rule order is priority order, highest first -- a player takes the group of the first rule they match.
 export const GroupingSchema = z.object({
-	rules: z.array(GroupRuleSchema).prefault([]),
-	groups: z.record(z.string(), GroupSchema).prefault({}),
+	rules: z
+		.array(GroupRuleSchema)
+		.prefault([])
+		.meta(SDoc.of({ label: t('Rules') })),
+	groups: z
+		.record(z.string(), GroupSchema)
+		.prefault({})
+		.meta(SDoc.of({ label: t('Groups') })),
 })
 export type Grouping = z.infer<typeof GroupingSchema>
 

@@ -121,7 +121,7 @@ function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolea
 		return (
 			<Popover>
 				<PopoverTrigger asChild>
-					<button type="button" className="min-w-0 max-w-full truncate select-none text-left text-xs text-muted-foreground">
+					<button type="button" className="min-w-0 max-w-full truncate select-none text-start text-xs text-muted-foreground">
 						{text}
 					</button>
 				</PopoverTrigger>
@@ -190,7 +190,7 @@ function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolea
 			{canManage && !props.disabled && (
 				<div className="flex gap-1">
 					<Button variant="outline" size="sm" className="h-6 flex-1 text-xs" onClick={props.onEdit}>
-						<Icons.Pencil className="mr-1 h-3 w-3" />
+						<Icons.Pencil className="me-1 h-3 w-3" />
 						{tr.text(LNote_Msgs.edit())}
 					</Button>
 					<Button variant="outline" size="sm" className="h-6 text-xs text-destructive" onClick={props.onDelete}>

@@ -9,6 +9,7 @@ import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
@@ -16,6 +17,9 @@ import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
+
+// scrollLeft runs from 0 toward negative values in RTL
+const inlineSign = () => (MessagesClient.textDirection() === 'rtl' ? -1 : 1)
 
 export default function AppliedFiltersPanel(props: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -28,21 +32,21 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 	)
 	const selectableFilterIds = Zus.useStore(squadServer, AppliedFiltersPrt.Sel.selectableFilterIds)
 	const addableFilters = Zus.useStore(squadServer, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
-	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
-	const [canScrollRight, setCanScrollRight] = React.useState(false)
-	const canScroll = canScrollLeft || canScrollRight
+	const [canScrollBack, setCanScrollBack] = React.useState(false)
+	const [canScrollForward, setCanScrollForward] = React.useState(false)
+	const canScroll = canScrollBack || canScrollForward
 
-	const scrollLeft = () => {
+	const scrollBack = () => {
 		if (scrollRef.current) {
 			const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
-			viewport?.scrollBy({ left: -200, behavior: 'smooth' })
+			viewport?.scrollBy({ left: -200 * inlineSign(), behavior: 'smooth' })
 		}
 	}
 
-	const scrollRight = () => {
+	const scrollForward = () => {
 		if (scrollRef.current) {
 			const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
-			viewport?.scrollBy({ left: 200, behavior: 'smooth' })
+			viewport?.scrollBy({ left: 200 * inlineSign(), behavior: 'smooth' })
 		}
 	}
 
@@ -57,7 +61,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 		if (scrollRef.current) {
 			const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
 			if (viewport) {
-				viewport.scrollTo({ left: viewport.scrollWidth, behavior: 'smooth' })
+				viewport.scrollTo({ left: viewport.scrollWidth * inlineSign(), behavior: 'smooth' })
 			}
 		}
 	}
@@ -67,9 +71,9 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 			if (scrollRef.current) {
 				const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
 				if (viewport) {
-					const { scrollLeft, scrollWidth, clientWidth } = viewport
-					setCanScrollLeft(scrollLeft > 0)
-					setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1)
+					const offset = viewport.scrollLeft * inlineSign()
+					setCanScrollBack(offset > 0)
+					setCanScrollForward(offset < viewport.scrollWidth - viewport.clientWidth - 1)
 				}
 			}
 		}
@@ -114,12 +118,12 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				size="icon-sm"
 				className="shrink-0 data-[canscroll=false]:hidden"
 				data-canscroll={canScroll}
-				onClick={scrollLeft}
+				onClick={scrollBack}
 				onDoubleClick={scrollToStart}
-				disabled={!canScrollLeft}
-				title={tr.text(F_Msgs.scrollLeft())}
+				disabled={!canScrollBack}
+				title={tr.text(F_Msgs.scrollBack())}
 			>
-				<Icons.ChevronLeft />
+				<Icons.ChevronLeft className="rtl:-scale-x-100" />
 			</Button>
 			<ScrollArea ref={scrollRef} className="max-w-[55vw] min-w-0">
 				<div className="flex flex-row gap-1 w-max">
@@ -134,14 +138,14 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				size="icon-sm"
 				className="shrink-0 data-[canscroll=false]:hidden"
 				data-canscroll={canScroll}
-				onClick={scrollRight}
+				onClick={scrollForward}
 				onDoubleClick={scrollToEnd}
-				disabled={!canScrollRight}
-				title={tr.text(F_Msgs.scrollRight())}
+				disabled={!canScrollForward}
+				title={tr.text(F_Msgs.scrollForward())}
 			>
-				<Icons.ChevronRight />
+				<Icons.ChevronRight className="rtl:-scale-x-100" />
 			</Button>
-			<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
+			<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
 			<div className="flex flex-row gap-1 w-max">
 				<PoolFilterCheckbox stores={props.stores} />
 				{selectableFilterIds.map((filterId) => {

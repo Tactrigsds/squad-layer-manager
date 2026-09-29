@@ -16,8 +16,8 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as I18n from '@/messages/i18n'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
-import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
@@ -65,7 +65,7 @@ const triggerClass =
 // standard compact display for the operator (comparison-type) select: its options are short symbols
 // (=, [..], not in), so it gets tight padding, a collapsed chevron gap, and a smaller chevron. px-1 is
 // important so container padding rules (e.g. the filter menu grid) can't stretch it back out.
-const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ml-0 [&_svg]:size-3'
+const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
 export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
@@ -173,7 +173,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
-								<Undo2 color="hsl(var(--muted-foreground))" />
+								<Undo2 className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
@@ -573,7 +573,7 @@ function NodeComment(props: NodeProps) {
 	const collapsed = truncated && !expanded
 
 	return (
-		<div className="my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground">
+		<div className="my-1 flex items-start gap-1 border-s-2 border-muted ps-2 text-xs text-muted-foreground">
 			<RichText
 				text={collapsed ? flattened : comment}
 				maxLength={collapsed ? COMMENT_PREVIEW_LENGTH : undefined}
@@ -655,35 +655,29 @@ function valueText(value: F.Value) {
 // reads as "Gamemode=RAAS" when it is copied or read aloud; the trailing space at the end of a row
 // collapses in inline flow, so nothing shows for it.
 function ValueChip(props: { children: React.ReactNode }) {
-	return (
-		<>
-			<span className="rounded-sm bg-muted px-1 py-px font-mono text-xs text-foreground">{props.children}</span>{' '}
-		</>
-	)
+	return <span className="rounded-sm bg-muted px-1 py-px font-mono text-xs text-foreground">{props.children}</span>
 }
 
 function OpWord(props: { children: React.ReactNode }) {
-	return (
-		<>
-			<span className="text-muted-foreground">{props.children}</span>{' '}
-		</>
-	)
+	return <span className="text-muted-foreground">{props.children}</span>
 }
 
 function ColumnWord(props: { children: React.ReactNode }) {
-	return (
-		<>
-			<span className="font-medium">{props.children}</span>{' '}
-		</>
-	)
+	return <span className="font-medium">{props.children}</span>
 }
 
 function Incomplete() {
-	return (
-		<>
-			<span className="italic text-muted-foreground">{tr.text(F_Msgs.incompleteNode())}</span>{' '}
-		</>
-	)
+	return <span className="italic text-muted-foreground">{tr.text(F_Msgs.incompleteNode())}</span>
+}
+
+const trSummary = tr.withTags({
+	op: (chunks) => <OpWord>{chunks}</OpWord>,
+	value: (chunks) => <ValueChip>{chunks}</ValueChip>,
+})
+
+// the items of a summary's run of values, separated the way the locale separates a list read aloud as one unit
+function ValueRun(props: { items: React.ReactNode[] }) {
+	return I18n.nodeList(props.items, tr.locale, { type: 'unit', style: 'narrow' })
 }
 
 function SubjectSummary(props: { arg: F.EditableScalarArg | undefined; cfg: ColConfig }) {
@@ -719,16 +713,8 @@ function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig }
 	}
 	if (parts.size === 0) return <Incomplete />
 	const overflow = parts.size - SUMMARY_VALUE_LIMIT
-	return (
-		<>
-			{Array.from(parts)
-				.slice(0, SUMMARY_VALUE_LIMIT)
-				.map(([key, part]) => (
-					<React.Fragment key={key}>{part}</React.Fragment>
-				))}
-			{overflow > 0 && <OpWord>{tr.text(F_Msgs.moreValues(overflow))}</OpWord>}
-		</>
-	)
+	const shown = Array.from(parts.values()).slice(0, SUMMARY_VALUE_LIMIT)
+	return <ValueRun items={overflow > 0 ? [...shown, <OpWord key="more">{tr.text(F_Msgs.moreValues(overflow))}</OpWord>] : shown} />
 }
 
 function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig }) {
@@ -738,29 +724,24 @@ function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig }) {
 	// says more about it than four truncated ids would
 	if (subject?.type === 'column' && subject.column === 'id') {
 		const values = (node.args[1]?.type === 'values' ? node.args[1].values : undefined) ?? []
-		return (
-			<>
-				<OpWord>{node.neg ? F_Msgs.inSetNames.notin : F_Msgs.inSetNames.in}</OpWord>
-				<ValueChip>{tr.text(F_Msgs.layerSetSize(values.length))}</ValueChip>
-			</>
+		return trSummary.richText(F_Msgs.layerSetSummary(node.neg, values.length))
+	}
+	const readable = F_Msgs.compTypeReadableNames[node.type]
+	const op = node.neg ? readable.negated : readable.plain
+	const subjectElt = <SubjectSummary arg={subject} cfg={props.cfg} />
+	if (node.type === 'inrange') {
+		return trSummary.richText(
+			F_Msgs.rangeSummary(
+				subjectElt,
+				op,
+				<ScalarSummary arg={node.args[1]} cfg={props.cfg} />,
+				<ScalarSummary arg={node.args[2]} cfg={props.cfg} />,
+			),
 		)
 	}
-	const op = F_Msgs.compTypeReadableNames[node.type]
-	return (
-		<>
-			<SubjectSummary arg={subject} cfg={props.cfg} />
-			<OpWord>{tr.text(node.neg ? op.negated : op.plain)}</OpWord>
-			{node.type === 'in' && <ValuesSummary arg={node.args[1]} cfg={props.cfg} />}
-			{node.type === 'inrange' && (
-				<>
-					<ScalarSummary arg={node.args[1]} cfg={props.cfg} />
-					<OpWord>{tr.text(F_Msgs.rangeTo())}</OpWord>
-					<ScalarSummary arg={node.args[2]} cfg={props.cfg} />
-				</>
-			)}
-			{node.type !== 'in' && node.type !== 'inrange' && <ScalarSummary arg={node.args[1]} cfg={props.cfg} />}
-		</>
-	)
+	const operand =
+		node.type === 'in' ? <ValuesSummary arg={node.args[1]} cfg={props.cfg} /> : <ScalarSummary arg={node.args[1]} cfg={props.cfg} />
+	return trSummary.richText(F_Msgs.compSummary(subjectElt, op, operand))
 }
 
 // the dimensions are flattened into one run of values: which column a faction or a unit came from is
@@ -769,42 +750,40 @@ function TeamSpecSummary(props: { spec: F.MatchupTeamSpec }) {
 	const values = F.TEAM_COLUMNS.flatMap((column) => (props.spec[column] ?? []).map((value) => ({ column, value })))
 	if (values.length === 0) return <OpWord>{tr.text(F_Msgs.anyTeam())}</OpWord>
 	return (
-		<>
-			{values.map(({ column, value }) => (
+		<ValueRun
+			items={values.map(({ column, value }) => (
 				<ValueChip key={`${column}:${valueText(value)}`}>{valueText(value)}</ValueChip>
 			))}
-		</>
+		/>
 	)
 }
 
 function MatchupSummary(props: { node: F.EditableMatchupNode }) {
 	const node = props.node
-	return (
-		<>
-			{node.type === 'disallow-matchups' && <OpWord>{tr.text(F_Msgs.matchupTypeNames['disallow-matchups'])}</OpWord>}
-			{node.locked && <OpWord>{F_Msgs.matchupSideLabels.lockedLeft}</OpWord>}
-			<TeamSpecSummary spec={node.teams[0]} />
-			<OpWord>{tr.text(L_Msgs.versus())}</OpWord>
-			{node.locked && <OpWord>{F_Msgs.matchupSideLabels.lockedRight}</OpWord>}
-			<TeamSpecSummary spec={node.teams[1]} />
-		</>
+	return trSummary.richText(
+		F_Msgs.matchupSummary(
+			node.type === 'disallow-matchups',
+			node.locked,
+			<TeamSpecSummary spec={node.teams[0]} />,
+			<TeamSpecSummary spec={node.teams[1]} />,
+		),
 	)
 }
 
 function ApplyFilterSummary(props: { node: F.EditableApplyFilterNode }) {
 	const filters = FilterEntityClient.useFilterEntities()
 	const entity = props.node.filterId ? filters.get(props.node.filterId) : undefined
-	return (
-		<>
-			<OpWord>{tr.text(F_Msgs.applyFilterTypeNames[props.node.type])}</OpWord>
-			{entity ? (
+	return trSummary.richText(
+		F_Msgs.applyFilterSummary(
+			F_Msgs.applyFilterTypeNames[props.node.type],
+			entity ? (
 				<FilterEntityLabel filter={entity} />
 			) : props.node.filterId ? (
 				<ValueChip>{props.node.filterId}</ValueChip>
 			) : (
 				<Incomplete />
-			)}
-		</>
+			),
+		),
 	)
 }
 
@@ -824,7 +803,7 @@ function NodeSummaryButton(props: { onClick: () => void; children: React.ReactNo
 			type="button"
 			data-node-summary=""
 			onClick={props.onClick}
-			className="min-w-0 rounded-sm px-1 text-left text-sm leading-6 hover:bg-accent"
+			className="min-w-0 rounded-sm px-1 text-start text-sm leading-6 hover:bg-accent"
 		>
 			{props.children}
 		</button>
@@ -1017,8 +996,8 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 				title={tr.text(F_Msgs.modePicker())}
 				value={props.node.neg ? 'notin' : 'in'}
 				options={[
-					{ value: 'in', label: F_Msgs.inSetNames.in, description: F_Msgs.inSetDescriptions.in },
-					{ value: 'notin', label: F_Msgs.inSetNames.notin, description: F_Msgs.inSetDescriptions.notin },
+					{ value: 'in', label: tr.text(F_Msgs.inSetNames.in), description: tr.text(F_Msgs.inSetDescriptions.in) },
+					{ value: 'notin', label: tr.text(F_Msgs.inSetNames.notin), description: tr.text(F_Msgs.inSetDescriptions.notin) },
 				]}
 				onSelect={(v) => actions.comp.setNode(Im.produce((c) => void (c.neg = v === 'notin')))}
 			/>
@@ -1119,7 +1098,7 @@ export function Comparison(props: {
 	const valuesAriaLabel =
 		props.valuesAriaLabel ??
 		(teamDimension?.team ? tr.text(F_Msgs.teamColumnForTeam(teamDimension.label, teamDimension.team)) : teamDimension?.label)
-	const valuesEmptyLabel = props.valuesEmptyLabel ?? (teamDimension && tr.text(F_Msgs.anyTeamColumn(teamDimension.label)))
+	const valuesEmptyLabel = props.valuesEmptyLabel ?? (teamDimensionColumn && tr.text(F_Msgs.anyTeamColumn(teamDimensionColumn.column)))
 
 	const hasSubject = !!(anchorColumn || anchorTeamColumn)
 	// whether the value slot(s) still need input, so we only jump focus forward when there's a blank to fill
@@ -1789,7 +1768,7 @@ function TeamSpecConfig(props: {
 				<StringInConfig
 					key={teamColumn}
 					title={tr.text(F_Msgs.teamColumnNames[teamColumn])}
-					emptyLabel={tr.text(F_Msgs.anyTeamColumn(tr.text(F_Msgs.teamColumnNames[teamColumn])))}
+					emptyLabel={tr.text(F_Msgs.anyTeamColumn(teamColumn))}
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
@@ -1835,9 +1814,9 @@ export function MatchupConfig(props: {
 	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
 	// displayTeamsNormalized setting), which is a different idea entirely -- and that setting toggles
 	// between those very labels, so reusing them here would read as driving it.
-	const [leftLabel, rightLabel] = node.locked
-		? [F_Msgs.matchupSideLabels.lockedLeft, F_Msgs.matchupSideLabels.lockedRight]
-		: [F_Msgs.matchupSideLabels.left, F_Msgs.matchupSideLabels.right]
+	const [firstLabel, secondLabel] = node.locked
+		? [tr.text(F_Msgs.matchupSideLabels.lockedFirst), tr.text(F_Msgs.matchupSideLabels.lockedSecond)]
+		: [tr.text(F_Msgs.matchupSideLabels.first), tr.text(F_Msgs.matchupSideLabels.second)]
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			{(props.showTypeSelect ?? true) && (
@@ -1851,7 +1830,7 @@ export function MatchupConfig(props: {
 				/>
 			)}
 			<TeamSpecConfig
-				label={leftLabel}
+				label={firstLabel}
 				spec={node.teams[0]}
 				columns={props.columns}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(0, column))}
@@ -1882,7 +1861,7 @@ export function MatchupConfig(props: {
 				<span className="whitespace-nowrap text-[10px] text-muted-foreground">{node.locked ? 'order locked' : 'either order'}</span>
 			</div>
 			<TeamSpecConfig
-				label={rightLabel}
+				label={secondLabel}
 				spec={node.teams[1]}
 				columns={props.columns}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(1, column))}
@@ -1947,7 +1926,7 @@ function InListConfig(props: {
 			{columns.map((c) => (
 				<span key={c.column} className="flex items-center px-2 py-1 bg-secondary rounded-md text-sm">
 					{columnLabel(c.column, cfg) ?? c.column}
-					<button type="button" onClick={() => removeColumn(c.column)} className="ml-1">
+					<button type="button" onClick={() => removeColumn(c.column)} className="ms-1">
 						<Icons.X className="h-3 w-3" />
 					</button>
 				</span>
@@ -2010,7 +1989,7 @@ function LayersInConfig(props: {
 			)}
 			<div className="w-max">
 				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
-					<Icons.Edit className="h-4 w-4 mr-2" />
+					<Icons.Edit className="h-4 w-4 me-2" />
 					{filteredValues.length === 0 ? tr.text(F_Msgs.selectLayers()) : tr.text(F_Msgs.editLayers())}
 				</Button>
 				<SelectLayersDialog

@@ -274,7 +274,9 @@ export const addFlagsToSquad = def('Add Flags to Squad...')
 export const invertSelection = def('Invert Selection')
 
 // reads as "<n> players selected"
-export const playersSelected = def('players selected')
+export const playersSelected = def('{count, plural, one {# player selected} other {# players selected}}', (count: number) => ({
+	count,
+}))
 
 // -------- opening and copying a player's ids --------
 
@@ -371,11 +373,11 @@ export const showSpoilersHint = def('Show K/W/D and role columns')
 // the role filter survives spoilers being hidden, so it says so rather than silently narrowing the roster
 export const hiddenRoleFilter = def('Role filter is active but hidden with spoilers')
 
-export const roleFilterLabel = def('Role:')
+export const roleFilterLabel = def('Role: {role}', (role: string) => ({ role }))
 
 export const clearRoleFilter = def('Clear role filter')
 
-export const versus = def('vs')
+export const countVersus = def('{left} vs {right}', (left: number, right: number) => ({ left, right }))
 
 export const timeoutsTab = def('Timeouts')
 
@@ -404,6 +406,8 @@ export const roleColumn = def('Role')
 export const squadColumn = def('Squad')
 
 export const teamKillsColumn = def('TKs')
+
+export const teamKillsCount = def('TKs {count}', (count: number) => ({ count }))
 
 export const teamKillsHint = def('Team kills')
 
@@ -590,9 +594,9 @@ export const squadActions = def('Squad actions')
 
 export const squadCreator = def('Creator:')
 
-export const squadTeam = def('Team')
+export const squadTeam = def('Team {teamId}', (teamId: number) => ({ teamId }))
 
-export const squadInGameId = def('In-game ID:')
+export const squadInGameId = def('In-game ID: {id}', (id: number) => ({ id }))
 
 export const squadEvents = def('Squad Events')
 export const squadLinkShowsMatch = def("Opens the whole match: history can't filter by squad")

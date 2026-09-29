@@ -112,7 +112,7 @@ function TagChip(props: {
 				title={tr.text(LTag_Msgs.removeTag(tag.label))}
 				disabled={props.disabled}
 				onClick={props.onRemove}
-				className="ml-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+				className="ms-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
 			>
 				<Icons.X className="h-3 w-3" />
 			</button>
@@ -136,7 +136,7 @@ function TagChip(props: {
 					</p>
 					{props.canManage && (
 						<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
-							<Icons.Pencil className="mr-1 h-3 w-3" />
+							<Icons.Pencil className="me-1 h-3 w-3" />
 							{tr.text(LTag_Msgs.editTag())}
 						</Button>
 					)}
@@ -208,9 +208,11 @@ function AddTagDropdown(props: {
 			<DropdownMenuContent align="start" className="max-h-72 max-w-72 overflow-y-auto">
 				{available.map((tag) => (
 					<DropdownMenuItem key={tag.id} onSelect={() => props.onSelect(tag.id)}>
-						<span className="mr-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+						<span className="me-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
 						<span className="flex min-w-0 flex-col">
-							<span className="truncate text-xs">{tag.label}</span>
+							<span className="truncate text-xs" title={tag.label}>
+								{tag.label}
+							</span>
 							{tag.description && <span className="truncate text-2xs text-muted-foreground">{tag.description}</span>}
 						</span>
 					</DropdownMenuItem>
@@ -220,7 +222,7 @@ function AddTagDropdown(props: {
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem onSelect={props.onCreate}>
-							<Icons.Plus className="mr-2 h-3 w-3" />
+							<Icons.Plus className="me-2 h-3 w-3" />
 							{tr.text(LTag_Msgs.newTagItem())}
 						</DropdownMenuItem>
 					</>

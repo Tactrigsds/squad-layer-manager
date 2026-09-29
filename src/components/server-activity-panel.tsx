@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -19,6 +18,7 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as MsgFmt from '@/messages/format'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -71,7 +71,7 @@ function ServerChatEvents(props: {
 
 	return (
 		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
-			<SubtreeFindBar stores={find.stores} className="absolute right-3 top-1" />
+			<SubtreeFindBar stores={find.stores} className="absolute inset-e-3 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
 				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
 					<span className="fd-spin size-6!" />
@@ -83,15 +83,13 @@ function ServerChatEvents(props: {
 				</div>
 			)}
 			{selectedMatchOrdinal !== null && displayMatch && (
-				<div className="flex-shrink-0 text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] flex flex-wrap justify-center gap-x-1">
-					<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
-					<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
-					{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
+				<div className="flex-shrink-0 text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] text-center">
+					<HistoricalMatchBanner match={displayMatch} />
 				</div>
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pr-3 min-h-0 w-full">
+				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pe-3 min-h-0 w-full">
 					{noPlayersSelected && <div className="text-text-3 text-sm text-center py-6">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-text-3 text-sm text-center py-6">
@@ -120,7 +118,7 @@ function ServerChatEvents(props: {
 					onClick={() => scrollToBottom()}
 					size="sm"
 					style={{ zIndex: scrollToBottomZIndex }}
-					className="absolute bottom-0 left-0 right-0 w-full"
+					className="absolute bottom-0 inset-s-0 inset-e-0 w-full"
 					title={tr.text(CHAT_Msgs.scrollToBottom())}
 				>
 					<Icons.ChevronDown />
@@ -359,7 +357,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			data-tour="activity-panel"
 			className="flex flex-col h-full min-h-0 w-full @container"
 		>
-			<CardHeader className="flex-shrink-0 whitespace-nowrap max-phone:flex-wrap max-phone:gap-y-1 max-phone:py-1.5">
+			<CardHeader className="flex-shrink-0 flex-wrap gap-y-1 whitespace-nowrap max-phone:py-1.5">
 				<CardTitle className="flex items-center gap-1.5">
 					<Icons.LayoutList className="size-3.5" />
 					<span className="hidden @[520px]:inline">{tr.text(CHAT_Msgs.activityTitle())}</span>
@@ -372,10 +370,10 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						disabled={!canGoPrevious}
 						title={tr.text(CHAT_Msgs.previousMatch())}
 					>
-						<Icons.ChevronLeft />
+						<Icons.ChevronLeft className="rtl:-scale-x-100" />
 					</Button>
 					<Button variant="ghost" size="icon-sm" onClick={handleNext} disabled={!canGoNext} title={tr.text(CHAT_Msgs.nextMatch())}>
-						<Icons.ChevronRight />
+						<Icons.ChevronRight className="rtl:-scale-x-100" />
 					</Button>
 					{selectedMatchOrdinal !== null && (
 						<Button
@@ -419,15 +417,13 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				{/* live-only readouts, and the historical controls need their header room */}
 				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}
 			</CardHeader>
-			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col p-2 pr-1.5 pb-2">
+			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col p-2 pe-1.5 pb-2">
 				<div className="flex-1 min-h-0">
 					{selectedMatchOrdinal !== null && historicalView === 'teams' ? (
 						<div className="min-w-[350px] h-full flex flex-col">
 							{displayMatch && (
-								<div className="text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] flex flex-wrap justify-center gap-x-1">
-									<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
-									<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
-									{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
+								<div className="text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] text-center">
+									<HistoricalMatchBanner match={displayMatch} />
 								</div>
 							)}
 							{historicalEventsQuery.isLoading ? (
@@ -454,5 +450,14 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} />}
 			</CardContent>
 		</Card>
+	)
+}
+
+function HistoricalMatchBanner(props: { match: Pick<MH.MatchDetails, 'layerId' | 'ordinal' | 'startTime'> }) {
+	return tr.richText(
+		CHAT_Msgs.viewingHistoricalMatch(
+			<ShortLayerName layerId={props.match.layerId} teamParity={props.match.ordinal % 2} />,
+			props.match.startTime ? MsgFmt.formatDate(props.match.startTime, 'dateTime24') : undefined,
+		),
 	)
 }

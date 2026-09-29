@@ -29,11 +29,14 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as Browser from '@/lib/browser'
+import { useNow } from '@/lib/react'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as MsgFmt from '@/messages/format'
+import * as MH_Msgs from '@/messages/match-history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
@@ -348,7 +351,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
 					{ids?.username ?? tr.text(SM_Msgs.playerDetailsTitle())}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
-						<span className="text-muted-foreground font-normal ml-1">
+						<span className="text-muted-foreground font-normal ms-1">
 							(
 							{livePlayer.teamId !== null && currentMatch ? (
 								<>
@@ -368,7 +371,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
 							title={
 								connectionStatus.lastSeen
-									? tr.text(SM_Msgs.lastSeen(dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })))
+									? tr.text(SM_Msgs.lastSeen(MsgFmt.formatRelativeTime(connectionStatus.lastSeen)))
 									: tr.text(SM_Msgs.offline())
 							}
 						/>
@@ -468,7 +471,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
 							<dd>
 								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
-								{matchPlayer.isLeader && <span className="ml-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
+								{matchPlayer.isLeader && <span className="ms-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
 							</dd>
 						</div>
 						<div>
@@ -550,7 +553,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							disabled={isLoadingOlder}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
+							className="absolute top-0 inset-s-0 inset-e-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={tr.text(CHAT_Msgs.loadOlderEvents())}
 						>
 							{isLoadingOlder ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
@@ -560,7 +563,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 					{historyRequested && !eventsQuery.hasNextPage && !isLoadingOlder && isAtTop && (
 						<div
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute top-0 left-0 right-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
+							className="absolute top-0 inset-s-0 inset-e-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
 						>
 							{tr.text(CHAT_Msgs.noMoreEvents())}
 						</div>
@@ -570,7 +573,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							onClick={() => scrollToBottom()}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
-							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
+							className="absolute bottom-0 inset-s-0 inset-e-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={tr.text(CHAT_Msgs.scrollToBottom())}
 						>
 							<Icons.ChevronDown className="h-3 w-3" />
@@ -702,13 +705,13 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 		<div className="flex items-center gap-2 rounded border border-danger bg-danger/10 px-2 py-1">
 			<Icons.UserX className="h-3.5 w-3.5 text-danger shrink-0" />
 			<span className="min-w-0 truncate">
-				{tr.text(SM_Msgs.timedOutUntil(dateFns.format(timeout.expiresAt, 'PPp'), timeout.reasonLabel ?? undefined))}
+				{tr.text(SM_Msgs.timedOutUntil(MsgFmt.formatDate(timeout.expiresAt, 'dateTime'), timeout.reasonLabel ?? undefined))}
 			</span>
 			{canCancel && (
 				<Button
 					size="sm"
 					variant="ghost"
-					className="h-6 px-2 ml-auto shrink-0"
+					className="h-6 px-2 ms-auto shrink-0"
 					title={tr.text(SM_Msgs.cancelTimeoutHint())}
 					onClick={async () => {
 						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })
@@ -733,15 +736,9 @@ function ExtLink({ href, children }: { href: string; children: React.ReactNode }
 }
 
 function useElapsed(since: number | null): string | null {
-	const [, setTick] = React.useState(0)
-	React.useEffect(() => {
-		if (since === null) return
-		const id = setInterval(() => setTick((t) => t + 1), 30_000)
-		return () => clearInterval(id)
-	}, [since])
-
+	const now = useNow(30_000)
 	if (since === null) return null
-	return dateFns.formatDistanceToNow(since)
+	return MsgFmt.formatIntervalApprox(now - since)
 }
 
 // events span many matches over potentially days, so rather than a raw timeline we punctuate it: a full
@@ -787,30 +784,17 @@ function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 }
 
 function formatDateLabel(time: number): string {
-	if (dateFns.isToday(time)) return 'Today'
-	if (dateFns.isYesterday(time)) return 'Yesterday'
-	return dateFns.format(time, 'EEEE, MMMM d')
-}
-
-function formatGap(ms: number): string {
-	const mins = Math.round(ms / 60_000)
-	if (mins < 60) return `${mins}m`
-	const hours = Math.floor(mins / 60)
-	if (hours < 24) {
-		const remMins = mins % 60
-		return remMins ? `${hours}h ${remMins}m` : `${hours}h`
-	}
-	const days = Math.floor(hours / 24)
-	const remHours = hours % 24
-	return remHours ? `${days}d ${remHours}h` : `${days}d`
+	if (dateFns.isToday(time)) return tr.text(MH_Msgs.today())
+	if (dateFns.isYesterday(time)) return tr.text(MH_Msgs.yesterday())
+	return MsgFmt.formatDate(time, 'weekdayMonthDay')
 }
 
 function EventSeparator({ time, prevTime }: { time: number; prevTime: number | null }) {
 	if (prevTime === null) {
 		return (
 			<div className="flex flex-col items-center py-1 text-[10px] text-muted-foreground font-medium leading-tight">
-				<span>{dateFns.format(time, 'EEEE, MMMM d, yyyy')}</span>
-				<span className="font-mono">{dateFns.format(time, 'h:mm:ss a')}</span>
+				<span>{MsgFmt.formatDate(time, 'dateFull')}</span>
+				<span className="font-mono">{MsgFmt.formatDate(time, 'timeSeconds')}</span>
 			</div>
 		)
 	}
@@ -827,7 +811,7 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 		return (
 			<div className="flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground italic">
 				<Icons.ChevronsDown className="h-3 w-3 shrink-0" />
-				<span>{tr.text(SM_Msgs.feedGap(formatGap(time - prevTime), dateFns.format(time, 'h:mm a')))}</span>
+				<span>{tr.text(SM_Msgs.feedGap(MsgFmt.formatIntervalCompact(time - prevTime), MsgFmt.formatDate(time, 'time')))}</span>
 			</div>
 		)
 	}

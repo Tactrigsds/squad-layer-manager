@@ -37,6 +37,16 @@ const FALLBACK_POSITIONS: Record<InitialPosition, InitialPosition[]> = {
 	'viewport-center': ['viewport-center'],
 }
 
+// In a right-to-left page 'left' and 'right' swap, so a window opens on the same side of its anchor relative to the
+// reading direction. Positions stay physical screen coordinates after this.
+const MIRRORED_POSITION: Record<InitialPosition, InitialPosition> = {
+	below: 'below',
+	above: 'above',
+	left: 'right',
+	right: 'left',
+	'viewport-center': 'viewport-center',
+}
+
 function calculatePosition(
 	anchorRect: DOMRect | null,
 	contentRect: { width: number; height: number },
@@ -89,9 +99,10 @@ function getInitialPosition(
 	collisionPadding: number,
 ): { x: number; y: number } {
 	const fallbacks = FALLBACK_POSITIONS[preferredPosition]
+	const rtl = document.documentElement.dir === 'rtl'
 
 	for (const position of fallbacks) {
-		const result = calculatePosition(anchorRect, contentRect, position, offset, collisionPadding)
+		const result = calculatePosition(anchorRect, contentRect, rtl ? MIRRORED_POSITION[position] : position, offset, collisionPadding)
 		if (result) {
 			return result
 		}
@@ -123,14 +134,14 @@ type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 // Edge strips (thin) and corner squares (on top), positioned absolutely within the fixed content box.
 const RESIZE_HANDLES: { dir: ResizeDir; className: string }[] = [
-	{ dir: 'n', className: 'top-0 left-0 right-0 h-1 cursor-ns-resize' },
-	{ dir: 's', className: 'bottom-0 left-0 right-0 h-1 cursor-ns-resize' },
-	{ dir: 'e', className: 'top-0 bottom-0 right-0 w-1 cursor-ew-resize' },
-	{ dir: 'w', className: 'top-0 bottom-0 left-0 w-1 cursor-ew-resize' },
-	{ dir: 'nw', className: 'top-0 left-0 h-2 w-2 cursor-nwse-resize' },
-	{ dir: 'se', className: 'bottom-0 right-0 h-2 w-2 cursor-nwse-resize' },
-	{ dir: 'ne', className: 'top-0 right-0 h-2 w-2 cursor-nesw-resize' },
-	{ dir: 'sw', className: 'bottom-0 left-0 h-2 w-2 cursor-nesw-resize' },
+	{ dir: 'n', className: 'top-0 inset-s-0 inset-e-0 h-1 cursor-ns-resize' },
+	{ dir: 's', className: 'bottom-0 inset-s-0 inset-e-0 h-1 cursor-ns-resize' },
+	{ dir: 'e', className: 'top-0 bottom-0 inset-e-0 w-1 cursor-ew-resize' },
+	{ dir: 'w', className: 'top-0 bottom-0 inset-s-0 w-1 cursor-ew-resize' },
+	{ dir: 'nw', className: 'top-0 inset-s-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'se', className: 'bottom-0 inset-e-0 h-2 w-2 cursor-nwse-resize' },
+	{ dir: 'ne', className: 'top-0 inset-e-0 h-2 w-2 cursor-nesw-resize' },
+	{ dir: 'sw', className: 'bottom-0 inset-s-0 h-2 w-2 cursor-nesw-resize' },
 ]
 
 interface DraggableWindowInstanceProps {
@@ -450,6 +461,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				className={cn(
 					'fd-win fixed outline-none invisible',
 					definition.resizable && 'flex flex-col overflow-hidden',
+					// physical: overrides the dragged position, which is kept as style.left in screen coordinates
 					phone && 'inset-0 top-0! left-0! flex h-full w-full! flex-col overflow-hidden rounded-none border-0',
 				)}
 				style={{ zIndex: effectiveZIndex }}
@@ -546,7 +558,7 @@ export function DraggableWindowDragBar({ className, children, ref, ...props }: D
 	)
 
 	return (
-		<div ref={combinedRef} className={cn('fd-win-h shrink-0', phone && 'h-(--nav-h) cursor-default pl-0', className)} {...props}>
+		<div ref={combinedRef} className={cn('fd-win-h shrink-0', phone && 'h-(--nav-h) cursor-default ps-0', className)} {...props}>
 			{phone && (
 				<button
 					type="button"
@@ -555,7 +567,7 @@ export function DraggableWindowDragBar({ className, children, ref, ...props }: D
 					className="fd-btn fd-btn-ghost fd-btn-ico"
 					aria-label={tr.text(UI_Msgs.closeWindow())}
 				>
-					<ChevronLeftIcon />
+					<ChevronLeftIcon className="rtl:-scale-x-100" />
 				</button>
 			)}
 			{children}
@@ -568,7 +580,14 @@ interface DraggableWindowTitleProps extends React.HTMLAttributes<HTMLHeadingElem
 }
 
 export function DraggableWindowTitle({ className, ref, ...props }: DraggableWindowTitleProps) {
-	return <h3 ref={ref} className={cn('fd-cond min-w-0 flex-1 truncate text-sm font-bold', className)} {...props} />
+	return (
+		<h3
+			ref={ref}
+			className={cn('fd-cond min-w-0 flex-1 truncate text-sm font-bold', className)}
+			title={typeof props.children === 'string' ? props.children : undefined}
+			{...props}
+		/>
+	)
 }
 
 interface DraggableWindowPinToggleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

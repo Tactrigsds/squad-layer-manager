@@ -138,7 +138,7 @@ function RoleSection(props: {
 							<div className="space-y-1">
 								<div className="flex items-center gap-2">
 									<NegationBadges perm={perm} />
-									<div className="font-mono">{perm.type}</div>
+									<div className="font-mono ltr-isolate">{perm.type}</div>
 								</div>
 								<div className="text-muted-foreground">{getPermissionDescription(perm.type)}</div>
 							</div>
@@ -245,7 +245,7 @@ export default function UserPermissionsDialog(props: {
 					{/* the bar is pinned rather than scrolling, and the content is padded clear of it: unlike a feed, a tab
 					    here starts at its first row, so an overlay would sit on the table header */}
 					<TabsContent value="permissions" className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-						<SubtreeFindBar stores={permsFind.stores} className="absolute right-4 top-0" />
+						<SubtreeFindBar stores={permsFind.stores} className="absolute inset-e-4 top-0" />
 						<div ref={permsFind.scopeRef} className="min-h-0 flex-1 space-y-4 overflow-auto pt-10">
 							<div className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.heldPermissionCount(activePermCount))}</div>
 
@@ -319,7 +319,7 @@ export default function UserPermissionsDialog(props: {
 												className="flex items-start justify-between p-2 rounded text-sm opacity-60 bg-muted/30"
 											>
 												<div className="space-y-1">
-													<div className="font-mono">{permType}</div>
+													<div className="font-mono ltr-isolate">{permType}</div>
 													<div className="text-muted-foreground">{getPermissionDescription(permType)}</div>
 												</div>
 												<Badge variant="outline" className="text-xs">
@@ -334,7 +334,7 @@ export default function UserPermissionsDialog(props: {
 					</TabsContent>
 
 					<TabsContent value="roles" className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-						<SubtreeFindBar stores={rolesFind.stores} className="absolute right-4 top-0" />
+						<SubtreeFindBar stores={rolesFind.stores} className="absolute inset-e-4 top-0" />
 						<div ref={rolesFind.scopeRef} className="min-h-0 flex-1 space-y-6 overflow-auto pt-10">
 							{heldRoles.map(({ role, perms }) => (
 								<RoleSection

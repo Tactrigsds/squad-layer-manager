@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils.ts'
 import * as Yaml from '@/lib/yaml'
 import type { z } from '@/lib/zod'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as SDoc from '@/models/schema-docs.models'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
@@ -110,7 +111,9 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 	// -------- setup editor, handle change events --------
 	React.useEffect(() => {
 		const commentsKey = commentsKeyRef.current
-		const schemaJson = CM.toJsonSchema(schemaRef.current)
+		const rawSchemaJson = CM.toJsonSchema(schemaRef.current)
+		// hover reads the standard title and description, so they carry the viewer's language
+		const schemaJson = rawSchemaJson && SDoc.localizeJsonSchema(rawSchemaJson, (msg) => tr.text(msg))
 		// the comments render as `#` lines, so completion and hover must not offer the key they are stored under
 		const schemaProps = (schemaJson as { properties?: Record<string, unknown> } | undefined)?.properties
 		if (commentsKey && schemaProps) delete schemaProps[commentsKey]
@@ -213,10 +216,10 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 				style={isFullscreen ? { zIndex: contentBaseZIndex } : { height: props.minHeightPx ?? 400 }}
 			>
 				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
-				<div className="flex min-h-7 items-center gap-2 pr-9">
-					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? tr.text(SETTINGS_Msgs.yamlEditorLabel())}</h3>
+				<div className="flex min-h-7 items-center gap-2 pe-9">
+					<h3 className={cn(Typo.Small, 'ms-[45px]')}>{props.label ?? tr.text(SETTINGS_Msgs.yamlEditorLabel())}</h3>
 					{/* the switch sits last so it lands in the same place whether or not the caller gave us a toolbar */}
-					<div className="ml-auto flex min-w-0 items-center gap-2">
+					<div className="ms-auto flex min-w-0 items-center gap-2">
 						{props.toolbar}
 						<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
 					</div>
@@ -227,7 +230,7 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 							type="button"
 							size="icon"
 							variant="ghost"
-							className="absolute top-0 right-0 h-7 w-7"
+							className="absolute top-0 inset-e-0 h-7 w-7"
 							style={{ zIndex: contentBaseZIndex + ZI_OFFSETS.MINOR_CEILING }}
 							onClick={() => setIsFullscreen((v) => !v)}
 						>
@@ -239,10 +242,10 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 					</TooltipContent>
 				</Tooltip>
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
-					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
+					<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
 						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.yamlErrors())}</h3>
-						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive ltr-isolate">
 							{errorText}
 						</pre>
 					</div>

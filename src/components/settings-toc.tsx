@@ -84,13 +84,16 @@ function buildChildren(
 			const inner = stripNullable(props[key])
 			const childPath = [...path, key]
 			const pathStr = childPath.join('.')
+			const label = SETTINGS_Msgs.settingLabel(props[key], key)
 			// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
 			// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
 			const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
 			return {
 				id: `${idPrefix}${pathStr}`,
-				label: tr.text(SETTINGS_Msgs.settingName(childPath, key)),
+				label: tr.text(label),
 				path: pathStr,
+				// the English name too, for an admin following a guide written in English
+				keywords: [label.original],
 				writable: RBAC.settingsPathOverlaps(access, childPath),
 				children: recurse
 					? buildChildren(inner, childPath, idPrefix, access, entries)
@@ -135,7 +138,7 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 
 function filterNode(node: TocNode, query: string): TocNode | null {
 	const children = node.children.map((c) => filterNode(c, query)).filter((c): c is TocNode => c !== null)
-	// match on the humanized label, the json path or any keyword, so users can search by whichever they know
+	// match on the label, the json path or any keyword, so users can search by whichever they know
 	const selfMatch =
 		node.label.toLowerCase().includes(query) ||
 		node.path.toLowerCase().includes(query) ||
@@ -183,7 +186,11 @@ function TocItem({
 	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const header = (
-		<div ref={headerRef} className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')} style={{ paddingLeft: depth * 12 }}>
+		<div
+			ref={headerRef}
+			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
+			style={{ paddingInlineStart: depth * 12 }}
+		>
 			{hasChildren ? (
 				<button
 					type="button"
@@ -191,7 +198,7 @@ function TocItem({
 					onClick={() => toggle(node.id)}
 					aria-label={tr.text(isOpen ? UI_Msgs.collapse() : UI_Msgs.expand())}
 				>
-					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen ? 'rotate-90' : 'rtl:rotate-180')} />
 				</button>
 			) : (
 				<span className="w-[18px] shrink-0" />
@@ -199,7 +206,7 @@ function TocItem({
 			<a
 				href={`#${node.id}`}
 				className={cn(
-					'block truncate text-left text-sm py-0.5 px-1 rounded flex-1 min-w-0 hover:text-foreground',
+					'line-clamp-2 break-words text-start text-sm py-0.5 px-1 rounded flex-1 min-w-0 hover:text-foreground',
 					isActive ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
 				)}
 				title={node.label}
@@ -213,7 +220,7 @@ function TocItem({
 			{showMarkers && node.writable && (
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Icons.Pencil className="mr-1 h-3 w-3 shrink-0 text-muted-foreground" />
+						<Icons.Pencil className="me-1 h-3 w-3 shrink-0 text-muted-foreground" />
 					</TooltipTrigger>
 					<TooltipContent>{tr.text(SETTINGS_Msgs.writableMarker())}</TooltipContent>
 				</Tooltip>
@@ -221,7 +228,7 @@ function TocItem({
 			{commentedIds.has(node.id) && (
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Icons.MessageSquareText className="mr-1 h-3 w-3 shrink-0 text-muted-foreground" />
+						<Icons.MessageSquareText className="me-1 h-3 w-3 shrink-0 text-muted-foreground" />
 					</TooltipTrigger>
 					<TooltipContent>{tr.text(SETTINGS_Msgs.commentedMarker())}</TooltipContent>
 				</Tooltip>
@@ -542,10 +549,10 @@ export default function SettingsToc({
 			{/* search stays fixed above the independently-scrolling tree */}
 			<div className="shrink-0 bg-background pb-2">
 				<div className="relative">
-					<Icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+					<Icons.Search className="absolute inset-s-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 					<Input
 						ref={searchRef}
-						className="h-8 pl-7"
+						className="h-8 ps-7"
 						placeholder={tr.text(SETTINGS_Msgs.searchSettings())}
 						value={query}
 						onChange={(e) => {

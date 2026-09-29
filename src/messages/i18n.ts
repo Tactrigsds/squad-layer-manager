@@ -43,6 +43,11 @@ export function registerCatalogue(locale: string, messages: Record<string, ICU.E
 	catalogues[locale] = catalogues[locale] ? { ...catalogues[locale], ...messages } : messages
 }
 
+// XA and XB are the region codes CLDR reserves for pseudo-locales. One is never a fallback for a real language.
+export function isPseudoLocale(locale: string) {
+	return /-X[AB]$/i.test(locale)
+}
+
 export function availableLocales() {
 	return [...new Set([DEFAULT_LOCALE, ...Object.keys(catalogues)])]
 }
@@ -60,6 +65,14 @@ export function getAmbientLocale() {
 	return ambientLocale
 }
 
+const RTL_LANGUAGES = new Set(['ar', 'arc', 'ckb', 'dv', 'fa', 'he', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi'])
+
+export type TextDirection = 'ltr' | 'rtl'
+
+export function textDirection(locale: string): TextDirection {
+	return RTL_LANGUAGES.has(locale.split('-')[0].toLowerCase()) ? 'rtl' : 'ltr'
+}
+
 // Picks the best of the reader's preferences that this build can actually serve, in their order of preference.
 //
 // Adopting a locale with no catalogue would be worse than ignoring it: the text would still be English, but the
@@ -70,7 +83,7 @@ export function negotiateLocale(preferred: readonly string[]) {
 		const exact = available.find((l) => l.toLowerCase() === want.toLowerCase())
 		if (exact) return exact
 		const primary = want.split('-')[0].toLowerCase()
-		const related = available.find((l) => l.split('-')[0].toLowerCase() === primary)
+		const related = available.find((l) => !isPseudoLocale(l) && l.split('-')[0].toLowerCase() === primary)
 		if (related) return related
 	}
 	return DEFAULT_LOCALE
@@ -159,6 +172,22 @@ export function tokenList(
 		part.type === 'element'
 			? React.createElement('bdi', { key: index }, opts?.tag ? React.createElement(opts.tag, null, part.value) : part.value)
 			: React.createElement(React.Fragment, { key: index }, part.value),
+	)
+}
+
+// Rendered items joined as a list in the reader's language: "A, B and C", with the separators and the conjunction
+// the locale uses.
+export function nodeList(
+	nodes: readonly React.ReactNode[],
+	locale: string,
+	opts?: { type?: 'conjunction' | 'disjunction' | 'unit'; style?: 'long' | 'short' | 'narrow' },
+): React.ReactNode {
+	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: opts?.style ?? 'long' }).formatToParts(
+		nodes.map((_, index) => String(index)),
+	)
+	let next = 0
+	return parts.map((part, index) =>
+		React.createElement(React.Fragment, { key: index }, part.type === 'element' ? nodes[next++] : part.value),
 	)
 }
 

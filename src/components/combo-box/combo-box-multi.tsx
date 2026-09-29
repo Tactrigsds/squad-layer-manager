@@ -381,7 +381,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						<div className="flex min-h-0">
 							<div
 								className={cn(
-									'flex grow shrink flex-col border-r',
+									'flex grow shrink flex-col border-e',
 									MenuSizing.MENU_MIN_WIDTH_CLASS,
 									MenuSizing.MENU_MAX_WIDTH_CLASS,
 								)}
@@ -416,7 +416,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									{!drillEntry && options === LOADING && (
 										<CommandGroup>
 											<CommandItem>
-												<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+												<LoaderCircle className="me-2 h-4 w-4 animate-spin" />
 												{tr.text(UI_Msgs.loadingEllipsis())}
 											</CommandItem>
 										</CommandGroup>
@@ -449,7 +449,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 													>
 														<Check
 															className={cn(
-																'mr-2 h-4 w-4 shrink-0',
+																'me-2 h-4 w-4 shrink-0',
 																displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 															)}
 														/>
@@ -491,7 +491,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
 														title={tr.text(UI_Msgs.resetToInitial())}
 													>
-														<Undo2 className="h-4 w-4" />
+														<Undo2 className="h-4 w-4 rtl:-scale-x-100" />
 													</Button>
 												)
 											})()}
@@ -574,7 +574,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															variant="ghost"
 															size="sm"
 															onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
-															className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
+															className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ms-2"
 														>
 															<X className="h-3 w-3" />
 														</Button>

@@ -76,6 +76,9 @@ export const removeFlag = def('Remove this flag')
 
 export const whyRemoving = def('Why is this flag being removed?')
 
+// what the pending save will do to a flag row
+export const flagRowChange = def('{change, select, adding {Adding} other {Removing}}', (change: 'adding' | 'removing') => ({ change }))
+
 export const whyApplying = def('Why is this flag being applied?')
 
 export const flagsLabel = def('Flags')

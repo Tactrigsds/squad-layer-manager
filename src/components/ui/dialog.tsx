@@ -72,7 +72,7 @@ const DialogContent = React.forwardRef<
 					<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
 						{children}
 					</DraggableWindowOutlet>
-					<DialogPrimitive.Close className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute right-1.5 top-1.5">
+					<DialogPrimitive.Close className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5">
 						<Cross2Icon />
 						<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
 					</DialogPrimitive.Close>
@@ -84,7 +84,7 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-	<div className={cn('fd-dlg-h -mx-2.5 -mt-2.5 shrink-0 flex-wrap py-1 pr-8', className)} {...props} />
+	<div className={cn('fd-dlg-h -mx-2.5 -mt-2.5 shrink-0 flex-wrap py-1 pe-8', className)} {...props} />
 )
 DialogHeader.displayName = 'DialogHeader'
 

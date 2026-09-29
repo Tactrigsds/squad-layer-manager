@@ -32,6 +32,7 @@ enableMapSet()
 // components/factionunit configs are read synchronously throughout the component tree, so nothing
 // can render before they're loaded
 await LayerDataClient.setup()
+if (import.meta.env.DEV) await Catalogues.registerPseudo()
 ;(function setupClientSystems() {
 	console.debug('running system initialization')
 	// catalogues first: the locale store negotiates against what is registered
