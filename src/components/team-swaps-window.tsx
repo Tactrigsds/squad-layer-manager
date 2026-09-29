@@ -119,7 +119,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 					onClick={() => TSWClient.Actions.revertToSaved(stores)}
 					title={tr.text(SM_Msgs.revertToSaved())}
 				>
-					<Icons.Undo2 />
+					<Icons.Undo2 className="rtl:-scale-x-100" />
 				</Button>
 				{isEditing ? (
 					<ButtonGroup>
@@ -191,14 +191,15 @@ function AfterSwapCounts({ stores }: { stores: SquadServerFrame.KeyProp }) {
 		dB: TSWClient.Sel.diffAfterSwapsForTeam('B')(s),
 	}))
 	const changed = counts.dA !== 0 || counts.dB !== 0
+	// flex rather than inline text, so each count sits on the same side as its team in RTL too
 	return (
-		<span className="font-mono text-sm font-semibold">
-			{counts.A}v{counts.B}
+		<span className="inline-flex items-baseline font-mono text-sm font-semibold">
+			<span>{counts.A}</span>v<span>{counts.B}</span>
 			{changed && (
 				<>
-					<span className="mx-1 text-text-3">→</span>
-					<span className="text-pri">
-						{counts.A + counts.dA}v{counts.B + counts.dB}
+					<span className="mx-1 text-text-3 rtl:-scale-x-100">→</span>
+					<span className="inline-flex text-pri">
+						<span>{counts.A + counts.dA}</span>v<span>{counts.B + counts.dB}</span>
 					</span>
 				</>
 			)}
@@ -222,7 +223,7 @@ function DestinationSection({
 	return (
 		<section>
 			<h3 className="flex items-center gap-2 border-t border-line px-3 py-1.5 text-sm font-bold shadow-[inset_0_1px_0_var(--line-soft)]">
-				<span className="text-text-3">→</span>
+				<span className="text-text-3 rtl:-scale-x-100">→</span>
 				<MatchTeamDisplay teamId={team} showAltTeamIndicator stores={stores} />
 				<span className="font-normal text-text-3">{tr.text(SM_Msgs.swapsPending(pending))}</span>
 			</h3>
@@ -250,7 +251,7 @@ function SwapRow({
 		<div
 			className={cn(
 				'grid min-h-(--row) grid-cols-[minmax(0,1fr)_auto_var(--ctl)] items-center gap-2 border-b border-[#2d2d2f] bg-[rgba(230,180,34,0.10)] ps-3',
-				mutation.added && 'shadow-[inset_3px_0_0_var(--ok)]',
+				mutation.added && 'shadow-[inset_3px_0_0_var(--ok)] rtl:shadow-[inset_-3px_0_0_var(--ok)]',
 				mutation.removed && 'opacity-60',
 			)}
 		>

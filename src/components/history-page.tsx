@@ -26,6 +26,7 @@ import * as HistoryFrame from '@/frames/history.frame'
 import * as Browser from '@/lib/browser'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
@@ -33,6 +34,7 @@ import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -242,8 +244,8 @@ function RailResizer(props: { children: React.ReactNode }) {
 					onPointerMove={(e) => {
 						const from = dragFrom.current
 						if (!from) return
-						// the rail is on the right, so dragging left widens it
-						const next = from.width + (from.x - e.clientX)
+						// the rail sits at the inline end, so dragging toward the inline start widens it
+						const next = from.width + (from.x - e.clientX) * (MessagesClient.textDirection() === 'rtl' ? -1 : 1)
 						setWidth(Math.min(HistoryClient.RAIL_WIDTH.max, Math.max(HistoryClient.RAIL_WIDTH.min, next)))
 					}}
 					onPointerUp={(e) => {
@@ -252,7 +254,7 @@ function RailResizer(props: { children: React.ReactNode }) {
 						HistoryClient.saveRailWidth(width)
 					}}
 				/>
-				<div className="flex min-w-0 flex-1 flex-col gap-2 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)]">
+				<div className="flex min-w-0 flex-1 flex-col gap-2 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)] rtl:shadow-[1px_0_0_var(--line-soft)]">
 					{props.children}
 				</div>
 			</div>
@@ -368,7 +370,7 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 	return (
 		<div className="flex items-center gap-1 text-xs">
 			<Button variant="ghost" size="icon" className="h-6 w-6" disabled={props.page === 0} onClick={() => props.setPage(props.page - 1)}>
-				<Icons.ChevronLeft className="h-3 w-3" />
+				<Icons.ChevronLeft className="h-3 w-3 rtl:-scale-x-100" />
 			</Button>
 			<span className="tabular-nums">
 				{props.page + 1}/{lastPage + 1}
@@ -380,7 +382,7 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 				disabled={props.page >= lastPage}
 				onClick={() => props.setPage(props.page + 1)}
 			>
-				<Icons.ChevronRight className="h-3 w-3" />
+				<Icons.ChevronRight className="h-3 w-3 rtl:-scale-x-100" />
 			</Button>
 		</div>
 	)
@@ -624,14 +626,14 @@ function RecentMenu(props: { onLoad: () => void }) {
 
 function describeQuery(query: HQ.Query): string {
 	const parts: string[] = [query.type]
-	if (query.servers?.length) parts.push(query.servers.join(', '))
-	if (query.players?.length) parts.push(query.players.join(', '))
+	if (query.servers?.length) parts.push(MsgFmt.formatList(query.servers, { type: 'disjunction' }))
+	if (query.players?.length) parts.push(MsgFmt.formatList(query.players, { type: 'disjunction' }))
 	if (query.chat) parts.push(`"${query.chat}"`)
-	if (query.types && query.types.length > 0) parts.push(query.types.join(', '))
+	if (query.types && query.types.length > 0) parts.push(MsgFmt.formatList(query.types, { type: 'disjunction' }))
 	for (const part of [query.map, query.gamemode, query.faction]) {
 		if (part) parts.push(part)
 	}
-	if (query.mode === 'advanced') parts.push(tr.text(HistoryMsgs.modeAdvanced()).toLowerCase())
+	if (query.mode === 'advanced') parts.push(tr.text(HistoryMsgs.advancedQueryTag()))
 	return parts.join(' · ')
 }
 

@@ -10,6 +10,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import type * as TUT from '@/models/tutorial.models'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { rootRouter } from '@/root-router'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 
@@ -343,7 +344,7 @@ function intersects(a: Rect, b: Rect, margin: number): boolean {
 }
 
 // The card hugs the outlined anchor, never covers the undimmed spotlight zone, and stays on screen. Candidates
-// adjacent to the anchor come first (below, above, right, left), then adjacent to the spotlight but aligned toward
+// adjacent to the anchor come first (below, above, inline end, inline start), then adjacent to the spotlight but aligned toward
 // the anchor. Above-placements pin the card's bottom edge, so a card taller than measured grows away from the
 // element rather than over it.
 //
@@ -361,15 +362,20 @@ function placeCard(anchor: Rect | null, spotlight: Rect | null, cardW: number, c
 	const vh = window.innerHeight
 	const clampX = (x: number) => Math.min(Math.max(12, x), vw - cardW - 12)
 	const clampY = (y: number) => Math.min(Math.max(12, y), vh - cardH - 12)
+	const rtl = MessagesClient.textDirection() === 'rtl'
+	const alignX = clampX(rtl ? a.right - cardW : a.left)
+	const toRight = (r: Rect) => r.right + GAP
+	const toLeft = (r: Rect) => r.left - GAP - cardW
+	const [toEnd, toStart] = rtl ? [toLeft, toRight] : [toRight, toLeft]
 	const candidates: { top: number; left: number; pinBottom?: boolean }[] = [
-		{ top: a.bottom + GAP, left: clampX(a.left) },
-		{ top: a.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
-		{ top: clampY(a.top), left: a.right + GAP },
-		{ top: clampY(a.top), left: a.left - GAP - cardW },
-		{ top: zone.bottom + GAP, left: clampX(a.left) },
-		{ top: zone.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
-		{ top: clampY(a.top), left: zone.right + GAP },
-		{ top: clampY(a.top), left: zone.left - GAP - cardW },
+		{ top: a.bottom + GAP, left: alignX },
+		{ top: a.top - GAP - cardH, left: alignX, pinBottom: true },
+		{ top: clampY(a.top), left: toEnd(a) },
+		{ top: clampY(a.top), left: toStart(a) },
+		{ top: zone.bottom + GAP, left: alignX },
+		{ top: zone.top - GAP - cardH, left: alignX, pinBottom: true },
+		{ top: clampY(a.top), left: toEnd(zone) },
+		{ top: clampY(a.top), left: toStart(zone) },
 	]
 	const place = (c: { top: number; left: number; pinBottom?: boolean }, avoidZone: boolean) => {
 		const box: Rect = { top: c.top, left: c.left, width: cardW, height: cardH, bottom: c.top + cardH, right: c.left + cardW }
@@ -387,10 +393,10 @@ function placeCard(anchor: Rect | null, spotlight: Rect | null, cardW: number, c
 	// Nothing fits beside the zone, because it fills the screen. Take the side with the most room and clamp in, so
 	// the card covers as little of the zone as the viewport allows rather than landing on top of it.
 	const sides = [
-		{ space: vh - zone.bottom, top: zone.bottom + GAP, left: clampX(a.left) },
-		{ space: zone.top, top: zone.top - GAP - cardH, left: clampX(a.left) },
-		{ space: vw - zone.right, top: clampY(a.top), left: zone.right + GAP },
-		{ space: zone.left, top: clampY(a.top), left: zone.left - GAP - cardW },
+		{ space: vh - zone.bottom, top: zone.bottom + GAP, left: alignX },
+		{ space: zone.top, top: zone.top - GAP - cardH, left: alignX },
+		{ space: vw - zone.right, top: clampY(a.top), left: toRight(zone) },
+		{ space: zone.left, top: clampY(a.top), left: toLeft(zone) },
 	]
 	const roomiest = sides.reduce((best, side) => (side.space > best.space ? side : best))
 	return { top: clampY(roomiest.top), left: clampX(roomiest.left) }
@@ -538,7 +544,7 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 					disabled={idx === 0}
 					onClick={() => void Tour.Actions.jump(idx - 1)}
 				>
-					<Icons.ChevronLeft className="h-4 w-4" />
+					<Icons.ChevronLeft className="h-4 w-4 rtl:-scale-x-100" />
 				</button>
 				<button
 					type="button"
@@ -557,7 +563,7 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 					disabled={idx >= total - 1}
 					onClick={() => void Tour.Actions.jump(idx + 1)}
 				>
-					<Icons.ChevronRight className="h-4 w-4" />
+					<Icons.ChevronRight className="h-4 w-4 rtl:-scale-x-100" />
 				</button>
 			</div>
 		</div>
@@ -603,10 +609,10 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 							}}
 							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-start text-xs hover:bg-ground ${current ? 'bg-ground text-white' : 'text-text'}`}
 						>
-							<span className={`w-6 shrink-0 text-end font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>
-								{i + 1}
+							<span className={`w-6 shrink-0 text-end font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>{i + 1}</span>
+							<span className="truncate" title={title}>
+								{title}
 							</span>
-							<span className="truncate">{title}</span>
 						</button>
 					)
 				})}

@@ -1,4 +1,3 @@
-import * as dateFns from 'date-fns'
 import React from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -9,7 +8,9 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as FRM from '@/lib/frame'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
@@ -23,6 +24,8 @@ import { CopyIdButton } from './copy-id-button'
 import { PlayerDisplay } from './player-display'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
+
+const trReason = tr.withTags({ label: (chunks) => <span className="font-medium text-foreground">{chunks}</span> })
 
 DraggableWindowStore.getState().registerDefinition<TimeoutsWindowProps, unknown>({
 	type: WINDOW_ID.enum['timeouts'],
@@ -115,30 +118,26 @@ function TimeoutsWindow() {
 									<TableCell className="align-top">
 										<TimeoutPlayer timeout={t} stores={t.issuedServerId ? storesByServer.get(t.issuedServerId) : undefined} />
 									</TableCell>
-									<TableCell className="align-top whitespace-nowrap" title={dateFns.format(t.expiresAt, 'PPp')}>
-										{dateFns.formatDistanceToNow(t.expiresAt, { addSuffix: true })}
+									<TableCell className="align-top whitespace-nowrap" title={MsgFmt.formatDate(t.expiresAt, 'dateTime')}>
+										{MsgFmt.formatRelativeTime(t.expiresAt)}
 									</TableCell>
 									<TableCell className="align-top min-w-0 wrap-break-word text-muted-foreground">
 										{t.reasonMessage ? (
-											<>
-												{t.reasonLabel && (
-													<span className="font-medium text-foreground">
-														{t.reasonLabel}
-														{': '}
-													</span>
-												)}
-												{t.reasonMessage}
-											</>
+											t.reasonLabel ? (
+												trReason.richText(UI_Msgs.labelValue(t.reasonLabel, t.reasonMessage))
+											) : (
+												t.reasonMessage
+											)
 										) : (
 											<span className="italic">{tr.text(SM_Msgs.noTimeoutReason())}</span>
 										)}
 									</TableCell>
 									<TableCell
 										className="align-top whitespace-nowrap text-xs text-muted-foreground"
-										title={dateFns.format(t.createdAt, 'PPp')}
+										title={MsgFmt.formatDate(t.createdAt, 'dateTime')}
 									>
 										<div>{actorName(t.actor, t.actorUsername)}</div>
-										<div>{dateFns.formatDistanceToNow(t.createdAt, { addSuffix: true })}</div>
+										<div>{MsgFmt.formatRelativeTime(t.createdAt)}</div>
 									</TableCell>
 									{canCancel && (
 										<TableCell className="align-top">

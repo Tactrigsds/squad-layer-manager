@@ -491,7 +491,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
 														title={tr.text(UI_Msgs.resetToInitial())}
 													>
-														<Undo2 className="h-4 w-4" />
+														<Undo2 className="h-4 w-4 rtl:-scale-x-100" />
 													</Button>
 												)
 											})()}

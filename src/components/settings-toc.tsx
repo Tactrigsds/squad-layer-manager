@@ -183,7 +183,11 @@ function TocItem({
 	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const header = (
-		<div ref={headerRef} className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')} style={{ paddingLeft: depth * 12 }}>
+		<div
+			ref={headerRef}
+			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
+			style={{ paddingInlineStart: depth * 12 }}
+		>
 			{hasChildren ? (
 				<button
 					type="button"
@@ -191,7 +195,7 @@ function TocItem({
 					onClick={() => toggle(node.id)}
 					aria-label={tr.text(isOpen ? UI_Msgs.collapse() : UI_Msgs.expand())}
 				>
-					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen ? 'rotate-90' : 'rtl:rotate-180')} />
 				</button>
 			) : (
 				<span className="w-[18px] shrink-0" />
@@ -199,7 +203,7 @@ function TocItem({
 			<a
 				href={`#${node.id}`}
 				className={cn(
-					'block truncate text-start text-sm py-0.5 px-1 rounded flex-1 min-w-0 hover:text-foreground',
+					'line-clamp-2 break-words text-start text-sm py-0.5 px-1 rounded flex-1 min-w-0 hover:text-foreground',
 					isActive ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
 				)}
 				title={node.label}

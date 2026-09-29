@@ -175,6 +175,22 @@ export function tokenList(
 	)
 }
 
+// Rendered items joined as a list in the reader's language: "A, B and C", with the separators and the conjunction
+// the locale uses.
+export function nodeList(
+	nodes: readonly React.ReactNode[],
+	locale: string,
+	opts?: { type?: 'conjunction' | 'disjunction' | 'unit'; style?: 'long' | 'short' | 'narrow' },
+): React.ReactNode {
+	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: opts?.style ?? 'long' }).formatToParts(
+		nodes.map((_, index) => String(index)),
+	)
+	let next = 0
+	return parts.map((part, index) =>
+		React.createElement(React.Fragment, { key: index }, part.type === 'element' ? nodes[next++] : part.value),
+	)
+}
+
 // -------- resolving Msg values (see @/models/messages.models) --------
 
 // the formatting vocabulary every translator renders unasked; custom tags come in through Translator.withTags

@@ -63,7 +63,7 @@ export function StackedBarChart(props: {
 	const legend = (
 		<div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
 			{props.legendLeading}
-			<div className="flex shrink-0 items-center gap-2">
+			<div className="flex min-w-0 items-center gap-2">
 				<ul className="flex flex-wrap gap-x-2.5 gap-y-0.5" onPointerLeave={() => setHoveredSeries(null)}>
 					{props.series.map((series, seriesIndex) => (
 						<li
@@ -92,25 +92,23 @@ export function StackedBarChart(props: {
 		const labelColor = props.rowColors?.[rowIndex]
 		return (
 			<g key={row.key}>
-				<text
-					x={mirror ? w : 0}
-					y={top + LABEL_SIZE}
-					fontSize={LABEL_SIZE}
-					textAnchor={mirror ? 'end' : 'start'}
-					className={cn('fill-current font-semibold', !labelColor && 'text-text-2')}
-					style={labelColor ? { color: labelColor } : undefined}
-				>
-					{row.label}
-				</text>
-				<text
-					x={mirror ? 0 : w}
-					y={top + LABEL_SIZE}
-					fontSize={LABEL_SIZE}
-					textAnchor={mirror ? 'start' : 'end'}
-					className="fill-current text-foreground font-semibold"
-				>
-					{totals[rowIndex]}
-				</text>
+				<foreignObject x={0} y={top} width={w} height={ROW_LABEL_HEIGHT}>
+					<div
+						dir="ltr"
+						className={cn('flex items-center justify-between gap-2 font-semibold leading-4', mirror && 'flex-row-reverse')}
+						style={{ fontSize: LABEL_SIZE }}
+					>
+						<span
+							dir="auto"
+							title={row.label}
+							className={cn('min-w-0 truncate', !labelColor && 'text-text-2')}
+							style={labelColor ? { color: labelColor } : undefined}
+						>
+							{row.label}
+						</span>
+						<span className="shrink-0 text-foreground tabular-nums">{totals[rowIndex]}</span>
+					</div>
+				</foreignObject>
 				{Chart.stack(row.values).map((segment, i, segments) => {
 					const gap = i < segments.length - 1 ? SEGMENT_GAP : 0
 					const segWidth = px(segment.value) - gap
@@ -133,7 +131,7 @@ export function StackedBarChart(props: {
 								height={barHeight}
 								fill={props.series[segment.seriesIndex].color}
 							/>
-							{Chart.estimateTextWidth(label, LABEL_SIZE) + 6 <= segWidth && (
+							{Chart.estimateNumeralsWidth(label, LABEL_SIZE) + 6 <= segWidth && (
 								<text
 									x={x + segWidth / 2}
 									y={top + ROW_LABEL_HEIGHT + barHeight / 2}

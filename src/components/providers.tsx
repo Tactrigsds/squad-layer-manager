@@ -12,8 +12,8 @@ import { ResetOtherSessionsManager } from '@/components/reset-other-sessions-man
 import { TourOverlay } from '@/components/tour-overlay'
 import { Toaster } from '@/components/ui/sonner'
 import * as RPC from '@/orpc.client'
-import * as MessagesClient from '@/systems/messages.client'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
+import * as MessagesClient from '@/systems/messages.client'
 
 import { DraggableWindowOutlet } from './ui/draggable-window'
 import { AlertDialogProvider } from './ui/lazy-alert-dialog'

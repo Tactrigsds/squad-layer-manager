@@ -9,7 +9,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
-import * as Format from '@/messages/format'
+import * as MsgFmt from '@/messages/format'
 import * as SM_Msgs from '@/messages/squad.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -91,13 +91,13 @@ function TeamColumn(props: { team: HistoricalTeam; matchId: number; stores: Squa
 function MemberRow(props: { member: HistoricalMember; matchId: number; stores: SquadServerFrame.KeyProp }) {
 	const member = props.member
 	return (
-		<li className={cn('flex items-center gap-1.5 text-sm ps-2 min-w-0', !member.eligible && 'opacity-60')}>
+		<li className={cn('flex flex-wrap items-center gap-x-1.5 text-sm ps-2 min-w-0', !member.eligible && 'opacity-60')}>
 			{/* the context menu's actions target the live server, where this roster's players may no longer be */}
 			<PlayerDisplay
 				player={member.player}
 				matchId={props.matchId}
 				stores={props.stores}
-				className="min-w-0 truncate"
+				className="min-w-0 flex-[1_1_5rem] truncate"
 				disableContextMenu
 			/>
 			<span className="ms-auto font-mono text-xs whitespace-nowrap" title={tr.text(CHAT_Msgs.scorelineHint())}>
@@ -108,14 +108,14 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 					className="font-mono text-xs tabular-nums text-destructive font-semibold whitespace-nowrap"
 					title={tr.text(SM_Msgs.teamKillsHint())}
 				>
-					{tr.text(SM_Msgs.teamKillsColumn())} {member.stats.teamkills}
+					{tr.text(SM_Msgs.teamKillsCount(member.stats.teamkills))}
 				</span>
 			)}
 			<span
 				className="text-xs text-muted-foreground tabular-nums whitespace-nowrap"
-				title={tr.text(CHAT_Msgs.timeOnTeam(Format.formatIntervalCompact(member.timeMs)))}
+				title={tr.text(CHAT_Msgs.timeOnTeam(MsgFmt.formatIntervalCompact(member.timeMs)))}
 			>
-				{Format.formatIntervalCompact(member.timeMs)}
+				{MsgFmt.formatIntervalCompact(member.timeMs)}
 			</span>
 			{/* only stints worth naming: the compact format rounds anything shorter up to "1m", which overstates a
 			 few seconds spent on the wrong side while the roster settled */}
@@ -124,7 +124,7 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 					<TooltipTrigger asChild>
 						<Icons.ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 					</TooltipTrigger>
-					<TooltipContent>{tr.text(CHAT_Msgs.alsoOnOtherTeam(Format.formatIntervalCompact(member.otherTeamMs)))}</TooltipContent>
+					<TooltipContent>{tr.text(CHAT_Msgs.alsoOnOtherTeam(MsgFmt.formatIntervalCompact(member.otherTeamMs)))}</TooltipContent>
 				</Tooltip>
 			)}
 			{!member.eligible && (

@@ -49,7 +49,7 @@ PaginationLink.displayName = 'PaginationLink'
 
 const PaginationPrevious = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
 	<PaginationLink aria-label={tr.text(UI_Msgs.previousPageHint())} size="default" className={cn('gap-1 ps-2.5', className)} {...props}>
-		<ChevronLeftIcon className="h-4 w-4" />
+		<ChevronLeftIcon className="h-4 w-4 rtl:-scale-x-100" />
 		<span>{tr.text(UI_Msgs.previousPage())}</span>
 	</PaginationLink>
 )
@@ -58,7 +58,7 @@ PaginationPrevious.displayName = 'PaginationPrevious'
 const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
 	<PaginationLink aria-label={tr.text(UI_Msgs.nextPageHint())} size="default" className={cn('gap-1 pe-2.5', className)} {...props}>
 		<span>{tr.text(UI_Msgs.nextPage())}</span>
-		<ChevronRightIcon className="h-4 w-4" />
+		<ChevronRightIcon className="h-4 w-4 rtl:-scale-x-100" />
 	</PaginationLink>
 )
 PaginationNext.displayName = 'PaginationNext'

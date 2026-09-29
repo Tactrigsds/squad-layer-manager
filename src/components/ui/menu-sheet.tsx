@@ -33,7 +33,7 @@ export function MenuSheet(props: {
 	onOpenChange: (open: boolean) => void
 	title: React.ReactNode
 	subtitle?: React.ReactNode
-	// rendered on the right of the header, beside the title
+	// rendered at the end of the header, beside the title
 	trailing?: React.ReactNode
 	children: React.ReactNode
 }) {
@@ -86,15 +86,17 @@ function SheetBody(props: {
 						className="fd-btn fd-btn-ghost fd-btn-ico"
 						aria-label={tr.text(UI_Msgs.back())}
 					>
-						<ChevronLeftIcon />
+						<ChevronLeftIcon className="rtl:-scale-x-100" />
 					</button>
-					<DialogPrimitive.Title className="fd-cond min-w-0 flex-1 truncate text-base font-bold">{top.title}</DialogPrimitive.Title>
+					<DialogPrimitive.Title className="fd-cond min-w-0 flex-1 line-clamp-2 text-base font-bold">
+						{top.title}
+					</DialogPrimitive.Title>
 				</div>
 			) : (
 				<div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
 					<div className="flex min-w-0 flex-1 flex-col">
-						<DialogPrimitive.Title className="fd-cond truncate text-base font-bold">{props.title}</DialogPrimitive.Title>
-						{props.subtitle && <span className="truncate text-xs text-text-2">{props.subtitle}</span>}
+						<DialogPrimitive.Title className="fd-cond line-clamp-2 text-base font-bold">{props.title}</DialogPrimitive.Title>
+						{props.subtitle && <span className="line-clamp-2 text-xs text-text-2">{props.subtitle}</span>}
 					</div>
 					{props.trailing}
 				</div>
@@ -157,7 +159,7 @@ function SheetSubTrigger(props: { disabled?: boolean; children?: React.ReactNode
 			onClick={() => sub && sheet.push({ title: props.children, content: sub.getContent() })}
 		>
 			{props.children}
-			<ChevronRightIcon className="ms-auto text-text-3" />
+			<ChevronRightIcon className="ms-auto text-text-3 rtl:-scale-x-100" />
 		</button>
 	)
 }

@@ -343,9 +343,7 @@ export default function PlayerBulkContextMenuOptions({
 
 	return (
 		<>
-			<Label>
-				{playerIds.length} {tr.text(SM_Msgs.playersSelected())}
-			</Label>
+			<Label>{tr.text(SM_Msgs.playersSelected(playerIds.length))}</Label>
 			<Item onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
 				{tr.text(SM_Msgs.invertSelection())}
 				<ContextMenuShortcut>{SM_Msgs.shortcuts.invertBox.all}</ContextMenuShortcut>

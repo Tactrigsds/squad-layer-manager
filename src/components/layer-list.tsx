@@ -654,7 +654,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					className={cn(
 						Typo.LayerText,
 						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
-						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)]',
+						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
 						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
 						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[26px_16px_minmax(0,1fr)_auto]',
 					)}
@@ -665,7 +665,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-hovered={activityHovered}
 				>
 					<span data-mobile={isPhone} className="text-end font-mono text-text-3 data-[mobile=true]:hidden">
-						{LL.getItemNumber(index)}
+						<bdi dir="ltr">{LL.getItemNumber(index)}</bdi>
 					</span>
 					<button
 						type="button"
@@ -1548,6 +1548,5 @@ function QueueItemSeparator(props: {
 function attributedActivityText(activity: UP.AnyActivityNode, index: LL.ItemIndex, displayName: string) {
 	const described = UP.describeActivity(activity, index)
 	if (!described) return null
-	const activityText = tr.text(UP_Msgs.activity(described)).toLocaleLowerCase(tr.locale)
-	return tr.text(UP_Msgs.attributedActivity(displayName, activityText))
+	return tr.text(UP_Msgs.attributedActivity(displayName, described))
 }

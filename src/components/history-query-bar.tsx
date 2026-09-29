@@ -54,11 +54,12 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 
 	return (
 		// trimmed trigger padding, as the layer filter menu does: the rail's control column is narrow enough
-		// that the default padding costs more of a value's label than the label is worth
-		<div className="flex flex-col gap-3 [&_button[role=combobox]]:px-2">
+		// that the default padding costs more of a value's label than the label is worth. Every row shares the
+		// rail's columns, so the labels line up however long their translations run.
+		<div className="grid grid-cols-[fit-content(45%)_minmax(0,1fr)_auto] gap-x-2 gap-y-3 [&_button[role=combobox]]:px-2">
 			<ScopeBlock key={generation} draft={draft} set={set} />
 			{groups.map((group) => (
-				<section key={group.group} className="flex flex-col gap-1">
+				<section key={group.group} className="col-span-full grid grid-cols-subgrid gap-y-1">
 					<GroupHeading>{groupLabel(group.group)}</GroupHeading>
 					{group.fields.map((field) => (
 						<FieldRow
@@ -71,11 +72,13 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 					))}
 				</section>
 			))}
-			<AddFilterMenu draft={draft} shown={shown} onPick={(key) => setExtra((prev) => [...prev, key])} />
+			<div className="col-span-full">
+				<AddFilterMenu draft={draft} shown={shown} onPick={(key) => setExtra((prev) => [...prev, key])} />
+			</div>
 			<Button
 				variant="secondary"
 				size="sm"
-				className="h-7 text-xs"
+				className="col-span-full h-7 text-xs"
 				disabled={!QF.anyFieldSet(draft)}
 				onClick={() => {
 					set(QF.clearAllPatch())
@@ -91,7 +94,7 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 }
 
 function GroupHeading(props: { children: React.ReactNode }) {
-	return <h3 className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{props.children}</h3>
+	return <h3 className="col-span-full text-2xs font-medium uppercase tracking-wide text-muted-foreground">{props.children}</h3>
 }
 
 // -------- scope --------
@@ -100,7 +103,7 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
 	const time = useTimeRange(props)
 	return (
-		<section className="flex flex-col gap-1">
+		<section className="col-span-full grid grid-cols-subgrid gap-y-1">
 			<GroupHeading>{tr.text(HistoryMsgs.groupScope())}</GroupHeading>
 			<Field label={tr.text(HistoryMsgs.fieldServer())} canClear={!!draft.servers?.length} onClear={() => set({ servers: undefined })}>
 				<ServerSelect draft={draft} set={set} />
@@ -140,6 +143,8 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	)
 }
 
+const BOUNDS_FIELD_CLASS = 'w-72 gap-x-2 grid-cols-[fit-content(45%)_minmax(0,1fr)_auto]'
+
 /**
  * The bounds alone, for advanced mode, which has no rail to carry the scope block.
  *
@@ -153,7 +158,7 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 	return (
 		<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 			<Field
-				className="w-72"
+				className={BOUNDS_FIELD_CLASS}
 				label={tr.text(HistoryMsgs.fieldServer())}
 				canClear={!!draft.servers?.length}
 				onClear={() => set({ servers: undefined })}
@@ -161,7 +166,7 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 				<ServerSelect draft={draft} set={set} />
 			</Field>
 			<Field
-				className="w-72"
+				className={BOUNDS_FIELD_CLASS}
 				label={tr.text(HistoryMsgs.fieldTime())}
 				canClear={time.isSet}
 				onClear={time.clear}
@@ -240,16 +245,11 @@ function Field(props: {
 			<Icons.Trash className="h-3.5 w-3.5" />
 		</Button>
 	)
-	// titled because the longest labels ("Ticket difference") still do not fit the rail's width
-	const label = (
-		<span className={cn('shrink-0 truncate', !props.stacked && 'w-20')} title={props.label}>
-			{props.label}
-		</span>
-	)
+	const label = <span className="break-words">{props.label}</span>
 
 	if (props.stacked) {
 		return (
-			<div className={cn('flex flex-col gap-1 text-xs text-muted-foreground', props.className)}>
+			<div className={cn('col-span-full flex flex-col gap-1 text-xs text-muted-foreground', props.className)}>
 				<div className="flex items-center justify-between gap-2">
 					{label}
 					{clear}
@@ -258,10 +258,11 @@ function Field(props: {
 			</div>
 		)
 	}
+	// a subgrid of the rail's label, control and clear columns. Standalone, a caller gives it its own columns.
 	return (
-		<div className={cn('flex items-center gap-2 text-xs text-muted-foreground', props.className)}>
+		<div className={cn('col-span-full grid grid-cols-subgrid items-center text-xs text-muted-foreground', props.className)}>
 			{label}
-			<span className="min-w-0 flex-1">{props.children}</span>
+			<span className="min-w-0">{props.children}</span>
 			{clear}
 		</div>
 	)

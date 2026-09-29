@@ -6,7 +6,8 @@
 	"packageManager": "pnpm@10.22.0",
 	"scripts": {
 		"client:dev": "vite",
-		"lint": "oxlint --type-aware",
+		"lint": "oxlint --type-aware && pnpm run lint:logical-css",
+		"lint:logical-css": "tsx --tsconfig tsconfig.node.json src/scripts/lint-logical-css.ts",
 		"lint:fix": "oxlint --type-aware --fix-suggestions --fix-dangerously",
 		"preview": "vite preview",
 		"check": "tsx --tsconfig tsconfig.node.json src/scripts/extract-messages.ts --quiet && tsc -b",

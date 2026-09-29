@@ -1,5 +1,5 @@
-import type * as ICU from '@/messages/icu'
 import * as I18n from '@/messages/i18n'
+import type * as ICU from '@/messages/icu'
 
 // The translated catalogues this build ships, registered at boot on both sides: the server before it renders
 // anything (landing pages, warns), the client before the locale store negotiates. One static import per catalogue,
@@ -19,7 +19,8 @@ import * as I18n from '@/messages/i18n'
 export function register() {}
 
 // Development builds also carry the pseudo-locales (src/scripts/pseudo-locale.ts). Dynamic so production bundles
-// never include them; the caller guards on import.meta.env.DEV, which lets the bundler drop these imports entirely.
+// never include them; the client guards on import.meta.env.DEV, which lets the bundler drop these imports entirely,
+// and the server on NODE_ENV.
 export async function registerPseudo() {
 	const [xa, xb] = await Promise.all([
 		import('../../data/generated/messages/en-XA.compiled.json'),

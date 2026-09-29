@@ -10,27 +10,36 @@ export type FollowOptions = {
 	offset?: number
 	// how close to the bounds the element may sit
 	margin?: number
+	// defaults to the document's direction
+	rtl?: boolean
 }
 
 // Where to put an element of `size` so it trails the pointer without leaving `bounds`. Preferred corner is
-// below-right; each axis independently flips to the other side of the pointer when that side overflows, and
-// clamps when neither side fits.
+// below and toward the inline end (below-right, or below-left in a right-to-left page); each axis independently
+// flips to the other side of the pointer when that side overflows, and clamps when neither side fits.
 export function followPoint(pointer: Point, size: Size, bounds: Bounds, opts?: FollowOptions): Point {
 	const offset = opts?.offset ?? 14
 	const margin = opts?.margin ?? 8
+	const rtl = opts?.rtl ?? documentIsRtl()
 	return {
-		x: placeAxis(pointer.x, size.width, bounds.left + margin, bounds.right - margin, offset),
-		y: placeAxis(pointer.y, size.height, bounds.top + margin, bounds.bottom - margin, offset),
+		x: placeAxis(pointer.x, size.width, bounds.left + margin, bounds.right - margin, offset, rtl),
+		y: placeAxis(pointer.y, size.height, bounds.top + margin, bounds.bottom - margin, offset, false),
 	}
 }
 
-function placeAxis(pointer: number, length: number, min: number, max: number, offset: number) {
+function placeAxis(pointer: number, length: number, min: number, max: number, offset: number, preferBefore: boolean) {
 	const after = pointer + offset
-	if (after + length <= max) return after
 	const before = pointer - offset - length
-	if (before >= min) return before
+	const first = preferBefore ? before : after
+	const second = preferBefore ? after : before
+	if (first >= min && first + length <= max) return first
+	if (second >= min && second + length <= max) return second
 	// neither side fits: sit against whichever edge leaves the element most visible
-	return Math.max(min, Math.min(max - length, after))
+	return Math.max(min, Math.min(max - length, first))
+}
+
+export function documentIsRtl(): boolean {
+	return typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
 }
 
 export function viewportBounds(): Bounds {

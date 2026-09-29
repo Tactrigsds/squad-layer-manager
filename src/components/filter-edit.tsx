@@ -676,9 +676,9 @@ const markdownComponents = {
 	),
 	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
 		inline ? (
-			<code {...props} className="rounded bg-panel-hi px-1 py-0.5 font-mono text-sm dark:bg-ground" />
+			<code {...props} className="rounded bg-panel-hi px-1 py-0.5 font-mono text-sm dark:bg-ground ltr-isolate" />
 		) : (
-			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-panel-hi p-3 font-mono text-sm dark:bg-ground" />
+			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-panel-hi p-3 font-mono text-sm dark:bg-ground ltr-isolate" />
 		),
 	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className={Typo.Link} />,
 	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-line-soft dark:border-gray-700" />,

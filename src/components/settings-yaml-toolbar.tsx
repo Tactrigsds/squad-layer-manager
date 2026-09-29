@@ -27,7 +27,7 @@ export function YamlEditorToolbar({
 				<p className="min-w-0 truncate text-xs text-warn">
 					{tr.text(SETTINGS_Msgs.notPermittedToModify())}{' '}
 					{deniedPaths.map((p) => (
-						<code key={p} className="mx-0.5">
+						<code key={p} className="mx-0.5 ltr-isolate">
 							{p}
 						</code>
 					))}

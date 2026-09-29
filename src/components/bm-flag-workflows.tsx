@@ -46,7 +46,7 @@ function FlagRow(props: {
 					<FlagLabel id={props.id} flags={props.orgFlags} />
 				</span>
 				<div className="flex items-center gap-2">
-					{props.change && <span className="text-xs text-muted-foreground capitalize">{props.change}</span>}
+					{props.change && <span className="text-xs text-muted-foreground">{tr.text(BM_Msgs.flagRowChange(props.change))}</span>}
 					<Button
 						type="button"
 						variant="ghost"
@@ -61,7 +61,7 @@ function FlagRow(props: {
 						}
 						onClick={props.onToggle}
 					>
-						{removing ? <Icons.Undo2 className="h-3 w-3" /> : <Icons.X className="h-3 w-3 text-destructive" />}
+						{removing ? <Icons.Undo2 className="h-3 w-3 rtl:-scale-x-100" /> : <Icons.X className="h-3 w-3 text-destructive" />}
 					</Button>
 				</div>
 			</div>

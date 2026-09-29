@@ -2,6 +2,7 @@
 // id badge. Both restate the same match, so they say it the same way.
 
 import { assertNever } from '@/lib/type-guards'
+import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as LL_Msgs from '@/messages/layer-list.messages'
@@ -72,7 +73,7 @@ export function setByText(source: LL.Source, names: SetByNames): string {
 				const name = (discordId && names.users[discordId]) || (r.steamId && names.players[r.steamId]) || discordId || r.steamId
 				return name ? [name] : []
 			})
-			return requesters.length > 0 ? requesters.join(', ') : I18n.ambient.text(HistoryMsgs.setByLayerRequest())
+			return requesters.length > 0 ? MsgFmt.formatList(requesters) : I18n.ambient.text(HistoryMsgs.setByLayerRequest())
 		}
 		case 'gameserver':
 		case 'generated':

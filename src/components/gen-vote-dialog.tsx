@@ -387,7 +387,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 				showCloseButton={false}
 			>
 				<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">
-					<HeadlessDialogTitle className="whitespace-nowrap">{props.title}</HeadlessDialogTitle>
+					<HeadlessDialogTitle className="min-w-0 shrink-0 truncate max-w-full">
+						<span title={props.title}>{props.title}</span>
+					</HeadlessDialogTitle>
 					{props.description && (
 						<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 					)}
@@ -400,7 +402,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 				{!phone && (
 					<div className="flex items-center gap-2 min-h-[calc(var(--ctl)+6px)] px-2.5 border-b border-line shadow-[inset_0_1px_0_var(--line-soft)] overflow-x-auto whitespace-nowrap">
 						<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
-						<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)]" />
+						<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
 						<AppliedFiltersPanel stores={{ squadServer: props.stores.squadServer, appliedFilters: frameKey }} />
 						<span className="flex-1" />
 						<span className="flex items-center gap-1.5">
@@ -427,10 +429,10 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							{choiceRows}
 							{addChoice}
 						</div>
-						<div className="flex w-[300px] shrink-0 flex-col gap-2.5 border-s border-line ps-3 shadow-[-1px_0_0_var(--line-soft)]">
+						<div className="flex w-[300px] shrink-0 flex-col gap-2.5 border-s border-line ps-3 shadow-[-1px_0_0_var(--line-soft)] rtl:shadow-[1px_0_0_var(--line-soft)]">
 							{configEditor}
 							<div className="flex-1" />
-							<div className="flex items-center justify-end gap-2 whitespace-nowrap">
+							<div className="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap">
 								{props.tagsControl}
 								{modeSwitch}
 								{submitButton}

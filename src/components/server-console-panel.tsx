@@ -116,7 +116,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 								{events.map((event) => {
 									const { prefix, body, tone } = formatEvent(event)
 									return (
-										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
+										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight ltr-isolate">
 											<span className={cn('shrink-0', tone)}>{prefix}</span>
 											<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
 										</li>

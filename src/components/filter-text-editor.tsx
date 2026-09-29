@@ -141,8 +141,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				<YamlCompactSwitch className="ms-auto" compact={compact} disabled={!parsable} onChange={switchCompact} />
 			</div>
 			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
-			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
-			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+			<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>
+			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive ltr-isolate">
 				{errorText}
 			</pre>
 		</div>

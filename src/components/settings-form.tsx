@@ -282,7 +282,9 @@ function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: 
 				<p key={i} className="flex items-start gap-1 text-xs font-medium text-destructive">
 					<Icons.CircleAlert className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="min-w-0 wrap-break-word">
-						{iss.path !== pathStr && <code className="me-1 text-[10px] opacity-70">{iss.path.slice(pathStr.length + 1)}</code>}
+						{iss.path !== pathStr && (
+							<code className="me-1 text-[10px] opacity-70 ltr-isolate">{iss.path.slice(pathStr.length + 1)}</code>
+						)}
 						{iss.message}
 					</span>
 				</p>
@@ -334,7 +336,7 @@ function RbacSuperCallout() {
 					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.superUsersLabel())}</span>
 					{superUsers.map((id) => (
 						<span key={id} className="rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
-							{userMap.get(id)?.displayName ?? <span className="font-mono">{id}</span>}
+							{userMap.get(id)?.displayName ?? <span className="font-mono ltr-isolate">{id}</span>}
 						</span>
 					))}
 				</div>
@@ -355,7 +357,7 @@ function RbacSuperCallout() {
 										{role.name}
 									</>
 								) : (
-									<span className="font-mono">{id}</span>
+									<span className="font-mono ltr-isolate">{id}</span>
 								)}
 							</span>
 						)
@@ -751,7 +753,7 @@ function RuleRow({
 				reset$={reset$}
 				onChange={onChange}
 			/>
-			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rtl:-scale-x-100" />
 			{namingNewGroup ? (
 				<div className="flex min-w-0 items-center gap-1">
 					<TextInputField
@@ -1034,7 +1036,7 @@ function GroupColorRow({
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => setCustom(e.currentTarget.value.trim(), true)}
-					className="w-full min-w-0 bg-transparent py-1 pe-2 font-mono text-xs outline-none"
+					className="w-full min-w-0 bg-transparent py-1 pe-2 font-mono text-xs outline-none ltr-isolate"
 				/>
 			</InputGroup>
 			{flags.length > 0 && (
@@ -1076,7 +1078,7 @@ export function HelpTip({ text, links }: { text: string; links?: { label: string
 								className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
 								onClick={() => SettingsNav.navigateToAnchor(link.anchor)}
 							>
-								<Icons.ArrowRight className="h-3 w-3 shrink-0" />
+								<Icons.ArrowRight className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
 								{link.label}
 							</button>
 						))}
@@ -1143,7 +1145,7 @@ function PrefixRow({
 			<span className="text-xs text-muted-foreground tabular-nums">#{index + 1}</span>
 			<Input
 				aria-label={tr.text(CMD_Msgs.prefixLabel(index + 1))}
-				className={cn('h-7 w-16 font-mono text-sm', invalid && 'border-destructive focus-visible:ring-destructive')}
+				className={cn('h-7 w-16 font-mono text-sm ltr-isolate', invalid && 'border-destructive focus-visible:ring-destructive')}
 				title={invalid ? CMD.PREFIX_ERROR : undefined}
 				value={draft}
 				onChange={(e) => setDraft(e.target.value)}
@@ -1402,7 +1404,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							<span>{tr.text(CMD_Msgs.takesArguments())}</span>
 							{signature.map(({ ref, arg }) => (
 								<span key={ref} className="whitespace-nowrap">
-									<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
+									<code className="rounded bg-muted px-1 py-0.5 font-mono ltr-isolate">{ref}</code>
 									<span className="ms-1 font-mono">{arg}</span>
 								</span>
 							))}
@@ -1527,7 +1529,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => push(e.currentTarget.value)}
-					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans"
+					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans ltr-isolate"
 				/>
 				<InputGroupAddon align="inline-end">
 					<InputGroupButton
@@ -1717,7 +1719,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 					placeholder={tr.text(LTag_Msgs.labelColumn())}
 					onBlur={(e) => commitLabel(e.target.value)}
 				/>
-				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground">{row.id}</p>}
+				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground ltr-isolate">{row.id}</p>}
 			</TableCell>
 			<TableCell className="align-top">
 				<Textarea
@@ -1748,7 +1750,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 						ref={colorRef}
 						defaultValue={row?.color ?? ''}
 						maxLength={7}
-						className="w-24 font-mono text-xs"
+						className="w-24 font-mono text-xs ltr-isolate"
 						onBlur={(e) => setFields({ color: e.target.value.trim() })}
 					/>
 				</div>
@@ -2516,7 +2518,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 						<p key={n} className="flex items-start gap-1.5 text-xs text-destructive">
 							<Icons.TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
 							<span>
-								<code className="text-[10px]">{i.path}</code> {i.message}
+								<code className="text-[10px] ltr-isolate">{i.path}</code> {i.message}
 							</span>
 						</p>
 					))}
@@ -3388,6 +3390,8 @@ function TextInputField({
 		<Input
 			ref={ref}
 			type={secret ? 'password' : numeric ? 'number' : 'text'}
+			// paths, hosts and urls are the common values, and would otherwise lose their leading slash to the far end
+			dir={secret || numeric ? undefined : 'auto'}
 			placeholder={placeholder}
 			autoFocus={autoFocus}
 			defaultValue={format(value$.getValue())}
@@ -4100,7 +4104,7 @@ function FieldResetControls({
 						}
 						onClick={() => resetTo(def.value)}
 					>
-						<Icons.CornerDownLeft className="h-3.5 w-3.5" />
+						<Icons.CornerDownLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
 					</TooltipButton>
 				</>
 			)}
@@ -4370,7 +4374,7 @@ function AdvancedDisclosure({ paths, children }: { paths: string[]; children: Re
 				onClick={() => setExpanded((v) => !v)}
 				aria-expanded={open}
 			>
-				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
+				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open ? 'rotate-90' : 'rtl:rotate-180')} />
 				{tr.text(SETTINGS_Msgs.advanced())}
 				<span className="opacity-60">({paths.length})</span>
 				{hasIssue && <Icons.TriangleAlert className="h-3 w-3 text-destructive" />}
@@ -4543,7 +4547,7 @@ function SectionField({
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingName(path, name))}</legend>
-					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
 					<span className="contents" inert={!writable}>
 						<FieldResetControls
@@ -4645,7 +4649,7 @@ function LeafField({
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
 					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingName(path, name))}</Label>
-					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
+					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{!writable && (
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -4794,7 +4798,7 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 	return (
 		<div className="space-y-1">
 			<textarea
-				className="w-full font-mono text-xs border rounded-md p-2 min-h-[6rem] bg-background"
+				className="w-full font-mono text-xs border rounded-md p-2 min-h-[6rem] bg-background ltr-isolate"
 				value={text}
 				onChange={(e) => {
 					setText(e.target.value)

@@ -154,12 +154,19 @@ export const queueChangeCounts = def((counts: { added: number; removed: number; 
 	return parts.length > 0 ? t(' ({parts})', { parts: join(parts, ', ') }) : raw('')
 })
 
-// "now" where the server moved first and SLM followed, "set to" where SLM decided it
-export const queueNextLayer = def((external: boolean, layer: React.ReactNode) =>
-	rt(', next layer {external, select, yes {now} other {set to}} {layer}', { external: external ? 'yes' : 'no', layer }),
+// a queue save's headline, its net effect as a parenthetical, and where it left the next layer: "now" where the
+// server moved first and SLM followed, "set to" where SLM decided it
+export const queueSummary = def((headline: React.ReactNode, counts: string, nextLayer?: { external: boolean; layer: React.ReactNode }) =>
+	rt('{headline}{counts}{next, select, now {, next layer now {layer}} set {, next layer set to {layer}} other {}}', {
+		headline,
+		counts,
+		next: nextLayer ? (nextLayer.external ? 'now' : 'set') : 'none',
+		layer: nextLayer?.layer,
+	}),
 )
 
-export const queueAndMore = def('and {count} more', (count: number) => ({ count }))
+// the last item of a truncated list of layers
+export const queueMore = def('{count} more', (count: number) => ({ count }))
 
 export const queueVoteChoices = def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
 
@@ -268,24 +275,33 @@ export const swappedTeamsSuffix = def(' to the other team')
 
 export const switchRequestFulfilledSuffix = def(' to the other team (switch request)')
 
-export const targetVerbs = { removed: 'removed', kicked: 'kicked', killed: 'killed', swapped: 'swapped' }
-
-export type TargetVerb = keyof typeof targetVerbs
+export type TargetVerb = 'removed' | 'kicked' | 'killed' | 'swapped'
 
 export const actionOnNamedTargets = def(
 	(actor: React.ReactNode, verb: TargetVerb, targets: React.ReactNode, count: number, suffix: React.ReactNode) =>
-		rt('{actor} {verb} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}', {
-			actor,
-			verb: targetVerbs[verb],
-			targets,
-			count,
-			many: count > 1 ? 'yes' : 'no',
-			suffix,
-		}),
+		rt(
+			'{actor} {verb, select, removed {removed} kicked {kicked} killed {killed} other {swapped}} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}',
+			{
+				actor,
+				verb,
+				targets,
+				count,
+				many: count > 1 ? 'yes' : 'no',
+				suffix,
+			},
+		),
 )
 
 export const actionOnCountedTargets = def((actor: React.ReactNode, verb: TargetVerb, count: number, suffix: React.ReactNode) =>
-	rt('{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}', { actor, verb: targetVerbs[verb], count, suffix }),
+	rt(
+		'{actor} {verb, select, removed {removed} kicked {kicked} killed {killed} other {swapped}} {count, plural, one {a player} other {# players}}{suffix}',
+		{
+			actor,
+			verb,
+			count,
+			suffix,
+		},
+	),
 )
 
 // ---- the audit log's summary line ----

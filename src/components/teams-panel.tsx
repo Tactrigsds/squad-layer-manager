@@ -228,7 +228,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							</div>
 							{!showSpoilers && roleFilter !== null && (
 								<Badge variant="secondary" className="gap-1" title={tr.text(SM_Msgs.hiddenRoleFilter())}>
-									{tr.text(SM_Msgs.roleFilterLabel())} {roleFilter}
+									{tr.text(SM_Msgs.roleFilterLabel(roleFilter))}
 									<button
 										type="button"
 										className="hover:text-destructive"
@@ -248,7 +248,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				{isDesktop ? (
 					<div
 						data-tour="teams-tables"
-						className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)]"
+						className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)] rtl:[&>*+*]:shadow-[1px_0_0_var(--line-soft)]"
 					>
 						{([leftTeam, rightTeam] as const).map((teamId, i) => (
 							// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
@@ -583,7 +583,9 @@ function PhoneSelectionBar({ stores }: { stores: SquadServerFrame.KeyProp }) {
 				className="fixed inset-x-2 flex items-center gap-1.5 rounded-[3px] border border-line-soft bg-panel-hi py-1.5 ps-3 pe-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
 				style={{ zIndex, bottom: 'calc(var(--tabbar-h) + 8px)' }}
 			>
-				<span className="min-w-0 flex-1 truncate font-bold">{label}</span>
+				<span className="min-w-0 flex-1 truncate font-bold" title={label}>
+					{label}
+				</span>
 				<Button size="sm" disabled={!!manageDenied || !canQueue} onClick={() => TSWClient.Actions.swapNext(stores, selectedIds)}>
 					<Icons.ArrowLeftRight />
 					{tr.text(SM_Msgs.swapNextLabel())}
@@ -644,16 +646,19 @@ function PhoneSwapsSummary(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Nor
 		>
 			<Icons.ArrowLeftRight className="size-4 shrink-0 text-warn" />
 			<span className="flex min-w-0 flex-1 flex-col leading-tight">
-				<span className="truncate font-bold">{tr.text(SM_Msgs.swapsPending(info.A + info.B))}</span>
+				<span className="truncate font-bold" title={tr.text(SM_Msgs.swapsPending(info.A + info.B))}>
+					{tr.text(SM_Msgs.swapsPending(info.A + info.B))}
+				</span>
 				<span className="truncate text-xs text-text-2">
-					→ <MatchTeamDisplay teamId={props.leftTeam} stores={props.stores} /> {info[props.leftTeam]} · →{' '}
+					<span className="inline-block rtl:-scale-x-100">→</span> <MatchTeamDisplay teamId={props.leftTeam} stores={props.stores} />{' '}
+					{info[props.leftTeam]} · <span className="inline-block rtl:-scale-x-100">→</span>{' '}
 					<MatchTeamDisplay teamId={props.rightTeam} stores={props.stores} /> {info[props.rightTeam]}
 					{info.unsaved > 0 && <> · {tr.text(SM_Msgs.swapsUnsaved(info.unsaved))}</>}
 				</span>
 			</span>
 			<span className="fd-btn fd-btn-sm shrink-0">
 				{tr.text(SM_Msgs.editSwaps())}
-				<Icons.ChevronRight />
+				<Icons.ChevronRight className="rtl:-scale-x-100" />
 			</span>
 		</button>
 	)
@@ -689,7 +694,7 @@ function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Norm
 	)
 	return (
 		<div className="flex items-center justify-center whitespace-nowrap font-mono">
-			{leftCount} {tr.text(SM_Msgs.versus())} {rightCount}
+			{tr.text(SM_Msgs.countVersus(leftCount, rightCount))}
 		</div>
 	)
 }
@@ -709,7 +714,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	).size
 
 	return (
-		<div className="flex flex-wrap justify-end items-center gap-1 whitespace-nowrap max-phone:w-full max-phone:justify-start">
+		<div className="ms-auto flex flex-wrap justify-end items-center gap-1 whitespace-nowrap max-phone:w-full max-phone:justify-start">
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['switch-requests']}
 				windowProps={{ stores } satisfies SwitchRequestsWindowProps}
@@ -1208,7 +1213,9 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 			const { filters, availableGroups } = meta
 			return (
 				<span className="flex flex-col items-start max-w-24">
-					{tr.text(SM_Msgs.groupColumn())}
+					<span className="max-w-full truncate" title={tr.text(SM_Msgs.groupColumn())}>
+						{tr.text(SM_Msgs.groupColumn())}
+					</span>
 					<ColumnFilterSelect
 						value={filters.group}
 						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
@@ -1589,7 +1596,9 @@ function SquadGroupHeaderRow(props: {
 		TeamsPanelPrt.Actions.toggleSquadCollapsed({ teamsPanel: props.stores.squadServer! }, props.info.key)
 	}
 	const chevron = (
-		<Icons.ChevronDown className={cn('ms-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90')} />
+		<Icons.ChevronDown
+			className={cn('ms-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90 rtl:rotate-90')}
+		/>
 	)
 	const { squad, creatorName, faction, totalSize } = props.info
 	const shownCount = props.playerIds.length
@@ -1610,7 +1619,11 @@ function SquadGroupHeaderRow(props: {
 				<span className="font-semibold">{tr.text(SM_Msgs.unassignedSquad())}</span>
 			)}
 			<span className="shrink-0 text-muted-foreground">{tr.text(SM_Msgs.squadRowCount(shownCount, totalSize))}</span>
-			{creatorName && <span className="min-w-0 truncate text-muted-foreground">{tr.text(SM_Msgs.createdBy(creatorName))}</span>}
+			{creatorName && (
+				<span className="min-w-0 truncate text-muted-foreground" title={tr.text(SM_Msgs.createdBy(creatorName))}>
+					{tr.text(SM_Msgs.createdBy(creatorName))}
+				</span>
+			)}
 		</>
 	)
 	// combined table: keep the faction in its own cell so it lines up under the faction column
@@ -2204,8 +2217,8 @@ function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Normed
 	return (
 		<div className="flex flex-col items-center">
 			<span className="text-xs text-text-3">{tr.text(SM_Msgs.teamsAfterSwap())}</span>
-			<span className="font-mono">
-				{counts[props.leftTeam]}v{counts[props.rightTeam]}
+			<span className="inline-flex font-mono">
+				<span>{counts[props.leftTeam]}</span>v<span>{counts[props.rightTeam]}</span>
 			</span>
 		</div>
 	)
@@ -2256,7 +2269,7 @@ function SwapsPanel({
 								disabled={!isEditing || !swapsModified}
 								onClick={() => TSWClient.Actions.revertToSaved(stores)}
 							>
-								<Icons.Undo2 />
+								<Icons.Undo2 className="rtl:-scale-x-100" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>{tr.text(SM_Msgs.revertToSaved())}</TooltipContent>
@@ -2318,14 +2331,14 @@ function SwapsPanel({
 				</div>
 				<TeamsAfterSwap leftTeam={leftTeam} rightTeam={rightTeam} stores={stores} />
 			</div>
-			<TeamSwapsDisplay teamId={rightTeam} align="right" className="ps-2" stores={stores} />
+			<TeamSwapsDisplay teamId={rightTeam} align="end" className="ps-2" stores={stores} />
 		</div>
 	)
 }
 
 function TeamSwapsDisplay(props: {
 	teamId: MH.NormedTeamId
-	align?: 'left' | 'right'
+	align?: 'start' | 'end'
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
@@ -2334,14 +2347,14 @@ function TeamSwapsDisplay(props: {
 	)
 
 	const hasLocal = [...swaps.values()].some((s) => !s.mutation.removed)
-	const isRight = props.align === 'right'
+	const alignEnd = props.align === 'end'
 
 	return (
-		<div className={cn('flex flex-col gap-0.5', isRight && 'items-end', props.className)}>
+		<div className={cn('flex flex-col gap-0.5', alignEnd && 'items-end', props.className)}>
 			<h3 className="text-sm">
 				{tr.text(SM_Msgs.swapsToCurrent())} <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} stores={props.stores} />
 			</h3>
-			<div className={cn('flex flex-wrap items-center gap-1', isRight && 'justify-end')}>
+			<div className={cn('flex flex-wrap items-center gap-1', alignEnd && 'justify-end')}>
 				{swaps.size > 0 && <span className="text-xs text-text-3 shrink-0">({swaps.size})</span>}
 				{swaps.size === 0 && <span className="text-text-3">{tr.text(SM_Msgs.noSwapsYet())}</span>}
 				{MapUtils.mapToArray(swaps, (playerId, s) => (

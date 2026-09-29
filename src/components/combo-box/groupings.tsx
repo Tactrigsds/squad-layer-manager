@@ -7,6 +7,8 @@ import { tr } from '@/systems/messages.client'
 
 import { ALL_GROUPS, type GroupingBarEntry, type GroupPrefixRenderer, type ResolvedGroup, type ResolvedGrouping } from './options.ts'
 
+const trGrouping = tr.withTags({ label: (chunks) => chunks })
+
 // Mousedown is swallowed throughout so operating these never pulls focus out of the search input: the
 // user's next keystroke still types into the filter.
 const keepFocus = (e: React.MouseEvent) => e.preventDefault()
@@ -48,10 +50,14 @@ export function GroupingFacet(props: { grouping: ResolvedGrouping; current: Reso
 			className="flex w-full shrink-0 items-center justify-between gap-2 px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
 		>
 			<span className="truncate">
-				{props.grouping.label}:{' '}
-				<span className={cn(props.current && 'font-medium text-foreground')}>
-					{props.current?.label ?? tr.text(UI_Msgs.allGroups())}
-				</span>
+				{trGrouping.richText(
+					UI_Msgs.labelValue(
+						props.grouping.label,
+						<span className={cn(props.current && 'font-medium text-foreground')}>
+							{props.current?.label ?? tr.text(UI_Msgs.allGroups())}
+						</span>,
+					),
+				)}
 			</span>
 			<ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
 		</button>
@@ -102,7 +108,7 @@ export function GroupDrillInHeader(props: { grouping: ResolvedGrouping; onBack: 
 				aria-label={tr.text(UI_Msgs.backToOptions())}
 				className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 			>
-				<ChevronLeft className="h-3 w-3" />
+				<ChevronLeft className="h-3 w-3 rtl:-scale-x-100" />
 				{props.grouping.label}
 			</button>
 		</div>

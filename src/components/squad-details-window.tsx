@@ -194,19 +194,15 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 						{creatorPlayer ? (
 							<PlayerDisplay player={creatorPlayer} matchId={currentMatch?.historyEntryId ?? 0} stores={stores} />
 						) : (
-							<span className="font-mono text-muted-foreground">{creatorId}</span>
+							<span className="font-mono text-muted-foreground ltr-isolate">{creatorId}</span>
 						)}
 					</div>
 				)}
 				{teamId != null && ingameSquadId != null && (
 					<div className="flex items-center gap-2 text-muted-foreground">
-						<span>
-							{tr.text(SM_Msgs.squadTeam())} {teamId}
-						</span>
+						<span>{tr.text(SM_Msgs.squadTeam(teamId))}</span>
 						<span>·</span>
-						<span>
-							{tr.text(SM_Msgs.squadInGameId())} {ingameSquadId}
-						</span>
+						<span>{tr.text(SM_Msgs.squadInGameId(ingameSquadId))}</span>
 					</div>
 				)}
 			</div>

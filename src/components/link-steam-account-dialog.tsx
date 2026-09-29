@@ -91,7 +91,7 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 				{links.map((link) => (
 					<div key={link.steamId} className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2">
 						<div className="min-w-0 flex-1">
-							<div className="font-mono text-sm">{link.steamId}</div>
+							<div className="font-mono text-sm ltr-isolate">{link.steamId}</div>
 							<div className="text-xs text-muted-foreground">
 								{link.origin === 'assigned'
 									? tr.text(USR_Msgs.steamLinkedByAdmin(link.linkedBy?.displayName ?? 'an admin'))
@@ -164,7 +164,7 @@ function CodePanel({ command, code, remaining, onCancel }: { command: string; co
 		<div className="rounded-md border border-border bg-background/60 px-3 py-3">
 			<div className="text-[11px] uppercase tracking-wide text-muted-foreground">{tr.text(USR_Msgs.linkCodeSendLabel())}</div>
 			<div className="mt-2 flex items-center gap-2">
-				<span className="min-w-0 flex-1 break-all font-mono text-lg font-semibold tracking-wide">{line}</span>
+				<span className="min-w-0 flex-1 break-all font-mono text-lg font-semibold tracking-wide ltr-isolate">{line}</span>
 				<Button type="button" size="sm" variant="outline" className="shrink-0" onClick={handleCopy}>
 					{copied ? <Icons.Check className="me-1.5 h-3.5 w-3.5" /> : <Icons.Copy className="me-1.5 h-3.5 w-3.5" />}
 					{tr.text(USR_Msgs.linkCodeCopy())}

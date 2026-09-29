@@ -51,13 +51,13 @@ export function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
 		<div className="max-h-[50vh] space-y-2 overflow-y-auto text-sm">
 			{changes.map((c) => (
 				<div key={c.path} className="border-b pb-1.5 last:border-0">
-					<code className="text-xs text-muted-foreground">{SETTINGS.settingPathForChange(c.path)}</code>
+					<code className="text-xs text-muted-foreground ltr-isolate">{SETTINGS.settingPathForChange(c.path)}</code>
 					{c.path.startsWith(SETTINGS.COMMENTS_KEY + '.') && (
 						<span className="ms-1 text-xs text-muted-foreground">({tr.text(SETTINGS_Msgs.commentChange())})</span>
 					)}
 					<div className="mt-0.5 flex flex-wrap items-center gap-2">
 						<span className="text-muted-foreground line-through break-all">{displaySettingValue(c.path, c.from)}</span>
-						<Icons.ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+						<Icons.ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground rtl:-scale-x-100" />
 						<span className="break-all">{displaySettingValue(c.path, c.to)}</span>
 					</div>
 				</div>

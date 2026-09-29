@@ -143,7 +143,7 @@ function PluginReferenceBadge(props: { reference: Extract<FR.Reference, { type: 
 			<Badge variant="secondary" className="gap-1">
 				<span>{pluginName}</span>
 				<Icons.Dot className="h-3 w-3" />
-				<span className="font-mono text-xs">{path}</span>
+				<span className="font-mono text-xs ltr-isolate">{path}</span>
 				{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
 				<LinkIndicator />
 			</Badge>

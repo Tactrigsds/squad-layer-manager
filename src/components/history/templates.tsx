@@ -10,13 +10,12 @@ import * as Atoms from '@/components/feed/atoms'
 import { Icon } from '@/components/feed/icons'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
+import * as MsgFmt from '@/messages/format'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 import { tr } from '@/systems/messages.client'
-
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 // align-top so a row whose events are expanded keeps its own columns beside the first of them, rather than
 // centring them against the whole expansion
@@ -48,7 +47,7 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 	return (
 		<>
 			<tr
-				className="border-b border-border hover:bg-accent/30 text-xs cursor-pointer [&[data-open]_.chevron]:rotate-90"
+				className="border-b border-border hover:bg-accent/30 text-xs cursor-pointer [&[data-open]_.chevron]:rotate-90 rtl:[&[data-open]_.chevron]:-rotate-90"
 				{...menu}
 				{...{ [RC.ROW_EVENTS_ATTR]: props.rowKey }}
 			>
@@ -56,7 +55,7 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 					<span className="chevron inline-block transition-transform">&#8250;</span>
 				</td>
 				{props.children}
-				<td className={NUM_CELL}>{props.count.toLocaleString()}</td>
+				<td className={NUM_CELL}>{MsgFmt.formatNumber(props.count)}</td>
 			</tr>
 			<tr hidden {...{ [RC.ROW_EVENTS_PANEL_ATTR]: props.rowKey }} className="border-b border-border">
 				<td colSpan={props.columns} className="px-2 py-1">
@@ -77,7 +76,7 @@ function CopyId(props: { kind: SM_Msgs.IdKind; id: string }) {
 			title={tr.text(SM_Msgs.copyIdHint(props.kind))}
 			{...RC.copyAttrs(props.id)}
 		>
-			<span className="font-mono">{props.id}</span>
+			<span className="font-mono ltr-isolate">{props.id}</span>
 			<Icon name="Copy" className="h-3 w-3" />
 		</button>
 	)
@@ -117,7 +116,7 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 			</td>
 			<td className={NUM_CELL}>{row.matches}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
-			<td className={CELL}>{dateTime.format(row.lastSeen)}</td>
+			<td className={CELL}>{MsgFmt.formatDate(row.lastSeen, 'dateTime')}</td>
 		</ExpandableRow>
 	)
 }
@@ -134,7 +133,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			columns={MATCH_ROW_COLUMNS}
 			menu={{ kind: 'layer', layerIds: [details.layerId], historyEntryIds: [details.historyEntryId] }}
 		>
-			<td className={CELL}>{time ? dateTime.format(time) : ''}</td>
+			<td className={CELL}>{time ? MsgFmt.formatDate(time, 'dateTime') : ''}</td>
 			<td className={CELL}>{details.serverId}</td>
 			<td className="px-2 py-1 align-top">
 				<Atoms.ShortLayerName

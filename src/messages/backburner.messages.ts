@@ -109,13 +109,13 @@ export const matchingLayers = def('{count, plural, one {# layer matches} other {
 
 // -------- describing a request --------
 
-export const versus = def('{left} vs {right}', (left: string, right: string) => ({ left, right }))
+export const versus = def('{first} vs {second}', (first: string, second: string) => ({ first, second }))
 
 export const matchupPart = def(
-	'{left} vs {right}{locked, select, yes { (locked)} other {}}',
-	(left: string, right: string, locked: boolean) => ({
-		left,
-		right,
+	'{first} vs {second}{locked, select, yes { (locked)} other {}}',
+	(first: string, second: string, locked: boolean) => ({
+		first,
+		second,
 		locked: locked ? 'yes' : 'no',
 	}),
 )

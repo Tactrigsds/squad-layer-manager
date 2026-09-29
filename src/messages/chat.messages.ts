@@ -20,7 +20,13 @@ export const sendFailed = def((code?: string) => ({
 
 export const activityTitle = def('Server Activity')
 
-export const viewingHistoricalMatch = def('Viewing historical match')
+export const viewingHistoricalMatch = def((layer: Rendered, startTime?: string) =>
+	rt('Viewing historical match {layer}{hasTime, select, yes { {startTime}} other {}}', {
+		layer,
+		startTime,
+		hasTime: startTime ? 'yes' : 'no',
+	}),
+)
 
 export const noPlayersSelected = def('No players selected. Select players in the teams panel to filter the feed.')
 

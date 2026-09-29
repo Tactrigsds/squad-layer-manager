@@ -16,6 +16,7 @@ import * as DH from '@/lib/display-helpers'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -223,7 +224,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 		} else if (dateFns.isSameDay(date, dateFns.subDays(today, 1))) {
 			return tr.text(MH_Msgs.yesterday())
 		} else {
-			return dateFns.format(date, 'MMM d, yyyy')
+			return MsgFmt.formatDate(date, 'date')
 		}
 	}
 
@@ -236,19 +237,19 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 				<span data-tour="mh-days" className="flex items-center gap-2">
 					<span className="fd-grp">
 						<Button size="icon-sm" onClick={goToLastPage} disabled={onLastPage}>
-							<Icons.ChevronsLeft />
+							<Icons.ChevronsLeft className="rtl:-scale-x-100" />
 						</Button>
 						<Button size="icon-sm" onClick={goToNextPage} disabled={onLastPage}>
-							<Icons.ChevronLeft />
+							<Icons.ChevronLeft className="rtl:-scale-x-100" />
 						</Button>
 					</span>
 					<span className="text-sm font-mono font-normal min-w-[90px] text-center">{getDateDisplayText()}</span>
 					<span className="fd-grp">
 						<Button size="icon-sm" onClick={goToPrevPage} disabled={onFirstPage}>
-							<Icons.ChevronRight />
+							<Icons.ChevronRight className="rtl:-scale-x-100" />
 						</Button>
 						<Button size="icon-sm" onClick={goToFirstPage} disabled={onFirstPage}>
-							<Icons.ChevronsRight />
+							<Icons.ChevronsRight className="rtl:-scale-x-100" />
 						</Button>
 					</span>
 				</span>
@@ -453,8 +454,10 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 
 			outcomeDisp = (
 				<span data-tour="mh-outcome" className="font-mono">
-					{team1Tickets} <b className={team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team1Status}</b> -{' '}
-					<b className={team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{team2Status}</b> {team2Tickets}
+					{team1Tickets}{' '}
+					<b className={team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{tr.text(MH_Msgs.resultMark(team1Status === 'W'))}</b> -{' '}
+					<b className={team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{tr.text(MH_Msgs.resultMark(team2Status === 'W'))}</b>{' '}
+					{team2Tickets}
 				</span>
 			)
 		}
@@ -693,9 +696,9 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 			stats: teamId === 1 ? props.stats.team1 : props.stats.team2,
 		}
 	})
-	const [left, right] = sides
-	const favoursLeft = kdOf(left.stats) >= kdOf(right.stats)
-	const favoured = favoursLeft ? left : right
+	const [start, end] = sides
+	const favoursStart = kdOf(start.stats) >= kdOf(end.stats)
+	const favoured = favoursStart ? start : end
 
 	return (
 		<Tooltip>
@@ -705,9 +708,9 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 					style={{ color: favoured.color, backgroundColor: 'color-mix(in oklab, currentColor 14%, transparent)' }}
 					className="inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5"
 				>
-					{favoursLeft && <Icons.ChevronLeft />}
+					{favoursStart && <Icons.ChevronLeft className="rtl:-scale-x-100" />}
 					{formatRatio(favoured.stats.kills, favoured.stats.deaths)}
-					{!favoursLeft && <Icons.ChevronRight />}
+					{!favoursStart && <Icons.ChevronRight className="rtl:-scale-x-100" />}
 				</span>
 			</TooltipTrigger>
 			<TooltipContent>
@@ -792,8 +795,7 @@ function TableCell({ className = '', ...props }: React.ComponentProps<typeof Sha
 }
 
 function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
-	// Format the start time as HH:mm:ss (24-hour format)
-	const formattedStartTime = dateFns.format(startTime, 'HH:mm')
+	const formattedStartTime = MsgFmt.formatDate(startTime, 'clock')
 
 	// Calculate time difference from now
 	const difference = dateFns.differenceInHours(new Date(), startTime)
@@ -807,7 +809,7 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 	return (
 		<span title={tr.text(matchLengthMinutes ? MH_Msgs.startedAndLasted(ago, matchLengthMinutes) : MH_Msgs.startedUnknownLength(ago))}>
 			{formattedStartTime}
-			<span className="text-text-3">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
+			<span className="text-text-3">({matchLengthMinutes ? MsgFmt.formatIntervalCompact(matchLengthMinutes * 60_000) : '???'})</span>
 		</span>
 	)
 }

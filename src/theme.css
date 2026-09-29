@@ -169,6 +169,11 @@
 		--nav-h: 30px;
 		--tabbar-h: 52px;
 
+		--lh-tight: 1;
+		--label-transform: uppercase;
+		/* a multiplier on each label's own letter-spacing */
+		--label-tracking: 1;
+
 		--ground: #262628;
 		--panel: #333335;
 		--panel-hi: #3c3c3f;
@@ -305,5 +310,92 @@
 			--nav-h: 48px;
 			--tabbar-h: 60px;
 		}
+	}
+
+	/*
+	  Per-script adjustments, keyed off the lang that messages.client sets on <html>. Matching [lang] rather than every
+	  element keeps each redeclaration to the root and to any subtree that names its own language.
+
+	  Only Barlow and Roboto Condensed are downloaded, and Barlow covers Latin and Vietnamese alone. Every other
+	  script names installed faces first, so the browser does not fall back glyph by glyph into whatever it finds.
+	  Arabic, Hebrew and CJK have no condensed face, so --font-cond follows --font-sans there.
+	*/
+	[lang]:is(
+		:lang(th),
+		:lang(lo),
+		:lang(my),
+		:lang(km),
+		:lang(vi),
+		:lang(hi),
+		:lang(bn),
+		:lang(mr),
+		:lang(ne),
+		:lang(ta),
+		:lang(te),
+		:lang(kn),
+		:lang(ml),
+		:lang(si),
+		:lang(gu),
+		:lang(pa)
+	) {
+		--lh-tight: 1.4;
+	}
+	[lang]:is(
+		:lang(ar),
+		:lang(fa),
+		:lang(ur),
+		:lang(ps),
+		:lang(he),
+		:lang(yi),
+		:lang(zh),
+		:lang(ja),
+		:lang(ko),
+		:lang(th),
+		:lang(lo),
+		:lang(my),
+		:lang(km),
+		:lang(hi),
+		:lang(bn),
+		:lang(mr),
+		:lang(ne),
+		:lang(ta),
+		:lang(te),
+		:lang(kn),
+		:lang(ml),
+		:lang(si),
+		:lang(gu),
+		:lang(pa)
+	) {
+		--label-transform: none;
+		--label-tracking: 0;
+		--tracking-wide: 0;
+		--tracking-wider: 0;
+		--tracking-widest: 0;
+	}
+	[lang]:is(:lang(ru), :lang(uk), :lang(be), :lang(bg), :lang(sr), :lang(mk), :lang(kk), :lang(ky), :lang(mn), :lang(tg), :lang(el)) {
+		--font-sans: 'Roboto', 'Segoe UI', system-ui, sans-serif;
+	}
+	[lang]:is(:lang(ar), :lang(fa), :lang(ur), :lang(ps), :lang(ckb), :lang(sd), :lang(ug)) {
+		--font-sans: 'Noto Sans Arabic', 'Barlow', 'Segoe UI', 'Tahoma', sans-serif;
+		--font-cond: var(--font-sans);
+	}
+	[lang]:is(:lang(he), :lang(yi)) {
+		--font-sans: 'Noto Sans Hebrew', 'Barlow', 'Segoe UI', 'Arial Hebrew', 'Tahoma', sans-serif;
+		--font-cond: var(--font-sans);
+	}
+	[lang]:lang(zh) {
+		--font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+		--font-cond: var(--font-sans);
+	}
+	[lang]:is(:lang(zh-Hant), :lang(zh-TW), :lang(zh-HK), :lang(zh-MO)) {
+		--font-sans: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+	}
+	[lang]:lang(ja) {
+		--font-sans: 'Noto Sans JP', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', system-ui, sans-serif;
+		--font-cond: var(--font-sans);
+	}
+	[lang]:lang(ko) {
+		--font-sans: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+		--font-cond: var(--font-sans);
 	}
 }

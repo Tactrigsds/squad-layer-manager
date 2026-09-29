@@ -174,7 +174,9 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			showCloseButton={false}
 		>
 			<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">
-				<HeadlessDialogTitle className="whitespace-nowrap">{props.title}</HeadlessDialogTitle>
+				<HeadlessDialogTitle className="min-w-0 shrink-0 truncate max-w-full">
+					<span title={props.title}>{props.title}</span>
+				</HeadlessDialogTitle>
 				{props.description && (
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 				)}
@@ -226,7 +228,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 				{!phone && (
 					<div
 						data-tour="add-filters"
-						className="flex shrink-0 flex-col gap-2.5 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)]"
+						className="flex shrink-0 flex-col gap-2.5 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)] rtl:shadow-[1px_0_0_var(--line-soft)]"
 						style={{ width: RAIL_WIDTH_PX }}
 					>
 						<div className="flex flex-col gap-1">
@@ -236,7 +238,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 						<div className="flex-1" />
 						<div className="flex flex-col gap-1.5 border-t border-line pt-2 shadow-[inset_0_1px_0_var(--line-soft)]">
 							{props.footerBeforeSubmit && (
-								<div className="flex items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>
+								<div className="flex flex-wrap items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>
 							)}
 							<div className="flex flex-wrap items-center justify-between gap-1.5">
 								{props.modeSwitchAdditions}

@@ -76,9 +76,10 @@ export function project(value: number, max: number, extent: number) {
 	return (value / max) * extent
 }
 
-// Rough advance width of a run of text, for deciding whether an in-bar label fits. Deliberately an estimate: a
-// canvas measurement per segment per frame costs more than the occasional label we hide that would have fit.
+// Rough advance width of a run of digits, for deciding whether an in-bar number fits. Deliberately an estimate: a
+// canvas measurement per segment per frame costs more than the occasional label we hide that would have fit. Only
+// valid for numerals, not translated text.
 const AVG_GLYPH_RATIO = 0.58
-export function estimateTextWidth(text: string, fontSize: number) {
+export function estimateNumeralsWidth(text: string, fontSize: number) {
 	return text.length * fontSize * AVG_GLYPH_RATIO
 }

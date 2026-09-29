@@ -248,7 +248,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				disabled={sendDisabled}
 				title={tr.text(CHAT_Msgs.sendHint())}
 			>
-				{pending ? <span className="fd-spin" /> : <Icons.Send />}
+				{pending ? <span className="fd-spin" /> : <Icons.Send className="rtl:-scale-x-100" />}
 			</Button>
 		</div>
 	)

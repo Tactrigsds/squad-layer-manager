@@ -721,7 +721,7 @@ function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.
 		>
 			<div />
 			{scoreTypes.map((scoreType) => (
-				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
+				<div key={scoreType} className="mb-0.5 min-w-0 text-center text-xs font-medium leading-tight break-words">
 					{scoreType.replace(/_/g, ' ')}
 				</div>
 			))}

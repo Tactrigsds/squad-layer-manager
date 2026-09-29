@@ -222,7 +222,7 @@ function TeamCell({ player, run }: { player: PlayerRow; run: RunFn }) {
 			value={player.teamId ? String(player.teamId) : undefined}
 			onValueChange={(value) => void run('set-team', { name: player.name, teamId: Number(value) as 1 | 2 })}
 		>
-			<SelectTrigger className="h-7 w-[6rem]" aria-label={tr.text(SB_Msgs.teamPicker(player.name))}>
+			<SelectTrigger className="h-7 w-auto min-w-[6rem]" aria-label={tr.text(SB_Msgs.teamPicker(player.name))}>
 				<SelectValue placeholder={tr.text(SB_Msgs.noTeam())} />
 			</SelectTrigger>
 			<SelectContent>
@@ -373,7 +373,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 												title={tr.text(SB_Msgs.disconnectPlayer(p.name))}
 												onClick={() => void run('leave', { name: p.name })}
 											>
-												<Icons.LogOut className="h-3.5 w-3.5" />
+												<Icons.LogOut className="h-3.5 w-3.5 rtl:-scale-x-100" />
 											</Button>
 										</TableCell>
 									</TableRow>
@@ -392,7 +392,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								disabled={page === 0}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page - 1)}
 							>
-								<Icons.ChevronLeft className="h-3.5 w-3.5" />
+								<Icons.ChevronLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
 							</Button>
 							<span className="tabular-nums">
 								{page + 1} / {pageCount}
@@ -406,7 +406,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								disabled={page >= pageCount - 1}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page + 1)}
 							>
-								<Icons.ChevronRight className="h-3.5 w-3.5" />
+								<Icons.ChevronRight className="h-3.5 w-3.5 rtl:-scale-x-100" />
 							</Button>
 						</div>
 					)}
@@ -443,7 +443,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 					onValueChange={(name) => SandboxFrame.Actions.setSpeaker(stores, name)}
 					disabled={players.length === 0}
 				>
-					<SelectTrigger className="h-8 w-[9rem]">
+					<SelectTrigger className="h-8 w-auto min-w-[9rem] max-w-[14rem]">
 						<SelectValue placeholder={tr.text(SB_Msgs.speakerPlaceholder())} />
 					</SelectTrigger>
 					<SelectContent>

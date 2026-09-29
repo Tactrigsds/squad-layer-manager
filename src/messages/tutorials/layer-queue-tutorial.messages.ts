@@ -91,7 +91,7 @@ export const teamNormalize = {
 	body: def((denormalized: React.ReactNode) =>
 		rt(
 			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>
-<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colors mean the same thing everywhere in the app.</p>
+<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown first. These colors mean the same thing everywhere in the app.</p>
 <p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>
 <p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>`,
 			{ denormalized },

@@ -5,7 +5,7 @@ import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQY from '@/models/layer-queries.models'
-import { def, join, raw, t, type TString } from '@/models/messages.models'
+import { def, join, raw, type Rendered, rt, t, type TString } from '@/models/messages.models'
 import type * as USR from '@/models/users.models'
 
 export const lowQueueItemCount = def(
@@ -146,6 +146,7 @@ export const showNext = def(
 						raw(
 							MsgFmt.voteChoicesLines(
 								item.choices.map((choice) => choice.layerId),
+								ctx.locale,
 								playerNextTeamId,
 								['layer', 'factions', 'units'],
 							).join(),
@@ -318,11 +319,11 @@ export const currentlyVotingBetween = def('Currently voting between {choices}.',
 
 export const slmUpdatesDisabled = def('SLM Updates Disabled')
 
-export const slmUpdatesDisabledBy = def('SLM is not syncing the queue to the squad server. Disabled by')
+export const slmUpdatesDisabledBy = def((reason: Rendered) =>
+	rt('SLM is not syncing the queue to the squad server. Disabled by {reason}.', { reason }),
+)
 
-export const currentNextLayerIs = def('Current next layer on the server is')
-
-export const clickHere = def('Click Here')
+export const currentNextLayerIs = def((layer: Rendered) => rt('Current next layer on the server is {layer}.', { layer }))
 
 export const disabledByInferredVote = def('in-game voting, most likely: the server stopped having a next layer set')
 
@@ -337,7 +338,12 @@ export const disabledByUnnamedUser = def('a user')
 export const disabledBySlm = def('SLM')
 
 // what the enable button does, which differs when the server is mid-vote
-export const enableUpdatesCta = def(
-	'to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.',
-	(alsoStopsIngameVote: boolean) => ({ alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no' }),
+export const clickHere = def('Click Here')
+
+// `button` is the clickHere control
+export const enableUpdatesCta = def((button: Rendered, alsoStopsIngameVote: boolean) =>
+	rt('{button} to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.', {
+		button,
+		alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no',
+	}),
 )

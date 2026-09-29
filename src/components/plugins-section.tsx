@@ -113,7 +113,7 @@ function LeftoverRow({ entry }: { entry: PLG.LeftoverData }) {
 	return (
 		<div className="flex items-center justify-between gap-3">
 			<div className="min-w-0">
-				<p className="text-sm font-mono">{entry.pluginId}</p>
+				<p className="text-sm font-mono ltr-isolate">{entry.pluginId}</p>
 				<p className="text-xs text-muted-foreground">{tr.text(PLUGINS_Msgs.leftoverSummary(entry.tables.length, rows))}</p>
 			</div>
 			<Button size="sm" variant="destructive" disabled={busy} onClick={() => void purge()}>
@@ -235,7 +235,7 @@ function PluginRow({
 				<div className="min-w-0 space-y-0.5">
 					<div className="flex items-center gap-2">
 						<p className="text-sm font-medium">{info.name}</p>
-						<span className="text-xs text-muted-foreground font-mono">v{info.version}</span>
+						<span className="text-xs text-muted-foreground font-mono ltr-isolate">v{info.version}</span>
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<span
@@ -470,7 +470,7 @@ function PluginCommandsEditor({
 					<p className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.pluginCommandOrphans())}</p>
 					{orphans.map((name) => (
 						<div key={name} className="flex items-center gap-2">
-							<code className="text-xs">{name}</code>
+							<code className="text-xs ltr-isolate">{name}</code>
 							<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => clear(name)}>
 								{tr.text(CMD_Msgs.pluginCommandDropOverride())}
 							</Button>

@@ -145,7 +145,7 @@ export const permissions = def('Permissions')
 
 export const normalizeTeams = def('Normalize Teams')
 
-export const normalizeTeamsHint = def('Show team A on the left and team B on the right, instead of team 1 and team 2')
+export const normalizeTeamsHint = def('Show team A first and team B second, instead of team 1 and team 2')
 
 // -------- theme --------
 

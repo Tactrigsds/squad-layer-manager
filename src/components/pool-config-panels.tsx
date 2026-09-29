@@ -151,7 +151,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 			</span>
 			<div className="border rounded-md p-3 space-y-2">
 				<p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.poolFilterBlurb())}</p>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					<InvertToggle
 						pressed={poolFilter?.mode === 'exclude'}
 						onPressedChange={(pressed) => setMode(pressed ? 'exclude' : 'include')}
@@ -159,7 +159,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						disabled={!poolFilter || !!api.writeDenied}
 					/>
 					<FilterEntitySelect
-						className="w-[260px]"
+						className="w-[260px] max-w-full"
 						title={tr.text(SETTINGS_Msgs.poolFilter())}
 						filterId={poolFilter?.filterId ?? null}
 						onSelect={onSelect}

@@ -3,6 +3,7 @@ import * as Icons from 'lucide-react'
 import * as Atoms from '@/components/feed/atoms'
 import * as MatchSummary from '@/components/feed/match-summary'
 import { toast } from '@/lib/toast'
+import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
@@ -11,8 +12,6 @@ import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
-
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 /**
  * What one match was, for the `#id` badge an event row carries.
@@ -28,7 +27,11 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 	const outcome = MatchSummary.outcomeText(details)
 
 	const result = [outcome, duration && tr.text(HistoryMsgs.matchTipMinutes(Number(duration)))].filter(Boolean)
-	const meta = [details.serverId, time && dateTime.format(time), tr.text(HistoryMsgs.matchTipSetBy(details.layerSource.type))]
+	const meta = [
+		details.serverId,
+		time && MsgFmt.formatDate(time, 'dateTime'),
+		tr.text(HistoryMsgs.matchTipSetBy(details.layerSource.type)),
+	]
 	const copyMatchId = () => {
 		void navigator.clipboard.writeText(String(details.historyEntryId))
 		toast(...tr.toast(HistoryMsgs.matchIdCopied()))
@@ -45,7 +48,7 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 					allowShowInfo={false}
 					className="font-semibold"
 				/>
-				<span className="font-mono text-muted-foreground">#{details.historyEntryId}</span>
+				<span className="font-mono text-muted-foreground ltr-isolate">#{details.historyEntryId}</span>
 				<button
 					type="button"
 					className="text-muted-foreground hover:text-foreground transition-colors"

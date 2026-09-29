@@ -26,7 +26,7 @@ const ContextMenuSubTrigger = React.forwardRef<
 >(({ className, inset, children, ...props }, ref) => (
 	<ContextMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'ps-7', className)} {...props}>
 		{children}
-		<ChevronRightIcon className="ms-auto" />
+		<ChevronRightIcon className="ms-auto rtl:-scale-x-100" />
 	</ContextMenuPrimitive.SubTrigger>
 ))
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName

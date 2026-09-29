@@ -18,6 +18,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
@@ -289,7 +290,7 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="outline" size="sm" className="h-6 px-2 text-xs max-w-64 truncate">
-						{values.length > 0 ? values.join(', ') : tr.text(HistoryMsgs.anyOption())}
+						{values.length > 0 ? MsgFmt.formatList(values.map(String), { type: 'disjunction' }) : tr.text(HistoryMsgs.anyOption())}
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>

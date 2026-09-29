@@ -25,9 +25,9 @@ const DropdownMenuSubTrigger = React.forwardRef<
 	}
 >(({ className, inset, chevronLeft, children, ...props }, ref) => (
 	<DropdownMenuPrimitive.SubTrigger ref={ref} className={cn('fd-mi', inset && 'ps-7', className)} {...props}>
-		{chevronLeft && <ChevronLeftIcon />}
+		{chevronLeft && <ChevronLeftIcon className="rtl:-scale-x-100" />}
 		{children}
-		{!chevronLeft && <ChevronRightIcon className="ms-auto" />}
+		{!chevronLeft && <ChevronRightIcon className="ms-auto rtl:-scale-x-100" />}
 	</DropdownMenuPrimitive.SubTrigger>
 ))
 DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName
@@ -107,7 +107,7 @@ function DropdownMenuAccordion(props: { label: React.ReactNode; defaultOpen?: bo
 				}}
 			>
 				{props.label}
-				<ChevronRightIcon className={cn('ms-auto transition-transform', open && 'rotate-90')} />
+				<ChevronRightIcon className={cn('ms-auto transition-transform rtl:-scale-x-100', open && 'rotate-90 rtl:-rotate-90')} />
 			</DropdownMenuItem>
 			{open && (
 				<div ref={groupRef} role="group" className="ms-2.5 border-s border-line ps-1">

@@ -14,8 +14,8 @@
 		font-family: var(--font-cond);
 		font-size: calc(var(--fs) - 1px);
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		text-transform: var(--label-transform);
+		letter-spacing: calc(0.08em * var(--label-tracking));
 		color: var(--text-2);
 	}
 	/* a label beside its control: plain body text, for switches and checkboxes */
@@ -26,14 +26,13 @@
 		text-transform: none;
 		letter-spacing: 0;
 		color: var(--text);
-		white-space: nowrap;
 	}
 	.fd-lbl-k2 {
 		font-family: var(--font-cond);
 		font-size: calc(var(--fs) - 2px);
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		text-transform: var(--label-transform);
+		letter-spacing: calc(0.1em * var(--label-tracking));
 		color: var(--text-3);
 	}
 
@@ -58,7 +57,7 @@
 		font-family: var(--font-cond);
 		font-weight: 700;
 		font-size: calc(var(--fs) + 1px);
-		letter-spacing: 0.01em;
+		letter-spacing: calc(0.01em * var(--label-tracking));
 	}
 	.fd-well {
 		background: var(--ground);
@@ -79,7 +78,7 @@
 		font: inherit;
 		font-size: var(--fs);
 		font-weight: 600;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text);
 		background: var(--ctl-bg);
 		border: 1px solid var(--line);
@@ -219,16 +218,20 @@
 	}
 	.fd-grp > .fd-btn {
 		border-radius: 0;
-		margin-left: -1px;
+		margin-inline-start: -1px;
 	}
 	.fd-grp > .fd-btn:first-child,
 	.fd-grp > :first-child .fd-btn {
-		border-radius: 3px 0 0 3px;
-		margin-left: 0;
+		border-radius: 0;
+		border-start-start-radius: 3px;
+		border-end-start-radius: 3px;
+		margin-inline-start: 0;
 	}
 	.fd-grp > .fd-btn:last-child,
 	.fd-grp > :last-child .fd-btn {
-		border-radius: 0 3px 3px 0;
+		border-radius: 0;
+		border-start-end-radius: 3px;
+		border-end-end-radius: 3px;
 	}
 	.fd-grp > .fd-btn:only-child {
 		border-radius: 3px;
@@ -249,7 +252,7 @@
 		.fd-grp > :first-child .fd-btn,
 		.fd-grp > .fd-btn:last-child,
 		.fd-grp > :last-child .fd-btn {
-			margin-left: 0;
+			margin-inline-start: 0;
 			border-radius: 3px;
 		}
 	}
@@ -265,7 +268,7 @@
 		/* 16px under the touch densities. Mobile Safari zooms the whole page in on a field it considers too small
 		   to read, and never zooms back out. */
 		font-size: var(--inp-fs);
-		line-height: 1;
+		line-height: var(--lh-tight);
 		color: var(--text);
 		background: var(--ground);
 		border: 0;
@@ -306,7 +309,7 @@
 		justify-content: space-between;
 		font-weight: 400;
 		cursor: pointer;
-		text-align: left;
+		text-align: start;
 	}
 	.fd-sel > span:first-child {
 		overflow: hidden;
@@ -399,7 +402,7 @@
 	.fd-sw-thumb {
 		position: absolute;
 		top: 2px;
-		left: 2px;
+		inset-inline-start: 2px;
 		width: calc(var(--sw-w) / 2 - 2px);
 		height: calc(var(--sw-h) - 4px);
 		border-radius: 2px;
@@ -410,7 +413,7 @@
 		display: block;
 	}
 	.fd-sw[data-state='checked'] .fd-sw-thumb {
-		left: calc(var(--sw-w) / 2);
+		inset-inline-start: calc(var(--sw-w) / 2);
 		background: var(--pri);
 		box-shadow:
 			inset 0 1px 0 var(--pri-hi),
@@ -466,7 +469,8 @@
 		padding: 0 4px;
 	}
 	.fd-tab {
-		height: var(--ctl);
+		height: fit-content;
+		min-height: var(--ctl);
 		padding: 0 12px;
 		display: inline-flex;
 		align-items: center;
@@ -489,7 +493,7 @@
 	.fd-tab[data-state='active'] {
 		background: var(--panel);
 		color: var(--text);
-		height: calc(var(--ctl) + 2px);
+		min-height: calc(var(--ctl) + 2px);
 		box-shadow:
 			inset 0 1px 0 var(--line-soft),
 			inset 0 -2px 0 var(--panel);
@@ -519,7 +523,8 @@
 	}
 
 	.fd-pill {
-		height: var(--pill-h);
+		height: fit-content;
+		min-height: var(--pill-h);
 		padding: 0 7px;
 		border: 0;
 		border-radius: 2px;
@@ -543,11 +548,12 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		height: var(--badge-h);
+		height: fit-content;
+		min-height: var(--badge-h);
 		padding: 0 6px;
 		font-size: calc(var(--fs) - 1px);
 		font-weight: 600;
-		line-height: 1;
+		line-height: var(--lh-tight);
 		border-radius: 2px;
 		background: #414144;
 		color: var(--text-2);
@@ -585,7 +591,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: var(--chip-h);
+		height: fit-content;
+		min-height: var(--chip-h);
 		padding: 0 5px;
 		border-radius: 2px;
 		background: #414144;
@@ -599,7 +606,8 @@
 		align-items: center;
 		gap: 4px;
 		height: var(--badge-h);
-		padding: 0 2px 0 6px;
+		padding-block: 0;
+		padding-inline: 6px 2px;
 		border-radius: 2px;
 		background: var(--ctl-bg);
 		box-shadow:
@@ -673,8 +681,10 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		height: var(--badge-h);
-		padding: 0 6px 0 4px;
+		height: fit-content;
+		min-height: var(--badge-h);
+		padding-block: 0;
+		padding-inline: 4px 6px;
 		border-radius: 2px;
 		background: #2b4a85;
 		color: #d6e4ff;
@@ -738,7 +748,7 @@
 		color: #ef7c7a;
 	}
 	.fd-mi-sc {
-		margin-left: auto;
+		margin-inline-start: auto;
 		font-family: var(--font-mono);
 		font-size: calc(var(--fs) - 2px);
 		color: var(--text-3);
@@ -753,8 +763,8 @@
 		padding: 4px 8px 2px;
 		font-family: var(--font-cond);
 		font-size: calc(var(--fs) - 2px);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		text-transform: var(--label-transform);
+		letter-spacing: calc(0.1em * var(--label-tracking));
 		color: var(--text-3);
 		font-weight: 700;
 	}
@@ -809,6 +819,7 @@
 	}
 	.fd-dlg-f {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: 6px;
 		padding: 8px 10px;
@@ -829,7 +840,8 @@
 		align-items: center;
 		gap: 6px;
 		height: var(--ctl);
-		padding: 0 4px 0 8px;
+		padding-block: 0;
+		padding-inline: 8px 4px;
 		background: var(--panel-hi);
 		border-bottom: 1px solid var(--line);
 		font-family: var(--font-cond);
@@ -899,13 +911,13 @@
 	}
 	.fd-tbl th {
 		height: var(--row);
-		text-align: left;
+		text-align: start;
 		padding: 0 8px;
 		font-family: var(--font-cond);
 		font-size: calc(var(--fs) - 1px);
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		text-transform: var(--label-transform);
+		letter-spacing: calc(0.08em * var(--label-tracking));
 		color: var(--text-2);
 		background: var(--panel-hi);
 		border-bottom: 1px solid var(--line);
@@ -927,9 +939,12 @@
 	.fd-tbl tr[data-state='selected'] td:first-child {
 		box-shadow: inset 3px 0 0 var(--pri);
 	}
+	.fd-tbl tr[data-state='selected'] td:first-child:dir(rtl) {
+		box-shadow: inset -3px 0 0 var(--pri);
+	}
 	.fd-tbl td.fd-num,
 	.fd-tbl th.fd-num {
-		text-align: right;
+		text-align: end;
 	}
 	.fd-tbl td.fd-num {
 		font-family: var(--font-mono);

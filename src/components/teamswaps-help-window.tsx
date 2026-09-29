@@ -32,7 +32,7 @@ function TeamswapsHelpWindow() {
 				</ol>
 				<ul className="space-y-2">
 					<li className="flex items-start gap-2">
-						<Icons.Undo2 className="h-3.5 w-3.5 shrink-0 text-foreground mt-0.5" />
+						<Icons.Undo2 className="h-3.5 w-3.5 shrink-0 text-foreground mt-0.5 rtl:-scale-x-100" />
 						<span>{tr.richText(TSW_Msgs.helpRevert())}</span>
 					</li>
 					<li className="flex items-start gap-2">

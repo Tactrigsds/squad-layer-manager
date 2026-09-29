@@ -86,3 +86,6 @@ export const startedAndLasted = def('{ago} - {minutes, plural, one {# minute} ot
 }))
 
 export const startedUnknownLength = def('{ago} - unknown length', (ago: string) => ({ ago }))
+
+// one team's result in a scoreline, as a single letter
+export const resultMark = def('{won, select, yes {W} other {L}}', (won: boolean) => ({ won: won ? 'yes' : 'no' }))

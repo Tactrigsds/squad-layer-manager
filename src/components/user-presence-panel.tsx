@@ -1,4 +1,3 @@
-import * as DateFns from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
 
@@ -8,6 +7,7 @@ import { useNow } from '@/lib/react.ts'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as MsgFmt from '@/messages/format'
 import * as UP_Msgs from '@/messages/user-presence.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
@@ -430,8 +430,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														{tr.text(UP_Msgs.lastSeen())}{' '}
-														{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+														{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
 													</span>
 												)}
 												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -481,14 +480,16 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 														<TooltipContent>
 															<div className="text-center">
 																<div className="font-medium">
-																	{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+																	{tr.text(
+																		UP_Msgs.displayNameWithYou(
+																			user.displayName,
+																			loggedInUser?.discordId === user.discordId,
+																		),
+																	)}
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
-																		{tr.text(UP_Msgs.lastSeen())}{' '}
-																		{DateFns.formatDistanceToNow(new Date(presence.lastSeen), {
-																			addSuffix: true,
-																		})}
+																		{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
 																	</div>
 																)}
 																{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -540,12 +541,11 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 									<TooltipContent>
 										<div className="text-center">
 											<div className="font-medium">
-												{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+												{tr.text(UP_Msgs.displayNameWithYou(user.displayName, loggedInUser?.discordId === user.discordId))}
 											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													{tr.text(UP_Msgs.lastSeen())}{' '}
-													{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+													{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
 												</div>
 											)}
 											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}

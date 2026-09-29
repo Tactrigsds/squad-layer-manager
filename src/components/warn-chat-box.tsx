@@ -154,7 +154,7 @@ export default function WarnChatBox({
 					disabled={sendDisabled}
 					title={tr.text(CHAT_Msgs.sendWarningHint())}
 				>
-					{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5" />}
+					{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5 rtl:-scale-x-100" />}
 				</Button>
 			</div>
 		</div>

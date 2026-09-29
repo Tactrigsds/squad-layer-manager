@@ -2,6 +2,7 @@ import React, { useImperativeHandle, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import * as MessagesClient from '@/systems/messages.client'
 
 export type DescriptionBoxHandle = {
 	show: (title: string | null, description: string) => void
@@ -9,7 +10,7 @@ export type DescriptionBoxHandle = {
 }
 
 // the side of the option panel the box sits on when it fits there
-export type DescriptionBoxPlacement = 'right' | 'top'
+export type DescriptionBoxPlacement = 'end' | 'top'
 
 // A box describing the option under the cursor, anchored to the whole option panel rather than to the
 // option, so it holds still as the highlight moves. Its contents are written straight to the DOM through
@@ -37,7 +38,12 @@ export function DescriptionBox(props: { ref: React.Ref<DescriptionBoxHandle>; pl
 				if (wasHidden) {
 					root.dataset.flipped = 'false'
 					const rect = root.getBoundingClientRect()
-					const overflows = placement === 'right' ? rect.right > window.innerWidth : rect.top < 0
+					const overflows =
+						placement === 'end'
+							? MessagesClient.textDirection() === 'rtl'
+								? rect.left < 0
+								: rect.right > window.innerWidth
+							: rect.top < 0
 					if (overflows) root.dataset.flipped = 'true'
 				}
 			},
@@ -56,7 +62,7 @@ export function DescriptionBox(props: { ref: React.Ref<DescriptionBoxHandle>; pl
 			style={{ zIndex }}
 			className={cn(
 				'pointer-events-none absolute max-h-48 space-y-1 overflow-hidden rounded-md border bg-popover p-3 text-popover-foreground shadow-md',
-				placement === 'right'
+				placement === 'end'
 					? 'inset-s-full top-0 ms-1.5 w-64 data-[flipped=true]:inset-s-auto data-[flipped=true]:inset-e-full data-[flipped=true]:ms-0 data-[flipped=true]:me-1.5'
 					: 'bottom-full inset-s-0 mb-1.5 w-full data-[flipped=true]:bottom-auto data-[flipped=true]:top-full data-[flipped=true]:mb-0 data-[flipped=true]:mt-1.5',
 				props.className,

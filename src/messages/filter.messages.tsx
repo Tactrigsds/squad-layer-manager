@@ -212,11 +212,11 @@ export const floatEqNullOnly = def(
 // between the two bounds of an inrange comparison
 export const rangeTo = def('to')
 
-export const inSetNames = { in: 'in', notin: 'not in' }
+export const inSetNames = { in: t('in'), notin: t('not in') }
 
 export const inSetDescriptions = {
-	in: 'Matches the listed layers.',
-	notin: 'Matches every layer except the listed ones.',
+	in: t('Matches the listed layers.'),
+	notin: t('Matches every layer except the listed ones.'),
 }
 
 export const selectLayers = def('Select Layers')
@@ -256,10 +256,35 @@ export const teamQuantifierNames: Record<F.TeamQuantifier, TString> = {
 // a matchup side with no dimension set matches anything
 export const anyTeam = def('any team')
 
-// the layer set behind a "select layers" node, which is a count rather than a list of ids
-export const layerSetSize = def('{count, plural, one {# layer} other {# layers}}', (count: number) => ({ count }))
-
 export const moreValues = def('+{count} more', (count: number) => ({ count }))
+
+// The compact node view's clauses. <op> marks the operator words and <value> a literal value, which the view
+// styles apart from the column and value slots around them.
+
+export const compSummary = def((subject: React.ReactNode, op: TString, operand: React.ReactNode) =>
+	rt('{subject} <op>{operator}</op> {operand}', { subject, operator: op, operand }),
+)
+
+export const rangeSummary = def((subject: React.ReactNode, op: TString, min: React.ReactNode, max: React.ReactNode) =>
+	rt('{subject} <op>{operator}</op> {min} <op>to</op> {max}', { subject, operator: op, min, max }),
+)
+
+// the layer set behind a "select layers" node, which is a count rather than a list of ids
+export const layerSetSummary = def((neg: boolean, count: number) =>
+	rt('<op>{neg, select, yes {not in} other {in}}</op> <value>{count, plural, one {# layer} other {# layers}}</value>', {
+		neg: neg ? 'yes' : 'no',
+		count,
+	}),
+)
+
+export const matchupSummary = def((disallow: boolean, locked: boolean, first: React.ReactNode, second: React.ReactNode) =>
+	rt(
+		'{disallow, select, yes {<op>disallow matchups</op> } other {}}{locked, select, yes {<op>Team 1</op> {first} <op>vs</op> <op>Team 2</op> {second}} other {{first} <op>vs</op> {second}}}',
+		{ disallow: disallow ? 'yes' : 'no', locked: locked ? 'yes' : 'no', first, second },
+	),
+)
+
+export const applyFilterSummary = def((type: TString, filter: React.ReactNode) => rt('<op>{type}</op> {filter}', { type, filter }))
 
 // stands in for a column or value a half-built node does not have yet, so it still reads as a row
 export const incompleteNode = def('incomplete')
@@ -270,16 +295,27 @@ export const doneEditing = def('Done')
 // -------- matchups --------
 
 // a locked matchup names the two slots; an unlocked one only knows they are opposite each other
-export const matchupSideLabels = { lockedLeft: 'Team 1', lockedRight: 'Team 2', left: 'One side', right: 'Other side' }
+export const matchupSideLabels = {
+	lockedFirst: t('Team 1'),
+	lockedSecond: t('Team 2'),
+	first: t('One side'),
+	second: t('Other side'),
+}
 
 export const swapSides = def('Swap the two sides')
 
 // the placeholder on a team-spec dimension, e.g. "any faction"
-export const anyTeamColumn = def('any {column}', (column: string) => ({ column: column.toLowerCase() }))
+export const anyTeamColumn = def(
+	'any {column, select, Alliance {alliance} Faction {faction} Unit {unit} Vehicle {vehicle} other {vehicle type}}',
+	(column: F.TeamColumn) => ({ column }),
+)
 
 // the same placeholder where the row already carries the dimension's name and the picker is too narrow to
 // spend characters on "any", e.g. "faction"
-export const teamColumnPlaceholder = def('{column}', (column: string) => ({ column: column.toLowerCase() }))
+export const teamColumnPlaceholder = def(
+	'{column, select, Alliance {alliance} Faction {faction} Unit {unit} Vehicle {vehicle} other {vehicle type}}',
+	(column: F.TeamColumn) => ({ column }),
+)
 
 // names one side's picker in the matchup, e.g. "Faction T1". The dimension alone is ambiguous across the two sides
 export const teamColumnForTeam = def('{column} T{team}', (column: string, team: 1 | 2) => ({ column, team: String(team) }))
@@ -376,9 +412,9 @@ export const newFilter = def('New Filter')
 
 // -------- the applied-filters panel --------
 
-export const scrollLeft = def('Scroll left (double-click to go to start)')
+export const scrollBack = def('Scroll back (double-click to go to start)')
 
-export const scrollRight = def('Scroll right (double-click to go to end)')
+export const scrollForward = def('Scroll forward (double-click to go to end)')
 
 export const editExtraFilters = def('Edit extra filters')
 
@@ -452,7 +488,7 @@ export const compareToNull = def('Compare to null')
 export const clearNull = def('Clear null')
 
 export const matchupLockedHint = def(
-	'Team order locked: matches only as configured, left on team 1 and right on team 2. Click to allow either order.',
+	'Team order locked: matches only as configured, the first side on team 1 and the second on team 2. Click to allow either order.',
 )
 
 export const matchupUnlockedHint = def(

@@ -305,7 +305,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
-				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="right" />}
+				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="end" />}
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}

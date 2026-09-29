@@ -20,6 +20,7 @@ import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
 const MATCHUP_ROWS = F.TEAM_COLUMNS.map((column) => ({
+	column,
 	label: F_Msgs.teamColumnNames[column],
 	team1: F.resolveTeamColumn(column, 1),
 	team2: F.resolveTeamColumn(column, 2),
@@ -95,7 +96,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 
 	return (
 		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
-			<span className="text-xs text-text-2 whitespace-nowrap truncate" title={name}>
+			<span className="text-xs leading-tight text-text-2 line-clamp-2 break-words" title={name}>
 				{label}
 			</span>
 			<Comparison
@@ -149,7 +150,9 @@ function MatchupNode(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	}
 	return (
 		<div className="grid grid-cols-[72px_36px_minmax(0,1fr)_minmax(0,1fr)_20px] items-center gap-1 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:min-w-0">
-			<span className="text-xs text-text-2 whitespace-nowrap">{tr.text(F_Msgs.matchup())}</span>
+			<span className="text-xs leading-tight text-text-2 line-clamp-2 break-words" title={tr.text(F_Msgs.matchup())}>
+				{tr.text(F_Msgs.matchup())}
+			</span>
 			<span />
 			<div className="col-span-2 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-2xs font-bold text-text-3 fd-cond uppercase tracking-wider">
 				<span>{tr.text(L_Msgs.teamName(1))}</span>
@@ -190,12 +193,12 @@ function MatchupRow(props: { row: MatchupRowDef; stores: LayerFilterMenuPrt.Pred
 	const label = tr.text(row.label)
 	return (
 		<>
-			<span className="text-xs text-text-2 truncate" title={label}>
+			<span className="text-xs leading-tight text-text-2 line-clamp-2 break-words" title={label}>
 				{label}
 			</span>
 			<MatchupOperator row={row} comp={team1.comp} highlight={hasValue} stores={props.stores} />
-			<MatchupCell label={label} item={team1} field={row.team1} stores={props.stores} />
-			<MatchupCell label={label} item={team2} field={row.team2} stores={props.stores} />
+			<MatchupCell column={row.column} item={team1} field={row.team1} stores={props.stores} />
+			<MatchupCell column={row.column} item={team2} field={row.team2} stores={props.stores} />
 			<Button
 				data-empty={!hasValue}
 				variant="ghost"
@@ -247,7 +250,7 @@ function MatchupOperator(props: {
 
 function MatchupCell(props: {
 	field: string
-	label: string
+	column: F.TeamColumn
 	item: ReturnType<typeof useMenuItem>
 	stores: LayerFilterMenuPrt.PredicatedKeyProp
 }) {
@@ -265,7 +268,7 @@ function MatchupCell(props: {
 			onSetAllValuesAllowedLabel={tr.text(F_Msgs.clearOtherFilters())}
 			// the title and the accessible name come from the dimension itself; only the placeholder is
 			// shortened, since the row is already labelled and the cell has no room for "any faction"
-			valuesEmptyLabel={tr.text(F_Msgs.teamColumnPlaceholder(props.label))}
+			valuesEmptyLabel={tr.text(F_Msgs.teamColumnPlaceholder(props.column))}
 			setNode={(update) => LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)}
 			lockOnSingleOption
 		/>

@@ -69,7 +69,7 @@ function DirectionColumn(props: { fromTeam: SM.TeamId; mutualReady: boolean; cla
 		<div className={cn('flex flex-col gap-0.5 min-w-0', props.className)}>
 			<div className="flex items-center gap-1 pb-1 text-xs text-muted-foreground whitespace-nowrap">
 				<MatchTeamDisplay teamId={fromTeam} leadWithTeamName stores={stores} />
-				<Icons.ArrowRight className="h-3 w-3 shrink-0" />
+				<Icons.ArrowRight className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
 				<MatchTeamDisplay teamId={SM.oppositeTeamId(fromTeam)} leadWithTeamName stores={stores} />
 				<span>({entries.length})</span>
 			</div>

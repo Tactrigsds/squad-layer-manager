@@ -36,8 +36,7 @@ export const presenceEventText: Record<UP.PresenceEventAction, TString> = {
 
 export const resetSession = def('Reset this session')
 
-// reads as "Last seen <relative time>"
-export const lastSeen = def('Last seen')
+export const lastSeen = def('Last seen {when}', (when: string) => ({ when }))
 
 // marks whichever avatar is the viewer's own
 // the reader's own row is marked in the name itself, so a locale can put the marker where its language wants it
@@ -91,5 +90,50 @@ export const activity = def((a: UP.ActivityDescriptor) => {
 	}
 })
 
-// a queue item's badge naming who is working on it; activity is the lowercased text of the activity message
-export const attributedActivity = def('{name} is {activity}...', (name: string, activity: string) => ({ name, activity }))
+// a queue item's badge naming who is working on it
+export const attributedActivity = def((name: string, a: UP.ActivityDescriptor) => {
+	switch (a.id) {
+		case 'EDITING_FILTER':
+			return t('{name} is editing a filter...', { name })
+		case 'EDITING_TEAMSWAPS':
+			return t('{name} is editing scheduled teamswaps...', { name })
+		case 'EDITING_LAYER_REQUESTS':
+			return t('{name} is editing layer requests...', { name })
+		case 'SWITCHING_PLAYERS':
+			return t('{name} is switching players now...', { name })
+		case 'WARNING_PLAYERS':
+			return t('{name} is warning players...', { name })
+		case 'REMOVING_FROM_SQUAD':
+			return t('{name} is removing from squad...', { name })
+		case 'DISBANDING_SQUAD':
+			return t('{name} is disbanding squad...', { name })
+		case 'RESETTING_SQUAD_NAME':
+			return t('{name} is resetting squad name...', { name })
+		case 'DEMOTING_COMMANDER':
+			return t('{name} is demoting commander...', { name })
+		case 'CHANGING_QUEUE_SETTINGS':
+			return t('{name} is changing pool settings...', { name })
+		case 'ADDING_ITEM':
+			return t('{name} is adding layers...', { name })
+		case 'GENERATING_VOTE':
+			return t('{name} is generating vote...', { name })
+		case 'ADDING_ITEM_FROM_HISTORY':
+			return t('{name} is adding layer from history...', { name })
+		case 'PASTE_ROTATION':
+			return t('{name} is pasting rotation...', { name })
+		case 'EDITING_ITEM':
+			return a.itemName === undefined
+				? t('{name} is editing...', { name })
+				: t('{name} is editing {item}...', { name, item: a.itemName })
+		case 'CONFIGURING_VOTE':
+			return a.itemName === undefined
+				? t('{name} is configuring vote...', { name })
+				: t('{name} is configuring vote for {item}...', { name, item: a.itemName })
+		case 'MOVING_ITEM':
+			return a.itemName === undefined ? t('{name} is moving...', { name }) : t('{name} is moving {item}...', { name, item: a.itemName })
+		case 'IDLE':
+			return t('{name} is editing queue...', { name })
+		default:
+			assertNever(a.id)
+	}
+})

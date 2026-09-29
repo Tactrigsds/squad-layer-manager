@@ -56,7 +56,7 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 					<div className="relative">
 						<Textarea
 							onChange={onTextChange}
-							className="w-full min-h-75 pe-8 min-w overflow-x-auto text-sm font-mono"
+							className="w-full min-h-75 pe-8 min-w overflow-x-auto text-sm font-mono ltr-isolate"
 							style={{ lineHeight: '1.5rem' }}
 							wrap="off"
 							placeholder={tr.text(L_Msgs.multiLayerPlaceholder())}
@@ -71,7 +71,7 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 									{errors.map((line) => (
 										<li key={line.lineNumber} className="flex items-baseline gap-2 text-sm">
 											<span className="font-mono text-muted-foreground">{tr.text(L_Msgs.pasteErrorLine(line.lineNumber))}</span>
-											<span className="font-mono">{line.text}</span>
+											<span className="font-mono ltr-isolate">{line.text}</span>
 											<span className="text-muted-foreground">{describe(line)}</span>
 										</li>
 									))}

@@ -47,7 +47,7 @@ export function EventTime(props: { time: number }) {
 	return (
 		<>
 			<button type="button" className="shrink-0" data-state="closed" {...{ [RC.TIP_TIME_ATTR]: props.time }}>
-				<span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
+				<span dir="ltr" className="text-muted-foreground font-mono text-xs whitespace-nowrap">
 					{RC.usingFullTimestamps() ? formatDateTime(props.time) : shortTime(props.time)}
 				</span>
 			</button>
@@ -66,7 +66,7 @@ function RowMatchId() {
 	return (
 		<span className="inline-flex shrink-0 items-center gap-1">
 			<button type="button" data-state="closed" {...{ [RC.TIP_MATCH_ATTR]: matchId }}>
-				<span className="text-muted-foreground/60 font-mono text-2xs">#{matchId}</span>
+				<span className="text-muted-foreground/60 font-mono text-2xs ltr-isolate">#{matchId}</span>
 			</button>
 			<button
 				type="button"
@@ -174,13 +174,12 @@ export function TeamFactionDisplay(props: TeamFactionProps) {
 	const shortUnit = unit !== undefined ? DH.toShortUnit(unit) : undefined
 
 	const attrs = [
-		{ color: [DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2][props.team - 1], title: ['Team 1', 'Team 2'][props.team - 1], id: props.team },
+		{ color: [DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2][props.team - 1], id: props.team },
 		{
 			color: [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB][(props.parity + props.team - 1) % 2],
-			title: ['Team A', 'Team B'][(props.parity + props.team - 1) % 2],
 			id: MHModels.getNormedTeamId(props.team, props.parity),
 		},
-	] as { color: string; title: string; id: MH.NormedTeamId | SM.TeamId }[]
+	] as { color: string; id: MH.NormedTeamId | SM.TeamId }[]
 	if (displayTeamsNormalized) attrs.reverse()
 
 	const factionElt = (
@@ -192,7 +191,7 @@ export function TeamFactionDisplay(props: TeamFactionProps) {
 	return (
 		<span className={cn('inline-block whitespace-nowrap', props.className)}>
 			<span
-				title={attrs[0].title}
+				title={I18n.ambient.text(L_Msgs.teamName(attrs[0].id))}
 				style={props.leadWithTeamName ? ({ [TEAM_NAME_COLOR]: attrs[0].color } as React.CSSProperties) : { color: attrs[0].color }}
 				className={props.leadWithTeamName ? 'font-normal text-muted-foreground' : 'font-semibold'}
 			>
@@ -307,7 +306,7 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 		Collection: combineStyles('Collection'),
 	} satisfies Record<keyof L.KnownLayer, string | undefined>
 
-	if (!partialLayer.Layer) return <>{props.layerId.slice('RAW:'.length)}</>
+	if (!partialLayer.Layer) return <span className="ltr-isolate">{props.layerId.slice('RAW:'.length)}</span>
 
 	const backfilled = { ...(backfillLayer ?? {}), ...partialLayer }
 	const hasFactions = !!backfilled.Faction_1 && !!backfilled.Faction_2
@@ -320,7 +319,7 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 			{backfilled.Layer && <MapLayerDisplay layer={backfilled.Layer} extraStyles={extraStyles} />}
 			{hasFactions && (
 				<>
-					<Icon name="Dot" className="self-center" />
+					<Icon name="Dot" className="inline-block h-4 w-6 self-center align-middle" />
 					{/* one flex item, so a narrow container moves both teams down together and only splits them when
 					    they do not fit on a line of their own */}
 					<span className="inline-flex flex-wrap items-baseline">
@@ -339,7 +338,7 @@ export function LayerInfoButton(props: { layerId: L.LayerId; children: React.Rea
 	return (
 		<button
 			type="button"
-			className="text-primary underline-offset-4 [&:hover>span]:underline"
+			className="text-start text-primary underline-offset-4 [&:hover>span]:underline"
 			{...RC.windowAttrs({ windowId: WINDOW_ID.enum['layer-info'], arg: { layerId: props.layerId }, preload: true })}
 		>
 			{props.children}
@@ -350,8 +349,9 @@ export function LayerInfoButton(props: { layerId: L.LayerId; children: React.Rea
 /**
  * A layer's name, as the feed draws it.
  *
- * flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow container; each
- * segment stays intact because it carries its own nowrap.
+ * Inline rather than a flex box, so a long "Map_Gamemode_v1 . FactionA vs FactionB" breaks where its line ends. Each
+ * segment stays intact because it carries its own nowrap. Inside LayerInfoButton the whole name is still one box,
+ * since a button cannot be split across lines.
  */
 export function ShortLayerName(props: ShortLayerNameProps) {
 	const menu = RC.menuAttrs({
@@ -360,7 +360,7 @@ export function ShortLayerName(props: ShortLayerNameProps) {
 		historyEntryIds: props.historyEntryId === undefined ? undefined : [props.historyEntryId],
 	})
 	const span = (
-		<span data-tour={props.tourId} className={cn('inline-flex flex-wrap items-baseline', props.className)} {...menu}>
+		<span data-tour={props.tourId} className={props.className} {...menu}>
 			<ShortLayerNameContent {...props} />
 		</span>
 	)

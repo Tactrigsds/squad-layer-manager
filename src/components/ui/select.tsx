@@ -15,8 +15,16 @@ const SelectValue = SelectPrimitive.Value
 const SelectTrigger = React.forwardRef<
 	React.ElementRef<typeof SelectPrimitive.Trigger>,
 	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-	<SelectPrimitive.Trigger ref={ref} className={cn('fd-inp fd-sel w-full', className)} {...props}>
+>(({ className, children, onPointerEnter, ...props }, ref) => (
+	<SelectPrimitive.Trigger
+		ref={ref}
+		className={cn('fd-inp fd-sel w-full', className)}
+		onPointerEnter={(e) => {
+			titleTruncatedValue(e.currentTarget)
+			onPointerEnter?.(e)
+		}}
+		{...props}
+	>
 		{children}
 		<SelectPrimitive.Icon asChild>
 			<ChevronDownIcon />
@@ -24,6 +32,22 @@ const SelectTrigger = React.forwardRef<
 	</SelectPrimitive.Trigger>
 ))
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
+
+// Shows a value the trigger cuts off in full, as a native title. A title set by anyone else, including the empty one
+// a TooltipTrigger sets, is left alone.
+function titleTruncatedValue(trigger: HTMLButtonElement) {
+	const value = trigger.firstElementChild
+	if (!(value instanceof HTMLElement)) return
+	const owned = trigger.dataset.valueTitle !== undefined
+	if (!owned && trigger.hasAttribute('title')) return
+	if (value.scrollWidth > value.clientWidth) {
+		trigger.title = value.textContent ?? ''
+		trigger.dataset.valueTitle = ''
+	} else if (owned) {
+		trigger.removeAttribute('title')
+		delete trigger.dataset.valueTitle
+	}
+}
 
 const SelectScrollUpButton = React.forwardRef<
 	React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
@@ -95,7 +119,7 @@ const SelectItem = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, ...props }, ref) => (
 	<SelectPrimitive.Item ref={ref} className={cn('fd-mi relative w-full pe-7', className)} {...props}>
-		<span className="min-w-0 truncate">
+		<span className="min-w-0 line-clamp-2 py-px">
 			<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
 		</span>
 		<span className="absolute inset-e-2 flex h-3.5 w-3.5 items-center justify-center text-pri-hi">

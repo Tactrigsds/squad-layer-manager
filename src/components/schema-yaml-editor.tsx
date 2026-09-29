@@ -239,10 +239,10 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 					</TooltipContent>
 				</Tooltip>
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
-					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
+					<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
 						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.yamlErrors())}</h3>
-						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive ltr-isolate">
 							{errorText}
 						</pre>
 					</div>

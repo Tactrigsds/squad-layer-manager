@@ -210,7 +210,9 @@ function AddTagDropdown(props: {
 					<DropdownMenuItem key={tag.id} onSelect={() => props.onSelect(tag.id)}>
 						<span className="me-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
 						<span className="flex min-w-0 flex-col">
-							<span className="truncate text-xs">{tag.label}</span>
+							<span className="truncate text-xs" title={tag.label}>
+								{tag.label}
+							</span>
 							{tag.description && <span className="truncate text-2xs text-muted-foreground">{tag.description}</span>}
 						</span>
 					</DropdownMenuItem>

@@ -138,7 +138,7 @@ function RoleSection(props: {
 							<div className="space-y-1">
 								<div className="flex items-center gap-2">
 									<NegationBadges perm={perm} />
-									<div className="font-mono">{perm.type}</div>
+									<div className="font-mono ltr-isolate">{perm.type}</div>
 								</div>
 								<div className="text-muted-foreground">{getPermissionDescription(perm.type)}</div>
 							</div>
@@ -319,7 +319,7 @@ export default function UserPermissionsDialog(props: {
 												className="flex items-start justify-between p-2 rounded text-sm opacity-60 bg-muted/30"
 											>
 												<div className="space-y-1">
-													<div className="font-mono">{permType}</div>
+													<div className="font-mono ltr-isolate">{permType}</div>
 													<div className="text-muted-foreground">{getPermissionDescription(permType)}</div>
 												</div>
 												<Badge variant="outline" className="text-xs">
