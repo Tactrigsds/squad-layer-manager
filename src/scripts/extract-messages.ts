@@ -4,6 +4,7 @@ import * as path from 'node:path'
 
 import type * as ICU from '@/messages/icu'
 import { compile, UnsupportedPatternError } from '@/scripts/compile-messages'
+import * as Pseudo from '@/scripts/pseudo-locale'
 
 // Collects every translatable message into a catalogue template, keyed the way the runtime keys them: by the
 // message's own English, plus a context where two messages share one. Build hooks run this before they load a catalogue.
@@ -310,6 +311,20 @@ writeIfChanged(EN_TEMPLATE_PATH, serialize(template, false))
 for (const [locale, catalogue] of Object.entries(compiled)) {
 	writeIfChanged(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue, true))
 }
+
+// built from the source template rather than the English catalogue, which omits every message that is only text
+const pseudo: Record<string, ICU.Entry> = {}
+for (const [key, pattern] of Object.entries(template)) {
+	let entry: ICU.Entry
+	try {
+		entry = compile(pattern)
+	} catch {
+		entry = pattern
+	}
+	pseudo[key] = Pseudo.pseudoEntry(entry)
+}
+const pseudoContent = serialize(pseudo, true)
+for (const locale of Pseudo.PSEUDO_LOCALES) writeIfChanged(path.join(OUT_DIR, locale + COMPILED_SUFFIX), pseudoContent)
 
 const existing = catalogueFiles
 if (!quiet) {

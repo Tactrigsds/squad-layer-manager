@@ -110,7 +110,7 @@ function localeFor(acceptLanguage: string | undefined) {
 
 function render(variant: USR_Msgs.LandingVariant, error: Msgs.Variants.Textable | null, locale: string) {
 	const tr = I18n.translatorFor(locale)
-	const head = { ...renderInputs.head, htmlAttrs: { ...renderInputs.head.htmlAttrs, lang: locale } }
+	const head = { ...renderInputs.head, htmlAttrs: { ...renderInputs.head.htmlAttrs, lang: locale, dir: I18n.textDirection(locale) } }
 	return (
 		'<!DOCTYPE html>' +
 		renderToStaticMarkup(createElement(LandingDocument, { variant, error: error ? tr.text(error) : null, tr, ...renderInputs, head }))

@@ -29,6 +29,9 @@ export function setup() {
 		const choice = localStorage.getItem(STORAGE_KEY) ?? AUTO
 		const locale = resolve(choice)
 		I18n.setAmbientLocale(locale)
+		// once per page load: changing locale reloads (see setChoice)
+		document.documentElement.lang = locale
+		document.documentElement.dir = I18n.textDirection(locale)
 		return {
 			choice,
 			locale,
@@ -45,6 +48,10 @@ export function setup() {
 			},
 		}
 	})
+}
+
+export function textDirection() {
+	return I18n.textDirection(I18n.getAmbientLocale())
 }
 
 export function useLocale() {

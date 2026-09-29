@@ -2,6 +2,7 @@
 import '@/systems/tutorials/layer-queue.steps'
 import '@/systems/tutorials/player-management.steps'
 
+import { DirectionProvider } from '@radix-ui/react-direction'
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import React from 'react'
@@ -11,6 +12,7 @@ import { ResetOtherSessionsManager } from '@/components/reset-other-sessions-man
 import { TourOverlay } from '@/components/tour-overlay'
 import { Toaster } from '@/components/ui/sonner'
 import * as RPC from '@/orpc.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
 
 import { DraggableWindowOutlet } from './ui/draggable-window'
@@ -18,9 +20,11 @@ import { AlertDialogProvider } from './ui/lazy-alert-dialog'
 
 export function Providers(props: { children: ReactNode }) {
 	return (
-		<QueryClientProvider client={RPC.queryClient}>
-			<ProvidersInner>{props.children}</ProvidersInner>
-		</QueryClientProvider>
+		<DirectionProvider dir={MessagesClient.textDirection()}>
+			<QueryClientProvider client={RPC.queryClient}>
+				<ProvidersInner>{props.children}</ProvidersInner>
+			</QueryClientProvider>
+		</DirectionProvider>
 	)
 }
 
