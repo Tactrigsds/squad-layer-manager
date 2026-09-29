@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils.ts'
 import * as Yaml from '@/lib/yaml'
 import type { z } from '@/lib/zod'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as SDoc from '@/models/schema-docs.models'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
@@ -110,7 +111,9 @@ export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEdit
 	// -------- setup editor, handle change events --------
 	React.useEffect(() => {
 		const commentsKey = commentsKeyRef.current
-		const schemaJson = CM.toJsonSchema(schemaRef.current)
+		const rawSchemaJson = CM.toJsonSchema(schemaRef.current)
+		// hover reads the standard title and description, so they carry the viewer's language
+		const schemaJson = rawSchemaJson && SDoc.localizeJsonSchema(rawSchemaJson, (msg) => tr.text(msg))
 		// the comments render as `#` lines, so completion and hover must not offer the key they are stored under
 		const schemaProps = (schemaJson as { properties?: Record<string, unknown> } | undefined)?.properties
 		if (commentsKey && schemaProps) delete schemaProps[commentsKey]

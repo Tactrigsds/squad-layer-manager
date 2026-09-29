@@ -7,6 +7,7 @@ import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import { t, type TString } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as SM from '@/models/squad.models.ts'
 import * as RBAC from '@/rbac.models'
 
@@ -166,18 +167,19 @@ const TIMEOUT_ACCESS = Access.inHandler("the duration is checked against the cal
 
 function declareCommand<Id extends string, const Args extends readonly ArgDef[]>(
 	id: Id,
-	opts: { section: CommandSection; access: CommandAccess; args: Args; defaults: CommandConfig },
+	opts: { label: TString; section: CommandSection; access: CommandAccess; args: Args; defaults: CommandConfig },
 ) {
 	assertValidArgDefs(id, opts.args)
 	return {
 		[id]: {
 			id,
+			label: opts.label,
 			section: opts.section,
 			access: opts.access,
 			defaults: opts.defaults,
 			args: opts.args,
 		},
-	} as { [K in Id]: { id: Id; section: CommandSection; access: CommandAccess; defaults: CommandConfig; args: Args } }
+	} as { [K in Id]: { id: Id; label: TString; section: CommandSection; access: CommandAccess; defaults: CommandConfig; args: Args } }
 }
 
 const SWAP_DESTINATION_HELP = t(
@@ -188,6 +190,7 @@ const SWAP_DESTINATION_HELP = t(
 // which is what a bare `!help` in the middle of a match should answer with. Admins re-pick it per installation.
 export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
+		label: t('Help', undefined, { context: 'command' }),
 		section: 'general',
 		access: Access.PUBLIC,
 		args: [
@@ -212,6 +215,7 @@ export const COMMAND_DECLARATIONS = {
 	// Public chat as well as admin: proving you own a steam account is what earns admin here, so requiring admin to
 	// do it would leave everyone who has not linked yet unable to.
 	...declareCommand('linkSteamAccount', {
+		label: t('Link Steam Account', undefined, { context: 'command' }),
 		section: 'general',
 		access: Access.SELF,
 		args: [
@@ -225,6 +229,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['link'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestFeedback', {
+		label: t('Request Feedback', undefined, { context: 'command' }),
 		section: 'general',
 		access: Access.PUBLIC,
 		// queue numbers accept dotted forms like "2.1", so this stays a string arg
@@ -240,6 +245,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['feedback', 'fb'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('startVote', {
+		label: t('Start Vote', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('vote:manage'),
 		args: [],
@@ -251,42 +257,49 @@ export const COMMAND_DECLARATIONS = {
 		},
 	}),
 	...declareCommand('abortVote', {
+		label: t('Abort Vote', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('vote:manage'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['abortvote', 'av'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('endVoteEarly', {
+		label: t('End Vote Early', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('vote:manage'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['endvote', 'ev'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('showNext', {
+		label: t('Show Next', undefined, { context: 'command' }),
 		section: 'general',
 		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['shownext', 'sn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('enableSlmUpdates', {
+		label: t('Enable SLM Updates', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('squad-server:disable-slm-updates'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['enableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disableSlmUpdates', {
+		label: t('Disable SLM Updates', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('squad-server:disable-slm-updates'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['disableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('getSlmUpdatesEnabled', {
+		label: t('Check SLM Updates', undefined, { context: 'command' }),
 		section: 'votes',
 		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['slmstatus'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestLayer', {
+		label: t('Request Layer', undefined, { context: 'command' }),
 		section: 'layerRequests',
 		access: Access.inHandler('how many requests a caller may hold is capped per grant, and counted against the queue'),
 		args: [
@@ -307,12 +320,14 @@ export const COMMAND_DECLARATIONS = {
 		},
 	}),
 	...declareCommand('listLayerRequests', {
+		label: t('List Layer Requests', undefined, { context: 'command' }),
 		section: 'layerRequests',
 		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['reqs', 'listreqs'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeLayerRequest', {
+		label: t('Remove Layer Request', undefined, { context: 'command' }),
 		section: 'layerRequests',
 		access: Access.inHandler("removing your own request is free, and removing someone else's needs queue:write"),
 		args: [
@@ -327,6 +342,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapNow', {
+		label: t('Swap Now', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -336,6 +352,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['swapnow'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapNext', {
+		label: t('Swap Next', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -345,6 +362,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['swapnext'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapSquadNow', {
+		label: t('Swap Squad Now', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -354,6 +372,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnow'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapSquadNext', {
+		label: t('Swap Squad Next', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -363,30 +382,35 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnext'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swaps', {
+		label: t('Swaps', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['swaps'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('clearSwaps', {
+		label: t('Clear Swaps', undefined, { context: 'command' }),
 		section: 'teamswaps',
 		access: onServer('squad-server:manage-players'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['clearswaps'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestSwitch', {
+		label: t('Request Switch', undefined, { context: 'command' }),
 		section: 'switchRequests',
 		access: Access.SELF,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['switch'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('cancelSwitch', {
+		label: t('Cancel Switch', undefined, { context: 'command' }),
 		section: 'switchRequests',
 		access: Access.SELF,
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['cancelswitch'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('flag', {
+		label: t('Flag', undefined, { context: 'command' }),
 		section: 'flags',
 		access: Access.req(RBAC.Req.perm('battlemetrics:write-flags')),
 		args: [
@@ -402,6 +426,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['flag'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('removeFlag', {
+		label: t('Remove Flag', undefined, { context: 'command' }),
 		section: 'flags',
 		access: Access.req(RBAC.Req.perm('battlemetrics:write-flags')),
 		args: [
@@ -412,18 +437,21 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['removeFlag', 'rf'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listFlags', {
+		label: t('List Flags', undefined, { context: 'command' }),
 		section: 'flags',
 		access: Access.PUBLIC,
 		args: [{ kind: 'recent-player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('pingAdmins', {
+		label: t('Ping Admins', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('ping-admins'),
 		defaults: { enabled: true, allowedChats: ['public', 'admin'], triggers: ['admin'], quickReference: true },
 		args: [{ kind: 'text', name: 'message', describe: t('The message you want to send to the admins.') }],
 	}),
 	...declareCommand('warn', {
+		label: t('Warn', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:warn-players'),
 		args: [
@@ -433,12 +461,14 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('listWarnReasons', {
+		label: t('List Warn Reasons', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: Access.PUBLIC,
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['warnreasons', 'warns'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('warnSquad', {
+		label: t('Warn Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:warn-players'),
 		args: [
@@ -448,6 +478,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['warnsquad', 'ws'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('kill', {
+		label: t('Kill', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -457,6 +488,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['kill'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('killSquad', {
+		label: t('Kill Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -466,6 +498,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['killsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeFromSquad', {
+		label: t('Remove from Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -475,6 +508,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disbandSquad', {
+		label: t('Disband Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -484,6 +518,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['disband'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('demoteCommander', {
+		label: t('Demote Commander', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:manage-players'),
 		args: [
@@ -493,12 +528,14 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['demote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('broadcast', {
+		label: t('Broadcast', undefined, { context: 'command' }),
 		section: 'messaging',
 		access: onServer('squad-server:broadcast'),
 		args: [{ kind: 'reason', name: 'reason', action: 'broadcast' }],
 		defaults: { allowedChats: ['admin'], triggers: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
+		label: t('Kick', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:kick-players'),
 		args: [
@@ -508,6 +545,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['kick'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kickSquad', {
+		label: t('Kick Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: onServer('squad-server:kick-players'),
 		args: [
@@ -517,6 +555,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['kicksquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('timeout', {
+		label: t('Timeout', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: TIMEOUT_ACCESS,
 		args: [
@@ -527,6 +566,7 @@ export const COMMAND_DECLARATIONS = {
 		defaults: { allowedChats: ['admin'], triggers: ['timeout', 'to'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('timeoutSquad', {
+		label: t('Timeout Squad', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: TIMEOUT_ACCESS,
 		args: [
@@ -538,6 +578,7 @@ export const COMMAND_DECLARATIONS = {
 	}),
 	// the target may be offline, so the arg is a plain token resolved against players with active timeouts
 	...declareCommand('clearTimeout', {
+		label: t('Clear Timeout', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: Access.inHandler('needs the timeout row to know which server issued it'),
 		args: [
@@ -573,13 +614,17 @@ export function isValidPrefix(s: string): boolean {
 export const PrefixSchema = z.string().min(1).regex(ASCII_SPECIAL, PREFIX_ERROR)
 
 export const PrefixConfigSchema = z.object({
-	prefix: PrefixSchema,
+	prefix: PrefixSchema.meta(SDoc.of({ label: t('Prefix') })),
 	replyToUnknown: z
 		.boolean()
 		.prefault(true)
-		.describe(
-			'Tell an admin who types an unrecognised command with this prefix that it is unrecognised. Turn it off for a prefix another ' +
-				"bot also answers on: there an unrecognised command is usually that bot's, not a typo of one of ours.",
+		.meta(
+			SDoc.of({
+				label: t('Reply To Unknown'),
+				description: t(
+					"Tell an admin who types an unrecognised command with this prefix that it is unrecognised. Turn it off for a prefix another bot also answers on: there an unrecognised command is usually that bot's, not a typo of one of ours.",
+				),
+			}),
 		),
 })
 export type PrefixConfig = z.infer<typeof PrefixConfigSchema>
@@ -615,32 +660,54 @@ export function seedCommandConfigs(commands: unknown, defaultPrefix: string): Re
 export const CommandTriggerSchema = z.union([
 	ZodUtils.BasicStrNoWhitespace,
 	z.object({
-		string: ZodUtils.BasicStrNoWhitespace,
+		string: ZodUtils.BasicStrNoWhitespace.meta(SDoc.of({ label: t('Trigger') })),
 		args: z
 			.string()
 			.min(1)
-			.describe(`The arguments this trigger runs the command with. A template over the words typed after it: ${TRIGGER_ARG_SYNTAX}`),
+			.meta(
+				SDoc.of({
+					label: t('Arguments'),
+					description: t(
+						"The arguments this trigger runs the command with. A template over the words typed after it: '{{arg1}}' for the first word typed after the trigger, '{{arg2}}' for the second, '{{rest2}}' for the second onwards",
+					),
+				}),
+			),
 	}),
 ])
 
 function CommandConfigSchema(commandId: CommandId) {
 	const declared = COMMAND_DECLARATIONS[commandId].defaults
-	return z.object({
-		triggers: z
-			.array(CommandTriggerSchema)
-			.describe(
-				"Strings that run this command, each starting with one of the allowed prefixes. A plain string takes the command's " +
-					'arguments as typed; give one an "args" template instead to pin some of them (what used to be a command alias)',
+	return z
+		.object({
+			triggers: z.array(CommandTriggerSchema).meta(
+				SDoc.of({
+					label: t('Triggers'),
+					description: t(
+						'Strings that run this command, each starting with one of the allowed prefixes. A plain string takes the command\'s arguments as typed; give one an "args" template instead to pin some of them (what used to be a command alias)',
+					),
+				}),
 			),
-		allowedChats: z.array(CHAT_GROUPS).prefault(declared.allowedChats).describe('Which in-game chats accept this command'),
-		enabled: z.boolean().prefault(declared.enabled),
-		quickReference: z
-			.boolean()
-			.prefault(declared.quickReference)
-			.describe(
-				'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
-			),
-	})
+			allowedChats: z
+				.array(CHAT_GROUPS)
+				.prefault(declared.allowedChats)
+				.meta(SDoc.of({ label: t('Allowed Chats'), description: t('Which in-game chats accept this command') })),
+			enabled: z
+				.boolean()
+				.prefault(declared.enabled)
+				.meta(SDoc.of({ label: t('Enabled') })),
+			quickReference: z
+				.boolean()
+				.prefault(declared.quickReference)
+				.meta(
+					SDoc.of({
+						label: t('Quick Reference'),
+						description: t(
+							'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
+						),
+					}),
+				),
+		})
+		.meta(SDoc.of({ label: COMMAND_DECLARATIONS[commandId].label }))
 }
 
 // no prefault on the object or on `triggers`: a command's default triggers depend on `defaultPrefix`, so they're
@@ -705,10 +772,19 @@ export const PluginCommandConfigSchema = z.object({
 	triggers: z
 		.array(ZodUtils.BasicStrNoWhitespace)
 		.min(1)
-		.describe('Strings that run this command, each starting with one of the allowed prefixes'),
-	allowedChats: z.array(CHAT_GROUPS).min(1).describe('Which in-game chats accept this command'),
-	enabled: z.boolean(),
-	quickReference: z.boolean().describe('Show this command on the quick reference, and in a bare help command'),
+		.meta(
+			SDoc.of({ label: t('Triggers'), description: t('Strings that run this command, each starting with one of the allowed prefixes') }),
+		),
+	allowedChats: z
+		.array(CHAT_GROUPS)
+		.min(1)
+		.meta(SDoc.of({ label: t('Allowed Chats'), description: t('Which in-game chats accept this command') })),
+	enabled: z.boolean().meta(SDoc.of({ label: t('Enabled') })),
+	quickReference: z
+		.boolean()
+		.meta(
+			SDoc.of({ label: t('Quick Reference'), description: t('Show this command on the quick reference, and in a bare help command') }),
+		),
 })
 export type PluginCommandConfig = z.infer<typeof PluginCommandConfigSchema>
 

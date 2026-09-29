@@ -6,6 +6,8 @@ import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as SLL from '@/models/squad-layer-list.models'
 import * as VEH from '@/models/vehicles.models'
 
@@ -978,20 +980,30 @@ export function isMatchupKey(key: PickKey): key is MatchupKey {
 	return key in MATCHUP_COLUMNS
 }
 
-export const FactionUnitSchema = z.object({ Faction: z.string(), Unit: z.string() })
+export const FactionUnitSchema = z.object({
+	Faction: z.string().meta(SDoc.of({ label: t('Faction') })),
+	Unit: z.string().meta(SDoc.of({ label: t('Unit') })),
+})
 export type FactionUnit = z.infer<typeof FactionUnitSchema>
 export type MatchupSide = string | FactionUnit
 
 function matchupEntries<S extends z.ZodType>(side: S) {
-	return z.array(z.object({ teams: z.tuple([side, side]), weight: z.number() })).prefault([])
+	return z
+		.array(
+			z.object({
+				teams: z.tuple([side, side]).meta(SDoc.of({ label: t('Teams') })),
+				weight: z.number().meta(SDoc.of({ label: t('Weight') })),
+			}),
+		)
+		.prefault([])
 }
 
 export const MatchupWeightsSchema = z
 	.object({
-		AllianceMatchup: matchupEntries(z.string()),
-		FactionMatchup: matchupEntries(z.string()),
-		UnitMatchup: matchupEntries(z.string()),
-		FactionUnitMatchup: matchupEntries(FactionUnitSchema),
+		AllianceMatchup: matchupEntries(z.string()).meta(SDoc.of({ label: t('Alliance Matchup') })),
+		FactionMatchup: matchupEntries(z.string()).meta(SDoc.of({ label: t('Faction Matchup') })),
+		UnitMatchup: matchupEntries(z.string()).meta(SDoc.of({ label: t('Unit Matchup') })),
+		FactionUnitMatchup: matchupEntries(FactionUnitSchema).meta(SDoc.of({ label: t('Faction Unit Matchup') })),
 	})
 	.prefault({})
 
@@ -1104,17 +1116,42 @@ export const LayerGenerationConfigSchema = z
 		pickOrder: z
 			.array(PICK_KEYS)
 			.prefault([])
-			.describe(
-				'Columns and matchups to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
+			.meta(
+				SDoc.of({
+					label: t('Pick Order'),
+					description: t(
+						'Columns and matchups to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
+					),
+				}),
 			),
 		weights: z
-			.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() })))
+			.partialRecord(
+				WEIGHT_COLUMNS,
+				z.array(
+					z.object({
+						value: z.string().meta(SDoc.of({ label: t('Value') })),
+						weight: z.number().meta(SDoc.of({ label: t('Weight') })),
+					}),
+				),
+			)
 			.prefault({})
-			.describe(
-				`Relative selection weight per column value. Values not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.`,
+			.meta(
+				SDoc.of({
+					label: t('Weights'),
+					description: t(
+						'Relative selection weight per column value. Values not listed here are weighted {weight}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.',
+						{ weight: DEFAULT_GENERATION_WEIGHT },
+					),
+				}),
 			),
-		matchupWeights: MatchupWeightsSchema.describe(
-			`Relative selection weight per matchup between the two teams. Matchups are unordered, so [ADF, PLA] and [PLA, ADF] are the same entry. Pairings not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}.`,
+		matchupWeights: MatchupWeightsSchema.meta(
+			SDoc.of({
+				label: t('Matchup Weights'),
+				description: t(
+					'Relative selection weight per matchup between the two teams. Matchups are unordered, so [ADF, PLA] and [PLA, ADF] are the same entry. Pairings not listed here are weighted {weight}.',
+					{ weight: DEFAULT_GENERATION_WEIGHT },
+				),
+			}),
 		),
 	})
 	.prefault({})

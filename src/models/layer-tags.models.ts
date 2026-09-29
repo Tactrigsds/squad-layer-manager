@@ -2,6 +2,8 @@ import * as Color from '@/lib/color'
 import { createId } from '@/lib/id'
 import { z } from '@/lib/zod'
 import * as LNote from '@/models/layer-notes.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import * as USR from '@/models/users.models'
 
 // A tag's identity is its id, which is immutable and carries the label it was created with, so a tag whose definition has
@@ -29,20 +31,27 @@ export type TagId = z.infer<typeof TagIdSchema>
 export const ColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, { error: 'Must be a hex color like #7dd3fc' })
 
 export const TagSchema = z.object({
-	id: TagIdSchema,
-	label: LabelSchema,
-	description: z.string().trim().max(MAX_DESCRIPTION_LENGTH).prefault(''),
-	color: ColorSchema,
+	id: TagIdSchema.meta(SDoc.of({ label: t('ID') })),
+	label: LabelSchema.meta(SDoc.of({ label: t('Label') })),
+	description: z
+		.string()
+		.trim()
+		.max(MAX_DESCRIPTION_LENGTH)
+		.prefault('')
+		.meta(SDoc.of({ label: t('Description') })),
+	color: ColorSchema.meta(SDoc.of({ label: t('Color') })),
 })
 export type Tag = z.infer<typeof TagSchema>
 
 export const TagsSchema = z
 	.array(TagSchema)
 	.prefault([])
-	.describe(
-		'Tags that can be attached to layers in the queue. A tag is identified by an immutable id containing the label it was created with; ' +
-			'renaming a tag therefore keeps it attached to every layer carrying it. Deleting a tag here does not strip it from layers already ' +
-			'carrying it -- those fall back to displaying the raw tag id and can only be removed.',
+	.meta(
+		SDoc.of({
+			description: t(
+				'Tags that can be attached to layers in the queue. A tag is identified by an immutable id containing the label it was created with; renaming a tag therefore keeps it attached to every layer carrying it. Deleting a tag here does not strip it from layers already carrying it -- those fall back to displaying the raw tag id and can only be removed.',
+			),
+		}),
 	)
 
 export const AttributionSchema = z.record(TagIdSchema, USR.UserIdSchema)

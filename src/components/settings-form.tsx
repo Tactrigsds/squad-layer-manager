@@ -39,7 +39,6 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/lib/settings-groups'
-import { humanize } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
@@ -3405,11 +3404,13 @@ function SelectField({
 	reset$,
 	onChange,
 	options,
+	node,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
+	node: Node
 }) {
 	const value = useFieldValue(value$)
 	return (
@@ -3420,7 +3421,7 @@ function SelectField({
 			<SelectContent>
 				{options.map((opt) => (
 					<SelectItem key={opt} value={opt}>
-						{opt}
+						{tr.text(SETTINGS_Msgs.settingOption(node, opt))}
 					</SelectItem>
 				))}
 			</SelectContent>
@@ -3436,6 +3437,7 @@ function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$:
 // discriminated union: a variant picker keyed to the discriminator const, plus the active branch's object fields
 // (the discriminator field itself is chosen by the picker, so it isn't rendered as an editable property).
 function DiscriminatedUnionField({
+	node,
 	path,
 	value$,
 	reset$,
@@ -3443,6 +3445,7 @@ function DiscriminatedUnionField({
 	branches,
 	discriminator,
 }: {
+	node: Node
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
@@ -3477,7 +3480,7 @@ function DiscriminatedUnionField({
 						const opt = String(b.properties[discriminator].const)
 						return (
 							<SelectItem key={opt} value={opt}>
-								{tr.text(SETTINGS_Msgs.settingName([...path, discriminator, opt], opt))}
+								{tr.text(SETTINGS_Msgs.settingOption(node, opt))}
 							</SelectItem>
 						)
 					})}
@@ -3493,18 +3496,20 @@ function EnumArrayField({
 	reset$,
 	onChange,
 	options,
+	node,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
+	node: Node
 }) {
 	const value = useFieldValue(value$) as any[]
 	return (
 		<ComboBoxMulti
 			title={tr.text(SETTINGS_Msgs.enumValuePicker())}
 			values={value ?? []}
-			options={options}
+			options={options.map((opt) => ({ value: opt, label: tr.text(SETTINGS_Msgs.settingOption(node, opt)) }))}
 			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
 		/>
 	)
@@ -3560,13 +3565,13 @@ function wrapNullable(
 }
 
 // placeholder for a text/number input: the schema default when there is one (doubles as a format hint, e.g. '5m'),
-// an example duration for HumanTime fields without one, otherwise the humanized field name
+// an example duration for HumanTime fields without one, otherwise the field's name
 function placeholderFor(node: Node, inner: Node, path: Path): string | undefined {
 	const def = effectiveDefault(node)
 	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
 	if (isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
 	const last = path[path.length - 1]
-	return typeof last === 'string' ? humanize(last) : undefined
+	return typeof last === 'string' ? tr.text(SETTINGS_Msgs.settingLabel(node, last)) : undefined
 }
 
 function FieldControl({
@@ -3597,6 +3602,7 @@ function FieldControl({
 	if (du) {
 		return (
 			<DiscriminatedUnionField
+				node={node}
 				path={path}
 				value$={value$}
 				reset$={reset$}
@@ -3611,7 +3617,7 @@ function FieldControl({
 	if (inner.enum && inner.type !== 'array') {
 		return wrapNullable(
 			nullable,
-			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />,
+			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={node} />,
 			inner,
 			value$,
 			reset$,
@@ -3704,7 +3710,7 @@ function ArrayField({
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
-		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} />
+		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={items} />
 	}
 
 	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
@@ -4523,7 +4529,8 @@ function SectionField({
 	onChange: (v: any) => void
 }) {
 	const { inner } = stripNullable(node)
-	const description: string | undefined = node.description ?? inner.description
+	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
+	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
@@ -4546,7 +4553,7 @@ function SectionField({
 		>
 			<StickyGroup stickyRef={headerRef}>
 				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
-					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingName(path, name))}</legend>
+					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</legend>
 					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
 					<span className="contents" inert={!writable}>
@@ -4571,7 +4578,7 @@ function SectionField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
+						label={tr.text(SETTINGS_Msgs.settingLabel(node, name))}
 						domId={domId}
 						path={path}
 						value$={value$}
@@ -4605,7 +4612,8 @@ function LeafField({
 	hasOverride: boolean
 }) {
 	const { inner } = stripNullable(node)
-	const description: string | undefined = node.description ?? inner.description
+	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
+	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	const domId = `${idPrefix}${pathStr}`
@@ -4648,7 +4656,7 @@ function LeafField({
 		>
 			<div className={cn(isBoolean && 'min-w-0')}>
 				<div className="group flex items-center gap-1.5">
-					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingName(path, name))}</Label>
+					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</Label>
 					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{!writable && (
 						<Tooltip>
@@ -4674,7 +4682,7 @@ function LeafField({
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
-						label={tr.text(SETTINGS_Msgs.settingName(path, name))}
+						label={tr.text(SETTINGS_Msgs.settingLabel(node, name))}
 						domId={domId}
 						path={path}
 						value$={value$}

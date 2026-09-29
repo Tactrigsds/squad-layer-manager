@@ -6,6 +6,7 @@ import * as React from 'react'
 import type { SettingsGroupSlug } from '@/lib/settings-groups'
 import { humanize } from '@/lib/settings-labels'
 import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as SETTINGS from '@/models/settings.models'
 
 // -------- section names --------
@@ -537,23 +538,22 @@ export const settingsGroupNames: Record<SettingsGroupSlug, TString> = {
 	misc: t('Miscellaneous'),
 }
 
-// keyed by dotted settings path, for the paths whose humanized key reads wrong
-const SETTING_NAME_OVERRIDES: Record<string, TString> = {
-	messageVariables: t('Message Variables'),
-	requireReasonFor: t('Require a Reason'),
-	layerGeneration: t('Layer Generation Weights'),
-	// its group header already reads "Permissions & Roles"; the field itself is the role definitions
-	rbac: t('Roles'),
-	playerGroupings: t('Player Grouping Modes'),
-	vote: t('Votes'),
-	// the chat config holds nothing but the feed's warn/broadcast suppression patterns
-	chat: t('Chat Feed Suppression'),
-	// per-server settings
-	connections: t('Connections'),
-	'connections.rcon': t('RCON'),
-	'connections.sftp': t('SFTP Log Source'),
-	'connections.token': t('Agent Token'),
+// A setting's name, description and option names come from its schema (see @/models/schema-docs.models). A node
+// without them is a plugin's, whose schema carries plain English, so that is shown as is.
+
+// `node` is the JSON schema node for the setting, as rendered; `key` names it when the schema does not
+export function settingLabel(node: unknown, key: string): TString {
+	return SDoc.read(node)?.label ?? raw(humanize(key))
 }
 
-// Every other setting is named after its humanized key, which stays English.
-export const settingName = def((path: (string | number)[], key: string) => SETTING_NAME_OVERRIDES[path.join('.')] ?? raw(humanize(key)))
+export function settingDescription(node: unknown): TString | undefined {
+	const doc = SDoc.read(node)
+	if (doc?.description) return doc.description
+	const plain = (node as { description?: unknown } | undefined)?.description
+	return typeof plain === 'string' ? raw(plain) : undefined
+}
+
+// the name of one value of an enum, or one branch of a discriminated union
+export function settingOption(node: unknown, value: string): TString {
+	return SDoc.read(node)?.options?.[value] ?? raw(value)
+}

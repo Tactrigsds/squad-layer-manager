@@ -32,8 +32,8 @@ export function toJsonSchema(schema: z.core.$ZodType): JsonSchema | undefined {
 }
 
 // Base extensions for a YAML editor: editing affordances, YAML syntax, the Foundry theme, line wrapping, and --
-// when a schema is provided -- schema-driven autocompletion and hover tooltips (descriptions come from
-// `.describe()` annotations on the zod schema).
+// when a schema is provided -- schema-driven autocompletion and hover tooltips (titles and descriptions come from
+// the schema docs, see @/models/schema-docs.models).
 export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[] {
 	return [
 		basicSetup,

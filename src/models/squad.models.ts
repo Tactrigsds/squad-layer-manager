@@ -12,6 +12,8 @@ import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 
@@ -677,19 +679,26 @@ export const PLAYER_PERM = z.enum([
 export type PlayerPerm = z.infer<typeof PLAYER_PERM>
 // remote/local/ftp keep a single `source` string (a URL, local path, or ftp:// URI); sftp holds its connection
 // details separately so they can be entered directly (or copied from the server's sftp log connection).
-export const AdminListSourceSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('remote'), source: z.string() }),
-	z.object({ type: z.literal('local'), source: z.string() }),
-	z.object({ type: z.literal('ftp'), source: z.string() }),
-	z.object({
-		type: z.literal('sftp'),
-		host: z.string(),
-		port: z.number().min(1).max(65535).prefault(22),
-		username: z.string(),
-		password: z.string(),
-		filePath: z.string(),
-	}),
-])
+export const AdminListSourceSchema = z
+	.discriminatedUnion('type', [
+		z.object({ type: z.literal('remote').meta(SDoc.of({ label: t('Type') })), source: z.string().meta(SDoc.of({ label: t('Source') })) }),
+		z.object({ type: z.literal('local').meta(SDoc.of({ label: t('Type') })), source: z.string().meta(SDoc.of({ label: t('Source') })) }),
+		z.object({ type: z.literal('ftp').meta(SDoc.of({ label: t('Type') })), source: z.string().meta(SDoc.of({ label: t('Source') })) }),
+		z.object({
+			type: z.literal('sftp').meta(SDoc.of({ label: t('Type') })),
+			host: z.string().meta(SDoc.of({ label: t('Host') })),
+			port: z
+				.number()
+				.min(1)
+				.max(65535)
+				.prefault(22)
+				.meta(SDoc.of({ label: t('Port') })),
+			username: z.string().meta(SDoc.of({ label: t('Username') })),
+			password: z.string().meta(SDoc.of({ label: t('Password') })),
+			filePath: z.string().meta(SDoc.of({ label: t('File Path') })),
+		}),
+	])
+	.meta(SDoc.of({ options: { remote: t('Remote URL'), local: t('Local file'), ftp: t('FTP'), sftp: t('SFTP') } }))
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type AdminListSourceType = AdminListSource['type']
 
@@ -715,13 +724,17 @@ export type AdminListId = z.infer<typeof AdminListIdSchema>
 // one source may mark its admins with `canseeadminchat` while another uses a bespoke group perm, and merging them
 // globally makes every list inherit the loosest definition of "admin" any of them uses.
 export const AdminListDefSchema = z.object({
-	source: AdminListSourceSchema,
+	source: AdminListSourceSchema.meta(SDoc.of({ label: t('Source') })),
 	adminIdentifyingPermissions: z
 		.array(PLAYER_PERM)
 		.prefault([])
-		.describe(
-			'Group permissions in THIS list that mark a player as an in-game admin (e.g. "canseeadminchat"). A player granted any ' +
-				'of these is treated as an admin for the servers using this list, which drives admin-only warns and admin presence.',
+		.meta(
+			SDoc.of({
+				label: t('Admin-identifying Permissions'),
+				description: t(
+					'Group permissions in THIS list that mark a player as an in-game admin (e.g. "canseeadminchat"). A player granted any of these is treated as an admin for the servers using this list, which drives admin-only warns and admin presence.',
+				),
+			}),
 		),
 })
 export type AdminListDef = z.infer<typeof AdminListDefSchema>

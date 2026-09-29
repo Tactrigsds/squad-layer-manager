@@ -1,5 +1,7 @@
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
+import { t } from '@/models/messages.models'
+import * as SDoc from '@/models/schema-docs.models'
 
 // shared shape for admin-configurable presets addressable from in-game chat (admin action reasons).
 // The label names the preset in menus and the audit log; the keywords are what chat matches against, and are
@@ -7,12 +9,22 @@ import * as ZodUtils from '@/lib/zod-utils'
 // would silently be unreachable.
 
 export const LabeledPresetSchema = z.object({
-	label: z.string().trim().min(1).max(60).describe('Short name shown in menus and the audit log'),
+	label: z
+		.string()
+		.trim()
+		.min(1)
+		.max(60)
+		.meta(SDoc.of({ label: t('Label'), description: t('Short name shown in menus and the audit log') })),
 	keywords: z
 		.array(ZodUtils.BasicStrNoWhitespace)
 		.min(1)
-		.describe(
-			'What admins type to select this preset in in-game chat commands. At least one is required, and none may contain whitespace.',
+		.meta(
+			SDoc.of({
+				label: t('Keywords'),
+				description: t(
+					'What admins type to select this preset in in-game chat commands. At least one is required, and none may contain whitespace.',
+				),
+			}),
 		),
 })
 export type LabeledPreset = z.infer<typeof LabeledPresetSchema>

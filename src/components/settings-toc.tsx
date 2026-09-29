@@ -84,13 +84,16 @@ function buildChildren(
 			const inner = stripNullable(props[key])
 			const childPath = [...path, key]
 			const pathStr = childPath.join('.')
+			const label = SETTINGS_Msgs.settingLabel(props[key], key)
 			// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
 			// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
 			const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
 			return {
 				id: `${idPrefix}${pathStr}`,
-				label: tr.text(SETTINGS_Msgs.settingName(childPath, key)),
+				label: tr.text(label),
 				path: pathStr,
+				// the English name too, for an admin following a guide written in English
+				keywords: [label.original],
 				writable: RBAC.settingsPathOverlaps(access, childPath),
 				children: recurse
 					? buildChildren(inner, childPath, idPrefix, access, entries)
@@ -135,7 +138,7 @@ function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: s
 
 function filterNode(node: TocNode, query: string): TocNode | null {
 	const children = node.children.map((c) => filterNode(c, query)).filter((c): c is TocNode => c !== null)
-	// match on the humanized label, the json path or any keyword, so users can search by whichever they know
+	// match on the label, the json path or any keyword, so users can search by whichever they know
 	const selfMatch =
 		node.label.toLowerCase().includes(query) ||
 		node.path.toLowerCase().includes(query) ||

@@ -5,7 +5,9 @@ import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
+import { t } from '@/models/messages.models'
 import { applyEventTeamMutations } from '@/models/pending-events.models'
+import * as SDoc from '@/models/schema-docs.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { baseLogger } from '@/systems/logger.client'
@@ -696,17 +698,24 @@ export const ChatConfigSchema = z.object({
 	warnSuppressionPatterns: z
 		.array(SuppressionSchema)
 		.prefault([])
-		.describe(
-			"Regular expressions matched against a warn's text. A warn matching any of them is left out of the live chat feed; it is still " +
-				'delivered in-game. Use it to keep routine SLM notifications from burying real chat.',
+		.meta(
+			SDoc.of({
+				label: t('Warn Suppression Patterns'),
+				description: t(
+					"Regular expressions matched against a warn's text. A warn matching any of them is left out of the live chat feed; it is still delivered in-game. Use it to keep routine SLM notifications from burying real chat.",
+				),
+			}),
 		),
 	broadcastSuppressionPatterns: z
 		.array(SuppressionSchema)
 		.prefault([])
-		.describe(
-			"Regular expressions matched against a broadcast's text. A broadcast matching any of them is left out of the live chat feed; it is " +
-				'still sent in-game. Only applies to broadcasts SLM cannot attribute to a player, so one an admin sent with an in-game command ' +
-				'is never hidden.',
+		.meta(
+			SDoc.of({
+				label: t('Broadcast Suppression Patterns'),
+				description: t(
+					"Regular expressions matched against a broadcast's text. A broadcast matching any of them is left out of the live chat feed; it is still sent in-game. Only applies to broadcasts SLM cannot attribute to a player, so one an admin sent with an in-game command is never hidden.",
+				),
+			}),
 		),
 })
 
