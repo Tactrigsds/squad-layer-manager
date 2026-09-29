@@ -124,7 +124,7 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 
 export const MATCH_ROW_COLUMNS = 11
 
-export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number }) {
+export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number; setBy: string }) {
 	const { details } = props
 	const time = MatchSummary.matchTime(details)
 	return (
@@ -150,7 +150,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			<td className={CELL}>{MatchSummary.killsText(details)}</td>
 			<td className={CELL}>{MatchSummary.killDiffText(details)}</td>
 			<td className={CELL}>{MatchSummary.durationText(details)}</td>
-			<td className={CELL}>{details.layerSource.type}</td>
+			<td className={CELL}>{props.setBy}</td>
 		</ExpandableRow>
 	)
 }

@@ -95,6 +95,8 @@ export type ResolvedArtifacts = {
 	playerSets: Map<HQ.Node, string[]>
 	playerValues: Map<HQ.Node, string[]>
 	userValues: Map<HQ.Node, string[]>
+	// match.setByPlayer's refs as steam ids, which is how a layer request records its requesters
+	setBySteamIds: Map<HQ.Node, string[]>
 	damageSourceIds: Map<HQ.Node, number[]>
 	// the layer ids a layer-part predicate selects. Held as ids rather than as the matches that played them:
 	// the id is what every table already carries, and there are a few hundred of them against any number of
@@ -190,6 +192,44 @@ export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<st
 		)
 		.limit(MAX_NAME_MATCHES)
 	return rows.map((r) => r.eosId)
+}
+
+// A steam64 ref is kept as-is, so a requester who never joined a server we record can still be found. Anything
+// else goes through resolvePlayerRefs and then to the steam ids those players carry.
+async function resolvePlayerSteamIds(ctx: C.Db, refs: string[]): Promise<string[]> {
+	const steamIds = new Set<string>()
+	const other: string[] = []
+	for (const ref of refs) {
+		if (STEAM64_RE.test(ref)) steamIds.add(ref)
+		else other.push(ref)
+	}
+	const eosIds = other.length > 0 ? await resolvePlayerRefs(ctx, other) : []
+	if (eosIds.length > 0) {
+		const rows = await ctx
+			.db()
+			.select({ steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(inJsonSet(Schema.players.eosId, eosIds))
+		for (const r of rows) if (r.steamId !== null) steamIds.add(r.steamId.toString())
+	}
+	return [...steamIds]
+}
+
+// A layer request's requesters are a superjson array (see serializeRequesters), so the ids sit under `$.json`,
+// with discord ids as strings.
+function requestedBy(row: typeof mh, key: 'discordId' | 'steamId', ids: string[]): E.SQL {
+	return sql`(${row.setByType} = 'layer-request' AND EXISTS (SELECT 1 FROM json_each(${row.setByRequesters}, '$.json') WHERE ${inJsonSet(sql`json_extract(value, ${`$.${key}`})`, ids)}))`
+}
+
+/** Whether a match row's layer was set by one of these users or players. */
+export function setByCond(row: typeof mh, column: 'match.setByUser' | 'match.setByPlayer', ids: string[]): E.SQL {
+	if (ids.length === 0) return sql`0 = 1`
+	if (column === 'match.setByPlayer') return requestedBy(row, 'steamId', ids)
+	return sql`(${inJsonSet(row.setByUserId, ids)} OR ${requestedBy(row, 'discordId', ids)})`
+}
+
+function setByIds(column: 'match.setByUser' | 'match.setByPlayer', node: HQ.Node, art: ResolvedArtifacts): string[] {
+	return (column === 'match.setByUser' ? art.userValues.get(node) : art.setBySteamIds.get(node)) ?? []
 }
 
 type PlayedLayer = { layerId: string; layer: L.UnvalidatedLayer }
@@ -296,6 +336,7 @@ export async function resolveArtifacts(
 		playerSets: new Map(),
 		playerValues: new Map(),
 		userValues: new Map(),
+		setBySteamIds: new Map(),
 		damageSourceIds: new Map(),
 		layerSets: new Map(),
 	}
@@ -359,9 +400,13 @@ export async function resolveArtifacts(
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			artifacts.playerValues.set(node, await resolvePlayerRefs(ctx, refs))
 		}
-		if (column === 'user') {
+		if (column === 'user' || column === 'match.setByUser') {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			artifacts.userValues.set(node, await resolveUserRefs(ctx, refs))
+		}
+		if (column === 'match.setByPlayer') {
+			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
+			artifacts.setBySteamIds.set(node, await resolvePlayerSteamIds(ctx, refs))
 		}
 		if (HQ.isLayerColumn(column)) {
 			played ??= await playedLayers(ctx, bounds)
@@ -592,6 +637,11 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
+		case 'match.setByUser':
+		case 'match.setByPlayer': {
+			const cond = sql`${t.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${setByCond(mh, column, setByIds(column, node, art))})`
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.ticketDiff':
 			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.kills':
@@ -694,6 +744,11 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT ${mh.setByType} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
+		case 'match.setByUser':
+		case 'match.setByPlayer': {
+			const cond = sql`${ae.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${setByCond(mh, column, setByIds(column, node, art))})`
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.ticketDiff':
 			return compileComp(comp, sql`(SELECT ${ticketDiffOf(mh)} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.kills':
@@ -828,6 +883,11 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			return compileComp(comp, mh.outcome, id)
 		case 'match.setBy':
 			return compileComp(comp, mh.setByType, id)
+		case 'match.setByUser':
+		case 'match.setByPlayer': {
+			const cond = setByCond(mh, column, setByIds(column, node, art))
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.ticketDiff':
 			return compileComp(comp, ticketDiffOf(mh), id)
 		case 'match.kills':

@@ -2,6 +2,7 @@ import * as E from 'drizzle-orm'
 import { Worker } from 'node:worker_threads'
 
 import * as Schema from '$root/drizzle/schema'
+import * as MatchSummary from '@/components/feed/match-summary'
 import { renderRow } from '@/components/feed/render'
 import * as RC from '@/components/feed/render-context'
 import * as RowText from '@/components/feed/row-text'
@@ -221,12 +222,54 @@ async function matchesPage(ctx: QueryCtx, resolved: Resolved, query: HQ.Query, p
 	})
 	if (res.code !== 'ok') return res
 	if (res.kind !== 'matches') throw new Error('engine returned a mismatched response kind')
+	const matches = res.rows.flatMap((row) => toMatchDetails(row) ?? [])
 	return {
 		code: 'ok' as const,
-		matches: res.rows.flatMap((row) => toMatchDetails(row) ?? []),
+		matches,
+		setByNames: await setByNames(ctx, matches),
 		// keyed by match id, since a row toMatchDetails drops has no details to hang a count on
 		eventCounts: res.events,
 		total: res.total,
+	}
+}
+
+// The names behind each match's layer source, for its "set by" cell. One query per kind of id over the whole page.
+async function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): Promise<MatchSummary.SetByNames> {
+	const userIds = new Set<bigint>()
+	const steamIds = new Set<bigint>()
+	const pluginIds = new Set<string>()
+	for (const { layerSource: source } of matches) {
+		if (source.type === 'manual') userIds.add(source.userId)
+		else if (source.type === 'plugin') pluginIds.add(source.pluginId)
+		else if (source.type === 'layer-request') {
+			for (const requester of source.requesters) {
+				if (requester.discordId !== undefined) userIds.add(requester.discordId)
+				if (requester.steamId !== undefined) steamIds.add(BigInt(requester.steamId))
+			}
+		}
+	}
+	const [users, players] = await Promise.all([
+		userIds.size > 0
+			? ctx
+					.db()
+					.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+					.from(Schema.users)
+					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+					.where(E.inArray(Schema.users.discordId, [...userIds]))
+			: [],
+		steamIds.size > 0
+			? ctx
+					.db()
+					.select({ steamId: Schema.players.steamId, username: Schema.players.username })
+					.from(Schema.players)
+					.where(E.inArray(Schema.players.steamId, [...steamIds]))
+			: [],
+	])
+	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
+	return {
+		users: Object.fromEntries(users.map((u) => [u.discordId.toString(), u.nickname || u.username])),
+		players: Object.fromEntries(players.flatMap((p) => (p.steamId === null ? [] : [[p.steamId.toString(), p.username]]))),
+		plugins: Object.fromEntries([...pluginIds].flatMap((id) => (pluginNames.has(id) ? [[id, pluginNames.get(id)!]] : []))),
 	}
 }
 
@@ -713,7 +756,11 @@ export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: '
 		case 'matches': {
 			const res = await matchesPage(ctx, resolved, query, page - 1)
 			if (res.code !== 'ok') return res
-			const rows = res.matches.map((details) => ({ details, events: res.eventCounts[details.historyEntryId] ?? 0 }))
+			const rows = res.matches.map((details) => ({
+				details,
+				events: res.eventCounts[details.historyEntryId] ?? 0,
+				setBy: MatchSummary.setByText(details.layerSource, res.setByNames),
+			}))
 			const body = withResultsAmbient(opts.render, () => format(ResultTable.matchesTable(rows, tableOpts)))
 			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.matches) }
 		}
