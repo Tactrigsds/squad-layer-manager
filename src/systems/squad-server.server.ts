@@ -791,6 +791,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 		tickRate$: new Rx.BehaviorSubject(null as number | null),
+		serverInfo$: new Rx.BehaviorSubject(null as SM.ServerInfo | null),
 
 		event$: new TracedSubject({ ...CS.init(), serverId }),
 		appEvent$: new TracedSubject({ ...CS.init(), serverId }),
@@ -814,6 +815,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		() => server.postRollEventsSub,
 		server.serverRolling$,
 		server.tickRate$,
+		server.serverInfo$,
 		server.event$,
 		server.appEvent$,
 		server.processEventsMtx,
@@ -1148,6 +1150,12 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				}),
 			)
 			.subscribe(),
+	)
+
+	cleanup.push(
+		squadRcon.serverInfo
+			.observe({ ...managedServer, ...ctx })
+			.subscribe((res) => server.serverInfo$.next(res.code === 'ok' ? res.data : null)),
 	)
 
 	void LayerQueue.setupInstance({ ...ctx, ...managedServer })

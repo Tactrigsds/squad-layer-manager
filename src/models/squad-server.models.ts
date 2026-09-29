@@ -9,6 +9,7 @@ import type * as CS from '@/models/context-shared'
 import type * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
 import * as SR from '@/models/squad-rcon.models'
+import type * as SM from '@/models/squad.models'
 
 export type Ctx = CS.Ctx & { server: Ctx.Payload } & SR.Ctx
 
@@ -20,6 +21,9 @@ export namespace Ctx {
 
 		// latest "Server Tick Rate" reported in the game logs; null until the first sample is seen
 		tickRate$: Rx.BehaviorSubject<number | null>
+
+		// latest successful rcon server info read; null while the last read failed
+		serverInfo$: Rx.BehaviorSubject<SM.ServerInfo | null>
 
 		// events of the current match, kept in memory purely to serve the chat feed without a query. Every one of
 		// them is already persisted (see the createEvent hook); this is a cache, not a write buffer.

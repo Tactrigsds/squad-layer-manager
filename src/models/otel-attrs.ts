@@ -10,6 +10,9 @@ export namespace User {
 export namespace SquadServer {
 	export const ID = 'slm.squad_server.id'
 	export const COUNT = 'slm.squad_server.count'
+	export const PLAYER_COUNT = 'slm.squad_server.player_count'
+	export const MAX_PLAYER_COUNT = 'slm.squad_server.max_player_count'
+	export const QUEUE_LENGTH = 'slm.squad_server.queue_length'
 }
 
 // Every spanOp records one of these, so the whole app gets rate/error/duration for free. `name` is the
