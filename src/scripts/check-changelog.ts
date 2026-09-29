@@ -56,7 +56,7 @@ if (base) {
 	if (added.length === 0 && !optedOut && needsFragment.length > 0) {
 		problems.push(
 			'this PR changes more than background code but adds no fragment to changes/. Add one (see changes/README.md), ' +
-				`or put "Changelog: none" in the PR description if nobody using or running SLM would notice. Commits:\n    ${needsFragment.map((c) => c.subject).join('\n    ')}`,
+				`or put "Changelog: none" in the PR description or a commit message if nobody using or running SLM would notice. Commits:\n    ${needsFragment.map((c) => c.subject).join('\n    ')}`,
 		)
 	}
 }

@@ -13,7 +13,7 @@ It does if someone could notice it without reading the code or the logs:
   (a long or irreversible migration)
 
 Refactors, tests, CI, internal docs and fixes to bugs that never shipped do not. Put `Changelog: none` in the PR
-description instead, so the choice is written down. A PR made only of `refactor`, `test`, `ci`, `style`, `chore`,
+description or a commit message instead, so the choice is written down. The pre-push hook only sees commit messages. A PR made only of `refactor`, `test`, `ci`, `style`, `chore`,
 `docs` or `build` commits needs neither.
 
 A breaking commit (`feat!:`) always needs an `operators` fragment saying what an upgrade has to do.
@@ -40,4 +40,4 @@ Write the first line for the people it affects. Say what changed for them, not w
 
 ## Checking
 
-`pnpm changelog:check` validates every fragment. CI also runs it against each pull request.
+`pnpm changelog:check` validates every fragment. CI and the pre-push hook also check that a branch adds a fragment when it needs one.

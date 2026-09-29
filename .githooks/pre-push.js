@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process'
+import { execFileSync, execSync } from 'child_process'
 import process from 'process'
 
 // Read the ref information from stdin
@@ -10,6 +10,22 @@ process.stdin.setEncoding('utf-8')
 process.stdin.on('data', (chunk) => {
 	input += chunk
 })
+
+// Arguments for `changelog:check`. A pushed branch is checked against the remote's default branch, as CI checks the
+// pull request. A push with no branch in it only validates the fragments.
+function changelogCheckArgs(remote, refs) {
+	const pushesBranch = refs.some(([, localSha, remoteRef]) => !/^0+$/.test(localSha) && remoteRef.startsWith('refs/heads/'))
+	if (!pushesBranch || !remote) return []
+	const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+	for (const resolve of [() => git(['symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`]), () => `${remote}/main`]) {
+		try {
+			const base = resolve()
+			git(['rev-parse', '--verify', `${base}^{commit}`])
+			return ['--base', base]
+		} catch {}
+	}
+	return []
+}
 
 process.stdin.on('end', () => {
 	// <local ref> <local sha> <remote ref> <remote sha>, one per ref being pushed
@@ -55,6 +71,11 @@ process.stdin.on('end', () => {
 		console.log('🔌 Checking plugin API report...')
 		execSync('pnpm run api:report:check', { stdio: 'inherit' })
 		console.log('✅ Plugin API report up to date\n')
+
+		// the hook cannot see the PR description, so a "Changelog: none" there does not count here
+		console.log('📰 Checking changelog...')
+		execFileSync('pnpm', ['run', 'changelog:check', ...changelogCheckArgs(process.argv[2], refs)], { stdio: 'inherit' })
+		console.log('✅ Changelog passed\n')
 
 		console.log('🧪 Running unit tests...')
 		execSync('pnpm run test', { stdio: 'inherit' })
