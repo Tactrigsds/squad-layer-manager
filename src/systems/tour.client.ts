@@ -489,7 +489,10 @@ async function enterStep(idx: number) {
 
 	if (step.stage) {
 		set({ code: 'staging', scenarioId, stepIdx: idx })
-		const res = await TutorialsClient.Actions.stage(scenarioId, step.stage)
+		// any later transition clears the step's watchers, which abandons the wait
+		const ctl = new AbortController()
+		stepSub.add(() => ctl.abort())
+		const res = await stage(run, scenarioId, step.stage, ctl.signal)
 		// a later transition (pause, exit, regression) raced ahead of this stage: drop the stale result. Checking the
 		// full state, not just stepIdx, is what stops a stage that resolved after a pause from clobbering 'paused'.
 		const cur = Store.getState().state
@@ -709,6 +712,26 @@ export function awaitSelector(run: RunStores, sel: StateSelector<boolean>, signa
 	})
 }
 
+// A stage's presence ops reach this client on the presence stream, which neither the stage's response nor the queue
+// stream waits for. Until they land, a checkpoint's `ready` can pass on the presence from before the stage, and a
+// simulate applied over it is clobbered when they arrive. Timing out proceeds as if there were no wait.
+async function stage(run: RunStores, scenarioId: TUT.ScenarioId, stageId: string, signal: AbortSignal) {
+	const res = await TutorialsClient.Actions.stage(scenarioId, stageId)
+	if (res.code === 'ok' && res.presenceOpId) {
+		const opId = res.presenceOpId
+		await awaitSelector(
+			run,
+			{
+				inputs: () => [UPClient.Store],
+				select: (s: UPClient.Store) => s.session.syncedOps.some((op) => op.opId === opId),
+			},
+			signal,
+			JUMP_READY_TIMEOUT_MS,
+		)
+	}
+	return res
+}
+
 // The dashboard route dispatches enter-server-dashboard once on mount, but at tour start that races the new
 // server's appearance in enabledServers, and a gated presence update is dropped rather than retried -- leaving the
 // reader's presence rooted on the PREVIOUS server, where every per-server presence op then lands. The tour
@@ -763,7 +786,7 @@ async function doJump(target: number) {
 	while (cpIdx > 0 && !steps[cpIdx].checkpoint) cpIdx--
 	const checkpoint = steps[cpIdx].checkpoint
 	if (checkpoint) {
-		const res = await TutorialsClient.Actions.stage(scenarioId, checkpoint.stage)
+		const res = await stage(run, scenarioId, checkpoint.stage, ctl.signal)
 		if (ctl.signal.aborted) return
 		if (res.code === 'err:not-ready') return set({ code: 'stage-not-ready', scenarioId, stepIdx: target, msg: res.msg })
 		if (res.code !== 'ok') return set({ code: 'stage-failed', scenarioId, stepIdx: target })

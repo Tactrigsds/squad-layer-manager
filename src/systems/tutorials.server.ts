@@ -147,8 +147,8 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 	const owner = ctx.owner
 	// sessions and the peer go first: whatever editors the target region wants are installed at the end, over a
 	// clean slate
-	UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)
-	UserPresence.dispatchFabricatedDisconnect(peerClientId(ctx.serverId))
+	await UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)
+	await UserPresence.dispatchFabricatedDisconnect(peerClientId(ctx.serverId))
 
 	const state = () => ctx.layerQueue.session.state
 	// save/reset bump editWindowSeqId, so every op reads it fresh; a stale value silently skips the op
@@ -188,7 +188,7 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 	}
 
 	if (spec.readerEditing) {
-		for (const clientId of ownerClientIds(owner)) UserPresence.dispatchFabricatedEditor(ctx.serverId, owner, clientId)
+		for (const clientId of ownerClientIds(owner)) await UserPresence.dispatchFabricatedEditor(ctx.serverId, owner, clientId)
 	}
 	return { code: 'ok' as const }
 })
@@ -222,7 +222,7 @@ const layerQueue = defScenario({
 		// a second editor, so the queue stops saving on its own and force save has something to override
 		'second-editor': async (ctx) => {
 			await ensurePeerUser(ctx)
-			UserPresence.dispatchFabricatedEditor(ctx.serverId, PEER_USER_ID, peerClientId(ctx.serverId))
+			await UserPresence.dispatchFabricatedEditor(ctx.serverId, PEER_USER_ID, peerClientId(ctx.serverId))
 			return { code: 'ok' }
 		},
 		// Checkpoints, one per region of the tour whose server state differs. The canonical lists mirror what a
@@ -729,14 +729,18 @@ async function teardown(ctx: C.Db, owner: bigint) {
 	runs.delete(owner)
 	runChanged$.next()
 	// before the server goes, so the fabricated editor leaves the way a real client would
-	UserPresence.dispatchFabricatedDisconnect(peerClientId(serverIdFor(owner)))
+	await UserPresence.dispatchFabricatedDisconnect(peerClientId(serverIdFor(owner)))
 	await SquadServer.deleteServer(serverIdFor(owner))
 	await FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
 }
 
 // ============================== stage execution ==============================
 
-type StageResponse = TUT.StageResult | { code: 'err:stage-failed'; msg: string }
+// presenceOpId is the presence state's newest op once the stage is done, which the client waits to have applied
+type StageResponse =
+	| { code: 'ok'; presenceOpId: string | undefined }
+	| Exclude<TUT.StageResult, { code: 'ok' }>
+	| { code: 'err:stage-failed'; msg: string }
 
 // a second stage call while one is in flight coalesces onto it rather than queueing: both asked for the same state
 const inFlightStages = new Map<string, Promise<StageResponse>>()
@@ -747,7 +751,8 @@ async function runStage(owner: bigint, stageId: string, run: () => Promise<TUT.S
 	if (existing) return existing
 	const pending = (async (): Promise<StageResponse> => {
 		try {
-			return await run()
+			const res = await run()
+			return res.code === 'ok' ? { code: 'ok', presenceOpId: UserPresence.lastOpId() } : res
 		} catch (err) {
 			log.error(err, 'tutorial stage %s failed', stageId)
 			return { code: 'err:stage-failed', msg: err instanceof Error ? err.message : String(err) }
