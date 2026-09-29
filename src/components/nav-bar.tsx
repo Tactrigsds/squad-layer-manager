@@ -73,8 +73,7 @@ export default function NavBar() {
 
 	const avatarUrl = user?.avatarUrl
 	const changelogStatus = useQuery(ChangelogClient.statusQueryOptions)
-	// headline changes the user hasn't seen, when they've asked to be told
-	const unseenChanges = changelogStatus.data?.notify ? changelogStatus.data.unseen : 0
+	const unseenChanges = changelogStatus.data?.unseen ?? 0
 
 	const isOnServerDashboard = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
 	const isDesktop = useIsDesktopSize()

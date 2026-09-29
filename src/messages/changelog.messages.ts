@@ -10,7 +10,12 @@ export const runningVersion = def(
 )
 export const searchPlaceholder = def('Search changes')
 export const operatorNotes = def('Operator notes')
-export const notifyMe = def('Notify me of new changes')
+export const notifyMe = def('Notify me of')
+export const notifyLevels = {
+	off: def('Nothing'),
+	headline: def('Headline changes'),
+	all: def('Every change'),
+}
 export const releasesHeading = def('Releases')
 export const jumpTo = def('Jump to')
 

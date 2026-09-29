@@ -27,14 +27,15 @@ export type Store = {
 	data: Data | null
 	failed: boolean
 	query: string
-	showOps: boolean
+	// null until the changelog loads
+	prefs: CL.Prefs | null
 }
 
 export const frame: Frame = frameManager.createFrame<Types>({
 	name: 'changelog',
 	createKey: (frameId) => ({ frameId }),
 	setup(args) {
-		args.set({ data: null, failed: false, query: '', showOps: false } satisfies Store)
+		args.set({ data: null, failed: false, query: '', prefs: null } satisfies Store)
 		void load(args).catch((err) => {
 			console.error('failed to load the changelog', err)
 			if (!args.signal.aborted) args.set({ failed: true })
@@ -45,7 +46,10 @@ export const frame: Frame = frameManager.createFrame<Types>({
 async function load(args: FRM.SetupArgs<Input, Store>) {
 	const res = await RPC.queryClient.fetchQuery({ ...ChangelogClient.changelogQueryOptions, staleTime: 0 })
 	if (args.signal.aborted) return
-	args.set({ data: { version: res.version, releases: res.releases, seenAt: res.seenAt } })
+	args.set({
+		data: { version: res.version, releases: res.releases, seenAt: res.seenAt },
+		prefs: { notifyLevel: res.notifyLevel, showOperatorNotes: res.showOperatorNotes },
+	})
 	const upTo = CL.latestServedAt(res.releases)
 	if (upTo > res.seenAt) await ChangelogClient.Actions.markSeen(upTo)
 }
@@ -64,10 +68,10 @@ function entryMatches(entry: CL.Entry, needle: string) {
 }
 
 export namespace Sel {
-	// the releases as the page lays them out: filtered by the search and the operator toggle, split into headline
-	// and minor entries per audience, with releases that have nothing left dropped
+	// the releases as the page lays them out: filtered by the search and the operator notes preference, split into
+	// headline and minor entries per audience, with releases that have nothing left dropped
 	export const visibleReleases = RSel.createSelector(
-		[(s: Store) => s.data, (s: Store) => s.query, (s: Store) => s.showOps],
+		[(s: Store) => s.data, (s: Store) => s.query, (s: Store) => s.prefs?.showOperatorNotes ?? false],
 		(data, query, showOps): VisibleRelease[] => {
 			if (!data) return []
 			const needle = query.trim().toLowerCase()
@@ -85,7 +89,7 @@ export namespace Sel {
 					if (entry.audience === 'operators' && !showOps) continue
 					if (needle && !entryMatches(entry, needle)) continue
 					const unseen = entry.firstServedAt > data.seenAt
-					if (unseen && CL.countsTowardUnseen(entry)) visible.unseenCount++
+					if (unseen && !entry.minor) visible.unseenCount++
 					;(entry.minor ? visible.minor : visible.headline)[entry.audience].push({ ...entry, unseen })
 					any = true
 				}
@@ -114,7 +118,10 @@ export namespace Actions {
 		store(stores).setState({ query })
 	}
 
-	export function setShowOps(stores: KeyProp, showOps: boolean) {
-		store(stores).setState({ showOps })
+	export async function setPrefs(stores: KeyProp, patch: Partial<CL.Prefs>) {
+		const prefs = store(stores).getState().prefs
+		if (!prefs) return
+		store(stores).setState({ prefs: { ...prefs, ...patch } })
+		await ChangelogClient.Actions.setPrefs(patch)
 	}
 }

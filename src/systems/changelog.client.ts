@@ -1,5 +1,6 @@
 import { toast } from '@/lib/toast'
 import * as CL_Msgs from '@/messages/changelog.messages'
+import type * as CL from '@/models/changelog.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import { tr } from '@/systems/messages.client'
@@ -10,7 +11,7 @@ import { tr } from '@/systems/messages.client'
 // the releases, plus the caller's place in them as of this fetch
 export const changelogQueryOptions = RPC.orpc.changelog.get.queryOptions()
 
-// what the nav needs: how many headline changes the caller hasn't seen, and whether they want to be told
+// what the nav needs: how many unseen changes the caller has asked to be told about
 export const statusQueryOptions = RPC.orpc.changelog.getStatus.queryOptions()
 
 export function setup() {
@@ -26,7 +27,7 @@ export function setup() {
 
 async function showUpgradeNotice() {
 	const status = await RPC.queryClient.fetchQuery(statusQueryOptions)
-	if (!status.notify || status.unseen === 0) return
+	if (status.unseen === 0) return
 	toast(tr.text(CL_Msgs.upgraded(status.version)), {
 		description: tr.text(CL_Msgs.upgradedUnseen(status.unseen)),
 		duration: 15_000,
@@ -40,9 +41,8 @@ export namespace Actions {
 		await RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.changelog.getStatus.key() })
 	}
 
-	export async function setNotify(notify: boolean) {
-		RPC.queryClient.setQueryData(statusQueryOptions.queryKey, (prev) => (prev ? { ...prev, notify } : prev))
-		await RPC.orpc.changelog.setNotify.call({ notify })
+	export async function setPrefs(prefs: Partial<CL.Prefs>) {
+		await RPC.orpc.changelog.setPrefs.call(prefs)
 		await RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.changelog.key() })
 	}
 }

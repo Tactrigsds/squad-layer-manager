@@ -270,30 +270,41 @@ test.describe('nav bar', () => {
 	})
 
 	// A fresh app stamps every entry it ships as already seen, so the unseen dot never shows here. What this covers is
-	// the way in, and the one preference the page saves.
-	test("opens What's new, which keeps the choice to be notified", async ({ page }) => {
+	// the way in, and the preferences the page saves.
+	test("opens What's new, which keeps the notification preferences", async ({ page }) => {
 		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
 		await page.getByLabel('User menu').click()
 		await page.getByRole('menuitem', { name: "What's new" }).click()
 		await expect(page.getByRole('heading', { name: "What's new", level: 1 })).toBeVisible()
 		await expect(page.getByRole('main').getByRole('region').first()).toBeVisible()
 
-		const notify = () => page.getByRole('switch', { name: 'Notify me of new changes' })
-		await expect(notify()).toBeEnabled()
-		await expect(notify()).toBeChecked()
-		await notify().click()
-		// the switch updates before the server has written it, so only a reload that reads it back shows it held
+		const level = () => page.getByRole('combobox', { name: 'Notify me of' })
+		const operatorNotes = () => page.getByRole('switch', { name: 'Operator notes' })
+		const pickLevel = async (name: string) => {
+			await level().click()
+			await page.getByRole('option', { name }).click()
+			await expect(level()).toHaveText(name)
+		}
+		await expect(level()).toBeEnabled()
+		await expect(level()).toHaveText('Headline changes')
+		await expect(operatorNotes()).not.toBeChecked()
+
+		await pickLevel('Nothing')
+		await operatorNotes().click()
+		await expect(operatorNotes()).toBeChecked()
+		// the controls update before the server has written them, so only a reload that reads them back shows they held
 		await expect
 			.poll(async () => {
 				await page.reload()
-				await expect(notify()).toBeEnabled()
-				return notify().isChecked()
+				await expect(level()).toBeEnabled()
+				return [await level().textContent(), await operatorNotes().isChecked()]
 			})
-			.toBe(false)
+			.toEqual(['Nothing', true])
 
-		// the app is shared with the rest of this file, so leave the preference as it was found
-		await notify().click()
-		await expect(notify()).toBeChecked()
+		// the app is shared with the rest of this file, so leave the preferences as they were found
+		await pickLevel('Headline changes')
+		await operatorNotes().click()
+		await expect(operatorNotes()).not.toBeChecked()
 	})
 })
 
