@@ -7,7 +7,7 @@ import * as SM from '@/models/squad.models'
 // Which team a historical match's players count for: the team they spent the most time on, replayed from the
 // match's event stream. The thresholds below carve marginal players out of the team breakdown chart; carved-out
 // players still appear in the full teams view, flagged. Players who never joined a squad or never took part in
-// any kill or wound are always carved out.
+// any kill, wound or vehicle or deployable destruction are always carved out.
 export const SettingsSchema = z.object({
 	minTimeOnTeamMinutes: z
 		.number()
@@ -233,6 +233,12 @@ export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], se
 						attacker.stats.wounds++
 					}
 				}
+				break
+			}
+			case 'VEHICLE_DESTROYED':
+			case 'DEPLOYABLE_DESTROYED':
+			case 'FOB_RADIO_DAMAGED': {
+				if (event.attacker) get(event.attacker).combatEventCount++
 				break
 			}
 			default:

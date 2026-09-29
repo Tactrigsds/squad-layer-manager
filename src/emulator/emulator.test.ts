@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { matchLog } from '@/lib/log-parsing'
 import Rcon from '@/lib/rcon/core-rcon'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
+import * as DSTR from '@/models/destruction.models'
 import * as SM from '@/models/squad.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
@@ -255,6 +256,45 @@ describe('log lines parse via LogEvents matchers', () => {
 		const layerChanged = events.find((e) => (e.type as string) === 'LAYER_CHANGED')! as unknown as SM.LogEvents.LayerChanged
 		expect(layerChanged.layer).toBe('Sumari_Seed_v1')
 		expect(layerChanged.source).toEqual({ type: 'rcon' })
+		local.dispose()
+	})
+
+	it('vehicle and deployable destructions parse and read as destroyed', async () => {
+		const local = new Emulator()
+		const a = local.world.connectPlayer(makePlayer({ name: ' alice' }))
+		const b = local.world.connectPlayer(makePlayer({ name: ' bob' }))
+		const c = local.world.connectPlayer(makePlayer({ name: 'carol' }))
+		local.logLines.length = 0
+		local.world.destroyVehicle(a, 'BP_BTR80_Militia', [b, c])
+		local.world.destroyDeployable(a, 'BP_Ammocrate_RGF')
+		local.world.damageRadio(a, 'BP_FOBRadio_RGF')
+		const tracker = DSTR.init()
+		DSTR.resetForMatch(tracker, 1)
+		const destructions: DSTR.Destruction[] = []
+		const radioDamage: DSTR.RadioDamage[] = []
+		for (const event of await collectLogEvents(local.logLines)) {
+			if (event.type === 'DAMAGE_APPLIED') DSTR.onDamageApplied(tracker, event)
+			if (event.type === 'VEHICLE_ENTERED') DSTR.onVehicleEntered(tracker, event)
+			if (event.type === 'VEHICLE_EXITED') DSTR.onVehicleExited(tracker, event)
+			if (event.type === 'VEHICLE_HEALTH_CHANGED') {
+				const destruction = DSTR.onVehicleHealthChanged(tracker, event)
+				if (destruction) destructions.push(destruction)
+			}
+			if (event.type === 'DEPLOYABLE_HEALTH_CHANGED') {
+				const outcome = DSTR.onDeployableHealthChanged(tracker, event)
+				if (outcome?.kind === 'destroyed') destructions.push(outcome)
+				if (outcome?.kind === 'radio-damaged') radioDamage.push(outcome)
+			}
+		}
+		expect(destructions.map((d) => [d.actor.className, d.attacker, d.crew])).toEqual([
+			['BP_BTR80_Militia', a.eos, [b.eos, c.eos]],
+			['BP_Ammocrate_RGF', a.eos, []],
+		])
+		expect(radioDamage.map((d) => [d.actor.className, d.attacker, d.bottomedOut])).toEqual([
+			['BP_FOBRadio_RGF', a.eos, false],
+			['BP_FOBRadio_RGF', a.eos, true],
+		])
+		expect(tracker.occupants.size).toBe(0)
 		local.dispose()
 	})
 

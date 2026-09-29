@@ -74,6 +74,7 @@ import * as m0119 from './0119_squad_arg_single_token'
 import * as m0120 from './0120_match_layer_request_source'
 import * as m0121 from './0121_changelog'
 import * as m0122 from './0122_changelog_notify_level'
+import * as m0123 from './0123_destroyed_target_index'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -135,4 +136,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0120_match_layer_request_source', up: m0120.up },
 	{ name: '0121_changelog', up: m0121.up },
 	{ name: '0122_changelog_notify_level', up: m0122.up },
+	{ name: '0123_destroyed_target_index', up: m0123.up },
 ]

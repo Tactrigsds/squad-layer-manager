@@ -60,6 +60,7 @@ function makeState(
 		}),
 		fetchLayersStatus: () => Promise.resolve(null),
 		fetchUsernamesNoTag: () => Promise.resolve(new Map()),
+		skipDestroyedOnTrainingLayers: () => true,
 		// stands in for the db insert: hands out ids in emission order, exactly as the autoincrement column does
 		createEvent: (event) => {
 			const id = Gen.next(eventIdCounter)
@@ -1375,6 +1376,52 @@ describe('PendingEvents', () => {
 			expect(died).toBeDefined()
 			expect(died.victim).toBe('eos-vic')
 			expect(died.attacker).toBe('eos-atk')
+		})
+	})
+
+	describe('destroyed vehicles', () => {
+		// an empty vehicle taken below zero by eos-atk, as its two log lines parse
+		function destroyVehicle(state: PendingEvents.State) {
+			PendingEvents.onLogEvent(state, {
+				type: 'DAMAGE_APPLIED',
+				time: 1100,
+				chainID: 1,
+				raw: '',
+				actor: 'BP_T72B3_C_2147400000',
+				damage: 1050,
+				damageType: 'BP_HAT_DamageType_C',
+			})
+			PendingEvents.onLogEvent(state, {
+				type: 'VEHICLE_HEALTH_CHANGED',
+				time: 1100,
+				chainID: 1,
+				raw: '',
+				subject: 'BP_T72B3_C_2147400000',
+				damage: 1050,
+				causer: 'BP_RPG7_Tandem_Heat_Proj2_C_2147399999',
+				instigatorIds: { eos: 'eos-atk' },
+				health: -50,
+			})
+			return collect(state)
+		}
+
+		it('records one, credited to its attacker', async () => {
+			const state = makeSyncedState([makePlayer('eos-atk', 2)], [])
+			const destroyed = (await destroyVehicle(state)).filter((e) => e.type === 'VEHICLE_DESTROYED')
+			expect(destroyed).toHaveLength(1)
+			expect(destroyed[0]).toMatchObject({ attacker: 'eos-atk', vehicle: { className: 'BP_T72B3' }, cause: 'weapon' })
+		})
+
+		it('leaves one on a training layer unrecorded, unless the setting says otherwise', async () => {
+			const TRAINING = 'JR-TR:WPMC-CA:TLF-CA' as L.LayerId
+			const skipping = makeSyncedState([makePlayer('eos-atk', 2)], [])
+			skipping.currentMatch = { historyEntryId: 1, layerId: TRAINING }
+			expect((await destroyVehicle(skipping)).filter((e) => e.type === 'VEHICLE_DESTROYED')).toHaveLength(0)
+
+			const recording = makeSyncedState([makePlayer('eos-atk', 2)], [])
+			recording.currentMatch = { historyEntryId: 1, layerId: TRAINING }
+			recording.hooks.skipDestroyedOnTrainingLayers = () => false
+			expect((await destroyVehicle(recording)).filter((e) => e.type === 'VEHICLE_DESTROYED')).toHaveLength(1)
 		})
 	})
 

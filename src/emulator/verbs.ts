@@ -197,6 +197,25 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			world.killPlayer(requirePlayer(host, victim), requirePlayer(host, attacker))
 			return `${attacker} killed ${victim}`
 		}
+		case 'destroy-vehicle': {
+			const { attacker, blueprint, crew } = input as SB.SandboxVerbInput<'destroy-vehicle'>
+			world.destroyVehicle(
+				requirePlayer(host, attacker),
+				blueprint,
+				crew.map((name) => requirePlayer(host, name)),
+			)
+			return `${attacker} destroyed ${blueprint}${crew.length > 0 ? ` with ${crew.join(', ')} aboard` : ''}`
+		}
+		case 'destroy-deployable': {
+			const { attacker, blueprint } = input as SB.SandboxVerbInput<'destroy-deployable'>
+			world.destroyDeployable(requirePlayer(host, attacker), blueprint)
+			return `${attacker} destroyed ${blueprint}`
+		}
+		case 'damage-radio': {
+			const { attacker, blueprint } = input as SB.SandboxVerbInput<'damage-radio'>
+			world.damageRadio(requirePlayer(host, attacker), blueprint)
+			return `${attacker} attacked ${blueprint}`
+		}
 		case 'end': {
 			const { winnerTeamId } = input as SB.SandboxVerbInput<'end'>
 			host.emu.endMatchAndRoll(winnerTeamId ? { winnerTeamId } : undefined)

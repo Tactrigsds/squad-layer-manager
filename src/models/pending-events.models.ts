@@ -6,11 +6,13 @@ import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
 import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
+import * as DSTR from '@/models/destruction.models'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import type { ActionSource } from '@/models/server-events-base.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
+import * as VEH from '@/models/vehicles.models'
 // `time` is when the poll's response was received; it drives ordering, staleness and the log-lead guard exactly
 // as any other event. `polledAt` is when the underlying ListPlayers request was issued (see TeamsRes.polledAt) --
 // a lower bound on when the snapshot was taken. Only the roll-completion gate keys off `polledAt`: a response in
@@ -255,6 +257,10 @@ export type State = {
 	// these aren't in it yet. When one later appears teamed we recognize it as a backfill of a player we were
 	// already aware of (PLAYER_RECONCILED) rather than a fresh arrival (PLAYER_CONNECTED). Rebuilt every poll.
 	unassignedPlayers: Set<SM.PlayerId>
+
+	// vehicle and deployable health and crews, for working out what was destroyed (see destruction.models.ts)
+	destruction: DSTR.State
+
 	counters: {
 		squadId: Generator<number, never, unknown>
 		pendingEventId: Generator<number, never, unknown>
@@ -266,6 +272,9 @@ export type State = {
 		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
 		// the usernameNoTag an earlier join log recorded for each player, where the username still matches
 		fetchUsernamesNoTag: (players: { eos: SM.PlayerId; username: string }[]) => Promise<Map<SM.PlayerId, string>>
+		// whether to leave destroyed vehicles and deployables unrecorded on a training layer, read per event so a
+		// settings change applies straight away
+		skipDestroyedOnTrainingLayers: () => boolean
 		// Persists the event and returns it with the id the insert allocated. Every event this module emits goes
 		// through here first, so an event is on disk before any consumer (or our own state) ever sees it, and ids
 		// are handed out in emission order.
@@ -314,6 +323,7 @@ export function init(opts: {
 		squadCreatedAtAwaitingPoll: new Map(),
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
+		destruction: DSTR.init(),
 		nonSyncedSince: null,
 		expectedNewLayerId: null,
 		eventBufs: {
@@ -1478,6 +1488,47 @@ async function* processPendingEvent(
 			break
 		}
 
+		case 'DAMAGE_APPLIED':
+		case 'VEHICLE_ENTERED':
+		case 'VEHICLE_EXITED':
+		case 'VEHICLE_HEALTH_CHANGED':
+		case 'DEPLOYABLE_HEALTH_CHANGED': {
+			if (state.hooks.skipDestroyedOnTrainingLayers() && L.toLayer(state.currentMatch.layerId).Gamemode === 'Training') break
+			const tracker = state.destruction
+			DSTR.resetForMatch(tracker, state.currentMatch.historyEntryId)
+			let destruction: DSTR.Destruction | null = null
+			let source: 'vehicle' | 'deployable' = 'vehicle'
+			switch (pendingEvent.type) {
+				case 'DAMAGE_APPLIED':
+					DSTR.onDamageApplied(tracker, pendingEvent)
+					break
+				case 'VEHICLE_ENTERED':
+					DSTR.onVehicleEntered(tracker, pendingEvent)
+					break
+				case 'VEHICLE_EXITED':
+					DSTR.onVehicleExited(tracker, pendingEvent)
+					break
+				case 'VEHICLE_HEALTH_CHANGED':
+					destruction = DSTR.onVehicleHealthChanged(tracker, pendingEvent)
+					break
+				case 'DEPLOYABLE_HEALTH_CHANGED': {
+					const outcome = DSTR.onDeployableHealthChanged(tracker, pendingEvent)
+					if (outcome?.kind === 'radio-damaged') {
+						yield await createEvent(state, radioDamagedEvent(state as StateWithCurrentMatchAndPlayers, base, outcome))
+					} else if (outcome) {
+						destruction = outcome
+						source = 'deployable'
+					}
+					break
+				}
+				default:
+					assertNever(pendingEvent)
+			}
+			if (destruction)
+				yield await createEvent(state, destroyedEvent(state as StateWithCurrentMatchAndPlayers, base, source, destruction))
+			break
+		}
+
 		case 'CHAT_MESSAGE': {
 			let channel: SM.ChatChannel
 			if (pendingEvent.channelType === 'ChatAdmin' || pendingEvent.channelType === 'ChatAll') {
@@ -1539,6 +1590,92 @@ async function* processPendingEvent(
 	}
 
 	processedEventIds.add(pendingEvent.id)
+}
+
+// A vehicle line can be about an emplacement (a mortar, a TOW), which is a deployable to anyone reading the feed.
+// It stays a vehicle when the layer data knows its blueprint, or when nothing about the name says otherwise.
+function destroyedEvent(
+	state: StateWithCurrentMatchAndPlayers,
+	base: { matchId: number; time: number },
+	source: 'vehicle' | 'deployable',
+	destruction: DSTR.Destruction,
+): SE.NewEvent {
+	const { className, instanceId } = destruction.actor
+	const vehicleInfo = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(className)
+	const deployableType = DSTR.deployableType(className)
+	const isVehicle = source === 'vehicle' && (vehicleInfo !== undefined || deployableType === 'DEPLOYABLE')
+	const attacker = destruction.attacker ? state.currTeams.players.get(destruction.attacker) : undefined
+	const crew = destruction.crew.filter((id) => state.currTeams.players.has(id))
+	const layer = L.toLayer(state.currentMatch.layerId)
+
+	let teamId: SM.TeamId | null
+	if (isVehicle) {
+		teamId = vehicleTeam(layer, className)
+		teamId ??= crew.map((id) => state.currTeams.players.get(id)!.teamId).find((t) => t !== null) ?? null
+	} else {
+		teamId = DSTR.teamOfBlueprint(className, [layer.Faction_1, layer.Faction_2])
+	}
+
+	const shared = {
+		...base,
+		teamId,
+		cause: destruction.cause,
+		damageType: destruction.damageType,
+		weapon: destruction.weapon,
+		variant: targetVariant(attacker, teamId, crew),
+		...(attacker ? { attacker: SM.PlayerIds.getPlayerId(attacker.ids) } : {}),
+	}
+	if (isVehicle) {
+		return {
+			type: 'VEHICLE_DESTROYED',
+			...shared,
+			vehicle: { className, instanceId, targetType: vehicleInfo?.vehicleType ?? null },
+			crew,
+		}
+	}
+	return { type: 'DEPLOYABLE_DESTROYED', ...shared, deployable: { className, instanceId, targetType: deployableType } }
+}
+
+function radioDamagedEvent(
+	state: StateWithCurrentMatchAndPlayers,
+	base: { matchId: number; time: number },
+	damage: DSTR.RadioDamage,
+): SE.NewEvent {
+	const attacker = damage.attacker ? state.currTeams.players.get(damage.attacker) : undefined
+	const layer = L.toLayer(state.currentMatch.layerId)
+	const teamId = DSTR.teamOfBlueprint(damage.actor.className, [layer.Faction_1, layer.Faction_2])
+	return {
+		type: 'FOB_RADIO_DAMAGED',
+		...base,
+		radio: { ...damage.actor, targetType: 'RADIO' },
+		teamId,
+		damageType: damage.damageType,
+		weapon: damage.weapon,
+		variant: targetVariant(attacker, teamId, []),
+		health: damage.health,
+		bottomedOut: damage.bottomedOut,
+		...(attacker ? { attacker: SM.PlayerIds.getPlayerId(attacker.ids) } : {}),
+	}
+}
+
+// how the attacker stands to what they hit: its own crew, its own side, or the other side. Null without an attacker,
+// or without a side to measure them against.
+function targetVariant(attacker: SM.Player | undefined, teamId: SM.TeamId | null, crew: SM.PlayerId[]): SE.DestroyedVariant {
+	if (!attacker) return null
+	if (crew.includes(SM.PlayerIds.getPlayerId(attacker.ids))) return 'suicide'
+	if (teamId === null || attacker.teamId === null) return null
+	return attacker.teamId === teamId ? 'teamkill' : 'normal'
+}
+
+// the side whose unit fields this blueprint, when exactly one of them does
+function vehicleTeam(layer: L.UnvalidatedLayer, className: string): SM.TeamId | null {
+	if (!L.isKnownLayer(layer)) return null
+	const details = L.resolveLayerDetails(layer)
+	if (!details) return null
+	const inTeam1 = !!details.team1 && VEH.unitClasses(details.team1).has(className)
+	const inTeam2 = !!details.team2 && VEH.unitClasses(details.team2).has(className)
+	if (inTeam1 === inTeam2) return null
+	return inTeam1 ? 1 : 2
 }
 
 async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): AsyncGenerator<SE.Event> {

@@ -6,6 +6,7 @@ import type * as Types from '@/lib/types'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
+import * as DSTR from '@/models/destruction.models'
 import { type EventMeta, iterAssocLayers, iterAssocValues, type LayerAssocKind, meta } from '@/models/event-meta.models'
 import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -349,6 +350,96 @@ export const PLAYER_WOUNDED_META = meta<PlayerWounded<AnyPlayer>>({
 	],
 })
 
+// The vehicle or deployable a destroyed or radio-damaged event is about. `targetType` is the vehicle's class from the
+// layer data (MBT, LOGI_WHEELED, ...) or a DSTR.DeployableType, and null for a vehicle blueprint the layer data does
+// not know.
+export type TargetActor = {
+	// blueprint without `_C`, as weapons are spelled (BP_M60T_WPMC)
+	className: string
+	instanceId: number
+	targetType: string | null
+}
+
+// Against a vehicle, 'suicide' is its own crew finishing it (a crash, usually). Null when nobody is credited, or
+// the side that owned it is unknown.
+export type DestroyedVariant = PlayerWoundedOrDiedVariant | null
+
+export type VehicleDestroyed<P = SM.PlayerId> = {
+	type: 'VEHICLE_DESTROYED'
+	vehicle: TargetActor
+	// the side that fielded it: from the layer's units, or failing that its crew
+	teamId: SM.TeamId | null
+	cause: DSTR.Cause
+	damageType: string | null
+	// null when the vehicle finished itself (see DSTR.Destruction)
+	weapon: string | null
+	variant: DestroyedVariant
+	// whoever was aboard when it went
+	crew: P[]
+} & Partial<SM.PlayerAssoc<'attacker', P>> &
+	Base
+
+export const VEHICLE_DESTROYED_META = meta<VehicleDestroyed<AnyPlayer>>({
+	players: [
+		{ assocType: 'attacker', get: (e) => e.attacker },
+		{ assocType: 'victim', get: (e) => e.crew },
+	],
+})
+
+export type DeployableDestroyed<P = SM.PlayerId> = {
+	type: 'DEPLOYABLE_DESTROYED'
+	deployable: TargetActor
+	// read off a faction named in the blueprint, so null for the many that name none (mines, ladders, razorwire)
+	teamId: SM.TeamId | null
+	cause: DSTR.Cause
+	damageType: string | null
+	weapon: string | null
+	variant: DestroyedVariant
+} & Partial<SM.PlayerAssoc<'attacker', P>> &
+	Base
+
+export const DEPLOYABLE_DESTROYED_META = meta<DeployableDestroyed<AnyPlayer>>({
+	players: [{ assocType: 'attacker', get: (e) => e.attacker }],
+})
+
+// An attack on a FOB radio, reported when it starts and again when it takes the radio to its minimum health (see
+// destruction.models.ts for why a radio is never destroyed, and why this is not one event per hit).
+export type FobRadioDamaged<P = SM.PlayerId> = {
+	type: 'FOB_RADIO_DAMAGED'
+	radio: TargetActor
+	// read off a faction named in the blueprint, as for a deployable
+	teamId: SM.TeamId | null
+	damageType: string | null
+	weapon: string | null
+	variant: DestroyedVariant
+	health: number
+	bottomedOut: boolean
+} & Partial<SM.PlayerAssoc<'attacker', P>> &
+	Base
+
+export const FOB_RADIO_DAMAGED_META = meta<FobRadioDamaged<AnyPlayer>>({
+	players: [{ assocType: 'attacker', get: (e) => e.attacker }],
+})
+
+export type TargetedEvent<P = SM.PlayerId> = VehicleDestroyed<P> | DeployableDestroyed<P> | FobRadioDamaged<P>
+
+export function targetOf(event: TargetedEvent<any>): TargetActor {
+	switch (event.type) {
+		case 'VEHICLE_DESTROYED':
+			return event.vehicle
+		case 'DEPLOYABLE_DESTROYED':
+			return event.deployable
+		case 'FOB_RADIO_DAMAGED':
+			return event.radio
+		default:
+			assertNever(event)
+	}
+}
+
+export function isTargetedEvent<E extends { type: string }>(event: E): event is Extract<E, { type: TargetedEvent['type'] }> {
+	return event.type === 'VEHICLE_DESTROYED' || event.type === 'DEPLOYABLE_DESTROYED' || event.type === 'FOB_RADIO_DAMAGED'
+}
+
 export type SyntheticEvent<P = SM.PlayerId> =
 	| PlayerDetailsChanged<P>
 	| PlayerChangedTeam<P>
@@ -382,6 +473,9 @@ export type Event<P = SM.PlayerId> =
 	| PlayerWarned<P>
 	| PlayerDied<P>
 	| PlayerWounded<P>
+	| VehicleDestroyed<P>
+	| DeployableDestroyed<P>
+	| FobRadioDamaged<P>
 	// synthetic
 	| PlayerDetailsChanged<P>
 	| PlayerChangedTeam<P>
@@ -481,6 +575,31 @@ const woundedOrDiedShape = {
 }
 export const PlayerDiedSchema = event('PLAYER_DIED', woundedOrDiedShape)
 export const PlayerWoundedSchema = event('PLAYER_WOUNDED', woundedOrDiedShape)
+const TargetActorSchema = z.object({ className: z.string(), instanceId: z.number(), targetType: z.string().nullable() })
+const destroyedShape = {
+	teamId: SM.TeamIdSchema.nullable(),
+	cause: ZodUtils.internedEnum(DSTR.CAUSES),
+	damageType: z.string().nullable(),
+	weapon: z.string().nullable(),
+	variant: PlayerWoundedOrDiedVariantSchema.nullable(),
+	attacker: SM.PlayerIdSchema.optional(),
+}
+export const VehicleDestroyedSchema = event('VEHICLE_DESTROYED', {
+	...destroyedShape,
+	vehicle: TargetActorSchema,
+	crew: z.array(SM.PlayerIdSchema),
+})
+export const DeployableDestroyedSchema = event('DEPLOYABLE_DESTROYED', { ...destroyedShape, deployable: TargetActorSchema })
+export const FobRadioDamagedSchema = event('FOB_RADIO_DAMAGED', {
+	radio: TargetActorSchema,
+	teamId: SM.TeamIdSchema.nullable(),
+	damageType: z.string().nullable(),
+	weapon: z.string().nullable(),
+	variant: PlayerWoundedOrDiedVariantSchema.nullable(),
+	attacker: SM.PlayerIdSchema.optional(),
+	health: z.number(),
+	bottomedOut: z.boolean(),
+})
 export const PlayerDetailsChangedSchema = event('PLAYER_DETAILS_CHANGED', {
 	details: SM.PlayerSchema.pick({ role: true, isAdmin: true }),
 	newUsername: z.string().optional(),
@@ -532,6 +651,9 @@ export const EventSchema = z.discriminatedUnion('type', [
 	PlayerWarnedSchema,
 	PlayerDiedSchema,
 	PlayerWoundedSchema,
+	VehicleDestroyedSchema,
+	DeployableDestroyedSchema,
+	FobRadioDamagedSchema,
 	PlayerDetailsChangedSchema,
 	PlayerChangedTeamSchema,
 	PlayerLeftSquadSchema,
@@ -579,6 +701,9 @@ export const EVENT_META = {
 	PLAYER_WARNED: PLAYER_WARNED_META,
 	PLAYER_DIED: PLAYER_DIED_META,
 	PLAYER_WOUNDED: PLAYER_WOUNDED_META,
+	VEHICLE_DESTROYED: VEHICLE_DESTROYED_META,
+	DEPLOYABLE_DESTROYED: DEPLOYABLE_DESTROYED_META,
+	FOB_RADIO_DAMAGED: FOB_RADIO_DAMAGED_META,
 	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,
 	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
 	// its own event does not have fails here

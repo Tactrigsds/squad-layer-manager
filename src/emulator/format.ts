@@ -316,6 +316,35 @@ export function logDie(victim: PlayerLike, attacker: PlayerLike, damage: number,
 	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${weapon}`
 }
 
+// ---------- vehicles and deployables. `actor` is a blueprint class with its `_C_<instance>` suffix.
+
+export function logVehicleEntered(p: PlayerLike, actor: string, seat: number): string {
+	const assetClass = actor.replace(/_\d+$/, '')
+	return `LogSquadTrace: [DedicatedServer]OnPossess(): PC=${p.name.trim()} (Online IDs: ${idsStr(p)}) Entered Vehicle Pawn=${actor} (Asset Name = ${assetClass}) FullPath=${assetClass} /Game/Maps/Emulated:PersistentLevel.${actor} Seat Number=${seat}`
+}
+
+export function logVehicleExited(p: PlayerLike, actor: string, seat: number): string {
+	const assetClass = actor.replace(/_\d+$/, '')
+	return `LogSquadTrace: [DedicatedServer]OnUnPossess(): PC=${p.name.trim()} (Online IDs: ${idsStr(p)}) Exited Vehicle Pawn=${p.name.trim()} (Asset Name=${assetClass}) FullPath=${assetClass} /Game/Maps/Emulated:PersistentLevel.${actor} Seat Number=${seat}`
+}
+
+export function logVehicleDamageApplied(actor: string, damage: number, damageType: string): string {
+	return `LogSquadTrace: [DedicatedServer]TraceAndMessageClient(): SQVehicleSeat::TakeDamage[PointDamage] ${actor} for ${damage.toFixed(6)} damage (type=${damageType})`
+}
+
+// a crewed vehicle's line names an occupant rather than the vehicle, which is what `subject` is for
+export function logVehicleHealth(subject: string, damage: number, causer: string, instigator: PlayerLike, health: number): string {
+	return `LogSquadTrace: [DedicatedServer]TraceAndMessageClient(): ${subject}: ${damage.toFixed(2)} damage taken by causer ${causer} instigator (Online Ids: ${instigator.name.trim()}) ${idsStr(instigator)} health remaining ${health.toFixed(2)}`
+}
+
+export function logDeployableDamageApplied(actor: string, damage: number, damageType: string): string {
+	return `LogSquadTrace: [DedicatedServer]TakeDamage(): ASQDeployable::TakeDamage[SQRadialDamage] ${actor} for ${damage.toFixed(6)} damage (type=${damageType}) direct hit = 0`
+}
+
+export function logDeployableHealth(actor: string, damage: number, causer: string, instigator: PlayerLike, health: number): string {
+	return `LogSquadTrace: [DedicatedServer]TakeDamage(): ${actor}: ${damage.toFixed(2)} damage taken by causer ${causer} instigator ${instigator.name.trim()} (Online IDs: ${idsStr(instigator)}) health remaining ${health.toFixed(2)}`
+}
+
 export function logTickRate(rate: number): string {
 	return `LogSquad: USQGameState: Server Tick Rate: ${rate.toFixed(2)}`
 }

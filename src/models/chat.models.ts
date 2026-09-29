@@ -194,6 +194,9 @@ export type EventEnriched =
 	| (SE.AdminBroadcast & { player?: SM.Player })
 	| SE.PlayerDied<SM.Player>
 	| SE.PlayerWounded<SM.Player>
+	| SE.VehicleDestroyed<SM.Player>
+	| SE.DeployableDestroyed<SM.Player>
+	| SE.FobRadioDamaged<SM.Player>
 	| AggregatedWarns
 
 // Why the event drew nothing. 'unresolved' is a replay that could not name the event's players (see
@@ -268,6 +271,9 @@ const RENDERS_IN_FEED = {
 	TEAMS_POLLED_UPDATE: () => false,
 	PLAYER_DIED: () => true,
 	PLAYER_WOUNDED: () => true,
+	VEHICLE_DESTROYED: () => true,
+	DEPLOYABLE_DESTROYED: () => true,
+	FOB_RADIO_DAMAGED: () => true,
 	MAP_SET: () => true,
 	INGAME_VOTE_STARTED: (event) => event.container === 'Vote_NextLayer',
 	RCON_CONNECTED: () => true,
@@ -324,6 +330,9 @@ export namespace Wire {
 		SQUAD_RENAMED: { squads: ['squad'] },
 		PLAYER_DIED: { players: ['victim', 'attacker'] },
 		PLAYER_WOUNDED: { players: ['victim', 'attacker'] },
+		VEHICLE_DESTROYED: { players: ['attacker'], playerLists: ['crew'] },
+		DEPLOYABLE_DESTROYED: { players: ['attacker'] },
+		FOB_RADIO_DAMAGED: { players: ['attacker'] },
 		MAP_SET: { players: ['actorPlayer'] },
 		ROUND_ENDED: { players: ['actorPlayer'] },
 		APP_EVENT: { players: ['actorPlayer'], playerLists: ['targetPlayers'], nested: ['collapsed'] },
@@ -1072,6 +1081,25 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			return { ...event, victim, attacker }
 		}
 
+		// Nothing is lost to a missing crew member, so only an attacker who cannot be named drops the event, as a
+		// kill with an unknown attacker does.
+		case 'VEHICLE_DESTROYED':
+		case 'DEPLOYABLE_DESTROYED':
+		case 'FOB_RADIO_DAMAGED': {
+			let attacker: SM.Player | undefined
+			if (event.attacker !== undefined) {
+				attacker = state.players.get(event.attacker)
+				if (!attacker) {
+					return noop(
+						`Attacker ${SM.PlayerIds.prettyPrint(event.attacker)} of ${event.type} was not found in the interpolated player list`,
+					)
+				}
+			}
+			if (event.type !== 'VEHICLE_DESTROYED') return { ...event, attacker }
+			const crew = event.crew.map((id) => state.players.get(id)).filter((p): p is SM.Player => p !== undefined)
+			return { ...event, attacker, crew }
+		}
+
 		default:
 			assertNever(event)
 	}
@@ -1146,6 +1174,10 @@ function isKillfeedEvent(event: EventEnriched): event is SE.PlayerDied<SM.Player
 	return event.type === 'PLAYER_DIED' || event.type === 'PLAYER_WOUNDED'
 }
 
+export function isDestroyedEvent(event: EventEnriched): event is SE.VehicleDestroyed<SM.Player> | SE.DeployableDestroyed<SM.Player> {
+	return event.type === 'VEHICLE_DESTROYED' || event.type === 'DEPLOYABLE_DESTROYED'
+}
+
 // admin actions observed in-game/over rcon. their SLM-initiated counterparts arrive as app events instead
 function isAdminActionEvent(event: EventEnriched): boolean {
 	switch (event.type) {
@@ -1172,6 +1204,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return true
 		case 'DEFAULT':
 			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
+			if (isDestroyedEvent(event)) return false
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
 		case 'CHAT':
@@ -1185,7 +1218,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
-			return isKillfeedEvent(event)
+			return isKillfeedEvent(event) || isDestroyedEvent(event)
 		default:
 			assertNever(filterState)
 	}

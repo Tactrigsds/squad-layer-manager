@@ -757,6 +757,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				const res = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 0 })
 				return res.code === 'ok' ? res.data : null
 			},
+			skipDestroyedOnTrainingLayers: () => serverSettings.settings.skipDestroyedOnTrainingLayers,
 			fetchUsernamesNoTag: async (players) => {
 				const ctx = resolveCtx(getBaseCtx(), serverId)
 				const rows = await ctx
@@ -1967,9 +1968,10 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 		.filter((e): e is AppEvents.AppEvent => e !== null && AppEvents.isFeedVisible(e))
 })
 
-// index entries before their weapon name has been resolved to a weapons row, which needs the db
-type PendingIndexRow = Omit<SchemaModels.NewPlayerEventIndexEntry, 'damageSourceId'> & { damageSource: string | null }
-type PendingEventIndexRow = Omit<SchemaModels.NewServerEventIndexEntry, 'damageSourceId'> & { damageSource: string | null }
+// index entries before their blueprint names have been resolved to damageSources rows, which needs the db
+type Interned = { damageSource: string | null; target: string | null }
+type PendingIndexRow = Omit<SchemaModels.NewPlayerEventIndexEntry, 'damageSourceId' | 'targetId'> & Interned
+type PendingEventIndexRow = Omit<SchemaModels.NewServerEventIndexEntry, 'damageSourceId' | 'targetId'> & Interned
 
 // the rows that hang off an event, and so can only be built once the insert has allocated its id
 type EventAssociationRows = {
@@ -1995,6 +1997,7 @@ function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
 }
 
 function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): EventAssociationRows {
+	const target = SE.isTargetedEvent(event) ? SE.targetOf(event) : null
 	const eventIndexRow: PendingEventIndexRow = {
 		serverEventId: event.id,
 		time: new Date(event.time),
@@ -2006,6 +2009,8 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 		damageSource: 'weapon' in event ? event.weapon : null,
 		variant: 'variant' in event ? event.variant : null,
 		channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
+		target: target?.className ?? null,
+		targetType: target?.targetType ?? null,
 	}
 	const playerRows: SchemaModels.NewPlayer[] = []
 	const playerIndexRows: PendingIndexRow[] = []
@@ -2034,6 +2039,8 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 			damageSource: eventIndexRow.damageSource,
 			variant: eventIndexRow.variant,
 			channel: eventIndexRow.channel,
+			target: eventIndexRow.target,
+			targetType: eventIndexRow.targetType,
 		})
 	}
 
@@ -2098,12 +2105,13 @@ async function internDamageSources(ctx: C.Db, names: (string | null)[]): Promise
 }
 
 async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
-	const { damageSource, ...eventIndexRow } = rows.eventIndexRow
-	const sourceIds = await internDamageSources(ctx, [damageSource])
+	const { damageSource, target, ...eventIndexRow } = rows.eventIndexRow
+	const sourceIds = await internDamageSources(ctx, [damageSource, target])
+	const idOf = (name: string | null) => (name === null ? null : sourceIds.get(name)!)
 	await ctx
 		.db()
 		.insert(Schema.serverEventIndex)
-		.values({ ...eventIndexRow, damageSourceId: damageSource === null ? null : sourceIds.get(damageSource)! })
+		.values({ ...eventIndexRow, damageSourceId: idOf(damageSource), targetId: idOf(target) })
 		.onConflictDoNothing({ target: Schema.serverEventIndex.serverEventId })
 
 	if (rows.playerRows.length > 0) {
@@ -2148,9 +2156,10 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 				.db()
 				.insert(Schema.playerEventIndex)
 				.values(
-					validRows.map(({ damageSource, ...row }) => ({
+					validRows.map(({ damageSource, target, ...row }) => ({
 						...row,
-						damageSourceId: damageSource === null ? null : sourceIds.get(damageSource)!,
+						damageSourceId: idOf(damageSource),
+						targetId: idOf(target),
 					})),
 				)
 				.onConflictDoNothing({
