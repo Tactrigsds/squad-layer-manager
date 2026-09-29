@@ -29,7 +29,7 @@ const CHANNEL_STYLES = {
 	ChatAll: { color: '#eeeeee', gradientColor: 'rgba(255, 255, 255, 0.08)' },
 	ChatTeam: { color: '#5b8def', gradientColor: 'rgba(91, 141, 239, 0.12)' },
 	ChatSquad: { color: '#5fb76a', gradientColor: 'rgba(95, 183, 106, 0.12)' },
-	ChatAdmin: { color: '#e6b422', gradientColor: 'rgba(230, 180, 34, 0.14)' },
+	ChatAdmin: { color: 'hsl(var(--admin))', gradientColor: 'hsl(var(--admin) / 0.14)' },
 	Broadcast: { color: '#e8c24a', gradientColor: 'rgba(232, 194, 74, 0.12)' },
 } as const
 
