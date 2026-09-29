@@ -1,7 +1,7 @@
 {
 	"uid": "slm-overview",
 	"title": "SLM / Overview",
-	"description": "Domain health and throughput for Squad Layer Manager: rcon liveness and I/O, squad log ingest, server events, websocket traffic, queue and vote state. Backed by the instruments in src/systems/metrics.server.ts, core-rcon.ts, squad-server.server.ts and ws-session.server.ts.",
+	"description": "Domain health and throughput for Squad Layer Manager: rcon liveness and I/O, player count and join queue, squad log ingest, server events, websocket traffic, queue and vote state. Backed by the instruments in src/systems/metrics.server.ts, core-rcon.ts, squad-server.server.ts and ws-session.server.ts.",
 	"tags": ["slm"],
 	"timezone": "browser",
 	"editable": true,
@@ -124,13 +124,73 @@
 			}
 		},
 
-		{ "type": "row", "title": "RCON", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
+		{ "type": "row", "title": "Population", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
+		{
+			"type": "timeseries",
+			"title": "Players",
+			"description": "Players on each squad server, read from rcon server info. The dashed line is the server's slot count.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_squad_server_player_count{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}}"
+				},
+				{
+					"refId": "B",
+					"expr": "max by (slm_squad_server_id) (slm_squad_server_max_player_count{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "slots {{slm_squad_server_id}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"decimals": 0,
+					"custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 20, "lineWidth": 2 }
+				},
+				"overrides": [
+					{
+						"matcher": { "id": "byRegexp", "options": "^slots.*" },
+						"properties": [
+							{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+							{ "id": "custom.fillOpacity", "value": 0 }
+						]
+					}
+				]
+			},
+			"options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{
+			"type": "timeseries",
+			"title": "Join queue",
+			"description": "Players waiting in each squad server's public join queue. A queue that stays up means the server is full.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id) (slm_squad_server_queue_length{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"decimals": 0,
+					"custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 20, "lineWidth": 2 }
+				},
+				"overrides": []
+			},
+			"options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{ "type": "row", "title": "RCON", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 } },
 		{
 			"type": "timeseries",
 			"title": "RCON requests",
 			"description": "Commands issued per second, by verb. This is the load we put on the game server. ListPlayers/ListSquads dominate because they are polled; a spike in anything else is admin activity.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 7 },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
 			"targets": [
 				{
 					"refId": "A",
@@ -153,7 +213,7 @@
 			"title": "RCON failures",
 			"description": "Failed commands per second. Sustained non-zero here with rcon still 'connected' means the server is accepting the socket but not answering: the 2s response timeout is firing.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 7 },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
 			"targets": [
 				{
 					"refId": "A",
@@ -177,7 +237,7 @@
 			"title": "RCON throughput",
 			"description": "Bytes over the rcon socket, by direction. Received dwarfs sent because a ListPlayers response carries the whole roster.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 7 },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
 			"targets": [
 				{
 					"refId": "A",
@@ -192,13 +252,13 @@
 			"options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"], "showLegend": true } }
 		},
 
-		{ "type": "row", "title": "Squad logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 } },
+		{ "type": "row", "title": "Squad logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 } },
 		{
 			"type": "timeseries",
 			"title": "Log lines parsed",
 			"description": "Lines ingested per second against events successfully parsed out of them. Both sources (sftp poll and server-agent push) are counted at the same point, so the numbers mean the same thing either way. Lines far outrunning events is normal (most lines are not events); events dropping to zero while lines keep flowing is not.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
 			"targets": [
 				{
 					"refId": "A",
@@ -222,7 +282,7 @@
 			"title": "Log ingest throughput",
 			"description": "Bytes of squad log data read per second, by server and source.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
 			"targets": [
 				{
 					"refId": "A",
@@ -241,7 +301,7 @@
 			"title": "Log delivery lag",
 			"description": "How far behind the log stream runs: receive time minus the line's log timestamp (clock skew included), sampled as each second's worst case. Plotted against the hold-back applied to non-log events, which the tuner keeps at 1.5x the rolling p99 once warmed up. Lag crossing the hold-back means event ordering was at risk; the hold-back should follow within a couple of retunes.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
 			"targets": [
 				{
 					"refId": "A",
@@ -275,13 +335,13 @@
 			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
 		},
 
-		{ "type": "row", "title": "Server events", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 } },
+		{ "type": "row", "title": "Server events", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 } },
 		{
 			"type": "timeseries",
 			"title": "Server events emitted",
 			"description": "The app's own domain events, by type. Deliberately not the same number as parsed log events: one log event can fan out into several server events, and some (rcon-derived) have no log line behind them at all.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 16, "x": 0, "y": 25 },
+			"gridPos": { "h": 8, "w": 16, "x": 0, "y": 33 },
 			"targets": [
 				{
 					"refId": "A",
@@ -304,7 +364,7 @@
 			"title": "Server events by server",
 			"description": "Total emission rate per squad server.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 33 },
 			"targets": [
 				{
 					"refId": "A",
@@ -319,13 +379,13 @@
 			"options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
 		},
 
-		{ "type": "row", "title": "WebSocket", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 } },
+		{ "type": "row", "title": "WebSocket", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 } },
 		{
 			"type": "timeseries",
 			"title": "Clients and connection rate",
 			"description": "Current clients (gauge) against connections accepted per second (counter). The counter is the one that catches a reconnect storm: a client that connects and drops inside one collection interval never shows up in the gauge at all.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 42 },
 			"targets": [
 				{ "refId": "A", "expr": "max(slm_websocket_connected_clients)", "legendFormat": "connected clients" },
 				{ "refId": "B", "expr": "rate(slm_websocket_connections_total[$__rate_interval])", "legendFormat": "connections/s" }
@@ -349,7 +409,7 @@
 			"title": "WebSocket messages",
 			"description": "Frames per second, by direction. Sent counts every frame oRPC writes to a client socket, so it scales with connected clients times update frequency.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 42 },
 			"targets": [
 				{
 					"refId": "A",
@@ -368,7 +428,7 @@
 			"title": "WebSocket throughput",
 			"description": "Bytes per second pushed through the websockets, by direction. This is the number to watch if the site feels heavy with many clients connected: sent scales with clients, and a broadcast storm shows up here first.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 42 },
 			"targets": [
 				{
 					"refId": "A",
@@ -383,13 +443,13 @@
 			"options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"], "showLegend": true } }
 		},
 
-		{ "type": "row", "title": "Queue and votes", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 } },
+		{ "type": "row", "title": "Queue and votes", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 } },
 		{
 			"type": "timeseries",
 			"title": "Layer queue length",
 			"description": "Items in the live (in-edit) layer queue per server. A queue draining toward 0 without being refilled is worth an alert.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 43 },
+			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 51 },
 			"targets": [
 				{
 					"refId": "A",
@@ -410,7 +470,7 @@
 			"title": "Votes in progress / unsaved queue edits",
 			"description": "An unsaved queue that stays at 1 for a long time means an edit session was abandoned mid-flight.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 43 },
+			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 51 },
 			"targets": [
 				{
 					"refId": "A",
@@ -433,13 +493,13 @@
 			}
 		},
 
-		{ "type": "row", "title": "Teamswaps and BattleMetrics", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 } },
+		{ "type": "row", "title": "Teamswaps and BattleMetrics", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 } },
 		{
 			"type": "timeseries",
 			"title": "Pending team swaps",
 			"description": "Swaps saved and waiting to execute, with the in-flight flag overlaid.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 51 },
+			"gridPos": { "h": 7, "w": 12, "x": 0, "y": 59 },
 			"targets": [
 				{
 					"refId": "A",
@@ -465,7 +525,7 @@
 			"title": "BattleMetrics",
 			"description": "Requests in the last 1s and 60s windows, and the queue depth waiting on the rate limiter. The limits are 10/s and 60/min. A persistently non-zero queue means we are being shaped by those limits.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 51 },
+			"gridPos": { "h": 7, "w": 12, "x": 12, "y": 59 },
 			"targets": [
 				{ "refId": "A", "expr": "max(slm_battlemetrics_requests_per_second)", "legendFormat": "requests /1s (limit 10)" },
 				{ "refId": "B", "expr": "max(slm_battlemetrics_requests_per_minute)", "legendFormat": "requests /60s (limit 60)" },
@@ -477,13 +537,13 @@
 			}
 		},
 
-		{ "type": "row", "title": "Recent problems", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 } },
+		{ "type": "row", "title": "Recent problems", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 66 } },
 		{
 			"type": "logs",
 			"title": "Warnings and errors",
 			"description": "trace_id is a first-class field on every record, so each line links straight through to the trace that produced it. SLM / Logs has the same view with severity and module filters.",
 			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-			"gridPos": { "h": 11, "w": 24, "x": 0, "y": 59 },
+			"gridPos": { "h": 11, "w": 24, "x": 0, "y": 67 },
 			"targets": [
 				{
 					"refId": "A",

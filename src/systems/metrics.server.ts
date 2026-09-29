@@ -1,6 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 
 import * as ATTRS from '@/models/otel-attrs'
+import type * as SM from '@/models/squad.models'
 import * as Plugins from '@/systems/plugins.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
@@ -51,6 +52,21 @@ export function setup() {
 		.addCallback((result) => {
 			result.observe(SquadServer.globalState.managedServers.size)
 		})
+
+	// all three come from the same rcon server info read, so they are observed together or not at all
+	const population = [
+		[ATTRS.SquadServer.PLAYER_COUNT, 'Players on the squad server', (info: SM.ServerInfo) => info.playerCount],
+		[ATTRS.SquadServer.MAX_PLAYER_COUNT, 'Player slots on the squad server', (info: SM.ServerInfo) => info.maxPlayerCount],
+		[ATTRS.SquadServer.QUEUE_LENGTH, 'Players waiting in the public join queue', (info: SM.ServerInfo) => info.queueLength ?? 0],
+	] as const
+	for (const [name, description, read] of population) {
+		meter.createObservableGauge(name, { description }).addCallback((result) => {
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				const info = managedServer.server.serverInfo$.value
+				if (info) result.observe(read(info), { [ATTRS.SquadServer.ID]: serverId })
+			}
+		})
+	}
 
 	meter
 		.createObservableGauge(ATTRS.Rcon.CONNECTED, {
