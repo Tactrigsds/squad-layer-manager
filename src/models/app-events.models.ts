@@ -210,6 +210,14 @@ export type AppStarted = z.infer<typeof AppStartedSchema>
 export const AppRestartedSchema = event('APP_RESTARTED', versionShape)
 export type AppRestarted = z.infer<typeof AppRestartedSchema>
 
+// a notice shown to every web user and warned to every in-game admin, sent over the control socket (see
+// announcements.server.ts)
+export const AnnouncementSentSchema = event('ANNOUNCEMENT_SENT', {
+	message: z.string(),
+	expiresAt: z.number(),
+})
+export type AnnouncementSent = z.infer<typeof AnnouncementSentSchema>
+
 // a mutation the caller was refused. audit-only: it answers who tried to do what they may not
 export const PermissionDeniedSchema = event('PERMISSION_DENIED', {
 	// the rpc procedure, as its router path
@@ -450,6 +458,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerFlagsUpdatedSchema,
 	AppStartedSchema,
 	AppRestartedSchema,
+	AnnouncementSentSchema,
 	PermissionDeniedSchema,
 	BackupCreatedSchema,
 	MapSetSchema,
@@ -530,6 +539,7 @@ export const APP_EVENT_META = {
 	USER_ACCOUNT_CHANGED: EM.meta<UserAccountChanged>(),
 	APP_STARTED: EM.meta<AppStarted>(),
 	APP_RESTARTED: EM.meta<AppRestarted>(),
+	ANNOUNCEMENT_SENT: EM.meta<AnnouncementSent>(),
 	PERMISSION_DENIED: EM.meta<PermissionDenied>(),
 	BACKUP_CREATED: EM.meta<BackupCreated>(),
 	PLUGIN_EVENT: EM.meta<PluginEvent>(),

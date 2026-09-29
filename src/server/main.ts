@@ -181,7 +181,7 @@ await Instr.spanOp('main', { module }, async () => {
 		...BUILTIN_PLUGINS,
 		...(ENV.NODE_ENV === 'development' ? await discoverSourcePlugins() : []),
 	])
-	// after Plugins.setup, since reloading plugins is the only thing it does
+	// after Plugins.setup and the managed servers: its commands reload plugins and warn every server's admins
 	await ControlSocket.setup()
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),

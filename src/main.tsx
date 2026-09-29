@@ -6,6 +6,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 
 import * as Catalogues from '@/messages/catalogues'
+import * as AnnouncementsClient from '@/systems/announcements.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -39,6 +40,7 @@ await LayerDataClient.setup()
 	ThemeSys.setup()
 	SiteMode.setup()
 	ConfigClient.setup()
+	AnnouncementsClient.setup()
 	SquadServerClient.setup()
 	SettingsClient.setup()
 	FilterEntityClient.setup()

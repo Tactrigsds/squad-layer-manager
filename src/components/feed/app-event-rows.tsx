@@ -531,6 +531,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		appEvent.type === 'PLAYER_FLAGS_UPDATED' ||
 		appEvent.type === 'APP_STARTED' ||
 		appEvent.type === 'APP_RESTARTED' ||
+		appEvent.type === 'ANNOUNCEMENT_SENT' ||
 		appEvent.type === 'PERMISSION_DENIED' ||
 		appEvent.type === 'BACKUP_CREATED' ||
 		appEvent.type === 'PLUGIN_DATA_PURGED' ||

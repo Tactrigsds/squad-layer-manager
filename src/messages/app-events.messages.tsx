@@ -444,6 +444,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return `SLM started${e.version ? ` (${e.version})` : ''}`
 		case 'APP_RESTARTED':
 			return 'restarted SLM'
+		case 'ANNOUNCEMENT_SENT':
+			return `announced: "${e.message}"`
 		case 'PERMISSION_DENIED':
 			return `was refused ${e.procedure}: ${e.failures.join(', ')}`
 		case 'BACKUP_CREATED': {
