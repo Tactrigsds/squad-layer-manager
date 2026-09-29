@@ -52,6 +52,131 @@ function fromHsl(hue: number, s: number, l: number): Rgb {
 	return { r: to255(r), g: to255(g), b: to255(b) }
 }
 
+export function toHex({ r, g, b }: Rgb): string {
+	const pair = (v: number) => Math.round(v).toString(16).padStart(2, '0')
+	return `#${pair(r)}${pair(g)}${pair(b)}`
+}
+
+export type Oklab = { l: number; a: number; b: number }
+
+export function toOklab({ r, g, b }: Rgb): Oklab {
+	const lr = srgbToLinear(r / 255)
+	const lg = srgbToLinear(g / 255)
+	const lb = srgbToLinear(b / 255)
+	const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb)
+	const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb)
+	const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb)
+	return {
+		l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+		a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+		b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+	}
+}
+
+// null when the color falls outside sRGB
+export function fromOklch(lightness: number, chroma: number, hueDeg: number): Rgb | null {
+	const h = (hueDeg * Math.PI) / 180
+	const a = chroma * Math.cos(h)
+	const b = chroma * Math.sin(h)
+	const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+	const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+	const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
+	const linear = [
+		4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+		-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+		-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+	]
+	if (linear.some((v) => v < -1e-4 || v > 1 + 1e-4)) return null
+	const [r, g, bl] = linear.map((v) => Math.round(linearToSrgb(Math.min(1, Math.max(0, v))) * 255))
+	return { r, g, b: bl }
+}
+
+function srgbToLinear(v: number) {
+	return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+}
+
+function linearToSrgb(v: number) {
+	return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055
+}
+
+/** Perceptual distance (ΔE in OKLab). About 0.02 is barely noticeable. */
+export function distance(x: Oklab, y: Oklab): number {
+	return Math.hypot(x.l - y.l, x.a - y.a, x.b - y.b)
+}
+
+// Categorical colors that stay legible as text and as a tinted background against both the light and dark app themes.
+// Every pair is at least 0.11 apart; the second half was chosen by farthest-point search around the first.
+export const SWATCHES = {
+	red: '#d1495b',
+	orange: '#e08e45',
+	blue: '#3d7dd9',
+	green: '#3f9e6b',
+	purple: '#8367c7',
+	pink: '#e68cde',
+	sky: '#49c1ea',
+	lime: '#9bc14d',
+	ochre: '#9f7100',
+	periwinkle: '#9095e8',
+	magenta: '#c265b0',
+	mint: '#04cfa2',
+} as const
+
+export const SWATCH_LIST: readonly string[] = Object.values(SWATCHES)
+const SWATCH_LABS = SWATCH_LIST.map((hex) => toOklab(parseHex(hex.slice(1))!))
+
+// how far apart two colors must be to read as different categories at a glance
+const MIN_DISTINCT_DISTANCE = 0.1
+
+// Fallback candidates once every swatch is too close to something taken: an OKLCH grid kept to the lightness and chroma
+// band the swatches sit in, so a generated color looks like it belongs with them.
+let generatedCandidates: { hex: string; lab: Oklab }[] | undefined
+function getGeneratedCandidates() {
+	if (generatedCandidates) return generatedCandidates
+	generatedCandidates = []
+	for (const lightness of [0.58, 0.64, 0.7, 0.76]) {
+		for (const chroma of [0.15, 0.12]) {
+			for (let hue = 0; hue < 360; hue += 10) {
+				const rgb = fromOklch(lightness, chroma, hue)
+				if (rgb) generatedCandidates.push({ hex: toHex(rgb), lab: toOklab(rgb) })
+			}
+		}
+	}
+	return generatedCandidates
+}
+
+/**
+ * Picks a color for a new category that is easy to tell apart from `taken`. The first swatch far enough from every taken
+ * color wins; past that, the generated candidate farthest from its nearest taken color. Deterministic, so the same
+ * inputs always give the same color. Unparseable entries in `taken` are ignored.
+ */
+export function pickDistinct(taken: readonly string[]): string {
+	const takenLabs: Oklab[] = []
+	for (const color of taken) {
+		const rgb = parse(color)
+		if (rgb) takenLabs.push(toOklab(rgb))
+	}
+	const nearest = (lab: Oklab) => {
+		let min = Infinity
+		for (const other of takenLabs) min = Math.min(min, distance(lab, other))
+		return min
+	}
+
+	for (let i = 0; i < SWATCH_LIST.length; i++) {
+		if (nearest(SWATCH_LABS[i]) >= MIN_DISTINCT_DISTANCE) return SWATCH_LIST[i]
+	}
+
+	let best = getGeneratedCandidates()[0]
+	let bestDistance = -1
+	for (const candidate of getGeneratedCandidates()) {
+		const d = nearest(candidate.lab)
+		if (d > bestDistance) {
+			best = candidate
+			bestDistance = d
+		}
+	}
+	return best.hex
+}
+
 const NAMED: Record<string, string | undefined> = {
 	aliceblue: '#f0f8ff',
 	antiquewhite: '#faebd7',

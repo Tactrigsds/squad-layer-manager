@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { HexColorPicker } from 'react-colorful'
 
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
+import { ColorPicker } from '@/components/color-picker'
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
@@ -33,6 +33,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Arr from '@/lib/array-utils'
+import * as Color from '@/lib/color'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
@@ -414,14 +415,16 @@ function parseRuleDragId(id: string): { groupingId: string; idx: number } {
 }
 
 // A group's color defaults to a reference to the first of its flags that has one, so picking flags is usually all an
-// operator has to do and the color keeps tracking battlemetrics afterwards. An entry that already exists is left alone.
-// Half-finished rules must not leave an entry behind: a placeholder written before a flag is picked would count as
-// existing and block the seeding it is standing in for. A reference to a flag the group no longer carries is dropped
-// rather than kept, since the picker would not offer that flag any more.
+// operator has to do and the color keeps tracking battlemetrics afterwards. A group with no flag color to follow gets a
+// custom color picked to stand apart from the rest of the grouping. An entry that already exists is left alone.
+// Half-finished rules must not leave an entry behind: a placeholder written before a flag is picked (or before the org's
+// flags have loaded) would count as existing and block the seeding it is standing in for. A reference to a flag the
+// group no longer carries is dropped rather than kept, since the picker would not offer that flag any more.
 function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefined): Record<string, PG.Group> {
 	const groups: Record<string, PG.Group> = {}
+	const unassigned: string[] = []
 	for (const rule of grouping.rules) {
-		if (!rule.group || groups[rule.group]) continue
+		if (!rule.group || groups[rule.group] || unassigned.includes(rule.group)) continue
 		const existing = grouping.groups?.[rule.group]
 		if (existing && (existing.color.type === 'custom' || PG.getGroupFlags(grouping, rule.group).includes(existing.color.flag))) {
 			groups[rule.group] = existing
@@ -429,6 +432,17 @@ function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefin
 		}
 		const derived = PG.defaultGroupColor(grouping, rule.group, orgFlags)
 		if (derived) groups[rule.group] = { color: derived }
+		else unassigned.push(rule.group)
+	}
+
+	// picked only once every kept color is known, so a new group cannot land next to one that comes after it
+	const taken = Object.values(groups).map((g) => PG.resolveGroupColor(g.color, orgFlags))
+	for (const group of unassigned) {
+		const awaitingFlag = grouping.rules.some((r) => r.type === 'battlemetrics' && r.group === group && (!r.flag || !orgFlags))
+		if (awaitingFlag) continue
+		const color = Color.pickDistinct(taken)
+		taken.push(color)
+		groups[group] = { color: { type: 'custom', color } }
 	}
 	return groups
 }
@@ -983,7 +997,7 @@ function GroupColorRow({
 							</InputGroupButton>
 						</PopoverTrigger>
 						<PopoverContent className="w-auto p-2">
-							<HexColorPicker color={resolved} onChange={(c) => setCustom(c)} />
+							<ColorPicker color={resolved} onChange={(c) => setCustom(c)} />
 						</PopoverContent>
 					</Popover>
 				</InputGroupAddon>
@@ -1557,7 +1571,7 @@ function PresetTableField({
 	reset$: Rx.Subject<void>
 	onChange: (v: any[]) => void
 	headers: React.ReactNode
-	newRow: () => object
+	newRow: (rows: object[]) => object
 	Row: React.ComponentType<PresetRowProps>
 }) {
 	const value = (useFieldValue(value$) as object[] | undefined) ?? []
@@ -1595,7 +1609,10 @@ function PresetTableField({
 				type="button"
 				size="sm"
 				variant="outline"
-				onClick={() => structural([...((value$.getValue() as object[]) ?? []), newRow()])}
+				onClick={() => {
+					const rows = (value$.getValue() as object[]) ?? []
+					structural([...rows, newRow(rows)])
+				}}
 			>
 				<Icons.Plus className="h-4 w-4" />
 				{tr.text(SETTINGS_Msgs.addItem())}
@@ -1637,7 +1654,7 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 					<TableHead className="w-8" />
 				</>
 			}
-			newRow={() => ({ id: '', label: '', description: '', color: LTag.suggestColor([]) })}
+			newRow={(rows) => ({ id: '', label: '', description: '', color: LTag.suggestColor(rows as LTag.Tag[]) })}
 			Row={LayerTagRow}
 		/>
 	)
@@ -1700,7 +1717,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 							/>
 						</PopoverTrigger>
 						<PopoverContent className="w-auto p-2">
-							<HexColorPicker color={row?.color ?? LTag.DELETED_TAG_COLOR} onChange={setColor} />
+							<ColorPicker color={row?.color ?? LTag.DELETED_TAG_COLOR} onChange={setColor} />
 						</PopoverContent>
 					</Popover>
 					<Input

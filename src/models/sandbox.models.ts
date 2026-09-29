@@ -1,3 +1,4 @@
+import * as Color from '@/lib/color'
 import { z } from '@/lib/zod'
 import type * as SM from '@/models/squad.models'
 
@@ -322,13 +323,13 @@ export const SEEDED_ADMIN_GROUPS: SeededAdminGroup[] = [
 		name: DEFAULT_ADMIN_GROUP,
 		perms: ['canseeadminchat', 'balance', 'cameraman', 'teamchange', 'kick', 'ban'],
 		label: 'Admin',
-		color: '#d1495b',
+		color: Color.SWATCHES.red,
 	},
 	// no permissions at all: a watchlist marks a player, it does not give them anything
-	{ name: 'Watchlist', perms: [], label: 'Watchlist', color: '#e08e45' },
-	{ name: 'ArmorPlayer', perms: ['reserve'], label: 'Armor Player', color: '#3d7dd9' },
-	{ name: 'SquadLeader', perms: ['reserve'], label: 'Squad Leader', color: '#3f9e6b' },
-	{ name: 'Regular', perms: ['reserve'], label: 'Regular', color: '#8367c7' },
+	{ name: 'Watchlist', perms: [], label: 'Watchlist', color: Color.SWATCHES.orange },
+	{ name: 'ArmorPlayer', perms: ['reserve'], label: 'Armor Player', color: Color.SWATCHES.blue },
+	{ name: 'SquadLeader', perms: ['reserve'], label: 'Squad Leader', color: Color.SWATCHES.green },
+	{ name: 'Regular', perms: ['reserve'], label: 'Regular', color: Color.SWATCHES.purple },
 ]
 
 // Which groups the nth player to connect to an emulated server lands in. A fixed pattern rather than a random

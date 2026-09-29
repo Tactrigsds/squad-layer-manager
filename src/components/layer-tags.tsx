@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
-import { HexColorPicker } from 'react-colorful'
 
+import { ColorPicker } from '@/components/color-picker'
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -327,7 +327,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 				<div className="space-y-1">
 					<Label htmlFor="layer-tag-color">{tr.text(LTag_Msgs.colorColumn())}</Label>
 					<div className="flex items-start space-x-2">
-						<HexColorPicker color={color} onChange={setColorFromPicker} style={{ width: 140, height: 110 }} />
+						<ColorPicker color={color} onChange={setColorFromPicker} width={140} height={110} />
 						<div className="space-y-1">
 							<Input
 								id="layer-tag-color"
