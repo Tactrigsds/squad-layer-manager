@@ -21,3 +21,35 @@ describe('parse', () => {
 		expect(Color.parse(input)).toBeNull()
 	})
 })
+
+describe('pickDistinct', () => {
+	const lab = (hex: string) => Color.toOklab(Color.parse(hex)!)
+	const nearest = (hex: string, taken: string[]) => Math.min(...taken.map((t) => Color.distance(lab(hex), lab(t))))
+
+	test('starts with the first swatch', () => {
+		expect(Color.pickDistinct([])).toBe(Color.SWATCH_LIST[0])
+	})
+
+	test('skips a swatch that is merely close to a taken color, not just equal to it', () => {
+		expect(Color.pickDistinct(['#d04858'])).toBe(Color.SWATCHES.orange)
+	})
+
+	test('ignores unparseable taken colors', () => {
+		expect(Color.pickDistinct(['not-a-colour'])).toBe(Color.SWATCH_LIST[0])
+	})
+
+	test('keeps its distance once the swatches run out', () => {
+		const taken = [...Color.SWATCH_LIST]
+		for (let i = 0; i < 8; i++) {
+			const next = Color.pickDistinct(taken)
+			expect(next).toMatch(/^#[0-9a-f]{6}$/)
+			expect(nearest(next, taken)).toBeGreaterThan(0.05)
+			taken.push(next)
+		}
+	})
+
+	test('fills in around arbitrary taken colors', () => {
+		const taken = ['#ff0000', '#0000ff', '#00ff00', '#ffff00']
+		expect(nearest(Color.pickDistinct(taken), taken)).toBeGreaterThanOrEqual(0.1)
+	})
+})

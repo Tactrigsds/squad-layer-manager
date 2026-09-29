@@ -161,11 +161,11 @@ export const teamsHeader = {
 }
 
 export const groupingsColumn = {
-	title: def('Groupings'),
+	title: def('Groups'),
 	body: def(
 		rt(
-			`<p>The <em>Group</em> column shows each player's group. A grouping sorts players into groups by rules, such as the admin list or a BattleMetrics flag, so different kinds of players are easy to tell apart. Players who match no rule are counted as <em>Other</em>.</p>
-<p>Groupings are set up by users with sufficient permissions. See the <groupingsDocs>groupings documentation</groupingsDocs> for how.</p>`,
+			`<p>The <em>Group</em> column shows each player's group. A grouping mode sorts players into groups by rules, such as the admin list or a BattleMetrics flag, so different kinds of players are easy to tell apart. Players who match no rule are counted as <em>Other</em>.</p>
+<p>Grouping modes are set up by users with sufficient permissions. See the <groupingsDocs>grouping modes documentation</groupingsDocs> for how.</p>`,
 		),
 	),
 }
@@ -174,7 +174,7 @@ export const groupingModes = {
 	title: def('Grouping modes'),
 	body: def(
 		rt(
-			'Each grouping is a <em>grouping mode</em>: a different way of sorting the same players, for a job such as team balance, clans or a watchlist. Pick which one the table and the breakdown use here.',
+			'Each <em>grouping mode</em> is a different way of sorting the same players, for a job such as team balance, clans or a watchlist. Pick which one the table and the breakdown use here.',
 		),
 	),
 }
@@ -183,8 +183,8 @@ export const breakdown = {
 	title: def('Teams Breakdown'),
 	body: def(
 		rt(
-			`<p>The <em>Teams Breakdown</em> counts everyone on the server by team, split into the groups of the chosen grouping.</p>
-<p>It follows the grouping picked in the teams header.</p>`,
+			`<p>The <em>Teams Breakdown</em> counts everyone on the server by team, split into the groups of the chosen grouping mode.</p>
+<p>It follows the grouping mode picked in the teams header.</p>`,
 		),
 	),
 }
@@ -325,7 +325,7 @@ export namespace PlayerDetails {
 		title: def('Groups and flags'),
 		body: def(
 			rt(
-				"The player's in-game groups, BattleMetrics flags and SLM groupings are shown here. Flags can be added or removed here too. The made-up players on this server have no flags.",
+				"The player's in-game groups, BattleMetrics flags and SLM groups are shown here. Flags can be added or removed here too. The made-up players on this server have no flags.",
 			),
 		),
 	}

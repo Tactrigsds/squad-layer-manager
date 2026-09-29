@@ -1,3 +1,4 @@
+import * as Color from '@/lib/color'
 import { createId } from '@/lib/id'
 import { z } from '@/lib/zod'
 import * as LNote from '@/models/layer-notes.models'
@@ -83,39 +84,8 @@ export function resolveAll(ids: TagId[] | undefined, tags: Tag[]): Resolved[] {
 
 export const DELETED_TAG_COLOR = '#94a3b8'
 
-// picked to stay legible against both the light and dark app backgrounds
-const PALETTE = [
-	'#ef4444',
-	'#f97316',
-	'#eab308',
-	'#84cc16',
-	'#22c55e',
-	'#14b8a6',
-	'#06b6d4',
-	'#3b82f6',
-	'#6366f1',
-	'#a855f7',
-	'#ec4899',
-	'#f43f5e',
-]
-
 export function suggestColor(existing: Tag[]) {
-	const used = new Set(existing.map((t) => t.color.toLowerCase()))
-	const free = PALETTE.filter((c) => !used.has(c))
-	if (free.length > 0) return free[Math.floor(Math.random() * free.length)]
-	return hslToHex(Math.floor(Math.random() * 360), 65, 55)
-}
-
-function hslToHex(h: number, s: number, l: number) {
-	const a = (s / 100) * Math.min(l / 100, 1 - l / 100)
-	const channel = (n: number) => {
-		const k = (n + h / 30) % 12
-		const value = l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))
-		return Math.round(255 * value)
-			.toString(16)
-			.padStart(2, '0')
-	}
-	return `#${channel(0)}${channel(8)}${channel(4)}`
+	return Color.pickDistinct(existing.map((t) => t.color))
 }
 
 export function labelConflict(tags: Tag[], label: string, ignoreId?: TagId) {

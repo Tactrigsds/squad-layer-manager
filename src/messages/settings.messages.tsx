@@ -544,6 +544,7 @@ const SETTING_NAME_OVERRIDES: Record<string, TString> = {
 	layerGeneration: t('Layer Generation Weights'),
 	// its group header already reads "Permissions & Roles"; the field itself is the role definitions
 	rbac: t('Roles'),
+	playerGroupings: t('Player Grouping Modes'),
 	vote: t('Votes'),
 	// the chat config holds nothing but the feed's warn/broadcast suppression patterns
 	chat: t('Chat Feed Suppression'),

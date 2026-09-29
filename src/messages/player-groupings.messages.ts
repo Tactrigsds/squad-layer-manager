@@ -27,14 +27,14 @@ export const groupRuleSourceHints: Record<PG.GroupRuleSource, TString> = {
 // -------- the groupings editor --------
 
 export const noGroupings = def(
-	'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick between them by name.',
+	'No grouping modes defined. A grouping mode is one way of sorting players into groups; the players panel and activity charts pick between them by name.',
 )
 
-export const newGroupingName = def('New grouping name')
+export const newGroupingName = def('New grouping mode name')
 
-export const addGrouping = def('Add grouping')
+export const addGrouping = def('Add grouping mode')
 
-export const removeGrouping = def('Remove grouping {groupingId}', (groupingId: string) => ({ groupingId }))
+export const removeGrouping = def('Remove grouping mode {groupingId}', (groupingId: string) => ({ groupingId }))
 
 // -------- one grouping's rules --------
 
@@ -46,7 +46,7 @@ export const noRules = def('No rules yet.')
 
 export const matchesColumn = def('Matches')
 
-export const mappedGroupingColumn = def('Mapped grouping')
+export const groupColumn = def('Group')
 
 export const addRule = def('Add rule')
 
