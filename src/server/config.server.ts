@@ -2,6 +2,7 @@ import * as Rx from '@/lib/rxjs'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
+import * as Changelog from '@/systems/changelog.server'
 import * as Discord from '@/systems/discord.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
@@ -36,6 +37,8 @@ const DEFAULT_HELP_URL = 'https://discord.gg/U2ywQy48H'
 
 export type PublicConfig = {
 	isProduction: boolean
+	// the release this build is, from the changelog it ships (see models/changelog.models.ts)
+	version: string
 	PUBLIC_GIT_BRANCH: string
 	PUBLIC_GIT_SHA: string
 	PUBLIC_SQUADCALC_URL: string
@@ -65,6 +68,7 @@ const publicConfig$ = new Rx.ReplaySubject<PublicConfig>(1)
 export function pushPublicConfig() {
 	publicConfig$.next({
 		isProduction: ENV.NODE_ENV === 'production',
+		version: Changelog.version,
 		PUBLIC_GIT_BRANCH: ENV.PUBLIC_GIT_BRANCH,
 		PUBLIC_GIT_SHA: ENV.PUBLIC_GIT_SHA,
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,

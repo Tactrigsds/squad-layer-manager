@@ -29,6 +29,7 @@ export const PAGE_ACCESS = {
 	'/': Access.PUBLIC,
 	'/_app': Access.PUBLIC,
 	'/_app/about': Access.PUBLIC,
+	'/_app/changelog': Access.PUBLIC,
 	'/_app/commands': Access.PUBLIC,
 	'/_app/history': Access.req(Req.perm('history:query')),
 	'/_app/settings': Access.req(SETTINGS_PAGE),

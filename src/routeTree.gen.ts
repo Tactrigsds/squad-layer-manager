@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AppAboutRouteImport } from './routes/_app/about'
+import { Route as AppChangelogRouteImport } from './routes/_app/changelog'
 import { Route as AppCommandsRouteImport } from './routes/_app/commands'
 import { Route as AppHistoryRouteImport } from './routes/_app/history'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
@@ -36,6 +37,11 @@ const AppRouteRoute = AppRouteRouteImport.update({
 const AppAboutRoute = AppAboutRouteImport.update({
   id: '/about',
   path: '/about',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppChangelogRoute = AppChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppCommandsRoute = AppCommandsRouteImport.update({
@@ -97,6 +103,7 @@ const LayersLayerIdTabRoute = LayersLayerIdTabRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AppAboutRoute
+  '/changelog': typeof AppChangelogRoute
   '/commands': typeof AppCommandsRoute
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AppAboutRoute
+  '/changelog': typeof AppChangelogRoute
   '/commands': typeof AppCommandsRoute
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteRouteWithChildren
   '/_app/about': typeof AppAboutRoute
+  '/_app/changelog': typeof AppChangelogRoute
   '/_app/commands': typeof AppCommandsRoute
   '/_app/history': typeof AppHistoryRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/changelog'
     | '/commands'
     | '/history'
     | '/settings'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/changelog'
     | '/commands'
     | '/history'
     | '/settings'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/_app/about'
+    | '/_app/changelog'
     | '/_app/commands'
     | '/_app/history'
     | '/_app/settings'
@@ -218,6 +230,13 @@ declare module '@tanstack/react-router' {
       path: '/about'
       fullPath: '/about'
       preLoaderRoute: typeof AppAboutRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/changelog': {
+      id: '/_app/changelog'
+      path: '/changelog'
+      fullPath: '/changelog'
+      preLoaderRoute: typeof AppChangelogRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/commands': {
@@ -302,6 +321,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
+  AppChangelogRoute: typeof AppChangelogRoute
   AppCommandsRoute: typeof AppCommandsRoute
   AppHistoryRoute: typeof AppHistoryRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -315,6 +335,7 @@ interface AppRouteRouteChildren {
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAboutRoute: AppAboutRoute,
+  AppChangelogRoute: AppChangelogRoute,
   AppCommandsRoute: AppCommandsRoute,
   AppHistoryRoute: AppHistoryRoute,
   AppSettingsRoute: AppSettingsRoute,

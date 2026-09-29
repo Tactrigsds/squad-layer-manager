@@ -89,6 +89,10 @@ COPY --from=builder /app/assets/layers ./assets/layers
 # has neither tsx nor src/
 COPY scripts/slm-control.mjs ./scripts/
 
+# the changelog the What's new page serves, and the version it names (see models/changelog.models.ts)
+COPY --from=builder /app/changelog ./changelog
+COPY --from=builder /app/changes ./changes
+
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts

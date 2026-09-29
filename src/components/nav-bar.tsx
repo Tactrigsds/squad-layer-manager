@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -38,8 +39,10 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as CL_Msgs from '@/messages/changelog.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client'
+import * as ChangelogClient from '@/systems/changelog.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -69,6 +72,9 @@ export default function NavBar() {
 	const user = UsersClient.useLoggedInUser()
 
 	const avatarUrl = user?.avatarUrl
+	const changelogStatus = useQuery(ChangelogClient.statusQueryOptions)
+	// headline changes the user hasn't seen, when they've asked to be told
+	const unseenChanges = changelogStatus.data?.notify ? changelogStatus.data.unseen : 0
 
 	const isOnServerDashboard = TSR.useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
 	const isDesktop = useIsDesktopSize()
@@ -213,6 +219,15 @@ export default function NavBar() {
 				</DropdownMenuItem>
 			</UserPermissionsDialog>
 			<DropdownMenuItem asChild>
+				<TSR.Link to="/changelog">
+					<Icons.Sparkles />
+					<span className="grow">{tr.text(CL_Msgs.menuItem())}</span>
+					{unseenChanges > 0 && (
+						<span className="rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground">{unseenChanges}</span>
+					)}
+				</TSR.Link>
+			</DropdownMenuItem>
+			<DropdownMenuItem asChild>
 				<TSR.Link to="/about">
 					<Icons.Info />
 					{tr.text(APP_Msgs.about())}
@@ -237,13 +252,18 @@ export default function NavBar() {
 	)
 
 	const avatar = user && (
-		<Avatar
-			style={{ backgroundColor: user.displayHexColor ?? undefined }}
-			className="select-none size-6 max-phone:size-8 shrink-0 border border-line"
-		>
-			<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
-			<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-		</Avatar>
+		<span className="relative shrink-0">
+			<Avatar
+				style={{ backgroundColor: user.displayHexColor ?? undefined }}
+				className="select-none size-6 max-phone:size-8 shrink-0 border border-line"
+			>
+				<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+				<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+			</Avatar>
+			{unseenChanges > 0 && (
+				<span aria-hidden className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
+			)}
+		</span>
 	)
 
 	const serverPicker =
@@ -395,7 +415,7 @@ export default function NavBar() {
 					<DropdownMenuTrigger asChild>
 						<button
 							type="button"
-							aria-label={tr.text(APP_Msgs.userMenu())}
+							aria-label={tr.text(unseenChanges > 0 ? CL_Msgs.accountMenuUnseen(unseenChanges) : APP_Msgs.userMenu())}
 							className="grid place-items-center rounded-full pointer-coarse:size-(--ctl) hover:cursor-pointer focus-visible:outline-2 focus-visible:outline-pri-hi"
 						>
 							{avatar}

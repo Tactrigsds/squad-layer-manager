@@ -235,6 +235,13 @@ Tests must not depend on `data/generated/messages`, which exists locally but not
 
 Whenever we add or modify integration/e2e tests, or behavior which may affect one or more existing tests integration/e2e tests, let's take extra care that we have not introduced any flaky/race condition behaviors, in either the test itself or the excercized logic. Run the relevant tests multiple times to catch any potential flakiness.
 
+# Changelog
+
+When a change is something a user or operator could notice without reading the code or the logs, add a fragment
+to `changes/` in the same PR. changes/README.md has the format and the test for what counts. Write it for the people
+it affects, following the prose rules above. Otherwise put `Changelog: none` in the PR description. A breaking
+change (`!` in the commit subject) always needs an `operators` fragment saying what an upgrade has to do.
+
 # Migrations
 
 Data migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). It is

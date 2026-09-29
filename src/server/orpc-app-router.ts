@@ -2,6 +2,7 @@ import * as Config from '@/server/config.server'
 import * as Announcements from '@/systems/announcements.server'
 import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
+import * as Changelog from '@/systems/changelog.server'
 import * as Discord from '@/systems/discord.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -50,4 +51,5 @@ export const orpcAppRouter = {
 	sandbox: Sandbox.orpcRouter,
 	serverConsole: ServerConsole.orpcRouter,
 	tutorials: Tutorials.orpcRouter,
+	changelog: Changelog.orpcRouter,
 }

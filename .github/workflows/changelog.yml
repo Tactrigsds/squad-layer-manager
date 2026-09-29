@@ -1,0 +1,38 @@
+name: Changelog
+
+# Checks that a pull request records what it changes: a fragment in changes/, or "Changelog: none" in its
+# description. See changes/README.md and src/scripts/check-changelog.ts.
+
+permissions:
+   contents: read
+
+on:
+   pull_request:
+      types: [opened, synchronize, reopened, edited]
+
+jobs:
+   check:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v4
+           with:
+              # the check reads the commits between the base and the PR head
+              fetch-depth: 0
+
+         - name: Setup Node.js
+           uses: actions/setup-node@v4
+           with:
+              node-version: '24'
+
+         - name: Install pnpm
+           uses: pnpm/action-setup@v4
+           with:
+              version: 10.22.0
+
+         - name: Install dependencies
+           run: pnpm install --frozen-lockfile
+
+         - name: Check the changelog
+           env:
+              PR_BODY: ${{ github.event.pull_request.body }}
+           run: pnpm run changelog:check --base "origin/${{ github.base_ref }}"

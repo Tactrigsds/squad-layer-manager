@@ -638,3 +638,20 @@ export const tutorialProgress = sqliteTable(
 		pk: primaryKey({ columns: [table.userId, table.scenarioId] }),
 	}),
 )
+
+// When this install first ran each changelog entry. An entry is new to a user if it arrived after they last looked,
+// so an install that skips releases shows everything it skipped as new, whatever the versions say.
+export const changelogEntries = sqliteTable('changelogEntries', {
+	entryId: text('entryId').primaryKey(),
+	firstServedAt: timestamp('firstServedAt').notNull(),
+})
+
+// A user's place in the changelog. No row is the same as having seen everything up to the first time they asked.
+export const changelogUserState = sqliteTable('changelogUserState', {
+	userId: bigintText('userId')
+		.primaryKey()
+		.references(() => users.discordId, { onDelete: 'cascade' }),
+	seenAt: timestamp('seenAt').notNull(),
+	// the dot in the nav and the notice after an upgrade
+	notify: boolean('notify').notNull().default(true),
+})
