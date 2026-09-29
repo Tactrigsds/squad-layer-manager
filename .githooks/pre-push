@@ -1,2 +1,2 @@
 #!/bin/sh
-node "$(dirname "$0")/pre-push.js"
+node "$(dirname "$0")/pre-push.js" "$@"
