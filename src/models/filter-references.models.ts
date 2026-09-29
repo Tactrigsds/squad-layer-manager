@@ -50,6 +50,8 @@ export function poolConfigFilterIds(pool: SETTINGS.PoolConfiguration, key: PoolC
 			return pool.warnFor.map((c) => c.filterId)
 		case 'constrainGeneration':
 			return pool.constrainGeneration.map((c) => c.filterId)
+		case 'layerRequestFilters':
+			return pool.layerRequestFilters.map((c) => c.filterId)
 		default:
 			assertNever(key)
 	}

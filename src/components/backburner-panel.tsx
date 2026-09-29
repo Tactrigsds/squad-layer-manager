@@ -338,7 +338,7 @@ async function onlyMatchingLayer(filter: F.FilterNode): Promise<L.LayerId | null
 }
 
 // per-item "still has solutions" flags, refreshed when the items change. Templates carry their own filters
-// (incl. pool membership), so the probe applies nothing on top; do-not-repeat rules stay out (transient),
+// (incl. generation constraints), so the probe applies nothing on top; do-not-repeat rules stay out (transient),
 // matching the server's request-time validation.
 function useBackburnerSatisfiability(items: BB.BackburnerItem[]) {
 	// items carry bigint owner ids, which dep keys can't stringify; the templates are the queried part anyway

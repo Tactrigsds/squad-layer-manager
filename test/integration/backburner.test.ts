@@ -49,6 +49,7 @@ beforeAll(async () => {
 		},
 		serverSettings: (s) => {
 			s.queue.mainPool.constrainGeneration = [{ filterId: 'gen-pool', applyAs: 'regular' }]
+			s.queue.mainPool.layerRequestFilters = [{ filterId: 'gen-pool', applyAs: 'regular' }]
 			s.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 		},
 	})
@@ -67,12 +68,14 @@ describe('layer backburner via chat', () => {
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
 		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
 		expect(requestedMaps(savedBackburner(app)[0])).toEqual(['Fallujah'])
+		// chat requests carry the pool's layer request filters
+		expect(BB.parseTemplateParts(savedBackburner(app)[0].filter).filterIds).toEqual(['gen-pool'])
 		expect(warnsTo(app, admin).join('\n')).toContain('Layer request queued: Fallujah')
 
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqs'))
 		await app.waitFor(() => warnsTo(app, admin).length > 0 || null, { label: 'the request listing', timeoutMs: 20_000 })
-		expect(warnsTo(app, admin).join('\n')).toContain('1. Fallujah (yours)')
+		expect(warnsTo(app, admin).join('\n')).toContain('1. Fallujah, Generation Pool (yours)')
 
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
 		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'the request being removed', timeoutMs: 20_000 })
@@ -117,9 +120,7 @@ describe('layer backburner via chat', () => {
 
 describe('generation on roll', () => {
 	it('folds queued requests into the next generated layer and consumes them', async () => {
-		// A request carries only the pool filter, not constrainGeneration (addBackburnerRequestFromChat), so the
-		// gamemode is named here rather than left to the pool: an unpinned Fallujah request can come out as the
-		// seed layer, and the next test's repeat window has to survive playing whatever this one draws.
+		// The gamemode is pinned so the next test's repeat window only has to survive playing a Fallujah RAAS layer.
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu raas'))
 		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
 

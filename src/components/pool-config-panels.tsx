@@ -193,6 +193,7 @@ const SECONDARY_LISTS: Record<SETTINGS.SecondaryListKey, SecondaryListConfig> = 
 	defaultSelectable: { mode: 'selectable', emojiFor: 'applyAs' },
 	warnFor: { mode: 'applied', emojiFor: 'applyAs' },
 	constrainGeneration: { mode: 'applied', emojiFor: 'applyAs' },
+	layerRequestFilters: { mode: 'applied', emojiFor: 'applyAs' },
 }
 
 function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SETTINGS.SecondaryListKey }) {

@@ -127,15 +127,17 @@ function unionSpec(x: F.MatchupTeamSpec, y: F.MatchupTeamSpec): F.MatchupTeamSpe
 	return out
 }
 
-// Bakes the configured pool filter into a template (include mode -> included-in, exclude -> excluded-from),
-// so requests carry pool membership themselves instead of having it enforced separately at generation time.
-export function withPoolFilter(filter: F.FilterNode, poolFilter: { filterId: string; mode: 'include' | 'exclude' } | null): F.FilterNode {
-	if (!poolFilter) return filter
+// Bakes filters into a template, so requests carry them themselves instead of having them enforced separately at
+// generation time. A filter the template already includes or excludes is left as the template has it.
+export function withFilters(filter: F.FilterNode, filters: { filterId: string; applyAs: 'regular' | 'inverted' }[]): F.FilterNode {
 	const parts = parseTemplateParts(filter)
-	const key = poolFilter.mode === 'include' ? 'filterIds' : 'excludedFilterIds'
-	if (parts[key].includes(poolFilter.filterId)) return filter
-	parts[key].push(poolFilter.filterId)
-	return buildTemplateFilter(parts)
+	let changed = false
+	for (const { filterId, applyAs } of filters) {
+		if (parts.filterIds.includes(filterId) || parts.excludedFilterIds.includes(filterId)) continue
+		parts[applyAs === 'regular' ? 'filterIds' : 'excludedFilterIds'].push(filterId)
+		changed = true
+	}
+	return changed ? buildTemplateFilter(parts) : filter
 }
 
 export function removeByIds(items: BackburnerItem[], itemIds: ItemId[]): BackburnerItem[] {
