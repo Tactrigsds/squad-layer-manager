@@ -4,6 +4,9 @@
 
 const SCROLL_GAP = 8
 
+// the settings column inside `main`, which excludes the TOC that scrolls along with it
+export const CONTENT_ID = 'settings-content'
+
 // the anchor id of a global setting, given its dotted path. Mirrors the settings form's default idPrefix; server
 // settings scope theirs by server id instead (see sectionForAnchor).
 export function globalSettingAnchor(path: string): string {

@@ -264,7 +264,8 @@ function useActiveAnchor(deps: unknown): string | null {
 	const [activeId, setActiveId] = React.useState<string | null>(null)
 	React.useEffect(() => {
 		const main = document.querySelector('main')
-		if (!main) return
+		const content = document.getElementById(SettingsNav.CONTENT_ID)
+		if (!main || !content) return
 		let raf = 0
 		const compute = () => {
 			raf = 0
@@ -272,12 +273,12 @@ function useActiveAnchor(deps: unknown): string | null {
 			// push the fold line below any currently-pinned sticky headers, so the section visible beneath the pinned
 			// stack wins (a header is "pinned" when its top has reached its sticky offset)
 			let fold = mainTop + 12
-			for (const s of main.querySelectorAll<HTMLElement>('[style*="position: sticky"]')) {
+			for (const s of content.querySelectorAll<HTMLElement>('[style*="position: sticky"]')) {
 				const offset = parseFloat(getComputedStyle(s).top) || 0
 				const r = s.getBoundingClientRect()
 				if (Math.abs(r.top - (mainTop + offset)) < 2) fold = Math.max(fold, r.bottom)
 			}
-			const anchors = main.querySelectorAll<HTMLElement>('[id^="setting:"],[id^="section:"]')
+			const anchors = content.querySelectorAll<HTMLElement>('[id^="setting:"],[id^="section:"]')
 			let current: string | null = null
 			// anchors are in document order (top-to-bottom); the last one above the fold is the active one. the tolerance
 			// covers the small breathing gap scrollToId leaves between a navigated target and the pinned stack above it.
