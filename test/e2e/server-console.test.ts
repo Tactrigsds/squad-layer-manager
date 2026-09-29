@@ -105,6 +105,31 @@ sharedAppTest.describe('server console', () => {
 		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(await viewport.evaluate((el) => el.clientHeight))
 		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
 
+		// A full buffer drops rows off the top, so the content can shrink under a tailing reader and the browser clamps
+		// them. The clamp's scroll event comes a frame later, and growth landing in between must not read as them
+		// leaving. Driven by hand because the real sequence needs the buffer full and the timing lucky.
+		await viewport.evaluate(async (el) => {
+			const rows = [...el.querySelectorAll('li')].slice(0, 30)
+			const list = rows[0].parentElement!
+			for (const row of rows) row.style.display = 'none'
+			await new Promise<void>((resolve) => {
+				const observer = new ResizeObserver(() => {
+					observer.disconnect()
+					setTimeout(() => {
+						for (const row of rows) row.style.display = ''
+						list.style.paddingBottom = '4000px'
+						resolve()
+					})
+				})
+				observer.observe(list)
+			})
+			// the clamp's scroll event is dispatched on the next frame, and the pin after it on the one following
+			for (let i = 0; i < 3; i++) await new Promise((resolve) => requestAnimationFrame(resolve))
+		})
+		expect(await distanceFromBottom()).toBeLessThan(16)
+		await expect(page.getByRole('button', { name: 'Scroll to bottom' })).toBeHidden()
+		await viewport.evaluate((el) => (el.querySelector('li')!.parentElement!.style.paddingBottom = ''))
+
 		// a deliberate scroll up hands the position back to the reader, and says how to give it up again
 		await viewport.hover()
 		await page.mouse.wheel(0, -600)
