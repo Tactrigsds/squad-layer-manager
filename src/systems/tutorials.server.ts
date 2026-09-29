@@ -736,23 +736,37 @@ async function teardown(ctx: C.Db, owner: bigint) {
 
 // ============================== stage execution ==============================
 
-// presenceOpId is the presence state's newest op once the stage is done, which the client waits to have applied
+// the newest op on every synced stream a stage can write, once it is done. The client waits to have applied them.
 type StageResponse =
-	| { code: 'ok'; presenceOpId: string | undefined }
+	| { code: 'ok'; syncedTo: TUT.StageSyncTokens }
 	| Exclude<TUT.StageResult, { code: 'ok' }>
 	| { code: 'err:stage-failed'; msg: string }
 
 // a second stage call while one is in flight coalesces onto it rather than queueing: both asked for the same state
 const inFlightStages = new Map<string, Promise<StageResponse>>()
 
-async function runStage(owner: bigint, stageId: string, run: () => Promise<TUT.StageResult>): Promise<StageResponse> {
+async function runStage(
+	owner: bigint,
+	stageId: string,
+	getCtx: () => StageCtx,
+	stage: (ctx: StageCtx) => Promise<TUT.StageResult>,
+): Promise<StageResponse> {
 	const key = `${owner}:${stageId}`
 	const existing = inFlightStages.get(key)
 	if (existing) return existing
 	const pending = (async (): Promise<StageResponse> => {
 		try {
-			const res = await run()
-			return res.code === 'ok' ? { code: 'ok', presenceOpId: UserPresence.lastOpId() } : res
+			const ctx = getCtx()
+			const res = await stage(ctx)
+			if (res.code !== 'ok') return res
+			return {
+				code: 'ok',
+				syncedTo: {
+					presence: UserPresence.lastOpId(),
+					queue: ctx.layerQueue.session.ops.at(-1)?.opId,
+					teamswaps: ctx.teamswaps.session.ops.at(-1)?.opId,
+				},
+			}
 		} catch (err) {
 			log.error(err, 'tutorial stage %s failed', stageId)
 			return { code: 'err:stage-failed', msg: err instanceof Error ? err.message : String(err) }
@@ -914,7 +928,7 @@ export const orpcRouter = {
 			if (!run || run.scenarioId !== input.scenarioId || run.phase !== 'active') return { code: 'err:no-active-run' as const }
 			const stage = SCENARIOS[run.scenarioId].stages[input.stageId]
 			if (!stage) return { code: 'err:unknown-stage' as const }
-			return await runStage(owner, input.stageId, () => stage(stageCtxFor(context, run.serverId, owner)))
+			return await runStage(owner, input.stageId, () => stageCtxFor(context, run.serverId, owner), stage)
 		}),
 
 	abandon: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {

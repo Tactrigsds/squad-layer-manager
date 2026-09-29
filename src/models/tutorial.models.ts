@@ -113,3 +113,6 @@ export const RECOMMENDED_TUTORIALS: Record<SurfaceId, ScenarioId[]> = {
 // what a stage answers. err:not-ready means the user has not done their part yet: an ordinary
 // answer the card renders as guidance, against err:stage-failed which is a real fault.
 export type StageResult = { code: 'ok' } | { code: 'err:not-ready'; msg: string }
+
+// the newest op id on each synced stream a stage can write, per stream; undefined for a stream with no ops yet
+export type StageSyncTokens = { presence?: string; queue?: string; teamswaps?: string }

@@ -4,6 +4,7 @@ import * as React from 'react'
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
+import type * as ODSM from '@/lib/odsm'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
@@ -712,24 +713,32 @@ export function awaitSelector(run: RunStores, sel: StateSelector<boolean>, signa
 	})
 }
 
-// A stage's presence ops reach this client on the presence stream, which neither the stage's response nor the queue
-// stream waits for. Until they land, a checkpoint's `ready` can pass on the presence from before the stage, and a
-// simulate applied over it is clobbered when they arrive. Timing out proceeds as if there were no wait.
+// A stage's ops reach this client on each synced stream's own subscription, which the stage's response does not wait
+// for. Until they land, a checkpoint's `ready` can pass on the state from before the stage (a jump within one region
+// leaves a queue of the same shape, with different item ids), and a simulate applied over it targets items that are
+// about to vanish. Timing out proceeds as if there were no wait.
 async function stage(run: RunStores, scenarioId: TUT.ScenarioId, stageId: string, signal: AbortSignal) {
 	const res = await TutorialsClient.Actions.stage(scenarioId, stageId)
-	if (res.code === 'ok' && res.presenceOpId) {
-		const opId = res.presenceOpId
-		await awaitSelector(
-			run,
-			{
-				inputs: () => [UPClient.Store],
-				select: (s: UPClient.Store) => s.session.syncedOps.some((op) => op.opId === opId),
-			},
-			signal,
-			JUMP_READY_TIMEOUT_MS,
-		)
-	}
+	if (res.code !== 'ok') return res
+	const to = res.syncedTo
+	await awaitSelector(
+		run,
+		{
+			inputs: (run) => [UPClient.Store, run.squadServer],
+			select: (up: UPClient.Store, s: SquadServerFrame.State) =>
+				caughtUp(up.session, to.presence) && caughtUp(s.queue.rbSession, to.queue) && caughtUp(s.teamswaps.session, to.teamswaps),
+		},
+		signal,
+		JUMP_READY_TIMEOUT_MS,
+	)
 	return res
+}
+
+// whether a session's local state includes the op. Pending ops must have drained too, since until they do ODSM pins
+// local state to the optimistic timeline.
+function caughtUp(session: ODSM.Client.Session<{ opId: string }, unknown>, opId: string | undefined) {
+	if (!opId) return true
+	return session.pendingOps.length === 0 && session.syncedOps.some((op) => op.opId === opId)
 }
 
 // The dashboard route dispatches enter-server-dashboard once on mount, but at tour start that races the new
