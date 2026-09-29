@@ -58,6 +58,8 @@
 		"build:agent": "cargo build --release --manifest-path server-agent/agent/Cargo.toml",
 		"build:all": "pnpm run build:engine && pnpm run build:prod",
 		"plugins:reload": "node scripts/slm-control.mjs reload-plugins",
+		"announce": "node scripts/slm-control.mjs announce",
+		"announce:clear": "node scripts/slm-control.mjs clear-announcement",
 		"plugin:pack": "tsx --tsconfig tsconfig.node.json src/scripts/pack-plugin.ts",
 		"build:feed-icons": "tsx --tsconfig tsconfig.node.json src/scripts/build-feed-icons.ts"
 	},

@@ -2,10 +2,12 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as path from 'node:path'
 
+import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
+import * as Announcements from '@/systems/announcements.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as EventArchive from '@/systems/event-archive.server'
 import * as MatchLayers from '@/systems/match-layers.server'
@@ -21,6 +23,10 @@ import * as Plugins from '@/systems/plugins.server'
  * back up, which neither of the others can tell it. The file is root-owned and 0600, so reaching it means
  * already being root in the container -- which is why the commands here take no identity and check none.
  *
+ * Deployment also warns the app's users before restarting it:
+ *
+ *   docker exec slm-app-prod pnpm announce "SLM restarts in 2 minutes to update" --expires 5m
+ *
  * One request per connection: a JSON line in, a JSON line back, close.
  */
 
@@ -32,6 +38,9 @@ type Response = { code: string; [key: string]: unknown }
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.plugins })
 const archiveEnvBuilder = Env.getEnvBuilder({ ...Env.groups.backups })
+
+const DEFAULT_ANNOUNCEMENT_DURATION = '15m'
+const MAX_ANNOUNCEMENT_DURATION_MS = 24 * 60 * 60 * 1000
 
 async function handle(req: Request): Promise<Response> {
 	switch (req.command) {
@@ -61,6 +70,25 @@ async function handle(req: Request): Promise<Response> {
 			const res = await MatchLayers.reconcileMatchLayers(ctx)
 			return { code: 'ok', ...(res ?? { skipped: 'already reconciled against this layer artifact' }) }
 		}
+		// warns web users and in-game admins, e.g. ahead of a restart
+		case 'announce': {
+			const message = typeof req.args?.message === 'string' ? req.args.message.trim() : ''
+			if (!message) return { code: 'err:invalid-args', message: 'a message is required' }
+			const expires = req.args?.expires ?? DEFAULT_ANNOUNCEMENT_DURATION
+			const durationMs = typeof expires === 'string' ? ZodUtils.tryParseHumanTimeToken(expires) : undefined
+			// setTimeout overflows past ~24.8 days
+			if (!durationMs || durationMs > MAX_ANNOUNCEMENT_DURATION_MS) {
+				return {
+					code: 'err:invalid-args',
+					message: `--expires must be a duration like 10m, up to 24h (got ${JSON.stringify(expires)})`,
+				}
+			}
+			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const res = await Announcements.announce(ctx, message, durationMs)
+			return { code: 'ok', expiresAt: res.announcement.expiresAt, warned: res.warned, failed: res.failed }
+		}
+		case 'clear-announcement':
+			return { code: 'ok', cleared: Announcements.clear() }
 		default:
 			return { code: 'err:unknown-command', command: req.command }
 	}

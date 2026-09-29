@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useMatch } from '@tanstack/react-router'
 import React from 'react'
 
+import AnnouncementBanner from '@/components/announcement-banner'
 import DesktopOnly from '@/components/desktop-only'
 import NavBar from '@/components/nav-bar'
 import { PermissionDeniedPanel } from '@/components/permission-denied-tooltip'
@@ -37,6 +38,7 @@ function RouteComponent() {
 			data-phone={orUndef(isPhone)}
 		>
 			<NavBar />
+			<AnnouncementBanner />
 			<div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhone ? '' : 'p-2.5')}>
 				{desktopOnly ? <DesktopOnly /> : denied ? <PermissionDeniedPanel denied={denied} /> : <Outlet />}
 			</div>

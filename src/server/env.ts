@@ -241,7 +241,7 @@ export const groups = {
 			.meta({
 				description:
 					'unix socket for operating the running app from inside its container (see systems/control-socket.server.ts): ' +
-					'reloading plugins a deployment just copied in. Root-owned and 0600. Empty disables it.',
+					'reloading plugins a deployment just copied in, or announcing a restart. Root-owned and 0600. Empty disables it.',
 			}),
 		PLUGINS_DIR: z.string().min(1).prefault(path.join(Paths.DATA, 'plugins')).meta({
 			description:

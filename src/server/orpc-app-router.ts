@@ -1,4 +1,5 @@
 import * as Config from '@/server/config.server'
+import * as Announcements from '@/systems/announcements.server'
 import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
@@ -43,6 +44,7 @@ export const orpcAppRouter = {
 	teamswaps: Teamswaps.orpcRouter,
 	switchRequests: SwitchRequests.orpcRouter,
 	appEvents: AppEvents.router,
+	announcements: Announcements.router,
 	plugins: Plugins.router,
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,

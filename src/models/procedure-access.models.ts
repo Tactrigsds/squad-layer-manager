@@ -77,6 +77,7 @@ export const PROCEDURE_ACCESS = {
 	'vote.watchUpdates': VIEW_SERVER,
 
 	'config.watchConfig': Access.PUBLIC,
+	'announcements.watch': Access.PUBLIC,
 
 	'settings.public.watchPublicSettings': Access.FILTERED,
 	'settings.global.watchSettings': GLOBAL_SETTINGS_READ,
