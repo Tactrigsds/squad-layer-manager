@@ -1165,8 +1165,9 @@ function isBroadcastEvent(event: EventEnriched): boolean {
 	return event.type === 'APP_EVENT' && event.appEvent.type === 'BROADCAST_SENT'
 }
 
-// raw in-game warns are noise in these feeds; only the SLM-initiated ones, which arrive as app events, show
+// in-game and SLM-initiated alike: raw warns, their aggregates, and the app events they collapse under
 function isWarnEvent(event: EventEnriched): boolean {
+	if (event.type === 'PLAYER_WARNED' || event.type === 'WARNS_AGGREGATED') return true
 	return event.type === 'APP_EVENT' && event.appEvent.type === 'PLAYER_WARNED'
 }
 
@@ -1208,10 +1209,11 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
 		case 'CHAT':
-			return event.type === 'CHAT_MESSAGE' || isBroadcastEvent(event) || isWarnEvent(event)
+			return event.type === 'CHAT_MESSAGE' || isBroadcastEvent(event)
 		case 'SLM_EVENTS':
 			return event.type === 'APP_EVENT' || event.type === 'MAP_SET'
 		case 'ADMIN':
+			if (isWarnEvent(event)) return false
 			if (event.type === 'APP_EVENT' || event.type === 'MAP_SET') return true
 			if (event.type === 'CHAT_MESSAGE') return event.channel.type === 'ChatAdmin'
 			if (isBroadcastEvent(event)) return true
