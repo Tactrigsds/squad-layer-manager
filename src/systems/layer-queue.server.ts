@@ -1328,7 +1328,7 @@ const handleSideEffect = Instr.spanOp(
 			case 'op-outcome':
 				break
 			case 'edit-window-closed': {
-				UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
+				await UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break
 			}
 			case 'request-queue-item-generation': {
@@ -1458,7 +1458,7 @@ const handleSideEffect = Instr.spanOp(
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
-				UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
+				await UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break
 			}
 			default:

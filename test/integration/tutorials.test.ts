@@ -69,7 +69,7 @@ describe('tutorial runtime', () => {
 	})
 
 	it('runs a stage green and rejects an unknown one', async () => {
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'ok' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toMatchObject({ code: 'ok' })
 		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'no-such-stage' })).toEqual({
 			code: 'err:unknown-stage',
 		})
@@ -79,7 +79,7 @@ describe('tutorial runtime', () => {
 		// the play-a-match stage syncs the head as next, ends the match, and waits for the roll to settle. The head
 		// becomes the current match and shifts off, so the saved queue drops from 3 to 2 -- proof the roll landed on
 		// the queued layer rather than the emulator's default seed (which would leave the queue untouched).
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'play-a-match' })).toEqual({ code: 'ok' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'play-a-match' })).toMatchObject({ code: 'ok' })
 		// match creation is log-driven and can lag the stage's return slightly, so poll for the consumed head
 		await app.waitFor(() => savedQueue(app, SERVER_ID).length === 2 || null, { label: 'the played head consumed from the queue' })
 	})

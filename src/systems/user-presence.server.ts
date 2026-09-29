@@ -280,7 +280,7 @@ export function dispatchFilterRemoved(filterId: string) {
 }
 
 export function dispatchEndAllLayerQueueEditing(serverId: string) {
-	dispatchOp([
+	return dispatchOp([
 		{
 			code: 'sll:end-all-editing',
 			opId: UP.createOpId(),
@@ -298,7 +298,7 @@ export function dispatchEndAllLayerQueueEditing(serverId: string) {
 // server, and the tutorial only ever names the scoped one it created.
 export function dispatchFabricatedEditor(serverId: string, userId: bigint, clientId: string) {
 	const base = { clientId, userId, time: Date.now() }
-	dispatchOp([
+	return dispatchOp([
 		{ ...base, code: 'update-activity', opId: UP.createOpId(), update: { code: 'enter-server-dashboard', serverId } },
 		{ ...base, code: 'update-activity', opId: UP.createOpId(), update: UP.toEditingQueueIdleOrNone() },
 	]).catch((error) => log.error(error))
@@ -306,7 +306,14 @@ export function dispatchFabricatedEditor(serverId: string, userId: bigint, clien
 
 // the same client going away, which is how a fabricated editor leaves: identical to a real socket closing
 export function dispatchFabricatedDisconnect(clientId: string) {
-	dispatchOp([{ code: 'client-disconnected', clientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) => log.error(error))
+	return dispatchOp([{ code: 'client-disconnected', clientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) =>
+		log.error(error),
+	)
+}
+
+// the newest op the authoritative presence state has accepted, for a caller that needs a client to have caught up to it
+export function lastOpId(): string | undefined {
+	return globalUserPresence.session.ops.at(-1)?.opId
 }
 
 export function setup() {
