@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client'
 import * as Catalogues from '@/messages/catalogues'
 import * as AnnouncementsClient from '@/systems/announcements.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as ChangelogClient from '@/systems/changelog.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -46,6 +47,7 @@ await LayerDataClient.setup()
 	FilterEntityClient.setup()
 	BattlemetricsClient.setup()
 	UsersClient.setup()
+	ChangelogClient.setup()
 	void UserPresenceClient.setup()
 	PluginsClient.setup(BUILTIN_PLUGIN_CLIENTS)
 	console.debug('systems initialized')

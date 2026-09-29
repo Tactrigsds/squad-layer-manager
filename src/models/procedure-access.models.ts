@@ -212,6 +212,12 @@ export const PROCEDURE_ACCESS = {
 	'tutorials.start': Access.SELF,
 	'tutorials.stage': Access.SELF,
 	'tutorials.abandon': Access.SELF,
+
+	// the releases are public, and the rest is the caller's own place in them
+	'changelog.get': Access.SELF,
+	'changelog.getStatus': Access.SELF,
+	'changelog.markSeen': Access.SELF,
+	'changelog.setNotify': Access.SELF,
 } satisfies { [P in ProcedurePath]: RBAC.Access<ProcedureInput<P>> }
 
 // ---------------------------------------------------------------- types ----------------------------------------------------------------

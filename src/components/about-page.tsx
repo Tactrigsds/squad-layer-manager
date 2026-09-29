@@ -1,3 +1,4 @@
+import * as TSR from '@tanstack/react-router'
 import { Copy } from 'lucide-react'
 
 import LogoMark from '@/components/logo-mark'
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as CL_Msgs from '@/messages/changelog.messages'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -39,8 +41,7 @@ export default function AboutPage() {
 
 	const versionText = tr.text(
 		APP_Msgs.versionInfo({
-			appVersion:
-				config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA ? formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA) : undefined,
+			appVersion: `${config.version} (${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)})`,
 			layersVersion: config.layersVersion ?? undefined,
 			username: user.username,
 			wsClientId: config.wsClientId,
@@ -64,6 +65,20 @@ export default function AboutPage() {
 					<CardTitle>{tr.text(APP_Msgs.debugAndHelpInfo())}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4 text-sm">
+					<div className="flex flex-col space-y-1">
+						<span className="font-semibold">{tr.text(CL_Msgs.versionHeading())}</span>
+						<div className="flex flex-wrap items-baseline gap-x-3">
+							<span className="font-mono">{config.version}</span>
+							{/* a build past its release (`2026.9.4+2`) has its newest changes at the top, unreleased */}
+							<TSR.Link
+								to="/changelog"
+								hash={config.version.includes('+') ? undefined : `release-${config.version}`}
+								className={Typo.Link}
+							>
+								{tr.text(CL_Msgs.aboutLink())}
+							</TSR.Link>
+						</div>
+					</div>
 					<LinkRow heading={tr.text(APP_Msgs.repositoryHeading())} url={config.repoUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.helpHeading())} url={config.helpUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.reportIssuesHeading())} url={config.issuesUrl} />

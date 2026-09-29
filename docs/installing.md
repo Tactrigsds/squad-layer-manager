@@ -231,10 +231,21 @@ Once the app is running you can sign in with discord OAuth, and move on to [conf
 docker compose pull && docker compose up -d
 ```
 
+Pick which image tag to follow in `docker-compose.yaml`:
+
+| tag         | what it gets you                                                          |
+| ----------- | ------------------------------------------------------------------------- |
+| `:stable`   | the latest release. Releases group changes and come with release notes.   |
+| `:latest`   | every change as soon as it passes tests                                   |
+| `:2026.9.4` | one release, which never changes. Releases are named `year.month.number`. |
+
+Before upgrading, read the notes for every release since yours in [CHANGELOG.md](../CHANGELOG.md), under "For
+operators". A "Breaking" note tells you something to do. The same notes are logged when the upgraded app starts, and
+everyone signed in to SLM can see what changed on its What's new page.
+
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
 up first (see [3.7](#37-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
-putting the snapshot back and pinning the image it belongs to. The same pinning holds an install on a version you
-have chosen instead of tracking `:latest`.
+putting the snapshot back and pinning the image it belongs to.
 
 An install that predates `.env.secrets` keeps working untouched, since SLM reads the credentials from wherever it
 finds them. To move them out of the environment (see [3.3](#33-secrets)), take the seven variables in that section out

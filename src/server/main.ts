@@ -10,6 +10,7 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Backups from '@/systems/backups.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
+import * as Changelog from '@/systems/changelog.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as CombatStats from '@/systems/combat-stats.server'
@@ -159,6 +160,8 @@ await Instr.spanOp('main', { module }, async () => {
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 
 	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	// before Config.pushPublicConfig, which carries the version it reads off the changelog
+	await Changelog.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
 	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()

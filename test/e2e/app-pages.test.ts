@@ -268,6 +268,33 @@ test.describe('nav bar', () => {
 		// named in its own language, which is what a reader who cannot read the current one needs
 		await expect(page.getByRole('menuitemradio', { name: 'English' })).toBeVisible()
 	})
+
+	// A fresh app stamps every entry it ships as already seen, so the unseen dot never shows here. What this covers is
+	// the way in, and the one preference the page saves.
+	test("opens What's new, which keeps the choice to be notified", async ({ page }) => {
+		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
+		await page.getByLabel('User menu').click()
+		await page.getByRole('menuitem', { name: "What's new" }).click()
+		await expect(page.getByRole('heading', { name: "What's new", level: 1 })).toBeVisible()
+		await expect(page.getByRole('main').getByRole('region').first()).toBeVisible()
+
+		const notify = () => page.getByRole('switch', { name: 'Notify me of new changes' })
+		await expect(notify()).toBeEnabled()
+		await expect(notify()).toBeChecked()
+		await notify().click()
+		// the switch updates before the server has written it, so only a reload that reads it back shows it held
+		await expect
+			.poll(async () => {
+				await page.reload()
+				await expect(notify()).toBeEnabled()
+				return notify().isChecked()
+			})
+			.toBe(false)
+
+		// the app is shared with the rest of this file, so leave the preference as it was found
+		await notify().click()
+		await expect(notify()).toBeChecked()
+	})
 })
 
 plainTest.describe('settings page', () => {

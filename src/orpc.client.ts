@@ -197,9 +197,18 @@ opened$
 // The layer pool counts because its two halves are fetched once per page load and fed to a query worker that can
 // outlive the page (see layer-queries.worker.ts).
 let reloadScheduled = false
-export function reloadForSkew(reason: string, message: Parameters<typeof tr.toast>[0]) {
+// set just before reloading onto a new version, so the next load can say what changed (see changelog.client.ts)
+export const UPGRADED_KEY = 'slm:changelog:upgraded'
+export function reloadForSkew(reason: string, message: Parameters<typeof tr.toast>[0], opts?: { upgraded?: boolean }) {
 	if (reloadScheduled) return
 	reloadScheduled = true
+	if (opts?.upgraded) {
+		try {
+			sessionStorage.setItem(UPGRADED_KEY, '1')
+		} catch {
+			// storage blocked: the notice after the reload is a nicety
+		}
+	}
 	toast.info(...tr.toast(message))
 	setTimeout(() => {
 		console.warn(`${reason}, reloading window`)
@@ -212,9 +221,9 @@ ConfigClient.Store.subscribe((config) => {
 	if (!config) return
 	if (!previous) {
 		previous = { sha: config.PUBLIC_GIT_SHA, layerDataHash: config.layerDataHash }
-		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
+		console.log(`%cSLM version ${config.version} (${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)})`, 'color: limegreen')
 	} else if (previous.sha !== config.PUBLIC_GIT_SHA) {
-		reloadForSkew(`Version skew detected (${previous.sha} -> ${config.PUBLIC_GIT_SHA})`, RPC_Msgs.upgrading())
+		reloadForSkew(`Version skew detected (${previous.sha} -> ${config.PUBLIC_GIT_SHA})`, RPC_Msgs.upgrading(), { upgraded: true })
 	} else if (previous.layerDataHash !== config.layerDataHash) {
 		reloadForSkew(`Layer pool changed (${previous.layerDataHash} -> ${config.layerDataHash})`, RPC_Msgs.layerPoolUpdated())
 	}

@@ -94,6 +94,28 @@ pnpm run build:agent   # cargo build --release, binary at server-agent/agent/tar
 
 See [docs/server_agent.md](docs/server_agent.md) for more details on how to configure it.
 
+## The changelog and app releases
+
+A pull request that changes something a user or operator can notice adds a fragment to `changes/`. The format,
+and how to tell whether a change needs one, are in [changes/README.md](changes/README.md). CI fails a pull request
+that needs one and has neither a fragment nor `Changelog: none` in its description.
+
+Every green commit on main is still published as `:latest` and deployed. A release is a named batch of those:
+
+```sh
+pnpm release    # moves changes/*.md into changelog/<version>/ and regenerates CHANGELOG.md
+```
+
+Commit the result on a branch and merge it. Once CI passes on the merged commit, it tags the commit
+`v<version>` and the image `:<version>` and `:stable`.
+
+`pnpm release` also lists the commits since the last release that have no fragment. Read them before merging: add
+a fragment for any that should have had one and run it again.
+
+Versions are `year.month.number` (`2026.9.4` is the fourth release of September 2026). They say when, not what
+broke: breaking changes are in each release's operator notes. The plugin API keeps its own semver version
+(`API_VERSION` in `src/models/plugins.models.ts`), since plugins depend on it.
+
 ## Releasing a layer artifact pair
 
 The pair in `assets/layers` is built from the layer sources under `data/sources`, which are tracked. Those exports
