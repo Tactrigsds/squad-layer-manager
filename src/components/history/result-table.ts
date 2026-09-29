@@ -42,7 +42,7 @@ export function playersTable(rows: HQ.PlayerRow[], opts: TableOpts): Table {
 	)
 }
 
-export type MatchRow = { details: MH.MatchDetails; events: number }
+export type MatchRow = { details: MH.MatchDetails; events: number; setBy: string }
 
 export function matchesTable(rows: MatchRow[], opts: TableOpts): Table {
 	return table<MatchRow>(
@@ -71,7 +71,7 @@ export function matchesTable(rows: MatchRow[], opts: TableOpts): Table {
 			{ header: text(HistoryMsgs.colKills()), numeric: true, value: ({ details }) => MatchSummary.killsText(details) },
 			{ header: text(HistoryMsgs.colKillDiff()), numeric: true, value: ({ details }) => MatchSummary.killDiffText(details) },
 			{ header: text(HistoryMsgs.colDuration()), numeric: true, value: ({ details }) => MatchSummary.durationText(details) },
-			{ header: text(HistoryMsgs.colSetBy()), value: ({ details }) => details.layerSource.type },
+			{ header: text(HistoryMsgs.colSetBy()), value: ({ setBy }) => setBy },
 			{ header: text(HistoryMsgs.colEvents()), numeric: true, value: ({ events }) => String(events) },
 		],
 		rows,

@@ -1,8 +1,11 @@
 // One match's numbers as text, shared by the history page's match rows and by the tooltip on an event row's
 // id badge. Both restate the same match, so they say it the same way.
 
+import { assertNever } from '@/lib/type-guards'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
+import * as LL_Msgs from '@/messages/layer-list.messages'
+import type * as LL from '@/models/layer-list.models'
 import type * as MH from '@/models/match-history.models'
 
 export function outcomeText(details: MH.MatchDetails): string {
@@ -51,4 +54,32 @@ export function durationText(details: MH.MatchDetails): string {
 // when the match happened, as the results table dates it: the end where one was recorded, the start otherwise
 export function matchTime(details: MH.MatchDetails): Date | undefined {
 	return details.startTime ?? (details.status === 'post-game' && details.endTime !== 'unknown' ? details.endTime : undefined)
+}
+
+// display names by id, for what a layer source names: users by discord id, players by steam id, plugins by id
+export type SetByNames = { users: Record<string, string>; players: Record<string, string>; plugins: Record<string, string> }
+
+// who set the match's layer: the user, the requesting users or players, or the plugin, falling back to their ids
+export function setByText(source: LL.Source, names: SetByNames): string {
+	switch (source.type) {
+		case 'manual':
+			return names.users[source.userId.toString()] ?? source.userId.toString()
+		case 'plugin':
+			return names.plugins[source.pluginId] ?? source.pluginId
+		case 'layer-request': {
+			const requesters = source.requesters.flatMap((r) => {
+				const discordId = r.discordId?.toString()
+				const name = (discordId && names.users[discordId]) || (r.steamId && names.players[r.steamId]) || discordId || r.steamId
+				return name ? [name] : []
+			})
+			return requesters.length > 0 ? requesters.join(', ') : I18n.ambient.text(HistoryMsgs.setByLayerRequest())
+		}
+		case 'gameserver':
+		case 'generated':
+		case 'unknown':
+		case 'ingame-vote':
+			return LL_Msgs.sourceNames[source.type]
+		default:
+			assertNever(source)
+	}
 }

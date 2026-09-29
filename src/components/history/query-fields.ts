@@ -19,6 +19,8 @@ export type FieldKey =
 	| 'matchId'
 	| 'outcomes'
 	| 'setBy'
+	| 'setByUsers'
+	| 'setByPlayers'
 	| 'ticketDiff'
 	| 'duration'
 	| 'kills'
@@ -54,6 +56,9 @@ export type FieldControl =
 	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
 	| { kind: 'event-types' }
 	| { kind: 'enum'; options: readonly string[] }
+	// SLM users or players, picked the way the scope block picks them
+	| { kind: 'users'; field: 'setByUsers' }
+	| { kind: 'players'; field: 'setByPlayers' }
 	// the same list, picked several at a time. Names its query field because the key is the plural and the
 	// control has to read the list off it
 	| { kind: 'enum-multi'; field: 'outcomes'; options: readonly string[] }
@@ -87,6 +92,8 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	matchId: { key: 'matchId', group: 'match', control: { kind: 'number', field: 'matchId', min: 1 } },
 	outcomes: { key: 'outcomes', group: 'match', control: { kind: 'enum-multi', field: 'outcomes', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
+	setByUsers: { key: 'setByUsers', group: 'match', control: { kind: 'users', field: 'setByUsers' } },
+	setByPlayers: { key: 'setByPlayers', group: 'match', control: { kind: 'players', field: 'setByPlayers' } },
 	ticketDiff: { key: 'ticketDiff', group: 'match', control: { kind: 'number-range', min: 'ticketDiffMin', max: 'ticketDiffMax' } },
 	duration: {
 		key: 'duration',
@@ -145,7 +152,7 @@ export function visibleFields(query: HQ.Query, extra: readonly FieldKey[] = []):
 export function isSet(query: HQ.Query, key: FieldKey): boolean {
 	const control = FIELD_DEFS[key].control
 	if (control.kind === 'number-range') return query[control.min] !== undefined || query[control.max] !== undefined
-	if (key === 'types' || key === 'outcomes') return (query[key]?.length ?? 0) > 0
+	if (key === 'types' || key === 'outcomes' || key === 'setByUsers' || key === 'setByPlayers') return (query[key]?.length ?? 0) > 0
 	// every field but the ranges names its own query field, which is what Extract picks out here
 	return query[key as Extract<FieldKey, keyof HQ.Query>] !== undefined
 }

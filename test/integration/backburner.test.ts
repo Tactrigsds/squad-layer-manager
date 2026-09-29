@@ -4,7 +4,7 @@ import { makePlayer } from '@/emulator'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 
-import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
 import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedQueue, warnsTo } from '../harness/inspect'
 
@@ -166,5 +166,30 @@ describe('generation on roll', () => {
 		const played = latestMatch(app)
 		expect(played.layerId).toBe(fallujah)
 		expect(matchSetBy(app, played.id)).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
+	})
+
+	it('names the requester as who set the match, and finds the match by them in history', async () => {
+		const login = await fetch(`${app.appUrl}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
+		const cookie = login.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)!
+		const matchRows = async (filter: string) => {
+			const res = await fetch(`${app.appUrl}/history?type=matches&${filter}&contentType=text%2Fcsv`, { headers: { cookie } })
+			expect(res.status).toBe(200)
+			const [header, ...rows] = (await res.text()).split('\r\n').filter((line) => line !== '')
+			expect(header).toBe('Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events')
+			return rows.map((row) => row.split(','))
+		}
+
+		// by steam id, and by name, which resolves through the player to their steam id
+		for (const ref of [ADMIN_STEAM_ID, 'test_admin_player']) {
+			const rows = await matchRows(`setByPlayers=${encodeURIComponent(JSON.stringify([ref]))}`)
+			expect(rows, ref).toHaveLength(1)
+			expect(rows[0].at(-2), ref).toMatch(/test.admin/)
+		}
+		// someone who requested nothing that got played
+		expect(await matchRows(`setByPlayers=${encodeURIComponent(JSON.stringify([REQUESTER_STEAM_ID]))}`)).toHaveLength(0)
+		expect(await matchRows(`setByUsers=${encodeURIComponent(JSON.stringify([REQUESTER.discordId.toString()]))}`)).toHaveLength(0)
 	})
 })

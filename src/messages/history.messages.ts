@@ -159,6 +159,10 @@ export const colLayer = def('Layer')
 export const colOutcome = def('Outcome')
 export const colServer = def('Server')
 export const colSetBy = def('Set by')
+// a layer request whose requesters were not recorded
+export const setByLayerRequest = def('Layer request')
+export const fieldSetByUser = def('Set by user')
+export const fieldSetByPlayer = def('Set by player')
 export const colTicketDiff = def('Ticket diff')
 export const colDuration = def('Length')
 
@@ -209,6 +213,8 @@ export const columnNames: Record<HQ.ColumnKey, TString> = {
 	'match.id': t('Match id'),
 	'match.outcome': t('Match outcome'),
 	'match.setBy': t('Layer set by'),
+	'match.setByUser': t('Layer set by user'),
+	'match.setByPlayer': t('Layer set by player'),
 	'match.ticketDiff': t('Ticket difference'),
 	'match.duration': t('Match length'),
 	'match.kills': t('Kills'),

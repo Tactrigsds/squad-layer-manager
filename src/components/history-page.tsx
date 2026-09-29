@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { localTimeZone } from '@/components/feed/format'
+import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor from '@/components/history-advanced-editor'
@@ -572,6 +573,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 								details={m}
 								displayTeamsNormalized={displayTeamsNormalized}
 								events={ok?.eventCounts[m.historyEntryId] ?? 0}
+								setBy={MatchSummary.setByText(m.layerSource, ok!.setByNames)}
 							/>
 						))}
 					/>

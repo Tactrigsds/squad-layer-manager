@@ -343,7 +343,7 @@ function toDatetimeLocal(value: number | undefined): string {
 
 // Searches by steam, eos or epic id, or by name through the trigram index, but any text is a valid value: the engine
 // reads a ref the same way (resolvePlayerRefs), so a needle nobody picked from the list still runs.
-function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) => void }) {
+function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) => void; title?: string }) {
 	const [needle, setNeedle] = React.useState('')
 	const trimmed = needle.trim()
 	const search = useQuery(HistoryClient.playerSearchBase(trimmed))
@@ -368,7 +368,7 @@ function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) =>
 	const loading = trimmed.length >= HistoryClient.MIN_PLAYER_NEEDLE && search.isFetching
 	return (
 		<ComboBoxMulti
-			title={tr.text(HistoryMsgs.fieldPlayer())}
+			title={props.title ?? tr.text(HistoryMsgs.fieldPlayer())}
 			emptyLabel={tr.text(HistoryMsgs.playerSearchPlaceholder())}
 			searchPlaceholder={tr.text(HistoryMsgs.playerSearchHint())}
 			className="w-full"
@@ -384,7 +384,7 @@ function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) =>
 
 // The whole user table, filtered by the combo-box itself: it is small enough to hold (see listUsers), which
 // also means a selected user always has a name, without a second lookup for it.
-function UserPicker(props: { values: string[]; onSelect: (values: string[]) => void }) {
+function UserPicker(props: { values: string[]; onSelect: (values: string[]) => void; title?: string }) {
 	const users = useQuery(HistoryClient.usersBase())
 	const options = React.useMemo(() => {
 		const list = (users.data?.code === 'ok' ? users.data.users : []).map((u) => ({ value: u.userId, label: u.name }))
@@ -396,7 +396,7 @@ function UserPicker(props: { values: string[]; onSelect: (values: string[]) => v
 
 	return (
 		<ComboBoxMulti
-			title={tr.text(HistoryMsgs.fieldUser())}
+			title={props.title ?? tr.text(HistoryMsgs.fieldUser())}
 			emptyLabel={tr.text(HistoryMsgs.userSearchPlaceholder())}
 			className="w-full"
 			chipDisplay
@@ -517,6 +517,22 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 						const next = typeof update === 'function' ? update(draft[control.field] ?? []) : update
 						set({ [control.field]: next.length > 0 ? (next as HQ.Query['outcomes']) : undefined })
 					}}
+				/>
+			)
+		case 'users':
+			return (
+				<UserPicker
+					title={fieldLabel(field.key)}
+					values={draft[control.field] ?? []}
+					onSelect={(values) => set({ [control.field]: values.length > 0 ? values : undefined })}
+				/>
+			)
+		case 'players':
+			return (
+				<PlayerPicker
+					title={fieldLabel(field.key)}
+					values={draft[control.field] ?? []}
+					onSelect={(values) => set({ [control.field]: values.length > 0 ? values : undefined })}
 				/>
 			)
 		case 'text':
@@ -646,6 +662,10 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldOutcome())
 		case 'setBy':
 			return tr.text(HistoryMsgs.fieldSetBy())
+		case 'setByUsers':
+			return tr.text(HistoryMsgs.fieldSetByUser())
+		case 'setByPlayers':
+			return tr.text(HistoryMsgs.fieldSetByPlayer())
 		case 'ticketDiff':
 			return tr.text(HistoryMsgs.fieldTicketDiff())
 		case 'duration':

@@ -91,6 +91,11 @@ export const COLUMN_DEFS = {
 	'match.id': { key: 'match.id', domain: { kind: 'number' } },
 	'match.outcome': { key: 'match.outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
 	'match.setBy': { key: 'match.setBy', domain: { kind: 'enum', options: SET_BY_TYPES } },
+	// Who set the match's layer: the user behind a manual source, or anyone who asked for it through a layer
+	// request. A requester is a user by their discord id and a player by their steam id, so a linked admin
+	// answers both.
+	'match.setByUser': { key: 'match.setByUser', domain: { kind: 'user' } },
+	'match.setByPlayer': { key: 'match.setByPlayer', domain: { kind: 'player' } },
 	// how lopsided the match was, as the winner's remaining tickets over the loser's. Unsigned, because which
 	// side won is `match.outcome`'s question; this one is only ever asked as "a blowout" or "a close game".
 	'match.ticketDiff': { key: 'match.ticketDiff', domain: { kind: 'number' } },
@@ -344,6 +349,8 @@ const QueryFieldsSchema = z.object({
 	faction: z.string().optional(),
 	outcomes: z.array(z.enum(MATCH_OUTCOMES)).optional(),
 	setBy: z.enum(SET_BY_TYPES).optional(),
+	setByUsers: z.array(z.string()).optional(),
+	setByPlayers: z.array(z.string()).optional(),
 	// bounds on match.ticketDiff. Either alone reads as "a blowout" / "a close game"; both make a band
 	ticketDiffMin: z.number().int().nonnegative().optional(),
 	ticketDiffMax: z.number().int().nonnegative().optional(),
@@ -733,6 +740,8 @@ export function queryFilterNode(query: Query): Node {
 	if (query.matchId !== undefined) children.push(comp('match.id', [query.matchId]))
 	if (query.outcomes?.length) children.push(comp('match.outcome', query.outcomes))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
+	if (query.setByUsers?.length) children.push(comp('match.setByUser', query.setByUsers))
+	if (query.setByPlayers?.length) children.push(comp('match.setByPlayer', query.setByPlayers))
 	children.push(...rangeNodes('match.ticketDiff', query.ticketDiffMin, query.ticketDiffMax))
 	children.push(...rangeNodes('match.kills', query.killsMin, query.killsMax))
 	children.push(...rangeNodes('match.wounds', query.woundsMin, query.woundsMax))
