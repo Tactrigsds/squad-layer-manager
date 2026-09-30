@@ -77,6 +77,19 @@ export function moduleName(pluginId: PluginId, submodule?: string): string {
  * activation. Follows semver's 0.x rule, so `^0.1` admits 0.1.x and nothing else: below 1.0 a minor
  * bump is breaking, and accepting it here is what the check exists to prevent.
  */
+/** The range a new plugin declares: this build's major and minor, since below 1.0 a minor bump is breaking. */
+export function currentApiRange(): string {
+	return `^${API_VERSION.major}.${API_VERSION.minor}`
+}
+
+// an `apiVersion: '^x.y'` line in an example manifest
+const API_RANGE_EXAMPLE = /(apiVersion: ')\^[\d.]+(')/g
+
+/** `text` with every example manifest's apiVersion set to currentApiRange(). `pnpm api:report` applies it to the docs. */
+export function withCurrentApiRange(text: string): string {
+	return text.replace(API_RANGE_EXAMPLE, `$1${currentApiRange()}$2`)
+}
+
 export function satisfiesApiVersion(range: string): boolean {
 	const match = /^\^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range)
 	if (!match) return false

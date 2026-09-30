@@ -26,6 +26,8 @@ const apiDir = path.join(repoRoot, 'src', 'plugin-api')
 const reportPath = path.join(apiDir, 'api-report.md')
 // the value exports per entry, which the shim modules a packaged plugin imports are built from
 const exportsPath = path.join(repoRoot, 'src', 'models', 'plugin-api-exports.ts')
+// the plugin guide, whose example manifest has to declare a range this build accepts
+const guidePath = path.join(repoRoot, 'docs', 'writing_plugins.md')
 const versionStr = PLG.formatApiVersion()
 
 function entryFiles(): string[] {
@@ -247,6 +249,11 @@ if (mode === 'check') {
 			process.exit(1)
 		}
 	}
+	const guide = fs.readFileSync(guidePath, 'utf8')
+	if (guide !== PLG.withCurrentApiRange(guide)) {
+		console.error(`${path.relative(repoRoot, guidePath)} shows an old apiVersion: run \`pnpm api:report\``)
+		process.exit(1)
+	}
 	console.log('plugin API report is current')
 } else if (mode === 'generate') {
 	if (base !== null && base !== content && !allowNoBump) {
@@ -259,6 +266,12 @@ if (mode === 'check') {
 	}
 	fs.writeFileSync(reportPath, content)
 	fs.writeFileSync(exportsPath, exportsContent)
+	const guide = fs.readFileSync(guidePath, 'utf8')
+	const updated = PLG.withCurrentApiRange(guide)
+	if (updated !== guide) {
+		fs.writeFileSync(guidePath, updated)
+		console.log(`set the example apiVersion in ${path.relative(repoRoot, guidePath)} to ${PLG.currentApiRange()}`)
+	}
 	console.log(`wrote ${path.relative(repoRoot, reportPath)} and ${path.relative(repoRoot, exportsPath)} (api-version ${versionStr})`)
 } else {
 	console.error(`unknown mode: ${mode} (expected generate|check)`)

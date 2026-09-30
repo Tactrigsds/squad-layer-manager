@@ -20,6 +20,7 @@ import * as Site from '@/components/docs-site/site'
 import * as Logo from '@/lib/logo'
 import { assertNever } from '@/lib/type-guards'
 import * as DS from '@/models/docs-site.models'
+import * as PLG from '@/models/plugins.models'
 import * as Project from '@/models/project.models'
 
 // Builds the documentation site. Run with `pnpm docs:build`, or `pnpm docs:dev` to rebuild on change and serve it.
@@ -176,6 +177,8 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 	for (const page of pages) {
 		const source = fs.readFileSync(path.join(ROOT, page.file), 'utf8')
 		checkFences(page, source, problems)
+		if (source !== PLG.withCurrentApiRange(source))
+			problems.push({ file: page.file, message: `an example apiVersion is not ${PLG.currentApiRange()}: run \`pnpm api:report\`` })
 		const headings: Site.Heading[] = []
 		const html = renderToStaticMarkup(
 			React.createElement(
