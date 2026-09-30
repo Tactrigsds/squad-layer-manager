@@ -1,0 +1,421 @@
+<!doctype html><html lang="en" data-base="/squad-layer-manager/next/" data-root="/squad-layer-manager/" data-version="next"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Configuring SLM · SLM Docs</title><meta name="description" content="Configuring SLM, from the Squad Layer Manager documentation."/><link rel="icon" href="/squad-layer-manager/favicon.svg" type="image/svg+xml"/><link rel="preload" href="/squad-layer-manager/next/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/next/fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/next/fonts/roboto-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/next/fonts/roboto-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="stylesheet" href="/squad-layer-manager/next/docs.3040f67363.css"/><script type="module" src="/squad-layer-manager/next/docs.e0afa663a1.js"></script></head><body><a href="#content" class="docs-skip">Skip to content</a><header class="docs-header"><details class="docs-menu lg:hidden"><summary aria-label="Open navigation" class="docs-icon-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu size-5" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></summary><div class="docs-menu-panel"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/next/installing/" aria-current="page">Setup guide</a><a href="/squad-layer-manager/next/contributing/">Developers</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Start here</div><a href="/squad-layer-manager/next/installing/">Installing</a><a href="/squad-layer-manager/next/server-dashboard/">Learning how to use SLM</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Configuring</div><a href="/squad-layer-manager/next/configuring/" aria-current="page">Configuring SLM</a><a href="/squad-layer-manager/next/command-triggers/">Command triggers</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Operational details</div><a href="/squad-layer-manager/next/backups/">Backups and restoring</a><a href="/squad-layer-manager/next/server-agent/">Server agent</a><a href="/squad-layer-manager/next/layer-data/">Layer data</a><a href="/squad-layer-manager/next/sandbox-servers/">Sandbox servers</a><a href="/squad-layer-manager/next/server-console/">Server console</a></div></nav></div></details><a href="/squad-layer-manager/" class="flex items-center gap-2.5 text-text no-underline"><svg viewBox="0 0 100 100" class="shrink-0 size-7" aria-hidden="true"><path d="M16.67 0L83.33 0C92.54 0 100 7.46 100 16.67L100 83.33C100 92.54 92.54 100 83.33 100L16.67 100C7.46 100 0 92.54 0 83.33L0 16.67C0 7.46 7.46 0 16.67 0Z" class="fill-foreground"></path><path d="M-22.31 22.49L-22.31 22.49Q-22.31 21.71-22.46 21.09Q-22.60 20.47-23.02 19.94Q-23.44 19.40-24.28 18.85Q-25.12 18.31-26.49 17.72L-26.49 17.72Q-28.17 17.03-29.75 16.20Q-31.34 15.37-32.60 14.27Q-33.86 13.16-34.61 11.66Q-35.37 10.16-35.37 8.15L-35.37 8.15Q-35.37 6.19-34.63 4.61Q-33.90 3.02-32.58 1.90Q-31.25 0.78-29.45 0.18Q-27.64-0.42-25.48-0.42L-25.48-0.42Q-22.56-0.42-20.38 0.77Q-18.19 1.95-16.98 4.08Q-15.76 6.21-15.76 9.05L-15.76 9.05L-22.39 9.05Q-22.39 7.81-22.73 6.88Q-23.06 5.94-23.77 5.41Q-24.47 4.87-25.61 4.87L-25.61 4.87Q-26.65 4.87-27.35 5.31Q-28.04 5.75-28.38 6.51Q-28.71 7.26-28.71 8.19L-28.71 8.19Q-28.71 8.92-28.37 9.49Q-28.02 10.06-27.42 10.54Q-26.82 11.02-25.99 11.46Q-25.16 11.90-24.20 12.30L-24.20 12.30Q-22.14 13.12-20.53 14.09Q-18.93 15.05-17.85 16.26Q-16.77 17.47-16.21 18.99Q-15.65 20.51-15.65 22.44L-15.65 22.44Q-15.65 24.42-16.32 26Q-17 27.59-18.25 28.70Q-19.50 29.81-21.28 30.40Q-23.06 30.99-25.27 30.99L-25.27 30.99Q-27.35 30.99-29.28 30.39Q-31.21 29.79-32.71 28.55Q-34.21 27.32-35.10 25.38Q-35.98 23.45-35.98 20.79L-35.98 20.79L-29.30 20.79Q-29.30 22.15-29.06 23.11Q-28.82 24.06-28.30 24.63Q-27.79 25.20-27.02 25.46Q-26.26 25.72-25.19 25.72L-25.19 25.72Q-24.09 25.72-23.46 25.28Q-22.83 24.84-22.57 24.11Q-22.31 23.39-22.31 22.49ZM-7.73 25.17L5.06 25.17L5.06 30.57L-7.73 30.57L-7.73 25.17ZM-12.20 0L-5.52 0L-5.52 30.57L-12.20 30.57L-12.20 0ZM19.62 30.57L10.82 0L16.43 0L21.97 21.04L27.49 0L32.76 0L24.30 30.57L19.62 30.57ZM7.95 30.57L7.95 0L13.55 0L14.50 21.73L14.50 30.57L7.95 30.57ZM29.43 21.73L30.37 0L35.98 0L35.98 30.57L29.43 30.57L29.43 21.73Z" transform="translate(50 34.72)" class="fill-background"></path></svg><span class="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span></a><button type="button" class="docs-search-btn" data-search-open=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="docs-search-label">Search the docs</span><kbd class="docs-kbd max-sm:hidden">/</kbd></button><div class="ms-auto flex items-center gap-5"><div class="max-lg:hidden"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/next/installing/" aria-current="page">Setup guide</a><a href="/squad-layer-manager/next/contributing/">Developers</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav></div><details class="docs-version" data-version-menu=""><summary aria-label="Documentation version: Unreleased">Unreleased<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><a href="https://github.com/Tactrigsds/squad-layer-manager" class="docs-icon-btn" aria-label="SLM on GitHub"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"></path></svg></a></div></header><div class="docs-shell"><div class="docs-sidebar-col max-lg:hidden"><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Start here</div><a href="/squad-layer-manager/next/installing/">Installing</a><a href="/squad-layer-manager/next/server-dashboard/">Learning how to use SLM</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Configuring</div><a href="/squad-layer-manager/next/configuring/" aria-current="page">Configuring SLM</a><a href="/squad-layer-manager/next/command-triggers/">Command triggers</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Operational details</div><a href="/squad-layer-manager/next/backups/">Backups and restoring</a><a href="/squad-layer-manager/next/server-agent/">Server agent</a><a href="/squad-layer-manager/next/layer-data/">Layer data</a><a href="/squad-layer-manager/next/sandbox-servers/">Sandbox servers</a><a href="/squad-layer-manager/next/server-console/">Server console</a></div></nav></div><main id="content" class="docs-main"><p class="docs-version-banner" data-version-banner="" hidden="" role="note"></p><article class="docs-article" data-pagefind-body=""><div class="docs-label docs-crumbs" data-pagefind-ignore=""><span data-pagefind-filter="section">Setup guide</span><span aria-hidden="true">/</span><span>Configuring</span></div><div class="docs-prose"><h1 id="configuring-slm" class="docs-heading">Configuring SLM</h1>
+<p>This guide assumes you have a running instance of SLM. See <a href="/squad-layer-manager/next/installing/">Installing</a> if you do not.</p>
+<p>You configure SLM mostly from the settings page. Most settings can keep their defaults, but a few must be set before
+SLM can run your server.</p>
+<p>Open the settings page from the header:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/settings_nav.png" alt="settings" loading="lazy" decoding="async" width="475" height="35"/></p>
+<p>Use the table of contents on the left to move between sections:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/toc.png" alt="toc" loading="lazy" decoding="async" width="181" height="374"/></p>
+<p>Each setting has a <em>GUI</em> / <em>YAML</em> toggle, so you can also edit it as YAML. Settings that most installs never
+change are kept in a collapsed <em>Advanced</em> disclosure at the bottom of their section. The table of contents still lists
+them, and navigating to one opens the disclosure that holds it.</p>
+<p>Any setting or section can carry a comment, for the next person to read why it is set the way it is. Hover the
+setting&#x27;s name and click the comment icon beside the link icon. In YAML mode a comment is an ordinary <code>#</code> line
+directly above the setting, and a comment written in either mode shows up in the other. Comments are saved together
+with your other changes.</p>
+<h3 id="1-admin-lists" class="docs-heading">1. Admin lists<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L25" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L25</a></h3>
+<p>The admin list settings are under <em>Permissions &amp; Roles</em>.</p>
+<p>An <em>admin list</em> is the standard <code>Admins.cfg</code> format, which SLM reads as-is. Point it at a file mounted into the
+container, or at a copy hosted over SFTP or HTTP(S).</p>
+<p>By default, SLM treats a player with the <code>canseeadminchat</code> role as an admin. If your list uses a different role,
+change this setting:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/adminlist.png" alt="adminlist" loading="lazy" decoding="async" width="685" height="246"/></p>
+<p>An admin list identifies a player by steam ID or EOS ID, and one list can use a mix of the two.</p>
+<p>You can configure more than one admin list, which is useful when each of your servers has its own. Each server names
+the lists that apply to it. See <a href="#22-server-admin-lists">2.2</a>.</p>
+<p>The groups in your admin list do more than mark who is an admin. You can also:</p>
+<ul>
+<li>assign <a href="#34-assigning-roles">SLM roles</a> to the members of a group</li>
+<li><a href="#6-player-grouping-modes">colour players by group</a> in the players panel and the activity charts</li>
+</ul>
+<p>When you add your first real admin list, add it to the <code>admins</code> role as well. The default assignment names only the
+sandbox&#x27;s own list, so a new list grants nobody the <code>admins</code> role until you name it there. See
+<a href="#34-assigning-roles">3.4</a>.</p>
+<h3 id="2-adding-your-server" class="docs-heading">2. Adding your server<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L51" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L51</a></h3>
+<p>One SLM instance can manage several squad servers.</p>
+<p>A fresh install already has a server named <em>Sandbox</em>. It attaches to an emulated squad server, which imitates a real
+one closely enough for SLM to work against. Use it to test things out. See
+<a href="/squad-layer-manager/next/sandbox-servers/">Sandbox servers</a>.</p>
+<p>Click <em>Add Server</em> to set up a real one:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/add_managed_server.png" alt="add_managed_server" loading="lazy" decoding="async" width="151" height="34"/></p>
+<h4 id="21-connecting-the-server" class="docs-heading">2.1. Connecting the server<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L63" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L63</a></h4>
+<p>Each server uses one of three connection modes:</p>
+<ul>
+<li><em>local</em>: SLM shares the machine with the squad server, reading <code>SquadGame.log</code> from disk and dialling RCON
+directly. Lowest latency for SLM&#x27;s event processing. Needs a log file path and RCON details.</li>
+<li><em>sftp</em>: SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
+PSG-hosted squad servers, where you cannot run a program on the game host. Needs SFTP and RCON details.</li>
+<li><em>server agent</em> (recommended): a small program on the game host streams the log to SLM and proxies RCON. SLM never
+holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
+<a href="/squad-layer-manager/next/server-agent/">Server agent</a>.</li>
+</ul>
+<p>If a server does not behave as you expect, open the <a href="/squad-layer-manager/next/server-console/">server console</a>. It shows the RCON traffic
+and the log lines as SLM receives them, which shows whether the connection or SLM is at fault.</p>
+<h4 id="22-server-admin-lists" class="docs-heading">2.2. Server admin lists<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L78" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L78</a></h4>
+<p>Name which of your <a href="#1-admin-lists">configured admin lists</a> apply to this server:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/server_adminlists.png" alt="server_adminlists" loading="lazy" decoding="async" width="685" height="101"/></p>
+<p>A player counts as an admin on this server, and picks up roles from an admin list group, only through a list named
+here. If you name none, SLM recognises no in-game admins on this server.</p>
+<h4 id="23-installed-mods" class="docs-heading">2.3. Installed mods<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L87" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L87</a></h4>
+<p>SLM&#x27;s catalog covers vanilla Squad and several mods. Name the ones this server actually has installed, under
+<em>Installed Mods</em> in its settings. A new server starts with OWI alone, which is vanilla Squad.</p>
+<p>A layer from a collection not named here cannot load on this server, so SLM will not queue it, will not generate
+one, and will not offer one as a vote choice. Such a layer stays visible in the layer table, greyed out with the
+reason, and a queue item on one is flagged in the queue and in the in-game next-layer warning.</p>
+<h3 id="3-permissions" class="docs-heading">3. Permissions<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L96" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L96</a></h3>
+<p>SLM has a role-based access control (RBAC) system. A <em>role</em> holds a set of <em>permissions</em>, which it grants to
+everyone assigned that role. Some permissions are global. Many can be scoped to one squad server.</p>
+<p>Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
+they are assigned, except that a denial in any one role beats an allow in another.</p>
+<h4 id="31-super-users" class="docs-heading">3.1. Super users<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L104" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L104</a></h4>
+<p>A fresh install has no role assignments of its own, so the <code>SUPER_USERS</code> and <code>SUPER_ROLES</code> you set in <code>.env</code> are the
+bootstrap. They hold every permission unconditionally, including unlimited kick timeouts, and you cannot change them
+from the settings page:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/super_users.png" alt="super_users" loading="lazy" decoding="async" width="657" height="113"/></p>
+<p>Keep at least one after you assign real roles, so you can still get in if an assignment goes wrong.</p>
+<h4 id="32-default-roles" class="docs-heading">3.2. Default roles<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L114" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L114</a></h4>
+<p>Go to the <em>Permissions &amp; Roles</em> section of the global settings. Three roles exist by default:</p>
+<ul>
+<li><code>admins</code>: the features needed for day-to-day operations: the queue, votes, filters, and managing, warning,
+broadcasting to and kicking players. Maximum timeout of 2h. It is assigned to the in-game admins of the sandbox&#x27;s
+own admin list, so the in-game commands work before anyone configures RBAC. Point it at your real lists as you
+add them.</li>
+<li><code>managers</code>: everything <code>admins</code> can do, plus policing other people&#x27;s queue notes, enabling and disabling servers,
+and restarting SLM. It can edit every global setting except the permissions config, and every server setting
+except the connection details. Maximum timeout of 6h. It cannot add a server, because adding one means supplying
+connection details.</li>
+<li><code>owners</code>: every permission. Maximum timeout of 52w. It is assigned to nobody by default.</li>
+</ul>
+<p>All three cover a new server without changes. Their permissions are granted unscoped, and the <code>managers</code> settings
+grant names no servers, which means every server. When you add a server, revisit only the roles that narrow a
+permission or a settings grant to named servers.</p>
+<h4 id="33-assigning-permissions-to-roles" class="docs-heading">3.3. Assigning permissions to roles<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L132" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L132</a></h4>
+<p>The <em>Permissions</em> table holds everything a role may do. Each row is one permission, with three columns:</p>
+<div class="docs-table"><table><thead><tr><th>Column</th><th>What it holds</th></tr></thead><tbody><tr><td><em>Effect</em></td><td>Allow or Deny. A denial overrides an allow, so use it to carve an exception out of a wider grant.</td></tr><tr><td><em>Permission</em></td><td>The permission itself, or <code>*</code> for all of them.</td></tr><tr><td><em>Scope</em></td><td>What narrows the permission. Leave it empty to grant the permission unrestricted.</td></tr></tbody></table></div>
+<p>A scope names specific servers, specific setting paths, or a cap such as a maximum timeout.</p>
+<p>Settings access works the same way:</p>
+<ul>
+<li><code>global-settings:write</code> takes dotted setting paths, such as <code>vote.voteDuration</code>, or <code>vote</code> for the whole section.
+Leave the scope empty and the role can edit every global setting. Either way it implies <code>global-settings:read</code>.</li>
+<li><code>server-settings:write</code> is the same for a server&#x27;s settings, and its scope can also name specific servers. It
+never reaches the connection details.</li>
+<li><code>server-settings:write-sensitive</code> is a separate permission. It is the only way to view or edit a server&#x27;s RCON and
+SFTP connection details.</li>
+</ul>
+<h4 id="34-assigning-roles" class="docs-heading">3.4. Assigning roles<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L153" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L153</a></h4>
+<p>You can assign a role to a user or to a player:</p>
+<ul>
+<li>a <em>user</em> signs in with their discord account and works from the web interface</li>
+<li>a <em>player</em> is in the game and uses the <a href="#5-in-game-commands">in-game commands</a></li>
+</ul>
+<p>A user can link their discord account to their in-game account, and the permissions from both then combine for
+every action:
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/linked_steam_accounts_button.png" alt="linked_steam_account_button" loading="lazy" decoding="async" width="252" height="239"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/linked_steam_accounts_dialog.png" alt="linked_steam_account_dialog" loading="lazy" decoding="async" width="344" height="166"/></p>
+<p>This is optional, and matters mostly for people who hold elevated permissions on their user account
+and want to use them in game.</p>
+<p>The <em>Assignments</em> subsection of a role holds five sources. Two of them cover in-game players:</p>
+<ul>
+<li><em>In-game admins of these lists</em>: the role goes to every player an admin list counts as an admin. It applies
+only on servers that use that list.</li>
+<li><em>Admin-list groups</em>: the role goes to the members of a named group in a named list, whether or not that group
+identifies admins. A whitelist reserve-slot group works here. Again, it applies only on servers that use the list.</li>
+</ul>
+<p>The other three cover users, and take an individual discord user, a discord role, or every member of your discord
+server:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/discord_roles.png" alt="discord_roles" loading="lazy" decoding="async" width="578" height="327"/></p>
+<h4 id="35-testing-assigned-permissions" class="docs-heading">3.5. Testing assigned permissions<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L180" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L180</a></h4>
+<p>Every user can see the permissions they hold, in the permissions info dialog:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/permissions_info_item.png" alt="permissions_info_item" loading="lazy" decoding="async" width="252" height="239"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/permissions_info_dialog.png" alt="permissions_info_dialog" loading="lazy" decoding="async" width="680" height="750"/></p>
+<p>The dialog groups permissions by role or by permission, and traces each one back to the role that granted it.</p>
+<p>Click <em>Simulate Permissions</em> to check and uncheck roles, and see how the interface behaves for someone who holds
+them:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/simulate_permissions_1.png" alt="simulate_permissions_1" loading="lazy" decoding="async" width="671" height="77"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/simulate_permissions_2.png" alt="simulate_permissions_2" loading="lazy" decoding="async" width="446" height="29"/></p>
+<p>The simulation runs in your browser only. The server still checks your real permissions, so any action the interface
+does not gate runs with what you actually hold.</p>
+<h3 id="4-warns-broadcasts-and-admin-actions" class="docs-heading">4. Warns, broadcasts and admin actions<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L198" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L198</a></h3>
+<p>The <em>Warns &amp; Broadcasts</em> section holds the messages SLM shows to players: admin warnings, kicks, broadcasts, and
+more.</p>
+<p>Configure reasons such as teamkilling, spamming or soloing under <em>Admin Action Reasons</em>. Each reason carries one
+text per action, where an action is a warn, a broadcast, a kick, a timeout, and so on:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/admin_action_reasons.png" alt="admin_action_reasons" loading="lazy" decoding="async" width="681" height="773"/></p>
+<p>Write the texts as <a href="https://mustache.github.io/mustache.5.html">mustache</a> templates. <em>Message Variables</em> in the
+same section holds reusable snippets. You can use one in several texts, or inside another message variable.</p>
+<p>When an action targets a whole squad, <code>{{squadName}}</code> holds the squad&#x27;s name. For a single player it is empty, so
+a section can switch the wording:</p>
+<div class="docs-code"><pre><code>{{#squadName}}Your squad has been warned for{{/squadName}}{{^squadName}}You have been warned for{{/squadName}} teamkilling.
+</code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
+<p>Put the section inside a message variable to reuse it across reasons.</p>
+<p><em>Require a Reason</em> makes a reason mandatory for the actions you name:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/actions_requiring_reason.png" alt="actions_requiring_reason" loading="lazy" decoding="async" width="685" height="78"/></p>
+<p>The user can still type a freeform reason instead of choosing a configured one.</p>
+<p>Admins then use a configured reason with the in-game <code>/warn</code>, <code>/broadcast</code>, <code>/kick</code>, <code>/timeout</code> and other commands,
+as long as that reason has text for the action: a reason with no kick text cannot be used to kick.</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/warn_details.png" alt="warn_details" loading="lazy" decoding="async" width="689" height="267"/></p>
+<p>Reasons are also selectable when you perform an action from the interface:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/kick_dialog.png" alt="kick_dialog" loading="lazy" decoding="async" width="348" height="316"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/kick_text_insert.png" alt="kick_text_insert" loading="lazy" decoding="async" width="218" height="258"/></p>
+<h3 id="5-in-game-commands" class="docs-heading">5. In-game commands<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L236" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L236</a></h3>
+<p>SLM has a large set of in-game commands. The commands page in your own install documents each command and how to use
+it:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/commands_page.png" alt="commands_page" loading="lazy" decoding="async" width="885" height="800"/></p>
+<h4 id="51-command-prefixes" class="docs-heading">5.1. Command prefixes<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L243" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L243</a></h4>
+<p>By default, every command has the prefix <code>/</code>. Change this prefix, or add another, in <em>Allowed Prefixes</em>, under
+<em>Advanced</em> in the <em>In-game Commands</em> section:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/allowed_prefixes.png" alt="allowed_prefixes" loading="lazy" decoding="async" width="671" height="109"/></p>
+<p>If you change an existing prefix, SLM moves every <a href="#52-command-triggers">trigger</a> with that prefix to the new one.</p>
+<blockquote class="docs-callout-tip"><div class="docs-callout-title">tip</div>
+<p>Pick a prefix that does not collide with the commands you already run. Some SLM commands behave differently from
+their squadjs counterparts, which confuses users. Disable the old command instead, with a message that points
+users at the SLM one.</p>
+</blockquote>
+<h4 id="52-command-triggers" class="docs-heading">5.2. Command triggers<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L257" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L257</a></h4>
+<p>An in-game command runs from one of its <em>triggers</em>: the strings listed against it under
+<em>Settings &gt; In-game Commands</em>. <code>/timeout</code> and <code>/to</code> are two triggers for the same command, and typing either takes
+the command&#x27;s arguments exactly as written.</p>
+<p>A trigger can also pin some of those arguments, which turns it into a shortcut. Give <code>/to2h</code> the <code>args</code> template
+<code>{{arg1}} 2h {{rest2}}</code>, and typing <code>/to2h Alice spamming</code> runs <code>/timeout Alice 2h spamming</code>. This is what command
+aliases used to be.</p>
+<p>See <a href="/squad-layer-manager/next/command-triggers/">Command triggers</a> for the template syntax, what happens to words the caller leaves out,
+and the limits on what a trigger can reach.</p>
+<h3 id="6-player-grouping-modes" class="docs-heading">6. Player grouping modes<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L270" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L270</a></h3>
+<p>A <em>grouping mode</em> sorts players into named, coloured groups, for administration and for monitoring balance.
+Configure them under <em>Players &amp; Balance</em>.</p>
+<p>A grouping mode is an ordered list of rules, and a player joins the group of the first rule they match.</p>
+<p>A rule can match on:</p>
+<ul>
+<li>a battlemetrics player flag</li>
+<li>an <a href="#1-admin-lists">admin list group</a></li>
+<li>a regex on the player&#x27;s username, which includes any tags they have configured</li>
+<li>a discord role, if the player&#x27;s steam account is linked to their discord account</li>
+</ul>
+<p>Here is a grouping mode keyed on admin list groups:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/player_groupings.png" alt="player_groupings" loading="lazy" decoding="async" width="677" height="367"/></p>
+<p>And here is TacTrig&#x27;s grouping mode for monitoring balance:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/player_groupings_balance.png" alt="player_groupings_balance" loading="lazy" decoding="async" width="677" height="413"/></p>
+<blockquote class="docs-callout-note"><div class="docs-callout-title">note</div>
+<p>Maintaining discord to steam account links is a manual process today. A REST api that lets external tools manage
+the links is planned.</p>
+</blockquote>
+<p>SLM then colour-codes the usernames of grouped players wherever they appear:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/color_coded_usernames.png" alt="color_coded_usernames" loading="lazy" decoding="async" width="974" height="560"/></p>
+<p>The players panel and the activity charts pick which grouping mode to show, and the stats panel breaks the population
+down by it:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/teams_breakdown.png" alt="teams_breakdown" loading="lazy" decoding="async" width="976" height="91"/></p>
+<h3 id="7-player-flagging" class="docs-heading">7. Player flagging<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L305" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L305</a></h3>
+<p>You can apply a battlemetrics flag to a player from in game with the <code>/flag</code> command, or from the SLM interface:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/flag_command.png" alt="flag_command" loading="lazy" decoding="async" width="689" height="303"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/flag_gui.png" alt="flag_gui" loading="lazy" decoding="async" width="344" height="214"/></p>
+<p>A user can add a reason for the flag, which SLM posts as a note on the player&#x27;s battlemetrics profile. The note is
+freeform text for now, and is not connected to the <a href="#4-warns-broadcasts-and-admin-actions">admin action reasons</a>.
+This may change.</p>
+<p>To require a note for a particular flag, name it in <em>Player Flags Requiring Note</em>:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/player_flags_requiring_note.png" alt="player_flags_requiring_note" loading="lazy" decoding="async" width="685" height="83"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/player_flags_requiring_note_enforced.png" alt="player_flags_requiring_note_enforced" loading="lazy" decoding="async" width="344" height="258"/></p>
+<p>A flag set from the battlemetrics interface can take a while to appear in SLM, which caches battlemetrics data
+aggressively to stay inside their rate limits. To see a change immediately, purge the cache for that player with the
+<em>refresh</em> button:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/flags_refresh.png" alt="flags_refresh" loading="lazy" decoding="async" width="543" height="23"/></p>
+<p>SLM refreshes a player&#x27;s flags automatically when it changes them itself.</p>
+<h3 id="8-layer-pools-and-filters" class="docs-heading">8. Layer pools and filters<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L329" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L329</a></h3>
+<h4 id="81-filters" class="docs-heading">8.1. Filters<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L331" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L331</a></h4>
+<p>The base game has about 730,000 possible layers, counting every map, gamemode, faction and unit combination, or
+about 2.7 million with the popular mods. A <em>filter</em> is a named expression that picks a subset of them out. SLM
+ships with a few, listed in the filters index:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/filters_index.png" alt="filters_index" loading="lazy" decoding="async" width="1180" height="302"/></p>
+<p>Open one and you get the expression that decides what it matches:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/filter_edit.png" alt="filter_edit" loading="lazy" decoding="async" width="1236" height="510"/></p>
+<p>Each condition is one line, written out. Click a line to edit it, then click <em>Done</em> or press <em>Escape</em>. Only one
+line is open at a time. The buttons for commenting, copying and removing a line appear when you point at it.</p>
+<p>The block at the top sets how the conditions under it combine. The four block types are <em>all of</em>, <em>any of</em>,
+<em>none of</em> and <em>not all of</em>. Opening one also names the operation it stands for. <em>No Mech on Hilly Maps</em> uses
+<em>not all of</em>, so a layer matches unless both of these hold:</p>
+<ul>
+<li><code>Map</code> is Manicouagan, Skorpo or Lashkar</li>
+<li><code>Unit (Either)</code> is Mechanized or Armored</li>
+</ul>
+<p>A filter does nothing on its own: other settings point at it, and one filter can be used inside another.
+<em>Main Pool</em> is built out of two of the others:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/main_pool_card.png" alt="main_pool" loading="lazy" decoding="async" width="392" height="147"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/main_pool_edit.png" alt="main_pool_edit" loading="lazy" decoding="async" width="1200" height="337"/></p>
+<p>It uses <em>all of</em>, so a layer has to meet every one of:</p>
+<ul>
+<li><code>Z_Pool</code> is true, shown as <code>Z Pool</code> in the builder. This is one of the extra columns that ship with SLM&#x27;s layer
+data, and it marks the competitive pool. See <a href="/squad-layer-manager/next/layer-data/">Layer data</a>.</li>
+<li>the layer is excluded from <em>Similar Factions</em></li>
+<li>the layer is included in <em>No Mech on Hilly Maps</em></li>
+</ul>
+<p>Switch a filter between <em>Builder</em> and <em>Text</em>. The text view edits the expression as text, which is easier for
+changes the builder makes you do a line at a time, such as changing how the conditions nest. <em>Reformat</em> tidies the
+text up. A line&#x27;s comment shows up there as a <code>#</code> line above it, and a <code>#</code> line written there becomes the comment
+on the line below.</p>
+<h4 id="82-pool-configuration" class="docs-heading">8.2. Pool configuration<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L371" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L371</a></h4>
+<p><em>Pool Configuration</em> decides which layers count as playable, which ones raise warnings, and how soon a map, layer
+or faction may be played again.</p>
+<p>Reach it from the <em>Pool Configuration</em> page in the settings, or from the gear icon above the layer queue. The gear
+is the one you will use:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/pool_config_button.png" alt="pool_config_button" loading="lazy" decoding="async" width="959" height="117"/></p>
+<p>It has three tabs: <em>Filters</em>, <em>Repeat Rules</em> and <em>Next Layer</em>.</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/pool_config_popover.png" alt="pool_config_popover" loading="lazy" decoding="async" width="1053" height="644"/></p>
+<h4 id="83-the-pool-filter" class="docs-heading">8.3. The pool filter<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L385" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L385</a></h4>
+<p><em>Pool Filter</em> is the most important setting. It is the single filter that decides which layers are in the server&#x27;s
+layer pool. It is <em>Main Pool</em> by default.</p>
+<p>A layer the pool filter matches is <em>in-pool</em>, and one it does not match is <em>out-of-pool</em>. That status follows the
+layer through the whole app:</p>
+<ul>
+<li>out-of-pool layers are hidden behind the pool toggle during layer selection</li>
+<li>only a user holding <code>queue:force-write</code> can queue one</li>
+<li>saving one warns the editor, and in-game admins are warned when one is about to be played</li>
+<li>autogenerated layers always come from the pool</li>
+</ul>
+<p>The toggle in front of the filter decides whether matching layers are in-pool or out-of-pool.</p>
+<h4 id="84-match-and-miss-indicators" class="docs-heading">8.4. Match and miss indicators<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L400" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L400</a></h4>
+<p>A filter carries a name, a description, a <em>Match Indicator</em> and a <em>Miss Indicator</em>. Each indicator has an
+<em>Emoji</em> and an <em>Alert Message</em>. Edit them from the filter itself:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/filter_extra_fields_edit_button.png" alt="filter_extra_fields_edit_button" loading="lazy" decoding="async" width="326" height="51"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/filter_extra_fields.png" alt="filter_extra_fields" loading="lazy" decoding="async" width="1188" height="350"/></p>
+<p>An emoji can be a standard one, or one from your discord server&#x27;s emoji library:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/emoji_library.png" alt="emoji_library" loading="lazy" decoding="async" width="408" height="517"/></p>
+<p>The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
+everywhere it appears. The queue shows the emoji beside the layer:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/main_pool_indicator_matched.png" alt="main_pool_indicator_matched" loading="lazy" decoding="async" width="304" height="178"/></p>
+<p>The pool filter is also enabled by default in the <em>Add Layers</em> dialog:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/add_layers_pool_filter_enabled.png" alt="add_layers_pool_filter_enabled" loading="lazy" decoding="async" width="763" height="156"/></p>
+<p>Anyone can turn it off, but only a user holding <code>queue:force-write</code> can save an out-of-pool layer. Queue one, or
+edit a queued layer until it no longer matches, and SLM raises <em>Filter Warnings</em> before it saves:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/filter_warnings.png" alt="filter_warnings" loading="lazy" decoding="async" width="1164" height="381"/></p>
+<p>While the next layer carries a warning, SLM repeats it to in-game admins. To silence the warnings on one queue item,
+tag the item and name that tag in <em>Skip warnings for</em>. The item still needs <code>queue:force-write</code> to save if it is
+out-of-pool, and its indicators still display.</p>
+<h4 id="85-secondary-filters" class="docs-heading">8.5. Secondary filters<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L430" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L430</a></h4>
+<p><em>Secondary Filters</em> never decide whether a layer is in-pool. They add behaviour on top, and one filter can appear
+in several of the lists at once.</p>
+<div class="docs-table"><table><thead><tr><th>List</th><th>What it does</th></tr></thead><tbody><tr><td><em>Indicate matches for</em></td><td>Matching layers display the filter&#x27;s match emoji</td></tr><tr><td><em>Indicate misses for</em></td><td>Layers that do not match display the filter&#x27;s miss emoji</td></tr><tr><td><em>Default selectable filters</em></td><td>Offered during layer selection, starting in the state you set here</td></tr><tr><td><em>Warn for</em></td><td>Warn when a layer in the configured state is queued or about to be played</td></tr><tr><td><em>Constrain generated pool for</em></td><td>Constrain autogenerated layers, on top of the pool filter</td></tr><tr><td><em>Layer request filters</em></td><td>Constrain layer requests</td></tr></tbody></table></div>
+<p><em>Constrain generated pool for</em> is the one to set up first. When the queue runs out of layers, SLM generates one
+from the pool, and the default <em>Main Pool</em> is permissive. Naming a tighter filter here keeps generated layers
+closer to what you want to play. Each entry is set to <em>Must match</em> or <em>Must not match</em>.</p>
+<p><em>Layer request filters</em> apply to requests players make in game. They are always added to the request. In the
+dashboard, the request dialog starts with them applied, and you can turn them off for one request.</p>
+<h4 id="86-next-layer" class="docs-heading">8.6. Next layer<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L451" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L451</a></h4>
+<p>The <em>Next Layer</em> tab holds two settings, both off by default. They decide how SLM reacts when the server&#x27;s next
+layer changes underneath it.</p>
+<p><em>Override the next layer when it is set outside SLM</em> covers the case where something other than SLM sets the next
+layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue.
+Off, SLM adopts the change instead, and puts that layer at the front of the queue.</p>
+<p><em>Warn admins when the next layer changes</em> sends every in-game admin the new next layer whenever it changes. A change
+SLM overrides is not announced, so turning both on warns admins only about changes SLM accepted.</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/pool_configuration_next_layer.png" alt="pool_configuration_next_layer" loading="lazy" decoding="async" width="1053" height="127"/></p>
+<h4 id="87-disabling-slm-updates" class="docs-heading">8.7. Disabling SLM updates<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L465" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L465</a></h4>
+<p>SLM normally writes the next layer to the server over RCON. <em>Disable SLM Updates</em>, in the <em>Server Actions</em> menu,
+stops it. The queue still runs and tracks what is played. SLM never sets the map itself, and stops sending the recurring
+reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside something
+else that owns the rotation.</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/disable_slm_updates.png" alt="disable_slm_updates" loading="lazy" decoding="async" width="198" height="152"/></p>
+<p>While updates are off, the queue panel carries an <em>SLM Updates Disabled</em> alert naming who turned them off, and
+<em>Re-enable SLM Updates</em> puts them back. Both need <code>squad-server:disable-slm-updates</code>.</p>
+<p>SLM also stands down on its own when Squad&#x27;s built-in vote is deciding the next layer, or when it infers that
+voting was turned on with <code>AdminEnableVoting 1</code>. It reports that voting is enabled, and stops updating the next
+layer until someone turns updates back on. Turning them back on disables voting.</p>
+<h4 id="88-repeat-rules" class="docs-heading">8.8. Repeat rules<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L481" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L481</a></h4>
+<p>A <em>repeat rule</em> sets how soon a map, layer or faction may be played again, counting across both the queue and the
+recent match history. Each rule covers one attribute. Set them on the <em>Repeat Rules</em> tab.</p>
+<p>These are the defaults:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/default_repeat_rules.png" alt="default_repeat_rules" loading="lazy" decoding="async" width="1025" height="157"/></p>
+<p>They treat a layer as a repeat when it reuses:</p>
+<ul>
+<li>its <code>Map</code> within 4 matches</li>
+<li>its <code>Layer</code>, which is the map, gamemode and version together, within 7 matches</li>
+<li>its <code>Faction</code>, on the same side, within 3 matches</li>
+</ul>
+<p>A rule on a team-specific attribute such as <code>Faction</code> or <code>Unit</code> reads that side&#x27;s own history, not both. One side can
+still play a faction the other side played recently.</p>
+<p><em>Target Values</em> narrows a rule to named values:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/skorpo_repeat_rule.png" alt="skorpo_repeat_rule" loading="lazy" decoding="async" width="999" height="32"/></p>
+<p>That rule covers Skorpo alone, over 10 matches. A <em>Within</em> of 0 turns a rule off.</p>
+<p>A rule always hides its repeats behind the layer table&#x27;s <em>Hide Repeats</em>. <em>Options</em> decides what else it does:</p>
+<ul>
+<li><em>Indicate</em> marks a layer that breaks the rule wherever it is shown: the repeat icon on the queue item and in the
+layer table, and the underline on the field that repeats.</li>
+<li><em>Warn</em> warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
+to be played.</li>
+<li><em>Autogen</em> applies the rule when autogenerating layers as well. It is on for all three defaults, and off for the
+Skorpo rule above.</li>
+<li><em>Cross-team</em> pools both teams together, so a value one team played counts as a repeat when the other team plays
+it. Only a rule on a team-specific attribute can take it.</li>
+</ul>
+<p>A rule is named after its attribute. <em>Add label</em> gives it a name of its own, which is then what the repeat is
+reported under. Empty the box to take the name away again.</p>
+<p>Drag a rule by its grip to reorder the list.</p>
+<p>A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
+opt out of that.</p>
+<h3 id="layer-tags" class="docs-heading">Layer Tags<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L524" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L524</a></h3>
+<p>You can tag individual layers in the layer queue. Layers with certain tags can be configured to skip warnings:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/skip_warnings_for_tag.png" alt="skip_warnings_for_tag" loading="lazy" decoding="async" width="169" height="62"/>
+<img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/fogless_friday.png" alt="fogless_friday" loading="lazy" decoding="async" width="293" height="138"/></p>
+<h3 id="9-layer-table" class="docs-heading">9. Layer table<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L531" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L531</a></h3>
+<h4 id="91-default-displayed-columns" class="docs-heading">9.1. Default displayed columns<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L533" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L533</a></h4>
+<p>The layer table can show more about each layer than it does by default, and each column it shows is another way to
+filter. Configure the columns under <em>Layers &gt; Layer Table</em>. They apply to the layers table and to every layer
+select menu, such as the <em>Explore Layers</em> and <em>Add Layers</em> dialogs:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/layer_table_columns.png" alt="layer_table_columns" loading="lazy" decoding="async" width="667" height="445"/></p>
+<p>Drag a column to reorder it, and use its toggle to set whether it is visible by default. The same setting holds the
+table&#x27;s default sort and the extra comparison controls its filter menu offers.</p>
+<p>See <a href="/squad-layer-manager/next/layer-data/">Layer data</a> for where this data comes from, and how to build your own.</p>
+<h4 id="92-randomization" class="docs-heading">9.2. Randomization<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L546" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L546</a></h4>
+<p><em>Layer Generation Weights</em> controls how SLM picks layers at random. It covers layer generation, which runs when
+the queue runs out of layers, vote generation, and the layer table&#x27;s random sort.</p>
+<p>Generation walks down a configurable pick order of layer columns and matchups:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/layer_weights_pick_order.png" alt="layer_weights_pick_order" loading="lazy" decoding="async" width="667" height="283"/></p>
+<p>At each step it draws one value at random, using the weights you configure for that column, and the draw narrows
+the pool the next step draws from:</p>
+<p><img src="/squad-layer-manager/next/assets/docs/configuring_screenshots/layer_weights_maps.png" alt="layer_weights_maps" loading="lazy" decoding="async" width="538" height="470"/></p>
+<p>A value you do not list weighs 0.1. Matchups are unordered, so <code>[ADF, PLA]</code> and <code>[PLA, ADF]</code> are one entry.</p>
+<p>Generation keeps going down the pick order until one layer remains, or until the pick order runs out, in which case
+it picks one of the remaining layers at random.</p>
+<p>The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time,
+and a value with no layers left is never picked. Your background filtering and the values already picked both narrow
+what remains, so configured weights do not map cleanly onto the distributions you end up seeing.</p>
+<h3 id="10-plugins" class="docs-heading">10. Plugins<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L569" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L569</a></h3>
+<p>Plugins add features to SLM. Manage them under <em>Plugins</em> on the settings page. Doing so takes the <code>plugins:manage</code>
+permission.</p>
+<blockquote class="docs-callout-warning"><div class="docs-callout-title">warning</div>
+<p>A plugin can do anything SLM can, including editing the queue, running commands on your game servers, and reading
+and changing SLM&#x27;s database. Install plugins only from authors you trust.</p>
+</blockquote>
+<h4 id="101-built-in-plugins" class="docs-heading">10.1. Built-in plugins<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L578" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L578</a></h4>
+<p>SLM ships with these plugins. They are installed but stopped until you start them.</p>
+<div class="docs-table"><table><thead><tr><th>Plugin</th><th>What it does</th></tr></thead><tbody><tr><td>AFK Kicker</td><td>Kicks AFK players when people are waiting in the queue, longest AFK first</td></tr><tr><td>Balance Triggers</td><td>Watches recent match outcomes and warns admins when they look one-sided</td></tr><tr><td>Teamkill Warns</td><td>Warns players when they have been teamkilled</td></tr></tbody></table></div>
+<h4 id="102-installing-a-plugin" class="docs-heading">10.2. Installing a plugin<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L588" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L588</a></h4>
+<ol>
+<li>Get the url of the plugin&#x27;s <code>plugin.json</code> from its author.</li>
+<li>Paste it under <em>Install a plugin</em> and click <em>Install</em>.</li>
+<li>Start the plugin with its toggle.</li>
+</ol>
+<p>SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author&#x27;s site goes down. <em>Refresh</em>
+downloads it again, which is how you upgrade.</p>
+<p>You can also copy a plugin&#x27;s folder into <code>data/plugins</code> and click <em>Rescan folder</em>. The folder must be named after the
+plugin&#x27;s id. A plugin installed this way has no url, so upgrade it by replacing the folder.</p>
+<h4 id="103-running-and-configuring-a-plugin" class="docs-heading">10.3. Running and configuring a plugin<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L600" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L600</a></h4>
+<p>A plugin&#x27;s toggle starts and stops it, and SLM remembers the choice across restarts. Its status reads <em>Running</em>,
+<em>Stopped</em> or <em>Failed</em>. A failed plugin shows the reason, such as a configuration that is not valid, or a plugin written
+for a different version of SLM.</p>
+<p>A plugin&#x27;s settings and in-game commands are edited in its row. Its commands take triggers like SLM&#x27;s own (see
+<a href="#52-command-triggers">5.2</a>). If another command already owns one of its triggers, SLM warns that the trigger
+does nothing, and you set a different one.</p>
+<p>A plugin can define actions of its own that need a permission. Grant them to a role under <em>Plugin Grants</em> (see
+<a href="#33-assigning-permissions-to-roles">3.3</a>).</p>
+<p>When an upgraded plugin changes what it shows in the browser, open pages ask to reload. They do not reload by
+themselves, so nobody loses an edit in progress.</p>
+<h4 id="104-uninstalling-a-plugin" class="docs-heading">10.4. Uninstalling a plugin<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L616" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L616</a></h4>
+<p><em>Uninstall</em> removes the plugin but keeps its settings and data, so reinstalling it restores them. To remove those as
+well, use <em>Delete data</em> under <em>Leftover data</em>. That cannot be undone.</p>
+<h3 id="11-nav-links" class="docs-heading">11. Nav links<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md#L621" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L621</a></h3>
+<p>The <em>Links</em> menu in the nav bar holds links for your users, such as your community&#x27;s rules or a Discord invite. A
+fresh install starts with links to SLM on GitHub and to its install guide.</p>
+<ul>
+<li>Links for every server are under <em>Miscellaneous &gt; Nav Links</em> in the settings.</li>
+<li>A server can add its own in its server settings. They show below the global ones while that server is selected.</li>
+</ul>
+<p>Each link is a label and a url.</p></div></article><footer class="docs-page-footer"><div class="docs-source"><code>docs/configuring.md</code><div class="ms-auto flex flex-wrap gap-x-5 gap-y-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/edit/main/docs/configuring.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Edit on GitHub</a></div></div><nav aria-label="Previous and next" class="docs-pager"><a href="/squad-layer-manager/next/server-dashboard/"><span class="docs-label flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-left size-3.5" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Previous</span><span class="font-semibold text-text">Learning how to use SLM</span></a><a href="/squad-layer-manager/next/command-triggers/" class="items-end text-end"><span class="docs-label flex items-center gap-1">Next<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-right size-3.5" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></span><span class="font-semibold text-text">Command triggers</span></a></nav></footer></main><aside aria-label="On this page" class="docs-toc max-xl:hidden"><div class="docs-label pb-1">On this page</div><a href="#1-admin-lists" class="ps-5">1. Admin lists</a><a href="#2-adding-your-server" class="ps-5">2. Adding your server</a><a href="#3-permissions" class="ps-5">3. Permissions</a><a href="#4-warns-broadcasts-and-admin-actions" class="ps-5">4. Warns, broadcasts and admin actions</a><a href="#5-in-game-commands" class="ps-5">5. In-game commands</a><a href="#6-player-grouping-modes" class="ps-5">6. Player grouping modes</a><a href="#7-player-flagging" class="ps-5">7. Player flagging</a><a href="#8-layer-pools-and-filters" class="ps-5">8. Layer pools and filters</a><a href="#layer-tags" class="ps-5">Layer Tags</a><a href="#9-layer-table" class="ps-5">9. Layer table</a><a href="#10-plugins" class="ps-5">10. Plugins</a><a href="#11-nav-links" class="ps-5">11. Nav links</a><div class="mt-5 flex flex-col gap-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/configuring.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/edit/main/docs/configuring.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Edit on GitHub</a></div></aside></div><dialog id="docs-search" class="docs-search" aria-label="Search the docs"><form class="docs-search-field" method="dialog"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-[18px] shrink-0 text-text-2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><label for="docs-search-input" class="sr-only">Search</label><input id="docs-search-input" type="search" placeholder="Search the docs" autoComplete="off" spellCheck="false" role="combobox" aria-expanded="false" aria-controls="docs-search-results"/><kbd class="docs-kbd">esc</kbd></form><ul id="docs-search-results" class="docs-search-results" role="listbox" aria-label="Results"></ul><p class="docs-search-status" aria-live="polite"></p><div class="docs-search-keys" aria-hidden="true"><span><kbd class="docs-kbd">↑</kbd> <kbd class="docs-kbd">↓</kbd> move</span><span><kbd class="docs-kbd">↵</kbd> open</span></div></dialog></body></html>
