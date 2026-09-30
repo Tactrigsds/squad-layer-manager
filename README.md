@@ -41,4 +41,5 @@ or as markdown here:
 - [Server agent](docs/server_agent.md): stream a game host's logs and proxy its RCON to SLM
 - [Layer data](docs/layer_data.md): the layer artifact pair, how it is resolved, and building your own
 - [Writing a plugin](docs/writing_plugins.md): the plugin contract, and packing one for admins to install
+- [Plugin UI](docs/plugin_ui.md): where a plugin can render in the app, and the components it can use
 - [Contributing](CONTRIBUTING.md): local dev setup, the test suites, and the pre-push hook

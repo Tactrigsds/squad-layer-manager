@@ -297,6 +297,12 @@ importers:
       '@shikijs/rehype':
         specifier: ^4.4.3
         version: 4.4.3
+      '@tailwindcss/node':
+        specifier: 4.3.3
+        version: 4.3.3
+      '@tailwindcss/oxide':
+        specifier: 4.3.3
+        version: 4.3.3
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.3

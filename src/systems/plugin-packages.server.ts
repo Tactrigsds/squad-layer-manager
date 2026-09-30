@@ -31,11 +31,13 @@ export type Package = {
 	manifestPath: string
 	serverPath: string
 	clientPath: string | null
+	stylesPath: string | null
 	// content hashes, which is what makes a reload of an upgraded bundle possible: they go in the
 	// module url the server imports and in the asset url the browser imports
 	manifestAssetId: string
 	serverAssetId: string
 	clientAssetId: string | null
+	stylesAssetId: string | null
 	// present only for a package SLM fetched; a hand-placed directory has no source to refresh from
 	install: PLG.InstallRecord | null
 }
@@ -80,6 +82,7 @@ export function readPackage(dir: string): Package {
 	const manifestModulePath = resolveWithin(dir, manifest.manifest)
 	const serverPath = resolveWithin(dir, manifest.server)
 	const clientPath = manifest.client ? resolveWithin(dir, manifest.client) : null
+	const stylesPath = manifest.styles ? resolveWithin(dir, manifest.styles) : null
 	return {
 		id: manifest.id,
 		dir,
@@ -87,9 +90,11 @@ export function readPackage(dir: string): Package {
 		manifestPath: manifestModulePath,
 		serverPath,
 		clientPath,
+		stylesPath,
 		manifestAssetId: assetId(fs.readFileSync(manifestModulePath)),
 		serverAssetId: assetId(fs.readFileSync(serverPath)),
 		clientAssetId: clientPath ? assetId(fs.readFileSync(clientPath)) : null,
+		stylesAssetId: stylesPath ? assetId(fs.readFileSync(stylesPath)) : null,
 		install: readInstallRecord(dir),
 	}
 }
@@ -131,7 +136,8 @@ export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<
 		}
 
 		const files = new Map<string, Buffer>([[PLG.PACKAGE_MANIFEST_FILE, manifestBytes]])
-		for (const rel of [manifest.manifest, manifest.server, ...(manifest.client ? [manifest.client] : [])]) {
+		for (const rel of [manifest.manifest, manifest.server, manifest.client, manifest.styles]) {
+			if (rel === undefined) continue
 			if (path.isAbsolute(rel) || rel.split('/').includes('..')) throw new Error(`plugin.json names an unusable path: ${rel}`)
 			files.set(rel, await fetchFile(ctx, new URL(rel, manifestUrl)))
 		}

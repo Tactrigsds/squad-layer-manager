@@ -98,6 +98,7 @@ type Entry = {
 	// asset urls the browser imports, hash-stamped; null for a builtin
 	manifestEntry: string | null
 	clientEntry: string | null
+	clientStyles: string | null
 	// the package this came from, for refresh and for noticing an upgraded bundle
 	pkg: Pkgs.Package | null
 }
@@ -188,7 +189,15 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	update$.subscribe(() => FilterEntity.invalidateReferences())
 
 	for (const builtin of builtins) {
-		await ensureRuntime(ctx, { ...builtin, source: 'builtin', sourceUrl: null, manifestEntry: null, clientEntry: null, pkg: null })
+		await ensureRuntime(ctx, {
+			...builtin,
+			source: 'builtin',
+			sourceUrl: null,
+			manifestEntry: null,
+			clientEntry: null,
+			clientStyles: null,
+			pkg: null,
+		})
 	}
 	await loadPackages(ctx)
 
@@ -292,6 +301,7 @@ async function entryFromPackage(pkg: Pkgs.Package): Promise<Entry> {
 		sourceUrl: pkg.install?.sourceUrl ?? null,
 		manifestEntry: assetUrl(pkg.id, pkg.manifest.manifest, pkg.manifestAssetId),
 		clientEntry: pkg.clientPath ? assetUrl(pkg.id, pkg.manifest.client!, pkg.clientAssetId!) : null,
+		clientStyles: pkg.stylesPath ? assetUrl(pkg.id, pkg.manifest.styles!, pkg.stylesAssetId!) : null,
 		pkg,
 	}
 }
@@ -342,7 +352,12 @@ export async function reloadPackages(ctx: C.Db) {
 }
 
 function changed(a: Pkgs.Package, b: Pkgs.Package): boolean {
-	return a.manifestAssetId !== b.manifestAssetId || a.serverAssetId !== b.serverAssetId || a.clientAssetId !== b.clientAssetId
+	return (
+		a.manifestAssetId !== b.manifestAssetId ||
+		a.serverAssetId !== b.serverAssetId ||
+		a.clientAssetId !== b.clientAssetId ||
+		a.stylesAssetId !== b.stylesAssetId
+	)
 }
 
 // ---- lifecycle ----
@@ -808,6 +823,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		sourceUrl: rt.entry.sourceUrl,
 		manifestEntry: rt.entry.manifestEntry,
 		clientEntry: rt.entry.clientEntry,
+		clientStyles: rt.entry.clientStyles,
 	}))
 	const broken = [...brokenPackages].map(([id, pkg]): PLG.RuntimeInfo => ({
 		id,
@@ -826,6 +842,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		sourceUrl: pkg.sourceUrl,
 		manifestEntry: null,
 		clientEntry: null,
+		clientStyles: null,
 	}))
 	return [...loaded, ...broken].toSorted((a, b) => (a.name < b.name ? -1 : 1))
 }
@@ -894,6 +911,7 @@ export function servableAsset(pluginId: string, rel: string): string | null {
 	if (!pkg) return null
 	if (rel === pkg.manifest.manifest) return pkg.manifestPath
 	if (pkg.manifest.client && rel === pkg.manifest.client) return pkg.clientPath
+	if (pkg.manifest.styles && rel === pkg.manifest.styles) return pkg.stylesPath
 	return null
 }
 
