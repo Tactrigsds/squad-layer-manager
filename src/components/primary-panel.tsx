@@ -232,7 +232,7 @@ export default function PrimaryPanel(props: {
 	// half is pinned to the window there, and scrolls within that.
 	if (part === 'stats-teams') return <div className="min-w-0 @container">{content}</div>
 	return (
-		<ScrollArea fill className="flex-1 min-h-0 min-w-0 @container">
+		<ScrollArea fill gutter className="flex-1 min-h-0 min-w-0 @container">
 			{content}
 		</ScrollArea>
 	)
