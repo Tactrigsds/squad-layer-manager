@@ -68,7 +68,6 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 				)}
 				<span className="flex-1" />
-				{!phone && <kbd className="fd-kbd">Esc</kbd>}
 				<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
 					<Icons.X />
 				</Button>
