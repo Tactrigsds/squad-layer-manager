@@ -1,4 +1,5 @@
 import * as Rx from '@/lib/rxjs'
+import * as Project from '@/models/project.models'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
@@ -31,7 +32,7 @@ export let ENV!: ReturnType<typeof envBuilder>
 
 // Where the product points when a deployment hasn't named somewhere of its own. A fork sets PUBLIC_REPO_URL /
 // PUBLIC_ISSUES_URL / PUBLIC_HELP_URL; everyone else gets upstream, which is better than no link at all.
-export const DEFAULT_REPO_URL = 'https://github.com/Tactrigsds/squad-layer-manager'
+export const DEFAULT_REPO_URL = Project.REPO_URL
 const DEFAULT_ISSUES_URL = `${DEFAULT_REPO_URL}/issues`
 const DEFAULT_HELP_URL = 'https://discord.gg/U2ywQy48H'
 

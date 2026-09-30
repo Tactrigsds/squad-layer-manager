@@ -13,6 +13,7 @@ layers*.csv
 node_modules
 dist
 dist-ssr
+dist-docs
 *.local
 
 # Editor directories and files

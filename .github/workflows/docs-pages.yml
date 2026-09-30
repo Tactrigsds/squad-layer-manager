@@ -1,0 +1,114 @@
+# Publishes the documentation site to the gh-pages branch, which GitHub Pages serves.
+#
+# A push to main rebuilds /next/, a release tag builds that release's folder once, and a manual run rebuilds any ref.
+# Every run then rebuilds the unversioned root (landing page, changelog, versions.json) from main, so it always points
+# at the newest release. Folders already on gh-pages are left alone, which is what keeps each release's docs frozen.
+# A tag from before the site existed has no build script, so it gets no folder.
+
+name: Docs site
+
+on:
+   push:
+      branches: [main]
+      tags: ['v*']
+      paths:
+         - 'docs/**'
+         - 'CONTRIBUTING.md'
+         - 'CHANGELOG.md'
+         - 'src/components/docs-site/**'
+         - 'src/components/logo-mark.tsx'
+         - 'src/docs-site.css'
+         - 'src/theme.css'
+         - 'src/models/docs-site.models.ts'
+         - 'src/scripts/build-docs.ts'
+         - 'src/systems/docs-site.client.ts'
+         - 'pnpm-lock.yaml'
+         - '.github/workflows/docs-pages.yml'
+   workflow_dispatch:
+      inputs:
+         ref:
+            description: 'main, or a release tag to (re)build'
+            required: true
+            default: main
+
+permissions:
+   contents: write
+
+concurrency:
+   group: docs-pages
+   cancel-in-progress: false
+
+env:
+   # the path GitHub Pages serves the site under; "/" when the repo variable DOCS_CNAME sets a custom domain
+   DOCS_ROOT: ${{ vars.DOCS_CNAME && '/' || format('/{0}/', github.event.repository.name) }}
+   DOCS_CNAME: ${{ vars.DOCS_CNAME }}
+   DOCS_OUT: ${{ github.workspace }}/site
+
+jobs:
+   publish:
+      runs-on: ubuntu-latest
+      steps:
+         - name: Pick the version
+           id: pick
+           env:
+              REF: ${{ inputs.ref || github.ref_name }}
+           run: |
+              echo "ref=$REF" >> "$GITHUB_OUTPUT"
+              if [ "$REF" = main ]; then echo "version=next" >> "$GITHUB_OUTPUT"; else echo "version=$REF" >> "$GITHUB_OUTPUT"; fi
+
+         - name: Check out the ref being published
+           uses: actions/checkout@v4
+           with:
+              ref: ${{ steps.pick.outputs.ref }}
+              path: ref
+
+         - name: Check out main, for the root
+           uses: actions/checkout@v4
+           with:
+              ref: main
+              path: main
+
+         - name: Check out gh-pages
+           env:
+              GH_TOKEN: ${{ github.token }}
+           run: |
+              url="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+              if git ls-remote --exit-code --heads "$url" gh-pages; then
+                git clone --branch gh-pages --single-branch --depth 1 "$url" site
+              else
+                git init -b gh-pages site
+                git -C site remote add origin "$url"
+              fi
+
+         - uses: actions/setup-node@v4
+           with:
+              node-version: '24'
+
+         - uses: pnpm/action-setup@v4
+           with:
+              version: 10.22.0
+
+         - name: Build the version
+           if: hashFiles('ref/src/scripts/build-docs.ts') != ''
+           working-directory: ref
+           env:
+              DOCS_VERSION: ${{ steps.pick.outputs.version }}
+              DOCS_REF: ${{ steps.pick.outputs.ref }}
+           run: |
+              pnpm install --frozen-lockfile
+              pnpm run docs:build --version-only
+
+         - name: Build the root
+           working-directory: main
+           run: |
+              pnpm install --frozen-lockfile
+              pnpm run docs:build --root-only
+
+         - name: Publish
+           working-directory: site
+           run: |
+              git add -A
+              if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
+              git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -m "docs: publish ${{ steps.pick.outputs.version }} from ${{ steps.pick.outputs.ref }} (${{ github.sha }})"
+              git push origin gh-pages

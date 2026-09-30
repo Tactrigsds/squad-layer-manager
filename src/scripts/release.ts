@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import * as Paths from '$root/paths.ts'
 import * as CL from '@/models/changelog.models'
+import * as Project from '@/models/project.models'
 import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // Cuts a release: moves every fragment in changes/ into changelog/<version>/, adds the release to
@@ -13,7 +14,6 @@ import * as ChangelogFiles from '@/systems/changelog-files.server'
 // It also lists the commits since the last release that shipped without a fragment, so a change that should have
 // had one can be caught before the release goes out: add the fragment to changes/ and run this again.
 
-const REPO_URL = 'https://github.com/Tactrigsds/squad-layer-manager'
 const CHANGELOG_MD = path.join(Paths.PROJECT_ROOT, 'CHANGELOG.md')
 
 function fail(msg: string): never {
@@ -58,7 +58,7 @@ fs.writeFileSync(path.join(Paths.CHANGELOG, 'releases.json'), JSON.stringify(ind
 
 const released = ChangelogFiles.load(Paths.CHANGELOG, Paths.CHANGES)
 if (released.errors.length > 0) fail(`the release was written but does not load back:\n  ${released.errors.join('\n  ')}`)
-fs.writeFileSync(CHANGELOG_MD, CL.renderMarkdown(released.releases, REPO_URL))
+fs.writeFileSync(CHANGELOG_MD, CL.renderMarkdown(released.releases, Project.REPO_URL))
 
 console.log(`Cut ${version} (${date}) with ${loaded.pending.length} changes.`)
 const unrecorded = commitsWithoutFragments()

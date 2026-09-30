@@ -106,6 +106,9 @@ jobs:
          - name: Check the message catalogue is up to date
            run: pnpm run i18n:lint
 
+         - name: Build the docs site
+           run: pnpm run docs:build
+
          - name: Run tests
            run: pnpm run test
 
