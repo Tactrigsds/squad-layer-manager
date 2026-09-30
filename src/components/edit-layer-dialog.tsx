@@ -1,17 +1,13 @@
 import React from 'react'
 
 import { Button } from '@/components/ui/button'
-import {
-	HeadlessDialog,
-	HeadlessDialogContent,
-	HeadlessDialogFooter,
-	HeadlessDialogHeader,
-	HeadlessDialogTitle,
-} from '@/components/ui/headless-dialog'
+import { HeadlessDialog } from '@/components/ui/headless-dialog'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
@@ -19,10 +15,7 @@ import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
 import { tr } from '@/systems/messages.client'
 
-import AppliedFiltersPanel from './applied-filters-panel.tsx'
-import LayerFilterMenu from './layer-filter-menu.tsx'
-import LayerTable from './layer-table.tsx'
-import PoolCheckboxes from './pool-checkboxes.tsx'
+import LayerPickerLayout from './layer-picker-layout.tsx'
 
 export type EditLayerDialogProps = {
 	open: boolean
@@ -67,50 +60,28 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 		Zus.useShallow((s) => [s.initialEditedLayerId, s.layerTable.selected[0]]),
 	)
 
+	const phone = Browser.useIsSmallViewport()
 	const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId
 	function submit() {
-		const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId
 		if (!canSubmit) return
 		props.onClose()
 		props.onSelectLayer(editedLayerId!)
 	}
 
 	return (
-		<HeadlessDialogContent data-tour="edit-layer-dialog" className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
-			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between me-4">
-				<div className="flex items-center">
-					<HeadlessDialogTitle>{tr.text(L_Msgs.editLayerTitle())}</HeadlessDialogTitle>
-				</div>
-				<div className="flex justify-end items-center space-x-2">
-					{/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
-					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */}
-					<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.stores?.squadServer }} />
-				</div>
-			</HeadlessDialogHeader>
-
-			<div className="flex min-h-0 items-start space-x-2">
-				<LayerFilterMenu stores={{ filterMenu: frameKey }} />
-				<div className="flex flex-col space-y-2 justify-between h-full min-h-0">
-					<div className="flex h-full min-h-0">
-						<LayerTable
-							stores={{ layerTable: frameKey, squadServer: props.stores?.squadServer }}
-							extraPanelItems={<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />}
-							canChangeRowsPerPage={false}
-							canToggleColumns={false}
-							enableForceSelect
-						/>
-					</div>
-				</div>
-			</div>
-
-			<HeadlessDialogFooter>
-				<div className="flex items-center justify-end w-full">
-					<Button disabled={!canSubmit} onClick={submit}>
-						{tr.text(L_Msgs.submit())}
-					</Button>
-				</div>
-			</HeadlessDialogFooter>
-		</HeadlessDialogContent>
+		<LayerPickerLayout
+			frameKey={frameKey}
+			squadServer={props.stores?.squadServer}
+			title={tr.text(L_Msgs.editLayerTitle())}
+			tourPrefix="edit-layer"
+			canToggleColumns={false}
+			footer={
+				<Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit} className={cn(phone ? 'w-full' : 'self-end')}>
+					{tr.text(L_Msgs.submit())}
+				</Button>
+			}
+			onClose={props.onClose}
+		/>
 	)
 })
 
