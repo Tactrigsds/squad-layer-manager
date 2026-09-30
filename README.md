@@ -2,6 +2,8 @@
 
 SLM is a tool for managing upcoming layers on a Squad server, and other things also.
 
+**Documentation: https://tactrigsds.github.io/squad-layer-manager/**
+
 It is the main admin tool of the Tactical Triggernometry server, used for queueing layers, reading the current state
 of team balance, and running teamswaps. It also issues warns, kicks and timeouts, and it integrates with
 BattleMetrics so you can set player flags and open player profiles without leaving the app. Those flags can then be
@@ -28,6 +30,9 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 ```
 
 ## Documentation
+
+Read these pages on the [documentation site](https://tactrigsds.github.io/squad-layer-manager/), which adds search,
+or as markdown here:
 
 - [Installing](docs/installing.md): get SLM running
 - [Configuring](docs/configuring.md): configure SLM for your squad server
