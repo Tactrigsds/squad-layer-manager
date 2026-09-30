@@ -1,15 +1,7 @@
-import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import {
-	HeadlessDialog,
-	HeadlessDialogContent,
-	HeadlessDialogDescription,
-	HeadlessDialogHeader,
-	HeadlessDialogTitle,
-} from '@/components/ui/headless-dialog'
+import { HeadlessDialog } from '@/components/ui/headless-dialog'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -18,24 +10,16 @@ import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as F_Msgs from '@/messages/filter.messages'
 import * as L_Msgs from '@/messages/layer.messages'
-import * as UI_Msgs from '@/messages/ui.messages'
-import * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import { tr } from '@/systems/messages.client'
 import { useLoggedInUser } from '@/systems/users.client'
 
-import AppliedFiltersPanel from './applied-filters-panel.tsx'
-import LayerFilterMenu from './layer-filter-menu.tsx'
-import LayerTable from './layer-table.tsx'
-import PoolCheckboxes from './pool-checkboxes.tsx'
+import LayerPickerLayout from './layer-picker-layout.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
 type SelectMode = 'vote' | 'layers'
-
-const RAIL_WIDTH_PX = 318
 
 type SelectLayersDialogProps = {
 	title: string
@@ -66,11 +50,6 @@ type SelectLayersDialogContentProps = {
 	onClose: () => void
 }
 
-/**
- * The layer picker. Constraints sit in a rail to the right of the table with the submission controls at its foot;
- * the applied filters get a row under the title bar. On a phone the rail becomes a Filters button that opens the
- * constraints as a full-screen sheet, and the submit block pins to the bottom.
- */
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
 	const [frameInput] = React.useState(() => {
 		if (props.stores?.selectLayers) return undefined
@@ -112,11 +91,6 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 
 	const canSubmit = Zus.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 	const selectedCount = Zus.useStore(frameKey, (s) => s.layerTable.selected.length)
-	const showPoolCheckboxes = Zus.useStore(frameKey, SelectLayersFrame.Sel.repeatRulesApplicable)
-	const constraintCount = Zus.useStore(
-		frameKey,
-		(s) => Object.values(s.filterMenu.menuItems).filter((c) => F.editableCompHasValue(c)).length,
-	)
 
 	const submit = props.selectQueueItems
 		? () => {
@@ -165,102 +139,38 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		</Button>
 	)
 
-	const [filtersOpen, setFiltersOpen] = React.useState(false)
+	const footer = phone ? (
+		<>
+			<div className="flex items-center gap-2 overflow-x-auto">
+				{props.footerBeforeSubmit}
+				<span className="flex-1" />
+				{props.modeSwitchAdditions}
+				{modeSwitch}
+			</div>
+			{submitButton}
+		</>
+	) : (
+		<>
+			{props.footerBeforeSubmit && <div className="flex flex-wrap items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>}
+			<div className="flex flex-wrap items-center justify-between gap-1.5">
+				{props.modeSwitchAdditions}
+				{modeSwitch}
+				{submitButton}
+			</div>
+		</>
+	)
 
 	return (
-		<HeadlessDialogContent
-			data-tour="add-dialog"
-			className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] w-[1090px] max-w-[95vw]')}
-			showCloseButton={false}
-		>
-			<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">
-				<HeadlessDialogTitle className="min-w-0 shrink-0 truncate max-w-full">
-					<span title={props.title}>{props.title}</span>
-				</HeadlessDialogTitle>
-				{props.description && (
-					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
-				)}
-				<span className="flex-1" />
-				{!phone && <kbd className="fd-kbd">Esc</kbd>}
-				<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
-					<Icons.X />
-				</Button>
-			</HeadlessDialogHeader>
-			<div className="flex items-center gap-2 min-h-[calc(var(--ctl)+6px)] px-2.5 border-b border-line shadow-[inset_0_1px_0_var(--line-soft)] overflow-x-auto">
-				<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.stores?.squadServer }} />
-			</div>
-			<div className={cn('flex min-h-0 flex-1 gap-2.5 p-2.5', phone ? 'flex-col overflow-hidden' : 'overflow-auto')}>
-				<div data-tour="add-pick" className={cn('flex min-w-0 flex-col', phone ? 'flex-1 min-h-0 overflow-auto' : 'flex-1')}>
-					{phone && (
-						<div className="mb-1.5 flex items-center gap-2 overflow-x-auto">
-							<Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-								<Button className="h-[34px] shrink-0 px-3" onClick={() => setFiltersOpen(true)}>
-									<Icons.Filter />
-									{tr.text(F_Msgs.filtersButton())}
-									{constraintCount > 0 && <span className="fd-chip">{constraintCount}</span>}
-								</Button>
-								<DialogContent>
-									<DialogHeader>
-										<DialogTitle>{tr.text(F_Msgs.filtersButton())}</DialogTitle>
-									</DialogHeader>
-									<div className="flex-1 min-h-0 overflow-auto">
-										<LayerFilterMenu stores={{ filterMenu: frameKey }} />
-									</div>
-									<DialogFooter>
-										<Button variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
-											{tr.text(UI_Msgs.done())}
-										</Button>
-									</DialogFooter>
-								</DialogContent>
-							</Dialog>
-						</div>
-					)}
-					<LayerTable
-						extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
-						stores={{ layerTable: frameKey }}
-						canChangeRowsPerPage={false}
-						canToggleColumns
-						enableForceSelect
-						compact={phone}
-						autoCompact
-					/>
-				</div>
-				{!phone && (
-					<div
-						data-tour="add-filters"
-						className="flex shrink-0 flex-col gap-2.5 border-s border-line ps-2.5 shadow-[-1px_0_0_var(--line-soft)] rtl:shadow-[1px_0_0_var(--line-soft)]"
-						style={{ width: RAIL_WIDTH_PX }}
-					>
-						<div className="flex flex-col gap-1">
-							<span className="fd-lbl-k">{tr.text(F_Msgs.constraints())}</span>
-							<LayerFilterMenu stores={{ filterMenu: frameKey }} />
-						</div>
-						<div className="flex-1" />
-						<div className="flex flex-col gap-1.5 border-t border-line pt-2 shadow-[inset_0_1px_0_var(--line-soft)]">
-							{props.footerBeforeSubmit && (
-								<div className="flex flex-wrap items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>
-							)}
-							<div className="flex flex-wrap items-center justify-between gap-1.5">
-								{props.modeSwitchAdditions}
-								{modeSwitch}
-								{submitButton}
-							</div>
-						</div>
-					</div>
-				)}
-				{phone && (
-					<div className="flex shrink-0 flex-col gap-1.5 border-t border-line pt-2 shadow-[inset_0_1px_0_var(--line-soft)]">
-						<div className="flex items-center gap-2 overflow-x-auto">
-							{props.footerBeforeSubmit}
-							<span className="flex-1" />
-							{props.modeSwitchAdditions}
-							{modeSwitch}
-						</div>
-						{submitButton}
-					</div>
-				)}
-			</div>
-		</HeadlessDialogContent>
+		<LayerPickerLayout
+			frameKey={frameKey}
+			squadServer={props.stores?.squadServer}
+			title={props.title}
+			description={props.description}
+			tourPrefix="add"
+			canToggleColumns
+			footer={footer}
+			onClose={props.onClose}
+		/>
 	)
 })
 
