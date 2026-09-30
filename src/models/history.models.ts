@@ -25,6 +25,14 @@ export const CHAT_CHANNELS = SM.CHAT_CHANNEL_TYPE.options
 export const PLAYER_ROLES = ['attacker', 'victim'] as const
 export type PlayerRole = (typeof PLAYER_ROLES)[number]
 
+export const STEAM64_RE = /^7656\d{13}$/
+// eos and epic ids share this shape
+export const EOS_ID_RE = /^[0-9a-f]{32}$/i
+
+export function isPlayerIdRef(ref: string): boolean {
+	return STEAM64_RE.test(ref) || EOS_ID_RE.test(ref)
+}
+
 // -------- vocabulary --------
 
 export type ColumnDomain =
@@ -487,7 +495,17 @@ export const PageParamSchema = z.number().int().positive()
 export type Search = Query & { sel?: RowSelectionParam; cursor?: EventCursor; page?: number; contentType?: ContentType }
 export type SearchExtras = Pick<Search, 'sel' | 'cursor' | 'page' | 'contentType'>
 
-/** The history url's search, from the router's already-parsed params; a query that does not parse is the default. */
+const SEARCH_EXTRA_KEYS = ['sel', 'cursor', 'page', 'contentType'] as const satisfies (keyof SearchExtras)[]
+const CLEARED_SEARCH: Record<string, undefined> = Object.fromEntries(
+	[...Object.keys(QueryFieldsSchema.shape), ...SEARCH_EXTRA_KEYS].map((key) => [key, undefined]),
+)
+
+/**
+ * The history url's search, from the router's already-parsed params; a query that does not parse is the default.
+ * Every key of its own it does not return comes back as undefined: the router merges a route's validated search
+ * over the raw one, so a consumed key such as a single `player` would otherwise ride along and fold back in on
+ * the next navigation.
+ */
 export function parseSearch(raw: Record<string, unknown>): Search {
 	const res = QuerySchema.safeParse(raw)
 	const search: Search = res.success ? res.data : DEFAULT_QUERY
@@ -496,6 +514,7 @@ export function parseSearch(raw: Record<string, unknown>): Search {
 	const page = PageParamSchema.safeParse(raw.page)
 	const contentType = ContentTypeSchema.safeParse(raw.contentType)
 	return {
+		...CLEARED_SEARCH,
 		...search,
 		...(sel.success ? { sel: sel.data } : {}),
 		...(cursor.success ? { cursor: cursor.data } : {}),
@@ -518,7 +537,7 @@ export function compactSearch(search: Search): Record<string, unknown> {
 	const { type, mode, feed, servers, players, users, outcomes, ...rest } = search
 	const listOrSingle = (listKey: string, singleKey: string, list: unknown[] | undefined) =>
 		list?.length === 1 ? { [singleKey]: list[0] } : { [listKey]: list }
-	return {
+	const compact: Record<string, unknown> = {
 		...(type === DEFAULT_QUERY.type ? {} : { type }),
 		...(mode === DEFAULT_QUERY.mode ? {} : { mode }),
 		...listOrSingle('servers', 'server', servers),
@@ -526,8 +545,10 @@ export function compactSearch(search: Search): Record<string, unknown> {
 		...listOrSingle('users', 'user', users),
 		...listOrSingle('outcomes', 'outcome', outcomes),
 		...(feed === defaultFeed(type) ? {} : { feed }),
-		...rest,
 	}
+	// parseSearch clears the single-valued params to undefined, which must not overwrite the ones written above
+	for (const [key, value] of Object.entries(rest)) if (value !== undefined) compact[key] = value
+	return compact
 }
 
 /**

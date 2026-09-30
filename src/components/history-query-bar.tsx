@@ -344,29 +344,39 @@ function toDatetimeLocal(value: number | undefined): string {
 	return new Date(value - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
-// Searches by steam, eos or epic id, or by name through the trigram index, but any text is a valid value: the engine
-// reads a ref the same way (resolvePlayerRefs), so a needle nobody picked from the list still runs.
+// Searches by steam, eos or epic id, or by name through the trigram index. A picked player is stored by eos id. A
+// typed name is also a valid value: the engine reads it as a name substring (resolvePlayerRefs).
 function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) => void; title?: string }) {
 	const [needle, setNeedle] = React.useState('')
 	const trimmed = needle.trim()
 	const search = useQuery(HistoryClient.playerSearchBase(trimmed))
 	// a value that arrived by url or from a saved query was never in a search result, so it has no name yet
 	const selected = useQuery(HistoryClient.playerLabelsBase(props.values))
+	const resolved = React.useMemo(
+		() => new Map((selected.data?.code === 'ok' ? selected.data.players : []).map((p) => [p.ref, p])),
+		[selected.data],
+	)
 
 	const options = React.useMemo(() => {
+		const selectedEosIds = new Set(props.values.map((v) => resolved.get(v)?.eosId ?? v))
 		const found = search.data?.code === 'ok' ? search.data.players : []
-		const list = found.map((p) => ({ value: p.eosId, label: p.username ?? p.eosId }))
-		// the typed needle itself, so a name with no exact row (or a pasted id) is still selectable
-		if (trimmed !== '' && !list.some((o) => o.label === trimmed)) {
+		const list = found
+			.filter((p) => props.values.includes(p.eosId) || !selectedEosIds.has(p.eosId))
+			.map((p) => ({ value: p.eosId, label: p.username }))
+		// the typed name itself, so a substring matching several players is still selectable. A typed id is not: the
+		// search resolves it to its player.
+		if (trimmed !== '' && !HQ.isPlayerIdRef(trimmed) && !list.some((o) => o.label === trimmed)) {
 			list.unshift({ value: trimmed, label: tr.text(HistoryMsgs.filterByTyped(trimmed)) })
 		}
 		// the combo-box can only render a selection it has an option for
-		const names = new Map((selected.data?.code === 'ok' ? selected.data.players : []).map((p) => [p.eosId, p.username]))
 		for (const value of props.values) {
-			if (!list.some((o) => o.value === value)) list.unshift({ value, label: names.get(value) ?? value })
+			if (!list.some((o) => o.value === value)) list.unshift({ value, label: resolved.get(value)?.username ?? value })
 		}
 		return list
-	}, [search.data, trimmed, props.values, selected.data])
+	}, [search.data, trimmed, props.values, resolved])
+
+	// a steam or epic id from an older query becomes the eos id it resolves to on the next edit
+	const onSelect = (values: string[]) => props.onSelect([...new Set(values.map((v) => resolved.get(v)?.eosId ?? v))])
 
 	const loading = trimmed.length >= HistoryClient.MIN_PLAYER_NEEDLE && search.isFetching
 	return (
@@ -380,7 +390,7 @@ function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) =>
 			setInputValue={setNeedle}
 			values={props.values}
 			options={loading ? LOADING : options}
-			onSelect={(update) => props.onSelect(typeof update === 'function' ? update(props.values) : update)}
+			onSelect={(update) => onSelect(typeof update === 'function' ? update(props.values) : update)}
 		/>
 	)
 }

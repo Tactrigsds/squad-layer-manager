@@ -164,4 +164,12 @@ describe('compactSearch', () => {
 		expect(HQ.parseSearch({ type: 'players', feed: 'ALL' }).feed).toBeUndefined()
 		expect(HQ.feedOf(HQ.retyped(HQ.parseSearch({ type: 'players' }), 'events'))).toBe('ALL')
 	})
+
+	// the router merges a route's validated search over the raw one, on load and again on each navigation
+	test('a single-valued param replaced through the draft does not fold back in', () => {
+		const raw = { server: 'main', player: 'p1', other: 1 }
+		const { query } = HQ.splitSearch({ ...raw, ...HQ.parseSearch(raw) })
+		const edited = { ...query, players: ['p2'] }
+		expect(HQ.compactSearch({ ...edited, ...HQ.parseSearch(edited) })).toEqual({ server: 'main', player: 'p2', other: 1 })
+	})
 })

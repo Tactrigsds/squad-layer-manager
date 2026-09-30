@@ -138,13 +138,6 @@ export async function resolveNamedUserIds(ctx: C.Db, name: string): Promise<stri
 	return rows.map((r) => r.discordId.toString())
 }
 
-const STEAM64_RE = /^7656\d{13}$/
-const EOS_ID_RE = /^[0-9a-f]{32}$/i
-
-export function isPlayerIdRef(ref: string): boolean {
-	return STEAM64_RE.test(ref) || EOS_ID_RE.test(ref)
-}
-
 // a ref is a steam64, a 32-hex id, or anything else, which reads as a name substring. Eos and epic ids share the
 // 32-hex shape, so a hex ref is kept as an eos id and also resolved as an epic id.
 export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
@@ -152,8 +145,8 @@ export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<stri
 	const steam64s: bigint[] = []
 	const hexIds: string[] = []
 	for (const ref of refs) {
-		if (STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
-		else if (EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
+		if (HQ.STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
+		else if (HQ.EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
 		else for (const id of await resolveNamedPlayerIds(ctx, ref)) eosIds.add(id)
 	}
 	for (const id of hexIds) eosIds.add(id)
@@ -202,7 +195,7 @@ async function resolvePlayerSteamIds(ctx: C.Db, refs: string[]): Promise<string[
 	const steamIds = new Set<string>()
 	const other: string[] = []
 	for (const ref of refs) {
-		if (STEAM64_RE.test(ref)) steamIds.add(ref)
+		if (HQ.STEAM64_RE.test(ref)) steamIds.add(ref)
 		else other.push(ref)
 	}
 	const eosIds = other.length > 0 ? await resolvePlayerRefs(ctx, other) : []
