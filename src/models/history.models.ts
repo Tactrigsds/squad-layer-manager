@@ -697,7 +697,7 @@ export function retyped(query: Query, type: ResultType): Query {
 }
 
 /**
- * The activity feed's secondary filter as a node, so the history page offers the same six views.
+ * The activity feed's secondary filter as a node, so the history page offers the same views.
  *
  * Not quite the same predicate. The feed decides per event with the whole object in hand, where this has only
  * what the index carries: `ADMIN` picks up admin chat and the admin actions, but not the connects and
@@ -711,8 +711,8 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 			return {
 				type: 'nor',
 				children: [
-					{ type: 'and', children: [comp('event.type', KILL_TYPES), NOT_TEAMKILL] },
-					comp('event.type', DESTROYED_TYPES),
+					// a destroyed event with no variant is not a teamkill, which is what the negation's IS NOT TRUE says
+					{ type: 'and', children: [comp('event.type', [...KILL_TYPES, ...DESTROYED_TYPES]), NOT_TEAMKILL] },
 					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
 					comp('event.type', BOOKKEEPING_TYPES),
 				],
@@ -733,6 +733,8 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 			}
 		case 'KILLFEED':
 			return comp('event.type', [...KILL_TYPES, ...DESTROYED_TYPES])
+		case 'VEHICLES':
+			return comp('event.type', [...DESTROYED_TYPES, 'FOB_RADIO_DAMAGED'])
 		default:
 			assertNever(feed)
 	}

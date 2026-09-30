@@ -9,6 +9,7 @@ export const secondaryFilterLabels: Record<CHAT.SecondaryFilterState, TString> =
 	SLM_EVENTS: t('SLM Events'),
 	ADMIN: t('Admin'),
 	KILLFEED: t('Killfeed'),
+	VEHICLES: t('Vehicles & Deployables'),
 }
 
 // Both chat boxes report a send failure the same way: the result code when the call answered, nothing when it threw.

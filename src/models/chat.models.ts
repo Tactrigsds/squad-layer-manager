@@ -1133,7 +1133,7 @@ export type PrimaryFilterState =
 			id: number
 	  }
 
-export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED'])
+export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED', 'VEHICLES'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
 
 export type ChatViewOptionsStore = {
@@ -1179,6 +1179,11 @@ export function isDestroyedEvent(event: EventEnriched): event is SE.VehicleDestr
 	return event.type === 'VEHICLE_DESTROYED' || event.type === 'DEPLOYABLE_DESTROYED'
 }
 
+// what the VEHICLES filter shows: vehicles and deployables destroyed, and FOB radios attacked
+function isVehicleFeedEvent(event: EventEnriched): boolean {
+	return isDestroyedEvent(event) || event.type === 'FOB_RADIO_DAMAGED'
+}
+
 // admin actions observed in-game/over rcon. their SLM-initiated counterparts arrive as app events instead
 function isAdminActionEvent(event: EventEnriched): boolean {
 	switch (event.type) {
@@ -1205,7 +1210,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return true
 		case 'DEFAULT':
 			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
-			if (isDestroyedEvent(event)) return false
+			if (isDestroyedEvent(event) && event.variant !== 'teamkill') return false
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
 		case 'CHAT':
@@ -1221,6 +1226,8 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
 			return isKillfeedEvent(event) || isDestroyedEvent(event)
+		case 'VEHICLES':
+			return isVehicleFeedEvent(event)
 		default:
 			assertNever(filterState)
 	}

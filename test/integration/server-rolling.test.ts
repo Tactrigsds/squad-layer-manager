@@ -709,6 +709,22 @@ describe('the event archive', () => {
 		const radio = await total({ types: ['FOB_RADIO_DAMAGED'] })
 		expect(radio.total).toBe(2)
 		expect(radio.rowsHtml.join('')).toContain('minimum health')
+
+		// A teamkill of a vehicle shows in the default feed, as a teamkill of a player does. Another WPMC vehicle, so
+		// its side again comes from its crew, whom the attacker shares a side with.
+		app.emu.world.destroyVehicle(gunner, 'BP_Loach_CAS_Small', [driver])
+		const teamkill = await app.waitFor(
+			async () => {
+				const res = await total({ target: 'BP_Loach_CAS_Small' })
+				return (res.total ?? 0) > 0 ? res : undefined
+			},
+			{ label: 'the vehicle teamkill reaching the default feed' },
+		)
+		expect(teamkill.total).toBe(1)
+		expect(teamkill.rowsHtml[0]).toContain('teammate')
+
+		// the vehicles filter: the three destroyed, and the two reports of the radio attack
+		expect((await total({ feed: 'VEHICLES' })).total).toBe(5)
 	})
 
 	it('searches players by steam and eos id', async () => {

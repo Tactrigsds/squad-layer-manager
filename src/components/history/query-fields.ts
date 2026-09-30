@@ -54,7 +54,7 @@ export type RangeBoundKey =
 
 // how the chip edits: which control opens in its popover
 export type FieldControl =
-	// the activity feed's secondary filter, the same control and the same six options (see feedFilterNode)
+	// the activity feed's secondary filter, the same control and the same options (see feedFilterNode)
 	| { kind: 'feed' }
 	// the event-type list, which brings its own options and family groupings (see event-type-options.ts)
 	| { kind: 'event-types' }
