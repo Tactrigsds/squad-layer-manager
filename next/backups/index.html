@@ -54,9 +54,16 @@ the image the restored database belongs to:</p>
 newest backup from a particular version without unpacking anything. <code>--commit-sha</code> accepts a full sha, a short one,
 or a <code>commit-&lt;sha&gt;</code> image tag, and pairs with <code>--pre-migration</code> to restrict the search to pre-migration snapshots.</p>
 <p><code>--inspect</code> pairs with a backup selector (<code>--latest</code>, <code>--pre-migration</code>, <code>--from</code>) and changes nothing. It unpacks
-the backup and reports which app build the database belongs to, which image tag to pin, and how far behind the
-current build it is. Run it first when rolling back an upgrade, so you know which version to point
-<code>docker-compose.yaml</code> at before you start the app.</p>
+the backup and reports which app build the database belongs to, which image tag to pin, how far behind the
+current build it is, and whether its secrets decrypt with the <code>SETTINGS_ENCRYPTION_KEY</code> this install is configured
+with. Run it first when rolling back an upgrade, so you know which version to point <code>docker-compose.yaml</code> at before
+you start the app.</p>
+<p>A backup is only complete with the key that encrypted it. Restored under a different key, the database comes up with
+every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep
+the key wherever you keep the backups, and restore the two together. If the backup belongs to an older key you still
+have, set that key as <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code> for the first boot after restoring. That boot re-encrypts
+everything under the current key, and you can remove the variable again (see
+<a href="/squad-layer-manager/next/installing/#34-encryption-key">installing.md, encryption key</a>).</p>
 <p>The database being replaced is kept next to it, renamed to <code>db.sqlite3.replaced-&lt;timestamp&gt;</code>, so the restore can be
 undone. Delete it once you have confirmed the restore. The backup is checked (<code>integrity_check</code>) before anything is
 moved, so a corrupt archive changes nothing.</p>
@@ -64,7 +71,7 @@ moved, so a corrupt archive changes nothing.</p>
 it over the restored file, and you silently get the <strong>old</strong> database back, with <code>integrity_check</code> reporting it as
 fine. Restoring while the app is running also loses data: the app keeps writing to a database that is no longer at
 that path.</p>
-<h2 id="pinning-a-version" class="docs-heading">Pinning a version<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/backups.md#L110" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L110</a></h2>
+<h2 id="pinning-a-version" class="docs-heading">Pinning a version<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/backups.md#L118" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L118</a></h2>
 <p><code>docker-compose.yaml</code> ships pointing at <code>:latest</code>, which is whichever build most recently passed CI on <code>main</code>.
 Pinning means replacing that tag with one that names a single build, so <code>docker compose up -d</code> keeps giving you the
 same one.</p>
@@ -80,7 +87,7 @@ same one.</p>
 always resolves to that one build. To upgrade again, put <code>:latest</code> back and pull.</p>
 <p>You do not have to guess a sha. <code>./restore.sh --list</code> shows the build every backup belongs to, <code>--inspect</code> names the
 tag for one of them, and the app&#x27;s own version is on its about page.</p>
-<h2 id="rolling-back-a-bad-upgrade" class="docs-heading">Rolling back a bad upgrade<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/backups.md#L138" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L138</a></h2>
+<h2 id="rolling-back-a-bad-upgrade" class="docs-heading">Rolling back a bad upgrade<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/backups.md#L146" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L146</a></h2>
 <p>Roll the image back too. Restoring a pre-migration backup and then starting the same version applies the same
 migration again. Each database is stamped with the git sha and branch of the app that last ran against it, so the
 backup records which build it belongs to.</p>

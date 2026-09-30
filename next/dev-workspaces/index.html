@@ -95,14 +95,16 @@ can take that long to reach the roster.</p>
 <li><strong>Discord</strong> is off (<code>DISCORD_ENABLED=false</code>). The oauth callback is built from <code>ORIGIN</code>, so real login would need
 every slot&#x27;s port registered as a redirect uri on the discord app. <code>QUERY_PARAM_AUTH_BYPASS</code> stands in. RBAC roles
 that come from discord are unavailable as a result, but the <code>SUPER_USERS</code> bootstrap still applies.</li>
-<li><strong>BattleMetrics</strong> points at the emulator&#x27;s stub. The real API would write flags and notes to the live org.</li>
+<li><strong>BattleMetrics</strong> points at the emulator&#x27;s stub, and provisioning writes the stub&#x27;s org id and a dummy token into
+the workspace&#x27;s settings. The real API would write flags and notes to the live org. The Squad Browser and Steam
+keys a cloned database holds are dropped for the same reason.</li>
 </ul>
 <p>Telemetry does go to the shared collector, tagged <code>slm.worktree=&lt;name&gt;</code> and <code>slm.dev.slot=&lt;n&gt;</code> so one grafana can
 serve every instance.</p>
-<h2 id="env-files" class="docs-heading">Env files<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/dev_instances.md#L151" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L151</a></h2>
+<h2 id="env-files" class="docs-heading">Env files<a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/dev_instances.md#L153" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>L153</a></h2>
 <p>For linked Git worktrees, provisioning symlinks missing <code>.env</code> and <code>.env.secrets</code> files back to the primary checkout
-rather than copying them. A worktree wants the same Discord app, encryption key and BattleMetrics credentials, and a
-copy would silently keep the old values when one is rotated. A standalone clone keeps its local environment files.
+rather than copying them. A worktree wants the same Discord app and encryption key, and a copy would silently keep
+the old values when one is rotated. A standalone clone keeps its local environment files.
 The per-workspace differences (ports, <code>ORIGIN</code>, and the overrides above) are injected at spawn time instead.</p>
 <p>A checkout with no <code>.env</code> anywhere gets one written from <code>.env.example.dev</code>, naming the seeded <code>dev</code> user as the sole
 <code>SUPER_USERS</code> entry so the instance opens on a user who can administer it. Nothing generates a <code>.env.secrets</code>.
