@@ -304,6 +304,8 @@ down by it:
 
 ### 7. Player flagging
 
+Flagging needs the battlemetrics integration (see [12. Integrations](#12-integrations)).
+
 You can apply a battlemetrics flag to a player from in game with the `/flag` command, or from the SLM interface:
 
 ![flag_command](configuring_screenshots/flag_command.png)
@@ -627,3 +629,34 @@ fresh install starts with links to SLM on GitHub and to its install guide.
 - A server can add its own in its server settings. They show below the global ones while that server is selected.
 
 Each link is a label and a url.
+
+### 12. Integrations
+
+SLM authenticates to three outside services. Enter their credentials under _Integrations_ on the settings page.
+
+A saved token is encrypted and never shown again. The field shows a placeholder, and typing in it replaces the
+token. Clearing the field removes it. The _Enabled_ switch turns an integration off without deleting its token.
+Changes take effect as soon as you save, without a restart.
+
+Editing this section takes a `global-settings:write` grant covering `integrations`. The default managers role
+cannot edit it (see [3.2](#32-default-roles)).
+
+**Battlemetrics** supplies player flags, notes and profiles, and lets users flag players from SLM (see
+[7. Player flagging](#7-player-flagging)). Enter a personal access token with these permissions:
+
+- player flags: add and remove. It does not need to create new ones.
+- player notes: read and create
+- rcon: read
+
+Set _Organization ID_ to your org's battlemetrics id. SLM shows only the flags that belong to it. With no token,
+SLM polls nothing and hides the parts of the app that show flags.
+
+**Squad Browser** resolves the join link behind the dashboard's join button from the name your server reports over
+RCON, whether or not anyone is playing on it. Enter a squad browser api key, which starts with `sqb_`.
+
+**Steam** builds the same link from the lobby of a player in game. It answers only while someone is on the server,
+and only for players whose steam profile makes game details public. Enter a web api key from
+https://steamcommunity.com/dev/apikey.
+
+With both join-link sources configured, SLM asks the squad browser first, and steam covers the servers it does not
+list. With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.
