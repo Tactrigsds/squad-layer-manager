@@ -875,8 +875,10 @@ function PlayerFlagsList({ flags }: { flags: BM.PlayerFlag[] }) {
 		}
 
 		recount()
+		// the measured copy resizes on its own when the icon font swaps in, which the row never sees
 		const observer = new ResizeObserver(recount)
 		observer.observe(row)
+		observer.observe(measure)
 		return () => observer.disconnect()
 	}, [flags])
 
