@@ -714,7 +714,14 @@ export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: R
 
 		const selected = RC.selectedEvents(events, selection)
 		if (selected) {
-			return { code: 'ok' as const, text: await eventsAsText(ctx, selected, [...matches.values()], opts), count: selected.length }
+			let from = Infinity
+			let to = -Infinity
+			for (const event of selected) {
+				if (event.time < from) from = event.time
+				if (event.time > to) to = event.time
+			}
+			const text = await eventsAsText(ctx, selected, [...matches.values()], opts)
+			return { code: 'ok' as const, text, count: selected.length, from, to }
 		}
 		if (!res.nextCursor) break
 		cursor = res.nextCursor

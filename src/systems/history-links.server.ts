@@ -19,8 +19,8 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // Quotes a linked history selection back into discord. A message in the home guild whose links to the history page
-// carry selections gets one reply, a code block per selection holding its events as text (the same text copying them
-// in the app gives), which follows the message as it is edited or deleted.
+// carry selections gets one reply, attaching each selection's events as a text file (the same text copying them in
+// the app gives) with a line summarizing it, which follows the message as it is edited or deleted.
 //
 // Answered only for a poster who may query history (`history:query`), and scoped to the servers they can see, the way
 // their own query of the link would be. The reply itself is public to the channel, as the link was.
@@ -33,6 +33,8 @@ let ENV!: ReturnType<typeof envBuilder>
 
 const MAX_LINKS_PER_MESSAGE = 3
 const TIME_ZONE = 'UTC'
+
+type Quote = { text: string; events: number; from: number; to: number }
 
 export function setup() {
 	log = module.getLogger()
@@ -138,10 +140,10 @@ function ignoreGone(err: unknown) {
 
 // The text of each selection the message's author may see. Someone who could not open the links gets nothing from
 // them here either, and is not told why.
-async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selectionLinksIn>): Promise<string[]> {
+async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selectionLinksIn>): Promise<Quote[]> {
 	const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(message.author.id) }, signal: CleanupSys.shutdownSignal })
 	if (await Rbac.tryDenyProcedureAccess(ctx, 'history.selectionText', undefined)) return []
-	const quotes: string[] = []
+	const quotes: Quote[] = []
 	for (const link of links) {
 		const res = await History.selectionText(
 			ctx,
@@ -153,16 +155,29 @@ async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selecti
 			log.info({ code: res.code }, 'not quoting a linked selection from %s', message.author.username)
 			continue
 		}
-		quotes.push(res.text)
+		quotes.push({ text: res.text, events: res.count, from: res.from, to: res.to })
 	}
 	return quotes
 }
 
-function replyPayload(quotes: string[]) {
-	const { content, files } = DM.quoteContent(quotes, (n) => I18n.ambient.text(HistoryMsgs.quotedSelectionTruncated(n)))
-	return {
-		content,
-		files: files.map((file) => ({ attachment: Buffer.from(file.text, 'utf8'), name: file.name })),
-		allowedMentions: { parse: [], repliedUser: false },
-	}
+function replyPayload(quotes: Quote[]) {
+	const summaries: string[] = []
+	const files: D.AttachmentPayload[] = []
+	quotes.forEach((quote, i) => {
+		const name = quotes.length === 1 ? 'selection.txt' : `selection-${i + 1}.txt`
+		summaries.push(
+			I18n.ambient.text(
+				HistoryMsgs.quotedSelectionSummary({
+					file: name,
+					events: quote.events,
+					lines: quote.text.split('\n').length,
+					from: DM.timestamp(quote.from),
+					to: DM.timestamp(quote.to),
+					span: quote.from === quote.to ? 'instant' : 'range',
+				}),
+			),
+		)
+		files.push({ attachment: Buffer.from(quote.text, 'utf8'), name })
+	})
+	return { content: summaries.join('\n'), files, allowedMentions: { parse: [], repliedUser: false } }
 }
