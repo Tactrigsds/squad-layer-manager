@@ -666,6 +666,8 @@ const DESTROYED_TYPES = ['VEHICLE_DESTROYED', 'DEPLOYABLE_DESTROYED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
+// PLAYER_WARNED names both the app event and the server event (see EVENT_TYPES), so dropping it drops both
+const ADMIN_APP_EVENT_TYPES = APP_EVENT_TYPE.options.filter((type) => type !== 'PLAYER_WARNED')
 // roster bookkeeping rather than anything a player did; only ALL shows them
 const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED', 'RESET', 'TEAMS_POLLED_UPDATE']
 
@@ -716,7 +718,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				],
 			}
 		case 'CHAT':
-			return comp('event.type', ['CHAT_MESSAGE', 'ADMIN_BROADCAST', 'BROADCAST_SENT', 'PLAYER_WARNED'])
+			return comp('event.type', ['CHAT_MESSAGE', 'ADMIN_BROADCAST', 'BROADCAST_SENT'])
 		// the audit trail. MAP_SET needs no mention: it is one of the names both families raise, so naming it
 		// as an app event already matches the server event too (see EVENT_TYPES)
 		case 'SLM_EVENTS':
@@ -725,7 +727,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 			return {
 				type: 'or',
 				children: [
-					comp('event.type', [...new Set([...APP_EVENT_TYPE.options, 'ADMIN_BROADCAST', ...ADMIN_ACTION_TYPES])]),
+					comp('event.type', [...new Set([...ADMIN_APP_EVENT_TYPES, 'ADMIN_BROADCAST', ...ADMIN_ACTION_TYPES])]),
 					{ type: 'and', children: [comp('event.type', ['CHAT_MESSAGE']), comp('chat.channel', ['ChatAdmin'])] },
 				],
 			}

@@ -1,3 +1,5 @@
+import * as dateFns from 'date-fns'
+
 import * as ReactRx from '@/lib/react-rxjs'
 import type * as TUT from '@/models/tutorial.models'
 import * as RPC from '@/orpc.client'
@@ -31,7 +33,9 @@ export const dismissedPromptsQueryOptions = RPC.orpc.tutorials.getDismissedPromp
 
 export namespace Actions {
 	export function start(scenarioId: TUT.ScenarioId) {
-		return RPC.orpc.tutorials.start.call({ scenarioId })
+		const now = new Date()
+		const msIntoDay = now.getTime() - dateFns.startOfDay(now).getTime()
+		return RPC.orpc.tutorials.start.call({ scenarioId, msIntoDay })
 	}
 	export function stage(scenarioId: TUT.ScenarioId, stageId: string) {
 		return RPC.orpc.tutorials.stage.call({ scenarioId, stageId })
