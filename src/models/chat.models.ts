@@ -1175,15 +1175,6 @@ function isKillfeedEvent(event: EventEnriched): event is SE.PlayerDied<SM.Player
 	return event.type === 'PLAYER_DIED' || event.type === 'PLAYER_WOUNDED'
 }
 
-export function isDestroyedEvent(event: EventEnriched): event is SE.VehicleDestroyed<SM.Player> | SE.DeployableDestroyed<SM.Player> {
-	return event.type === 'VEHICLE_DESTROYED' || event.type === 'DEPLOYABLE_DESTROYED'
-}
-
-// what the VEHICLES filter shows: vehicles and deployables destroyed, and FOB radios attacked
-function isVehicleFeedEvent(event: EventEnriched): boolean {
-	return isDestroyedEvent(event) || event.type === 'FOB_RADIO_DAMAGED'
-}
-
 // admin actions observed in-game/over rcon. their SLM-initiated counterparts arrive as app events instead
 function isAdminActionEvent(event: EventEnriched): boolean {
 	switch (event.type) {
@@ -1210,7 +1201,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return true
 		case 'DEFAULT':
 			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
-			if (isDestroyedEvent(event) && event.variant !== 'teamkill') return false
+			if (SE.isTargetedEvent(event) && event.variant !== 'teamkill') return false
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
 		case 'CHAT':
@@ -1225,9 +1216,9 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
-			return isKillfeedEvent(event) || isDestroyedEvent(event)
+			return isKillfeedEvent(event) || SE.isTargetedEvent(event)
 		case 'VEHICLES':
-			return isVehicleFeedEvent(event)
+			return SE.isTargetedEvent(event)
 		default:
 			assertNever(filterState)
 	}

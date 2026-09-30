@@ -71,13 +71,19 @@ export function deployableType(className: string): DeployableType {
 
 // The side a deployable belongs to, read off a faction id spelled as one of the blueprint's tokens
 // (BP_Ammocrate_PLA, RGF_Hab_Woodland). A token may abbreviate the id (US_Hab_Forest for USA), so it matches as a
-// prefix too, but only in capitals: a faction id is always spelled so, and a word never is. Null when neither or
-// both sides match.
+// prefix too, but only in capitals: a faction id is always spelled so, and a word never is. An exact match beats a
+// prefix, so BP_FOBRadio_PLA is PLA's when the other side is PLAAGF. Null when neither or both sides match.
 export function teamOfBlueprint(className: string, factions: [string | undefined, string | undefined]): SM.TeamId | null {
 	const tokens = className.split(/[_-]/).filter((token) => token.length >= 2 && token === token.toUpperCase())
-	const matches = factions.map((faction) => !!faction && tokens.some((token) => faction.toUpperCase().startsWith(token)))
-	if (matches[0] === matches[1]) return null
-	return matches[0] ? 1 : 2
+	const ids = factions.map((faction) => faction?.toUpperCase())
+	const sideMatching = (matches: (id: string, token: string) => boolean): SM.TeamId | null => {
+		const found = ids.map((id) => !!id && tokens.some((token) => matches(id, token)))
+		if (found[0] === found[1]) return null
+		return found[0] ? 1 : 2
+	}
+	const exact = sideMatching((id, token) => id === token)
+	if (exact !== null) return exact
+	return sideMatching((id, token) => id.startsWith(token))
 }
 
 // a blueprint as a reader would name it, for the ones the layer data has no name for: BP_Ammocrate_PLA -> Ammocrate PLA

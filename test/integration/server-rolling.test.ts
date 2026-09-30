@@ -651,15 +651,39 @@ describe('the event archive', () => {
 		expect(res.players.some((p) => p.username?.includes('archive_subject'))).toBe(true)
 	})
 
-	// A WPMC tank, which no faction on the fixture's layers fields, so its side has to come from its crew.
+	// Vehicles neither side of the current layer fields, so their side has to come from their crew. Which layer that
+	// is depends on the queue the fixture generated, so they are picked against it rather than named.
+	function unfieldedVehicles(layerId: string, count: number): string[] {
+		const layer = L.toLayer(layerId)
+		const details = L.isKnownLayer(layer) ? L.resolveLayerDetails(layer) : null
+		const fielded = new Set([details?.team1, details?.team2].flatMap((unit) => (unit ? [...VEH.unitClasses(unit)] : [])))
+		const picks: string[] = []
+		const vehicles = new Set<string>()
+		const index = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents)
+		for (const [className, info] of [...index].sort(([a], [b]) => a.localeCompare(b))) {
+			if (!/^BP_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$/.test(className) || className.includes('_C_')) continue
+			if (!info.vehicle || !info.vehicleType || fielded.has(className) || vehicles.has(info.vehicle)) continue
+			picks.push(className)
+			vehicles.add(info.vehicle)
+			if (picks.length === count) break
+		}
+		return picks
+	}
+
 	it('records a destroyed vehicle with its crew, and finds it by vehicle, class and blueprint', async () => {
 		const hunter = app.emu.world.connectPlayer(makePlayer({ name: ' tank_hunter', teamId: 1 }))
 		const driver = app.emu.world.connectPlayer(makePlayer({ name: ' tank_driver', teamId: 2 }))
 		const gunner = app.emu.world.connectPlayer(makePlayer({ name: ' tank_gunner', teamId: 2 }))
 		await app.waitForRosterSync()
-		app.emu.world.destroyVehicle(hunter, 'BP_M60T_WPMC', [driver, gunner])
+		const layerId = app.latestMatch().layerId
+		const [tank, teamkilled] = unfieldedVehicles(layerId, 2)
+		app.emu.world.destroyVehicle(hunter, tank, [driver, gunner])
 		app.emu.world.destroyDeployable(hunter, 'BP_Ammocrate_RGF')
-		app.emu.world.damageRadio(hunter, 'BP_FOBRadio_RGF')
+		// A radio's side comes from the faction its blueprint names, so these name the current layer's: the hunter, on
+		// team 1, attacks their own side's radio and then the other side's.
+		const layer = L.toLayer(layerId)
+		app.emu.world.damageRadio(hunter, `BP_FOBRadio_${layer.Faction_1}`)
+		app.emu.world.damageRadio(hunter, `BP_FOBRadio_${layer.Faction_2}`)
 
 		const recorded = await app.waitFor(
 			() => {
@@ -677,15 +701,15 @@ describe('the event archive', () => {
 					const radio = db.prepare(`SELECT count(*) AS n FROM serverEventIndex WHERE type = 'FOB_RADIO_DAMAGED'`).get() as {
 						n: number
 					}
-					return deployable && radio.n === 2 ? row : undefined
+					return deployable && radio.n === 4 ? row : undefined
 				} finally {
 					db.close()
 				}
 			},
-			{ label: 'the destroyed vehicle, deployable and radio attack reaching the event index' },
+			{ label: `the destroyed vehicle, deployable and radio attacks reaching the event index, on ${layerId}` },
 		)
-		const info = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get('BP_M60T_WPMC')!
-		expect(recorded.target).toBe('BP_M60T_WPMC')
+		const info = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(tank)!
+		expect(recorded.target).toBe(tank)
 		expect(recorded.targetType).toBe(info.vehicleType)
 		const event = (JSON.parse(recorded.data) as { json: SE.VehicleDestroyed }).json
 		expect(event).toMatchObject({ teamId: 2, variant: 'normal', attacker: hunter.eos, cause: 'weapon' })
@@ -700,22 +724,25 @@ describe('the event archive', () => {
 		expect(byVehicle.total).toBe(1)
 		expect(byVehicle.rowsHtml[0]).toContain('destroyed by')
 		expect((await total({ feed: 'ALL', targetType: info.vehicleType })).total).toBeGreaterThan(0)
-		expect((await total({ feed: 'ALL', target: 'BP_M60T_WPMC' })).total).toBe(1)
+		expect((await total({ feed: 'ALL', target: tank })).total).toBe(1)
 		expect((await total({ feed: 'ALL', targetType: 'AMMO' })).total).toBe(1)
 		// the crew are the vehicle's victims
 		expect((await total({ feed: 'ALL', players: [gunner.eos], playerRole: 'victim', types: ['VEHICLE_DESTROYED'] })).total).toBe(1)
-		// the default feed leaves destroyed vehicles to the killfeed, and shows radio attacks: its start and its bottoming out
+		// the default feed leaves the enemy's work to the killfeed: of the radio attacks, only the friendly one shows,
+		// as its start and its bottoming out
 		expect((await total({ vehicle: info.vehicle })).total).toBe(0)
 		const radio = await total({ types: ['FOB_RADIO_DAMAGED'] })
 		expect(radio.total).toBe(2)
 		expect(radio.rowsHtml.join('')).toContain('minimum health')
+		expect(radio.rowsHtml.every((row) => row.includes('teammate'))).toBe(true)
+		expect((await total({ feed: 'KILLFEED', types: ['FOB_RADIO_DAMAGED'] })).total).toBe(4)
 
-		// A teamkill of a vehicle shows in the default feed, as a teamkill of a player does. Another WPMC vehicle, so
-		// its side again comes from its crew, whom the attacker shares a side with.
-		app.emu.world.destroyVehicle(gunner, 'BP_Loach_CAS_Small', [driver])
+		// A teamkill of a vehicle shows in the default feed, as a teamkill of a player does. Another unfielded vehicle,
+		// so its side again comes from its crew, whom the attacker shares a side with.
+		app.emu.world.destroyVehicle(gunner, teamkilled, [driver])
 		const teamkill = await app.waitFor(
 			async () => {
-				const res = await total({ target: 'BP_Loach_CAS_Small' })
+				const res = await total({ target: teamkilled })
 				return (res.total ?? 0) > 0 ? res : undefined
 			},
 			{ label: 'the vehicle teamkill reaching the default feed' },
@@ -723,8 +750,8 @@ describe('the event archive', () => {
 		expect(teamkill.total).toBe(1)
 		expect(teamkill.rowsHtml[0]).toContain('teammate')
 
-		// the vehicles filter: the three destroyed, and the two reports of the radio attack
-		expect((await total({ feed: 'VEHICLES' })).total).toBe(5)
+		// the vehicles filter: the three destroyed, and two reports of each radio attack
+		expect((await total({ feed: 'VEHICLES' })).total).toBe(7)
 	})
 
 	it('searches players by steam and eos id', async () => {

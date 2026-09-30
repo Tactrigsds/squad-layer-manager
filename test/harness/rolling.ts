@@ -52,6 +52,11 @@ export async function createRollingFixture(opts?: { env?: Record<string, string>
 		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 		admins: [ROLL_ADMIN_STEAM_ID],
 		adminSteamIds: [ROLL_ADMIN_STEAM_ID],
+		// the queue generates the layers played after the seeded ones, a Training layer among them now and then, where
+		// destroyed vehicles would otherwise go unrecorded and the scenario asserting on them would have nothing to see
+		serverSettings: (settings) => {
+			settings.skipDestroyedOnTrainingLayers = false
+		},
 		env: {
 			// The archive scenario at the end of server-rolling.test.ts needs a match to be compactable as soon
 			// as it is not the newest one. Inert for every test before it: with the scheduled pass an hour out,
