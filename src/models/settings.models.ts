@@ -3,6 +3,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'
+import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
@@ -1002,7 +1003,7 @@ export const RconConnectionSchema = z.object({
 	password: z
 		.string()
 		.min(1)
-		.meta(SDoc.of({ label: t('Password') })),
+		.meta(SDoc.of({ label: t('Password'), secret: true })),
 })
 export type RconConnection = z.infer<typeof RconConnectionSchema>
 
@@ -1023,7 +1024,7 @@ export const SftpLogConnectionSchema = z.object({
 	password: z
 		.string()
 		.min(1)
-		.meta(SDoc.of({ label: t('Password') })),
+		.meta(SDoc.of({ label: t('Password'), secret: true })),
 	logFile: z
 		.string()
 		.min(1)
@@ -1125,7 +1126,7 @@ export const ServerConnectionSchema = z
 			token: z
 				.string()
 				.default('dev')
-				.meta(SDoc.of({ label: t('Agent Token') })),
+				.meta(SDoc.of({ label: t('Agent Token'), secret: true })),
 		}),
 		SandboxConnectionSchema,
 	])
@@ -1706,6 +1707,109 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
 	return Obj.exclude(settings, ['connections', COMMENTS_KEY])
+}
+
+// -------- secrets --------
+//
+// A field marked `secret: true` in its SDoc is a credential. The marker is the one place that knowledge lives:
+// the form renders it as a password field, change lists mask it, and the server seals it at the db boundary.
+// The sealing itself is the explicit switch in transformConnectionSecretValues, and settings.models.test.ts
+// holds the two to the same set of paths, so a credential added to the schema without a matching seal fails
+// the test rather than landing in the database as plaintext.
+
+export const SECRET_SETTING_MASK = '••••••••'
+
+// the dotted paths of every secret field in a server's settings, across every branch of every union
+export const SECRET_SETTING_PATHS: ReadonlySet<string> = collectSecretPaths(ServerSettingsSchema)
+
+export function isSecretSettingPath(path: string): boolean {
+	return SECRET_SETTING_PATHS.has(path)
+}
+
+// `value` as it sits at `path`, with every secret leaf under it masked: a scalar at a secret path, or the
+// secret leaves inside an object (the whole `connections` when a server is created)
+export function maskSecretSettingValue(path: string, value: unknown): unknown {
+	if (isSecretSettingPath(path)) return typeof value === 'string' && value !== '' ? SECRET_SETTING_MASK : value
+	if (Array.isArray(value)) return value.map((v, i) => maskSecretSettingValue(`${path}.${i}`, v))
+	if (value && typeof value === 'object') {
+		const out: Record<string, unknown> = {}
+		for (const [k, v] of Object.entries(value)) out[k] = maskSecretSettingValue(path ? `${path}.${k}` : k, v)
+		return out
+	}
+	return value
+}
+
+// the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
+// server-agent token. `fn` is seal, open or reseal (see secret-box.server.ts); in memory they are always plaintext
+export function transformConnectionSecretValues(connections: ServerConnection, fn: (value: string) => string): ServerConnection {
+	switch (connections.type) {
+		case 'local':
+			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
+		case 'sftp':
+			return {
+				...connections,
+				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
+				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
+			}
+		case 'server-agent':
+			return { ...connections, token: fn(connections.token) }
+		// nothing to seal: the emulator's rcon password is generated per process and never persisted
+		case 'sandbox':
+			return connections
+		default:
+			assertNever(connections)
+	}
+}
+
+export function transformConnectionSecrets(settings: ServerSettings, fn: (value: string) => string): ServerSettings {
+	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
+}
+
+// walks the schema's static structure: objects, unions, arrays, records and the wrappers between them. A
+// secret inside a record or array is reported at its element position, which the masking walk matches by index.
+function collectSecretPaths(root: z.ZodType): Set<string> {
+	const out = new Set<string>()
+	const seen = new Set<unknown>()
+	const visit = (schema: z.ZodType, path: string) => {
+		if (seen.has(schema)) return
+		seen.add(schema)
+		if (SDoc.read(schema.meta())?.secret) out.add(path)
+		const def = (schema as any).def
+		const at = (key: string) => (path ? `${path}.${key}` : key)
+		switch (def.type) {
+			case 'object':
+			case 'interface':
+				for (const [key, child] of Object.entries(def.shape as Record<string, z.ZodType>)) visit(child, at(key))
+				break
+			case 'union':
+				for (const option of def.options as z.ZodType[]) visit(option, path)
+				break
+			case 'optional':
+			case 'nullable':
+			case 'default':
+			case 'prefault':
+			case 'readonly':
+			case 'nonoptional':
+			case 'catch':
+				visit(def.innerType, path)
+				break
+			case 'pipe':
+				visit(def.in, path)
+				visit(def.out, path)
+				break
+			case 'array':
+				visit(def.element, path)
+				break
+			case 'record':
+				visit(def.valueType, path)
+				break
+			case 'lazy':
+				visit(def.getter(), path)
+				break
+		}
+	}
+	visit(root, '')
+	return out
 }
 
 export function dottedSettingsPath(path: string | (string | number)[]): string {

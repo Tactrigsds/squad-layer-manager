@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import * as AppEvents from './app-events.models'
 import type * as LQY from './layer-queries.models'
 import * as SETTINGS from './settings.models'
 
@@ -163,5 +164,67 @@ describe('message variable cycles', () => {
 
 	test('rejects a variable that references itself', () => {
 		expect(messageVariableIssues(parse([{ name: 'a', value: 'loop {{a}}' }]))).toHaveLength(1)
+	})
+})
+
+// The secret marker on the schema, the seal switch and the audit redaction each know which fields are credentials.
+// These hold them to one answer, so a credential added to the schema without the others catching up fails here
+// rather than reaching the database or the audit log in plaintext.
+describe('secret settings', () => {
+	const connections: SETTINGS.ServerConnection[] = [
+		{ type: 'local', logFile: '/log', rcon: { host: 'h', port: 1, password: 'rcon-pw' } },
+		{
+			type: 'sftp',
+			rcon: { host: 'h', port: 1, password: 'rcon-pw' },
+			sftp: {
+				host: 'h',
+				port: 22,
+				username: 'u',
+				password: 'sftp-pw',
+				logFile: '/log',
+				pollInterval: 1000,
+				reconnectInterval: 5000,
+				maxReconnectAttempts: 10,
+			},
+		},
+		{ type: 'server-agent', token: 'tok' },
+	]
+
+	// every leaf the seal switch rewrites, as a dotted path under `connections`
+	function sealedPaths(connection: SETTINGS.ServerConnection): Set<string> {
+		const sealed = SETTINGS.transformConnectionSecretValues(connection, (v) => `sealed:${v}`)
+		const out = new Set<string>()
+		const walk = (value: unknown, path: string) => {
+			if (typeof value === 'string' && value.startsWith('sealed:')) out.add(path)
+			else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`)
+		}
+		walk(sealed, 'connections')
+		return out
+	}
+
+	test('the schema marks exactly the fields the seal switch rewrites', () => {
+		const marked = new Set(SETTINGS.SECRET_SETTING_PATHS)
+		const sealed = new Set(connections.flatMap((c) => [...sealedPaths(c)]))
+		expect([...marked].sort()).toEqual([...sealed].sort())
+		expect(marked.size).toBeGreaterThan(0)
+	})
+
+	test('every secret lives under connections, the subtree write-sensitive gates and the audit log redacts', () => {
+		for (const path of SETTINGS.SECRET_SETTING_PATHS) {
+			expect(path.startsWith('connections.')).toBe(true)
+			const [change] = AppEvents.redactSettingChanges([{ path, from: 'old', to: 'new' }])!
+			expect(change.from).not.toBe('old')
+			expect(change.to).not.toBe('new')
+		}
+	})
+
+	test('masks a secret scalar, and the secret leaves inside a whole connections object', () => {
+		expect(SETTINGS.maskSecretSettingValue('connections.rcon.password', 'pw')).toBe(SETTINGS.SECRET_SETTING_MASK)
+		expect(SETTINGS.maskSecretSettingValue('connections.rcon.host', 'host')).toBe('host')
+		expect(SETTINGS.maskSecretSettingValue('connections', connections[1])).toEqual({
+			...connections[1],
+			rcon: { host: 'h', port: 1, password: SETTINGS.SECRET_SETTING_MASK },
+			sftp: { ...(connections[1] as Extract<SETTINGS.ServerConnection, { type: 'sftp' }>).sftp, password: SETTINGS.SECRET_SETTING_MASK },
+		})
 	})
 })

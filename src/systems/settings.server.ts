@@ -5,7 +5,6 @@ import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
-import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
@@ -344,49 +343,24 @@ export function initServerPayload(ctx: C.ManagedServerCleanup & CS.ServerId, ser
 	return payload
 }
 
-// the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
-// server-agent token. In memory these are always plaintext; sealing happens only at a DB write, opening only
-// at a DB read.
-function transformConnectionSecretValues(connections: SETTINGS.ServerConnection, fn: (value: string) => string): SETTINGS.ServerConnection {
-	switch (connections.type) {
-		case 'local':
-			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
-		case 'sftp':
-			return {
-				...connections,
-				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
-				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
-			}
-		case 'server-agent':
-			return { ...connections, token: fn(connections.token) }
-		// nothing to seal: the emulator's rcon password is generated per process and never persisted
-		case 'sandbox':
-			return connections
-		default:
-			assertNever(connections)
-	}
-}
-
-function transformConnectionSecrets(settings: SETTINGS.ServerSettings, fn: (value: string) => string): SETTINGS.ServerSettings {
-	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
-}
-
-export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
-export const openConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.open)
-export const resealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.reseal)
+export const sealConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.seal)
+export const openConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.open)
+export const resealConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.reseal)
 
 // whether any of a server's connection secrets is stored in a form the current key and envelope version no
 // longer produce, so the backfill knows to rewrite the row
 export function connectionsNeedReseal(settings: SETTINGS.ServerSettings): boolean {
 	let needed = false
-	transformConnectionSecrets(settings, (value) => {
+	SETTINGS.transformConnectionSecrets(settings, (value) => {
 		needed ||= SecretBox.needsReseal(value)
 		return value
 	})
 	return needed
 }
-export const sealConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.seal)
-export const openConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.open)
+export const sealConnectionValues = (connections: SETTINGS.ServerConnection) =>
+	SETTINGS.transformConnectionSecretValues(connections, SecretBox.seal)
+export const openConnectionValues = (connections: SETTINGS.ServerConnection) =>
+	SETTINGS.transformConnectionSecretValues(connections, SecretBox.open)
 
 // The DB read boundary for a full servers row: connection secrets are sealed in the column and opened here, so
 // every ServerState the app works with is plaintext. All full-row reads go through this.

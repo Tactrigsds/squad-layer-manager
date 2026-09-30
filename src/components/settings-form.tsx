@@ -65,6 +65,7 @@ import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import * as PLG from '@/models/plugins.models'
 import * as PermRows from '@/models/rbac-perm-rows'
+import * as SDoc from '@/models/schema-docs.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as SquadModels from '@/models/squad.models'
@@ -3348,7 +3349,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
 	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
-	if (last === 'password') return PasswordField
+	if (SDoc.read(_node)?.secret) return PasswordField
 	return undefined
 }
 

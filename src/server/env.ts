@@ -35,14 +35,18 @@ export type EnvExampleMeta = EnvExampleEntry & {
 declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
-		// the var holds a credential: it is read from the secrets file (see readSecretsFile) and written to
-		// .env.secrets.example rather than .env.example. docs/installing.md covers why.
+		// the var holds a credential: it is read from the secrets file or directory (see readSecrets) and written
+		// to .env.secrets.example rather than .env.example. docs/installing.md covers why.
 		secret?: true
 	}
 }
 
+// the shortest SETTINGS_ENCRYPTION_KEY production accepts. `openssl rand -base64 32` gives 44; a hand-typed
+// passphrase below this is brute-forceable against a leaked database, since the derivation is a plain sha256.
+export const MIN_ENCRYPTION_KEY_LENGTH = 16
+
 // The key .env.example.dev ships, so a checkout boots without a key-generation step. It says what it is,
-// where a random-looking string would not; the production server refuses to start with it (see assertEncryptionKeyIsNotPublic).
+// where a random-looking string would not; the production server refuses to start with it (see assertEncryptionKeyIsStrong).
 export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
@@ -141,6 +145,16 @@ export const groups = {
 				envExample: { include: 'commented' },
 			}),
 
+		SECRETS_DIR: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description:
+					'a directory holding one file per credential, named after the variable (e.g. /run/secrets/DISCORD_BOT_TOKEN), which is how docker, podman, kubernetes and systemd mount individual secrets. A trailing newline is dropped. A file found here wins over the same variable in SECRETS_FILE; a directory that does not exist is an error.',
+				envExample: { include: 'commented', dev: { include: 'omit' } },
+			}),
+
 		PUBLIC_REPO_URL: z
 			.url()
 			.optional()
@@ -222,7 +236,7 @@ export const groups = {
 			.meta({
 				secret: true,
 				description:
-					"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Changing it makes already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+					"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`; production refuses one shorter than 16 characters. To rotate it, move the current value to SETTINGS_ENCRYPTION_KEY_PREVIOUS and put the new one here.",
 				envExample: {
 					include: 'set',
 					dev: {
@@ -231,6 +245,17 @@ export const groups = {
 							'the key sensitive settings are encrypted at rest with. The value below is the public dev key; the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 					},
 				},
+			}),
+		SETTINGS_ENCRYPTION_KEY_PREVIOUS: z
+			.string()
+			.min(1)
+			.transform((val) => Crypto.createHash('sha256').update(val).digest())
+			.optional()
+			.meta({
+				secret: true,
+				description:
+					'the key SETTINGS_ENCRYPTION_KEY replaced. Anything still encrypted with it is re-encrypted with the current key on the next boot, after which this can be removed.',
+				envExample: { include: 'commented', dev: { include: 'omit' } },
 			}),
 	},
 
@@ -794,11 +819,43 @@ function readSecretsFile(): Record<string, string> {
 	return dotenv.parse(contents)
 }
 
+// One file per credential, named after the variable: the shape every secret mount produces (docker and podman
+// secrets, a kubernetes secret volume, systemd's $CREDENTIALS_DIRECTORY). Only the variables the schema knows
+// are read, so a directory shared with other services is fine. A single trailing newline is dropped, since most
+// tools that write these files add one and no credential ends in one on purpose.
+function readSecretsDir(): Record<string, string> {
+	const dir = Cli.options?.secretsDir ?? process.env.SECRETS_DIR
+	if (!dir) return {}
+	let names: Set<string>
+	try {
+		names = new Set(fs.readdirSync(dir))
+	} catch (error) {
+		throw new Error(`Could not read the secrets directory at ${dir}`, { cause: error })
+	}
+	const secrets: Record<string, string> = {}
+	for (const [key, schema] of entries()) {
+		if (!isSecret(schema) || !names.has(key)) continue
+		const filePath = path.join(dir, key)
+		let contents: string
+		try {
+			contents = fs.readFileSync(filePath, 'utf8')
+		} catch (error) {
+			throw new Error(`Could not read the secret at ${filePath}`, { cause: error })
+		}
+		secrets[key] = contents.replace(/\r?\n$/, '')
+	}
+	return secrets
+}
+
+function readSecrets(): Record<string, string> {
+	return { ...readSecretsFile(), ...readSecretsDir() }
+}
+
 export function ensureEnvSetup() {
 	if (setup) return
 	// entrypoints which don't use the cli system (scripts) still get the default .env; --env-file only overrides the path
 	dotenv.config({ path: Cli.options?.envFile })
-	const secrets = readSecretsFile()
+	const secrets = readSecrets()
 	rawEnv = {}
 	secretsFromEnvironment = []
 	for (const [key, schema] of entries()) {
@@ -834,12 +891,21 @@ export function ensureEnvSetup() {
 }
 
 // Only the server's boot calls this (via SecretBox.setup), so that builds and scripts run with NODE_ENV=production
-// against a dev .env still work.
-export function assertEncryptionKeyIsNotPublic() {
+// against a dev .env still work. Only the current key is judged: the previous one is on its way out, and
+// refusing it would block the rotation that gets rid of it.
+export function assertEncryptionKeyIsStrong() {
 	if (groups.demo.DEMO.parse(rawEnv.DEMO)) return
 	if (buildForValidation().NODE_ENV !== 'production') return
-	if (rawEnv.SETTINGS_ENCRYPTION_KEY !== INSECURE_DEV_ENCRYPTION_KEY) return
-	throw new Error(
-		'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
-	)
+	const key = rawEnv.SETTINGS_ENCRYPTION_KEY
+	if (key === INSECURE_DEV_ENCRYPTION_KEY) {
+		throw new Error(
+			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
+		)
+	}
+	if (key !== undefined && key.length < MIN_ENCRYPTION_KEY_LENGTH) {
+		throw new Error(
+			`SETTINGS_ENCRYPTION_KEY is ${key.length} characters, and production needs at least ${MIN_ENCRYPTION_KEY_LENGTH}. ` +
+				'To rotate it without re-entering secrets, move the current value to SETTINGS_ENCRYPTION_KEY_PREVIOUS and generate a new one with `openssl rand -base64 32`.',
+		)
+	}
 }

@@ -13,6 +13,7 @@ import * as DbBackup from '@/server/db-backup'
 import * as DbMeta from '@/server/db-meta'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
+import * as SecretBox from '@/server/secret-box.server'
 
 // Puts a backup back. Run in dev via `pnpm db:restore`; in the production image via `pnpm db:restore:prod`, or the
 // restore.sh wrapper for a docker deployment. The app has to be stopped, and this refuses to run if it isn't.
@@ -128,8 +129,59 @@ async function inspect(backup: Candidate) {
 				? `It is ${pending.length} migration(s) behind the current build (${pending.join(', ')}).`
 				: 'It is up to date with the current build.',
 		)
+		console.log(sealedSecretsGuidance(tmpPath))
 	} finally {
 		rmDbFiles(tmpPath)
+	}
+}
+
+// Whether the connection secrets in a backup open with the SETTINGS_ENCRYPTION_KEY configured here. A backup
+// restored onto an install with a different key comes up with every server disabled and its secrets to
+// re-enter, which is better learnt before the restore than after. Found by scanning the settings column for
+// envelopes rather than parsing it, so this reads any version of the settings shape.
+function sealedSecretsGuidance(dbPath: string): string {
+	try {
+		SecretBox.setup()
+	} catch {
+		return 'No SETTINGS_ENCRYPTION_KEY is configured here, so whether its connection secrets can be decrypted was not checked.'
+	}
+	const db = new DatabaseConstructor(dbPath, { readonly: true })
+	let rows: { id: string; settings: string }[]
+	try {
+		rows = db.prepare('SELECT id, settings FROM servers').all() as { id: string; settings: string }[]
+	} catch {
+		return 'It has no servers table, so there are no connection secrets to check.'
+	} finally {
+		db.close()
+	}
+	const unreadable: string[] = []
+	let sealed = 0
+	for (const row of rows) {
+		for (const value of sealedValues(JSON.parse(row.settings))) {
+			sealed++
+			try {
+				SecretBox.open(value)
+			} catch {
+				unreadable.push(row.id)
+				break
+			}
+		}
+	}
+	if (sealed === 0) return 'It holds no encrypted connection secrets.'
+	if (unreadable.length === 0) return 'Its connection secrets decrypt with the SETTINGS_ENCRYPTION_KEY configured here.'
+	return (
+		`The connection secrets of server(s) ${unreadable.join(', ')} were encrypted with a SETTINGS_ENCRYPTION_KEY other than the one configured here. ` +
+		'Restore the key that goes with this backup (as SETTINGS_ENCRYPTION_KEY, or as SETTINGS_ENCRYPTION_KEY_PREVIOUS to rotate away from it), or re-enter those secrets on the settings page after restoring.'
+	)
+}
+
+function* sealedValues(value: unknown): Generator<string> {
+	if (typeof value === 'string') {
+		if (SecretBox.isSealed(value)) yield value
+	} else if (Array.isArray(value)) {
+		for (const v of value) yield* sealedValues(v)
+	} else if (value && typeof value === 'object') {
+		for (const v of Object.values(value)) yield* sealedValues(v)
 	}
 }
 
@@ -258,6 +310,7 @@ try {
 	rmDbFiles(tmpPath)
 	await gunzipTo(backup.path, tmpPath)
 	assertIntact(tmpPath)
+	console.log(sealedSecretsGuidance(tmpPath))
 
 	const pending = pendingAfterRestore(tmpPath)
 	const stamp = buildStampOf(tmpPath)

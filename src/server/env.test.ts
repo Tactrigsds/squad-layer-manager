@@ -7,13 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Env from './env.ts'
 
 // ensureEnvSetup latches, so each case gets a fresh module registry and a fresh copy of the environment
-async function loadEnv(secrets: string | undefined, env: Record<string, string> = {}) {
+async function loadEnv(secrets: string | undefined, env: Record<string, string> = {}, secretsDir?: Record<string, string>) {
 	vi.resetModules()
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-env-'))
 	let secretsPath: string | undefined
 	if (secrets !== undefined) {
 		secretsPath = path.join(dir, '.env.secrets')
 		fs.writeFileSync(secretsPath, secrets)
+	}
+	if (secretsDir) {
+		const dirPath = path.join(dir, 'secrets')
+		fs.mkdirSync(dirPath)
+		for (const [name, contents] of Object.entries(secretsDir)) fs.writeFileSync(path.join(dirPath, name), contents)
+		process.env.SECRETS_DIR = dirPath
 	}
 	// ensureEnvSetup loads the .env into the environment, and the repo root has a real one with real secrets in
 	// it on any machine the app has been run on. Point it at an empty file so a case only ever sees what it sets.
@@ -95,6 +101,38 @@ describe('secrets', () => {
 		const Env = await import('./env.ts')
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
+
+	// the shape every secret mount produces: one file per credential, named after the variable
+	it('reads one file per credential from SECRETS_DIR, dropping the trailing newline', async () => {
+		const Env = await loadEnv('', {}, { DISCORD_BOT_TOKEN: 'from-dir\n', BM_PAT: 'crlf\r\n', STEAM_API_KEY: 'bare' })
+		Env.ensureEnvSetup()
+
+		expect(Env.rawVar('DISCORD_BOT_TOKEN')).toBe('from-dir')
+		expect(Env.rawVar('BM_PAT')).toBe('crlf')
+		expect(Env.rawVar('STEAM_API_KEY')).toBe('bare')
+		expect(process.env.DISCORD_BOT_TOKEN).toBeUndefined()
+		expect(Env.getSecretsFromEnvironment()).toEqual([])
+	})
+
+	it('ignores files in SECRETS_DIR that are not credentials, and leaves non-credentials in the environment', async () => {
+		const Env = await loadEnv('', { ORIGIN: 'http://example.com:3000' }, { ORIGIN: 'http://from-dir', unrelated: 'x' })
+		Env.ensureEnvSetup()
+
+		expect(Env.rawVar('ORIGIN')).toBe('http://example.com:3000')
+	})
+
+	it('prefers a file in SECRETS_DIR over the same variable in the secrets file', async () => {
+		const Env = await loadEnv('BM_PAT=from-file\nDISCORD_BOT_TOKEN=from-file\n', {}, { BM_PAT: 'from-dir\n' })
+		Env.ensureEnvSetup()
+
+		expect(Env.rawVar('BM_PAT')).toBe('from-dir')
+		expect(Env.rawVar('DISCORD_BOT_TOKEN')).toBe('from-file')
+	})
+
+	it('refuses to boot when SECRETS_DIR names a directory that is not there', async () => {
+		const Env = await loadEnv('', { SECRETS_DIR: path.join(os.tmpdir(), 'slm-no-such-secrets-dir') })
+		expect(() => Env.ensureEnvSetup()).toThrow(/Could not read the secrets directory/)
+	})
 })
 
 describe('the development encryption key', () => {
@@ -102,7 +140,7 @@ describe('the development encryption key', () => {
 		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
 		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${INSECURE_DEV_ENCRYPTION_KEY}\n`, { NODE_ENV: 'production' })
 		Env.ensureEnvSetup()
-		expect(() => Env.assertEncryptionKeyIsNotPublic()).toThrow(/development key/)
+		expect(() => Env.assertEncryptionKeyIsStrong()).toThrow(/development key/)
 	})
 
 	it('does not stop a production build or script, which never boots the server', async () => {
@@ -121,7 +159,27 @@ describe('the development encryption key', () => {
 	it('does not stop production booting with a real key', async () => {
 		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${KEY}\n`, { NODE_ENV: 'production' })
 		Env.ensureEnvSetup()
-		expect(() => Env.assertEncryptionKeyIsNotPublic()).not.toThrow()
+		expect(() => Env.assertEncryptionKeyIsStrong()).not.toThrow()
+	})
+
+	// a plain sha256 of a short passphrase is brute-forceable against a leaked database
+	it('is refused in production when shorter than the minimum, naming the rotation path', async () => {
+		const Env = await loadEnv('SETTINGS_ENCRYPTION_KEY=short-key\n', { NODE_ENV: 'production' })
+		Env.ensureEnvSetup()
+		expect(() => Env.assertEncryptionKeyIsStrong()).toThrow(/SETTINGS_ENCRYPTION_KEY_PREVIOUS/)
+	})
+
+	it('accepts a short key outside production', async () => {
+		const Env = await loadEnv('SETTINGS_ENCRYPTION_KEY=short-key\n')
+		Env.ensureEnvSetup()
+		expect(() => Env.assertEncryptionKeyIsStrong()).not.toThrow()
+	})
+
+	// the previous key is on its way out; judging it would block the rotation that removes it
+	it('does not judge the previous key, which is being rotated away', async () => {
+		const Env = await loadEnv(`SETTINGS_ENCRYPTION_KEY=${KEY}\nSETTINGS_ENCRYPTION_KEY_PREVIOUS=x\n`, { NODE_ENV: 'production' })
+		Env.ensureEnvSetup()
+		expect(() => Env.assertEncryptionKeyIsStrong()).not.toThrow()
 	})
 })
 
