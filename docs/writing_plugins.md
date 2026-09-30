@@ -1,8 +1,8 @@
 # Writing an SLM plugin
 
-A plugin is an extension that runs inside SLM. It gets what core code gets: the database, match history, the
-layer queue, RCON, the settings page and the server dashboard. It ships as a folder of prebuilt bundles that an
-admin installs from a url.
+A plugin is an extension that runs in the SLM process. It can use everything core code uses: the database, match
+history, the layer queue, RCON, the settings page and the server dashboard. It ships as a folder of prebuilt bundles
+that an admin installs from a url.
 
 Plugins are trusted. There is no sandbox. A plugin runs in the SLM process with everything that process can do, so
 only install one you would be willing to run as a fork.
@@ -40,10 +40,10 @@ pnpm install
 ```
 
 Write your plugin in its own directory. `plugins/<id>/` is the natural place, and your plugin's own git repo can
-sit there without either repo noticing the other. See [Repo layouts](#repo-layouts).
+be kept there without either repo noticing the other. See [Repo layouts](#repo-layouts).
 
-Two working plugins are already there to read: `test/fixtures/plugin-hello` is about sixty lines and touches every
-part of the contract, and `plugins/balance-triggers` is a real one.
+Two working plugins are already there to read. `test/fixtures/plugin-hello` is about sixty lines and touches every
+part of the contract. `plugins/balance-triggers` is a real one.
 
 ## The files
 
@@ -53,7 +53,7 @@ part of the contract, and `plugins/balance-triggers` is a real one.
 | `server.ts`  | yes      | `activate(ctx)`, plus `migrations` if the plugin stores anything                              |
 | `client.tsx` | no       | what the plugin adds to the browser                                                           |
 
-Any other module is an ordinary import and gets bundled in.
+Any other module is an ordinary import and is bundled in.
 
 ## The manifest
 
@@ -135,10 +135,10 @@ pair, so it runs when the server goes down or the plugin stops, whichever comes 
 ctx, and it is what the `slm/systems/*` functions take.
 
 Everything you start has to be tied to one of those: `ctx.cleanup`, the per-server `cleanup`, or `ctx.signal`.
-Work started at module scope is outside the lifecycle entirely and keeps running after the plugin stops. Keep
+Work started at module scope keeps running after the plugin stops. Keep
 state inside `activate()`.
 
-Use `durableSub` for a long-lived subscription rather than a bare `.subscribe()`. It handles the errors, so a
+Use `durableSub` for a long-lived subscription rather than a bare `.subscribe()`. It logs each error and resubscribes, so a
 throwing source does not kill the subscription or the process.
 
 ## Storing data
@@ -186,15 +186,15 @@ export const migrations: PluginMigration[] = [
 ]
 ```
 
-Two rules. List them in name order, which the host checks. And build the table name from the manifest instead of
-importing it from `schema.ts`: a migration is frozen in time, and renaming a table later must not reach back and
+Two rules apply. First, list migrations in name order. The host checks this. Second, build the table name from the
+manifest instead of importing it from `schema.ts`. A migration is frozen in time, and renaming a table later must not
 change what an applied migration did.
 
 ## Filters
 
 A filter is a predicate over layers: what a server's pool admits, what an indicator marks. `slm/systems/filter-entity`
-reads and writes the same filters admins see in the filter index, and `slm/models/filter-builders` is how you write
-a tree without assembling the nodes by hand.
+reads and writes the same filters admins see in the filter index. `slm/models/filter-builders` builds a filter tree
+without assembling the nodes by hand.
 
 ```ts
 import * as FB from 'slm/models/filter-builders'
@@ -220,9 +220,7 @@ Filters.changes(ctx).subscribe((c) => ...) // every write, yours included
 ```
 
 `owner` is a discord user id. A filter belongs to a person even when a plugin wrote it, so name the admin who is
-answerable for it: they get the filter-owner role over it and can edit it by hand afterwards.
-
-Four things to know.
+answerable for it. They get the filter-owner role over it and can edit it by hand afterwards.
 
 Your writes are ordinary writes. Open editors update, the reference index rebuilds, and the audit log records a
 `FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `ctx.db()` skips all
@@ -231,11 +229,11 @@ of that and leaves every open page stale until a restart.
 Nothing marks a filter as yours. You can write any filter, including one an admin made, and an admin can edit or
 delete one you made. Prefix your ids if you want them to be recognisable.
 
-Deactivating your plugin leaves its filters behind. That is deliberate: a server pool naming a filter that
+Deactivating your plugin leaves its filters behind. This is deliberate. A server pool naming a filter that
 disappeared fails every layer status query for that server. Clean up explicitly if that is wrong for yours, and
 delete the pool config first.
 
-`remove` refuses to delete a filter anything still points at, and hands back the references so you can say what.
+`remove` refuses to delete a filter anything still points at, and hands back the references so you can report what.
 
 ## Layer queries
 
@@ -266,10 +264,10 @@ if (res.code === 'ok') res.layers // one page, with every column
 | `scoreRanges`     | the min and max of every score column                          |
 | `itemsState`      | the queue and recent matches a repeat rule is measured against |
 
-Constraints are how a query is narrowed, and `slm/models/constraint-builders` is how you write one. Do not assemble
-them by hand: which of `filterApplState`, `showIndicator` and `warn` a constraint needs is not obvious, and
-`poolFilter` in particular does not mean what its fields look like. The `id` you give a constraint comes back on
-every warning and match descriptor it produces, which is how you tell which one a result is about.
+Constraints narrow a query. Write them with `slm/models/constraint-builders`, not by hand. Which of
+`filterApplState`, `showIndicator` and `warn` a constraint needs is not obvious, and `poolFilter` in particular does
+not mean what its fields look like. The `id` you give a constraint comes back on every warning and match descriptor
+it produces. That is how you identify which constraint a result is about.
 
 Repeat rules need to know what is already queued and what was played. `query` and `itemStatuses` fill that in from
 the live queue when you leave `input.list` out, which is almost always what you want. Pass `itemsState` yourself
@@ -293,9 +291,9 @@ const res = await LayerQueries.genVote(ctx, {
 if (res.code === 'ok') res.chosenLayers // one per choice, undefined where a choice already named a layer
 ```
 
-The same seed draws the same layers, so a redraw you have to be able to repeat is a matter of keeping the seed.
-`onlyIndex` redraws one choice and leaves the rest. `unfilledChoices` holds the indices nothing could be found for,
-which is how an over-constrained draw reports itself.
+The same seed draws the same layers. To repeat a draw, keep the seed. `onlyIndex` redraws one choice and leaves the
+rest. `unfilledChoices` holds the indices nothing could be found for, which is how an over-constrained draw reports
+itself.
 
 Starting the vote is not here. Draw the choices, then put them in the queue.
 
@@ -393,8 +391,8 @@ There is one anchor of each kind so far.
 | decoration | `match-history:row`             | `serverId`, `matchId`, `layerId`, `ordinal` |
 
 A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `violation`. Return an array to
-contribute several to one row, or null for none. A slot that throws is caught by a boundary and a selector that
-throws reads as no decoration, so neither takes the page down.
+contribute several to one row, or null for none. A boundary catches a slot that throws. A selector that throws
+reads as no decoration. Neither takes the page down.
 
 ## Your events in the feed
 
@@ -413,7 +411,7 @@ Events.register(ctx, 'counted', (e) => ({
 ```
 
 `content` is the predicate alone: the host renders the time, the icon and your plugin's name in front of it, so
-the line sits in the feed like every other one. `icon` is one of `plugin`, `info`, `success`, `warning`,
+the line reads like every other one in the feed. `icon` is one of `plugin`, `info`, `success`, `warning`,
 `error`, defaulting to `plugin`. Return null to take the `message` fallback for a particular event.
 
 `message` is still what the audit log shows, and what an admin sees while the plugin is stopped, so write it to
@@ -446,20 +444,21 @@ Commands.register(ctx, {
 Returned text is warned back to the caller. The handler is given the ctx of whichever server the command was
 typed on, so it reads that server's state without being registered per server.
 
-Being in admin chat is not authorization: that is Squad's admin list, not SLM's roles. See "Permissions" below.
+Being in admin chat is not authorization. Admin chat follows Squad's admin list, not SLM's roles. See "Permissions"
+below.
 
 A plugin command takes the words after its trigger as they were typed: `input.text`, or `input.args` split on
-spaces. The typed arguments core commands declare (players, squads, durations, reasons, and the prompts that
-disambiguate them) are driven by declarations the host can see at compile time, which a plugin's command has
-none of.
+spaces. Core commands declare typed arguments (players, squads, durations, reasons, and the prompts that
+disambiguate them). The host drives those from declarations it sees at compile time, and a plugin's command has
+none.
 
 Admins retune the triggers and chats under the plugin's commands, in its card in the Plugins section of settings.
 A command they have not configured runs under what the plugin declared.
 
 Every trigger across core and plugin commands is one namespace. A plugin trigger something else already owns is
-dropped, not dispatched: precedence is core, then plugin commands an admin has configured, then declared
+dropped rather than dispatched. Precedence is core, then plugin commands an admin has configured, then declared
 defaults. A dropped trigger is logged, shown on the plugin in settings, and left off the commands page, so it
-reads as broken rather than as working. A command whose triggers were all taken is not a command at all.
+reads as broken rather than as working. A command whose triggers were all taken cannot be run.
 
 Declare a trigger specific enough not to collide. A configured trigger outranks another plugin's default, which
 is how an admin resolves a collision between two installed plugins.
@@ -482,8 +481,8 @@ os.meta({ access: RBAC.Access.req(({ serverId }) => RBAC.Req.any(RBAC.perm('queu
 A refused call answers with the permission denial. A refused stream yields it and ends. A refused command warns
 it back in the server's own language.
 
-`RBAC.perm(type, args)` builds one permission. A server-scoped permission carries the server it applies to, so a
-grant on one server never satisfies a check against another: pass `{ serverId }`, not the type on its own.
+`RBAC.perm(type, args)` builds one permission. A server-scoped permission carries the server it applies to. A
+grant on one server never satisfies a check against another, so pass `{ serverId }`, not the type on its own.
 `RBAC.Req.any(...)` and `RBAC.Req.all(...)` combine several.
 
 Where the arguments decide what is needed, declare what is needed regardless with
@@ -503,14 +502,14 @@ if (denial) return denial
 
 Both return the denial, or null when the caller may proceed.
 
-Reuse an existing permission where one fits. `squad-server:end-match` for anything that decides what plays next,
-`queue:write` for queue edits, `squad-server:warn-players` for warns. Admins already grant these, and a plugin
+Reuse an existing permission where one fits. Use `squad-server:end-match` for anything that decides what plays
+next, `queue:write` for queue edits, and `squad-server:warn-players` for warns. Admins already grant these. A plugin
 that invents its own asks every install to configure something new.
 
 ### Declaring your own
 
-Where the plugin does something SLM has no analogue for, declare an action. The host has no idea what it means;
-it only carries the grant.
+Where the plugin does something SLM has no analogue for, declare an action. The host does not interpret it. It only
+carries the grant.
 
 ```ts
 import * as Permissions from 'slm/plugin/permissions'
@@ -526,8 +525,8 @@ os.meta({ access: RBAC.Access.req(({ serverId }) => Perms.giveaway(serverId)) })
 permission matcher has to understand specifically, so those stay the host's.
 
 An admin grants it under Plugin Actions on the role, picking from what the running plugins declare. The grant
-stores the plugin id and the action name as plain strings, so stopping or uninstalling the plugin keeps it
-rather than losing it, and an action no running plugin declares grants nothing.
+stores the plugin id and the action name as plain strings. Stopping or uninstalling the plugin keeps the grant. An
+action no running plugin declares grants nothing.
 
 ## Pickers
 
@@ -544,9 +543,9 @@ configSchema: z.object({
 })
 ```
 
-Six of them: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural of each. The value stored is
-still a plain string or array of strings, so a config written through the YAML editor is unaffected, and an
-id whose target has since been deleted still round-trips rather than being dropped.
+There are six: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural of each. The stored value is still
+a plain string or array of strings. A config written through the YAML editor is unaffected, and an id whose target
+has since been deleted still round-trips rather than being dropped.
 
 The same six are components, for a slot that picks something rather than a setting that stores it:
 
@@ -562,7 +561,7 @@ For anything else, `slm/components/combo-box` is what they are built from.
 ## What you can reach
 
 `slm/*` is a curated surface, not the whole codebase. `src/plugin-api/api-report.md` lists every export in the
-current build, generated from the source, and each entry's JSDoc says what belongs to the host and is therefore
+current build, generated from the source, and each entry's JSDoc states what belongs to the host and is therefore
 absent.
 
 | Entry                                                      | What it is                                   |
@@ -606,10 +605,10 @@ Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `d
 them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,
 or zod schemas fail their `instanceof` checks and React hooks break.
 
-Those four and `slm/*` are the whole of what you may import by name. Anything else is left as a bare specifier
-the host cannot answer, and a client bundle that carries one loads and then fails to resolve it -- which takes
-your plugin's entire browser half down, panels and all, while its server half keeps running and the plugin still
-reads as healthy. `pnpm plugin:pack` refuses to emit such a bundle. To use another package, vendor it: import it
+Those four and `slm/*` are the only things you may import by name. Anything else is left as a bare specifier the
+host cannot answer. A client bundle that carries one loads and then fails to resolve it. That takes your plugin's
+entire browser half down, panels and all, while its server half keeps running and the plugin still reads as
+healthy. `pnpm plugin:pack` refuses to emit such a bundle. To use another package, vendor it: import it
 by a relative path from your own source so it ends up inside your bundle.
 
 `slm/lib/rxjs-ext` holds our additions to rxjs and nothing else. rxjs itself is your own import.
@@ -629,12 +628,12 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 }
 ```
 
-Build your ops inside `activate()`. `ctx.module` does not exist before then, which is the same reason state does
-not belong at module scope.
+Build your ops inside `activate()`. `ctx.module` does not exist before then, which is the same reason state should
+not be kept at module scope.
 
 A plugin cannot name its own telemetry scope. `slm/server/logger` exposes `childModule`, which narrows the one you
-were given, and nothing that invents a new one. That is what keeps an operator able to tell your plugin's output
-from SLM's and from another plugin's.
+were given, and nothing that invents a new one. This lets an operator distinguish your plugin's output from SLM's
+and from another plugin's.
 
 ## Packing and publishing
 
@@ -673,8 +672,8 @@ _Rescan folder_ in settings, or, from inside the app's container:
 docker exec <container> pnpm plugins:reload --expect <plugin-id>
 ```
 
-That reports each plugin's status and exits non-zero when one named by `--expect` did not come back up, which
-is what lets a deployment fail on a package it just copied in. Nothing restarts, so no admin session is dropped.
+That reports each plugin's status and exits non-zero when one named by `--expect` did not come back up, so a
+deployment can fail on a package it just copied in. Nothing restarts, so no admin session is dropped.
 
 Do that at least once before you release, since it is the only thing that exercises the packed bundles and the
 shim registry. To have CI do it, point the smoke test at the packed output:
@@ -685,13 +684,13 @@ SLM_SMOKE_PLUGIN_DIRS=packed/<id> pnpm test:integration test/integration/plugin-
 ```
 
 It boots a real app with the package installed, turns it on, and fails with whatever activation said: an
-`apiVersion` this build does not satisfy, or an entry that only exists in the other side's registry. Day to day
-you want [the dev loop](#the-dev-loop) instead.
+`apiVersion` this build does not satisfy, or an entry that only exists in the other side's registry. For
+day-to-day work, use [the dev loop](#the-dev-loop) instead.
 
 ## Repo layouts
 
 SLM asks one thing of your repo: whatever you publish has to put `plugin.json` and its bundles in one directory,
-because the manifest's siblings are resolved relative to its url. Where the source lives is up to you.
+because the manifest's siblings are resolved relative to its url. Where you keep the source is up to you.
 
 ### One plugin, one repo
 
@@ -722,7 +721,7 @@ https://<owner>.github.io/<repo>/other-plugin/plugin.json
 
 ### Your repo, inside the SLM checkout
 
-You need an SLM checkout to build against. Your plugin's repo can live inside it:
+You need an SLM checkout to build against. Your plugin's repo can be kept inside it:
 
 ```sh
 cd squad-layer-manager
@@ -731,14 +730,13 @@ echo 'plugins/my-plugin/' >> .git/info/exclude
 ```
 
 The two repos do not interact. Git never recurses into a nested repository, so SLM's `git status` sees one
-untracked directory and your commits, branches and pulls stay entirely inside your own. `.git/info/exclude` is
+untracked directory and your commits, branches and pulls stay inside your own. `.git/info/exclude` is
 per-clone and never committed, so hiding your directory needs no change to SLM.
 
 Add that exclude line before you run anything. Without it `git add -A` in the SLM repo adds your plugin as an
-embedded repository: a gitlink recording a commit hash nobody else can fetch, which is a confusing thing to
-discover in a diff. Git warns when it happens.
+embedded repository: a gitlink recording a commit hash nobody else can fetch. Git warns when it happens.
 
-What being in-tree buys you:
+Keeping it in-tree gives you:
 
 - `pnpm dev` runs your plugin, with no registration step. See [The dev loop](#the-dev-loop)
 - `pnpm run check` typechecks it against the exact `slm/*` surface you are building against, because `plugins` is
@@ -752,7 +750,8 @@ You never edit `plugins/builtins.server.ts` or `plugins/builtins.ts`. Those name
 ## The dev loop
 
 `pnpm dev` loads every directory in `plugins/` from source, so your own repo cloned in there runs with nothing to
-register. Enable it once in settings and the choice sticks. From then on you get what host code gets.
+register. Enable it once in settings and the choice sticks. From then on your edits reload like SLM's own code, as
+the table below shows.
 
 Discovery goes two levels, so a repo holding several plugins is cloned in as one directory and each plugin
 inside it is found: `plugins/my-plugins/first/plugin.ts` works as well as `plugins/first/plugin.ts`.
@@ -763,9 +762,9 @@ inside it is found: `plugins/my-plugins/first/plugin.ts` works as well as `plugi
 | a component in a components-only `.tsx`   | it swaps in place, with its state intact                         |
 | `client.tsx`, or anything else it imports | the page reloads                                                 |
 
-The middle row is worth arranging your files around, and the rule behind it is the one SLM follows for its own
-code: a module that exports components and nothing else is a Fast Refresh boundary, and a module that exports
-anything else is not. `client.tsx` default-exports what `definePluginClient` returns, so it can never be one. Keep
+Arrange your files around the middle row. The rule behind it is the one SLM follows for its own code. A module
+that exports components and nothing else is a Fast Refresh boundary, and a module that exports anything else is
+not. `client.tsx` default-exports what `definePluginClient` returns, so it can never be one. Keep
 components out of it.
 
 ```tsx
@@ -782,16 +781,18 @@ export default definePluginClient(manifest, (ctx) => {
 
 The host holds the component you registered, and that reference is stale the moment you edit the file. React
 resolves it through the refresh runtime's family for that component, so the new implementation renders against the
-old state anyway. Defining the component inline inside `setup()` gives that up: an edit to `client.tsx` reloads the
-page and every component in it starts from scratch.
+old state anyway. Defining the component inline inside `setup()` loses this. An edit to `client.tsx` then reloads
+the page, and every component in it starts from scratch.
 
-Whatever your components need that only exists at setup time, an rpc client above all, goes in a plain `.ts`
+Whatever your components need that only exists at setup time (most often an rpc client) goes in a plain `.ts`
 module they import. `plugins/balance-triggers` is laid out this way.
 
 Discovery is dev-only. A plugin that has only ever run this way has never been through `plugin:pack` or the shim
-registry, which is most of what running it proves, so pack and install it before you release.
+registry. Those are most of what running it proves, so pack and install it before you release.
 
 ## How an admin installs it
+
+The admin's side is in [configuring.md](configuring.md#10-plugins).
 
 On the settings page, under Plugins, they paste the `plugin.json` url. SLM downloads the files into its own
 plugins folder and runs that local copy, so your plugin keeps working when your host does not. Refresh is the only
@@ -821,11 +822,11 @@ is never a boot failure.
 ## Things that will bite you
 
 **Module scope is not yours to keep state in.** A packaged plugin's bundle is loaded under a fresh url each time
-it starts, so module-level state resets. A plugin shipped inside SLM lives in the app bundle instead, where it
-lasts for the whole process. Put state in `activate()` and neither case can surprise you.
+it starts, so module-level state resets. A plugin shipped with SLM is loaded once, so its module-level state lasts
+for the whole process. Put state in `activate()` and neither case can surprise you.
 
 **Nothing is unloaded.** ESM has no unload, so stopping a plugin tears down its subscriptions and registrations
-while the module graph stays resident. This is bounded by how often an admin restarts a plugin, and it is the
+while the module graph stays in memory. This is bounded by how often an admin restarts a plugin, and it is the
 reason teardown has to go through `ctx.cleanup`, the registration APIs and `ctx.signal`.
 
 **A failure to activate is not fatal.** A bad config, a failed migration or a throwing `activate` puts the plugin

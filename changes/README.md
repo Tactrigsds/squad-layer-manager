@@ -14,8 +14,8 @@ It does if someone could notice it without reading the code or the logs:
 
 Refactors, tests, CI, internal docs and fixes to bugs that never shipped do not. Put `Changelog: none` in the PR
 description or a commit message instead, so the choice is written down. A reason can follow on the same line:
-`Changelog: none, fixes a bug that never shipped`. The pre-push hook only sees commit messages. A PR made only of `refactor`, `test`, `ci`, `style`, `chore`,
-`docs` or `build` commits needs neither.
+`Changelog: none, fixes a bug that never shipped`. The pre-push hook only sees commit messages. A PR made only of
+`refactor`, `test`, `ci`, `style`, `chore`, `docs` or `build` commits needs neither.
 
 A breaking commit (`feat!:`) always needs an `operators` fragment saying what an upgrade has to do.
 
@@ -37,8 +37,9 @@ History links are shorter. Old links still open.
 Optional detail, in markdown, after a blank line.
 ```
 
-Write the first line for the people it affects. Say what changed for them, not what the code does.
+Write the first line for the people it affects. Describe what changed for them, not what the code does.
 
 ## Checking
 
-`pnpm changelog:check` validates every fragment. CI and the pre-push hook also check that a branch adds a fragment when it needs one.
+`pnpm changelog:check` validates every fragment. CI and the pre-push hook also check that a branch adds a fragment
+when it needs one.

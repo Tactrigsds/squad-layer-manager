@@ -23,7 +23,7 @@ twice the accent's height on all sides, and do not use the tile below 16px.
 
 ## The instance accent
 
-The accent underscore is the instance's `topBarColor` setting, verbatim. It is what tells two SLM instances apart in
+The accent underscore is the instance's `topBarColor` setting, verbatim. It distinguishes two SLM instances in
 a browser tab, so it also draws the nav bar's bottom border. Any CSS colour works.
 
 When `topBarColor` is null the plain tile is used and the nav bar keeps its default border. The mark has to work
@@ -45,10 +45,10 @@ without the accent, so never design a surface that depends on the accent being t
 | `/maskable-icon.png`    | 512        | full-bleed, content at 85% | Android adaptive icons                          |
 | `/manifest.webmanifest` |            |                            | Android's add-to-home-screen and install prompt |
 
-A platform that masks the icon itself gets the tile squared off, because iOS composites the transparent pixels of a
+A platform that masks the icon itself is served a squared-off tile, because iOS composites the transparent pixels of a
 corner we rounded onto black, inside the corner it rounds. Android crops a maskable icon to an arbitrary shape and
-guarantees only the circle inscribed in the middle 80% of the square, which the letters and the accent overrun at
-full size, so that rendition scales them to 85%.
+guarantees only the circle inscribed in the middle 80% of the square. The letters and the accent overrun that circle
+at full size, so the maskable rendition scales them to 85%.
 
 All of them are rendered from the current settings rather than built into `dist/`, because the accent follows a
 setting an admin can change at any time. `/favicon.svg` follows the browser's colour scheme. The rasters cannot, so
@@ -59,5 +59,5 @@ they use the light tile, which reads against either tab strip.
 `src/lib/logo.ts` holds "SLM" as an outlined path rather than as text, because a favicon renders where no webfont
 has loaded. To regenerate it, take the Roboto Condensed 800 TTF served by
 `https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@800`, lay the three glyphs out at font-size 43 with
-the tracking above, and normalise so the cap-box top sits at y=0 and the ink is centred on x=0. Only a change to the
+the tracking above, and normalise so the cap-box top is at y=0 and the ink is centred on x=0. Only a change to the
 face, the weight or the tracking calls for this.

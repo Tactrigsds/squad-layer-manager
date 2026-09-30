@@ -1,7 +1,7 @@
 # Architecture and coding style
 
-The shape of SLM and the patterns that recur throughout it. This is orientation, not a specification: where the code
-and this document disagree, the code wins. Individual modules document their own quirks in-code.
+The shape of SLM and the patterns that recur throughout it. It is a guide, not a specification. Where the code and this
+document disagree, the code wins. Individual modules document their own quirks in-code.
 
 [CLAUDE.md](../CLAUDE.md) states the rules that this document gives the reasoning for.
 
@@ -27,7 +27,7 @@ One single-tenant TypeScript process serving a React SPA, talking to one or more
 log files. Persistence is a local SQLite database in WAL mode (better-sqlite3 + drizzle), on one connection held for
 the life of the process. There is no external datastore.
 
-Two Rust components sit alongside the TypeScript:
+Two Rust components are kept alongside the TypeScript:
 
 - **The query engine**, compiled to wasm and run in both the server and the browser. Squad's layer set is ~730k
   map/gamemode/faction/unit combinations, too many to filter row-by-row in JS at interactive speed and too many to
@@ -38,11 +38,11 @@ Two Rust components sit alongside the TypeScript:
 
 The tree, in layering order:
 
-| Directory            | What lives there                                                 |
+| Directory            | What it holds                                                    |
 | -------------------- | ---------------------------------------------------------------- |
 | `src/lib`            | Generic utilities with no domain knowledge.                      |
 | `src/models`         | Framework-agnostic domain: zod schemas, pure reducers, encoding. |
-| `src/systems`        | The feature layer. Suffix says where it runs.                    |
+| `src/systems`        | The feature layer. Suffix marks where it runs.                   |
 | `src/server`         | Process bootstrap, context types, db, env, oRPC wiring.          |
 | `src/frames`         | Client state containers with a lifecycle.                        |
 | `src/frame-partials` | Composable slices of client frame state.                         |
@@ -52,19 +52,17 @@ The tree, in layering order:
 | `test`               | Integration and e2e suites.                                      |
 
 The layering is `lib` -> `models` -> `systems` -> `components`/`routes`, and it describes **runtime imports only**.
-`import type` erases at compile time, so it cannot create a cycle, and the codebase uses upward type imports freely.
-An upward `import type` is normal. An upward value import is the thing to look twice at, and the handful that exist
-are debts rather than precedent.
+`import type` erases at compile time, so it cannot create a cycle, and the codebase uses upward type imports freely. An
+upward value import deserves a second look. The handful that exist are debts rather than precedent.
 
 ### The `.server` / `.client` / `.shared` suffix
 
 Every file in `src/systems` declares which side of the wire it runs on. `*.server.ts` runs in node only and may
 import `src/server/*`; `*.client.ts` runs in the browser only; `*.shared.ts` runs in both.
 
-`shared` is load-bearing rather than incidental. `layer-queries.shared.ts` is the single implementation of every
-layer query in the app: it executes server-side for RPC callers and inside a browser Web Worker for the layer table
-UI, both against the same wasm engine. The client is not calling a thin API over a server-side query layer; it is
-running the query layer.
+`layer-queries.shared.ts` shows why `shared` matters. It is the single implementation of every layer query in the app:
+it executes server-side for RPC callers and inside a browser Web Worker for the layer table UI, both against the same
+wasm engine. The client does not call a thin API over a server-side query layer. It runs the query layer itself.
 
 Systems otherwise pair up across the wire (`layer-queue.server.ts` / `layer-queue.client.ts`), sharing types through
 `src/models`.
@@ -78,8 +76,7 @@ app**. `import * as F from '@/models/filter.models'` means `F` is the filter mod
 Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS` (context-shared), `C`
 (server context), `SLL` (shared-layer-list).
 
-An alias is only worth anything if it is the _only_ one for its module, since the payoff is that a reader who knows
-the abbreviations reads any file quickly. The lib vocabulary:
+Each module has _only_ one alias, so a reader who knows the abbreviations can read any file quickly. The lib vocabulary:
 
 | namespace                        | module                                                        |                                                    |
 | -------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
@@ -97,9 +94,9 @@ Modules exporting a data structure rather than free functions (`lru-map`, `one-t
 convention.
 
 **Libraries we extend are wrapped, not imported.** rxjs, zustand and react-rxjs are each reached through exactly one
-module in `src/lib`, which re-exports the package alongside our own additions, so there is no per-file choice
-between two spellings of the same thing. Everything else is imported directly, because a barrel that adds nothing is
-just indirection.
+module in `src/lib`, which re-exports the package alongside our own additions, so there is no per-file choice between
+two spellings of the same thing. Everything else is imported directly, because a barrel that adds nothing is
+indirection.
 
 ### Result codes instead of exceptions
 
@@ -114,15 +111,14 @@ The dominant error convention is a returned discriminated union tagged with a `c
 Error codes are namespaced by colon (`err:invalid-op:different-user`). Exceptions are reserved for genuine bugs and
 for aborts.
 
-Both routes are instrumented, so this is not about telemetry. It is about handling. An error code is part of the
-return type, so the compiler forces every caller to acknowledge it, and `assertNever` forces them to widen when a
-new code appears. A thrown error is invisible to the signature, and is handled, or not, at whatever distance the
-nearest `catch` happens to sit.
+Both routes are instrumented. The choice is about handling. An error code is part of the return type, so the compiler
+forces every caller to acknowledge it, and `assertNever` forces them to widen when a new code appears. A thrown error is
+invisible to the signature, and is caught, or not, at whatever distance the nearest `catch` happens to be.
 
 ### `assertNever` on every union
 
 Every `switch` over a discriminated union ends in `default: assertNever(x)` from `src/lib/type-guards.ts`, so adding
-a variant turns into a compile error at every site that must handle it. The domain layer has 30+ discriminated
+a variant turns into a compile error at every site that must cover it. The domain layer has 30+ discriminated
 unions, and this is the main mechanism keeping them honest.
 
 ### Schema-first models
@@ -140,9 +136,9 @@ universally. House conventions:
 
 ### Context as duck-typed dependency injection
 
-There is no DI container. A `ctx` object is threaded as the **first argument** to essentially every server function,
-and capabilities are expressed as intersection types over a branded base. A function declares the **minimal**
-intersection it actually needs:
+There is no DI container. A `ctx` object is threaded as the **first argument** to essentially every server function, and
+capabilities are expressed as intersection types over a branded base. A function declares the **minimal** intersection
+it needs:
 
 ```ts
 async function doThing(ctx: C.Db & USR.Ctx & CS.AbortSignal, ...) { ... }
@@ -151,7 +147,7 @@ async function doThing(ctx: C.Db & USR.Ctx & CS.AbortSignal, ...) { ... }
 Callers build up context by spreading. A signature becomes a precise, checked statement of what a function touches.
 For observables, the same rule applies with the ctx as the first element of the emitted tuple.
 
-**A domain's contexts live in that domain's models file.** `V.Ctx` is the vote context, `MH.Ctx` the match-history
+**A domain's contexts are kept in that domain's models file.** `V.Ctx` is the vote context, `MH.Ctx` the match-history
 one, reached under the same namespace as the rest of that domain, with the runtime object it carries at
 `Ctx.Payload`. Two modules stay general rather than domain-owned: `src/models/context-shared.ts` (`CS`) is the leaf
 every context composes on, and `src/server/context.ts` (`C`) holds server infrastructure with no domain models file,
@@ -171,35 +167,34 @@ those keys out of a wider ctx, which is how a handler avoids carrying context it
 
 ### spanOp: the unit of server work
 
-Server functions of any significance are wrapped in `spanOp`, so it is worth understanding before reading any of
-them:
+Server functions of any significance are wrapped in `spanOp`, so read this before reading any of them:
 
 ```ts
 export const dispatchOp = C.spanOp('dispatchOp', { module }, async (ctx, op, opts) => { ... })
 ```
 
-`spanOp` declares "this is one unit of server work". It returns a function with the same signature, so call sites
-are unaffected, and gives the unit four things uniformly: it is traced and timed, it logs itself once with a
-consistent shape, its outcome is classified (succeeded, threw, or returned an error code), and it can **declare**
-mutexes to hold for its duration rather than acquiring them by hand.
+`spanOp` declares "this is one unit of server work". It returns a function with the same signature, so call sites are
+unaffected. It gives the unit four things: it is traced and timed, it logs itself once with a consistent shape, its
+outcome is classified (succeeded, threw, or returned an error code), and it can **declare** mutexes to hold for its
+duration rather than acquiring them by hand.
 
-That last part makes `spanOp` structural rather than merely observational. `durableSub` is the RxJS counterpart for
-long-lived pipelines, with the same treatment plus error recovery.
+Declared mutexes make `spanOp` structural as well as observational. `durableSub` is the RxJS counterpart for long-lived
+pipelines, with the same treatment plus error recovery.
 
 ### ManagedServer: one live game server
 
-`ManagedServer` is a large intersection representing everything about one running Squad server: rcon, vote, layer
-queue, match history, teamswaps, settings, cleanup and an abort signal. SLM does not instantiate squad servers, it
-connects to and supervises them, so the entity is a server _under management_, which is also the user-facing name.
+`ManagedServer` is a large intersection representing everything about one running Squad server: rcon, vote, layer queue,
+match history, teamswaps, settings, cleanup and an abort signal. SLM does not instantiate Squad servers. It connects to
+and supervises them, so the entity is a server _under management_. That is also the user-facing name.
 
 Four patterns hold it together, and each recurs elsewhere:
 
-- **Cleanup tasks live on the ctx.** Every subsystem's `init*` pushes its own teardown on at the moment it creates
+- **Cleanup tasks are held on the ctx.** Every subsystem's `init*` pushes its own teardown on at the moment it creates
   the thing needing teardown, so nothing maintains a separate destructor that drifts from the setup function. Tasks
   are heterogeneous (a function, a `Subscription`, a mutex, an `AbortController`) and run FILO, with per-task errors
   caught. The same primitive runs at process level for shutdown.
 - **Every managed server owns an AbortController**, combined with the caller's signal. The signal stops anything
-  watching it; the cleanup array disposes what needs an explicit call.
+  watching it. The cleanup array disposes what needs an explicit call.
 - **Lifecycle transitions are serialized per server** under one non-reentrant mutex, so the codebase splits each
   operation into a locking entry point and an unlocked `*Locked` internal. Acquiring the lock twice in one call
   stack self-deadlocks, which is the trap when adding a lifecycle operation.
@@ -223,8 +218,8 @@ a self-deadlock, and sorts multiple acquisitions into a stable global order so o
 deadlock. The `IsolatedSubject` family exists because of this: they re-enter the root async context before emitting,
 so a subscriber does not inherit the publisher's mutex ownership.
 
-Three parallel buckets defer work until an enclosing critical section really ends, all mutable arrays shared by
-reference through ctx spreads:
+Three parallel buckets defer work until an enclosing critical section fully ends. All three are mutable arrays, shared
+by reference through ctx spreads:
 
 | Bucket               | Runs after                | Typical use                                                   |
 | -------------------- | ------------------------- | ------------------------------------------------------------- |
@@ -239,7 +234,7 @@ per-system subrouters, each built from `getOrpcBase(module)`, which installs two
 handler in `spanOp` and narrows the connection-level signal down to the individual call. The second enforces the
 procedure's declared access (see below). Input is validated before either runs.
 
-Site access (`site:authorized`) is checked once, at the HTTP upgrade. The ctx object minted there lives for the
+Site access (`site:authorized`) is checked once, at the HTTP upgrade. The ctx object minted there lasts for the
 lifetime of the socket and is reused for every RPC over it. Everything past site access is checked per call.
 
 Db access is deliberately **not** middleware. Handlers attach a db explicitly.
@@ -262,7 +257,7 @@ without an entry is a type error.
 
 A declaration is an `RBAC.Access`:
 
-- `none` says there is nothing to check, and why: `public`, `self` (keyed to the caller) or `filtered` (the handler
+- `none` declares there is nothing to check, and why: `public`, `self` (keyed to the caller) or `filtered` (the handler
   narrows its answer row by row).
 - `req` is checked before the entry point runs, from its input alone.
 - `in-handler` is checked by the entry point itself, because it depends on state it has to load. Its optional
@@ -290,13 +285,13 @@ procedure's entry with `Rbac.tryDenyProcedureAccess`, so the two cannot drift.
 
 ## Client-side patterns
 
-Most of the client's state is neither global nor local. It belongs to "the server dashboard you currently have
-open", which is created and destroyed as you navigate. The answer is frames.
+Most of the client's state is neither global nor local. It belongs to "the server dashboard you currently have open",
+which is created and destroyed as you navigate. Frames hold that state.
 
 ### Stores, frames, partials
 
-**A zustand store** is the primitive, used directly for genuinely app-global singletons: selected server, public
-settings, presence.
+**A zustand store** is the primitive, used directly for app-global singletons: selected server, public settings,
+presence.
 
 **A frame** is a reference-counted, keyed, lazily-created and torn-down zustand store, managed by a singleton
 `FrameManager`. `setup()` runs once per instance and subscribes to async sources directly (oRPC observables, piped
@@ -312,14 +307,13 @@ useFrameTeardownOnUnmount(frameKey)
 return <ServerDashboard stores={FRM.toProp(frameKey)} />
 ```
 
-A key belongs to whoever called `ensureSetup`, and `dropKey` stops it resolving even when other keys keep the
-instance alive. The dashboard drops its key when it unmounts while the nav bar and presence hold their own, so a
-window opened with the dashboard's key would otherwise render from a dead key. Anything rendering from a borrowed key
-registers with `frameManager.onBeforeRelease(key, ...)`, which runs just before the key stops resolving, whether by
-its own drop or by the instance being disposed, and ahead of the abort signal and cleanup tasks. Draggable windows do
-this through `dependsOn` on their `WindowDefinition`: `frameDependency(props.stores.squadServer)` closes the window
-at that moment. `frameDependency` is one `WindowDependency`; anything else a window cannot outlive can implement the
-same shape.
+A key belongs to whoever called `ensureSetup`, and `dropKey` stops it resolving even when other keys keep the instance
+alive. The dashboard drops its key when it unmounts while the nav bar and presence hold their own, so a window opened
+with the dashboard's key would otherwise render from a dead key. Anything rendering from a borrowed key registers with
+`frameManager.onBeforeRelease(key, ...)`. The callback runs just before the key stops resolving, whether by its own drop
+or by the instance being disposed. It runs ahead of the abort signal and cleanup tasks. Draggable windows do this
+through `dependsOn` on their `WindowDefinition`: `frameDependency(props.stores.squadServer)` closes the window at that
+moment. `frameDependency` is one `WindowDependency`. Anything else a window cannot outlive can implement the same shape.
 
 **A frame-partial** (`src/frame-partials/*.partial.ts`) is not a frame. It is a module exporting a slice type, an
 `init*(args)`, and its own `Sel`/`Actions`, which a real frame composes by intersecting the types and calling
@@ -335,7 +329,7 @@ key, a react-query options object and a react-rxjs `StateObservable`:
 type AnyInput<T> = AnyStore<T> | QuerySource<T> | StateObservable<T>
 ```
 
-Everything downstream accepts `AnyInput`, so a component neither knows nor cares which of the four it was handed.
+Everything downstream accepts `AnyInput`, so a component does not know which of the four it was handed.
 
 `Zus.useStore` is the sanctioned read path in components, and `Zus.getState` is its non-subscribing counterpart
 outside render. Both are overloaded the same way: one input returns its state, N inputs plus a trailing selector
@@ -349,7 +343,7 @@ Zus.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 const presence = Zus.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
-The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit.
+The two call shapes match, so moving a selector between render and handler code is a mechanical edit.
 
 `Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, which is how frames drive RxJS
 pipelines from zustand state, and how ODSM side effects react to prev/next diffs.
@@ -364,9 +358,8 @@ Every stateful client file exports two namespaces:
 - **`Actions`** holds every user-initiated operation. An action takes `stores` (a `KeyProp`) as its first argument
   and resolves the concrete store itself. Actions must not close over component state.
 
-Components pass `stores: SomeFrame.KeyProp`, built by `FRM.toProp`. React context is deliberately not used for
-stores: frame instances are refcounted per consumer, and context would obscure who is keeping an instance alive
-versus merely reading it.
+Components pass `stores: SomeFrame.KeyProp`, built by `FRM.toProp`. React context is not used for stores. Frame
+instances are refcounted per consumer, and context would hide who keeps an instance alive and who only reads it.
 
 ### Component rules
 
@@ -376,7 +369,7 @@ Conventions from CLAUDE.md, each with a specific reason:
   files next to components.
 - **Avoid controlled inputs** (do not set `value`); debounce anything that would re-render often.
 - **Prefer adding a selector over `useMemo` in the component body.**
-- **`useEffect`/`useState` interdependence is a code smell.** That is what frames are for.
+- **`useEffect`/`useState` interdependence is a code smell.** Use a frame instead.
 - React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
   data from React state, and only call table methods in event handlers.
 - **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
@@ -385,25 +378,24 @@ Conventions from CLAUDE.md, each with a specific reason:
 
 ### The activity feed is built as dom, not rendered
 
-`src/components/feed` builds the server activity feed's rows with `document.createElement` instead of react. It
-exists because of one number: opening a past match mounts ~600 rows and ~10,000 nodes in a single update, which
-react spent ~200ms on and the browser spends ~35ms on. The rows have nothing react was buying -- no state, no
-changing props, no children that reorder.
+`src/components/feed` builds the server activity feed's rows with `document.createElement` instead of react. The reason
+is one number: opening a past match mounts ~600 rows and ~10,000 nodes in a single update, which react spent ~200ms on
+and the browser spends ~35ms on. The rows have nothing react was buying: no state, no changing props, no children that
+reorder.
 
-What they do have is a context menu, a tooltip and a window to open per name. Those became one delegated handler
-each (`interactions.ts`) plus one shared radix instance each (`dom-overlays.tsx`), rather than one root per name.
-An element carries its payload as a symbol-keyed expando and the handler reads it back at interaction time, so a
-row closes over nothing. The ambient state a row is built against -- which server, how teams are labelled, the
-active player grouping -- is a `RenderCtx` (`render-context.ts`) whose identity is what says a row is stale.
+What they do have is a context menu, a tooltip and a window to open per name. Those became one delegated handler each
+(`interactions.ts`) plus one shared radix instance each (`dom-overlays.tsx`), rather than one root per name. An element
+carries its payload as a symbol-keyed expando and the handler reads it back at interaction time, so a row closes over
+nothing. The ambient state a row is built against (which server, how teams are labelled, the active player grouping) is
+a `RenderCtx` (`render-context.ts`). Its identity determines whether a row is stale.
 
-The pieces are shared rather than duplicated: `atoms.ts` builds a player, a squad, a team, a layer and a
-timestamp, and the react components of the same names (`PlayerDisplay`, `SquadDisplay`, `TeamFactionDisplay`,
-`MapLayerDisplay`, `EventTime`, `ShortLayerName`) are wrappers that mount what it builds into a
-`display:contents` host. `rows.ts` builds every row type except `APP_EVENT`, which stays a react component
-portalled into a placeholder: app events are a fraction of a percent of a feed and query, expand and attribute in
-ways that would need most of a component model rebuilt. Messages resolve through `@/messages/i18n-dom`, which
-shares the catalogue, the ICU evaluation and the message builders with the react path and differs only in what it
-assembles at the end.
+The pieces are shared rather than duplicated: `atoms.ts` builds a player, a squad, a team, a layer and a timestamp, and
+the react components of the same names (`PlayerDisplay`, `SquadDisplay`, `TeamFactionDisplay`, `MapLayerDisplay`,
+`EventTime`, `ShortLayerName`) are wrappers that mount what it builds into a `display:contents` host. `rows.ts` builds
+every row type except `APP_EVENT`, which stays a react component portalled into a placeholder. App events are a fraction
+of a percent of a feed, and they query, expand and attribute in ways that would need most of a component model rebuilt.
+Messages resolve through `@/messages/i18n-dom`, which shares the catalogue, the ICU evaluation and the message builders
+with the react path and differs only in what it assembles at the end.
 
 Every top-level row carries its event's id (`data-dom-row`), plus the ids of any events it folds in. A row selection
 (`selection.ts`) is two of those ids, dragged from the rows' time gutter and painted back on as an attribute, so it
@@ -416,38 +408,36 @@ activity log runs it over the events it holds. History rows reach the browser as
 so the history page asks the server (`history.selectionText`), and the discord listener (`history-links.server.ts`)
 calls the same function to quote a linked selection.
 
-The history url itself answers as plain text or csv when asked (`contentType`, or an Accept header preferring one;
-the param wins). Events come as text: the url's selection if it has one, else one page from its `cursor`. Players
-and matches come as a text table or csv, one page by `page` (see `result-table.ts`). Either way the next page's url
-is in a `Link: rel="next"` header. In dev, vite's middleware hands `/history` to fastify before its own spa fallback
-can answer it (see vite.config.ts).
+The history url itself answers as plain text or csv when asked (`contentType`, or an Accept header preferring one, with
+the param winning). Events come as text: the url's selection if it has one, else one page from its `cursor`. Players and
+matches come as a text table or csv, one page by `page` (see `result-table.ts`). Either way the next page's url is in a
+`Link: rel="next"` header. In dev, vite's middleware hands `/history` to fastify before its own spa fallback can answer
+it (see vite.config.ts).
 
 Everything that queries history needs `history:query`, and checks it where it enters: the rpc procedures, the url's
 raw forms, and the discord listener (see `History.denyUnlessHistoryQuery`).
 
 ### Charts
 
-Charts are ours, not a library's. `src/lib/chart.ts` (`Chart`) holds the geometry as pure functions -- a nice
-integer axis, stacking a row of series values, projecting a value onto pixels -- and the components in
-`src/components/charts` render SVG from it. The data a chart draws (`Chart.Series`, `Chart.Row`) is built by a
-selector, so a chart component holds nothing but its own hover state.
+Charts are written in-house. `src/lib/chart.ts` (`Chart`) holds the geometry as pure functions (a nice integer axis,
+stacking a row of series values, projecting a value onto pixels), and the components in `src/components/charts` render
+SVG from it. The data a chart draws (`Chart.Series`, `Chart.Row`) is built by a selector, so a chart component holds
+nothing but its own hover state.
 
-The reason for writing it rather than configuring one: a chart option object is a second, untyped description of
-state we already model, and the one chart in the app used a few hundred kilobytes of echarts to draw two stacked
-bars. What we need of a charting library is a scale, a stack and a tick.
+A chart option object is a second, untyped description of state we already model. The one chart in the app used a few
+hundred kilobytes of echarts to draw two stacked bars. All we need of a charting library is a scale, a stack and a tick.
 
-Hover tooltips on a chart use `TrackingTooltip` (`src/components/ui/tracking-tooltip.tsx`), which follows the
-pointer instead of anchoring to a trigger: chart segments and legend swatches are too small and too dense for
-Radix to anchor to one at a time. The caller owns which target is hovered and passes the content for it; `null`
-closes it. Movement is written to the node's transform from a pointermove listener, so following the pointer
-never re-renders React. Placement maths (which side of the pointer, clamped to the viewport or a boundary
-element) is in `src/lib/floating.ts` (`Flt`).
+Hover tooltips on a chart use `TrackingTooltip` (`src/components/ui/tracking-tooltip.tsx`), which follows the pointer
+instead of anchoring to a trigger: chart segments and legend swatches are too small and too dense for Radix to anchor to
+one at a time. The caller owns which target is hovered and passes the content for it. Passing `null` closes it. Movement
+is written to the node's transform from a pointermove listener, so following the pointer never re-renders React.
+Placement maths (which side of the pointer, clamped to the viewport or a boundary element) is in `src/lib/floating.ts`
+(`Flt`).
 
 ## ODSM: optimistic distributed state
 
-`src/lib/odsm.ts` (Optimistic Distributed State Machine) keeps collaboratively edited state coherent across the
-server and every connected client. It is the answer to "two admins are editing the queue at once, and one of them
-has 80ms of latency".
+`src/lib/odsm.ts` (Optimistic Distributed State Machine) keeps collaboratively edited state coherent across the server
+and every connected client. It reconciles two admins editing the queue at once when one of them has 80ms of latency.
 
 The state machine is defined **once**, in a `.ts` model shared by both sides, as a pure
 `Reducer<Op, State, SideEffect>`. It runs in three places against three different base states: the client applies an
@@ -483,8 +473,8 @@ Three state machines are built on it today, each as a model/server/client trio:
 | Team swaps                   | `src/models/teamswaps.models.ts`  | `src/systems/teamswaps.server.ts`     | `src/frame-partials/teamswaps.partial.ts`   |
 | User presence                | `src/models/user-presence.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
 
-The layer queue is the fullest example. Presence is the outlier: its client half lives in a plain global store
-rather than a frame partial, because presence is genuinely app-global.
+The layer queue is the fullest example. Presence is the outlier: its client half is held in a plain global store rather
+than a frame partial, because presence is app-global.
 
 ## The domain layer
 
@@ -517,10 +507,10 @@ has any reference, or to store an apply-filter loop (which has no fixed point on
 ```
 
 The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
-`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export: id resolution is a catalog lookup over
-`mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to
-a source (`data/sources/`, see docs/layer_data.md) whose collection becomes the id's Collection segment; the
-Collection column is how filters and pools single a source out.
+`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Id resolution is a catalog lookup over
+`mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
+source (`data/sources/`, see docs/layer_data.md) whose collection becomes the id's Collection segment. The Collection
+column is how filters and pools single a source out.
 
 Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
 later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
@@ -542,12 +532,11 @@ must always produce the same object.
 - **pending events** (`pending-events.models.ts`) is the **state machine that produces server events** out of raw
   input.
 
-`pending-events.models.ts` is the most intricate module in the codebase and worth reading in full before touching
-it. It reconciles two unreliable, differently-lagged views of the same reality, a tailed log file and periodic RCON
-roster polls, ordering them into a single event stream while mutating the live roster. It also owns
-expectation-based attribution: an action arms an expectation before issuing the RCON command, so the resulting event
-can be stamped with its cause. It is pure (`init` + `on*` transitions) and the most heavily tested module in the
-codebase.
+`pending-events.models.ts` is the most intricate module in the codebase. Read it in full before touching it. It
+reconciles two unreliable, differently-lagged views of the same reality, a tailed log file and periodic RCON roster
+polls, ordering them into a single event stream while mutating the live roster. It also owns expectation-based
+attribution: an action arms an expectation before issuing the RCON command, so the resulting event can be stamped with
+its cause. It is pure (`init` + `on*` transitions) and the most heavily tested module in the codebase.
 
 ### Settings
 
@@ -559,14 +548,14 @@ broadcasts, vote and queue tunables) and `ServerSettingsSchema` (per server: con
 nav links). `PublicServerSettingsSchema` is the latter minus `connections`, and **that omission is the security
 boundary**, not a display convenience.
 
-RBAC lives _inside_ global settings so it is admin-editable. Roles carry flat permission expressions plus
+RBAC is stored _inside_ global settings so it is admin-editable. Roles carry flat permission expressions plus
 path-restricted grants that the flat grammar cannot express. Permissions are computed fresh per request and merged
 into a traced list where every grant records which role granted it, so the UI and the audit log can both explain
 why someone has access.
 
 ## Messages and locales
 
-Every string a person reads lives in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs` namespace
+Every string a person reads is kept in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs` namespace
 that mirrors the domain's models alias. The tree is isomorphic, and the same message feeds an in-game RCON broadcast
 and the web app's preview of that broadcast, so it must not import anything node-only.
 
@@ -579,34 +568,34 @@ export const close = Msgs.def('Close')
 export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
 ```
 
-A message with more than a string to say returns a **target map** instead, whose shared logic lives in the factory's
+A message with more than a string to say returns a **target map** instead, whose shared logic is kept in the factory's
 closure. The targets are `text`, `toast`, `richText`, `confirm`, `warn` and `broadcast`. A message offers whichever it
 has something sensible to say on, and the compiler rejects the others.
 
-Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical
-but whose translations differ are told apart by a `context`, which is part of the key and never rendered. The English
-template and translations live in `src/messages/locales/`. Generated compiled catalogues live outside source control.
+Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical but
+whose translations differ are told apart by a `context`, which is part of the key and never rendered. The English
+template and translations are kept in `src/messages/locales/`. Generated compiled catalogues are kept out of source
+control.
 
 **Patterns are compiled, not parsed.** The development and build hooks resolve each pattern's structure ahead of time
-into `<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to its
-own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
-at runtime: holding a parsed AST and its formatter per message cost 2.4 MB against 170 KB for the compiled form.
+into `<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to
+its own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
+at runtime. Holding a parsed AST and its formatter per message cost 2.4 MB, against 170 KB for the compiled form.
 
-The consequence to know about: **a message interpolates its arguments only if the extractor saw it.** One defined
-where the extractor does not read, a test file for instance, renders its pattern verbatim until it registers a
-compiled form of its own. `pnpm i18n:lint` holds that guarantee across `src`, and the unit suite validates the
-generated catalogue.
+**A message interpolates its arguments only if the extractor saw it.** One defined where the extractor does not read, a
+test file for instance, renders its pattern verbatim until it registers a compiled form of its own. `pnpm i18n:lint`
+holds that guarantee across `src`, and the unit suite validates the generated catalogue.
 
 English is not registered the way other locales are. `@/messages/i18n` carries it built in, so no boot path can miss
 it, and value formatting (`{n, number}`, `{d, date}`) is rejected at build time: format the value at the call site
 and interpolate the result, as `src/messages/format.ts` does.
 
 **Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
-ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players
-rather than for whoever is looking at the web app, so they are handed a locale explicitly. The browser also sets
-`<html lang dir>` from it, which the CSS relies on: layout uses logical properties (`ms-*`, `inset-s-*`,
-`text-start`), `pnpm lint` rejects physical ones, and `:lang()` rules in `theme.css` adjust casing, tracking, line
-height and fonts per script.
+ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players rather
+than for whoever is looking at the web app, so they are handed a locale explicitly. The browser also sets `<html lang
+dir>` from it, and the CSS relies on that. Layout uses logical properties (`ms-*`, `inset-s-*`, `text-start`), `pnpm
+lint` rejects physical ones, and `:lang()` rules in `theme.css` adjust casing, tracking, line height and fonts per
+script.
 
 **Pseudo-locales show what a translation would break.** Development builds carry `en-XA`, which pads every message by
 about 40% and accents it, and `ar-XB`, the same text right to left. Pick one from the language menu. A message still
@@ -619,16 +608,16 @@ text. A unit test fails on any setting without a label. Mark a subtree `opaque` 
 
 ## The layer engine (rust/wasm)
 
-`layer-engine/` is Rust compiled to wasm. It queries a table of all known layer combinations and handles filtering,
+`layer-engine/` is Rust compiled to wasm. It queries a table of all known layer combinations and implements filtering,
 sorting, paging, distinct values and weighted random selection. **One module serves both hosts:** the server and the
-browser's query worker load the same `.wasm`. It is immutable for its lifetime, which is what makes caching
-evaluated bitsets safe and what makes shipping the same engine to both sides practical.
+browser's query worker load the same `.wasm`. It is immutable for its lifetime. That makes caching evaluated bitsets
+safe and shipping the same engine to both sides practical.
 
-**Nothing is stored per row.** Rows are packed-id order, which groups them into one contiguous block per layer, and
-a block's rows are the cross product of that layer's faction/unit availability. That makes the row space enormously
-redundant, and the store exploits it: a layer's own columns are held once per block (928 of them), the per-team
-columns once per distinct availability pattern (314, shared by every block that repeats one), and the score columns
-once per (layer, faction, unit) side record (8313). 2.7M rows cost 13 MB rather than 246 MB.
+**Nothing is stored per row.** Rows are packed-id order, which groups them into one contiguous block per layer, and a
+block's rows are the cross product of that layer's faction/unit availability. That makes the row space highly redundant,
+and the store exploits it: a layer's own columns are held once per block (928 of them), the per-team columns once per
+distinct availability pattern (314, shared by every block that repeats one), and the score columns once per (layer,
+faction, unit) side record (8313). 2.7M rows cost 13 MB rather than 246 MB.
 
 Two arrays carry the whole shape, and everything else is a lookup off them:
 
@@ -637,12 +626,11 @@ block_row_start[b]..block_row_start[b + 1]          the rows of block b
 pattern_row_start[p] + (row - block_row_start[b])   the pattern row behind `row`, where p = block_pattern[b]
 ```
 
-**Scans walk blocks, not rows.** A predicate on a layer's own column is evaluated once per block and its whole row
-range set at once; one on a per-team column is evaluated once per distinct pattern and replayed across every block
-sharing it; only the score scopes go row by row. Blocks the candidate has already excluded are skipped whole. Any
-path that walks matched rows in order (sorting, distinct, generation) carries a `BlockCursor` instead of resolving
-each row's block independently, because `store.value` binary-searches the block table and that cost per row is what
-a naive port would reintroduce.
+**Scans walk blocks, not rows.** A predicate on a layer's own column is evaluated once per block and its whole row range
+set at once. One on a per-team column is evaluated once per distinct pattern and replayed across every block sharing it.
+Only the score scopes go row by row. Blocks the candidate has already excluded are skipped whole. Any path that walks
+matched rows in order (sorting, distinct, generation) carries a `BlockCursor` instead of resolving each row's block
+independently. `store.value` binary-searches the block table, and a naive port would reintroduce that cost per row.
 
 `ColData` is how a scan asks _how_ a column varies before it enters its loop, and `Reader` resolves a column down to
 the slices it reads. Both exist so the per-row work never re-examines a column spec.
@@ -670,7 +658,7 @@ directly (whole-layer selects, sorting, distinct/possible-value queries, table d
 factions, units, alliances, vehicles, vehicle classes) is grouped by collection, via `LC.collectionGroups()`.
 `LC.collectionForEnumValue` derives the collection by walking the catalog: layer configs place maps, layers and
 gamemodes, availability entries carry it to factions, alliances and units, and resolved unit records carry it on to
-vehicles. A value used by several collections homes to the default one.
+vehicles. A value used by several collections is assigned to the default one.
 
 Grouping is a combo box feature, not a filter-editor one: give either combo box a `groups` list and options carrying
 a `group` key. Two or more groups with selectable options turn on a tab strip (Tab and Shift-Tab cycle it) whose
@@ -687,7 +675,7 @@ The data it reads is a versioned pair of artifacts. See [layer_data.md](layer_da
 
 ## Data and persistence
 
-better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state lives in JSON
+better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state is stored in JSON
 columns rather than being normalized. Those columns are **superjson**, not plain JSON, transformed by a pair that
 walks the drizzle table config, which is what lets bigints (Discord snowflakes) and Dates round-trip.
 
@@ -701,20 +689,20 @@ any other network call inside one stalls every write in the process for that rou
 not rolled back with the transaction anyway. Two ways out, both already used:
 
 - **Hoist** the call above the transaction, when the write depends on its result.
-- **Defer** it onto `ctx.tx.unlockTasks`, when it is a side effect of the write. Note these belong to the
-  _outermost_ transaction, so a deferred task escapes an enclosing transaction too.
+- **Defer** it onto `ctx.tx.unlockTasks`, when it is a side effect of the write. These belong to the _outermost_
+  transaction, so a deferred task escapes an enclosing transaction too.
 
-**The rule is enforced, not just documented.** `runTransaction` races every callback against a `setImmediate`: a
-query-only callback settles on a microtask and always wins, while one that reaches the network, the disk or a timer
-has to yield and loses. Losing throws in development and test and warns in production, where a violation is a
-latency bug and failing the write would be worse.
+**The rule is enforced.** `runTransaction` races every callback against a `setImmediate`: a query-only callback settles
+on a microtask and always wins, while one that reaches the network, the disk or a timer has to yield and loses. Losing
+throws in development and test and warns in production, where a violation is a latency bug and failing the write would
+be worse.
 
 **Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit generated
 `.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence. Two constraints shape it:
 
-- **Migrations are frozen in time.** A `.ts` migration gets only the raw driver and must not import from the rest of
-  the codebase, so a later refactor can never retroactively change what a historical migration meant. `superjson` is
-  the one exception, and is how a JSON column is read and written; see `src/migrations/_template.ts`.
+- **Migrations are frozen in time.** A `.ts` migration receives only the raw driver and must not import from the rest of the
+  codebase, so a later refactor can never retroactively change what a historical migration meant. `superjson` is the one
+  exception, and is how a JSON column is read and written. See `src/migrations/_template.ts`.
 - **The prod server is bundled**, so `.ts` migrations cannot be globbed at runtime and are statically imported
   through `src/migrations/registry.ts`.
 
@@ -727,38 +715,38 @@ env schema's `.meta()`. Connection secrets are sealed at the db boundary only, a
 
 [writing_plugins.md](writing_plugins.md) is the author-facing guide. This is the host's side of the same contract.
 
-Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`,
-imported by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a
-client entry and migrations. They import the core exclusively through the `slm/*` alias, which resolves to the
-curated entry files in `src/plugin-api/`. Each entry names its exports explicitly, so joining the contract is a
-deliberate act: lifecycle and host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion,
-`persistAppEvent`) are reachable in core and absent here. A few entries add plugin-shaped adapters instead
-(`slm/plugin/*`, `AppEvents.emit`, `PostRollReminders.register`). Third-party packages stay out: `slm/lib/rxjs-ext`
-exposes our rxjs additions and nothing else, and a plugin imports `rxjs` itself, which carries its own semver. One
-tsconfig path covers tsc, tsx and the rolldown server bundle; vite and vitest carry a hand-written alias.
+Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`, imported
+by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a client entry and
+migrations. They import the core exclusively through the `slm/*` alias, which resolves to the curated entry files in
+`src/plugin-api/`. Each entry names its exports explicitly, so nothing joins the contract by accident. Lifecycle and
+host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion, `persistAppEvent`) are reachable in core
+and absent here. A few entries add plugin-shaped adapters instead (`slm/plugin/*`, `AppEvents.emit`,
+`PostRollReminders.register`). Third-party packages stay out: `slm/lib/rxjs-ext` exposes our rxjs additions and nothing
+else, and a plugin imports `rxjs` itself, which carries its own semver. One tsconfig path covers tsc, tsx and the
+rolldown server bundle. Vite and vitest carry a hand-written alias.
 
-**The plugin way is the core way.** A plugin gets a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin`
-for identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
-`Servers.setup(ctx, cb)` runs `cb` once per managed server, now and future, with a cleanup scoped to the
-(plugin, server) pair -- it runs on server teardown or plugin stop, whichever comes first.
+**The plugin way is the core way.** A plugin receives a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin` for
+identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
+`Servers.setup(ctx, cb)` runs `cb` once per managed server, now and future, with a cleanup scoped to the (plugin,
+server) pair. It runs on server teardown or plugin stop, whichever comes first.
 
 The host (`src/systems/plugins.server.ts`) owns lifecycle (inactive → activating → active → stopping, or errored),
-serialized behind one mutex. Activation failures (bad config, failed migration, thrown `activate`) land the plugin
-in `errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations
-but the old module graph stays resident; re-activation reuses it.
+serialized behind one mutex. Activation failures (bad config, failed migration, thrown `activate`) land the plugin in
+`errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations but
+the old module graph stays in memory. Re-activation reuses it.
 
-**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/builtins.server.ts` and lives in
-the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
-already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it
-names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`.
-`pnpm plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same
-folder and runs the local copy, so a plugin keeps working when its origin does not; refresh is the only thing that
-fetches again, and a directory placed there by hand is picked up by rescan.
+**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/builtins.server.ts` and is built
+into the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
+already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it names:
+`plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`. `pnpm
+plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same folder and
+runs the local copy, so a plugin keeps working when its origin does not. Refresh is the only thing that fetches again,
+and a directory placed there by hand is picked up by rescan.
 
-**In dev, every other directory under `plugins/` is loaded from source too**, so a plugin author's own repo cloned
-in there runs with nothing to register: `tsx watch` on the server, vite's own module graph on the client, which is
-where a plugin's HMR comes from. Discovery is dev-only on both halves, the client's through a virtual module rather
-than a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
+**In dev, every other directory under `plugins/` is loaded from source too**, so a plugin author's own repo cloned in
+there runs with nothing to register: `tsx watch` on the server, vite's own module graph on the client, which is where a
+plugin's HMR comes from. Discovery is dev-only on both halves. The client discovers through a virtual module rather than
+a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
 
 **A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
 specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
@@ -767,68 +755,64 @@ through a `module.registerHooks` resolver, in the browser through the import map
 (or hooks break) in play. The export names come from `models/plugin-api-exports.ts`, generated beside the API
 report, since the server serves the browser's shims but cannot import the client entries to enumerate them.
 
-**Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new
-module and the server gets a clean graph, with the old one resident but unreachable. A page that already evaluated
-the previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be
-halfway through a queue edit.
+**Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new module
+and the server loads a clean graph, with the old one still in memory but unreachable. A page that already evaluated the
+previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be halfway
+through a queue edit.
 
-**Module scope belongs to one activation, for a packaged plugin.** The server bundle's url also carries an
-activation counter, so starting a stopped plugin evaluates a fresh graph rather than re-running `activate()`
-against what the previous run left behind. A builtin cannot do this, since its modules are in the app bundle:
-there, module scope lasts for the process. Two things follow either way. Nothing is ever reclaimed, because node's
-module map has no eviction and V8 drops the compilation cache only under a GC it never runs on its own, so each
-activation leaves a graph resident; it is bounded by how often an admin restarts a plugin. And a side effect
-started at module scope is outside the lifecycle entirely: teardown undoes what went through `ctx.cleanup`, the
-registration APIs and the abort signal, so a subscription taken at module scope keeps running after the plugin
-stops. Plugin state belongs in `activate()`.
+**Module scope belongs to one activation, for a packaged plugin.** The server bundle's url also carries an activation
+counter, so starting a stopped plugin evaluates a fresh graph rather than re-running `activate()` against what the
+previous run left behind. A builtin cannot do this, since its modules are in the app bundle: there, module scope lasts
+for the process. Two things follow either way. First, nothing is ever reclaimed. Node's module map has no eviction, and
+V8 drops the compilation cache only under a GC it never runs on its own. Each activation leaves a graph in memory,
+bounded by how often an admin restarts a plugin. Second, a side effect started at module scope is outside the lifecycle.
+Teardown undoes what went through `ctx.cleanup`, the registration APIs and the abort signal, so a subscription taken at
+module scope keeps running after the plugin stops. Keep plugin state in `activate()`.
 
-**Telemetry is namespaced the same way persistence is.** The host builds each plugin an otel module named
-`plugin:<id>` (`PLG.moduleName`) and hands it over as `ctx.module`, with `ctx.log` already its logger. That
-prefix is the whole separation: it is the tracer and log scope, it prefixes every `spanOp`/`durableSub` name,
-and it lands as `slm.module.name` on the plugin's records. A plugin cannot name itself -- `slm/server/logger`
-exposes only `childModule`, which narrows the scope it was given. Identity rides along without a call site
-asking for it: the logger binds `slm.plugin.id/version/source`, and `spanOp` reads id and version off `ctx.plugin`
-through `CONTEXT_ATTR_MAPPING`, so `slm.op.duration` is groupable by plugin rather than by string prefix. The
-browser half mirrors it, so one plugin reads the same on both sides. What is left -- source, declared api range,
-current status -- is on two host gauges, `slm.plugin.info` and `slm.plugin.status`, to be joined on
-`slm.plugin.id`, rather than stamped onto every series a plugin emits. Plugins get no meter of their own yet;
-`spanOp` already gives every op rate, error and duration.
+**Telemetry is namespaced the same way persistence is.** The host builds each plugin an otel module named `plugin:<id>`
+(`PLG.moduleName`) and hands it over as `ctx.module`, with `ctx.log` already its logger. That prefix is the whole
+separation: it is the tracer and log scope, it prefixes every `spanOp`/`durableSub` name, and it lands as
+`slm.module.name` on the plugin's records. A plugin cannot name itself: `slm/server/logger` exposes only `childModule`,
+which narrows the scope it was given. Identity rides along without a call site asking for it: the logger binds
+`slm.plugin.id/version/source`, and `spanOp` reads id and version off `ctx.plugin` through `CONTEXT_ATTR_MAPPING`, so
+`slm.op.duration` is groupable by plugin rather than by string prefix. The browser half mirrors it, so one plugin reads
+the same on both sides. What is left (source, declared api range, current status) is on two host gauges,
+`slm.plugin.info` and `slm.plugin.status`, to be joined on `slm.plugin.id`, rather than stamped onto every series a
+plugin emits. Plugins get no meter of their own yet. `spanOp` already gives every op rate, error and duration.
 
-**Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
-`p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
-run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside
-the plugin's prefix. Config lives in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's
-zod schema, and rendered by the same schema-driven settings form as everything else; `PluginConfig.get(ctx)` always
-reads the latest saved value, so config changes need no restart.
+**Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with `p_<id>_`,
+and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`) run at activation
+rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside the plugin's prefix.
+Config is stored in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's zod schema, and
+rendered by the same schema-driven settings form as everything else. `PluginConfig.get(ctx)` always reads the latest
+saved value, so config changes need no restart.
 
-**The surface documents itself through JSDoc**, on the declaration rather than the `slm/*` entry: a
-docblock above an `export ... from` reaches nobody, since TypeScript resolves a re-export to its
-original. Documented where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B
-normalization, what `getRecentMatches` holds, `dispatchOp` going through the same path as the web
-client), left alone where the name already says it.
+**The surface documents itself through JSDoc**, on the declaration rather than the `slm/*` entry. A docblock above an
+`export ... from` reaches nobody, since TypeScript resolves a re-export to its original. Declarations are documented
+where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B normalization, what `getRecentMatches` holds,
+`dispatchOp` going through the same path as the web client), left alone where the name already states it.
 
-**The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every
-export reachable through the slm/* entries, with values carrying their resolved signatures; `pnpm api:report`
-regenerates it and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines are
-breaking, added lines additive), judged against origin/main's copy so a branch bumps once. Which component each
-moves follows semver, so at today's 0.1.0 that is the minor and the patch. The pre-push
-hook runs `pnpm api:report:check`, which fails on a stale report. The report records exports and signatures, not
-the internal structure of named types; reshaping a model type without renaming it is review's to catch, and the
-report diff is what flags the PR as touching the plugin API at all.
+**The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every export
+reachable through the slm/* entries, with values carrying their resolved signatures. `pnpm api:report` regenerates it
+and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines are breaking, added lines
+additive). The diff is judged against origin/main's copy, so a branch bumps once. Which component each moves follows
+semver, so at today's 0.1.0 that is the minor and the patch. The pre-push hook runs `pnpm api:report:check`, which fails
+on a stale report. The report records exports and signatures, not the internal structure of named types. Reshaping a
+model type without renaming it is review's to catch, and the report diff is what flags the PR as touching the plugin API
+at all.
 
-**A plugin's rpc is oRPC.** Its server half builds a router with `Rpc.os<typeof manifest>()`, whose procedures
-receive that plugin's per-server ctx, and registers it. The client is created from the router's _type_
-(`import type { router } from './server.ts'`, erased at compile time), so nothing on the client is annotated by
-hand: `Rpc.client<typeof router>` for plain procedures, `Rpc.stores<typeof router>` for async-generator ones,
-which become keyed families of stores. The router is never mounted on the core router, which is frozen at module
-evaluation; both clients are oRPC clients over a custom link that tunnels through the generic `plugins.rpcCall`
-and `plugins.rpcStream` procedures, and the streaming one keeps `stream$`'s re-projection, so a server coming
-back self-heals the stream.
+**A plugin's rpc is oRPC.** Its server half builds a router with `Rpc.os<typeof manifest>()`, whose procedures receive
+that plugin's per-server ctx, and registers it. The client is created from the router's _type_ (`import type { router }
+from './server.ts'`, erased at compile time), so nothing on the client is annotated by hand: `Rpc.client<typeof router>`
+for plain procedures, `Rpc.stores<typeof router>` for async-generator ones, which become keyed families of stores. The
+router is never mounted on the core router, which is frozen at module evaluation. Both clients are oRPC clients over a
+custom link that tunnels through the generic `plugins.rpcCall` and `plugins.rpcStream` procedures, and the streaming one
+keeps `stream$`'s re-projection, so a server coming back self-heals the stream.
 
-**Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points
-(each boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The builtin set is registered statically in `plugins/builtins.ts` (client)
-and `plugins/builtins.server.ts` (server) so both bundles include them. A packaged plugin registers nothing: the host
-finds it in `PLUGINS_DIR`.
+**Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points (each
+boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The builtin set
+is registered statically in `plugins/builtins.ts` (client) and `plugins/builtins.server.ts` (server) so both bundles
+include them. A packaged plugin registers nothing: the host finds it in `PLUGINS_DIR`.
 
 ## Observability
 
@@ -844,10 +828,9 @@ torn-down task ever reaches the subscriber. These are always-on server pipelines
 
 ## Testing
 
-The stance is explicit: **unit tests are reserved for code that is both actually complex and self-contained**.
-Everything else is covered by integration and e2e tests, which target the tricky codepaths rather than trying to
-walk all of them. A unit test over trivial or tightly-coupled code mostly pins the implementation in place, so it
-costs refactoring freedom without catching much.
+**Unit tests are reserved for code that is both complex and self-contained.** Everything else is covered by integration
+and e2e tests, which target the tricky codepaths rather than trying to walk all of them. A unit test over trivial or
+tightly-coupled code mostly pins the implementation in place, so it costs refactoring freedom without catching much.
 
 | Suite                   | What it does                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -856,9 +839,9 @@ costs refactoring freedom without catching much.
 | `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright, on chromium.                         |
 | `pnpm test:e2e:firefox` | The `@firefox`-tagged subset of the same suite, on gecko. See [Browser support](#browser-support).              |
 
-Neither heavy suite needs an external service, which is the payoff for having written the emulator.
+Neither heavy suite needs an external service, because the emulator stands in for one.
 
-Both are dominated by two costs. **Booting apps:** a fixture is a whole server process and a run makes dozens, so
+Both are dominated by two costs. **Booting apps:** a fixture is a whole server process and a run boots dozens, so
 both suites bundle the server once with rolldown rather than loading its module graph through tsx on every boot.
 **Waiting on polls:** the app learns the roster from a polled `ListPlayers`, so a test that acts in-game and then
 asserts cannot resolve faster than two poll intervals. Poll interval, worker count and per-boot cost all trade
@@ -871,40 +854,39 @@ below which the emitted stylesheet does not work at all. Two things read it.
 
 **`build.target`** in `vite.config.ts`, so syntax the floor cannot parse is lowered rather than shipped.
 
-**`pnpm check:compat`**, which reads the _built_ client and reports platform features missing from a browser we
-claim to support. It reads `dist/` rather than `src/` because most of the shipped code is dependencies -- radix,
-dnd-kit, codemirror, react -- and that is where the interesting misses are; a source-level lint would never see
-any of it. The javascript is minified by then, so it matches three ways: free identifiers (a name with no binding
-in any enclosing scope, which is what separates the real `Highlight` from rxjs's own `Observable`), `A.b` where
-`A` is one of those, and member names distinctive enough that only one interface in all of MDN's data declares
-them. The css is parsed properly, so properties, at-rules and selectors are exact.
+**`pnpm check:compat`**, which reads the _built_ client and reports platform features missing from a browser we claim to
+support. It reads `dist/` rather than `src/` because most of the shipped code is dependencies (radix, dnd-kit,
+codemirror, react), and that is where most misses are. A source-level lint would never see any of it. The javascript is
+minified by then, so it matches three ways: free identifiers (a name with no binding in any enclosing scope, which is
+what separates the real `Highlight` from rxjs's own `Observable`), `A.b` where `A` is one of those, and member names
+distinctive enough that only one interface in all of MDN's data declares them. The css is parsed properly, so
+properties, at-rules and selectors are exact.
 
-A hit is a question, not a defect: a library that feature-detects before calling looks identical to one that does
-not, and a minified member name can collide with an unrelated one. Every hit is therefore either fixed or listed
-in `ALLOWED` in the script **with the reason it is safe**, and the check fails on an `ALLOWED` entry that no
-longer appears, so the list cannot rot.
+A hit is not necessarily a defect. A library that feature-detects before calling looks identical to one that does not,
+and a minified member name can collide with an unrelated one. Every hit is therefore either fixed or listed in `ALLOWED`
+in the script **with the reason it is safe**, and the check fails on an `ALLOWED` entry that no longer appears, so the
+list cannot go stale.
 
 ### Firefox
 
-Firefox is the only non-chromium engine the suite runs. The `firefox` project in `playwright.config.ts` runs the
-tests tagged `@firefox`: the ones that lean on pointer-driven drag and drop, portalled overlays, and the layer
-table. Its timeouts are several times chromium's, deliberately.
+Firefox is the only non-chromium engine the suite runs. The `firefox` project in `playwright.config.ts` runs the tests
+tagged `@firefox`: the ones that lean on pointer-driven drag and drop, portalled overlays, and the layer table. Its
+timeouts are several times chromium's, because gecko runs the query engine several times slower than blink does, on
+identical wasm.
 
-That is because gecko runs the query engine several times slower than blink does, on identical wasm. It is worth
-knowing what that did and did not mean, because the first reading was wrong.
+The first explanation for that gap was wrong.
 
-Most of the original gap was **our** bug, not gecko's. The engine's distinct-values query tested membership by
-scanning the vector it was building, which is O(rows x distinct values): 2.7M rows against 928 values for the
-`Layer` column, and the layer-select filter menu asks for twelve such columns before it can render. Blink
-absorbed it at around a second; gecko took ten. A set fixed it for both, and the profile went flat in the number
-of values, which is what says the quadratic term is gone. Firefox's e2e suite went from 2.7 to 1.6 minutes,
-chromium's from 3.2 to 2.2.
+Most of the original gap was **our** bug, not gecko's. The engine's distinct-values query tested membership by scanning
+the vector it was building, which is O(rows x distinct values): 2.7M rows against 928 values for the `Layer` column, and
+the layer-select filter menu asks for twelve such columns before it can render. Blink absorbed it at around a second;
+gecko took ten. A set fixed it for both. The profile went flat in the number of values, which shows the quadratic term
+is gone. Firefox's e2e suite went from 2.7 to 1.6 minutes, chromium's from 3.2 to 2.2.
 
-What remains is real but ordinary: on the same O(rows) scan gecko is still **~4-5x slower** than blink (~95ms a
-column against ~20ms). Startup is not affected -- fetching, inflating and parsing the artifact takes ~2.6s on
-both. So a slow firefox query is now worth profiling for an algorithm before it is blamed on the engine, and the
-filter menu's twelve separate full-table passes are the next thing to look at.
+On the same O(rows) scan gecko is still **~4-5x slower** than blink (~95ms a column against ~20ms). Startup is not
+affected: fetching, inflating and parsing the artifact takes ~2.6s on both. Profile a slow firefox query for an
+algorithmic cause before blaming the engine. The filter menu's twelve separate full-table passes are the next thing to
+look at.
 
-The only behavioural difference found so far is in drag and drop, where dnd-kit needs the pointer to rest over a
-drop target for a few animation frames before a release commits it. Chromium tolerates a move-then-release;
-firefox does not, at any timeout. `test/harness/drag.ts` handles it, and every drag in the suite goes through it.
+The only behavioural difference found so far is in drag and drop, where dnd-kit needs the pointer to rest over a drop
+target for a few animation frames before a release commits it. Chromium tolerates a move-then-release. Firefox does not,
+at any timeout. `test/harness/drag.ts` holds the pointer over the target for those frames, and every drag in the suite goes through it.

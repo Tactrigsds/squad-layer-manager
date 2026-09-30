@@ -56,8 +56,8 @@ on, and why. Everything else is noise. Default to no comment.
 
 Before writing one, try to make it unnecessary. A precise name is almost always better than a comment explaining a
 vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. Rationale that belongs to a
-particular piece of code stays with it, in a comment, however long it has to be. Only the high-level shape of the
-app belongs in docs/architecture.md.
+particular piece of code is kept with it, in a comment, however long it has to be. Only the high-level shape of the
+app is kept in docs/architecture.md.
 
 Never write a comment that:
 
@@ -78,6 +78,33 @@ Cut anything that tells the reader how to feel about the code: "worth internaliz
 "surprisingly". Cut throat-clearing that delays the fact. Prefer "X does Y" over "the thing to understand about X is
 that it does Y".
 
+Say what a thing does to the reader's things, or what the reader can do with it, not where it is or what it has. The
+test is whether the reader can act on the sentence without translating it. This is a principle, not a list of
+phrases: any sentence whose main verb is possession ("has", "comes with", "contains", "has access to") or location
+("is in", "runs inside", "is integrated with") needs a second look, however plain it reads.
+
+Location is fine where it is the point ("`test:e2e` runs inside its dev shell"). Say it plainly then: something is
+stored, kept or held somewhere, or can be found there. It does not live or sit there. "Belongs to" is for ownership,
+never for location.
+
+Do not hedge a statement to make it safe ("most of", "mostly", "generally", "in most cases"). State what is true
+plainly, and name the exception if one matters.
+
+- Before: "A plugin runs inside SLM with full access to it."
+- After: "A plugin can do anything SLM can, including editing the queue, running commands on your game servers, and
+  reading and changing SLM's database."
+- Before: "Most of the app has them, so hover over anything you do not recognise."
+- After: "Tooltips can be found throughout the app. Hover over a button, icon or label you do not recognise to see
+  more about it."
+
+Look for the most specific verb for the action. Generic verbs such as "tells", "says", "handles", "deals with",
+"does", "gets" and "makes" often force the reader to guess the action, so treat each one as a prompt to find a
+sharper verb: "describes", "warns", "records", "declares", "rejects". Keep the generic verb when it is already the
+precise one, as "gets" is for a function that fetches a value.
+
+- Before: "A "Breaking" note tells you something to do."
+- After: "A "Breaking" note describes a change you must make to upgrade."
+
 Keep concrete numbers, file paths, code and tables. Those are the signal.
 
 "Team A" and "Team B" are not free vocabulary. They mean `MH.NormedTeamId`, the team normalized across the
@@ -90,6 +117,10 @@ docs/ and the README are user-facing. Keep implementation detail out of them, ex
 is for contributors.
 
 # Editing
+
+Before reporting back on prose you wrote (docs, app text, comments, PR descriptions), re-read every new sentence
+against the rules in "Documentation, prose and app text" and "Comments". Check each against the principles, not only
+the example phrases they list.
 
 Run `pnpm run format` and `pnpm run check` (or a subset that typechecks your changes) before reporting back.
 
@@ -155,7 +186,7 @@ it flaky: find the cause, or show the user the evidence that it is a known flake
 Log significant actions taken by the user or by the system via app events (see src/models/app-events.models.ts).
 
 Pass commonly used state via the ctx object. It is always the first argument, or for observables always the first
-element of the observable's data tuple. A domain's contexts live in that domain's models file (`V.Ctx`, `MH.Ctx`,
+element of the observable's data tuple. A domain's contexts are kept in that domain's models file (`V.Ctx`, `MH.Ctx`,
 ...), with the runtime object it carries at `Ctx.Payload`. Check the domain's models file first, then
 context-shared.ts for the shared primitives, then server/context.ts for server infrastructure. Every context has a
 `CtxDef` beside it; see docs/architecture.md, "Context as duck-typed dependency injection".

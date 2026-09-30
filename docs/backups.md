@@ -9,16 +9,16 @@ Backups happen for two reasons. One of them is not optional.
 
 **Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app
 applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod` yourself, and it
-is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if the snapshot fails.
+is what you restore from if an upgrade goes wrong. Nothing is applied if the snapshot fails.
 The most recent pre-migration backup is never deleted by retention, however old it gets: it is the only way back
 from the migration it was taken before.
 
 **Periodic backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app
 snapshots its database on that interval.
 
-The two share a schedule and a retention window rather than running as separate systems. A backup taken to migrate
-counts as that interval's backup, and is uploaded and recorded like any other, so an upgrade does not produce two
-copies of the same database a minute apart, and the next periodic one is a full interval later.
+The two share a schedule and a retention window. A backup taken before a migration counts as that interval's backup,
+and is uploaded and recorded like any other. An upgrade therefore does not produce two copies of the same database a
+minute apart, and the next periodic backup comes a full interval later.
 
 Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
 
@@ -33,11 +33,14 @@ slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz                 a periodic
 slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz   taken before a migration
 ```
 
-`<db>` is the source database's filename without its extension, and retention only deletes names matching it, so two
-instances sharing a directory cannot prune each other's backups. `<sha>` is the short git sha of the build that
-owned the database when the snapshot was taken, recorded inside it in `_slm_meta`, or `unknown` if the database
-carried no stamp. For a pre-migration backup that is the version being upgraded _from_, which is the one a rollback
-wants. The timestamp sorts chronologically.
+`<db>` is the source database's filename without its extension. Retention only deletes names matching it, so two
+instances sharing a directory cannot prune each other's backups.
+
+`<sha>` is the short git sha of the build that owned the database when the snapshot was taken, recorded inside it in
+`_slm_meta`. It is `unknown` if the database carried no stamp. For a pre-migration backup this is the version being
+upgraded _from_, which is the one a rollback needs.
+
+The timestamp sorts chronologically.
 
 ## Uploading to SFTP
 
@@ -58,8 +61,8 @@ Setting `BACKUP_SFTP_HOST` uploads each backup to that host as it is taken.
 Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently. Retention deletes
 any backup matching its own name, so they would prune each other's.
 
-A failed upload does not fail the backup. The local copy is still written, and the audit event records that it never
-left the box.
+A failed upload does not fail the backup. The local copy is still written, and the audit event records that it was
+not uploaded.
 
 ## Restoring
 
@@ -72,7 +75,7 @@ docker compose stop app
 docker compose up -d app
 ```
 
-It refuses to run while the app is up. Which backup it puts back:
+It refuses to run while the app is up. Choose which backup it puts back:
 
 ```sh
 ./restore.sh --list                   # what backups there are, and the build each belongs to
@@ -95,14 +98,14 @@ the backup and reports which app build the database belongs to, which image tag 
 current build it is. Run it first when rolling back an upgrade, so you know which version to point
 `docker-compose.yaml` at before you start the app.
 
-The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore is
-otherwise the one operation with no undo. Delete it once you are happy. The restore is checked (`integrity_check`)
-before anything is moved, so a corrupt archive costs nothing.
+The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
+undone. Delete it once you have confirmed the restore. The backup is checked (`integrity_check`) before anything is
+moved, so a corrupt archive changes nothing.
 
-Prefer this over doing it by hand. `gunzip -c backup.gz > data/db.sqlite3` looks complete and is not: the old `-wal`
-file is still sitting there, SQLite replays it over the file you just restored, and you silently get the **old**
-database back, with `integrity_check` calling it fine. Restoring while the app is running is worse, because the app
-goes on writing to a database that is no longer at that path, and those writes are lost.
+Do not restore by hand. `gunzip -c backup.gz > data/db.sqlite3` leaves the old `-wal` file in place. SQLite replays
+it over the restored file, and you silently get the **old** database back, with `integrity_check` reporting it as
+fine. Restoring while the app is running also loses data: the app keeps writing to a database that is no longer at
+that path.
 
 ## Pinning a version
 
@@ -134,9 +137,9 @@ tag for one of them, and the app's own version is on its about page.
 
 ## Rolling back a bad upgrade
 
-Roll the image back too. Restoring a pre-migration backup and then starting the same version just applies the same
+Roll the image back too. Restoring a pre-migration backup and then starting the same version applies the same
 migration again. Each database is stamped with the git sha and branch of the app that last ran against it, so the
-backup can tell you which build it belongs to.
+backup records which build it belongs to.
 
 Ask which build that is before restoring anything:
 
@@ -160,9 +163,8 @@ docker compose stop app
 ```
 
 The restore repeats the tag and exits non-zero, because the database it just put back is behind the image
-`docker-compose.yaml` still names. That is deliberate: it is what stops
-`./restore.sh --pre-migration && docker compose up -d app` from starting the app on a database it would migrate
-straight back up. Pin `commit-9c1f0a2` as above, then:
+`docker-compose.yaml` still names. This stops `./restore.sh --pre-migration && docker compose up -d app` from
+starting the app on a database it would migrate straight back up. Pin `commit-9c1f0a2` as above, then:
 
 ```sh
 docker compose pull app

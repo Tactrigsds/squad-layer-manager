@@ -14,8 +14,8 @@ Use the table of contents on the left to move between sections:
 ![toc](configuring_screenshots/toc.png)
 
 Each setting has a _GUI_ / _YAML_ toggle, so you can also edit it as YAML. Settings that most installs never
-change sit in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
-them, and navigating to one opens the disclosure it sits in.
+change are kept in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
+them, and navigating to one opens the disclosure that holds it.
 
 Any setting or section can carry a comment, for the next person to read why it is set the way it is. Hover the
 setting's name and click the comment icon beside the link icon. In YAML mode a comment is an ordinary `#` line
@@ -64,16 +64,16 @@ Click _Add Server_ to set up a real one:
 
 Each server uses one of three connection modes:
 
-- _local_ - SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
+- _local_: SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
   directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
-- _sftp_ - SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
+- _sftp_: SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
   PSG-hosted squad servers, where you cannot run a program on the game host. Needs SFTP and RCON details.
-- _server agent_ (recommended) - a small program on the game host handles both the log stream and RCON. SLM never
+- _server agent_ (recommended): a small program on the game host streams the log to SLM and proxies RCON. SLM never
   holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
   [server_agent.md](server_agent.md).
 
 If a server does not behave as you expect, open the [server console](server_console.md). It shows the RCON traffic
-and the log lines as SLM receives them, which tells you whether the connection or SLM is at fault.
+and the log lines as SLM receives them, which shows whether the connection or SLM is at fault.
 
 #### 2.2. Server admin lists
 
@@ -96,7 +96,7 @@ reason, and a queue item on one is flagged in the queue and in the in-game next-
 ### 3. Permissions
 
 SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, which it grants to
-everyone assigned that role. Some permissions are global; many can be scoped to one squad server.
+everyone assigned that role. Some permissions are global. Many can be scoped to one squad server.
 
 Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
 they are assigned, except that a denial in any one role beats an allow in another.
@@ -115,19 +115,19 @@ Keep at least one after you assign real roles, so you can still get in if an ass
 
 Go to the _Permissions & Roles_ section of the global settings. Three roles exist by default:
 
-- `admins` - the features needed for day-to-day operations: the queue, votes, filters, and managing, warning,
+- `admins`: the features needed for day-to-day operations: the queue, votes, filters, and managing, warning,
   broadcasting to and kicking players. Maximum timeout of 2h. It is assigned to the in-game admins of the sandbox's
   own admin list, so the in-game commands work before anyone configures RBAC. Point it at your real lists as you
   add them.
-- `managers` - everything `admins` can do, plus policing other people's queue notes, enabling and disabling servers,
+- `managers`: everything `admins` can do, plus policing other people's queue notes, enabling and disabling servers,
   and restarting SLM. It can edit every global setting except the permissions config, and every server setting
   except the connection details. Maximum timeout of 6h. It cannot add a server, because adding one means supplying
   connection details.
-- `owners` - every permission. Maximum timeout of 52w. It is assigned to nobody by default.
+- `owners`: every permission. Maximum timeout of 52w. It is assigned to nobody by default.
 
-All three cover a new server on their own: their permissions are granted unscoped, and the `managers` settings
-grant names no servers, which means every server. Only a role that narrows a permission or a settings grant to
-named servers needs revisiting when you add one.
+All three cover a new server without changes. Their permissions are granted unscoped, and the `managers` settings
+grant names no servers, which means every server. When you add a server, revisit only the roles that narrow a
+permission or a settings grant to named servers.
 
 #### 3.3. Assigning permissions to roles
 
@@ -167,9 +167,9 @@ and want to use them in game.
 
 The _Assignments_ subsection of a role holds five sources. Two of them cover in-game players:
 
-- _In-game admins of these lists_ - the role goes to every player an admin list counts as an admin. It applies
+- _In-game admins of these lists_: the role goes to every player an admin list counts as an admin. It applies
   only on servers that use that list.
-- _Admin-list groups_ - the role goes to the members of a named group in a named list, whether or not that group
+- _Admin-list groups_: the role goes to the members of a named group in a named list, whether or not that group
   identifies admins. A whitelist reserve-slot group works here. Again, it applies only on servers that use the list.
 
 The other three cover users, and take an individual discord user, a discord role, or every member of your discord
@@ -330,8 +330,9 @@ SLM refreshes a player's flags automatically when it changes them itself.
 
 #### 8.1. Filters
 
-Squad has about 730,000 possible layers, counting every map, gamemode, faction and unit combination. A _filter_ is
-a named expression that picks a subset of them out. SLM ships with a few, listed in the filters index:
+The base game has about 730,000 possible layers, counting every map, gamemode, faction and unit combination, or
+about 2.7 million with the popular mods. A _filter_ is a named expression that picks a subset of them out. SLM
+ships with a few, listed in the filters index:
 
 ![filters_index](configuring_screenshots/filters_index.png)
 
@@ -343,7 +344,7 @@ Each condition is one line, written out. Click a line to edit it, then click _Do
 line is open at a time. The buttons for commenting, copying and removing a line appear when you point at it.
 
 The block at the top sets how the conditions under it combine. The four block types are _all of_, _any of_,
-_none of_ and _not all of_; opening one names the operation it stands for as well. _No Mech on Hilly Maps_ uses
+_none of_ and _not all of_. Opening one also names the operation it stands for. _No Mech on Hilly Maps_ uses
 _not all of_, so a layer matches unless both of these hold:
 
 - `Map` is Manicouagan, Skorpo or Lashkar
@@ -383,8 +384,8 @@ It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
 
 #### 8.3. The pool filter
 
-_Pool Filter_ is the setting that matters most: the single filter deciding which layers are in the server's layer
-pool. It is _Main Pool_ by default.
+_Pool Filter_ is the most important setting. It is the single filter that decides which layers are in the server's
+layer pool. It is _Main Pool_ by default.
 
 A layer the pool filter matches is _in-pool_, and one it does not match is _out-of-pool_. That status follows the
 layer through the whole app:
@@ -453,19 +454,19 @@ The _Next Layer_ tab holds two settings, both off by default. They decide how SL
 layer changes underneath it.
 
 _Override the next layer when it is set outside SLM_ covers the case where something other than SLM sets the next
-layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to whatever the queue says. Off,
-SLM adopts the change instead, and puts that layer at the front of the queue.
+layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue.
+Off, SLM adopts the change instead, and puts that layer at the front of the queue.
 
 _Warn admins when the next layer changes_ sends every in-game admin the new next layer whenever it changes. A change
-SLM overrides is not announced, so turning both on tells admins only about changes SLM accepted.
+SLM overrides is not announced, so turning both on warns admins only about changes SLM accepted.
 
 ![pool_configuration_next_layer](configuring_screenshots/pool_configuration_next_layer.png)
 
 #### 8.7. Disabling SLM updates
 
 SLM normally writes the next layer to the server over RCON. _Disable SLM Updates_, in the _Server Actions_ menu,
-stops it. The queue still runs and tracks what is played; SLM just never sets the map itself, and stops sending the
-recurring reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside something
+stops it. The queue still runs and tracks what is played. SLM never sets the map itself, and stops sending the recurring
+reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside something
 else that owns the rotation.
 
 ![disable_slm_updates](configuring_screenshots/disable_slm_updates.png)
@@ -473,14 +474,14 @@ else that owns the rotation.
 While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off, and
 _Re-enable SLM Updates_ puts them back. Both need `squad-server:disable-slm-updates`.
 
-SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or if it infers that voting has been turned on via `AdminEnableVoting 1`.
-
-Instead, it will report that voting has been enabled, and disable updates to the next layer until explicitely toggled back on, which will disable voting.
+SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or when it infers that
+voting was turned on with `AdminEnableVoting 1`. It reports that voting is enabled, and stops updating the next
+layer until someone turns updates back on. Turning them back on disables voting.
 
 #### 8.8. Repeat rules
 
 A _repeat rule_ sets how soon a map, layer or faction may be played again, counting across both the queue and the
-recent match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
+recent match history. Each rule covers one attribute. Set them on the _Repeat Rules_ tab.
 
 These are the defaults:
 
@@ -522,8 +523,7 @@ opt out of that.
 
 ### Layer Tags
 
-Individual layers can be tagged in the layer queue.
-Layers with certain tags can be configured to skip warnings:
+You can tag individual layers in the layer queue. Layers with certain tags can be configured to skip warnings:
 
 ![skip_warnings_for_tag](configuring_screenshots/skip_warnings_for_tag.png)
 ![fogless_friday](configuring_screenshots/fogless_friday.png)
@@ -565,3 +565,65 @@ it picks one of the remaining layers at random.
 The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time,
 and a value with no layers left is never picked. Your background filtering and the values already picked both narrow
 what remains, so configured weights do not map cleanly onto the distributions you end up seeing.
+
+### 10. Plugins
+
+Plugins add features to SLM. Manage them under _Plugins_ on the settings page. Doing so takes the `plugins:manage`
+permission.
+
+> [!WARNING]
+> A plugin can do anything SLM can, including editing the queue, running commands on your game servers, and reading
+> and changing SLM's database. Install plugins only from authors you trust.
+
+#### 10.1. Built-in plugins
+
+SLM ships with these plugins. They are installed but stopped until you start them.
+
+| Plugin           | What it does                                                              |
+| ---------------- | ------------------------------------------------------------------------- |
+| AFK Kicker       | Kicks AFK players when people are waiting in the queue, longest AFK first |
+| Balance Triggers | Watches recent match outcomes and warns admins when they look one-sided   |
+| Teamkill Warns   | Warns players when they have been teamkilled                              |
+
+#### 10.2. Installing a plugin
+
+1. Get the url of the plugin's `plugin.json` from its author.
+2. Paste it under _Install a plugin_ and click _Install_.
+3. Start the plugin with its toggle.
+
+SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author's site goes down. _Refresh_
+downloads it again, which is how you upgrade.
+
+You can also copy a plugin's folder into `data/plugins` and click _Rescan folder_. The folder must be named after the
+plugin's id. A plugin installed this way has no url, so upgrade it by replacing the folder.
+
+#### 10.3. Running and configuring a plugin
+
+A plugin's toggle starts and stops it, and SLM remembers the choice across restarts. Its status reads _Running_,
+_Stopped_ or _Failed_. A failed plugin shows the reason, such as a configuration that is not valid, or a plugin written
+for a different version of SLM.
+
+A plugin's settings and in-game commands are edited in its row. Its commands take triggers like SLM's own (see
+[5.2](#52-command-triggers)). If another command already owns one of its triggers, SLM warns that the trigger
+does nothing, and you set a different one.
+
+A plugin can define actions of its own that need a permission. Grant them to a role under _Plugin Grants_ (see
+[3.3](#33-assigning-permissions-to-roles)).
+
+When an upgraded plugin changes what it shows in the browser, open pages ask to reload. They do not reload by
+themselves, so nobody loses an edit in progress.
+
+#### 10.4. Uninstalling a plugin
+
+_Uninstall_ removes the plugin but keeps its settings and data, so reinstalling it restores them. To remove those as
+well, use _Delete data_ under _Leftover data_. That cannot be undone.
+
+### 11. Nav links
+
+The _Links_ menu in the nav bar holds links for your users, such as your community's rules or a Discord invite. A
+fresh install starts with links to SLM on GitHub and to its install guide.
+
+- Links for every server are under _Miscellaneous > Nav Links_ in the settings.
+- A server can add its own in its server settings. They show below the global ones while that server is selected.
+
+Each link is a label and a url.

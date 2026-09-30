@@ -1,5 +1,18 @@
 # Installing SLM
 
+## Trying it out first
+
+To see SLM before installing it for real, run a demo instance:
+
+```sh
+docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
+```
+
+Open http://localhost:3000 and sign in with any username from the form on the front page. The demo starts with
+example data and needs no Discord server. Everything in it is thrown away when you stop the container.
+
+## Installing for real
+
 ### 1. Prerequisites
 
 1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
@@ -8,11 +21,14 @@
 
 ### 2. Where to install
 
-SLM needs access to your squad server's log files. There are three ways to give it that: mount the log files
-directly into the container, connect over SFTP (this works with PSG-hosted servers), or run a server agent on the
-game host that streams the log data and proxies RCON (see
-[server_agent.md](server_agent.md)). SLM can manage any number of squad servers, so factor
-that in when deciding where to install it.
+SLM needs access to your squad server's log files. There are three ways to give it that:
+
+- mount the log files into the container
+- connect over SFTP (this works with PSG-hosted servers)
+- run a server agent on the game host, which streams the log data and proxies RCON (see
+  [server_agent.md](server_agent.md))
+
+SLM can manage any number of squad servers, so factor that in when deciding where to install it.
 
 ### 3. Installation
 
@@ -43,7 +59,7 @@ Create one at [discord.com/developers/applications](https://discord.com/develope
 Then make the settings match these screenshots:
 
 ![discord_1](../images/discord_1.png)
-Note the `applications.commands` and `bot` scopes. Both are needed.
+The `applications.commands` and `bot` scopes are both required.
 
 Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is wherever you plan to serve SLM from.
 ![discord_2](../images/discord_2.png)
@@ -64,27 +80,34 @@ Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find it, 
 discord settings and right-click the server icon. Only members of that server can be granted access to SLM.
 
 Set at least one `SUPER_USERS` id to your discord user id (click your profile picture with developer mode enabled),
-or nobody can administer the app. Super users hold every permission unconditionally, and are the bootstrap you
-cannot lock yourself out of. This person must be a member of your org's discord server.
+or nobody can administer the app. Super users hold every permission unconditionally, so you cannot lock them out.
+This person must be a member of your org's discord server.
 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
 sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
 
-SLM replies to a link to a selection on the history page with the selected events as a text file. For that, switch on
-`Message Content Intent` on the `Bot` page. Without it SLM still starts, but it cannot read messages, and the
-`discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch that setting off. SLM only
-replies to people whose roles grant `history:query`, the permission the history page itself needs.
+The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
+that, switch on `Message Content Intent` on the `Bot` page. Without it SLM still starts, but the bot cannot read
+messages, and the `discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch that setting
+off. The bot only replies to people whose roles grant `history:query`, the permission the history page itself needs.
 
-SLM only replies in channels where its role has these permissions:
+The SLM bot only replies in channels where its role has these permissions:
 
 - View Channel
 - Send Messages
 - Read Message History
 - Attach Files
 
+Grant them in one of two ways:
+
+- **Every channel:** give the SLM bot's role these permissions in _Server Settings > Roles_. The bot can then reply
+  in every channel its role can see.
+- **Specific channels:** leave them off the role, and add them for the SLM bot's role in each channel's _Edit
+  Channel > Permissions_. The bot then replies only in those channels.
+
 #### 3.3. Secrets
 
-Every credential SLM reads lives in `.env.secrets`. The rest of the configuration stays in `.env`.
+Put every credential SLM reads in `.env.secrets`, and the rest of the configuration in `.env`.
 
 | variable                             | what it is                                                          |
 | ------------------------------------ | ------------------------------------------------------------------- |
@@ -112,9 +135,8 @@ services:
       env_file: .env
 ```
 
-SLM reads `.env.secrets` as a file and never loads it into its own environment, so the credentials stay out of
-`docker inspect`, `/proc/<pid>/environ`, and the environment every subprocess inherits. Everything else stays in
-`.env`, handed over with `env_file`.
+SLM reads `.env.secrets` as a file and never loads it into its environment, so the credentials do not show up in
+`docker inspect` or in anything SLM starts. `.env` is passed to the container with `env_file`.
 
 If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As a
 docker secret, for instance:
@@ -132,52 +154,51 @@ secrets:
       file: ./.env.secrets
 ```
 
-The format is the same wherever it is mounted: `KEY=value`, one per line. A `SECRETS_FILE` pointing at something
-that is not there stops the boot, rather than quietly coming up without your credentials.
+The format is the same wherever it is mounted: `KEY=value`, one per line. If `SECRETS_FILE` points at a file that
+does not exist, SLM refuses to start instead of starting without your credentials.
 
 #### 3.4. Encryption key
 
-SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, and its server-agent token. This is
-keyed by `SETTINGS_ENCRYPTION_KEY`, which is required, and the app refuses to start without it. `install.sh`
-generates one into `.env.secrets` for you. If it could not, or you installed by hand, generate a strong key and
-paste it in yourself:
+SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, and its server-agent token. The key
+is `SETTINGS_ENCRYPTION_KEY`. It is required, and the app refuses to start without it. `install.sh` generates one
+into `.env.secrets` for you. If it could not, or you installed by hand, generate a strong key and paste it in
+yourself:
 
 ```sh
 openssl rand -base64 32
 ```
 
 Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be
-decrypted and have to be re-entered on the settings page. The first boot after setting the key transparently
-encrypts any connection secrets previously stored in plaintext.
+decrypted and have to be re-entered on the settings page. The first boot after setting the key encrypts any
+connection secrets previously stored in plaintext.
 
 #### 3.5. Battlemetrics
 
 SLM has a battlemetrics integration. Among other things, it lets users update player flags remotely and gives more
 context when managing players on the servers.
 
-Set `BM_PAT` (in `.env.secrets`, it is a credential) to a battlemetrics personal access token, and `BM_ORG_ID` (in
-`.env`) to your org's battlemetrics id. The required scopes are listed in the description of the `BM_PAT`
+Set `BM_PAT` in `.env.secrets` to a battlemetrics personal access token, and `BM_ORG_ID` in `.env` to your org's
+battlemetrics id. The required scopes are listed in the description of the `BM_PAT`
 environment variable.
 
-The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothing is polled, no player flags or
-profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to
+The integration is optional. If `BM_PAT` is unset, it turns itself off: nothing is polled, no player flags or
+profiles are read, and the parts of the app that show them are hidden. Set `BM_ENABLED=false` to
 turn it off while keeping the token configured.
 
 #### 3.6. Join button
 
-The server dashboard can offer a button that joins the server you are looking at. There are two ways SLM can
-resolve the link, and neither needs configuring per server. Configure either one, or both.
+The server dashboard can offer a button that joins the server you are looking at. SLM can resolve the link in two
+ways, and neither needs configuring per server. Configure either one, or both.
 
-The squad browser identifies a server by the name it reports over RCON. It answers for a server whether or not
-anyone is playing on it. Set `SQUADBROWSER_API_KEY` (in `.env.secrets`, it is a credential) to a squad browser
-api key. Keys start with `sqb_`.
+The squad browser identifies a server by the name it reports over RCON. It answers whether or not anyone is playing
+on the server. Set `SQUADBROWSER_API_KEY` in `.env.secrets` to a squad browser api key. Keys start with `sqb_`.
 
-Steam answers from the lobby a player in game is in, so it only works while someone is on the server, and only
-for players whose steam profile makes their game details public. Set `STEAM_API_KEY` (also a credential) to a
-key from https://steamcommunity.com/dev/apikey.
+Steam answers from the lobby of a player in game. It only works while someone is on the server, and only for players
+whose steam profile sets game details to public. Set `STEAM_API_KEY` in `.env.secrets` to a key from
+https://steamcommunity.com/dev/apikey.
 
-With both configured the squad browser is asked first, and steam covers the servers it does not list. Both are
-optional: leave both keys unset and the button is hidden rather than failing. `SQUADBROWSER_ENABLED=false` and
+With both configured, the squad browser is asked first, and steam covers the servers it does not list. Both are
+optional. If both keys are unset, the button is hidden. `SQUADBROWSER_ENABLED=false` and
 `STEAM_ENABLED=false` turn each off while keeping its key configured.
 
 The button never appears for a sandbox server, which SLM emulates in-process and nobody can join.
@@ -185,8 +206,8 @@ The button never appears for a sandbox server, which SLM emulates in-process and
 #### 3.7. Backups
 
 The database is snapshotted into `BACKUPS_DIR` before every migration, whether the app applies them at boot
-(`DB_AUTOMIGRATE`, the default) or you run them yourself. Nothing is applied if the snapshot fails. That one is not
-optional, and it is what a bad upgrade is rolled back from. Periodic backups are off until you set an interval.
+(`DB_AUTOMIGRATE`, the default) or you run them yourself. Nothing is applied if the snapshot fails. This snapshot is
+not optional. It is what you roll back to after a bad upgrade. Periodic backups are off until you set an interval.
 
 | variable                     | default          | what it does                                                          |
 | ---------------------------- | ---------------- | --------------------------------------------------------------------- |
@@ -202,9 +223,8 @@ filenames mean, and for putting one back with `restore.sh`.
 Detailed logs and telemetry are available via grafana at `http://localhost:3001`, which you may also want to expose
 to the internet. Change the default admin password before doing so. Three dashboards come preconfigured for
 monitoring SLM. Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
-[VictoriaMetrics](https://victoriametrics.com/) store per signal. See
-[observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows
-are.
+[VictoriaMetrics](https://victoriametrics.com/) store per signal. [observability/README.md](../observability/README.md)
+covers how the pieces fit together and the retention windows.
 
 If you do not want any telemetry, set `OTEL_ENABLED=false` and comment out or delete the `victoria-metrics`,
 `victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before
@@ -220,7 +240,7 @@ docker compose up -d
 
 If docker is configured to start on boot, the app starts automatically after a reboot.
 
-Stop everything with `docker compose down`. To stop just the app and leave grafana running, use `docker compose stop
+Stop everything with `docker compose down`. To stop only the app and leave grafana running, use `docker compose stop
 app`.
 
 Once the app is running you can sign in with discord OAuth, and move on to [configuring SLM](configuring.md).
@@ -233,24 +253,26 @@ docker compose pull && docker compose up -d
 
 Pick which image tag to follow in `docker-compose.yaml`:
 
-| tag         | what it gets you                                                          |
+| tag         | what it points at                                                         |
 | ----------- | ------------------------------------------------------------------------- |
 | `:stable`   | the latest release. Releases group changes and come with release notes.   |
 | `:latest`   | every change as soon as it passes tests                                   |
 | `:2026.9.4` | one release, which never changes. Releases are named `year.month.number`. |
 
 Before upgrading, read the notes for every release since yours in [CHANGELOG.md](../CHANGELOG.md), under "For
-operators". A "Breaking" note tells you something to do. The same notes are logged when the upgraded app starts, and
+operators". A "Breaking" note describes a change you must make to upgrade. The same notes are logged when the upgraded app starts, and
 everyone signed in to SLM can see what changed on its What's new page.
 
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
 up first (see [3.7](#37-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
 putting the snapshot back and pinning the image it belongs to.
 
-An install that predates `.env.secrets` keeps working untouched, since SLM reads the credentials from wherever it
-finds them. To move them out of the environment (see [3.3](#33-secrets)), take the seven variables in that section out
-of your `.env`, put them in a `.env.secrets` next to it, then add the mount to the `app` service in your
-`docker-compose.yaml` before `docker compose up -d`:
+An install that predates `.env.secrets` keeps working unchanged, because SLM reads the credentials from wherever it
+finds them. To move them out of the environment (see [3.3](#33-secrets)):
+
+1. Take the variables in that section out of your `.env`.
+2. Put them in a `.env.secrets` next to it.
+3. Add the mount to the `app` service in your `docker-compose.yaml`, then run `docker compose up -d`:
 
 ```yaml
 volumes:
