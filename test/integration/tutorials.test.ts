@@ -56,7 +56,7 @@ describe('tutorial runtime', () => {
 	})
 
 	it('stands up a scoped server seeded with the scenario queue', async () => {
-		const res = await client.tutorials.start({ scenarioId: 'layer-queue' })
+		const res = await client.tutorials.start({ scenarioId: 'layer-queue', msIntoDay: 12 * 3_600_000 })
 		expect(res).toEqual({ code: 'ok', serverId: SERVER_ID })
 
 		expect(await runState()).toEqual({ code: 'active', scenarioId: 'layer-queue', serverId: SERVER_ID })

@@ -61,6 +61,10 @@ export type StageCtx = C.Db &
 	Msgs.Ctx &
 	CS.AbortSignal & { sandbox: Sandbox.SandboxInstance; owner: bigint }
 
+// How far into their local day the reader is. A duration rather than a timestamp, so it survives clock skew between
+// the reader and the server.
+type ReaderClock = { msIntoDay: number }
+
 type ScenarioDef<S extends string> = {
 	id: TUT.ScenarioId
 	// instance policy: every scenario states its own pacing, because the emulator's defaults are tuned for realism,
@@ -72,7 +76,7 @@ type ScenarioDef<S extends string> = {
 	// after enable: at creation there is no client, no vote and no sync to reproduce the production way.
 	initialQueue: (owner: bigint) => LL.List
 	// runs once inside start(), after enable and before the client sees the server
-	setup: (ctx: StageCtx) => Promise<void>
+	setup: (ctx: StageCtx, reader: ReaderClock) => Promise<void>
 	// idempotent, individually addressable staging blocks. Each asserts the state it needs and creates whatever is
 	// missing, so any step can be re-entered.
 	stages: Record<S, (ctx: StageCtx) => Promise<TUT.StageResult>>
@@ -441,8 +445,12 @@ const PAST_MATCHES: { beats: BackstoryBeat[]; winnerTeamId: 1 | 2; startedAgoMin
 // Gives the matches just played a history: each one starts `startedAgoMin` before now and runs `lastedMin`, with
 // its events spread across that span in their original order. Its rows are written, then the managed server's
 // match history is reloaded and the events cache dropped, so nothing keeps the times it had before.
-async function backdatePastMatches(ctx: StageCtx) {
+// The match history panel opens on the reader's today, so a backstory reaching past their midnight is compressed
+// to fit inside it. Otherwise a run started shortly after midnight shows no past match to point at.
+async function backdatePastMatches(ctx: StageCtx, reader: ReaderClock) {
 	const now = Date.now()
+	const backstoryMs = Math.max(...PAST_MATCHES.map((plan) => plan.startedAgoMin)) * 60_000
+	const scale = Math.min(1, reader.msIntoDay / backstoryMs)
 	const past = ctx.matchHistory.recentMatches.filter((match) => !match.isCurrentMatch).slice(-PAST_MATCHES.length)
 	for (const [i, match] of past.entries()) {
 		const plan = PAST_MATCHES[i]
@@ -450,8 +458,8 @@ async function backdatePastMatches(ctx: StageCtx) {
 		const oldStart = (match.startTime ?? match.createdAt)?.getTime()
 		const oldEnd = match.status === 'post-game' && match.endTime !== 'unknown' ? match.endTime.getTime() : undefined
 		if (oldStart === undefined || oldEnd === undefined) continue
-		const newStart = now - plan.startedAgoMin * 60_000
-		const newEnd = newStart + plan.lastedMin * 60_000
+		const newStart = now - Math.floor(plan.startedAgoMin * 60_000 * scale)
+		const newEnd = newStart + Math.floor(plan.lastedMin * 60_000 * scale)
 		const oldSpan = Math.max(1, oldEnd - oldStart)
 		await ctx
 			.db()
@@ -521,13 +529,13 @@ const playerManagement = defScenario({
 		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[2] }, { type: 'generated' }),
 		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[0] }, { type: 'manual', userId: owner }),
 	],
-	setup: async (ctx) => {
+	setup: async (ctx, reader) => {
 		await ensurePeerUser(ctx)
 		await playMatchHistory(ctx)
 		await restoreRoster(ctx)
 		await playBeats(ctx, BACKSTORY)
 		// last, because what a roll logs is written a moment after the roll itself settles
-		await backdatePastMatches(ctx)
+		await backdatePastMatches(ctx, reader)
 	},
 	stages: {
 		// Everything a later section of the tour may have changed, undone: nobody kicked, timed out, moved, queued
@@ -799,37 +807,41 @@ export async function setup(ctx: C.Db) {
 	if (servers.length || filters) log.info('swept %d tutorial servers and %d filters left by an earlier run', servers.length, filters)
 }
 
-const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.AbortSignal, owner: bigint, scenarioId: TUT.ScenarioId) => {
-	const serverId = serverIdFor(owner)
-	// clear any prior run (and any stale server a crashed run left behind) before standing up the new one
-	await teardown(ctx, owner)
-	runs.set(owner, { scenarioId, serverId, owner, phase: 'starting' })
-	runChanged$.next()
-	try {
-		const scenario = SCENARIOS[scenarioId]
-		const initialQueue = scenario.initialQueue(owner)
-		await FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
-		const created = await Settings.createServerEntry(ctx, {
-			id: serverId,
-			displayName: DISPLAY_NAME,
-			settings: buildSandboxSettings(owner, scenario, LL.getNextLayerId(initialQueue)),
-			visibility: 'scoped',
-			ownerDiscordId: owner,
-			layerQueue: initialQueue,
-		})
-		if (created.code !== 'ok') throw new Error(`could not create tutorial server: ${created.code}`)
-		const enabled = await SquadServer.enableServer(serverId)
-		if (enabled.code !== 'ok') throw new Error(`could not enable tutorial server: ${enabled.code}`)
-		await scenario.setup(stageCtxFor(ctx, serverId, owner))
-		runs.set(owner, { scenarioId, serverId, owner, phase: 'active' })
-		runChanged$.next()
-		return { code: 'ok' as const, serverId }
-	} catch (err) {
-		log.error(err, 'tutorial start failed for %s', serverId)
+const start = Instr.spanOp(
+	'tutorials.start',
+	{ module },
+	async (ctx: C.Db & CS.AbortSignal, owner: bigint, scenarioId: TUT.ScenarioId, reader: ReaderClock) => {
+		const serverId = serverIdFor(owner)
+		// clear any prior run (and any stale server a crashed run left behind) before standing up the new one
 		await teardown(ctx, owner)
-		return { code: 'err:start-failed' as const }
-	}
-})
+		runs.set(owner, { scenarioId, serverId, owner, phase: 'starting' })
+		runChanged$.next()
+		try {
+			const scenario = SCENARIOS[scenarioId]
+			const initialQueue = scenario.initialQueue(owner)
+			await FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
+			const created = await Settings.createServerEntry(ctx, {
+				id: serverId,
+				displayName: DISPLAY_NAME,
+				settings: buildSandboxSettings(owner, scenario, LL.getNextLayerId(initialQueue)),
+				visibility: 'scoped',
+				ownerDiscordId: owner,
+				layerQueue: initialQueue,
+			})
+			if (created.code !== 'ok') throw new Error(`could not create tutorial server: ${created.code}`)
+			const enabled = await SquadServer.enableServer(serverId)
+			if (enabled.code !== 'ok') throw new Error(`could not enable tutorial server: ${enabled.code}`)
+			await scenario.setup(stageCtxFor(ctx, serverId, owner), reader)
+			runs.set(owner, { scenarioId, serverId, owner, phase: 'active' })
+			runChanged$.next()
+			return { code: 'ok' as const, serverId }
+		} catch (err) {
+			log.error(err, 'tutorial start failed for %s', serverId)
+			await teardown(ctx, owner)
+			return { code: 'err:start-failed' as const }
+		}
+	},
+)
 
 // ============================== progress ==============================
 
@@ -913,10 +925,10 @@ export const orpcRouter = {
 
 	start: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ scenarioId: TUT.ScenarioIdSchema }))
+		.input(z.object({ scenarioId: TUT.ScenarioIdSchema, msIntoDay: z.number().int().min(0).max(86_400_000) }))
 		.handler(async ({ context, input }) => {
 			const owner = context.user.discordId
-			return await startMtxFor(owner).runExclusive(() => start(context, owner, input.scenarioId))
+			return await startMtxFor(owner).runExclusive(() => start(context, owner, input.scenarioId, { msIntoDay: input.msIntoDay }))
 		}),
 
 	stage: orpcBase
