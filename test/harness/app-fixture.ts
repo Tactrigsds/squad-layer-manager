@@ -772,7 +772,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		})
 	}
 
-	return {
+	const fixture: AppFixture = {
 		emu,
 		serverAgent,
 		bm,
@@ -833,6 +833,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			await spawnApp()
 		},
 		dispose: async () => {
+			live.delete(fixture)
 			serverAgent?.dispose()
 			await stopApp()
 			emu.dispose()
@@ -842,4 +843,12 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			if (!process.env.SLM_KEEP_TEST_TMP) fs.rmSync(tmpDir, { recursive: true, force: true })
 		},
 	}
+	live.add(fixture)
+	return fixture
+}
+
+// every fixture not yet disposed, for the failure report (see failure-report.ts)
+const live = new Set<AppFixture>()
+export function liveFixtures(): Iterable<AppFixture> {
+	return live
 }
