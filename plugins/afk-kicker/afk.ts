@@ -7,7 +7,8 @@
 // them AFK, which is right for a population count and wrong for a kicker, where it would kick whoever just came
 // in off the queue, and everyone on the server after a restart.
 //
-// Nothing is persisted. After a restart every clock starts again from when the player is first seen.
+// Every clock starts again at a new game, as it does after a restart: nothing is persisted, and everyone is treated as
+// first seen.
 
 import type * as SE from 'slm/models/server-events'
 import type * as SM from 'slm/models/squad'
@@ -52,8 +53,12 @@ function actors(event: SE.Event): string[] {
 }
 
 export function note(tracker: Tracker, event: SE.Event, now: number): void {
-	// squads do not carry over, so nobody could have joined one yet
-	if (event.type === 'NEW_GAME') tracker.squadlessSince.clear()
+	// recentKicks survives: it tracks slots, not players
+	if (event.type === 'NEW_GAME') {
+		tracker.lastActive.clear()
+		tracker.squadlessSince.clear()
+		tracker.lastWarned.clear()
+	}
 	for (const id of actors(event)) tracker.lastActive.set(id, now)
 }
 

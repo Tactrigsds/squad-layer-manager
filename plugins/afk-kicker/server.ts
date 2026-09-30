@@ -7,6 +7,7 @@ import type * as P from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Servers from 'slm/plugin/servers'
 import * as Instr from 'slm/server/instrumentation'
+import * as MatchHistory from 'slm/systems/match-history'
 import * as SquadRcon from 'slm/systems/squad-rcon'
 import * as SquadServer from 'slm/systems/squad-server'
 
@@ -58,19 +59,20 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 type Reading = { afk: Afk.Afk[]; needed: number }
 
 async function read(ctx: Ctx, tracker: Afk.Tracker, cfg: Config): Promise<Reading | null> {
-	const info = await SquadRcon.getServerInfo(ctx)
+	const [info, match] = await Promise.all([SquadRcon.getServerInfo(ctx), MatchHistory.getCurrentMatch(ctx)])
 	const teams = SquadServer.getCurrTeams(ctx)
 	if (!teams || info.code !== 'ok') return null
 	const now = Date.now()
 	Afk.observe(tracker, teams.players, now)
+	// nobody can join a squad or do anything between the round ending and the next one starting
+	if (!match || match.status === 'post-game') return null
 	Afk.pruneKicks(tracker, now, KICK_SETTLE_MS)
 	const needed = Afk.kicksNeeded(info.data, cfg.targetQueue, tracker.recentKicks.length)
 	if (needed === null) {
 		ctx.log.warn('server info does not add up, not kicking: %o', info.data)
 		return null
 	}
-	const match = SquadServer.peekCurrentMatch(ctx)
-	const gamemode = match ? gamemodeOf(match.layerId) : undefined
+	const gamemode = gamemodeOf(match.layerId)
 	const rule: Afk.Rule =
 		gamemode && cfg.idleGamemodes.includes(gamemode)
 			? { kind: 'idle', window: cfg.idleWindow }

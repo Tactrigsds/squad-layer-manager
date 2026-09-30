@@ -12,13 +12,15 @@ camera count. Moving around does not, because the server never reports it. Being
 because players often do not join one while seeding.
 
 On every other gamemode, a player is AFK when they have been out of a squad for longer than **Squadless window**
-(5 minutes by default). The clock restarts when a new match starts.
+(5 minutes by default).
 
-A player who has just joined counts as active. So does everyone on the server when SLM starts.
+A player who has just joined counts as active. So does everyone on the server when a new match starts, or when SLM
+starts.
 
 ## When it kicks
 
-Every five seconds it works out how many players have to go:
+Every five seconds it works out how many players have to go. It does nothing between the end of a match and the start
+of the next one.
 
 ```
 waiting in the queue - free slots - Target queue
