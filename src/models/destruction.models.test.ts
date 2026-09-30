@@ -212,6 +212,11 @@ describe('teamOfBlueprint', () => {
 		expect(DSTR.teamOfBlueprint('US_Hab_Forest', ['USA', 'RGF'])).toBe(1)
 	})
 
+	it('prefers an exact faction over one it only abbreviates', () => {
+		expect(DSTR.teamOfBlueprint('BP_FOBRadio_PLA', ['PLA', 'PLAAGF'])).toBe(1)
+		expect(DSTR.teamOfBlueprint('BP_FOBRadio_PLAAGF', ['PLA', 'PLAAGF'])).toBe(2)
+	})
+
 	it('is null when no side, or both, match', () => {
 		expect(DSTR.teamOfBlueprint('BP_Deployable_TM62Mine', ['USA', 'RGF'])).toBeNull()
 		expect(DSTR.teamOfBlueprint('US_Hab_Forest', ['USA', 'USMC'])).toBeNull()

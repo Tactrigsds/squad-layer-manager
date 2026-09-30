@@ -662,7 +662,8 @@ function rangeNodes(column: string, min: number | undefined, max: number | undef
 }
 
 const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
-const DESTROYED_TYPES = ['VEHICLE_DESTROYED', 'DEPLOYABLE_DESTROYED']
+// vehicles and deployables destroyed, and FOB radios attacked (SE.TargetedEvent)
+const TARGETED_TYPES = ['VEHICLE_DESTROYED', 'DEPLOYABLE_DESTROYED', 'FOB_RADIO_DAMAGED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
@@ -711,8 +712,8 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 			return {
 				type: 'nor',
 				children: [
-					// a destroyed event with no variant is not a teamkill, which is what the negation's IS NOT TRUE says
-					{ type: 'and', children: [comp('event.type', [...KILL_TYPES, ...DESTROYED_TYPES]), NOT_TEAMKILL] },
+					// a targeted event with no variant is not a teamkill, which is what the negation's IS NOT TRUE says
+					{ type: 'and', children: [comp('event.type', [...KILL_TYPES, ...TARGETED_TYPES]), NOT_TEAMKILL] },
 					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
 					comp('event.type', BOOKKEEPING_TYPES),
 				],
@@ -732,9 +733,9 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				],
 			}
 		case 'KILLFEED':
-			return comp('event.type', [...KILL_TYPES, ...DESTROYED_TYPES])
+			return comp('event.type', [...KILL_TYPES, ...TARGETED_TYPES])
 		case 'VEHICLES':
-			return comp('event.type', [...DESTROYED_TYPES, 'FOB_RADIO_DAMAGED'])
+			return comp('event.type', TARGETED_TYPES)
 		default:
 			assertNever(feed)
 	}

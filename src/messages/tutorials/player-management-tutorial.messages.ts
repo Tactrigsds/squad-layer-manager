@@ -33,11 +33,11 @@ export namespace Activity {
 				`<p>Pick which events the log shows:</p>
 <ul>
 <li><em>All</em>: everything.</li>
-<li><em>Default</em>: everything except the killfeed and players joining or leaving squads. Teamkills still show, of players, vehicles and deployables.</li>
+<li><em>Default</em>: everything except the killfeed and players joining or leaving squads. Teamkills still show, including of vehicles, deployables and FOB radios.</li>
 <li><em>Chat</em>: chat on every channel, broadcasts, and warnings sent through SLM.</li>
 <li><em>SLM Events</em>: what SLM and its users did, such as setting the next layer or warning a player.</li>
 <li><em>Admin</em>: SLM events plus admin chat, broadcasts, admins joining and leaving, and admin actions such as kicks, bans and entering admin camera.</li>
-<li><em>Killfeed</em>: kills, wounds, and vehicles and deployables destroyed.</li>
+<li><em>Killfeed</em>: kills, wounds, vehicles and deployables destroyed, and FOB radios under attack.</li>
 <li><em>Vehicles & Deployables</em>: vehicles and deployables destroyed, and FOB radios under attack.</li>
 </ul>
 <p><em>Selected Only</em> narrows the log to the players you have selected in the teams table. We will get to selecting players shortly.</p>`,
