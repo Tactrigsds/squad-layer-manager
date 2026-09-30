@@ -65,14 +65,16 @@ describe('afkPlayers', () => {
 		expect(Afk.afkPlayers(t, r, IDLE, 60 * MIN).map((a) => a.id)).toEqual(['squadded'])
 	})
 
-	it('restarts the squad clock at a new game', () => {
+	it('restarts every clock at a new game', () => {
 		const t = Afk.init()
 		const r = roster(player('a', null))
 		Afk.observe(t, r, 0)
-		Afk.note(t, { type: 'NEW_GAME' } as SE.Event, 4 * MIN)
-		Afk.observe(t, r, 4 * MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 8 * MIN)).toEqual([])
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 9 * MIN).map((a) => a.reason)).toEqual(['squadless'])
+		Afk.note(t, { type: 'NEW_GAME' } as SE.Event, 14 * MIN)
+		Afk.observe(t, r, 14 * MIN)
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 18 * MIN)).toEqual([])
+		expect(Afk.afkPlayers(t, r, IDLE, 28 * MIN)).toEqual([])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 19 * MIN).map((a) => a.reason)).toEqual(['squadless'])
+		expect(Afk.afkPlayers(t, r, IDLE, 29 * MIN).map((a) => a.reason)).toEqual(['idle'])
 	})
 
 	it('orders longest AFK first', () => {
