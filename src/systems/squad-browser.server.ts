@@ -1,8 +1,10 @@
 import { FixedSizeMap } from '@/lib/lru-map'
 import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
+import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
+import * as Settings from '@/systems/settings.server'
 
 // Resolves a squad server's name into a join link, via the squad browser's public api.
 // https://api.squadbrowser.app/docs#tag/utilities/POST/pub/join-link
@@ -13,16 +15,14 @@ const module = initModule('squad-browser')
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
+// off until the settings are loaded, which happens after this module is set up
 export function isEnabled() {
-	return ENV?.SQUADBROWSER_ENABLED ?? false
+	return !!Settings.GLOBAL_SETTINGS && SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.squadBrowser)
 }
 
 export function setup() {
 	log = module.getLogger()
 	ENV = getEnv()
-	if (!ENV.SQUADBROWSER_ENABLED) {
-		log.info('Squad browser integration is off (SQUADBROWSER_ENABLED=false); no join links are available')
-	}
 }
 
 export type JoinLinkRes =
@@ -75,7 +75,7 @@ async function fetchJoinLink(ctx: CS.Ctx & CS.AbortSignal, serverName: string): 
 	try {
 		response = await fetch(`${ENV.SQUADBROWSER_HOST}${JOIN_LINK_PATH}`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'x-api-key': ENV.SQUADBROWSER_API_KEY! },
+			headers: { 'Content-Type': 'application/json', 'x-api-key': Settings.GLOBAL_SETTINGS.integrations.squadBrowser.token },
 			body: JSON.stringify({ serverName }),
 			signal: ctx.signal,
 		})

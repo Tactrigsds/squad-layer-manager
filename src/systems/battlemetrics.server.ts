@@ -9,6 +9,7 @@ import * as AppEvents from '@/models/app-events.models'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
+import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
@@ -30,19 +31,21 @@ let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
 // Every path out of this module is gated on it: with no token, a lookup is a 401 against a third party rather
-// than a missing flag, and the pollers would spend one per online player forever.
+// than a missing flag, and the pollers would spend one per online player forever. Read from the settings on
+// every call, so a token entered or a switch flipped on the settings page takes effect without a restart. Off
+// until the settings are loaded, which happens after this module is set up.
 export function isEnabled() {
-	return ENV?.BM_ENABLED ?? false
+	return !!Settings.GLOBAL_SETTINGS && SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.battlemetrics)
+}
+
+// the org the token belongs to, or undefined when none is configured, in which case flags are not filtered by org
+function orgId(): string | undefined {
+	return Settings.GLOBAL_SETTINGS.integrations.battlemetrics.orgId || undefined
 }
 
 export async function setup() {
 	log = module.getLogger()
 	ENV = getEnv()
-
-	if (!ENV.BM_ENABLED) {
-		log.info('Battlemetrics integration is off (BM_ENABLED=false); player flags and profiles are unavailable')
-		return
-	}
 
 	try {
 		const stored = await PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
@@ -309,11 +312,11 @@ async function bmFetch<T = null>(
 		},
 		async (ctx: CS.Ctx & CS.AbortSignal) => {
 			// the callers below all return early instead; reaching here means one of them stopped doing so
-			if (!ENV.BM_ENABLED) throw new Error('The battlemetrics integration is off (BM_ENABLED=false)')
+			if (!isEnabled()) throw new Error('The battlemetrics integration is off')
 			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
-				Authorization: `Bearer ${ENV.BM_PAT}`,
+				Authorization: `Bearer ${Settings.GLOBAL_SETTINGS.integrations.battlemetrics.token}`,
 				Accept: 'application/json',
 				...(init?.headers as Record<string, string>),
 			}
@@ -419,7 +422,7 @@ const OrgFlagsResponse = z.object({
 })
 
 export const getOrgFlags = Instr.spanOp('getOrgFlags', { module }, async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
-	if (!ENV.BM_ENABLED) return []
+	if (!isEnabled()) return []
 	if (orgFlagsCache) return orgFlagsCache
 
 	if (!orgFlagsFetchPromise) {
@@ -463,7 +466,7 @@ export const addPlayerNote = Instr.spanOp(
 				data: {
 					type: 'playerNote',
 					attributes: { note, shared: true },
-					relationships: { organization: { data: { type: 'organization', id: ENV.BM_ORG_ID } } },
+					relationships: { organization: { data: { type: 'organization', id: orgId() } } },
 				},
 			},
 		})
@@ -495,7 +498,7 @@ export const removePlayerFlags = Instr.spanOp(
 )
 
 async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bmPlayerId: string): Promise<BM.PlayerFlagsAndProfile> {
-	const { BM_ORG_ID } = getEnv()
+	const BM_ORG_ID = orgId()
 	const detailPath =
 		`/players/${bmPlayerId}` +
 		`?include=identifier,flagPlayer,playerFlag` +
@@ -592,7 +595,7 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ [ATTRS.Player.EOS_ID]: playerIds.eos, [ATTRS.Player.STEAM_ID]: playerIds.steam }) },
 	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
-		if (!ENV.BM_ENABLED) return null
+		if (!isEnabled()) return null
 		const eosId = playerIds.eos
 		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
@@ -612,8 +615,9 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 
 // -------- interval-based bulk polling --------
 
+// the pollers run for the life of the server and ask isEnabled on every tick, so the integration can be switched
+// on or off from the settings page while servers are up
 export function setupSquadServerInstance(ctx: C.ManagedServer) {
-	if (!ENV.BM_ENABLED) return
 	const serverId = ctx.serverId
 
 	ctx.cleanup.push(
@@ -621,6 +625,7 @@ export function setupSquadServerInstance(ctx: C.ManagedServer) {
 			.pipe(
 				Rx.startWith(0),
 				Instr.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
+					if (!isEnabled()) return
 					const serverCtx = SquadServer.resolveCtx({ signal }, serverId)
 
 					const onlineEosIds = await bulkFetchOnlinePlayers(serverCtx).catch((err) => {
@@ -647,6 +652,7 @@ export function setupSquadServerInstance(ctx: C.ManagedServer) {
 					{ module, root: true, taskScheduling: 'parallel' },
 					async ([eventCtx, event], signal) => {
 						if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
+						if (!isEnabled()) return
 						const playerIds = event.player.ids
 						const serverCtx = SquadServer.eventCtx(eventCtx, signal)
 						await fetchSinglePlayerBmData(serverCtx, playerIds).catch((err) => {
@@ -711,7 +717,7 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
+			if (!isEnabled()) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)
 			// the client marks those fields required, but it's the client of a permission-gated mutation: re-check here
@@ -768,7 +774,7 @@ export const router = {
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
+			if (!isEnabled()) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)
 			const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)

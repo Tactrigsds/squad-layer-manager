@@ -135,6 +135,32 @@ describe('secrets', () => {
 	})
 })
 
+// the integration credentials moved to the settings page. What an environment from before still says is carried
+// over once (settings.server.ts loadGlobalSettings), and reported for as long as it is set.
+describe('legacy integration variables', () => {
+	it('describe the settings to carry over, with an unset switch reading as on', async () => {
+		const Env = await loadEnv('BM_PAT=bm-token\nSTEAM_API_KEY=steam-key\n', { BM_ORG_ID: '42', SQUADBROWSER_ENABLED: 'false' })
+		Env.ensureEnvSetup()
+		expect(Env.legacyIntegrationSettings()).toEqual({
+			battlemetrics: { enabled: true, token: 'bm-token', orgId: '42' },
+			squadBrowser: { enabled: false, token: '' },
+			steam: { enabled: true, token: 'steam-key' },
+		})
+		expect(
+			Env.deprecatedVarsSet()
+				.map((v) => v.key)
+				.sort(),
+		).toEqual(['BM_ORG_ID', 'BM_PAT', 'SQUADBROWSER_ENABLED', 'STEAM_API_KEY'])
+	})
+
+	it('describe nothing when none is set', async () => {
+		const Env = await loadEnv('')
+		Env.ensureEnvSetup()
+		expect(Env.legacyIntegrationSettings()).toBeUndefined()
+		expect(Env.deprecatedVarsSet()).toEqual([])
+	})
+})
+
 describe('the development encryption key', () => {
 	it('is refused in production, where it would encrypt nothing: it is public', async () => {
 		const { INSECURE_DEV_ENCRYPTION_KEY } = await import('./env.ts')
@@ -276,77 +302,5 @@ describe('DEMO', () => {
 	it('accepts a steam key there is only a stub to spend on', async () => {
 		const Env = await loadEnv('STEAM_API_KEY=stub-key\n', { DEMO: '1', STEAM_HOST: 'http://127.0.0.1:3124' })
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
-	})
-})
-
-// same bargain as BM_ENABLED: an install that never configured the squad browser says so by omission, and the
-// join button is hidden rather than resolving to a 401 against a third party
-describe('SQUADBROWSER_ENABLED', () => {
-	it('is off when there is no key and only the real api to spend one on', async () => {
-		const Env = await loadEnv('', { DEMO: '1' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('false')
-	})
-
-	it('is on for an install that configured a key', async () => {
-		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('true')
-	})
-
-	it('leaves an explicit answer alone', async () => {
-		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY, SQUADBROWSER_ENABLED: 'false' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('false')
-	})
-})
-
-// the same, for the steam lobby the join button falls back to when the squad browser cannot resolve the server
-describe('STEAM_ENABLED', () => {
-	it('is off when there is no key and only the real api to spend one on', async () => {
-		const Env = await loadEnv('', { DEMO: '1' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('STEAM_ENABLED')).toBe('false')
-	})
-
-	it('is on for an install that configured a key', async () => {
-		const Env = await loadEnv('STEAM_API_KEY=real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('STEAM_ENABLED')).toBe('true')
-	})
-
-	it('leaves an explicit answer alone', async () => {
-		const Env = await loadEnv('STEAM_API_KEY=real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY, STEAM_ENABLED: 'false' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('STEAM_ENABLED')).toBe('false')
-	})
-})
-
-// there is no BM_ENABLED an install would already be setting, so an install that never configured battlemetrics
-// says so by omission -- and reaching for the api anyway is a 401 per player, against a third party, forever
-describe('BM_ENABLED', () => {
-	it('is off when there is no token and only the real api to spend one on', async () => {
-		const Env = await loadEnv('', { DEMO: '1' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('BM_ENABLED')).toBe('false')
-	})
-
-	it('is on for an install that configured a token', async () => {
-		const Env = await loadEnv('BM_PAT=real-token\n', { SETTINGS_ENCRYPTION_KEY: KEY })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('BM_ENABLED')).toBe('true')
-	})
-
-	// a dev instance and the test harness both run a stub with no token, which is a battlemetrics to talk to
-	it('is on for a stub, token or no token', async () => {
-		const Env = await loadEnv('', { DEMO: '1', BM_HOST: 'http://127.0.0.1:3123' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('BM_ENABLED')).toBe('true')
-	})
-
-	it('leaves an explicit answer alone', async () => {
-		const Env = await loadEnv('BM_PAT=real-token\n', { SETTINGS_ENCRYPTION_KEY: KEY, BM_ENABLED: 'false' })
-		Env.ensureEnvSetup()
-		expect(Env.rawVar('BM_ENABLED')).toBe('false')
 	})
 })

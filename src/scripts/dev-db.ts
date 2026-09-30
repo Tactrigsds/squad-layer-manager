@@ -20,6 +20,7 @@ import * as Seed from '@/systems/seed.server'
 
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
+import * as BmServer from '../emulator/bm-server.ts'
 
 // the single admin list a dev workspace keeps, pointed at the worktree's emulated Admins.cfg
 const DEV_ADMIN_LIST = 'dev'
@@ -167,6 +168,17 @@ function deadConnection(serverId: string): SETTINGS.ServerConnection {
 	}
 }
 
+// The integrations a workspace runs with: the battlemetrics stub the emulator host serves (see dev/instance.ts),
+// which wants the org id it claims, and nothing else. A cloned database's real tokens are dropped for the same
+// reason its RCON connections are: nothing in a dev instance may reach a real service.
+function devIntegrations(): SETTINGS.Integrations {
+	return {
+		battlemetrics: { enabled: true, token: 'dev', orgId: BmServer.STUB_ORG_ID },
+		squadBrowser: { enabled: true, token: '' },
+		steam: { enabled: true, token: '' },
+	}
+}
+
 // What the app's own first boot would write to an empty database, written here instead: a workspace has to be
 // re-pointed at its emulator and signed in to before anyone sees it, and both need rows to exist by then.
 //
@@ -182,7 +194,10 @@ async function seedFresh(driver: Database) {
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, {
 			id: 1,
-			settings: SETTINGS.GlobalSettingsSchema.encode(Seed.applyInitialGlobalSettings(defaults.data)),
+			settings: SETTINGS.GlobalSettingsSchema.encode({
+				...Seed.applyInitialGlobalSettings(defaults.data),
+				integrations: devIntegrations(),
+			}),
 		}),
 	)
 
@@ -272,12 +287,13 @@ async function repointServers(driver: Database) {
 				},
 			},
 			playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS), ...clonedGroupings },
+			integrations: devIntegrations(),
 		}
 		await db
 			.update(Schema.globalSettings)
 			.set(superjsonify(Schema.globalSettings, { settings }))
 			.where(E.eq(Schema.globalSettings.id, gsRows[0].id))
-		console.log('re-pointed the admin list at the emulated Admins.cfg')
+		console.log('re-pointed the admin list at the emulated Admins.cfg, and the integrations at the battlemetrics stub')
 
 		const serverRows = await db.select().from(Schema.servers)
 		for (const row of serverRows) {

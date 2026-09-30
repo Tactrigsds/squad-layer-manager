@@ -248,15 +248,17 @@ export type BackupCreated = z.infer<typeof BackupCreatedSchema>
 export const REDACTED_SETTING = '[redacted]'
 export const SettingChangeSchema = z.object({ path: z.string(), from: z.unknown(), to: z.unknown() })
 
-// the settings subtree holding credentials. `connections` is the whole of it: rcon password, sftp host/user/password,
-// and the server-agent token all live under it, and it's the same subtree RBAC gates behind write-sensitive.
-function isSensitiveSettingPath(path: string) {
-	return path === 'connections' || path.startsWith('connections.')
-}
+// what the audit log keeps of a value at a settings path. Which paths hold credentials is the settings schema's
+// knowledge (SETTINGS.redactSettingValue), handed in rather than imported, since the settings models import this one.
+export type RedactSettingValue = (path: string, value: unknown) => unknown
 
 // applied by toRow on the way to the database, so a caller that forgets to redact still can't persist a credential
-export function redactSettingChanges(changes: SettingsUpdated['changes']): SettingsUpdated['changes'] {
-	return changes?.map((c) => (isSensitiveSettingPath(c.path) ? { ...c, from: REDACTED_SETTING, to: REDACTED_SETTING } : c))
+export function redactSettingChanges(changes: SettingsUpdated['changes'], redact: RedactSettingValue): SettingsUpdated['changes'] {
+	return changes?.map((c) => {
+		const from = redact(c.path, c.from)
+		const to = redact(c.path, c.to)
+		return from === c.from && to === c.to ? c : { ...c, from, to }
+	})
 }
 
 // a global (or per-server) settings change. global when serverId is null, per-server otherwise. audit-only.
@@ -825,12 +827,12 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 // bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.
 export const CURRENT_APP_EVENT_VERSION = 1
 
-export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
+export function toRow(e: AppEvent, redact: RedactSettingValue): SchemaModels.NewAppEvent {
 	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
 	// credentials are stripped here rather than only at the emitters: this is the one path into the table, so no
-	// future caller can persist a connection password by forgetting to redact it first
+	// future caller can persist a credential by forgetting to redact it first
 	const redacted =
-		e.type === 'SETTINGS_UPDATED' ? { ...payload, changes: redactSettingChanges((payload as SettingsUpdated).changes) } : payload
+		e.type === 'SETTINGS_UPDATED' ? { ...payload, changes: redactSettingChanges((payload as SettingsUpdated).changes, redact) } : payload
 	return {
 		id,
 		type,

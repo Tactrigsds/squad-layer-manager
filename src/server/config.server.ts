@@ -1,6 +1,6 @@
 import * as Rx from '@/lib/rxjs'
 import * as Project from '@/models/project.models'
-import type * as SETTINGS from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
 import * as Changelog from '@/systems/changelog.server'
@@ -15,15 +15,10 @@ import * as Env from './env.ts'
 // the former deploy constants live in env vars (env.ts) and the admin-tunable `layerTable` lives in global
 // settings (settings.server.ts). This module just assembles and broadcasts the derived public view.
 
-// the integration flags are read from the env rather than asked of the systems that own them: this module is set
-// up before they are, and their answer is a deploy-time constant either way
 const envBuilder = Env.getEnvBuilder({
 	...Env.groups.general,
 	...Env.groups.squadcalc,
 	DISCORD_ENABLED: Env.groups.discord.DISCORD_ENABLED,
-	BM_ENABLED: Env.groups.battlemetrics.BM_ENABLED,
-	SQUADBROWSER_ENABLED: Env.groups.squadbrowser.SQUADBROWSER_ENABLED,
-	STEAM_ENABLED: Env.groups.steam.STEAM_ENABLED,
 	CACHE_LAYER_ARTIFACT: Env.groups.layers.CACHE_LAYER_ARTIFACT,
 })
 export let ENV!: ReturnType<typeof envBuilder>
@@ -83,17 +78,18 @@ export function pushPublicConfig() {
 		// a dev instance is reloaded against the same profile all day, so it wants the cache; only e2e does not
 		cacheLayerArtifact: ENV.CACHE_LAYER_ARTIFACT ?? ENV.NODE_ENV !== 'test',
 		integrations: {
-			battlemetrics: ENV.BM_ENABLED,
+			battlemetrics: SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.battlemetrics),
 			discord: ENV.DISCORD_ENABLED,
-			squadBrowser: ENV.SQUADBROWSER_ENABLED,
-			steam: ENV.STEAM_ENABLED,
+			squadBrowser: SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.squadBrowser),
+			steam: SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.steam),
 		},
 		discordMessageContent: Discord.readsMessageContent(),
 	})
 }
 
 // called once from main.ts, after LayerEngine.setup() and Settings.setup() have resolved. Re-pushes whenever global
-// settings change so `layerTable`/`layerGeneration` edits live-update every client without a restart.
+// settings change so `layerTable`/`layerGeneration` edits and the integration switches live-update every client
+// without a restart.
 export function setup() {
 	ENV = envBuilder()
 	pushPublicConfig()

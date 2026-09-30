@@ -167,64 +167,107 @@ describe('message variable cycles', () => {
 	})
 })
 
-// The secret marker on the schema, the seal switch and the audit redaction each know which fields are credentials.
-// These hold them to one answer, so a credential added to the schema without the others catching up fails here
-// rather than reaching the database or the audit log in plaintext.
+// Every consumer of "which fields are credentials" reads the one marker on the schema. These pin down what the
+// marker covers and how the walks over it behave, so a credential added to either schema is sealed, masked and
+// redacted without any of them being touched.
 describe('secret settings', () => {
-	const connections: SETTINGS.ServerConnection[] = [
-		{ type: 'local', logFile: '/log', rcon: { host: 'h', port: 1, password: 'rcon-pw' } },
-		{
-			type: 'sftp',
-			rcon: { host: 'h', port: 1, password: 'rcon-pw' },
-			sftp: {
-				host: 'h',
-				port: 22,
-				username: 'u',
-				password: 'sftp-pw',
-				logFile: '/log',
-				pollInterval: 1000,
-				reconnectInterval: 5000,
-				maxReconnectAttempts: 10,
-			},
+	const sftp: SETTINGS.ServerConnection = {
+		type: 'sftp',
+		rcon: { host: 'h', port: 1, password: 'rcon-pw' },
+		sftp: {
+			host: 'h',
+			port: 22,
+			username: 'u',
+			password: 'sftp-pw',
+			logFile: '/log',
+			pollInterval: 1000,
+			reconnectInterval: 5000,
+			maxReconnectAttempts: 10,
 		},
-		{ type: 'server-agent', token: 'tok' },
-	]
-
-	// every leaf the seal switch rewrites, as a dotted path under `connections`
-	function sealedPaths(connection: SETTINGS.ServerConnection): Set<string> {
-		const sealed = SETTINGS.transformConnectionSecretValues(connection, (v) => `sealed:${v}`)
-		const out = new Set<string>()
-		const walk = (value: unknown, path: string) => {
-			if (typeof value === 'string' && value.startsWith('sealed:')) out.add(path)
-			else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`)
-		}
-		walk(sealed, 'connections')
-		return out
 	}
 
-	test('the schema marks exactly the fields the seal switch rewrites', () => {
-		const marked = new Set(SETTINGS.SECRET_SETTING_PATHS)
-		const sealed = new Set(connections.flatMap((c) => [...sealedPaths(c)]))
-		expect([...marked].sort()).toEqual([...sealed].sort())
-		expect(marked.size).toBeGreaterThan(0)
+	test('the marker covers the connection secrets and the integration tokens, and nothing else', () => {
+		expect([...SETTINGS.SECRET_SETTING_PATHS].sort()).toEqual([
+			'connections.rcon.password',
+			'connections.sftp.password',
+			'connections.token',
+			'integrations.battlemetrics.token',
+			'integrations.squadBrowser.token',
+			'integrations.steam.token',
+		])
 	})
 
-	test('every secret lives under connections, the subtree write-sensitive gates and the audit log redacts', () => {
+	test('every server secret lives under connections, the subtree write-sensitive gates and the audit log replaces', () => {
 		for (const path of SETTINGS.SECRET_SETTING_PATHS) {
-			expect(path.startsWith('connections.')).toBe(true)
-			const [change] = AppEvents.redactSettingChanges([{ path, from: 'old', to: 'new' }])!
-			expect(change.from).not.toBe('old')
-			expect(change.to).not.toBe('new')
+			if (!path.startsWith('connections.')) continue
+			expect(SETTINGS.redactSettingValue(path, 'pw')).toBe(AppEvents.REDACTED_SETTING)
 		}
+		expect(SETTINGS.redactSettingValue('connections.rcon.host', 'host')).toBe(AppEvents.REDACTED_SETTING)
 	})
 
-	test('masks a secret scalar, and the secret leaves inside a whole connections object', () => {
+	test('transforms every secret of a connection, and returns one without any by reference', () => {
+		const sealed = SETTINGS.transformConnectionSecretValues(sftp, (v) => `sealed:${v}`) as typeof sftp
+		expect(sealed.rcon.password).toBe('sealed:rcon-pw')
+		expect(sealed.sftp.password).toBe('sealed:sftp-pw')
+		expect(sealed.sftp.host).toBe('h')
+		const agent: SETTINGS.ServerConnection = { type: 'server-agent', token: 'tok' }
+		expect(SETTINGS.transformConnectionSecretValues(agent, (v) => `sealed:${v}`)).toEqual({ type: 'server-agent', token: 'sealed:tok' })
+		const sandbox: SETTINGS.ServerConnection = { type: 'sandbox', serverName: 'Sandbox', maxPlayers: 10 }
+		expect(SETTINGS.transformConnectionSecretValues(sandbox, (v) => `sealed:${v}`)).toBe(sandbox)
+	})
+
+	test('masks a secret scalar and the secret leaves inside a whole object, leaving an empty one empty', () => {
 		expect(SETTINGS.maskSecretSettingValue('connections.rcon.password', 'pw')).toBe(SETTINGS.SECRET_SETTING_MASK)
 		expect(SETTINGS.maskSecretSettingValue('connections.rcon.host', 'host')).toBe('host')
-		expect(SETTINGS.maskSecretSettingValue('connections', connections[1])).toEqual({
-			...connections[1],
+		expect(SETTINGS.maskSecretSettingValue('connections', sftp)).toEqual({
+			...sftp,
 			rcon: { host: 'h', port: 1, password: SETTINGS.SECRET_SETTING_MASK },
-			sftp: { ...(connections[1] as Extract<SETTINGS.ServerConnection, { type: 'sftp' }>).sftp, password: SETTINGS.SECRET_SETTING_MASK },
+			sftp: { ...sftp.sftp, password: SETTINGS.SECRET_SETTING_MASK },
 		})
+		const integrations = { battlemetrics: { enabled: true, token: 'bm', orgId: '1' }, steam: { enabled: true, token: '' } }
+		expect(SETTINGS.maskSecretSettingValue('integrations', integrations)).toEqual({
+			battlemetrics: { enabled: true, token: SETTINGS.SECRET_SETTING_MASK, orgId: '1' },
+			steam: { enabled: true, token: '' },
+		})
+	})
+
+	test('walks a whole document by reference where it holds no secret to change', () => {
+		const settings = SETTINGS.parseGlobalSettings({}).data!
+		expect(SETTINGS.maskSecretSettingValue('', settings)).toBe(settings)
+		const withToken = SETTINGS.parseGlobalSettings({ integrations: { steam: { token: 'k' } } }).data!
+		const masked = SETTINGS.maskSecretSettingValue('', withToken) as SETTINGS.GlobalSettings
+		expect(masked).not.toBe(withToken)
+		expect(masked.integrations.steam.token).toBe(SETTINGS.SECRET_SETTING_MASK)
+		expect(masked.commands).toBe(withToken.commands)
+	})
+
+	test('a placeholder sent back stands for the stored secret, and anything else replaces it', () => {
+		const stored = {
+			integrations: {
+				battlemetrics: { enabled: true, token: 'stored-bm', orgId: '1' },
+				steam: { enabled: true, token: 'stored-steam' },
+			},
+		}
+		const submitted = {
+			integrations: {
+				battlemetrics: { enabled: false, token: SETTINGS.SECRET_SETTING_MASK, orgId: '2' },
+				steam: { enabled: true, token: 'new-steam' },
+				squadBrowser: { enabled: true, token: SETTINGS.SECRET_SETTING_MASK },
+			},
+		}
+		expect(SETTINGS.restoreMaskedSecrets(submitted, stored)).toEqual({
+			integrations: {
+				battlemetrics: { enabled: false, token: 'stored-bm', orgId: '2' },
+				steam: { enabled: true, token: 'new-steam' },
+				// a placeholder for a secret that was never stored is an empty one
+				squadBrowser: { enabled: true, token: '' },
+			},
+		})
+	})
+
+	test('an integration is on when switched on with a token', () => {
+		expect(SETTINGS.integrationEnabled({ enabled: true, token: 'x' })).toBe(true)
+		expect(SETTINGS.integrationEnabled({ enabled: true, token: '' })).toBe(false)
+		expect(SETTINGS.integrationEnabled({ enabled: false, token: 'x' })).toBe(false)
 	})
 })

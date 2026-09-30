@@ -3,7 +3,6 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'
-import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
@@ -415,6 +414,111 @@ export const NavLinkSchema = z.array(
 	}),
 )
 
+// ============================== integrations ==============================
+
+// The third-party services SLM authenticates to, configured from the settings page rather than the environment so
+// a token can be rotated without a redeploy. Each token is a secret (see SECRET_SETTING_PATHS): encrypted at
+// rest, never sent to a browser once saved, and replaced by typing over the placeholder. The api hosts stay in
+// the environment (BM_HOST and friends): only a dev instance or a test ever points one at a stub.
+const IntegrationToggleSchema = z
+	.boolean()
+	.prefault(true)
+	.meta(SDoc.of({ label: t('Enabled'), description: t('Turn the integration off while keeping its token configured.') }))
+
+export const IntegrationsSchema = z
+	.object({
+		battlemetrics: z
+			.object({
+				enabled: IntegrationToggleSchema,
+				token: z
+					.string()
+					.prefault('')
+					.meta(
+						SDoc.of({
+							label: t('Token'),
+							description: t(
+								'A battlemetrics personal access token. It needs player flags (add and remove), player notes (read and create) and rcon (read). Leave it empty if you have no battlemetrics org: nothing is polled, and the features that read it are hidden.',
+							),
+							secret: true,
+						}),
+					),
+				orgId: z
+					.string()
+					.prefault('')
+					.meta(
+						SDoc.of({
+							label: t('Organization ID'),
+							description: t('The battlemetrics organization the token belongs to. Player flags are filtered to it.'),
+						}),
+					),
+			})
+			.prefault({})
+			.meta(
+				SDoc.of({
+					label: t('Battlemetrics'),
+					description: t('Player flags, notes and profiles, and the moderation actions that read them.'),
+				}),
+			),
+		squadBrowser: z
+			.object({
+				enabled: IntegrationToggleSchema,
+				token: z
+					.string()
+					.prefault('')
+					.meta(
+						SDoc.of({
+							label: t('API Key'),
+							description: t(
+								"A squad browser api key, which starts with 'sqb_'. It resolves a server's name into the join link behind the dashboard's join button. Leave it empty if you have no key: the button falls back to steam, or is hidden.",
+							),
+							secret: true,
+						}),
+					),
+			})
+			.prefault({})
+			.meta(SDoc.of({ label: t('Squad Browser'), description: t("The join link behind the dashboard's join button.") })),
+		steam: z
+			.object({
+				enabled: IntegrationToggleSchema,
+				token: z
+					.string()
+					.prefault('')
+					.meta(
+						SDoc.of({
+							label: t('API Key'),
+							description: t(
+								'A steam web api key, from https://steamcommunity.com/dev/apikey. It reads the lobby of a player in game, which is the half of a join link the squad browser is otherwise asked for. Leave it empty if you have no key.',
+							),
+							secret: true,
+						}),
+					),
+			})
+			.prefault({})
+			.meta(
+				SDoc.of({
+					label: t('Steam'),
+					description: t('A join link built from the lobby a player in game reports, where the squad browser cannot resolve one.'),
+				}),
+			),
+	})
+	.prefault({})
+	.meta(
+		SDoc.of({
+			label: t('Integrations'),
+			description: t(
+				'Third-party services SLM talks to. A token is stored encrypted and never shown again once saved: the field shows a placeholder, and typing in it replaces the token.',
+			),
+		}),
+	)
+
+export type Integrations = z.infer<typeof IntegrationsSchema>
+export type IntegrationConfig = { enabled: boolean; token: string }
+
+// an integration is in use when it is switched on and has something to authenticate with
+export function integrationEnabled(config: IntegrationConfig): boolean {
+	return config.enabled && config.token !== ''
+}
+
 // ============================== global settings ==============================
 
 export const GlobalSettingsSchema = z
@@ -648,6 +752,7 @@ export const GlobalSettingsSchema = z
 				),
 			}),
 		),
+		integrations: IntegrationsSchema,
 		comments: SettingsCommentsSchema.optional().meta(SDoc.of({ label: t('Comments') })),
 	})
 	.superRefine((val, ctx) => {
@@ -810,8 +915,8 @@ export function defaultRbacSettings() {
 				permissions: managerPermissions,
 				maxTimeout: '6h',
 				maxLayerRequests: 5,
-				// every global setting except the permissions config
-				globalSettingsGrants: globalSettingsTopLevelKeys().filter((k) => k !== 'rbac'),
+				// every global setting except the permissions config and the integration credentials
+				globalSettingsGrants: globalSettingsTopLevelKeys().filter((k) => k !== 'rbac' && k !== 'integrations'),
 				serverSettingsGrants: managerServerGrants,
 			},
 			owners: {
@@ -1712,53 +1817,81 @@ export function getPublicSettings(settings: ServerSettings): PublicServerSetting
 // -------- secrets --------
 //
 // A field marked `secret: true` in its SDoc is a credential. The marker is the one place that knowledge lives:
-// the form renders it as a password field, change lists mask it, and the server seals it at the db boundary.
-// The sealing itself is the explicit switch in transformConnectionSecretValues, and settings.models.test.ts
-// holds the two to the same set of paths, so a credential added to the schema without a matching seal fails
-// the test rather than landing in the database as plaintext.
+// the form renders it as a password field, change lists mask it, the audit log redacts it, the server never
+// streams a saved one to a browser, and the database holds it sealed (see secret-box.server.ts). One set of
+// paths covers both documents, since a global path and a server path never coincide.
 
 export const SECRET_SETTING_MASK = '••••••••'
 
-// the dotted paths of every secret field in a server's settings, across every branch of every union
-export const SECRET_SETTING_PATHS: ReadonlySet<string> = collectSecretPaths(ServerSettingsSchema)
+// the dotted paths of every secret field, across every branch of every union
+export const SECRET_SETTING_PATHS: ReadonlySet<string> = new Set([
+	...collectSecretPaths(GlobalSettingsSchema),
+	...collectSecretPaths(ServerSettingsSchema),
+])
+
+// every proper ancestor of a secret path, so a walk only descends where a secret can be
+const SECRET_SETTING_PREFIXES: ReadonlySet<string> = new Set(
+	[...SECRET_SETTING_PATHS].flatMap((path) => {
+		const parts = path.split('.')
+		return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('.'))
+	}),
+)
 
 export function isSecretSettingPath(path: string): boolean {
 	return SECRET_SETTING_PATHS.has(path)
 }
 
-// `value` as it sits at `path`, with every secret leaf under it masked: a scalar at a secret path, or the
-// secret leaves inside an object (the whole `connections` when a server is created)
-export function maskSecretSettingValue(path: string, value: unknown): unknown {
-	if (isSecretSettingPath(path)) return typeof value === 'string' && value !== '' ? SECRET_SETTING_MASK : value
-	if (Array.isArray(value)) return value.map((v, i) => maskSecretSettingValue(`${path}.${i}`, v))
-	if (value && typeof value === 'object') {
-		const out: Record<string, unknown> = {}
-		for (const [k, v] of Object.entries(value)) out[k] = maskSecretSettingValue(path ? `${path}.${k}` : k, v)
-		return out
+// `value` as it sits at `path` ('' for a whole document), with `fn` applied to every secret string under it.
+// Copy-on-write: what fn leaves alone is returned by reference, a whole document included.
+export function mapSecretSettingValues<T>(path: string, value: T, fn: (value: string, path: string) => string): T {
+	if (SECRET_SETTING_PATHS.has(path)) return (typeof value === 'string' ? fn(value, path) : value) as T
+	if (path !== '' && !SECRET_SETTING_PREFIXES.has(path)) return value
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+	let out: Record<string, unknown> | undefined
+	for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+		const mapped = mapSecretSettingValues(path ? `${path}.${key}` : key, child, fn)
+		if (mapped === child) continue
+		if (!out) out = { ...(value as Record<string, unknown>) }
+		out[key] = mapped
 	}
-	return value
+	return (out ?? value) as T
 }
 
-// the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
-// server-agent token. `fn` is seal, open or reseal (see secret-box.server.ts); in memory they are always plaintext
-export function transformConnectionSecretValues(connections: ServerConnection, fn: (value: string) => string): ServerConnection {
-	switch (connections.type) {
-		case 'local':
-			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
-		case 'sftp':
-			return {
-				...connections,
-				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
-				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
-			}
-		case 'server-agent':
-			return { ...connections, token: fn(connections.token) }
-		// nothing to seal: the emulator's rcon password is generated per process and never persisted
-		case 'sandbox':
-			return connections
-		default:
-			assertNever(connections)
+// the secret leaves under `path` replaced by `mask`; an empty one stays empty, since "unset" is not a secret
+export function maskSecretSettingValue<T>(path: string, value: T, mask: string = SECRET_SETTING_MASK): T {
+	return mapSecretSettingValues(path, value, (v) => (v === '' ? v : mask))
+}
+
+// A submitted document with the placeholders a browser sent back replaced by the values they stand in for, so a
+// save that never touched a token leaves it as stored. `current` is the stored (encoded) document.
+export function restoreMaskedSecrets<T>(submitted: T, current: unknown): T {
+	return mapSecretSettingValues('', submitted, (v, path) => {
+		if (v !== SECRET_SETTING_MASK) return v
+		const stored = valueAtPath(current, path)
+		return typeof stored === 'string' ? stored : ''
+	})
+}
+
+// what the audit log keeps of a changed value: the whole `connections` subtree is replaced, since reading it
+// takes write-sensitive where the log takes global-settings:read, and elsewhere only the secret leaves
+export function redactSettingValue(path: string, value: unknown): unknown {
+	if (path === 'connections' || path.startsWith('connections.')) return AppEvents.REDACTED_SETTING
+	return maskSecretSettingValue(path, value, AppEvents.REDACTED_SETTING)
+}
+
+function valueAtPath(value: unknown, path: string): unknown {
+	let cur = value
+	for (const key of path.split('.')) {
+		if (!cur || typeof cur !== 'object') return undefined
+		cur = (cur as Record<string, unknown>)[key]
 	}
+	return cur
+}
+
+// the connection secrets: the RCON password (local/sftp), the SFTP log password, and the server-agent token.
+// `fn` is seal, open or reseal (see secret-box.server.ts); in memory they are always plaintext
+export function transformConnectionSecretValues(connections: ServerConnection, fn: (value: string) => string): ServerConnection {
+	return mapSecretSettingValues('connections', connections, fn)
 }
 
 export function transformConnectionSecrets(settings: ServerSettings, fn: (value: string) => string): ServerSettings {

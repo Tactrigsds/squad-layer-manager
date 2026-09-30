@@ -418,6 +418,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// connection and its own polling loops, all running for the life of every test app. Nothing here drives it, and the
 	// RCON traffic it adds is what the poll intervals above have to leave room for. A test that wants one turns it back on.
 	globalSettings.seedSandboxServer = false
+	// the battlemetrics stub answers on BM_HOST above. There is no squad browser or steam stub, so those stay
+	// unconfigured and no test can spend a real key against the real api. Written plaintext: the app seals the
+	// token on its first boot, which is one of the things a fixture proves.
+	globalSettings.integrations = {
+		battlemetrics: { enabled: true, token: 'stub-token', orgId: 'stub-org' },
+		squadBrowser: { enabled: true, token: '' },
+		steam: { enabled: true, token: '' },
+	}
 	opts.globalSettings?.(globalSettings)
 	await db
 		.insert(Schema.globalSettings)
@@ -652,14 +660,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		DISCORD_BOT_TOKEN: 'disabled',
 		DISCORD_HOME_GUILD_ID: '1',
 		BM_HOST: `http://127.0.0.1:${bmPort}`,
-		BM_PAT: 'stub-token',
-		BM_ORG_ID: 'stub-org',
-		// There is no squad browser or steam stub to answer, and a checkout that configured a real key hands it to
-		// every fixture through the environment. Off, so no test can spend one against the real api.
-		SQUADBROWSER_API_KEY: '',
-		SQUADBROWSER_ENABLED: 'false',
-		STEAM_API_KEY: '',
-		STEAM_ENABLED: 'false',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		// per-fixture, so `control()` reaches this app and not another run's
 		CONTROL_SOCKET: controlSocketPath,

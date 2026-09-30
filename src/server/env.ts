@@ -38,6 +38,9 @@ declare module 'zod' {
 		// the var holds a credential: it is read from the secrets file or directory (see readSecrets) and written
 		// to .env.secrets.example rather than .env.example. docs/installing.md covers why.
 		secret?: true
+		// the var moved elsewhere. Still read, so a value can be carried over once (see legacyIntegrationSettings),
+		// and reported at boot with this note; left out of the example files.
+		deprecationNote?: string
 	}
 }
 
@@ -60,6 +63,9 @@ const BigIntListSchema = z
 			.filter(Boolean)
 			.map(BigInt),
 	)
+
+const MOVED_TO_SETTINGS =
+	'now configured on the settings page, under Integrations. The value here was carried over into the settings on the first boot after upgrading, and is ignored from then on.'
 
 // named rather than inlined into BM_HOST because the DEMO conflict check asks whether that is where we point
 const BATTLEMETRICS_API = 'https://api.battlemetrics.com'
@@ -498,15 +504,17 @@ export const groups = {
 			}),
 	},
 
+	// The credentials and switches of these three moved to the settings page (SETTINGS.IntegrationsSchema). The
+	// variables are still read so an upgrade carries them over once, and the hosts stay: only a dev instance or a
+	// test points one at a stub.
 	battlemetrics: {
-		// resolved from BM_PAT and BM_HOST when left unset, in ensureEnvSetup
 		BM_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the battlemetrics integration entirely (no polling, no flag or profile lookups, and the features that read it report it as unconfigured). Defaults to off when there is no BM_PAT and BM_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the battlemetrics integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		BM_HOST: z.url().prefault(BATTLEMETRICS_API).meta({
@@ -519,12 +527,9 @@ export const groups = {
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description: `battlemetrics API token. It needs these permissions:
-- player flags (add/remove; it does not need to create new ones)
-- player notes (read & create)
-- rcon (read)
-Leave it empty if you have no battlemetrics org: the integration turns itself off (see BM_ENABLED) and the features that read it report it as unconfigured.`,
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a battlemetrics API token.',
+				envExample: { include: 'omit' },
 			}),
 
 		BM_ORG_ID: z
@@ -532,20 +537,20 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.min(1)
 			.optional()
 			.meta({
-				envExample: { include: 'set' },
-				description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'the battlemetrics organization BM_PAT belongs to.',
+				envExample: { include: 'omit' },
 			}),
 	},
 
 	squadbrowser: {
-		// resolved from SQUADBROWSER_API_KEY and SQUADBROWSER_HOST when left unset, in ensureEnvSetup
 		SQUADBROWSER_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the squad browser integration entirely (the dashboard join button is hidden). Defaults to off when there is no SQUADBROWSER_API_KEY and SQUADBROWSER_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the squad browser integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		SQUADBROWSER_HOST: z.url().prefault(SQUADBROWSER_API).meta({
@@ -558,21 +563,20 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description:
-					"squad browser API key, which starts with `sqb_`. It resolves a server's name into the join link behind the dashboard's join button. Leave it empty if you have no key: the integration turns itself off (see SQUADBROWSER_ENABLED) and the button is hidden.",
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a squad browser API key.',
+				envExample: { include: 'omit' },
 			}),
 	},
 
 	steam: {
-		// resolved from STEAM_API_KEY and STEAM_HOST when left unset, in ensureEnvSetup
 		STEAM_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the steam integration entirely. It backs up the squad browser behind the dashboard join button, building a link out of the steam lobby a player in game reports. Defaults to off when there is no STEAM_API_KEY and STEAM_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the steam integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		STEAM_HOST: z.url().prefault(STEAM_API).meta({
@@ -585,9 +589,9 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description:
-					'steam web api key, from https://steamcommunity.com/dev/apikey. It reads the lobby of a player in game, which is the half of a join link the squad browser is otherwise asked for. Leave it empty if you have no key: the integration turns itself off (see STEAM_ENABLED).',
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a steam web api key.',
+				envExample: { include: 'omit' },
 			}),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
@@ -630,6 +634,29 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 
 export function isSecret(schema: z.ZodType): boolean {
 	return schema.meta()?.secret === true
+}
+
+// the deprecated vars this environment still sets, with the note each carries, for the boot log
+export function deprecatedVarsSet(): { key: string; note: string }[] {
+	const out: { key: string; note: string }[] = []
+	for (const [key, schema] of entries()) {
+		const note = schema.meta()?.deprecationNote
+		if (note && rawEnv[key] !== undefined) out.push({ key, note })
+	}
+	return out
+}
+
+// The integration settings an environment from before 1.10 describes, in the shape SETTINGS.IntegrationsSchema
+// parses, or undefined when it sets none of those vars. A switch left unset reads as on: the token decides.
+export function legacyIntegrationSettings(): Record<string, unknown> | undefined {
+	const keys = ['BM_ENABLED', 'BM_PAT', 'BM_ORG_ID', 'SQUADBROWSER_ENABLED', 'SQUADBROWSER_API_KEY', 'STEAM_ENABLED', 'STEAM_API_KEY']
+	if (!keys.some((key) => rawEnv[key] !== undefined)) return undefined
+	const on = (key: string) => (rawEnv[key] === undefined ? true : (z.stringbool().safeParse(rawEnv[key]).data ?? true))
+	return {
+		battlemetrics: { enabled: on('BM_ENABLED'), token: rawEnv.BM_PAT ?? '', orgId: rawEnv.BM_ORG_ID ?? '' },
+		squadBrowser: { enabled: on('SQUADBROWSER_ENABLED'), token: rawEnv.SQUADBROWSER_API_KEY ?? '' },
+		steam: { enabled: on('STEAM_ENABLED'), token: rawEnv.STEAM_API_KEY ?? '' },
+	}
 }
 
 export function entries(): [string, z.ZodType][] {
@@ -872,14 +899,6 @@ export function ensureEnvSetup() {
 			rawEnv[key] ??= value
 		}
 	}
-
-	// Battlemetrics has no switch of its own for an install to leave alone, so an install that never configured it
-	// says so by omission. Reaching for the api anyway is a 401 per player, against a third party, forever.
-	rawEnv.BM_ENABLED ??= String(rawEnv.BM_PAT !== undefined || battlemetricsIsAStub())
-	// same bargain for the squad browser: without a key every join-link lookup is a 401 against a third party
-	rawEnv.SQUADBROWSER_ENABLED ??= String(rawEnv.SQUADBROWSER_API_KEY !== undefined || squadbrowserIsAStub())
-	// and for steam, where the request carries the key in the query string
-	rawEnv.STEAM_ENABLED ??= String(rawEnv.STEAM_API_KEY !== undefined || steamIsAStub())
 
 	const toValidate = buildForValidation()
 	// what DEMO deliberately does, so it only guards a real deployment

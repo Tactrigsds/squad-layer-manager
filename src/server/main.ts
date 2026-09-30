@@ -94,6 +94,7 @@ await Instr.spanOp('main', { module }, async () => {
 			secretsFromEnv.join(', '),
 		)
 	}
+	for (const { key, note } of Env.deprecatedVarsSet()) log.warn('%s is %s', key, note)
 	// validates SETTINGS_ENCRYPTION_KEY now (fail fast) rather than on the first settings write; in production a
 	// missing key stops the boot here
 	SecretBox.setup()
