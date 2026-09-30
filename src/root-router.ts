@@ -48,6 +48,13 @@ export function arrivedViaNavigation(): boolean {
 	return initialLoadResolved
 }
 
+// Sets the URL fragment in place, for pages that scroll to their own anchors. A raw history.replaceState also reaches
+// the router (@tanstack/history patches it), and its scroll restoration then puts every scrolled container back where
+// it was before the jump. resetScroll: false turns that restore off for this navigation.
+export function replaceHash(hash: string) {
+	void rootRouter.navigate({ to: '.', search: true, hash, replace: true, resetScroll: false, hashScrollIntoView: false })
+}
+
 export function createHref() {
 	// need to go implement this at some point if we want a universal way to build a link outside of the context of a component
 	// https://github.com/TanStack/router/blob/6baffebbcee2454d19bb7206eeaa456ccd30b51f/packages/react-router/src/link.tsx#L121-L142

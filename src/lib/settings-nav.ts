@@ -2,6 +2,8 @@
 // (`setting:<path>` or `section:<...>`). Navigating scrolls the custom `main` scroll container and offsets past the
 // pinned sticky headers so the target isn't hidden underneath them.
 
+import { replaceHash } from '@/root-router'
+
 const SCROLL_GAP = 8
 
 // the settings column inside `main`, which excludes the TOC that scrolls along with it
@@ -156,11 +158,11 @@ export function onAnchorNavigate(fn: AnchorListener): () => void {
 }
 
 // the single entry point for moving to a settings anchor, whether from a TOC click, an initial page-load fragment, or a
-// pasted/edited hash. It records the location (replaceState keeps the history stack clean and doesn't trigger the
-// browser's native jump; it's a harmless no-op when the hash already matches), then scrolls + highlights via the settle
-// pass so the target stays pinned through the reflow of async section content, a GUI/JSON switch, or a section expand.
+// pasted/edited hash. It records the location in place, without the browser's native jump, then scrolls + highlights via
+// the settle pass so the target stays pinned through the reflow of async section content, a GUI/JSON switch, or a
+// section expand.
 export function navigateToAnchor(id: string): void {
-	history.replaceState(history.state, '', `#${id}`)
+	replaceHash(id)
 	for (const listener of anchorListeners) listener(id)
 	scrollToAnchorSettled(id, { highlight: true })
 }

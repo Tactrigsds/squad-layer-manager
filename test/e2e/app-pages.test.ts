@@ -399,6 +399,59 @@ plainTest.describe('settings page', () => {
 	})
 })
 
+// How far the commands page would still have to scroll to land on `id` the way a jump does: a command centered, a
+// section at the top. Waits two frames first, so a scroll the router makes after the jump has already happened.
+async function commandsJumpDrift(page: Page, id: string) {
+	return page.evaluate(async (id) => {
+		await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+		const el = document.getElementById(id)!
+		const scroller = el.closest<HTMLElement>('.overflow-y-auto')!
+		const before = scroller.scrollTop
+		if (id.includes('/')) el.scrollIntoView({ block: 'center', behavior: 'instant' })
+		else el.closest('section')!.scrollIntoView({ block: 'start', behavior: 'instant' })
+		const drift = Math.abs(scroller.scrollTop - before)
+		scroller.scrollTop = before
+		return drift
+	}, id)
+}
+
+plainTest.describe('commands page', () => {
+	// Two ways a jump can miss: the router's scroll restoration putting the page back once it has scrolled at all, and a
+	// section's sticky header landing somewhere different depending on where the scroll started.
+	plainTest('every table of contents jump lands on its target', async ({ app, page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/commands'))
+		const toc = page.locator('aside [data-toc-id]')
+		const scroller = page.locator('.overflow-y-auto').first()
+		await expect(toc.first()).toBeVisible({ timeout: 20_000 })
+		const ids = await toc.evaluateAll((els) => els.map((el) => el.getAttribute('data-toc-id')!))
+		const anchor = () => page.evaluate(() => decodeURIComponent(location.hash.slice(1)))
+		const jump = async (id: string) => {
+			await page.locator(`aside [data-toc-id="${id}"]`).click()
+			await expect.poll(anchor).toBe(id)
+			await expect.poll(() => commandsJumpDrift(page, id)).toBeLessThan(2)
+		}
+
+		await jump(ids.at(-6)!)
+		await jump(ids[4])
+		await page.mouse.move(1000, 500)
+		await page.mouse.wheel(0, 700)
+		await jump(ids.at(-12)!)
+
+		const sectionButton = page.locator('aside nav li > button:not([data-toc-id])').nth(2)
+		const sectionTops: number[] = []
+		for (const start of [0, 100_000]) {
+			await scroller.evaluate((el, start) => (el.scrollTop = start), start)
+			await sectionButton.click()
+			// a section's anchor has no `/`, unlike the command jumped to before it
+			await expect.poll(anchor).not.toContain('/')
+			const id = await anchor()
+			await expect.poll(() => commandsJumpDrift(page, id)).toBeLessThan(2)
+			sectionTops.push(await scroller.evaluate((el) => el.scrollTop))
+		}
+		expect(sectionTops[0]).toBe(sectionTops[1])
+	})
+})
+
 // The history page, against the events this app has recorded for itself. Its whole query lives in the url,
 // so a test can arrange one by navigating to it, and the results below the tabs always answer the type the
 // tabs name -- which is the invariant these mostly guard.

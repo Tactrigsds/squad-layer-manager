@@ -17,6 +17,7 @@ import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import type * as PLG from '@/models/plugins.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { replaceHash } from '@/root-router'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
@@ -630,7 +631,9 @@ export default function CommandsPage() {
 		// a link icon on an entry the user is already looking at rings and records it without scrolling (opts.scroll false)
 		if (opts?.scroll !== false) {
 			scrollingToEntry.current = true
-			el.scrollIntoView({ block: 'center', behavior: 'instant' })
+			// a section's anchor is its sticky header, whose box moves with the scroll, so the static section starts the view
+			if (id.includes('/')) el.scrollIntoView({ block: 'center', behavior: 'instant' })
+			else (el.closest('section') ?? el).scrollIntoView({ block: 'start', behavior: 'instant' })
 			requestAnimationFrame(() => {
 				scrollingToEntry.current = false
 			})
@@ -656,8 +659,8 @@ export default function CommandsPage() {
 		if (landOnEntry(id, { highlight: true }) && isEntry) setCursorId(id)
 	}, [settings, landOnEntry])
 
-	// A hash pasted or edited on a page that's already open. In-app navigation uses replaceState, which fires no
-	// hashchange, so a TOC click doesn't come back through here and land twice.
+	// A hash pasted or edited on a page that's already open. In-app navigation replaces the hash without a hashchange,
+	// so a TOC click doesn't come back through here and land twice.
 	React.useEffect(() => {
 		const onHash = () => {
 			const id = currentAnchor()
@@ -705,8 +708,7 @@ export default function CommandsPage() {
 	// that cursor drives the command highlight in the list, and a whole section isn't one of those rows.
 	function navigateToEntry(id: string, opts?: { scroll?: boolean }) {
 		const scroll = opts?.scroll !== false
-		// replaceState keeps the history stack clean and skips the browser's own jump; a no-op when the hash matches
-		history.replaceState(history.state, '', `#${encodeURIComponent(id)}`)
+		replaceHash(id)
 		if (id.includes('/')) setCursorId(id)
 		landOnEntry(id, { highlight: true, scroll })
 	}
