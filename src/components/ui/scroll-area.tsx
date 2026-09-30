@@ -14,13 +14,21 @@ const ScrollArea = React.forwardRef<
 		// stretch content shorter than the viewport to fill it, instead of leaving it shrink-wrapped at the
 		// top. The children become a flex column, so the one to stretch takes `flex-1`.
 		fill?: boolean
+		// keep content out from under the vertical scrollbar, which radix overlays on the viewport's edge. The
+		// bar then shows whenever the content overflows, rather than on hover.
+		gutter?: boolean
 	}
->(({ className, children, orientation = 'both', fill = false, ...props }, ref) => {
+>(({ className, children, orientation = 'both', fill = false, gutter = false, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.SCROLLBAR)
 	return (
 		<ScrollAreaPrimitive.Root
 			ref={ref}
+			type={gutter ? 'auto' : undefined}
 			className={cn(
+				// `auto` marks the bar visible exactly while the content overflows. The padding only makes the
+				// content taller, so it cannot flip that back.
+				gutter &&
+					'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pe-2.5',
 				'relative overflow-hidden',
 				// radix lays the content out as a table so it can grow past the viewport; a vertical-only area wants it to shrink to the viewport instead
 				orientation === 'vertical' && '[&_[data-radix-scroll-area-viewport]>div]:block!',
