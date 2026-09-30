@@ -18,9 +18,10 @@ The source is at [server-agent/agent](../server-agent/agent). It is a small rust
 ## Setting up the server in SLM
 
 Set the server's connection mode to _server agent_. See
-[configuring.md](configuring.md#21-connecting-the-server) for where that setting lives.
+[configuring.md](configuring.md#21-connecting-the-server) for where to find that setting.
 
-Then choose or generate a secret token. The agent sends this token to authenticate, so treat it as a credential.
+Then choose or generate a secret token. The agent sends it to authenticate, so anyone who has it can connect as this
+server's agent. Keep it with your other secrets.
 
 The agent needs three things from the server's connection settings:
 
@@ -78,29 +79,16 @@ docker run -d --restart unless-stopped \
 
 ## The RCON proxy
 
-Supply `--rcon-host`, `--rcon-port` and `--rcon-password` to turn on the proxy. The three options are all or
-nothing. If you supply some of them but not all, the agent refuses to start rather than run without the proxy you
-asked for.
+The proxy is required. Supply `--rcon-host`, `--rcon-port` and `--rcon-password` for it. The three options are all
+or nothing. If you supply only some of them, the agent refuses to start.
 
-The proxy is required, from agent 0.3.0 on. An agent tells SLM which of the two data sources, the log and RCON, it
+An agent declares which of the two data sources (the log and RCON) it
 can supply, and SLM rejects an agent that does not supply both. A server in agent mode has no other route to the
-game server: SLM holds no RCON details for it and reads no log file of its own, so an agent that carries only one
+game server. SLM holds no RCON details for it and reads no log file of its own, so an agent that carries only one
 of the two leaves the other permanently dead.
 
-An agent that is rejected says so in its own log, with what it supplied and what to add. It keeps retrying, so
-fixing the settings on either end is enough to bring it up. Nothing streams in the meantime.
-
-## Versions
-
-Agent 0.3.0 is where the agent started declaring its data sources. Upgrade the agents and SLM in either order:
-
-- A 0.3.0 agent works against an older SLM. It declares its sources in the connection url, which an SLM that does
-  not read them ignores.
-- An agent older than 0.3.0 works against a 0.3.0 SLM. It cannot declare anything, so SLM connects it without
-  checking what it carries, and notes the version in its own log.
-
-Only an agent from 0.3.0 on is held to supplying both. One that predates the field keeps whatever it was already
-doing, including logs-only.
+A rejected agent logs the rejection, with what it supplied and what to add. It keeps retrying, so fixing the
+settings on either end brings it up. Nothing streams in the meantime.
 
 ## Checking that it works
 

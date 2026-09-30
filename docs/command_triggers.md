@@ -27,8 +27,8 @@ the first word typed after the trigger, `{{arg2}}` the second, and so on. `{{res
 joined by spaces, and `{{rest}}` is all of them. Use `{{restN}}` for anything that can be more than one word, such
 as a reason.
 
-Pinned text sits outside that counting, which is what makes `{{arg1}} 2h {{rest2}}` read correctly. The caller never
-types the duration, so nothing indexes it.
+Pinned text is not counted. In `{{arg1}} 2h {{rest2}}` the caller never types the duration, so no placeholder
+indexes it.
 
 ```
 they type:   Alice      spamming badly
@@ -43,20 +43,20 @@ one is required under the current reason settings.
 
 ## Words the caller leaves out
 
-A word that is left out renders as nothing and its token drops out, which is what makes it optional: `/to2h Alice`
-runs `/timeout Alice 2h` with no reason. `{{^arg2}}fallback{{/arg2}}` puts something in its place instead. Words the
+A word the caller leaves out renders as nothing, and its token drops out. This makes it optional: `/to2h Alice` runs
+`/timeout Alice 2h` with no reason. `{{^arg2}}fallback{{/arg2}}` puts something in its place instead. Words the
 template never mentions are ignored.
 
-A pinned-argument template is not the same as writing `{{rest}}`. A placeholder stands for one word when the
-arguments are worked out, so `{{rest}}` alone means "the player, and nothing else" rather than "everything as
-typed". Leave the args off entirely for a plain trigger.
+An `args` template of `{{rest}}` does not pass everything through. Each placeholder fills one of the command's
+arguments, so on `/timeout` a bare `{{rest}}` fills only the player and leaves the duration missing. `/say` works
+because `/broadcast` takes a single argument. Leave the args off entirely for a plain trigger.
 
 ## What a trigger cannot do
 
-Every trigger string across every command shares one namespace, and two commands cannot claim the same one. A
-trigger runs in its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin
-command. What it can do is let a public trigger pass a player's own words into a public command's free-text
-argument, which is worth keeping in mind when writing one.
+All triggers across all commands share one namespace, so two commands cannot claim the same trigger. A trigger runs
+in its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin command. A public
+trigger can pass a player's own words into a public command's free-text argument. Keep that in mind when you write
+one.
 
 ## Finding them
 
@@ -65,9 +65,9 @@ runs. `/help` lists each shortcut on its own line, since each one asks the calle
 
 ## When every trigger pins something
 
-Leave a command no plain trigger and the shortcuts are all there is, so they are listed as the command itself
-rather than under it. The examples follow the first of them, and an argument they all pin is shown by the value it
-is fixed at instead of as a word to type:
+If a command has no plain trigger, its shortcuts are listed as the command itself instead of under it. The examples
+follow the first shortcut. An argument that every shortcut pins is shown with its fixed value instead of as a word
+to type:
 
 ```
 /timeout <player>
@@ -76,5 +76,5 @@ is fixed at instead of as a word to type:
   duration   fixed at 45m
 ```
 
-An argument nothing passes on is left out entirely. `{{arg1}} 45m` never reaches `<reason>`, so a timeout run this
-way cannot carry one, and the page says so by not offering it.
+An argument that no shortcut passes on is left out. `{{arg1}} 45m` never reaches `<reason>`, so a timeout run this
+way cannot carry one, and the page does not offer it.

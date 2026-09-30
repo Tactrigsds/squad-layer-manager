@@ -2,6 +2,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as PG from '@/models/player-groupings.models'
+import * as Project from '@/models/project.models'
 import * as SB from '@/models/sandbox.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context.ts'
@@ -121,8 +122,6 @@ export function applyInitialPoolConfig(settings: SETTINGS.ServerSettings): SETTI
 	}
 }
 
-const DOCS_BASE = 'https://github.com/Tactrigsds/squad-layer-manager'
-
 // warn, kill, kick and timeout all have squad forms, so the wording of anything addressed to the target has to
 // switch on {{squadName}}. Seeding the switch as a variable is the shape we want installs to copy: edit it once
 // and every reason follows.
@@ -193,8 +192,8 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 		// the stats breakdown have something to say about it before anyone configures anything
 		playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS) },
 		navLinks: [
-			{ label: 'SLM on GitHub', url: DOCS_BASE },
-			{ label: 'Installing SLM', url: `${DOCS_BASE}/blob/main/docs/installing.md` },
+			{ label: 'SLM on GitHub', url: Project.REPO_URL },
+			{ label: 'Installing SLM', url: `${Project.REPO_URL}/blob/main/docs/installing.md` },
 		],
 	}
 }

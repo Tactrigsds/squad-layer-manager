@@ -22,9 +22,8 @@ the workspace before starting it.
 location, and `SLM_WORKTREE_BASE=head` branches from local HEAD instead of `origin/HEAD`. This is only the default
 for the creator. `pnpm dev` works from any checkout location.
 
-They are outside the repo on purpose. A worktree nested in the checkout is a second copy of the tree inside the
-first one, and every tool that walks the repo, git's own ignore rules most of all, has to be taught to pretend it is
-not there.
+They are kept outside the repo because a worktree nested in the checkout is a second copy of the tree inside the
+first. Every tool that walks the repo, git's own ignore rules most of all, would have to be taught to skip it.
 
 Claude Code creates worktrees through the `WorktreeCreate` and `WorktreeRemove` hooks in `.claude/settings.json`,
 which hand the work to `scripts/worktree.mjs`. So `EnterWorktree` lands in the same place `pnpm worktree new` does,
@@ -34,10 +33,9 @@ in them.
 
 ## The one url
 
-`http://localhost:<client port>/?login=<user>`. Everything is behind it: the vite dev server proxies every api
-route, the websocket and each page request to the app, so the app's own port is an implementation detail. `pnpm dev
---url` prints it without starting the app. `pnpm dev --wait` blocks until a running `pnpm dev` answers, then prints
-it.
+`http://localhost:<client port>/?login=<user>`. The vite dev server proxies every api route, the websocket and each
+page request to the app, so nothing needs the app's own port. `pnpm dev --url` prints the URL without starting the
+app. `pnpm dev --wait` blocks until a running `pnpm dev` answers, then prints it.
 
 `pnpm probe <path>` opens that URL in headless chromium, signed in, and prints page errors. `--shot <file>` takes a
 screenshot (`--target <selector>` for one element), `--click` and `--fill <selector>=<value>` drive the page, and
@@ -60,40 +58,40 @@ so a browser tab pointed at a workspace stays valid across restarts:
 Slots start above the `.env` defaults (3000/5173), so an ordinary `pnpm server:dev` never contends with one. A slot
 whose checkout has been deleted is reclaimed automatically.
 
-The registry lives beside the shared git dir (`.git/slm-dev-slots.json`), the only location every worktree agrees
+The registry is stored beside the shared git dir (`.git/slm-dev-slots.json`), the only location every worktree agrees
 on.
 
 ## The database
 
 Provisioning clones the primary checkout's database, then re-points it at this workspace's emulator: the default server
-gets a `local` connection to the emulator's log file and RCON port, and every other server is disabled and has its
+is switched to a `local` connection to the emulator's log file and RCON port, and every other server is disabled and has its
 connection scrubbed. Match history, users, filters and settings all survive, so an experiment runs against realistic
-data rather than an empty db.
+data.
 
 Re-clone at any time with `pnpm dev --reset-data` after stopping the app. The clone is a `VACUUM INTO` snapshot over
 a read-only connection, so cloning from a primary checkout that is running the app is safe and never touches the
 source.
 
-A primary checkout with no database of its own is not a prerequisite: a fresh clone, or a machine that has only ever
-run the app in docker, has none. That workspace starts from an empty database instead, migrated and seeded the way
-the app's own first boot seeds one, plus the two rows a workspace needs before anyone can look at it: an `emulator`
-server pointed at this worktree's emulated Squad server, and the `dev` user the URL signs in as.
+The primary checkout does not need a database of its own. A fresh clone has none, and neither does a machine that
+has only ever run the app in docker. In that case the workspace starts from an empty database, migrated and seeded
+the way the app's own first boot seeds one. Provisioning also inserts the two rows a workspace needs before anyone can look at it:
+an `emulator` server pointed at this worktree's emulated Squad server, and the `dev` user the URL signs in as.
 
 No connection that reaches a real squad server survives a clone. The source's rows hold live RCON hosts and
-passwords, and a merely-disabled row would keep them one settings-page toggle away from a dev instance driving the
+passwords. A row that was only disabled would leave a dev instance one settings-page toggle away from driving the
 production server.
 
 ## The emulator
 
 The emulated squad server (`src/emulator`) plus a stub BattleMetrics API. `pnpm dev` starts one unless this worktree
-already has it running, and it stays a separate process either way: its world (players, squads, match state) has to
-survive the app's watch restarts, and it would not if the app hosted it.
+already has it running. It always runs as a separate process, so its world (players, squads, match state) survives
+the app's watch restarts.
 
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
 
-`pnpm dev --emu-only` runs it alone, with the repl below on stdin, for a session that outlives several `pnpm dev`s or that
-wants its startup flags. `--players N` connects N players at startup, and `--admins <steamid,...>` writes them into
-the `Admins.cfg` the app reads. `pnpm dev --no-emu` then leaves it alone.
+`pnpm dev --emu-only` runs it alone, with the repl below on stdin. Use it for a session that outlives several
+`pnpm dev`s, or to pass startup flags. `--players N` connects N players at startup, and `--admins <steamid,...>`
+writes them into the `Admins.cfg` the app reads. `pnpm dev --no-emu` then leaves it alone.
 
 ### Driving it
 
@@ -113,21 +111,19 @@ The same commands are available as a REPL inside `pnpm dev --emu-only` when it h
 too). Both front ends dispatch one registry (`src/dev/emu-control.ts`) against the same live world, so neither can
 grow a verb the other lacks.
 
-`emuctl` talks to the host over a unix socket at `data/dev/emu.sock`: no port to allocate, unreachable from the
-network, and scoped to the worktree by living in its own `data/dev`. It exits non-zero and says what is wrong if the
-command fails or no emulator is running, so it composes in scripts.
+`emuctl` talks to the host over a unix socket at `data/dev/emu.sock`. The socket needs no port, cannot be reached
+from the network, and is scoped to the worktree because it is stored in the worktree's own `data/dev`. `emuctl` exits
+non-zero and prints what is wrong if the command fails or no emulator is running, so it works in scripts.
 
-Quote anything with a `!` or spaces (`'!vote 1'`). It is a single argument, and your shell would otherwise have
-opinions about it.
+Quote anything with a `!` or spaces (`'!vote 1'`) so the shell passes it as a single argument.
 
 ### Admins and player groups
 
 The emulator keeps an `Admins.cfg` at `data/dev/Admins.cfg`, which the app reads back as an ordinary `local`
-admin list. It ships with the same groups a seeded sandbox does -- `Admin`, `Watchlist`, `ArmorPlayer`,
-`SquadLeader`, `Regular` -- and players are spread across them in a fixed pattern as they connect, so a roster
-you just joined breaks down into something rather than reading as one undifferentiated block. Provisioning
-installs the matching grouping (`Admin List`) in the instance's settings, which is what the teams panel groups
-by and what the stats breakdown charts.
+admin list. It ships with the same groups a seeded sandbox does: `Admin`, `Watchlist`, `ArmorPlayer`,
+`SquadLeader` and `Regular`. Players are spread across them in a fixed pattern as they connect, so a freshly joined
+roster breaks down into groups instead of one undifferentiated block. Provisioning installs the matching grouping
+(`Admin List`) in the instance's settings. The teams panel groups by it and the stats breakdown charts it.
 
 Edit any of it with the same verbs the sandbox window offers:
 
@@ -137,8 +133,8 @@ pnpm emuctl define-group Donor reserve             # add a group, or change what
 pnpm emuctl delete-group Donor
 ```
 
-A change is written to the file immediately, but the app re-reads a local admin list every 30 seconds, so give
-it that long to reach the roster.
+A change is written to the file immediately. The app re-reads a local admin list every 30 seconds, so a change
+can take that long to reach the roster.
 
 ## What a dev instance cannot reach
 
@@ -160,16 +156,16 @@ copy would silently keep the old values when one is rotated. A standalone clone 
 The per-workspace differences (ports, `ORIGIN`, and the overrides above) are injected at spawn time instead.
 
 A checkout with no `.env` anywhere gets one written from `.env.example.dev`, naming the seeded `dev` user as the sole
-`SUPER_USERS` entry so the instance opens on a user who can administer it. Nothing generates a `.env.secrets`:
-`.env.example.dev` carries the public development encryption key, and every other credential a dev instance is
-deliberately unable to reach.
+`SUPER_USERS` entry so the instance opens on a user who can administer it. Nothing generates a `.env.secrets`.
+`.env.example.dev` carries the public development encryption key, and a dev instance is blocked from everything that
+needs any other credential.
 
 The gitignored build artifacts a fresh checkout lacks (`assets/layer-engine.wasm`, `layer-db.json`) are copied from
-the primary checkout by whatever creates the worktree, provisioning included, so nothing has to reach a dev instance
-before the engine is there. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild
+the primary checkout by whatever creates the worktree, provisioning included, so the engine is in place before
+anything reaches a dev instance. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild
 over its own copy. Run `pnpm build:engine` if you change it. A checkout with nothing to copy them from, the primary
 checkout itself included, has the engine built for it instead.
 
-The list of them lives in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because
+The list of them is kept in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because
 it runs from a `WorktreeCreate` hook against a worktree with no node_modules yet. Only provisioning asks it to build a
 missing engine, since a hook that spends minutes in cargo reads as a hung one.
