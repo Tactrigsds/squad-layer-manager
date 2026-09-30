@@ -113,9 +113,14 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 
 			// the note is someone else's and they hold no manage-all grant, so it offers them nothing to press
 			await pageB.getByRole('button', { name: 'Start Editing' }).click()
-			await itemB.getByText(ADMIN_NOTE).hover()
 			const adminNoteCard = pageB.getByRole('group', { name: 'Note' }).filter({ hasText: ADMIN_NOTE })
-			await expect(adminNoteCard).toBeVisible()
+			// the item re-renders into edit mode, which can swallow a hover landing mid-way; leaving and re-entering
+			// is the only thing that opens the card again
+			await expect(async () => {
+				await pageB.mouse.move(0, 0)
+				await itemB.getByText(ADMIN_NOTE).hover()
+				await expect(adminNoteCard).toBeVisible({ timeout: 2_000 })
+			}).toPass()
 			await expect(adminNoteCard.getByRole('button', { name: 'Edit' })).toHaveCount(0)
 
 			// their own note, though, is theirs to change
