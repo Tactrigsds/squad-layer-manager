@@ -35,14 +35,21 @@ export type EnvExampleMeta = EnvExampleEntry & {
 declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
-		// the var holds a credential: it is read from the secrets file (see readSecretsFile) and written to
-		// .env.secrets.example rather than .env.example. docs/installing.md covers why.
+		// the var holds a credential: it is read from the secrets file or directory (see readSecrets) and written
+		// to .env.secrets.example rather than .env.example. docs/installing.md covers why.
 		secret?: true
+		// the var moved elsewhere. Still read, so a value can be carried over once (see legacyIntegrationSettings),
+		// and reported at boot with this note; left out of the example files.
+		deprecationNote?: string
 	}
 }
 
+// the shortest SETTINGS_ENCRYPTION_KEY production accepts. `openssl rand -base64 32` gives 44; a hand-typed
+// passphrase below this is brute-forceable against a leaked database, since the derivation is a plain sha256.
+export const MIN_ENCRYPTION_KEY_LENGTH = 16
+
 // The key .env.example.dev ships, so a checkout boots without a key-generation step. It says what it is,
-// where a random-looking string would not; the production server refuses to start with it (see assertEncryptionKeyIsNotPublic).
+// where a random-looking string would not; the production server refuses to start with it (see assertEncryptionKeyIsStrong).
 export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
@@ -56,6 +63,9 @@ const BigIntListSchema = z
 			.filter(Boolean)
 			.map(BigInt),
 	)
+
+const MOVED_TO_SETTINGS =
+	'now configured on the settings page, under Integrations. The value here was carried over into the settings on the first boot after upgrading, and is ignored from then on.'
 
 // named rather than inlined into BM_HOST because the DEMO conflict check asks whether that is where we point
 const BATTLEMETRICS_API = 'https://api.battlemetrics.com'
@@ -141,6 +151,16 @@ export const groups = {
 				envExample: { include: 'commented' },
 			}),
 
+		SECRETS_DIR: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description:
+					'a directory holding one file per credential, named after the variable (e.g. /run/secrets/DISCORD_BOT_TOKEN), which is how docker, podman, kubernetes and systemd mount individual secrets. A trailing newline is dropped. A file found here wins over the same variable in SECRETS_FILE; a directory that does not exist is an error.',
+				envExample: { include: 'commented', dev: { include: 'omit' } },
+			}),
+
 		PUBLIC_REPO_URL: z
 			.url()
 			.optional()
@@ -222,7 +242,7 @@ export const groups = {
 			.meta({
 				secret: true,
 				description:
-					"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Changing it makes already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+					"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`; production refuses one shorter than 16 characters. To rotate it, move the current value to SETTINGS_ENCRYPTION_KEY_PREVIOUS and put the new one here.",
 				envExample: {
 					include: 'set',
 					dev: {
@@ -231,6 +251,17 @@ export const groups = {
 							'the key sensitive settings are encrypted at rest with. The value below is the public dev key; the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
 					},
 				},
+			}),
+		SETTINGS_ENCRYPTION_KEY_PREVIOUS: z
+			.string()
+			.min(1)
+			.transform((val) => Crypto.createHash('sha256').update(val).digest())
+			.optional()
+			.meta({
+				secret: true,
+				description:
+					'the key SETTINGS_ENCRYPTION_KEY replaced. Anything still encrypted with it is re-encrypted with the current key on the next boot, after which this can be removed.',
+				envExample: { include: 'commented', dev: { include: 'omit' } },
 			}),
 	},
 
@@ -473,15 +504,17 @@ export const groups = {
 			}),
 	},
 
+	// The credentials and switches of these three moved to the settings page (SETTINGS.IntegrationsSchema). The
+	// variables are still read so an upgrade carries them over once, and the hosts stay: only a dev instance or a
+	// test points one at a stub.
 	battlemetrics: {
-		// resolved from BM_PAT and BM_HOST when left unset, in ensureEnvSetup
 		BM_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the battlemetrics integration entirely (no polling, no flag or profile lookups, and the features that read it report it as unconfigured). Defaults to off when there is no BM_PAT and BM_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the battlemetrics integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		BM_HOST: z.url().prefault(BATTLEMETRICS_API).meta({
@@ -494,12 +527,9 @@ export const groups = {
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description: `battlemetrics API token. It needs these permissions:
-- player flags (add/remove; it does not need to create new ones)
-- player notes (read & create)
-- rcon (read)
-Leave it empty if you have no battlemetrics org: the integration turns itself off (see BM_ENABLED) and the features that read it report it as unconfigured.`,
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a battlemetrics API token.',
+				envExample: { include: 'omit' },
 			}),
 
 		BM_ORG_ID: z
@@ -507,20 +537,20 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.min(1)
 			.optional()
 			.meta({
-				envExample: { include: 'set' },
-				description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'the battlemetrics organization BM_PAT belongs to.',
+				envExample: { include: 'omit' },
 			}),
 	},
 
 	squadbrowser: {
-		// resolved from SQUADBROWSER_API_KEY and SQUADBROWSER_HOST when left unset, in ensureEnvSetup
 		SQUADBROWSER_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the squad browser integration entirely (the dashboard join button is hidden). Defaults to off when there is no SQUADBROWSER_API_KEY and SQUADBROWSER_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the squad browser integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		SQUADBROWSER_HOST: z.url().prefault(SQUADBROWSER_API).meta({
@@ -533,21 +563,20 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description:
-					"squad browser API key, which starts with `sqb_`. It resolves a server's name into the join link behind the dashboard's join button. Leave it empty if you have no key: the integration turns itself off (see SQUADBROWSER_ENABLED) and the button is hidden.",
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a squad browser API key.',
+				envExample: { include: 'omit' },
 			}),
 	},
 
 	steam: {
-		// resolved from STEAM_API_KEY and STEAM_HOST when left unset, in ensureEnvSetup
 		STEAM_ENABLED: z
 			.stringbool()
-			.default(false)
+			.optional()
 			.meta({
-				description:
-					'disables the steam integration entirely. It backs up the squad browser behind the dashboard join button, building a link out of the steam lobby a player in game reports. Defaults to off when there is no STEAM_API_KEY and STEAM_HOST is the real api, since there is nothing to authenticate with.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'whether the steam integration is on.',
+				envExample: { include: 'omit' },
 			}),
 
 		STEAM_HOST: z.url().prefault(STEAM_API).meta({
@@ -560,9 +589,9 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 			.optional()
 			.meta({
 				secret: true,
-				envExample: { include: 'set' },
-				description:
-					'steam web api key, from https://steamcommunity.com/dev/apikey. It reads the lobby of a player in game, which is the half of a join link the squad browser is otherwise asked for. Leave it empty if you have no key: the integration turns itself off (see STEAM_ENABLED).',
+				deprecationNote: MOVED_TO_SETTINGS,
+				description: 'a steam web api key.',
+				envExample: { include: 'omit' },
 			}),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
@@ -605,6 +634,29 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 
 export function isSecret(schema: z.ZodType): boolean {
 	return schema.meta()?.secret === true
+}
+
+// the deprecated vars this environment still sets, with the note each carries, for the boot log
+export function deprecatedVarsSet(): { key: string; note: string }[] {
+	const out: { key: string; note: string }[] = []
+	for (const [key, schema] of entries()) {
+		const note = schema.meta()?.deprecationNote
+		if (note && rawEnv[key] !== undefined) out.push({ key, note })
+	}
+	return out
+}
+
+// The integration settings an environment from before 1.10 describes, in the shape SETTINGS.IntegrationsSchema
+// parses, or undefined when it sets none of those vars. A switch left unset reads as on: the token decides.
+export function legacyIntegrationSettings(): Record<string, unknown> | undefined {
+	const keys = ['BM_ENABLED', 'BM_PAT', 'BM_ORG_ID', 'SQUADBROWSER_ENABLED', 'SQUADBROWSER_API_KEY', 'STEAM_ENABLED', 'STEAM_API_KEY']
+	if (!keys.some((key) => rawEnv[key] !== undefined)) return undefined
+	const on = (key: string) => (rawEnv[key] === undefined ? true : (z.stringbool().safeParse(rawEnv[key]).data ?? true))
+	return {
+		battlemetrics: { enabled: on('BM_ENABLED'), token: rawEnv.BM_PAT ?? '', orgId: rawEnv.BM_ORG_ID ?? '' },
+		squadBrowser: { enabled: on('SQUADBROWSER_ENABLED'), token: rawEnv.SQUADBROWSER_API_KEY ?? '' },
+		steam: { enabled: on('STEAM_ENABLED'), token: rawEnv.STEAM_API_KEY ?? '' },
+	}
 }
 
 export function entries(): [string, z.ZodType][] {
@@ -794,11 +846,43 @@ function readSecretsFile(): Record<string, string> {
 	return dotenv.parse(contents)
 }
 
+// One file per credential, named after the variable: the shape every secret mount produces (docker and podman
+// secrets, a kubernetes secret volume, systemd's $CREDENTIALS_DIRECTORY). Only the variables the schema knows
+// are read, so a directory shared with other services is fine. A single trailing newline is dropped, since most
+// tools that write these files add one and no credential ends in one on purpose.
+function readSecretsDir(): Record<string, string> {
+	const dir = Cli.options?.secretsDir ?? process.env.SECRETS_DIR
+	if (!dir) return {}
+	let names: Set<string>
+	try {
+		names = new Set(fs.readdirSync(dir))
+	} catch (error) {
+		throw new Error(`Could not read the secrets directory at ${dir}`, { cause: error })
+	}
+	const secrets: Record<string, string> = {}
+	for (const [key, schema] of entries()) {
+		if (!isSecret(schema) || !names.has(key)) continue
+		const filePath = path.join(dir, key)
+		let contents: string
+		try {
+			contents = fs.readFileSync(filePath, 'utf8')
+		} catch (error) {
+			throw new Error(`Could not read the secret at ${filePath}`, { cause: error })
+		}
+		secrets[key] = contents.replace(/\r?\n$/, '')
+	}
+	return secrets
+}
+
+function readSecrets(): Record<string, string> {
+	return { ...readSecretsFile(), ...readSecretsDir() }
+}
+
 export function ensureEnvSetup() {
 	if (setup) return
 	// entrypoints which don't use the cli system (scripts) still get the default .env; --env-file only overrides the path
 	dotenv.config({ path: Cli.options?.envFile })
-	const secrets = readSecretsFile()
+	const secrets = readSecrets()
 	rawEnv = {}
 	secretsFromEnvironment = []
 	for (const [key, schema] of entries()) {
@@ -816,14 +900,6 @@ export function ensureEnvSetup() {
 		}
 	}
 
-	// Battlemetrics has no switch of its own for an install to leave alone, so an install that never configured it
-	// says so by omission. Reaching for the api anyway is a 401 per player, against a third party, forever.
-	rawEnv.BM_ENABLED ??= String(rawEnv.BM_PAT !== undefined || battlemetricsIsAStub())
-	// same bargain for the squad browser: without a key every join-link lookup is a 401 against a third party
-	rawEnv.SQUADBROWSER_ENABLED ??= String(rawEnv.SQUADBROWSER_API_KEY !== undefined || squadbrowserIsAStub())
-	// and for steam, where the request carries the key in the query string
-	rawEnv.STEAM_ENABLED ??= String(rawEnv.STEAM_API_KEY !== undefined || steamIsAStub())
-
 	const toValidate = buildForValidation()
 	// what DEMO deliberately does, so it only guards a real deployment
 	if (!demo && toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
@@ -834,12 +910,21 @@ export function ensureEnvSetup() {
 }
 
 // Only the server's boot calls this (via SecretBox.setup), so that builds and scripts run with NODE_ENV=production
-// against a dev .env still work.
-export function assertEncryptionKeyIsNotPublic() {
+// against a dev .env still work. Only the current key is judged: the previous one is on its way out, and
+// refusing it would block the rotation that gets rid of it.
+export function assertEncryptionKeyIsStrong() {
 	if (groups.demo.DEMO.parse(rawEnv.DEMO)) return
 	if (buildForValidation().NODE_ENV !== 'production') return
-	if (rawEnv.SETTINGS_ENCRYPTION_KEY !== INSECURE_DEV_ENCRYPTION_KEY) return
-	throw new Error(
-		'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
-	)
+	const key = rawEnv.SETTINGS_ENCRYPTION_KEY
+	if (key === INSECURE_DEV_ENCRYPTION_KEY) {
+		throw new Error(
+			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
+		)
+	}
+	if (key !== undefined && key.length < MIN_ENCRYPTION_KEY_LENGTH) {
+		throw new Error(
+			`SETTINGS_ENCRYPTION_KEY is ${key.length} characters, and production needs at least ${MIN_ENCRYPTION_KEY_LENGTH}. ` +
+				'To rotate it without re-entering secrets, move the current value to SETTINGS_ENCRYPTION_KEY_PREVIOUS and generate a new one with `openssl rand -base64 32`.',
+		)
+	}
 }

@@ -4,11 +4,12 @@ import { makePlayer } from '@/emulator'
 import * as FB from '@/models/filter-builders'
 import type * as L from '@/models/layer'
 import type * as SC from '@/models/server-console.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
-import { refusals, savedQueue } from '../harness/inspect'
+import { refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -261,6 +262,74 @@ describe('installedMods', () => {
 			label: 'the queued layer',
 		})
 	}, 60_000)
+})
+
+// The integration tokens live in the global settings, sealed in the column, and never leave the server once saved: the
+// editor gets a placeholder, and sending the placeholder back is not a change. The fixture seeds the battlemetrics token
+// as plaintext, so the app's own boot is what sealed it.
+describe('integration credentials', () => {
+	async function currentSettings() {
+		const current = await firstYield((signal) => adminClient.settings.global.watchSettings(undefined, { signal }), {
+			label: 'the global settings',
+		})
+		if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+		return current
+	}
+
+	it('are sealed at rest and streamed to the editor as a placeholder', async () => {
+		const stored = savedGlobalSettings(app).integrations.battlemetrics
+		expect(stored.token).toMatch(/^enc:v2:/)
+		expect(stored.orgId).toBe('stub-org')
+		const current = await currentSettings()
+		expect(current.integrations!.battlemetrics!.token).toBe(SETTINGS.SECRET_SETTING_MASK)
+		expect(current.integrations!.steam!.token).toBe('')
+	})
+
+	it('keep the stored token when the placeholder comes back with another change beside it', async () => {
+		const current = await currentSettings()
+		const before = savedGlobalSettings(app).integrations.battlemetrics.token
+		const res = await adminClient.settings.global.updateSettings({
+			integrations: { ...current.integrations, battlemetrics: { ...current.integrations!.battlemetrics, orgId: 'other-org' } },
+		})
+		expect(res.code).toBe('ok')
+		expect(res.code === 'ok' && res.changes.map((c) => c.path)).toEqual(['integrations.battlemetrics.orgId'])
+		const stored = savedGlobalSettings(app).integrations.battlemetrics
+		expect(stored.orgId).toBe('other-org')
+		// every save seals afresh, so the ciphertext differs; what the change list says is what did not change
+		expect(stored.token).toMatch(/^enc:v2:/)
+		expect(stored.token).not.toBe(before)
+	})
+
+	it('seal a new token at rest, keep it out of the audit log, and switch the integration off for every client', async () => {
+		const current = await currentSettings()
+		const rotated = await adminClient.settings.global.updateSettings({
+			integrations: { ...current.integrations, battlemetrics: { ...current.integrations!.battlemetrics, token: 'rotated-token' } },
+		})
+		expect(rotated.code).toBe('ok')
+		const stored = savedGlobalSettings(app).integrations.battlemetrics.token
+		expect(stored).toMatch(/^enc:v2:/)
+		expect(JSON.stringify(savedGlobalSettings(app))).not.toContain('rotated-token')
+		for (const blob of settingsUpdatedBlobs(app)) expect(blob).not.toContain('rotated-token')
+		expect((await currentSettings()).integrations!.battlemetrics!.token).toBe(SETTINGS.SECRET_SETTING_MASK)
+
+		const config = await firstYield((signal) => adminClient.config.watchConfig(undefined, { signal }), { label: 'the config' })
+		expect(config.integrations.battlemetrics).toBe(true)
+		const off = await adminClient.settings.global.updateSettings({
+			integrations: { ...current.integrations, battlemetrics: { ...current.integrations!.battlemetrics, enabled: false } },
+		})
+		expect(off.code).toBe('ok')
+		await app.waitFor(
+			async () => {
+				const next = await firstYield((signal) => adminClient.config.watchConfig(undefined, { signal }), { label: 'the config' })
+				return !next.integrations.battlemetrics || null
+			},
+			{ label: 'the integration to read as off' },
+		)
+		const on = await adminClient.settings.global.updateSettings({
+			integrations: { ...current.integrations, battlemetrics: { ...current.integrations!.battlemetrics, enabled: true } },
+		})
+		expect(on.code).toBe('ok')
+	}, 30_000)
 })
 
 // A stream is checked for as long as it is open, not only when it is opened: losing access mid-stream replaces what it

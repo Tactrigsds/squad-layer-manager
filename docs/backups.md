@@ -94,9 +94,17 @@ newest backup from a particular version without unpacking anything. `--commit-sh
 or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
 
 `--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks
-the backup and reports which app build the database belongs to, which image tag to pin, and how far behind the
-current build it is. Run it first when rolling back an upgrade, so you know which version to point
-`docker-compose.yaml` at before you start the app.
+the backup and reports which app build the database belongs to, which image tag to pin, how far behind the
+current build it is, and whether its secrets decrypt with the `SETTINGS_ENCRYPTION_KEY` this install is configured
+with. Run it first when rolling back an upgrade, so you know which version to point `docker-compose.yaml` at before
+you start the app.
+
+A backup is only complete with the key that encrypted it. Restored under a different key, the database comes up with
+every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep
+the key wherever you keep the backups, and restore the two together. If the backup belongs to an older key you still
+have, set that key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` for the first boot after restoring. That boot re-encrypts
+everything under the current key, and you can remove the variable again (see
+[installing.md, encryption key](installing.md#34-encryption-key)).
 
 The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
 undone. Delete it once you have confirmed the restore. The backup is checked (`integrity_check`) before anything is

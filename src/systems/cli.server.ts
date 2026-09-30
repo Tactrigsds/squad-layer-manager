@@ -1,7 +1,8 @@
 import { Command } from 'commander'
 import fs from 'node:fs/promises'
 
-export let options: { envFile?: string; secretsFile?: string } | undefined
+type Options = { envFile?: string; secretsFile?: string; secretsDir?: string }
+export let options: Options | undefined
 export async function ensureCliParsed() {
 	if (options) return
 
@@ -9,15 +10,17 @@ export async function ensureCliParsed() {
 	program
 		.option('--env-file <path>', 'Path to the environment file (optional)')
 		.option('--secrets-file <path>', 'Path to the secrets file, defaulting to ./.env.secrets (optional)')
+		.option('--secrets-dir <path>', 'Path to a directory holding one file per secret, named after the variable (optional)')
 		.helpOption('--help', 'Display help information')
 		.parse(process.argv)
 
-	options = program.opts() as { envFile?: string; secretsFile?: string }
+	options = program.opts() as Options
 
 	// -------- validation --------
 	for (const [label, filePath] of [
 		['Environment', options.envFile],
 		['Secrets', options.secretsFile],
+		['Secrets directory', options.secretsDir],
 	] as const) {
 		if (!filePath) continue
 		try {

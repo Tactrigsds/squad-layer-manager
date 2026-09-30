@@ -1,5 +1,5 @@
 import { createCipheriv, randomBytes } from 'node:crypto'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import * as Env from './env.ts'
 import type * as SecretBoxModule from './secret-box.server.ts'
@@ -85,7 +85,53 @@ describe('secret-box v1 envelopes', () => {
 
 	it('explains itself when a value was sealed with a genuinely different key', () => {
 		const otherKey = randomBytes(32).toString('base64')
-		expect(() => SecretBox.open(sealV1('secret', otherKey))).toThrow(/different SETTINGS_ENCRYPTION_KEY/)
+		expect(() => SecretBox.open(sealV1('secret', otherKey))).toThrow(/other than the one currently configured/)
+	})
+})
+
+// a rotated install: the value that used to be SETTINGS_ENCRYPTION_KEY is now SETTINGS_ENCRYPTION_KEY_PREVIOUS
+describe('secret-box key rotation', () => {
+	const OLD_KEY = randomBytes(32).toString('base64')
+	const NEW_KEY = randomBytes(32).toString('base64')
+	let sealedUnderOld: string
+	let Rotated: typeof SecretBoxModule
+
+	// a fresh module registry per key set, since the box caches its keys and env latches its setup
+	async function boot(vars: Record<string, string>) {
+		vi.resetModules()
+		const FreshEnv = await import('./env.ts')
+		FreshEnv.ensureEnvSetup()
+		for (const [key, value] of Object.entries(vars)) FreshEnv.injectRawVar(key, value)
+		const box = await import('./secret-box.server.ts')
+		box.setup()
+		return box
+	}
+
+	beforeAll(async () => {
+		const Old = await boot({ SETTINGS_ENCRYPTION_KEY: OLD_KEY })
+		sealedUnderOld = Old.seal('rcon-password')
+		Rotated = await boot({ SETTINGS_ENCRYPTION_KEY: NEW_KEY, SETTINGS_ENCRYPTION_KEY_PREVIOUS: OLD_KEY })
+	})
+
+	it('opens a value sealed under the previous key', () => {
+		expect(Rotated.open(sealedUnderOld)).toBe('rcon-password')
+	})
+
+	it('reports a value under the previous key as needing a reseal, and one under the current key as not', () => {
+		expect(Rotated.needsReseal(sealedUnderOld)).toBe(true)
+		expect(Rotated.needsReseal(Rotated.seal('x'))).toBe(false)
+	})
+
+	it('reseals under the current key, after which the previous key is no longer needed', async () => {
+		const resealed = Rotated.reseal(sealedUnderOld)
+		expect(Rotated.needsReseal(resealed)).toBe(false)
+		const WithoutPrevious = await boot({ SETTINGS_ENCRYPTION_KEY: NEW_KEY })
+		expect(WithoutPrevious.open(resealed)).toBe('rcon-password')
+		expect(() => WithoutPrevious.open(sealedUnderOld)).toThrow(/SETTINGS_ENCRYPTION_KEY_PREVIOUS/)
+	})
+
+	it('opens a v1 envelope sealed under the previous key with its legacy derivation', () => {
+		expect(Rotated.open(sealV1('legacy', OLD_KEY))).toBe('legacy')
 	})
 })
 

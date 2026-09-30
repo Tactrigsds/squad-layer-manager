@@ -93,6 +93,28 @@ export function matchOrdinal(app: AppFixture, matchId: number): number {
 	}
 }
 
+// the global settings row as the column holds it: superjson-encoded, secrets sealed
+export function savedGlobalSettings(app: AppFixture): Record<string, any> {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT settings FROM globalSettings WHERE id = 1`).get() as { settings: string }
+		return JSON.parse(row.settings).json
+	} finally {
+		db.close()
+	}
+}
+
+// every SETTINGS_UPDATED event's payload as persisted, serialized, for asserting what the audit log never holds
+export function settingsUpdatedBlobs(app: AppFixture): string[] {
+	const db = app.readDb()
+	try {
+		const rows = db.prepare(`SELECT data FROM appEvents WHERE type = 'SETTINGS_UPDATED'`).all() as { data: string }[]
+		return rows.map((r) => r.data)
+	} finally {
+		db.close()
+	}
+}
+
 export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	const db = app.readDb()
 	try {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import * as AppEvents from '@/models/app-events.models'
 import type * as LL from '@/models/layer-list.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 
 describe('app-events persistence', () => {
@@ -16,7 +17,7 @@ describe('app-events persistence', () => {
 			message: 'stop',
 			targets: ['eos-1', 'eos-2'],
 		})
-		const back = AppEvents.fromRow(AppEvents.toRow(e) as any)
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any)
 		expect(back).toEqual(e)
 	})
 
@@ -31,7 +32,7 @@ describe('app-events persistence', () => {
 			reason: 'override',
 			overrode: { type: 'player', playerId: 'eos-9' },
 		})
-		const back = AppEvents.fromRow(AppEvents.toRow(e) as any)
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any)
 		expect(back).toEqual(e)
 	})
 
@@ -44,7 +45,7 @@ describe('app-events persistence', () => {
 			causeId: null,
 			choiceCount: 3,
 		})
-		const row = AppEvents.toRow(e) as any
+		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue) as any
 		// simulate an old/corrupt row whose payload no longer matches the schema
 		row.data = superjson.serialize({ choiceCount: 'not-a-number' })
 		expect(AppEvents.fromRow(row)).toBeNull()
@@ -60,7 +61,7 @@ describe('app-events persistence', () => {
 			message: 'stop',
 			targets: ['eos-1'],
 		})
-		const row = AppEvents.toRow(e) as any
+		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue) as any
 		// an old row from before `targets` existed
 		row.data = superjson.serialize({ message: 'stop' })
 		expect(AppEvents.fromRow(row)).toBeNull()
@@ -78,7 +79,7 @@ describe('app-events persistence', () => {
 			reason: 'periodic',
 			durationMs: 80,
 		})
-		const row = AppEvents.toRow(e) as any
+		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue) as any
 		// an old row, written before the reason was recorded. Every one of them is a periodic backup: there was no
 		// other kind. Dropping them (fromRow returns null on a parse failure) would put holes in the audit log.
 		row.data = superjson.serialize({ fileName: e.fileName, sizeBytes: e.sizeBytes, durationMs: e.durationMs })
@@ -99,7 +100,7 @@ describe('app-events persistence', () => {
 				{ path: 'vote.voteDisplayProps', from: undefined, to: ['layer'] },
 			],
 		})
-		const back = AppEvents.fromRow(AppEvents.toRow(e) as any)
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any)
 		expect(back).toEqual(e)
 		expect((back as AppEvents.SettingsUpdated).changes?.[2]).toEqual({ path: 'vote.voteDisplayProps', from: undefined, to: ['layer'] })
 	})
@@ -116,18 +117,31 @@ describe('app-events persistence', () => {
 				{ path: 'connections.token', from: 'old-token', to: 'new-token' },
 				{ path: 'connections', from: { rcon: { password: 'whole-object' } }, to: {} },
 				{ path: 'queue.layerRequests.maxTotal', from: 50, to: 8 },
+				// a global credential: only the secret leaf is redacted, a whole-section change included
+				{ path: 'integrations.battlemetrics.token', from: 'old-bm-token', to: 'new-bm-token' },
+				{
+					path: 'integrations.battlemetrics',
+					from: { enabled: true, token: 'old-bm-token', orgId: '1' },
+					to: { enabled: false, token: '', orgId: '1' },
+				},
 			],
 		})
-		const persisted = AppEvents.fromRow(AppEvents.toRow(e) as any) as AppEvents.SettingsUpdated
+		const persisted = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any) as AppEvents.SettingsUpdated
 		expect(persisted.changes).toEqual([
 			{ path: 'connections.rcon.password', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			{ path: 'connections.token', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			{ path: 'connections', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
 			// non-sensitive paths keep their values
 			{ path: 'queue.layerRequests.maxTotal', from: 50, to: 8 },
+			{ path: 'integrations.battlemetrics.token', from: AppEvents.REDACTED_SETTING, to: AppEvents.REDACTED_SETTING },
+			{
+				path: 'integrations.battlemetrics',
+				from: { enabled: true, token: AppEvents.REDACTED_SETTING, orgId: '1' },
+				to: { enabled: false, token: '', orgId: '1' },
+			},
 		])
 		// belt and braces: no credential value survives anywhere in the serialized blob (the paths do, by design)
-		const blob = JSON.stringify(AppEvents.toRow(e).data)
+		const blob = JSON.stringify(AppEvents.toRow(e, SETTINGS.redactSettingValue).data)
 		for (const secret of ['old-rcon-pw', 'new-rcon-pw', 'old-token', 'new-token', 'whole-object']) {
 			expect(blob).not.toContain(secret)
 		}
@@ -145,7 +159,7 @@ describe('app-events persistence', () => {
 			prevList: [],
 			list: [],
 		})
-		const back = AppEvents.fromRow(AppEvents.toRow(e) as any) as AppEvents.QueueUpdated
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any) as AppEvents.QueueUpdated
 		expect(back).not.toBeNull()
 		expect(back.save).toBeUndefined()
 	})

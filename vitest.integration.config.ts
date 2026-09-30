@@ -24,7 +24,7 @@ export default defineConfig({
 	test: {
 		include: ['test/integration/**/*.test.ts'],
 		exclude: ['.claude/**'],
-		setupFiles: ['./src/vitest-setup.ts'],
+		setupFiles: ['./src/vitest-setup.ts', './test/harness/failure-report.ts'],
 		testTimeout: 60_000,
 		hookTimeout: 120_000,
 		fileParallelism: true,

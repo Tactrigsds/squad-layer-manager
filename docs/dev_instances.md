@@ -143,7 +143,9 @@ Blocked deliberately, via env overrides in `src/dev/instance.ts`:
 - **Discord** is off (`DISCORD_ENABLED=false`). The oauth callback is built from `ORIGIN`, so real login would need
   every slot's port registered as a redirect uri on the discord app. `QUERY_PARAM_AUTH_BYPASS` stands in. RBAC roles
   that come from discord are unavailable as a result, but the `SUPER_USERS` bootstrap still applies.
-- **BattleMetrics** points at the emulator's stub. The real API would write flags and notes to the live org.
+- **BattleMetrics** points at the emulator's stub, and provisioning writes the stub's org id and a dummy token into
+  the workspace's settings. The real API would write flags and notes to the live org. The Squad Browser and Steam
+  keys a cloned database holds are dropped for the same reason.
 
 Telemetry does go to the shared collector, tagged `slm.worktree=<name>` and `slm.dev.slot=<n>` so one grafana can
 serve every instance.
@@ -151,8 +153,8 @@ serve every instance.
 ## Env files
 
 For linked Git worktrees, provisioning symlinks missing `.env` and `.env.secrets` files back to the primary checkout
-rather than copying them. A worktree wants the same Discord app, encryption key and BattleMetrics credentials, and a
-copy would silently keep the old values when one is rotated. A standalone clone keeps its local environment files.
+rather than copying them. A worktree wants the same Discord app and encryption key, and a copy would silently keep
+the old values when one is rotated. A standalone clone keeps its local environment files.
 The per-workspace differences (ports, `ORIGIN`, and the overrides above) are injected at spawn time instead.
 
 A checkout with no `.env` anywhere gets one written from `.env.example.dev`, naming the seeded `dev` user as the sole

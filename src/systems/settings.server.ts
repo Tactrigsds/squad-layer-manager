@@ -5,7 +5,6 @@ import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
-import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
@@ -17,6 +16,7 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db.ts'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as SecretBox from '@/server/secret-box.server'
@@ -41,24 +41,78 @@ export async function setup(ctx: C.Db) {
 
 export let GLOBAL_SETTINGS!: SETTINGS.GlobalSettings
 
+// the secrets in the global settings document (the integration tokens) are sealed in the column and opened here,
+// like a server's connection secrets. An empty token is stored empty: "unset" is not a secret, and sealing it
+// would make every boot's reseal check find a plaintext value to rewrite.
+const sealValue = (value: string) => (value === '' ? value : SecretBox.seal(value))
+const valueNeedsReseal = (value: string) => value !== '' && SecretBox.needsReseal(value)
+const sealGlobalSecrets = (encoded: unknown) => SETTINGS.mapSecretSettingValues('', encoded, sealValue)
+
+function globalSecretsNeedReseal(encoded: unknown): boolean {
+	let needed = false
+	SETTINGS.mapSecretSettingValues('', encoded, (value) => {
+		needed ||= valueNeedsReseal(value)
+		return value
+	})
+	return needed
+}
+
+// A token sealed with a key this install no longer has reads as unset, and is logged: the row keeps the sealed
+// value, so restoring the key brings it back, and nothing here writes the row until something else changes it.
+function openGlobalSecrets(encoded: unknown): { settings: unknown; unreadable: string[] } {
+	const unreadable: string[] = []
+	const settings = SETTINGS.mapSecretSettingValues('', encoded, (value, path) => {
+		try {
+			return SecretBox.open(value)
+		} catch (err) {
+			log.error(err, 'The secret at %s cannot be decrypted; treating it as unset', path)
+			unreadable.push(path)
+			return ''
+		}
+	})
+	return { settings, unreadable }
+}
+
+async function persistGlobalSettings(ctx: C.Db) {
+	await ctx
+		.db({ redactParams: true })
+		.update(Schema.globalSettings)
+		.set(superjsonify(Schema.globalSettings, { settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS)) }))
+}
+
 async function loadGlobalSettings(ctx: C.Db) {
 	const rows = await ctx.db().select().from(Schema.globalSettings)
 	if (rows.length === 0) {
 		// fresh install: schema defaults include the tiered admins/managers/owners RBAC preset (see defaultRbacSettings)
-		const defaultsRes = SETTINGS.parseGlobalSettings({})
+		const defaultsRes = SETTINGS.parseGlobalSettings({ integrations: Env.legacyIntegrationSettings() })
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
 		const defaults = Seed.applyInitialGlobalSettings(defaultsRes.data)
 		await ctx
-			.db()
+			.db({ redactParams: true })
 			.insert(Schema.globalSettings)
-			.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(defaults) }))
+			.values(
+				superjsonify(Schema.globalSettings, { id: 1, settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(defaults)) }),
+			)
 		GLOBAL_SETTINGS = defaults
 		log.info('Created default global settings row')
 	} else {
 		const raw = unsuperjsonify(Schema.globalSettings, rows[0]) as any
+		let stored: unknown = raw.settings
+		// the first boot after the integration credentials moved out of the environment: carried over once, into a
+		// row that has never held them. After this the environment is reported and ignored (see main.ts).
+		let imported = false
+		if (stored && typeof stored === 'object' && (stored as Record<string, unknown>).integrations === undefined) {
+			const legacy = Env.legacyIntegrationSettings()
+			if (legacy) {
+				stored = { ...(stored as Record<string, unknown>), integrations: legacy }
+				imported = true
+			}
+		}
+		const needsReseal = globalSecretsNeedReseal(stored)
+		const opened = openGlobalSecrets(stored)
 		// the trim isn't written back: it costs nothing to redo each boot, and leaving the row alone keeps the grants
 		// recoverable if the setting they name comes back under a migration
-		const trimRes = SETTINGS.trimStaleSettingsGrants(raw.settings)
+		const trimRes = SETTINGS.trimStaleSettingsGrants(opened.settings)
 		if (trimRes.dropped.length > 0) {
 			log.warn(
 				'Ignoring %d settings grant(s) referencing settings that no longer exist: %s',
@@ -80,6 +134,11 @@ async function loadGlobalSettings(ctx: C.Db) {
 		}
 		GLOBAL_SETTINGS = parseRes.data
 		log.info('Loaded global settings from DB')
+		if (imported) log.info('Carried the integration credentials over from the environment into the settings')
+		if ((imported || needsReseal) && opened.unreadable.length === 0) {
+			await persistGlobalSettings(ctx)
+			if (needsReseal) log.info('Re-encrypted integration credentials at rest')
+		}
 	}
 	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
@@ -89,7 +148,7 @@ async function loadGlobalSettings(ctx: C.Db) {
 // credentials. toRow redacts these again on the way to the table; doing it here as well keeps the in-flight event
 // (which gets logged and traced) clean too.
 function auditableSettingChanges(changes: SettingChange[]): AppEvents.SettingsUpdated['changes'] {
-	return AppEvents.redactSettingChanges(changes)
+	return AppEvents.redactSettingChanges(changes, SETTINGS.redactSettingValue)
 }
 
 // ============================== server registry: identity + enabled/default/broken status for every known server ==============================
@@ -344,49 +403,24 @@ export function initServerPayload(ctx: C.ManagedServerCleanup & CS.ServerId, ser
 	return payload
 }
 
-// the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
-// server-agent token. In memory these are always plaintext; sealing happens only at a DB write, opening only
-// at a DB read.
-function transformConnectionSecretValues(connections: SETTINGS.ServerConnection, fn: (value: string) => string): SETTINGS.ServerConnection {
-	switch (connections.type) {
-		case 'local':
-			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
-		case 'sftp':
-			return {
-				...connections,
-				rcon: { ...connections.rcon, password: fn(connections.rcon.password) },
-				sftp: { ...connections.sftp, password: fn(connections.sftp.password) },
-			}
-		case 'server-agent':
-			return { ...connections, token: fn(connections.token) }
-		// nothing to seal: the emulator's rcon password is generated per process and never persisted
-		case 'sandbox':
-			return connections
-		default:
-			assertNever(connections)
-	}
-}
-
-function transformConnectionSecrets(settings: SETTINGS.ServerSettings, fn: (value: string) => string): SETTINGS.ServerSettings {
-	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
-}
-
-export const sealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.seal)
-export const openConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.open)
-export const resealConnections = (settings: SETTINGS.ServerSettings) => transformConnectionSecrets(settings, SecretBox.reseal)
+export const sealConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.seal)
+export const openConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.open)
+export const resealConnections = (settings: SETTINGS.ServerSettings) => SETTINGS.transformConnectionSecrets(settings, SecretBox.reseal)
 
 // whether any of a server's connection secrets is stored in a form the current key and envelope version no
 // longer produce, so the backfill knows to rewrite the row
 export function connectionsNeedReseal(settings: SETTINGS.ServerSettings): boolean {
 	let needed = false
-	transformConnectionSecrets(settings, (value) => {
+	SETTINGS.transformConnectionSecrets(settings, (value) => {
 		needed ||= SecretBox.needsReseal(value)
 		return value
 	})
 	return needed
 }
-export const sealConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.seal)
-export const openConnectionValues = (connections: SETTINGS.ServerConnection) => transformConnectionSecretValues(connections, SecretBox.open)
+export const sealConnectionValues = (connections: SETTINGS.ServerConnection) =>
+	SETTINGS.transformConnectionSecretValues(connections, SecretBox.seal)
+export const openConnectionValues = (connections: SETTINGS.ServerConnection) =>
+	SETTINGS.transformConnectionSecretValues(connections, SecretBox.open)
 
 // The DB read boundary for a full servers row: connection secrets are sealed in the column and opened here, so
 // every ServerState the app works with is plaintext. All full-row reads go through this.
@@ -544,14 +578,15 @@ const publicRouter = {
 
 // the full global settings object, for editing
 const globalRouter = {
-	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant for display/editing
+	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant
+	// for display/editing. A saved secret goes out as a placeholder: the editor can replace it, never read it.
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
 		yield* Rx.Ext.toAsyncGenerator(
 			settings$.pipe(
 				Rx.filter((e) => e.scope === 'global'),
 				Rx.map((e) => e.settings),
 				Rx.startWith(GLOBAL_SETTINGS),
-				Rx.map((settings) => SETTINGS.GlobalSettingsSchema.encode(settings)),
+				Rx.map((settings) => SETTINGS.maskSecretSettingValue('', SETTINGS.GlobalSettingsSchema.encode(settings))),
 				Rx.Ext.withAbortSignal(ctx.signal),
 			),
 		)
@@ -561,7 +596,9 @@ const globalRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.record(z.string(), z.unknown()))
 		.handler(async ({ context: ctx, input }) => {
-			const merged = { ...GLOBAL_SETTINGS, ...input }
+			// a placeholder sent back stands for the stored secret, so an untouched token is no change at all
+			const restored = SETTINGS.restoreMaskedSecrets(input, SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS))
+			const merged = { ...GLOBAL_SETTINGS, ...restored }
 			const parseRes = SETTINGS.parseGlobalSettings(merged)
 			if (!parseRes.success) {
 				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
@@ -584,10 +621,7 @@ const globalRouter = {
 				}
 			}
 
-			await ctx
-				.db({ redactParams: true })
-				.update(Schema.globalSettings)
-				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
+			await persistGlobalSettings(ctx)
 
 			Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 			// admin-list field edits flush rbac via AdminList.changed$ once the list refetches; the rbac subtree
@@ -629,10 +663,7 @@ const globalRouter = {
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 			GLOBAL_SETTINGS = parseRes.data
 
-			await ctx
-				.db({ redactParams: true })
-				.update(Schema.globalSettings)
-				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
+			await persistGlobalSettings(ctx)
 
 			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 			await AppEventsSys.persistAppEvent(

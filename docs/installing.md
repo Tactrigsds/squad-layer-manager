@@ -9,7 +9,8 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 ```
 
 Open http://localhost:3000 and sign in with any username from the form on the front page. The demo starts with
-example data and needs no Discord server. Everything in it is thrown away when you stop the container.
+example data and needs no Discord server. Everything in it is thrown away when you stop the container. The demo
+encrypts its settings with a key published in this repository, so enter no real credential into it.
 
 ## Installing for real
 
@@ -109,16 +110,17 @@ Grant them in one of two ways:
 
 Put every credential SLM reads in `.env.secrets`, and the rest of the configuration in `.env`.
 
-| variable                             | what it is                                                          |
-| ------------------------------------ | ------------------------------------------------------------------- |
-| `SETTINGS_ENCRYPTION_KEY`            | encrypts sensitive settings at rest (see [3.4](#34-encryption-key)) |
-| `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                              |
-| `DISCORD_BOT_TOKEN`                  | the discord bot token                                               |
-| `BM_PAT`                             | the battlemetrics personal access token                             |
-| `SQUADBROWSER_API_KEY`               | the squad browser api key, for the dashboard's join button          |
-| `STEAM_API_KEY`                      | the steam web api key, the join button's other source               |
-| `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                   |
-| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                    |
+| variable                             | what it is                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `SETTINGS_ENCRYPTION_KEY`            | encrypts sensitive settings at rest (see [3.4](#34-encryption-key))                         |
+| `SETTINGS_ENCRYPTION_KEY_PREVIOUS`   | the key you are rotating away from, set only while rotating (see [3.4](#34-encryption-key)) |
+| `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                                                      |
+| `DISCORD_BOT_TOKEN`                  | the discord bot token                                                                       |
+| `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                                           |
+| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                                            |
+
+The BattleMetrics, Squad Browser and Steam credentials are not environment variables. Enter them on the settings
+page once SLM is running (see [configuring.md, Integrations](configuring.md#12-integrations)).
 
 `install.sh` writes this file for you from `.env.secrets.example`, `chmod 600`, with a freshly generated
 `SETTINGS_ENCRYPTION_KEY` already in it. Fill in the rest as you work through the sections below. Keep it out of
@@ -138,52 +140,71 @@ services:
 SLM reads `.env.secrets` as a file and never loads it into its environment, so the credentials do not show up in
 `docker inspect` or in anything SLM starts. `.env` is passed to the container with `env_file`.
 
-If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As a
-docker secret, for instance:
+If a secrets manager delivers your credentials, point SLM at what it mounts. SLM reads two layouts:
+
+- `SECRETS_FILE`: one file in the same `KEY=value` format as `.env.secrets`, wherever it is mounted.
+- `SECRETS_DIR`: a directory holding one file per credential, named after the variable. Docker and podman secrets,
+  a kubernetes secret volume and systemd's `LoadCredential=` all produce this layout. SLM reads only the variables
+  in the table above from it, and drops a trailing newline.
+
+As docker secrets, one per credential:
 
 ```yaml
 services:
    app:
       environment:
-         - SECRETS_FILE=/run/secrets/slm-secrets
+         - SECRETS_DIR=/run/secrets
       secrets:
-         - slm-secrets
+         - SETTINGS_ENCRYPTION_KEY
+         - DISCORD_CLIENT_SECRET
+         - DISCORD_BOT_TOKEN
 
 secrets:
-   slm-secrets:
-      file: ./.env.secrets
+   SETTINGS_ENCRYPTION_KEY:
+      file: ./secrets/SETTINGS_ENCRYPTION_KEY
+   DISCORD_CLIENT_SECRET:
+      file: ./secrets/DISCORD_CLIENT_SECRET
+   DISCORD_BOT_TOKEN:
+      environment: DISCORD_BOT_TOKEN # taken from the environment `docker compose` runs in
 ```
 
-The format is the same wherever it is mounted: `KEY=value`, one per line. If `SECRETS_FILE` points at a file that
-does not exist, SLM refuses to start instead of starting without your credentials.
+A file in `SECRETS_DIR` wins over the same variable in `SECRETS_FILE`. If either points at something that does not
+exist, SLM refuses to start instead of starting without your credentials.
+
+On one host running Docker Compose, a docker secret sourced from a file is a bind mount of that file. It is kept on
+disk in plaintext, exactly as `.env.secrets` is, and neither shows up in `docker inspect`. Pick the layout your
+tooling produces. Docker secrets protect the values at rest only under Swarm, or when a secrets manager delivers
+them.
 
 #### 3.4. Encryption key
 
-SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, and its server-agent token. The key
-is `SETTINGS_ENCRYPTION_KEY`. It is required, and the app refuses to start without it. `install.sh` generates one
-into `.env.secrets` for you. If it could not, or you installed by hand, generate a strong key and paste it in
-yourself:
+SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, its server-agent token, and the
+integration tokens entered on the settings page. The key is `SETTINGS_ENCRYPTION_KEY`. It is required, and the app
+refuses to start without it. `install.sh` generates one into `.env.secrets` for you. If it could not, or you
+installed by hand, generate one and paste it in yourself:
 
 ```sh
 openssl rand -base64 32
 ```
 
-Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be
-decrypted and have to be re-entered on the settings page. The first boot after setting the key encrypts any
-connection secrets previously stored in plaintext.
+The app refuses a key shorter than 16 characters. Keep the key wherever you keep your backups: a backup restored
+without its key comes up with every server disabled and every integration token unset (see
+[backups and restoring](backups.md#restoring)).
+
+To rotate the key, move the current value to `SETTINGS_ENCRYPTION_KEY_PREVIOUS`, put the new one in
+`SETTINGS_ENCRYPTION_KEY`, and start the app. That boot re-encrypts everything under the new key and logs each
+server it did it for. Remove `SETTINGS_ENCRYPTION_KEY_PREVIOUS` afterwards.
+
+If you lose the key, re-enter the RCON and SFTP passwords, agent tokens and integration tokens on the settings
+page. SLM disables a server whose secrets it cannot decrypt until you do, and treats an integration token it cannot
+decrypt as unset.
 
 #### 3.5. Battlemetrics
 
-SLM has a battlemetrics integration. Among other things, it lets users update player flags remotely and gives more
-context when managing players on the servers.
-
-Set `BM_PAT` in `.env.secrets` to a battlemetrics personal access token, and `BM_ORG_ID` in `.env` to your org's
-battlemetrics id. The required scopes are listed in the description of the `BM_PAT`
-environment variable.
-
-The integration is optional. If `BM_PAT` is unset, it turns itself off: nothing is polled, no player flags or
-profiles are read, and the parts of the app that show them are hidden. Set `BM_ENABLED=false` to
-turn it off while keeping the token configured.
+SLM's battlemetrics integration lets users update player flags from in game and from the dashboard, and shows a
+player's flags and profile beside the actions taken against them. It is optional, and you configure it on the
+settings page once SLM is running, with a personal access token and your org's id: see
+[configuring.md, Integrations](configuring.md#12-integrations).
 
 #### 3.6. Join button
 
@@ -191,15 +212,13 @@ The server dashboard can offer a button that joins the server you are looking at
 ways, and neither needs configuring per server. Configure either one, or both.
 
 The squad browser identifies a server by the name it reports over RCON. It answers whether or not anyone is playing
-on the server. Set `SQUADBROWSER_API_KEY` in `.env.secrets` to a squad browser api key. Keys start with `sqb_`.
+on the server, and takes a squad browser api key.
 
 Steam answers from the lobby of a player in game. It only works while someone is on the server, and only for players
-whose steam profile sets game details to public. Set `STEAM_API_KEY` in `.env.secrets` to a key from
-https://steamcommunity.com/dev/apikey.
+whose steam profile sets game details to public, and takes a steam web api key.
 
-With both configured, the squad browser is asked first, and steam covers the servers it does not list. Both are
-optional. If both keys are unset, the button is hidden. `SQUADBROWSER_ENABLED=false` and
-`STEAM_ENABLED=false` turn each off while keeping its key configured.
+Both are optional. Enter either key, or both, on the settings page once SLM is running: see
+[configuring.md, Integrations](configuring.md#12-integrations). If neither is set, the button is hidden.
 
 The button never appears for a sandbox server, which SLM emulates in-process and nobody can join.
 
@@ -278,6 +297,12 @@ finds them. To move them out of the environment (see [3.3](#33-secrets)):
 volumes:
    - ./.env.secrets:/app/.env.secrets:ro
 ```
+
+The BattleMetrics, Squad Browser and Steam credentials moved from the environment to the settings page (see
+[configuring.md, Integrations](configuring.md#12-integrations)). The first boot after upgrading copies `BM_PAT`,
+`BM_ORG_ID`, `SQUADBROWSER_API_KEY`, `STEAM_API_KEY` and the matching `*_ENABLED` switches into the settings, and
+logs that it did. Remove them from `.env` and `.env.secrets` after that boot: SLM warns on every start while one is
+still set, and no longer reads it.
 
 Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`. Stop the app first: a migration
 will not run against a database another process has open.

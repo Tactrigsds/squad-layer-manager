@@ -4,6 +4,7 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import { initModule } from '@/server/logger'
@@ -18,7 +19,7 @@ const orpcBase = getOrpcBase(module)
 export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 	// stamp the emitting process so events can be grouped by run, and restart detection can correlate by instance
 	appEvent.instanceId = Otel.instanceId
-	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent))
+	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent, SETTINGS.redactSettingValue))
 	const associations = AppEvents.associationRows(appEvent)
 	if (associations.length > 0) {
 		await ctx.db().insert(Schema.appEventAssociations).values(associations).onConflictDoNothing()

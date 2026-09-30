@@ -17,6 +17,9 @@ export type Doc = {
 	options?: Record<string, Msgs.TString>
 	// edited as one value (raw YAML, or a dedicated editor built on its own messages), so its members need no labels
 	opaque?: true
+	// a credential: edited in a password field, masked wherever a change is shown, and encrypted at rest (see
+	// SETTINGS.SECRET_SETTING_PATHS)
+	secret?: true
 }
 
 const KEYS = {
@@ -24,6 +27,7 @@ const KEYS = {
 	description: 'x-slm-description',
 	options: 'x-slm-options',
 	opaque: 'x-slm-opaque',
+	secret: 'x-slm-secret',
 } as const satisfies Record<keyof Doc, string>
 
 const KEY_SET = new Set<string>(Object.values(KEYS))

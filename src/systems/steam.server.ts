@@ -1,7 +1,9 @@
 import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
+import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
+import * as Settings from '@/systems/settings.server'
 
 // Builds a join link out of steam's own data, for a server the squad browser cannot resolve. A player in game
 // reports the lobby their session belongs to, and steam://joinlobby takes that lobby plus any member of it, so
@@ -14,16 +16,14 @@ const module = initModule('steam')
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
+// off until the settings are loaded, which happens after this module is set up
 export function isEnabled() {
-	return ENV?.STEAM_ENABLED ?? false
+	return !!Settings.GLOBAL_SETTINGS && SETTINGS.integrationEnabled(Settings.GLOBAL_SETTINGS.integrations.steam)
 }
 
 export function setup() {
 	log = module.getLogger()
 	ENV = getEnv()
-	if (!ENV.STEAM_ENABLED) {
-		log.info('Steam integration is off (STEAM_ENABLED=false); join links come from the squad browser alone')
-	}
 }
 
 export type JoinLinkRes =
@@ -87,7 +87,7 @@ async function fetchLobbyMembers(
 ): Promise<{ code: 'ok'; members: LobbyMember[] } | { code: 'err:request-failed'; msg: string }> {
 	// the key travels in the query string because the api has no other way to authenticate; otel.server redacts
 	// it out of the span this fetch produces
-	const query = new URLSearchParams({ key: ENV.STEAM_API_KEY!, steamids: steamIds.join(',') })
+	const query = new URLSearchParams({ key: Settings.GLOBAL_SETTINGS.integrations.steam.token, steamids: steamIds.join(',') })
 
 	let response: Response
 	try {

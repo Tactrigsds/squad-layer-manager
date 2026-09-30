@@ -1,4 +1,5 @@
 import type { FastifyRequest } from 'fastify'
+import * as Crypto from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import * as semver from 'semver'
 import type { WebSocket } from 'ws'
@@ -244,7 +245,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 		return
 	}
 
-	if (settings.connections.token !== token) {
+	if (!tokensMatch(settings.connections.token, token)) {
 		log.warn('Server agent %s: invalid token for server %s', remote, serverId)
 		ServerConsole.recordSlm(
 			serverId,
@@ -358,4 +359,11 @@ function close(ws: WebSocket, code: number, reason: string) {
 	} catch {
 		ws.terminate()
 	}
+}
+
+// compared as digests so the comparison is constant-time and independent of the two lengths
+function tokensMatch(expected: string, given: string): boolean {
+	const a = Crypto.createHash('sha256').update(expected).digest()
+	const b = Crypto.createHash('sha256').update(given).digest()
+	return Crypto.timingSafeEqual(a, b)
 }
