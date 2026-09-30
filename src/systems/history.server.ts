@@ -398,7 +398,7 @@ export const router = {
 	// anything else is a name substring, which the trigram index makes an index lookup (resolveNamedPlayerIds)
 	searchPlayers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
 		const needle = input.needle.trim()
-		const eosIds = HistoryQuery.isPlayerIdRef(needle)
+		const eosIds = HQ.isPlayerIdRef(needle)
 			? await HistoryQuery.resolvePlayerRefs(ctx, [needle])
 			: await HistoryQuery.resolveNamedPlayerIds(ctx, needle)
 		if (eosIds.length === 0) return { code: 'ok' as const, players: [] }
@@ -424,15 +424,42 @@ export const router = {
 	}),
 
 	// names for players already chosen, which the search-by-needle path cannot supply: a query arriving by
-	// url or as a saved row carries ids nobody typed a needle for
+	// url or as a saved row carries ids nobody typed a needle for. Each id-shaped ref comes back with the eos id it
+	// resolves to, since a ref may be a steam or epic id.
 	playerLabels: orpcBase.input(z.object({ playerIds: z.array(z.string()) })).handler(async ({ input, context: ctx }) => {
-		if (input.playerIds.length === 0) return { code: 'ok' as const, players: [] }
+		const steam64s: bigint[] = []
+		const hexIds: string[] = []
+		for (const ref of input.playerIds) {
+			if (HQ.STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
+			else if (HQ.EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
+		}
+		if (steam64s.length === 0 && hexIds.length === 0) return { code: 'ok' as const, players: [] }
+		const conds: E.SQL[] = []
+		if (steam64s.length > 0) conds.push(E.inArray(Schema.players.steamId, steam64s))
+		if (hexIds.length > 0) conds.push(E.inArray(Schema.players.eosId, hexIds), E.inArray(Schema.players.epicId, hexIds))
 		const rows = await ctx
 			.db()
-			.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+			.select({
+				eosId: Schema.players.eosId,
+				steamId: Schema.players.steamId,
+				epicId: Schema.players.epicId,
+				username: Schema.players.username,
+			})
 			.from(Schema.players)
-			.where(E.inArray(Schema.players.eosId, input.playerIds))
-		return { code: 'ok' as const, players: rows }
+			.where(E.or(...conds))
+		const byRef = new Map<string, { eosId: string; username: string }>()
+		for (const r of rows) {
+			const player = { eosId: r.eosId, username: r.username }
+			byRef.set(r.eosId, player)
+			if (r.steamId !== null) byRef.set(r.steamId.toString(), player)
+			if (r.epicId !== null) byRef.set(r.epicId, player)
+		}
+		const players: { ref: string; eosId: string; username: string }[] = []
+		for (const ref of input.playerIds) {
+			const player = byRef.get(HQ.EOS_ID_RE.test(ref) ? ref.toLowerCase() : ref)
+			if (player) players.push({ ref, ...player })
+		}
+		return { code: 'ok' as const, players }
 	}),
 
 	// -------- saved queries --------
