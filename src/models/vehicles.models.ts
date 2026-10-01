@@ -260,6 +260,9 @@ const NAME_MERGES: Record<string, string> = {
 	m35a2guntruck: 'M35A2 Transport',
 	m35a2logistics: 'M35A2 Transport',
 	mtlbzu23: 'MT-LB ZU-23-2',
+	// relabelled MTLB by the game after 10.5.1; the name saved vehicle filters already compare against stays
+	mtlblogistics: 'MT-LB Logistics',
+	mtlbvmk: 'MT-LB VMK',
 	apczu23: 'APC ZU-23-2',
 	pbr: 'RHIB M2',
 	shilka: "ZSU 23-4 'Shilka'",
@@ -310,6 +313,9 @@ const VEH_TYPE_OVERRIDES: Record<string, string> = {
 	arc170: 'AH',
 	vwing: 'AH',
 	trifighter: 'AH',
+	// the game's WPMC Loach settings carry no VehicleType since the update after 10.5.1
+	loachscout: 'AH',
+	loachcassmall: 'AH',
 }
 
 // blueprint name tokens that vary between copies of the same vehicle: finishes, camos, damage/door/tent
