@@ -267,6 +267,13 @@ Before building UI that shows data, look for an existing component that already 
 Avoid controlled inputs and textareas: do not set `value`. Do the same for other latency-sensitive fields. Debounce
 inputs that would otherwise cause frequent re-renders.
 
+Never size or break a layout around the width of text. App text will be translated, and a translation can be much
+longer or shorter than the English. Do not pick a breakpoint, container query or fixed width because the English
+labels fit it. Let the content decide: group controls that belong together, let each group wrap as a unit with
+`flex-wrap`, and let text truncate or wrap where it runs out of room. Breakpoints are for layout changes that do not
+depend on text, such as the phone layout or the number of dashboard columns. To check a layout, replace its labels
+with longer strings and look at the result.
+
 # Testing
 
 Reserve unit tests for code that is both actually complex and largely self-contained, or at least isolatable. Do not

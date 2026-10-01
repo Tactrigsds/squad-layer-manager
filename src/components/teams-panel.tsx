@@ -162,21 +162,35 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					/>
 				) : (
 					<div className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1.5 whitespace-nowrap">
-						<Input
-							ref={searchRef}
-							data-tour="teams-search"
-							containerClassName="w-[160px] max-phone:w-full"
-							placeholder={tr.text(SM_Msgs.searchPlayers())}
-							defaultValue={initialSearchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-							// additive, like every other selection action -- merge matches into the current selection. Reads the
-							// live input rather than the store, which the debounce may not have caught up to yet.
-							onKeyDown={(e) => {
-								if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
-							}}
-						/>
-						<CollapseSquadsButton sortingTarget={isDesktop ? 'teams' : 'combined'} stores={props.stores} />
-						<div className="flex flex-1 flex-wrap items-center gap-x-2.5 gap-y-1.5 justify-center max-phone:justify-start">
+						<div className="flex items-center gap-1.5">
+							<Input
+								ref={searchRef}
+								data-tour="teams-search"
+								containerClassName="w-[180px]"
+								placeholder={tr.text(SM_Msgs.searchPlayers())}
+								defaultValue={initialSearchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
+								// additive, like every other selection action -- merge matches into the current selection. Reads the
+								// live input rather than the store, which the debounce may not have caught up to yet.
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
+								}}
+							/>
+							<CollapseSquadsButton sortingTarget={isDesktop ? 'teams' : 'combined'} stores={props.stores} />
+							<Button
+								data-tour="teams-reset"
+								size="icon"
+								className="shrink-0"
+								title={tr.text(SM_Msgs.resetPanel())}
+								onClick={() => {
+									SquadServerFrame.Actions.resetTeamsPanel(props.stores)
+									if (searchRef.current) searchRef.current.value = ''
+								}}
+							>
+								<Icons.Trash />
+							</Button>
+						</div>
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
 							<div className="flex items-center gap-1.5">
 								<Switch
 									id={showSelectedId}
@@ -193,18 +207,6 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								>
 									({selectedCount})
 								</span>
-								<Button
-									data-tour="teams-reset"
-									variant="ghost"
-									size="icon-sm"
-									title={tr.text(SM_Msgs.resetPanel())}
-									onClick={() => {
-										SquadServerFrame.Actions.resetTeamsPanel(props.stores)
-										if (searchRef.current) searchRef.current.value = ''
-									}}
-								>
-									<Icons.Trash />
-								</Button>
 							</div>
 							<div className="flex items-center gap-1.5">
 								<Switch
@@ -714,7 +716,7 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	).size
 
 	return (
-		<div className="ms-auto flex flex-wrap justify-end items-center gap-1 whitespace-nowrap max-phone:w-full max-phone:justify-start">
+		<div className="ms-auto flex items-center gap-1 whitespace-nowrap">
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['switch-requests']}
 				windowProps={{ stores } satisfies SwitchRequestsWindowProps}
