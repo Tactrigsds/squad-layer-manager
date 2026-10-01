@@ -25,6 +25,8 @@ export type Breakdown = {
 	// who is behind each bar segment, indexed [rowIndex][seriesIndex]. Carries ids as well as names because a
 	// segment is clickable: what it selects is exactly what it counted.
 	members: BreakdownMember[][][]
+	// the series label of the players outside every group, which reads differently per grouping mode
+	ungroupedLabel: string
 }
 
 export namespace Sel {
@@ -84,7 +86,7 @@ export namespace Sel {
 
 	const groupingIds = RSel.createDeepSelector(
 		[(...[, , , , , , settings]: BreakdownInputs) => settings?.playerGroupings],
-		(playerGroupings) => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []),
+		(playerGroupings) => PG.groupingIdsWithParty(playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS),
 	)
 
 	const activeGroupingId = RSel.createSelector(
@@ -122,9 +124,8 @@ export namespace Sel {
 				(...args: BreakdownInputs) => teams(...teamInputs(args)),
 			],
 			(selectedOrdinal, players, attributed, bmData, slsOnly, orgFlags, playerGroupings, groupingId, teamDisplays): Breakdown | null => {
-				if (!playerGroupings || groupingId === null) return null
-				const grouping = playerGroupings[groupingId]
-				if (!grouping) return null
+				if (groupingId === null) return null
+				const groupings = playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 
 				// each roster entry with the team row it counts for; historical entries carry the team the player
 				// spent the most time on rather than the one they happened to occupy last
@@ -144,9 +145,10 @@ export namespace Sel {
 						p.player.ids.eos!,
 						PG.playerFacts(p.player, BM.resolveFlags(bmData[p.player.ids.eos!]?.flagIds ?? [], orgFlags)),
 					])
-				const groups = PG.resolvePlayerGroups(playerFacts, playerGroupings, groupingId)
+				const groups = PG.resolvePlayerGroups(playerFacts, groupings, groupingId)
 
-				const labels = [...PG.getGroupNames(grouping), I18n.ambient.text(PG_Msgs.ungrouped())]
+				const ungrouped = I18n.ambient.text(PG_Msgs.ungroupedIn(groupingId))
+				const labels = [...PG.groupNamesOf(groupings, groupingId, groups.values()), ungrouped]
 				const labelToIdx = new Map(labels.map((label, i) => [label, i]))
 				const ungroupedIdx = labels.length - 1
 				const counts = [labels.map(() => 0), labels.map(() => 0)]
@@ -166,9 +168,14 @@ export namespace Sel {
 				}
 
 				return {
-					series: labels.map((label) => ({ key: label, label, color: PG.getGroupColor(grouping, label, orgFlags) })),
+					series: labels.map((label) => ({
+						key: label,
+						label,
+						color: label === ungrouped ? PG.DEFAULT_GROUP_COLOR : PG.groupColorOf(groupings, groupingId, label, orgFlags),
+					})),
 					rows: teamDisplays.map((team, rowIndex) => ({ key: `team${rowIndex + 1}`, label: team.label, values: counts[rowIndex] })),
 					members,
+					ungroupedLabel: ungrouped,
 				}
 			},
 		),

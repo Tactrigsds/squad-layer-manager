@@ -422,7 +422,7 @@ export namespace PlayerIds {
 
 export const ChainIdSchema = ZodUtils.ParsedIntSchema
 
-export const PLAYER_DETAILS = ['role', 'isAdmin'] as const
+export const PLAYER_DETAILS = ['role', 'isAdmin', 'partyId', 'vehicle'] as const
 export const PlayerSchema = z.object({
 	ids: PlayerIds.Schema,
 	teamId: TeamIdSchema.nullable(),
@@ -442,6 +442,12 @@ export const PlayerSchema = z.object({
 	// for a player with no steam id or no link.
 	discordRoles: z.array(z.string()).optional(),
 	role: z.string(),
+	// The in-game party this player queued with, as ListPlayers prints it ("#0"), or null outside a party. Optional, and
+	// absent on persisted events for the same reason as `adminGroups`.
+	partyId: z.string().nullable().optional(),
+	// The vehicle and seat as ListPlayers prints them ("minsk400 (Driver)"), or null on foot. Kept verbatim until more
+	// samples pin down its format. Optional for the same reason as `partyId`.
+	vehicle: z.string().nullable().optional(),
 })
 
 export type Player = z.infer<typeof PlayerSchema>

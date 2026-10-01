@@ -310,6 +310,8 @@ export const selectGroup = def('Group{named, select, yes { ({group})} other {}}'
 	named: group ? 'yes' : 'no',
 }))
 
+export const selectParty = def('Party ({partyId})', (partyId: string) => ({ partyId }))
+
 export const selectSquadLeaders = def('Squad Leaders')
 
 export const selectAdmins = def('Admins')
@@ -328,6 +330,7 @@ export const shortcuts = {
 	squadCell: { team: '⇧+click squad cell', all: '⇧+Ctrl+click squad cell' },
 	roleCell: { team: '⇧+click role cell', all: '⇧+Ctrl+click role cell' },
 	groupCell: { team: '⇧+click group cell', all: '⇧+Ctrl+click group cell' },
+	partyCell: { team: '⇧+click party cell', all: '⇧+Ctrl+click party cell' },
 	adminBadge: { team: '⇧+click admin badge', all: '⇧+Ctrl+click admin badge' },
 	cameraIcon: { team: '⇧+click camera icon', all: '⇧+Ctrl+click camera icon' },
 	selectAllBox: { team: '⇧+click select-all box', all: '⇧+Ctrl+click select-all box' },
@@ -368,7 +371,7 @@ export const adminsOnly = def('Admins Only')
 
 export const showSpoilers = def('Show Spoilers')
 
-export const showSpoilersHint = def('Show K/W/D and role columns')
+export const showSpoilersHint = def('Show K/W/D, role and vehicle columns')
 
 // the role filter survives spoilers being hidden, so it says so rather than silently narrowing the roster
 export const hiddenRoleFilter = def('Role filter is active but hidden with spoilers')
@@ -402,6 +405,13 @@ export const selectAllRows = def('Select all')
 export const groupColumn = def('Group')
 
 export const roleColumn = def('Role')
+
+// the in-game party a player queued with
+export const partyColumn = def('Party')
+
+export const noParty = def('No party')
+
+export const vehicleColumn = def('Vehicle')
 
 export const squadColumn = def('Squad')
 
@@ -528,13 +538,15 @@ export const sortSquad = def('Squad')
 
 export const sortName = def('Name')
 
+export const sortParty = def('Party')
+
 export const sortTeamKills = def('Team kills')
 
 export const sortKills = def('Kills')
 
 export const selectedOnly = def('Selected only')
 
-export const spoilersOnHint = def('role · K/W/D')
+export const spoilersOnHint = def('role · vehicle · K/W/D')
 
 export const selectedCount = def('{count, plural, one {# selected} other {# selected}}', (count: number) => ({ count }))
 
@@ -660,6 +672,8 @@ export const squadCellHint = def('Shift+click: select all members of this squad'
 export const roleCellHint = def('Shift+click: select teammates with this role. Shift+Ctrl+click: both teams')
 
 export const groupCellHint = def('Shift+click: select teammates in this group. Shift+Ctrl+click: both teams')
+
+export const partyCellHint = def('Shift+click: select teammates in this party. Shift+Ctrl+click: both teams')
 
 // the marker beside a squad leader's name
 export const squadLeaderMarker = def('(SL)')

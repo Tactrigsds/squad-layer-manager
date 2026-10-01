@@ -1936,8 +1936,8 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 		}
 
 		if (prevPlayer) {
-			const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
-			const prevDetails = Obj.selectProps(prevPlayer, SM.PLAYER_DETAILS)
+			const details = playerDetails(player)
+			const prevDetails = playerDetails(prevPlayer)
 			const newUsername = prevPlayer.ids.username !== player.ids.username ? player.ids.username : undefined
 			if (!Obj.deepEqual(details, prevDetails) || newUsername) {
 				emittedEvent = true
@@ -1958,6 +1958,13 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			time: event.time,
 		})
 	}
+}
+
+// A roster persisted before partyId and vehicle existed holds neither, which compares the same as null so the first
+// poll after an upgrade does not report every player's details as changed.
+function playerDetails(player: SM.Player) {
+	const details = Obj.selectProps(player, SM.PLAYER_DETAILS)
+	return { ...details, partyId: details.partyId ?? null, vehicle: details.vehicle ?? null }
 }
 
 async function* emitLeaveSquadEvents(

@@ -601,7 +601,7 @@ export const FobRadioDamagedSchema = event('FOB_RADIO_DAMAGED', {
 	bottomedOut: z.boolean(),
 })
 export const PlayerDetailsChangedSchema = event('PLAYER_DETAILS_CHANGED', {
-	details: SM.PlayerSchema.pick({ role: true, isAdmin: true }),
+	details: SM.PlayerSchema.pick({ role: true, isAdmin: true, partyId: true, vehicle: true }),
 	newUsername: z.string().optional(),
 	player: SM.PlayerIdSchema,
 })

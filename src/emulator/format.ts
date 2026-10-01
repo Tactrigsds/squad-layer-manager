@@ -12,6 +12,9 @@ export type PlayerLike = {
 	squadId: number | null
 	isLeader: boolean
 	role: string
+	// as ListPlayers prints them, e.g. "#0" and "minsk400 (Driver)"
+	partyId: string | null
+	vehicle: string | null
 	controllerId: string
 	ip: string
 	port: number
@@ -116,9 +119,11 @@ export function listPlayers(players: PlayerLike[], disconnected: PlayerLike[]): 
 	let id = 0
 	for (const p of players) {
 		lines.push(
-			`ID: ${id++} | Online IDs: ${idsStr(p)} | Name: ${p.name} | Team ID: ${p.teamId ?? 'N/A'} | Squad ID: ${
-				p.squadId ?? 'N/A'
-			} | Is Leader: ${p.isLeader ? 'True' : 'False'} | Role: ${p.role}`,
+			`ID: ${id++} | Online IDs: ${idsStr(p)} | Name: ${p.name} | Team ID: ${p.teamId ?? 'N/A'} | Party ID: ${
+				p.partyId ?? 'N/A'
+			} | Squad ID: ${p.squadId ?? 'N/A'} | Is Leader: ${p.isLeader ? 'True' : 'False'} | Role: ${p.role} | Vehicle: ${
+				p.vehicle ?? 'N/A'
+			}`,
 		)
 	}
 	lines.push('----- Recently Disconnected Players [Max of 15] -----')

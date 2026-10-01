@@ -205,6 +205,26 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	party: def({
+		usage: 'party <name> [party-id]',
+		summary: 'put a player in an in-game party, e.g. #0, or take them out of one',
+		input: z.object({ name: PlayerNameSchema, partyId: z.string().min(1).nullable().prefault(null) }),
+		tokens: ([name, partyId]) => {
+			requireTokens([name], 1, 'party <name> [party-id]')
+			return { name, partyId: partyId ?? null }
+		},
+		mutatesWorld: true,
+	}),
+	vehicle: def({
+		usage: 'vehicle <name> [vehicle...]',
+		summary: 'put a player in a vehicle as ListPlayers names it, e.g. minsk400 (Driver), or on foot',
+		input: z.object({ name: PlayerNameSchema, vehicle: z.string().min(1).nullable().prefault(null) }),
+		tokens: ([name, ...vehicle]) => {
+			requireTokens([name], 1, 'vehicle <name> [vehicle...]')
+			return { name, vehicle: vehicle.length > 0 ? vehicle.join(' ') : null }
+		},
+		mutatesWorld: true,
+	}),
 	kill: def({
 		usage: 'kill <victim> <attacker>',
 		summary: 'one player kills another',

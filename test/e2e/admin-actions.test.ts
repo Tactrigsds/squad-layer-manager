@@ -31,6 +31,8 @@ test.beforeAll(async () => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
 			// only the kick insists on a reason, so the other dialogs keep their immediate confirm
 			s.requireReasonFor = ['kick'] as typeof s.requireReasonFor
+			// a configured grouping is the mode in effect, so the group column shows parties only once Party is picked
+			s.playerGroupings = { Admins: { rules: [{ type: 'server-admin', group: 'Admin' }], groups: {} } } as typeof s.playerGroupings
 		},
 	})
 	leader = app.emu.world.connectPlayer(makePlayer({ name: ' sq_leader', teamId: 1 }))
@@ -136,6 +138,49 @@ test.describe('admin actions from the teams panel', () => {
 		// the row's own click handler toggles selection, and it has to stay out of this one
 		await expect(row.getByRole('checkbox').first()).not.toBeChecked()
 		await window.getByRole('button', { name: 'Close window' }).click()
+	})
+
+	// a party can span both teams, so a party filter or selection is not limited to one table
+	test('the party column filters, sorts and selects by party, the party grouping mode groups by it, and the vehicle shows behind spoilers', async ({
+		page,
+	}) => {
+		leader.partyId = '#3'
+		loner.partyId = '#3'
+		member.partyId = '#1'
+		member.vehicle = 'minsk400 (Driver)'
+		const panel = DB.teamsSection(page)
+		const leaderRow = panel.getByRole('row', { name: /sq_leader/ })
+		const memberRow = panel.getByRole('row', { name: /sq_member/ })
+		await expect(leaderRow.getByRole('cell', { name: '#3', exact: true })).toBeVisible({ timeout: 20_000 })
+		await expect(memberRow.getByRole('cell', { name: '#1', exact: true })).toBeVisible()
+
+		const partyHeader = panel.getByRole('columnheader', { name: /^Party/ }).first()
+		await partyHeader.getByRole('combobox').click()
+		await page.getByRole('option', { name: '#3', exact: true }).click()
+		await expect(memberRow).toBeHidden()
+		await expect(panel.getByRole('row', { name: /loner/ })).toBeVisible()
+		await partyHeader.getByRole('combobox').click()
+		await page.getByRole('option', { name: 'All', exact: true }).click()
+		await expect(memberRow).toBeVisible()
+
+		// ascending puts #1 ahead of #3 within team 1
+		await partyHeader.getByText('Party', { exact: true }).click()
+		const team1Names = panel.getByRole('row').filter({ hasText: /sq_leader|sq_member/ })
+		await expect(team1Names).toHaveText([/sq_member/, /sq_leader/])
+
+		await leaderRow.getByRole('cell', { name: '#3', exact: true }).click({ modifiers: ['Shift', 'Control'] })
+		await expect(leaderRow.getByRole('checkbox').first()).toBeChecked()
+		await expect(panel.getByRole('row', { name: /loner/ }).getByRole('checkbox').first()).toBeChecked()
+		await expect(memberRow.getByRole('checkbox').first()).not.toBeChecked()
+
+		await expect(memberRow.getByText('minsk400 (Driver)')).toBeHidden()
+		await panel.getByText('Show Spoilers', { exact: true }).click()
+		await expect(memberRow.getByText('minsk400 (Driver)')).toBeVisible()
+
+		// the group column takes the party too, beside the party column
+		await panel.locator('[data-tour=teams-grouping]').getByRole('combobox').click()
+		await page.getByRole('option', { name: 'Party', exact: true }).click()
+		await expect(leaderRow.getByRole('cell', { name: '#3', exact: true })).toHaveCount(2)
 	})
 
 	test("adding a BattleMetrics note, then reading it in the player's details window", async ({ page }) => {
