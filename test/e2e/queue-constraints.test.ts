@@ -46,9 +46,8 @@ test.describe('queue item constraints', () => {
 			// the second Gorodok repeats the first, two matches later
 			await indicators('Gorodok_AAS_v1').hover()
 			const repeatTooltip = page.getByRole('tooltip')
-			await expect(repeatTooltip).toContainText('Repeats Detected')
-			await expect(repeatTooltip).toContainText('Map')
-			await expect(repeatTooltip).toContainText('Gorodok was played 2 matches prior')
+			await expect(repeatTooltip).toContainText('Map Gorodok repeats')
+			await expect(repeatTooltip).toContainText('2 ago')
 			// AAS is not RAAS: the pool filter doesn't match it, so it is not indicated as one that does
 			await expect(repeatTooltip).not.toContainText('RAAS Only')
 
@@ -59,10 +58,9 @@ test.describe('queue item constraints', () => {
 			// the first Gorodok is RAAS, so it matches the pool filter -- and nothing precedes it to repeat
 			await indicators('Gorodok_RAAS_v1').hover()
 			const filterTooltip = page.getByRole('tooltip')
-			await expect(filterTooltip).toContainText('Matching Filters')
-			await expect(filterTooltip).toContainText('RAAS Only')
+			await expect(filterTooltip).toContainText('In RAAS Only')
 			await expect(filterTooltip).toContainText('RAAS layers are in the pool')
-			await expect(filterTooltip).not.toContainText('Repeats Detected')
+			await expect(filterTooltip).not.toContainText('repeats')
 
 			// Sumari matches nothing and repeats nothing, so it carries no indicator at all
 			await expect(indicators('Sumari_Seed_v1')).toHaveCount(0)
@@ -94,8 +92,7 @@ test.describe('queue item constraints', () => {
 				.getByRole('button', { name: 'Layer indicators' })
 				.hover()
 			const tooltip = page.getByRole('tooltip')
-			await expect(tooltip).toContainText('Repeats Detected')
-			await expect(tooltip).toContainText('Map')
+			await expect(tooltip).toContainText('Map Gorodok repeats')
 			await expect(tooltip).not.toContainText('Recent map')
 		} finally {
 			await app.dispose()
