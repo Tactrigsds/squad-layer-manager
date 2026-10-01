@@ -7,7 +7,9 @@
 
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Flt from '@/lib/floating'
+import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -347,14 +349,23 @@ function onSelectionKeyDown(event: KeyboardEvent) {
 		Selection.set(activeHostKey, undefined)
 		return
 	}
-	if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-		// a text selection is the reader's own, and copies the ordinary way
-		if (!(window.getSelection()?.isCollapsed ?? true)) return
-		const host = Selection.hostOf(activeHostKey)
-		if (!host || !RC.scopeOf(host)?.selectionText) return
+	if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return
+	// Option+C on a Mac types a character, so with alt the physical key is what identifies it
+	if (event.altKey ? event.code !== 'KeyC' : event.key.toLowerCase() !== 'c') return
+	const host = Selection.hostOf(activeHostKey)
+	if (!host) return
+	if (event.altKey) {
+		const link = RC.scopeOf(host)?.linkToRows?.(selection, Selection.selectedRows(host, selection), Selection.groupOf(host))
+		if (!link) return
 		event.preventDefault()
-		Selection.copySelection(host, selection)
+		void navigator.clipboard.writeText(link.url).then(() => toast(tr.text(CHAT_Msgs.linkToRowsCopied()), { description: link.caveat }))
+		return
 	}
+	// a text selection is the reader's own, and copies the ordinary way
+	if (!(window.getSelection()?.isCollapsed ?? true)) return
+	if (!RC.scopeOf(host)?.selectionText) return
+	event.preventDefault()
+	Selection.copySelection(host, selection)
 }
 
 // -------- tooltip --------
