@@ -656,7 +656,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
 						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
 						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
-						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[26px_16px_minmax(0,1fr)_auto]',
+						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(26px,max-content)_16px_minmax(0,1fr)_auto]',
 					)}
 					data-mutation={displayedMutation}
 					data-tour={isTourSeqRow ? 'queue-item' : undefined}
@@ -664,7 +664,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
-					<span data-mobile={isPhone} className="text-end font-mono text-text-3 data-[mobile=true]:hidden">
+					<span data-mobile={isPhone} className="text-end font-mono whitespace-nowrap text-text-3 data-[mobile=true]:hidden">
 						<bdi dir="ltr">{LL.getItemNumber(index)}</bdi>
 					</span>
 					<button
