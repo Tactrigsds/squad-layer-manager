@@ -1,8 +1,8 @@
 services:
    app:
-      # if you wish to freeze your SLM install, you can do so by referencing the package created by a specific commit in https://github.com/Tactrigsds/squad-layer-manager/pkgs/container/squad-layer-manager
-      # However, it's recommanded to use :latest, as SLM has regular updates and a smooth upgrade path.
-      image: ghcr.io/tactrigsds/squad-layer-manager:latest
+      # set SLM_IMAGE_TAG in .env to stable, latest, a release such as 2026.9.4, or a commit-<sha> build.
+      # See "Upgrading" in docs/installing.md.
+      image: ghcr.io/tactrigsds/squad-layer-manager:${SLM_IMAGE_TAG:-latest}
       depends_on:
          - otel-collector
       environment:
