@@ -20,6 +20,11 @@ export type BmPlayer = {
 
 export type BmRequest = { method: string; path: string; body: unknown }
 
+// `userName` stands in for the BM user who wrote it: the token's owner for anything the app posted
+export type BmNote = { id: string; bmPlayerId: string; note: string; shared: boolean; createdAt: string; userName: string }
+
+const TOKEN_OWNER = 'SLM Bot'
+
 // real BM flag ids are uuids, and settings that reference them (playerFlagsRequiringNote) validate as much, so the
 // stub's ids have to be uuids too or those settings can't be saved against it
 // The org the stub claims to be. A dev instance runs with BM_ORG_ID pinned to this (see dev/instance.ts) so the app
@@ -40,18 +45,24 @@ export class BmServer {
 	// so on every flagPlayer, or its flags all get filtered out and a flagged player reads as unflagged
 	orgId: string
 	players = new Map<string, BmPlayer>()
-	notes: { bmPlayerId: string; note: string }[] = []
+	notes: BmNote[] = []
 	requestLog: BmRequest[] = []
+	// Real BM knows every player who has been on the org's servers. With this on, a lookup of an unknown eos id
+	// registers it, except for the ids in `unknownEosIds`. Off, a player the app looks up but nobody registered never
+	// resolves, is never cached, and is looked up again on every roster event, which saturates the rate limiter.
+	registerOnLookup: boolean
+	unknownEosIds = new Set<string>()
 	// a note is the only lasting trace a flag change leaves on a real profile, so the dev host prints them rather
 	// than leaving them buried in memory. tests read `notes` instead.
-	onNote?: (note: { bmPlayerId: string; note: string }) => void
+	onNote?: (note: BmNote) => void
 
 	#server: http.Server
 	#nextPlayerId = 1000
 
-	constructor(opts?: { orgFlags?: BmFlag[]; orgId?: string }) {
+	constructor(opts?: { orgFlags?: BmFlag[]; orgId?: string; registerOnLookup?: boolean }) {
 		this.orgFlags = opts?.orgFlags ?? [...DEFAULT_FLAGS]
 		this.orgId = opts?.orgId ?? STUB_ORG_ID
+		this.registerOnLookup = opts?.registerOnLookup ?? false
 		this.#server = http.createServer((req, res) => void this.#handle(req, res))
 	}
 
@@ -80,6 +91,20 @@ export class BmServer {
 		}
 		this.players.set(player.bmPlayerId, player)
 		return player
+	}
+
+	// a note written on BattleMetrics itself rather than through the app
+	addNote(p: { bmPlayerId: string; note: string; userName: string; shared?: boolean; createdAt?: string }): BmNote {
+		const entry: BmNote = {
+			id: String(this.notes.length + 1),
+			bmPlayerId: p.bmPlayerId,
+			note: p.note,
+			shared: p.shared ?? true,
+			createdAt: p.createdAt ?? new Date().toISOString(),
+			userName: p.userName,
+		}
+		this.notes.push(entry)
+		return entry
 	}
 
 	findByEos(eosId: string): BmPlayer | undefined {
@@ -116,7 +141,8 @@ export class BmServer {
 			const identifiers = (body as { data?: { attributes?: { identifier?: string } }[] } | undefined)?.data ?? []
 			const data = identifiers.flatMap((item, i) => {
 				const eosId = item.attributes?.identifier
-				const player = eosId ? this.findByEos(eosId) : undefined
+				let player = eosId ? this.findByEos(eosId) : undefined
+				if (eosId && !player && this.registerOnLookup && !this.unknownEosIds.has(eosId)) player = this.addPlayer({ eosId })
 				if (!eosId || !player) return []
 				return [
 					{
@@ -148,13 +174,29 @@ export class BmServer {
 			}
 		}
 
-		const noteWrite = url.match(/^\/players\/([^/?]+)\/relationships\/notes/)
-		if (method === 'POST' && noteWrite) {
-			const note = (body as { data?: { attributes?: { note?: string } } } | undefined)?.data?.attributes?.note ?? ''
-			const entry = { bmPlayerId: noteWrite[1], note }
-			this.notes.push(entry)
+		const notes = url.match(/^\/players\/([^/?]+)\/relationships\/notes/)
+		if (method === 'POST' && notes) {
+			const attrs = (body as { data?: { attributes?: { note?: string; shared?: boolean } } } | undefined)?.data?.attributes
+			const entry = this.addNote({
+				bmPlayerId: notes[1],
+				note: attrs?.note ?? '',
+				shared: attrs?.shared ?? false,
+				userName: TOKEN_OWNER,
+			})
 			this.onNote?.(entry)
-			return send(200, { data: { type: 'playerNote', id: String(this.notes.length) } })
+			return send(201, { data: noteResource(entry) })
+		}
+		if (method === 'GET' && notes) {
+			const own = this.notes.filter((n) => n.bmPlayerId === notes[1])
+			return send(200, {
+				data: own.map(noteResource),
+				included: [...new Set(own.map((n) => n.userName))].map((name) => ({
+					type: 'user',
+					id: userId(name),
+					attributes: { nickname: name },
+				})),
+				links: { next: null },
+			})
 		}
 
 		// GET /players/{id} -- player detail with flags and identifiers included
@@ -203,5 +245,18 @@ export class BmServer {
 		}
 
 		send(404, { errors: [{ status: '404', title: 'Not Found', detail: `stub has no route for ${method} ${url}` }] })
+	}
+}
+
+function userId(name: string) {
+	return `user-${name.replace(/\W+/g, '-').toLowerCase()}`
+}
+
+function noteResource(n: BmNote) {
+	return {
+		type: 'playerNote',
+		id: n.id,
+		attributes: { note: n.note, shared: n.shared, createdAt: n.createdAt, expiresAt: null, clearanceLevel: null },
+		relationships: { user: { data: { type: 'user', id: userId(n.userName) } } },
 	}
 }

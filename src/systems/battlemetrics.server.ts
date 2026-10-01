@@ -461,7 +461,7 @@ export const addPlayerNote = Instr.spanOp(
 	'addPlayerNote',
 	{ module },
 	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, note: string) => {
-		await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/notes`, {
+		const [, res] = await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/notes`, {
 			body: {
 				data: {
 					type: 'playerNote',
@@ -470,8 +470,98 @@ export const addPlayerNote = Instr.spanOp(
 				},
 			},
 		})
+		// the note is posted by now, so an unreadable response drops the cached list rather than failing the post
+		const created = BM.PlayerNoteCreateResponse.safeParse(await res.json().catch(() => null))
+		const cached = playerNotesCache.get(bmPlayerId)
+		if (!cached) return
+		if (!created.success) {
+			playerNotesCache.delete(bmPlayerId)
+			return
+		}
+		playerNotesCache.set(bmPlayerId, {
+			...cached,
+			notes: [BM.parseNote({ id: created.data.data.id, ...created.data.data.attributes }, null), ...cached.notes],
+		})
 	},
 )
+
+// -------- player notes --------
+
+// Each notes fetch spends one request from the org's BM rate limit. A player's list is cached for 5 minutes, so several
+// admins can view the same player for one request.
+const PLAYER_NOTES_TTL = 5 * 60 * 1000
+const PLAYER_NOTES_PAGE_SIZE = 100
+
+const playerNotesCache = new FixedSizeMap<string, BM.PlayerNotesResult & { expiresAt: number }>(200)
+const playerNotesInflight = new Map<string, Promise<BM.PlayerNotesResult>>()
+
+async function fetchPlayerNotes(ctx: CS.Ctx, bmPlayerId: string): Promise<BM.PlayerNotesResult> {
+	const org = orgId()
+	const [res] = await bmFetch(
+		// shared by every caller waiting on this fetch, so no one caller's signal may cancel it
+		{ ...ctx, signal: CleanupSys.shutdownSignal },
+		'GET',
+		`/players/${bmPlayerId}/relationships/notes?include=user&page[size]=${PLAYER_NOTES_PAGE_SIZE}` +
+			(org ? `&filter[organizations]=${org}` : ''),
+		{ responseSchema: BM.PlayerNoteListResponse },
+	)
+	const fetchedAt = Date.now()
+	const nicknames = new Map((res.included ?? []).filter((i) => i.type === 'user').map((u) => [u.id, u.attributes?.nickname ?? null]))
+	const notes = res.data
+		.filter((n) => BM.isPublicNote(n.attributes, fetchedAt))
+		.map((n) => BM.parseNote({ id: n.id, ...n.attributes }, nicknames.get(n.relationships?.user?.data?.id ?? '') ?? null))
+		.sort((a, b) => b.createdAt - a.createdAt)
+	return { notes, fetchedAt, truncated: !!res.links?.next }
+}
+
+export const getPlayerNotes = Instr.spanOp(
+	'getPlayerNotes',
+	{ module },
+	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, opts: { fresh: boolean }): Promise<BM.PlayerNotesResult> => {
+		const cached = playerNotesCache.get(bmPlayerId)
+		if (cached && !opts.fresh && cached.expiresAt > Date.now()) {
+			const { expiresAt: _, ...result } = cached
+			return result
+		}
+		let inflight = playerNotesInflight.get(bmPlayerId)
+		if (!inflight) {
+			inflight = fetchPlayerNotes(ctx, bmPlayerId)
+				.then((result) => {
+					playerNotesCache.set(bmPlayerId, { ...result, expiresAt: result.fetchedAt + PLAYER_NOTES_TTL })
+					return result
+				})
+				.finally(() => playerNotesInflight.delete(bmPlayerId))
+			playerNotesInflight.set(bmPlayerId, inflight)
+		}
+		return Prom.raceAbort(inflight, ctx.signal)
+	},
+)
+
+// posts an admin's note to one player's profile and records it. `actor` signs the note on BM; `appActor` is who the
+// audit log credits.
+export async function addNoteToPlayer(
+	ctx: CS.Ctx & CS.AbortSignal & C.Db,
+	playerIds: SM.PlayerIds.IdQuery<'eos'>,
+	text: string,
+	actor: { label: string; appActor: AppEvents.Actor },
+): Promise<'ok' | 'not-found'> {
+	const bmData = await fetchSinglePlayerBmData(ctx, playerIds)
+	if (!bmData) return 'not-found'
+	await addPlayerNote(ctx, bmData.bmPlayerId, BM.playerNote({ actor: actor.label, text }))
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.PlayerNoteAdded>({
+			type: 'PLAYER_NOTE_ADDED',
+			playerId: playerIds.eos,
+			note: text.trim(),
+			actor: actor.appActor,
+			serverId: null,
+			matchId: null,
+			causeId: null,
+		}),
+	)
+	return 'ok'
+}
 
 export const removePlayerFlags = Instr.spanOp(
 	'removePlayerFlags',
@@ -705,6 +795,42 @@ export const router = {
 		return getOrgFlags(ctx)
 	}),
 
+	// `fresh` skips the cached list, for an admin who asks to reload
+	listPlayerNotes: orpcBase
+		.input(z.object({ playerId: z.string(), fresh: z.boolean().prefault(false) }))
+		.handler(async ({ input, context: ctx }) => {
+			if (!isEnabled()) return { code: 'err:disabled' as const }
+			const bmData = await fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(input.playerId))
+			if (!bmData) return { code: 'err:not-found' as const }
+			return { code: 'ok' as const, ...(await getPlayerNotes(ctx, bmData.bmPlayerId, { fresh: input.fresh })) }
+		}),
+
+	// one note, posted to each target's profile separately. A target BM can't resolve or a post that fails is skipped
+	// rather than failing the rest; the count says how many landed.
+	addNote: orpcBase
+		.meta({ type: 'mutation' })
+		.input(
+			z.object({
+				playerIds: z.array(z.string()).min(1),
+				note: z.string().trim().min(1).max(BM.NOTE_MAX_LENGTH),
+			}),
+		)
+		.handler(async ({ input, context: ctx }) => {
+			if (!isEnabled()) return { code: 'err:disabled' as const }
+			const actor = { label: actorLabel(ctx), appActor: { type: 'slm-user' as const, userId: ctx.user.discordId } }
+			const results = await Promise.all(
+				input.playerIds.map((playerId) =>
+					addNoteToPlayer(ctx, SM.PlayerIds.queryFromPlayerId(playerId), input.note, actor).catch((err) => {
+						log.warn({ err, playerId }, 'failed to add BM note')
+						return 'failed' as const
+					}),
+				),
+			)
+			const notedCount = results.filter((r) => r === 'ok').length
+			if (notedCount === 0) return { code: 'err:none-added' as const, playerCount: input.playerIds.length }
+			return { code: 'ok' as const, notedCount, playerCount: input.playerIds.length }
+		}),
+
 	// one dialog's worth of edits lands as one action: one permission check, one refresh, and one audit event
 	// carrying the whole change, rather than an add and a remove that only happened to be submitted together.
 	updateFlags: orpcBase
@@ -825,7 +951,7 @@ function resolveFlagChanges(flags: BM.FlagChange[], orgFlags: BM.PlayerFlag[]): 
 }
 
 function actorLabel(ctx: USR.Ctx) {
-	return `${ctx.user.displayName} (Discord ${ctx.user.discordId})`
+	return BM.webActorLabel(ctx.user)
 }
 
 // one note per flag, each carrying that flag's own reason. a failed note must not fail the flag change itself: the

@@ -75,7 +75,7 @@ export const COMMAND_SECTIONS = {
 	layerRequests: { label: t('Layer Requests') },
 	teamswaps: { label: t('Teamswaps') },
 	switchRequests: { label: t('Switch Requests') },
-	flags: { label: t('Player Flags') },
+	flags: { label: t('Flags & Notes') },
 	moderation: { label: t('Moderation') },
 	messaging: { label: t('Messaging') },
 } as const satisfies Record<string, { label: TString }>
@@ -442,6 +442,16 @@ export const COMMAND_DECLARATIONS = {
 		access: Access.PUBLIC,
 		args: [{ kind: 'recent-player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
+	}),
+	...declareCommand('addNote', {
+		label: t('Note', undefined, { context: 'command' }),
+		section: 'flags',
+		access: Access.req(RBAC.Req.perm('battlemetrics:write-notes')),
+		args: [
+			{ kind: 'recent-player', name: 'player' },
+			{ kind: 'text', name: 'note', describe: t("Posted to the player's BM profile, signed with your name.") },
+		],
+		defaults: { allowedChats: ['admin'], triggers: ['note'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('pingAdmins', {
 		label: t('Ping Admins', undefined, { context: 'command' }),

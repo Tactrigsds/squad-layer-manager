@@ -4,6 +4,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
@@ -21,6 +22,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
+import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
 import {
@@ -414,6 +416,7 @@ export function SquadMenuItems({
 				</>
 			)}
 			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={tr.text(SM_Msgs.addFlagsToSquad())} />
+			<AddNoteMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={tr.text(BM_Msgs.addNoteToSquad())} />
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>

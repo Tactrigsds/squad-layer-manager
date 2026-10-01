@@ -216,22 +216,22 @@ describe('resolveHelpListing', () => {
 
 	it('resolves a section by id or by label, case-insensitively', () => {
 		const byId = CMDH.resolveHelpListing(configs, 'moderation')
-		const byLabel = CMDH.resolveHelpListing(configs, 'Player Flags')
+		const byLabel = CMDH.resolveHelpListing(configs, 'flags & notes')
 		if (byId.code !== 'ok' || byLabel.code !== 'ok') throw new Error('expected ok')
 		expect(byId.commands).toContain('kick')
 		expect(byId.commands).not.toContain('swapNow')
-		expect(byLabel.commands).toEqual(['flag', 'removeFlag', 'listFlags'])
+		expect(byLabel.commands).toEqual(['flag', 'removeFlag', 'listFlags', 'addNote'])
 	})
 
 	it('advertises sections by id, never by a label that could not be typed', () => {
-		// `section` is a single-token arg, so "Player Flags" would never match -- only `flags` can be advised
+		// `section` is a single-token arg, so "Flags & Notes" would never match -- only `flags` can be advised
 		const listing = CMDH.resolveHelpListing(configs, 'zzzzzzzz')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
 		const msg = I18n.ambient.text(listing.msg)
 		expect(msg).toContain('flags')
 		expect(msg).toContain('all')
-		expect(msg).not.toContain('Player Flags')
+		expect(msg).not.toContain('Flags & Notes')
 	})
 
 	it('offers the section a shortening was aiming at, instead of listing every one', () => {

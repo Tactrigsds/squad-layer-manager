@@ -30,6 +30,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 import { PlayerFlagsMenuItem } from './bm-flag-workflows'
+import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import {
 	ContextMenuItem,
@@ -333,6 +334,7 @@ function FramelessPlayerMenuItems({ playerId, slots }: { playerId: SM.PlayerId; 
 						<FramelessOpenLinksSub key="links" playerId={playerId} slots={slots} />,
 						<FramelessCopyIdsSub key="ids" playerId={playerId} slots={slots} />,
 						<PlayerFlagsMenuItem key="flags" slots={slots} playerId={playerId} />,
+						<AddNoteMenuItem key="note" slots={slots} playerIds={[playerId]} target={{ kind: 'player' }} />,
 					],
 				},
 			]}
@@ -916,6 +918,7 @@ function FramedPlayerMenuItems({
 				<PlayerOpenLinksSub key="links" playerIds={[playerId]} slots={slots} stores={stores} />,
 				<PlayerCopyIdsSub key="ids" playerIds={[playerId]} slots={slots} stores={stores} />,
 				<PlayerFlagsMenuItem key="flags" slots={slots} playerId={playerId} />,
+				<AddNoteMenuItem key="note" slots={slots} playerIds={[playerId]} target={msgTarget} />,
 			],
 		},
 		{

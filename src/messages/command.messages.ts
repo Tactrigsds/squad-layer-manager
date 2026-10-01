@@ -121,6 +121,7 @@ export const descriptions = {
 	flag: t("Flag a player's BM profile, optionally with a reason (some flags require one)"),
 	removeFlag: t("Remove a flag from a player's BM profile"),
 	listFlags: t('List BM flags for a player, or all org flags if no player is given'),
+	addNote: t("Add a note to a player's BM profile"),
 	swapNow: t('Swap a player to the other team immediately, or to a team you name'),
 	swapNext: t('Queue a player to swap teams on the next map'),
 	swapSquadNow: t('Swap an entire squad to the other team immediately, or to a team you name'),
@@ -388,7 +389,9 @@ export const swapsCleared = def('Cleared all queued teamswaps')
 
 // -------- player flags --------
 
-export const battlemetricsDisabled = def('Player flags are unavailable: this instance has no battlemetrics integration configured')
+export const battlemetricsDisabled = def(
+	'Player flags and notes are unavailable: this instance has no battlemetrics integration configured',
+)
 
 export const noFlagMatch = def('No flag matches found for "{flag}"', (flag: string) => ({ flag }))
 
@@ -408,6 +411,10 @@ export const flagAlreadyRemoved = def(
 	'Flag "{flag}" is already removed from {username}\'s BM profile',
 	(flag: string, username?: string) => ({ flag, username }),
 )
+
+export const noteAdded = def("Added a note to {username}'s BM profile", (username?: string) => ({ username }))
+
+export const noteFailed = def("Failed to add a note to {username}'s BM profile", (username?: string) => ({ username }))
 
 // -------- moderation --------
 // A reason is optional on every one of these, and the clause that names it belongs to the sentence rather than to

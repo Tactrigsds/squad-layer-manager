@@ -109,6 +109,81 @@ describe('in-game admin commands', () => {
 	})
 })
 
+// A note reaches BattleMetrics from in game or from the web, and the web reads them back on demand. The stub stands
+// in for BM, so what it holds is what a real profile would show. Kept ahead of the files' player churn: every player
+// who joins costs BM requests at 60 a minute, and a note waits its turn behind them.
+describe('battlemetrics notes', () => {
+	const target = makePlayer({ name: 'note_target', steam: '76561198000000088', teamId: 2 })
+	let orpc: TestOrpcClient
+	const noteListRequests = () => app.bm.requestLog.filter((r) => r.method === 'GET' && r.path.includes('/relationships/notes')).length
+
+	beforeAll(async () => {
+		orpc = await createOrpcClient(app)
+		app.emu.world.connectPlayer(target)
+		await app.waitForRosterSync()
+	}, 60_000)
+
+	it('posts an in-game note signed by the admin who wrote it', async () => {
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('note note_target mic spam in local, twice'))
+
+		await app.waitFor(() => warnsToAdmin().some((w) => /Added a note to note_target/.test(w)), {
+			label: 'the note confirmation',
+			timeoutMs: 20_000,
+		})
+		const [posted] = app.bm.notes.filter((n) => n.bmPlayerId === app.bm.findByEos(target.eos)?.bmPlayerId)
+		expect(posted.note).toMatch(
+			new RegExp(`^Note by .*test_admin_player \\(Steam ${ADMIN_STEAM_ID}\\) via SLM:\nmic spam in local, twice$`),
+		)
+		expect(posted.shared).toBe(true)
+		expect(appEventTypes(app)).toContain('PLAYER_NOTE_ADDED')
+	})
+
+	it('lists only the notes every admin may read, newest first, crediting whoever wrote them', async () => {
+		const bmPlayerId = app.bm.findByEos(target.eos)!.bmPlayerId
+		app.bm.addNote({ bmPlayerId, note: 'Ban appeal accepted.', userName: 'Hyrax', createdAt: '2026-01-01T00:00:00.000Z' })
+		app.bm.addNote({ bmPlayerId, note: 'my own reminder', userName: 'Hyrax', shared: false })
+
+		const res = await orpc.battlemetrics.listPlayerNotes({ playerId: target.eos })
+		if (res.code !== 'ok') throw new Error(`expected notes, got ${res.code}`)
+		expect(res.notes.map((n) => [n.author, n.text])).toEqual([
+			[{ kind: 'slm', name: expect.stringContaining('test_admin_player') }, 'mic spam in local, twice'],
+			[{ kind: 'bm', name: 'Hyrax' }, 'Ban appeal accepted.'],
+		])
+	})
+
+	it('adds a web note to the held list without asking BattleMetrics again, until asked to reload', async () => {
+		const before = noteListRequests()
+		const added = await orpc.battlemetrics.addNote({ playerIds: [target.eos], note: '  left mid-match again  ' })
+		expect(added).toEqual({ code: 'ok', notedCount: 1, playerCount: 1 })
+
+		const held = await orpc.battlemetrics.listPlayerNotes({ playerId: target.eos })
+		if (held.code !== 'ok') throw new Error(`expected notes, got ${held.code}`)
+		expect(held.notes[0]).toMatchObject({ author: { kind: 'slm' }, text: 'left mid-match again' })
+		expect(noteListRequests()).toBe(before)
+
+		const fresh = await orpc.battlemetrics.listPlayerNotes({ playerId: target.eos, fresh: true })
+		if (fresh.code !== 'ok') throw new Error(`expected notes, got ${fresh.code}`)
+		expect(fresh.notes).toHaveLength(3)
+		expect(noteListRequests()).toBe(before + 1)
+	})
+
+	it('refuses a player BattleMetrics does not know', async () => {
+		const stranger = makePlayer({ name: 'no_bm_profile', teamId: 2 })
+		app.bm.unknownEosIds.add(stranger.eos)
+		app.emu.world.connectPlayer(stranger)
+		await app.waitForRosterSync()
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('note no_bm_profile hello'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /Unable to resolve player "no_bm_profile"/.test(w)), {
+			label: 'the not-in-battlemetrics reply',
+			timeoutMs: 20_000,
+		})
+		expect(await orpc.battlemetrics.addNote({ playerIds: [stranger.eos], note: 'hello' })).toEqual({
+			code: 'err:none-added',
+			playerCount: 1,
+		})
+	})
+})
+
 // An argument that doesn't resolve but is close to something that does becomes a question rather than a dead end.
 // The pick is spliced back over the words the caller typed and the whole command runs again, so what these assert
 // is that the second run reaches the handler with the chosen thing.

@@ -267,6 +267,7 @@ export const permissionDescriptions = {
 		'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. Has no effect on a server backed by a real squad server.',
 	),
 	'battlemetrics:write-flags': def('Add or remove BattleMetrics player flags'),
+	'battlemetrics:write-notes': def('Add notes to BattleMetrics player profiles'),
 	'users:manage-steam-links': def(
 		"Link a player's steam account to a discord account on their behalf, and remove links made that way. Linking grants that discord identity whatever the linked player is entitled to in game, and grants the player whatever that discord account holds through its roles, so it decides who both of them are. Nobody needs this to link their own accounts.",
 	),

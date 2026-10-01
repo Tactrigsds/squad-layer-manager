@@ -16,15 +16,15 @@ the teams.
 ## Player details
 
 Click a player for their IDs and profile links, their groups and BattleMetrics flags, their team and squad, and their
-recent chat.
+recent chat. Click _Load notes_ there to read the notes on their BattleMetrics profile.
 
 ![a player's details](features_screenshots/player_details.png)
 
 ## Admin actions
 
-Right-click a player to warn, kick, time out, kill or swap them, or to manage their BattleMetrics flags. In game, admins
-can also remove a player from their squad, demote a squad leader, or disband a squad. Warns, kicks, timeouts, kills and
-swaps apply to a whole squad as well.
+Right-click a player to warn, kick, time out, kill or swap them, to manage their BattleMetrics flags, or to add a note to
+their BattleMetrics profile. In game, admins can also remove a player from their squad, demote a squad leader, or
+disband a squad. Warns, kicks, timeouts, kills and swaps apply to a whole squad as well.
 
 A timeout kicks the player, and kicks them again whenever they rejoin any server SLM manages, until the timeout expires.
 Type `/timeout Kestrel 2h spamming` to time Kestrel out for two hours. Each role caps how long a timeout its members may

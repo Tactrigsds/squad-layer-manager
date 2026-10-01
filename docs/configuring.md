@@ -328,6 +328,21 @@ _refresh_ button:
 
 SLM refreshes a player's flags automatically when it changes them itself.
 
+#### 6.1. Player notes
+
+A note is free text on a player's battlemetrics profile. SLM signs each note it posts with the name of the user who
+wrote it. Adding a note needs the `battlemetrics:write-notes` permission.
+
+To add a note:
+
+- in game, use the `/note <player> <text>` command
+- in the player details window, click the notebook button beside the flags
+- right-click a player, a squad or a selection, and pick _Add Note..._
+
+To read a player's notes, click _Load notes_ in the player details window. SLM fetches a player's notes only when
+asked, since each fetch counts against your organization's battlemetrics rate limit. SLM shows a note only when it is shared with
+your organization, has no clearance level and has not expired.
+
 ### 7. Layer pools and filters
 
 #### 7.1. Filters

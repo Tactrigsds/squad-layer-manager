@@ -114,7 +114,9 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 					className={cn(isDestructive && 'border-destructive/50')}
 					onOpenAutoFocus={(e) => {
 						// only steal focus for content that has a text input; otherwise let the default (confirm button) win
-						const input = options?.content ? (e.currentTarget as HTMLElement).querySelector('input') : null
+						const input = options?.content
+							? (e.currentTarget as HTMLElement).querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')
+							: null
 						if (!input) return
 						e.preventDefault()
 						input.focus()

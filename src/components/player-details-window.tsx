@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
+import { PlayerNoteButton, PlayerNotesRow } from '@/components/bm-note-workflows'
 import { DiscordMemberSelect } from '@/components/discord-picker'
 import EventFilterSelect from '@/components/event-filter-select'
 import HistoryEvents from '@/components/history-events'
@@ -197,6 +198,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 			{/* no groupings: resolving one needs the roster entry's admin standing and discord roles, which is per-server */}
 			<PlayerTags
 				playerId={playerId}
+				username={username}
 				adminGroups={info?.code === 'ok' ? info.adminGroups : []}
 				adminListUrls={info?.code === 'ok' ? info.adminListUrls : {}}
 				flags={flags}
@@ -444,6 +446,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 			</div>
 			<PlayerTags
 				playerId={playerId}
+				username={ids?.username}
 				isAdmin={data?.isAdmin}
 				adminGroups={data?.adminGroups ?? []}
 				adminListUrls={data?.adminListUrls ?? {}}
@@ -968,6 +971,7 @@ function AdminGroupTag({ entry, listUrls }: { entry: SM.PlayerGroupSources; list
 // admin-list membership, filled in the flag's own colour for battlemetrics, flat for one of our groupings.
 function PlayerTags(props: {
 	playerId: string
+	username: string | undefined
 	// absent without a server: which groups mark an admin is a property of the lists a server recognises
 	isAdmin?: boolean
 	adminGroups: SM.PlayerGroupSources[]
@@ -977,12 +981,15 @@ function PlayerTags(props: {
 }) {
 	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const cannotManageFlags = RbacClient.useAccess('battlemetrics.updateFlags')
+	const cannotAddNotes = RbacClient.useAccess('battlemetrics.addNote')
+	const cannotReadNotes = RbacClient.useAccess('battlemetrics.listPlayerNotes')
 	const flags = props.flags ?? []
 	const showIngame = !!props.isAdmin || props.adminGroups.length > 0
-	// an empty flag row survives only for someone who can add the first flag to it
-	const showFlags = bmEnabled && (flags.length > 0 || !cannotManageFlags)
+	// an empty flag row survives only for someone who can add the first flag or a note from it
+	const showFlags = bmEnabled && (flags.length > 0 || !cannotManageFlags || !cannotAddNotes)
+	const showNotes = bmEnabled && !cannotReadNotes
 	const showGroupings = props.groupings.length > 0
-	if (!showIngame && !showFlags && !showGroupings) return null
+	if (!showIngame && !showFlags && !showNotes && !showGroupings) return null
 
 	return (
 		<div
@@ -1011,9 +1018,11 @@ function PlayerTags(props: {
 					<div className="flex min-w-0 items-center gap-1">
 						<PlayerFlagsList flags={flags} />
 						<PlayerFlagsButton playerId={props.playerId} />
+						<PlayerNoteButton playerId={props.playerId} username={props.username} />
 					</div>
 				</>
 			)}
+			{showNotes && <PlayerNotesRow playerId={props.playerId} username={props.username} />}
 			{showGroupings && (
 				<>
 					<span className="fd-lbl-k2 pt-1">{tr.text(SM_Msgs.groupingTagsLabel())}</span>

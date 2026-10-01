@@ -113,3 +113,82 @@ export const selectFlags = def('Select flags...')
 export const manageFlagsItem = def('Manage Flags...')
 
 export const addFlagsItem = def('Add Flags...')
+
+// -------- notes --------
+
+export const addNote = def((target: Tgt.Target) => ({
+	confirm: {
+		title:
+			target.kind === 'player'
+				? t('Add a BattleMetrics note for {targetSubject}', { targetSubject: Tgt.subject(target) })
+				: t('Add a BattleMetrics note to {targetSubject}', { targetSubject: Tgt.subject(target) }),
+		confirmLabel:
+			target.kind === 'player'
+				? t('Add Note')
+				: t('Add Note to {count, plural, one {# Player} other {# Players}}', { count: target.count }),
+	},
+}))
+
+export const noteLabel = def('Note')
+
+export const notePlaceholder = def(
+	'What should other admins know about {count, plural, one {this player} other {these players}}?',
+	(count: number) => ({ count }),
+)
+
+export const noteSignature = def('Signed as "{signature}"', (signature: string) => ({ signature }))
+
+export const noteSubmitHint = def('Ctrl + Enter to add')
+
+export const noteAdded = def((notedCount: number, playerCount: number) => ({
+	toast: [
+		playerCount === 1
+			? t('Added a BattleMetrics note')
+			: t('Added a note to {notedCount} of {playerCount} players', { notedCount, playerCount }),
+	],
+}))
+
+export const noteFailed = def((code: string) => ({
+	toast: [t('Failed to add the note'), { description: raw(code) }],
+}))
+
+export const addNoteHint = def('Add a note')
+
+export const addNoteItem = def('Add Note...')
+
+export const addNoteToSquad = def('Add Note to Squad...')
+
+export const notesLabel = def('BM notes')
+
+export const loadNotes = def('Load notes')
+
+export const reloadNotes = def('Reload notes')
+
+export const hideNotes = def('Hide notes')
+
+export const notesLoading = def('Loading...')
+
+export const notesLoadedAt = def('Loaded {ago}', (ago: string) => ({ ago }))
+
+export const noNotes = def("No notes on this player's BattleMetrics profile.")
+
+export const notesFailed = def("Couldn't load notes from BattleMetrics.")
+
+export const notesNotFound = def("This player wasn't found on BattleMetrics.")
+
+export const retryNotes = def('Try again')
+
+export const allNotesOnBm = def('All notes on BattleMetrics')
+
+export const notesTruncated = def('Showing the first {count} notes.', (count: number) => ({ count }))
+
+export const noteFlagChange = def(
+	'{action, select, added {Added} other {Removed}} flag "{flag}"',
+	(action: 'added' | 'removed', flag: string) => ({ action, flag }),
+)
+
+export const noteSourceSlm = def('SLM')
+
+export const noteSourceBm = def('BattleMetrics')
+
+export const unknownBmUser = def('Unknown user')

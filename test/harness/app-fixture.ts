@@ -389,7 +389,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const secondEmu = secondOpts ? await new Emulator(emulatorOpts).start() : null
 	const unreachableOpts = opts.unreachableServer === true ? {} : opts.unreachableServer || null
 	const unreachableId = unreachableOpts?.id ?? 'unreachable-server'
-	const bm = new BmServer()
+	const bm = new BmServer({ registerOnLookup: true })
 	const bmPort = await bm.listen()
 
 	// migrate + seed before the app boots, so the server registry sees the emulated server
