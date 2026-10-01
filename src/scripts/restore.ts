@@ -240,7 +240,7 @@ function pinGuidance(stamp: DbMeta.BuildStamp | null): string {
 	const tag = imageTagFor(stamp.gitSha)
 	const version = formatVersion(stamp.gitBranch, stamp.gitSha)
 	return tag
-		? `This backup belongs to build ${version}. Pin the \`${tag}\` image tag in docker-compose.yaml before starting the app.`
+		? `This backup belongs to build ${version}. Pin it by setting \`SLM_IMAGE_TAG=${tag}\` in .env before starting the app.`
 		: `This backup belongs to build ${version}, which has no published image tag; match the image to it before starting the app.`
 }
 

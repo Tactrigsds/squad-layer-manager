@@ -9,8 +9,8 @@
 #   ./restore.sh --from <file>           a specific one, e.g. one pulled back off the sftp target into ./data/backups
 #
 # Stop the app first: it would otherwise go on writing to the database being replaced and lose those writes, without
-# an error anywhere. This refuses to run while the app is up, and does not start it again afterwards -- point
-# docker-compose.yaml at the image the restored database belongs to (`--inspect` names it) before you do. The
+# an error anywhere. This refuses to run while the app is up, and does not start it again afterwards -- set
+# SLM_IMAGE_TAG in .env to the image the restored database belongs to (`--inspect` names it) before you do. The
 # database being replaced is kept, renamed aside, because a restore is otherwise the one operation with no undo.
 set -euo pipefail
 
@@ -32,7 +32,7 @@ if [[ -n $replaces_the_db && -n "$(docker compose ps --status running --quiet ap
 	echo >&2
 	echo "  docker compose stop app" >&2
 	echo "  $0 $*" >&2
-	echo "  docker compose up -d app     # once docker-compose.yaml points at the image the restored database belongs to" >&2
+	echo "  docker compose up -d app     # once SLM_IMAGE_TAG in .env names the image the restored database belongs to" >&2
 	exit 1
 fi
 

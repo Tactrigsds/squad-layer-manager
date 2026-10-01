@@ -40,6 +40,21 @@ mkdir squad-layer-manager && cd squad-layer-manager
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
 ```
 
+This installs the newest release. To pick something else, pass a flag after `bash -s --`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash -s -- --channel latest
+```
+
+| flag               | installs                                                                        |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `--channel stable` | the newest release, and each new release when you upgrade. This is the default. |
+| `--channel latest` | every change as soon as it passes tests                                         |
+| `--version <v>`    | one release, e.g. `--version 2026.9.4`, and stays on it                         |
+
+To install into another directory, add it last: `bash -s -- --channel latest /opt/slm`. Your choice is saved as
+`SLM_IMAGE_TAG` in `.env`, and you can change it later (see [Upgrading](#310-upgrading)).
+
 This lays down the files a deployment is made of:
 
 - `docker-compose.yaml`
@@ -270,13 +285,15 @@ Once the app is running you can sign in with discord OAuth, and move on to [conf
 docker compose pull && docker compose up -d
 ```
 
-Pick which image tag to follow in `docker-compose.yaml`:
+`SLM_IMAGE_TAG` in `.env` sets which image tag to follow. To switch, change it and run the commands above.
 
-| tag         | what it points at                                                         |
-| ----------- | ------------------------------------------------------------------------- |
-| `:stable`   | the latest release. Releases group changes and come with release notes.   |
-| `:latest`   | every change as soon as it passes tests                                   |
-| `:2026.9.4` | one release, which never changes. Releases are named `year.month.number`. |
+| `SLM_IMAGE_TAG` | what it points at                                                         |
+| --------------- | ------------------------------------------------------------------------- |
+| `stable`        | the latest release. Releases group changes and come with release notes.   |
+| `latest`        | every change as soon as it passes tests                                   |
+| `2026.9.4`      | one release, which never changes. Releases are named `year.month.number`. |
+
+An install without `SLM_IMAGE_TAG` follows `latest`.
 
 Before upgrading, read the notes for every release since yours in [CHANGELOG.md](../CHANGELOG.md), under "For
 operators". A "Breaking" note describes a change you must make to upgrade. The same notes are logged when the upgraded app starts, and

@@ -9,19 +9,136 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash -s -- /opt/slm
 #
+# Pick what to install with --channel or --version (see usage below, or pass --help). The choice is written to
+# .env as SLM_IMAGE_TAG, which docker-compose.yaml reads for the image tag.
+#
+# The install runs in two steps. This script resolves the choice to a git ref (the release's v<version> tag, or
+# main for latest), fetches install.sh from that ref and runs it with SLM_RESOLVED_REF and SLM_IMAGE_TAG set. That
+# copy skips resolution and installs, so the files and how they are set up always match the release. Every
+# version of this script must keep honouring those two variables.
+#
 # Installs into the current directory, or into one given as an argument. Fresh installs only: it writes nothing
 # and downloads nothing if any of the files it installs, or ./data, is already there, rather than deciding on
 # your behalf what of an existing deployment it may overwrite. Upgrading is `docker compose pull && docker
-# compose up -d`; nothing installed here is version-specific.
+# compose up -d`.
 set -euo pipefail
 
 REPO="${SLM_REPO:-Tactrigsds/squad-layer-manager}"
-REF="${SLM_REF:-main}"
-DIR="${1:-${SLM_DIR:-.}}"
+DIR="${SLM_DIR:-.}"
+RESOLVED_REF="${SLM_RESOLVED_REF:-}"
+IMAGE_TAG="${SLM_IMAGE_TAG:-}"
+
+say() { printf '%s\n' "$*"; }
+err() {
+	printf 'error: %s\n' "$*" >&2
+	exit 1
+}
+
+need() { command -v "$1" > /dev/null 2>&1 || err "$1 is required but not installed"; }
+
+usage() {
+	cat <<-'EOF'
+		usage: install.sh [--channel stable|latest | --version <release>] [dir]
+
+		  --channel stable   follow the newest release (the default)
+		  --channel latest   follow every change on main as soon as it passes tests
+		  --version <v>      pin one release, e.g. 2026.9.4
+	EOF
+}
 
 # anything curl can fetch a file from, including a file:// path. Only worth setting to install from somewhere
 # that isn't github, or to try a change to this script before it's pushed.
-BASE="${SLM_BASE:-https://raw.githubusercontent.com/${REPO}/${REF}}"
+base_for() { printf '%s' "${SLM_BASE:-https://raw.githubusercontent.com/${REPO}/$1}"; }
+
+need curl
+need docker
+docker compose version > /dev/null 2>&1 || err "docker compose (v2) is required. 'docker compose version' failed"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+resolve_and_rerun() {
+	local channel="${SLM_CHANNEL:-}" version="${SLM_VERSION:-}" dir=$DIR positional=""
+	while (($#)); do
+		case $1 in
+			--channel)
+				[[ $# -ge 2 ]] || err "--channel needs a value: stable or latest"
+				channel=$2
+				shift 2
+				;;
+			--channel=*)
+				channel=${1#*=}
+				shift
+				;;
+			--version)
+				[[ $# -ge 2 ]] || err "--version needs a release, e.g. 2026.9.4"
+				version=$2
+				shift 2
+				;;
+			--version=*)
+				version=${1#*=}
+				shift
+				;;
+			-h | --help)
+				usage
+				exit 0
+				;;
+			-*) err "unknown option $1" ;;
+			*)
+				[[ -z $positional ]] || err "only one install directory can be given"
+				positional=$1
+				shift
+				;;
+		esac
+	done
+	[[ -z $positional ]] || dir=$positional
+
+	[[ -z $channel || -z $version ]] || err "--channel and --version cannot be used together"
+	[[ -n $version ]] || channel="${channel:-stable}"
+
+	local release_pattern='^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$'
+	[[ -z $version ]] || [[ $version =~ $release_pattern ]] \
+		|| err "'$version' is not a release version. Releases are named year.month.number, e.g. 2026.9.4"
+
+	# A release is tagged v<version> in git once CI has published its image, so the tags are what can be installed.
+	local api="https://api.github.com/repos/${REPO}" ref tag tags newest
+	case $channel in
+		latest)
+			tag=latest
+			ref=main
+			;;
+		stable)
+			tags=$(curl -fsSL "${api}/git/matching-refs/tags/v") || err "could not list releases from ${api}"
+			newest=$(grep -o '"ref": *"refs/tags/v[^"]*"' <<< "$tags" | sed 's|.*refs/tags/v||; s|"$||' \
+				| grep -E "$release_pattern" | sort -V | tail -n 1 || true)
+			[[ -n $newest ]] || err "SLM has no releases yet, so there is no stable version to install. Install the latest build instead:
+
+       curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash -s -- --channel latest${positional:+ $positional}"
+			tag=stable
+			ref="v${newest}"
+			;;
+		'')
+			curl -fsSL "${api}/git/ref/tags/v${version}" > /dev/null 2>&1 || err "release ${version} does not exist"
+			tag=$version
+			ref="v${version}"
+			;;
+		*) err "unknown channel '$channel': use stable or latest" ;;
+	esac
+	ref="${SLM_REF:-$ref}"
+
+	local base
+	base=$(base_for "$ref")
+	curl -fsSL "${base}/install.sh" -o "$tmp/install.sh" || err "could not fetch ${base}/install.sh"
+	SLM_RESOLVED_REF=$ref SLM_IMAGE_TAG=$tag bash "$tmp/install.sh" "$dir"
+}
+
+if [[ -z $RESOLVED_REF ]]; then
+	resolve_and_rerun "$@"
+	exit
+fi
+[[ -n $IMAGE_TAG ]] || err "SLM_RESOLVED_REF is set without SLM_IMAGE_TAG"
+[[ $# -eq 0 ]] || DIR=$1
+BASE=$(base_for "$RESOLVED_REF")
 
 # what a deployment reads and the image does not carry. .env and .env.secrets are handled on their own below:
 # they are the files here the operator owns.
@@ -40,18 +157,6 @@ FILES=(
 	observability/grafana/dashboards/slm-logs.json
 )
 
-say() { printf '%s\n' "$*"; }
-err() {
-	printf 'error: %s\n' "$*" >&2
-	exit 1
-}
-
-need() { command -v "$1" > /dev/null 2>&1 || err "$1 is required but not installed"; }
-
-need curl
-need docker
-docker compose version > /dev/null 2>&1 || err "docker compose (v2) is required. 'docker compose version' failed"
-
 [[ ! -e $DIR || -d $DIR ]] || err "$DIR exists and is not a directory"
 
 # whatever else is in the directory is the operator's business, but nothing this installs may already be there.
@@ -66,14 +171,11 @@ done
 [[ -z $conflicts ]] || err "refusing to install over what is already in ${DIR}:
 ${conflicts}
 
-       If that is an SLM install, upgrade it with 'docker compose pull && docker compose up -d' instead. Nothing
-       this script installs is version-specific, so an upgrade has no use for it."
-
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+       If that is an SLM install, upgrade it with 'docker compose pull && docker compose up -d' instead. To
+       switch channel or version, change SLM_IMAGE_TAG in its .env first."
 
 # fetch everything before writing anything, so a download that dies halfway leaves the directory as it was
-say "fetching from ${BASE}"
+say "installing SLM ${IMAGE_TAG} from ${BASE}"
 for file in "${FILES[@]}"; do
 	mkdir -p "$tmp/$(dirname "$file")"
 	curl -fsSL "${BASE}/${file}" -o "$tmp/$file" || err "could not fetch ${BASE}/${file}"
@@ -93,14 +195,21 @@ done
 
 chmod +x "$DIR/edit-global-settings.sh" "$DIR/restore.sh"
 
-INSTALLING_URL="https://github.com/${REPO}/blob/${REF}/docs/installing.md"
+INSTALLING_URL="https://github.com/${REPO}/blob/${RESOLVED_REF}/docs/installing.md"
 
 for file in .env.example .env.secrets.example; do
 	printf '\n# Installing and configuring SLM: %s\n' "$INSTALLING_URL" >> "$DIR/$file"
 done
 
 cp "$DIR/.env.example" "$DIR/.env"
-say "  + .env (from .env.example)"
+cat >> "$DIR/.env" <<EOF
+
+# ---- Image -------------------------------------------------------------------------------------------------
+# the SLM image docker-compose.yaml runs: stable, latest, or one release such as 2026.9.4. Change it, then run
+# \`docker compose pull && docker compose up -d\`. See "Upgrading" in ${INSTALLING_URL}
+SLM_IMAGE_TAG=${IMAGE_TAG}
+EOF
+say "  + .env (from .env.example, with SLM_IMAGE_TAG=${IMAGE_TAG})"
 
 # the credentials, which docker-compose mounts as a file. Owner-readable only: it is the one file in the
 # install worth treating like a private key.

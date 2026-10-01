@@ -66,7 +66,7 @@ not uploaded.
 
 ## Restoring
 
-`restore.sh` puts a backup back. Stop the app first, and start it again yourself once `docker-compose.yaml` points at
+`restore.sh` puts a backup back. Stop the app first, and start it again yourself once `SLM_IMAGE_TAG` in `.env` names
 the image the restored database belongs to:
 
 ```sh
@@ -96,8 +96,8 @@ or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the 
 `--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks
 the backup and reports which app build the database belongs to, which image tag to pin, how far behind the
 current build it is, and whether its secrets decrypt with the `SETTINGS_ENCRYPTION_KEY` this install is configured
-with. Run it first when rolling back an upgrade, so you know which version to point `docker-compose.yaml` at before
-you start the app.
+with. Run it first when rolling back an upgrade, so you know which version to set `SLM_IMAGE_TAG` to before you start
+the app.
 
 A backup is only complete with the key that encrypted it. Restored under a different key, the database comes up with
 every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep
@@ -117,17 +117,14 @@ that path.
 
 ## Pinning a version
 
-`docker-compose.yaml` ships pointing at `:latest`, which is whichever build most recently passed CI on `main`.
-Pinning means replacing that tag with one that names a single build, so `docker compose up -d` keeps giving you the
-same one.
+`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see Upgrading in [installing.md](installing.md)).
+Pinning means setting it to a tag that names a single build, so `docker compose up -d` keeps giving you the same one.
 
-CI publishes every commit as `commit-<short sha>`, so any build that has ever existed can be pinned:
+A release such as `2026.9.4` is one build. CI also publishes every commit as `commit-<short sha>`, so any build that
+has ever existed can be pinned:
 
-```yaml
-services:
-   app:
-      # image: ghcr.io/tactrigsds/squad-layer-manager:latest
-      image: ghcr.io/tactrigsds/squad-layer-manager:commit-9c1f0a2
+```sh
+SLM_IMAGE_TAG=commit-9c1f0a2
 ```
 
 Then pull the pinned build and start on it:
@@ -137,8 +134,8 @@ docker compose pull app
 docker compose up -d app
 ```
 
-While it is pinned, `docker compose pull && docker compose up -d` no longer upgrades anything: a `commit-` tag
-always resolves to that one build. To upgrade again, put `:latest` back and pull.
+While it is pinned, `docker compose pull && docker compose up -d` no longer upgrades anything: a release or `commit-`
+tag always resolves to that one build. To upgrade again, set `SLM_IMAGE_TAG` back to `stable` or `latest` and pull.
 
 You do not have to guess a sha. `./restore.sh --list` shows the build every backup belongs to, `--inspect` names the
 tag for one of them, and the app's own version is on its about page.
@@ -159,7 +156,7 @@ Ask which build that is before restoring anything:
 inspecting slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz
     pre-migration, commit-9c1f0a2, taken 2026-07-13 13:40:16, 24.8 MB
 
-This backup belongs to build main;9c1f0a2b3d4e. Pin the `commit-9c1f0a2` image tag in docker-compose.yaml before starting the app.
+This backup belongs to build main;9c1f0a2b3d4e. Pin it by setting `SLM_IMAGE_TAG=commit-9c1f0a2` in .env before starting the app.
 It is 2 migration(s) behind the current build (0031_seed_pools, 0032_pool_constraints).
 ```
 
@@ -171,7 +168,7 @@ docker compose stop app
 ```
 
 The restore repeats the tag and exits non-zero, because the database it just put back is behind the image
-`docker-compose.yaml` still names. This stops `./restore.sh --pre-migration && docker compose up -d app` from
+`SLM_IMAGE_TAG` still names. This stops `./restore.sh --pre-migration && docker compose up -d app` from
 starting the app on a database it would migrate straight back up. Pin `commit-9c1f0a2` as above, then:
 
 ```sh
