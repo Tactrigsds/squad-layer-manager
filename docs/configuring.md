@@ -1,8 +1,8 @@
 # Configuring SLM
 
-This guide assumes you have a running instance of SLM. See [installing.md](installing.md) if you do not.
+This guide assumes a running instance of SLM. See [installing.md](installing.md) to set one up.
 
-You configure SLM mostly from the settings page. Most settings can keep their defaults, but a few must be set before
+SLM can be configured mostly from the settings page. Most settings can keep their defaults, but a few must be set before
 SLM can run your server.
 
 Open the settings page from the header:
@@ -13,16 +13,25 @@ Use the table of contents on the left to move between sections:
 
 ![toc](configuring_screenshots/toc.png)
 
-Each setting has a _GUI_ / _YAML_ toggle, so you can also edit it as YAML. Settings that most installs never
-change are kept in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
-them, and navigating to one opens the disclosure that holds it.
+Each setting has a _GUI_ / _YAML_ toggle, so it can also be edited as YAML. Settings that most installs never change are
+kept in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists them, and
+navigating to one opens the disclosure that holds it.
 
 Any setting or section can carry a comment, for the next person to read why it is set the way it is. Hover the
 setting's name and click the comment icon beside the link icon. In YAML mode a comment is an ordinary `#` line
 directly above the setting, and a comment written in either mode shows up in the other. Comments are saved together
 with your other changes.
 
-### 1. Admin lists
+### 1. Permissions and users
+
+Access to SLM is managed through roles (role-based access control, or RBAC). A _role_ lists _permissions_, and either
+allows or denies each one for everyone assigned that role. A denial withholds the permission even from someone another
+role allows it to. Some permissions are global. Many can be scoped to one squad server.
+
+Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds every permission any of
+their roles allows, minus every permission any of their roles denies.
+
+#### 1.1. Admin lists
 
 The admin list settings are under _Permissions & Roles_.
 
@@ -36,100 +45,45 @@ change this setting:
 
 An admin list identifies a player by steam ID or EOS ID, and one list can use a mix of the two.
 
-You can configure more than one admin list, which is useful when each of your servers has its own. Each server names
+More than one admin list can be configured, which is useful when each of your servers has its own. Each server names
 the lists that apply to it. See [2.2](#22-server-admin-lists).
 
-The groups in your admin list do more than mark who is an admin. You can also:
+The groups in your admin list do more than mark who is an admin. They can also be used to:
 
-- assign [SLM roles](#34-assigning-roles) to the members of a group
-- [colour players by group](#6-player-grouping-modes) in the players panel and the activity charts
+- assign [SLM roles](#15-assigning-roles) to the members of a group
+- [colour players by group](#5-player-grouping-modes) in the players panel and the activity charts
 
-When you add your first real admin list, add it to the `admins` role as well. The default assignment names only the
-sandbox's own list, so a new list grants nobody the `admins` role until you name it there. See
-[3.4](#34-assigning-roles).
+Add the first real admin list to the `admins` role as well. The default assignment names only the sandbox's own list, so
+a new list grants nobody the `admins` role until it is named there. See [1.5](#15-assigning-roles).
 
-### 2. Adding your server
+#### 1.2. Super users
 
-One SLM instance can manage several squad servers.
-
-A fresh install already has a server named _Sandbox_. It attaches to an emulated squad server, which imitates a real
-one closely enough for SLM to work against. Use it to test things out. See
-[sandbox_servers.md](sandbox_servers.md).
-
-Click _Add Server_ to set up a real one:
-
-![add_managed_server](configuring_screenshots/add_managed_server.png)
-
-#### 2.1. Connecting the server
-
-Each server uses one of three connection modes:
-
-- _local_: SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
-  directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
-- _sftp_: SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
-  PSG-hosted squad servers, where you cannot run a program on the game host. Needs SFTP and RCON details.
-- _server agent_ (recommended): a small program on the game host streams the log to SLM and proxies RCON. SLM never
-  holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
-  [server_agent.md](server_agent.md).
-
-If a server does not behave as you expect, open the [server console](server_console.md). It shows the RCON traffic
-and the log lines as SLM receives them, which shows whether the connection or SLM is at fault.
-
-#### 2.2. Server admin lists
-
-Name which of your [configured admin lists](#1-admin-lists) apply to this server:
-
-![server_adminlists](configuring_screenshots/server_adminlists.png)
-
-A player counts as an admin on this server, and picks up roles from an admin list group, only through a list named
-here. If you name none, SLM recognises no in-game admins on this server.
-
-#### 2.3. Installed mods
-
-SLM's catalog covers vanilla Squad and several mods. Name the ones this server actually has installed, under
-_Installed Mods_ in its settings. A new server starts with OWI alone, which is vanilla Squad.
-
-A layer from a collection not named here cannot load on this server, so SLM will not queue it, will not generate
-one, and will not offer one as a vote choice. Such a layer stays visible in the layer table, greyed out with the
-reason, and a queue item on one is flagged in the queue and in the in-game next-layer warning.
-
-### 3. Permissions
-
-SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, which it grants to
-everyone assigned that role. Some permissions are global. Many can be scoped to one squad server.
-
-Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
-they are assigned, except that a denial in any one role beats an allow in another.
-
-#### 3.1. Super users
-
-A fresh install has no role assignments of its own, so the `SUPER_USERS` and `SUPER_ROLES` you set in `.env` are the
-bootstrap. They hold every permission unconditionally, including unlimited kick timeouts, and you cannot change them
-from the settings page:
+A fresh install has no role assignments of its own, so the `SUPER_USERS` and `SUPER_ROLES` that are set in `.env` are
+the bootstrap. They hold every permission unconditionally, including unlimited kick timeouts, and cannot be changed from
+the settings page:
 
 ![super_users](configuring_screenshots/super_users.png)
 
-Keep at least one after you assign real roles, so you can still get in if an assignment goes wrong.
+Keep at least one after real roles are assigned, so someone can still sign in if an assignment goes wrong.
 
-#### 3.2. Default roles
+#### 1.3. Default roles
 
 Go to the _Permissions & Roles_ section of the global settings. Three roles exist by default:
 
 - `admins`: the features needed for day-to-day operations: the queue, votes, filters, and managing, warning,
-  broadcasting to and kicking players. Maximum timeout of 2h. It is assigned to the in-game admins of the sandbox's
-  own admin list, so the in-game commands work before anyone configures RBAC. Point it at your real lists as you
-  add them.
+  broadcasting to and kicking players. Maximum timeout of 2h. It is assigned to the in-game admins of the sandbox's own
+  admin list, so the in-game commands work before anyone configures RBAC. Point it at your real lists as they are added.
 - `managers`: everything `admins` can do, plus policing other people's queue notes, enabling and disabling servers,
   and restarting SLM. It can edit every global setting except the permissions config, and every server setting
   except the connection details. Maximum timeout of 6h. It cannot add a server, because adding one means supplying
   connection details.
 - `owners`: every permission. Maximum timeout of 52w. It is assigned to nobody by default.
 
-All three cover a new server without changes. Their permissions are granted unscoped, and the `managers` settings
-grant names no servers, which means every server. When you add a server, revisit only the roles that narrow a
-permission or a settings grant to named servers.
+All three cover a new server without changes. Their permissions are granted unscoped, and the `managers` settings grant
+names no servers, which means every server. When a server is added, revisit only the roles that narrow a permission or a
+settings grant to named servers.
 
-#### 3.3. Assigning permissions to roles
+#### 1.4. Assigning permissions to roles
 
 The _Permissions_ table holds everything a role may do. Each row is one permission, with three columns:
 
@@ -150,12 +104,12 @@ Settings access works the same way:
 - `server-settings:write-sensitive` is a separate permission. It is the only way to view or edit a server's RCON and
   SFTP connection details.
 
-#### 3.4. Assigning roles
+#### 1.5. Assigning roles
 
-You can assign a role to a user or to a player:
+A role can be assigned to a user or to a player:
 
 - a _user_ signs in with their discord account and works from the web interface
-- a _player_ is in the game and uses the [in-game commands](#5-in-game-commands)
+- a _player_ is in the game and uses the [in-game commands](#4-in-game-commands)
 
 A user can link their discord account to their in-game account, and the permissions from both then combine for
 every action:
@@ -177,7 +131,7 @@ server:
 
 ![discord_roles](configuring_screenshots/discord_roles.png)
 
-#### 3.5. Testing assigned permissions
+#### 1.6. Testing assigned permissions
 
 Every user can see the permissions they hold, in the permissions info dialog:
 
@@ -192,10 +146,55 @@ them:
 ![simulate_permissions_1](configuring_screenshots/simulate_permissions_1.png)
 ![simulate_permissions_2](configuring_screenshots/simulate_permissions_2.png)
 
-The simulation runs in your browser only. The server still checks your real permissions, so any action the interface
-does not gate runs with what you actually hold.
+The simulation runs in your browser only. The server still checks your real permissions on any action the interface does
+not gate.
 
-### 4. Warns, broadcasts and admin actions
+### 2. Adding your server
+
+One SLM instance can manage several squad servers.
+
+A fresh install already has a server named _Sandbox_. It attaches to an emulated squad server, which imitates a real
+one closely enough for SLM to work against. Use it to test things out. See
+[sandbox_servers.md](sandbox_servers.md).
+
+Click _Add Server_ to set up a real one:
+
+![add_managed_server](configuring_screenshots/add_managed_server.png)
+
+#### 2.1. Connecting the server
+
+Each server uses one of three connection modes:
+
+- _local_: SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
+  directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
+- _sftp_: SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
+  PSG-hosted squad servers, where no program can be run on the game host. Needs SFTP and RCON details.
+- _server agent_ (recommended): a small program on the game host streams the log to SLM and proxies RCON. SLM never
+  holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
+  [server_agent.md](server_agent.md).
+
+If a server does not behave as expected, open the [server console](server_console.md). It shows the RCON traffic and the
+log lines as SLM receives them, which shows whether the connection or SLM is at fault.
+
+#### 2.2. Server admin lists
+
+Name which of your [configured admin lists](#11-admin-lists) apply to this server:
+
+![server_adminlists](configuring_screenshots/server_adminlists.png)
+
+A player counts as an admin on this server, and picks up roles from an admin list group, only through a list named here.
+If none is named, SLM recognises no in-game admins on this server.
+
+#### 2.3. Installed mods
+
+SLM's catalog covers vanilla Squad and several mods. Name the ones this server actually has installed, under
+_Installed Mods_ in its settings. A new server starts with OWI alone, which is vanilla Squad.
+
+A layer from a collection not named here cannot load on this server, so SLM will not queue it, will not generate
+one, and will not offer one as a vote choice. Such a layer stays visible in the layer table, greyed out with the
+reason, and a queue item on one is flagged in the queue and in the in-game next-layer warning.
+
+### 3. Warns, broadcasts and admin actions
 
 The _Warns & Broadcasts_ section holds the messages SLM shows to players: admin warnings, kicks, broadcasts, and
 more.
@@ -205,19 +204,20 @@ text per action, where an action is a warn, a broadcast, a kick, a timeout, and 
 
 ![admin_action_reasons](configuring_screenshots/admin_action_reasons.png)
 
-Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the
-same section holds reusable snippets. You can use one in several texts, or inside another message variable.
+Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the same
+section holds reusable snippets. A message variable can be used in several texts, or inside another message variable.
 
 When an action targets a whole squad, `{{squadName}}` holds the squad's name. For a single player it is empty, so
 a section can switch the wording:
 
 ```
-{{#squadName}}Your squad has been warned for{{/squadName}}{{^squadName}}You have been warned for{{/squadName}} teamkilling.
+{{#squadName}}Your squad has been warned for{{/squadName}}{{^squadName}}You have been warned for{{/squadName}}
+teamkilling.
 ```
 
 Put the section inside a message variable to reuse it across reasons.
 
-_Require a Reason_ makes a reason mandatory for the actions you name:
+_Require a Reason_ makes a reason mandatory for the actions listed in it:
 
 ![actions_requiring_reason](configuring_screenshots/actions_requiring_reason.png)
 
@@ -228,33 +228,33 @@ as long as that reason has text for the action: a reason with no kick text canno
 
 ![warn_details](configuring_screenshots/warn_details.png)
 
-Reasons are also selectable when you perform an action from the interface:
+Reasons are also selectable when an action is performed from the interface:
 
 ![kick_dialog](configuring_screenshots/kick_dialog.png)
 ![kick_text_insert](configuring_screenshots/kick_text_insert.png)
 
-### 5. In-game commands
+### 4. In-game commands
 
 SLM has a large set of in-game commands. The commands page in your own install documents each command and how to use
 it:
 
 ![commands_page](configuring_screenshots/commands_page.png)
 
-#### 5.1. Command prefixes
+#### 4.1. Command prefixes
 
 By default, every command has the prefix `/`. Change this prefix, or add another, in _Allowed Prefixes_, under
 _Advanced_ in the _In-game Commands_ section:
 
 ![allowed_prefixes](configuring_screenshots/allowed_prefixes.png)
 
-If you change an existing prefix, SLM moves every [trigger](#52-command-triggers) with that prefix to the new one.
+If an existing prefix is changed, SLM moves every [trigger](#42-command-triggers) with that prefix to the new one.
 
 > [!TIP]
-> Pick a prefix that does not collide with the commands you already run. Some SLM commands behave differently from
-> their squadjs counterparts, which confuses users. Disable the old command instead, with a message that points
-> users at the SLM one.
+> Pick a prefix that does not collide with existing commands. Some SLM commands behave differently from their squadjs
+> counterparts, which confuses users. Disable the old command instead, with a message that points users at the SLM
+> one.
 
-#### 5.2. Command triggers
+#### 4.2. Command triggers
 
 An in-game command runs from one of its _triggers_: the strings listed against it under
 _Settings > In-game Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes
@@ -267,7 +267,7 @@ aliases used to be.
 See [command_triggers.md](command_triggers.md) for the template syntax, what happens to words the caller leaves out,
 and the limits on what a trigger can reach.
 
-### 6. Player grouping modes
+### 5. Player grouping modes
 
 A _grouping mode_ sorts players into named, coloured groups, for administration and for monitoring balance.
 Configure them under _Players & Balance_.
@@ -277,7 +277,7 @@ A grouping mode is an ordered list of rules, and a player joins the group of the
 A rule can match on:
 
 - a battlemetrics player flag
-- an [admin list group](#1-admin-lists)
+- an [admin list group](#11-admin-lists)
 - a regex on the player's username, which includes any tags they have configured
 - a discord role, if the player's steam account is linked to their discord account
 
@@ -297,22 +297,22 @@ SLM then colour-codes the usernames of grouped players wherever they appear:
 
 ![color_coded_usernames](configuring_screenshots/color_coded_usernames.png)
 
-The players panel and the activity charts pick which grouping mode to show, and the stats panel breaks the population
-down by it:
+Choose which grouping mode to show in the players panel and the activity charts. The stats panel breaks the
+population down by the chosen mode:
 
 ![teams_breakdown](configuring_screenshots/teams_breakdown.png)
 
-### 7. Player flagging
+### 6. Player flagging
 
-Flagging needs the battlemetrics integration (see [12. Integrations](#12-integrations)).
+Flagging needs the battlemetrics integration (see [installing.md, Integrations](installing.md#11-integrations)).
 
-You can apply a battlemetrics flag to a player from in game with the `/flag` command, or from the SLM interface:
+A battlemetrics flag can be applied to a player from in game with the `/flag` command, or from the SLM interface:
 
 ![flag_command](configuring_screenshots/flag_command.png)
 ![flag_gui](configuring_screenshots/flag_gui.png)
 
 A user can add a reason for the flag, which SLM posts as a note on the player's battlemetrics profile. The note is
-freeform text for now, and is not connected to the [admin action reasons](#4-warns-broadcasts-and-admin-actions).
+freeform text for now, and is not connected to the [admin action reasons](#3-warns-broadcasts-and-admin-actions).
 This may change.
 
 To require a note for a particular flag, name it in _Player Flags Requiring Note_:
@@ -328,9 +328,9 @@ _refresh_ button:
 
 SLM refreshes a player's flags automatically when it changes them itself.
 
-### 8. Layer pools and filters
+### 7. Layer pools and filters
 
-#### 8.1. Filters
+#### 7.1. Filters
 
 The base game has about 730,000 possible layers, counting every map, gamemode, faction and unit combination, or
 about 2.7 million with the popular mods. A _filter_ is a named expression that picks a subset of them out. SLM
@@ -338,12 +338,12 @@ ships with a few, listed in the filters index:
 
 ![filters_index](configuring_screenshots/filters_index.png)
 
-Open one and you get the expression that decides what it matches:
+Open one to see the expression that decides what it matches:
 
 ![filter_edit](configuring_screenshots/filter_edit.png)
 
-Each condition is one line, written out. Click a line to edit it, then click _Done_ or press _Escape_. Only one
-line is open at a time. The buttons for commenting, copying and removing a line appear when you point at it.
+Each condition is one line, written out. Click a line to edit it, then click _Done_ or press _Escape_. Only one line is
+open at a time. The buttons for commenting, copying and removing a line appear when the pointer is over it.
 
 The block at the top sets how the conditions under it combine. The four block types are _all of_, _any of_,
 _none of_ and _not all of_. Opening one also names the operation it stands for. _No Mech on Hilly Maps_ uses
@@ -365,18 +365,18 @@ It uses _all of_, so a layer has to meet every one of:
 - the layer is excluded from _Similar Factions_
 - the layer is included in _No Mech on Hilly Maps_
 
-Switch a filter between _Builder_ and _Text_. The text view edits the expression as text, which is easier for
-changes the builder makes you do a line at a time, such as changing how the conditions nest. _Reformat_ tidies the
-text up. A line's comment shows up there as a `#` line above it, and a `#` line written there becomes the comment
-on the line below.
+Switch a filter between _Builder_ and _Text_. Use the text view to edit the expression as text, which is easier for
+changes that take a line at a time in the builder, such as changing how the conditions nest. Click _Reformat_ to tidy
+the text up. A line's comment shows up in the text view as a `#` line above it, and a `#` line written there becomes the
+comment on the line below.
 
-#### 8.2. Pool configuration
+#### 7.2. Pool configuration
 
 _Pool Configuration_ decides which layers count as playable, which ones raise warnings, and how soon a map, layer
 or faction may be played again.
 
-Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear
-is the one you will use:
+Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear is
+the usual route:
 
 ![pool_config_button](configuring_screenshots/pool_config_button.png)
 
@@ -384,7 +384,7 @@ It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
 
 ![pool_config_popover](configuring_screenshots/pool_config_popover.png)
 
-#### 8.3. The pool filter
+#### 7.3. The pool filter
 
 _Pool Filter_ is the most important setting. It is the single filter that decides which layers are in the server's
 layer pool. It is _Main Pool_ by default.
@@ -397,9 +397,9 @@ layer through the whole app:
 - saving one warns the editor, and in-game admins are warned when one is about to be played
 - autogenerated layers always come from the pool
 
-The toggle in front of the filter decides whether matching layers are in-pool or out-of-pool.
+Use the toggle in front of the filter to set whether matching layers are in-pool or out-of-pool.
 
-#### 8.4. Match and miss indicators
+#### 7.4. Match and miss indicators
 
 A filter carries a name, a description, a _Match Indicator_ and a _Miss Indicator_. Each indicator has an
 _Emoji_ and an _Alert Message_. Edit them from the filter itself:
@@ -429,7 +429,7 @@ While the next layer carries a warning, SLM repeats it to in-game admins. To sil
 tag the item and name that tag in _Skip warnings for_. The item still needs `queue:force-write` to save if it is
 out-of-pool, and its indicators still display.
 
-#### 8.5. Secondary filters
+#### 7.5. Secondary filters
 
 _Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top, and one filter can appear
 in several of the lists at once.
@@ -438,19 +438,19 @@ in several of the lists at once.
 | ------------------------------ | ------------------------------------------------------------------------- |
 | _Indicate matches for_         | Matching layers display the filter's match emoji                          |
 | _Indicate misses for_          | Layers that do not match display the filter's miss emoji                  |
-| _Default selectable filters_   | Offered during layer selection, starting in the state you set here        |
+| _Default selectable filters_   | Offered during layer selection, starting in the state set here            |
 | _Warn for_                     | Warn when a layer in the configured state is queued or about to be played |
 | _Constrain generated pool for_ | Constrain autogenerated layers, on top of the pool filter                 |
 | _Layer request filters_        | Constrain layer requests                                                  |
 
-_Constrain generated pool for_ is the one to set up first. When the queue runs out of layers, SLM generates one
-from the pool, and the default _Main Pool_ is permissive. Naming a tighter filter here keeps generated layers
-closer to what you want to play. Each entry is set to _Must match_ or _Must not match_.
+_Constrain generated pool for_ is the one to set up first. When the queue runs out of layers, SLM generates one from the
+pool, and the default _Main Pool_ is permissive. Naming a tighter filter here keeps generated layers closer to what your
+community wants to play. Each entry is set to _Must match_ or _Must not match_.
 
-_Layer request filters_ apply to requests players make in game. They are always added to the request. In the
-dashboard, the request dialog starts with them applied, and you can turn them off for one request.
+_Layer request filters_ apply to requests players make in game. They are always added to the request. In the dashboard,
+the request dialog starts with them applied, and they can be turned off for one request.
 
-#### 8.6. Next layer
+#### 7.6. Next layer
 
 The _Next Layer_ tab holds two settings, both off by default. They decide how SLM reacts when the server's next
 layer changes underneath it.
@@ -464,23 +464,23 @@ SLM overrides is not announced, so turning both on warns admins only about chang
 
 ![pool_configuration_next_layer](configuring_screenshots/pool_configuration_next_layer.png)
 
-#### 8.7. Disabling SLM updates
+#### 7.7. Disabling SLM updates
 
-SLM normally writes the next layer to the server over RCON. _Disable SLM Updates_, in the _Server Actions_ menu,
-stops it. The queue still runs and tracks what is played. SLM never sets the map itself, and stops sending the recurring
-reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside something
-else that owns the rotation.
+SLM normally writes the next layer to the server over RCON. Use _Disable SLM Updates_, in the _Server Actions_ menu,
+to stop SLM writing the next layer. The queue still runs and tracks what is played. SLM never sets the map itself,
+and stops sending the recurring reminders and announcements that describe the queue as the rotation. Disable
+updates to run SLM alongside something else that owns the rotation.
 
 ![disable_slm_updates](configuring_screenshots/disable_slm_updates.png)
 
-While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off, and
-_Re-enable SLM Updates_ puts them back. Both need `squad-server:disable-slm-updates`.
+While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off. Use
+_Re-enable SLM Updates_ to turn them back on. Both need `squad-server:disable-slm-updates`.
 
 SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or when it infers that
 voting was turned on with `AdminEnableVoting 1`. It reports that voting is enabled, and stops updating the next
 layer until someone turns updates back on. Turning them back on disables voting.
 
-#### 8.8. Repeat rules
+#### 7.8. Repeat rules
 
 A _repeat rule_ sets how soon a map, layer or faction may be played again, counting across both the queue and the
 recent match history. Each rule covers one attribute. Set them on the _Repeat Rules_ tab.
@@ -498,7 +498,7 @@ They treat a layer as a repeat when it reuses:
 A rule on a team-specific attribute such as `Faction` or `Unit` reads that side's own history, not both. One side can
 still play a faction the other side played recently.
 
-_Target Values_ narrows a rule to named values:
+Use _Target Values_ to narrow a rule to named values:
 
 ![skorpo_repeat_rule](configuring_screenshots/skorpo_repeat_rule.png)
 
@@ -515,24 +515,24 @@ A rule always hides its repeats behind the layer table's _Hide Repeats_. _Option
 - _Cross-team_ pools both teams together, so a value one team played counts as a repeat when the other team plays
   it. Only a rule on a team-specific attribute can take it.
 
-A rule is named after its attribute. _Add label_ gives it a name of its own, which is then what the repeat is
-reported under. Empty the box to take the name away again.
+A rule is named after its attribute. Use _Add label_ to give the rule a name of its own, which is then what the
+repeat is reported under. Empty the box to take the name away again.
 
 Drag a rule by its grip to reorder the list.
 
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
 opt out of that.
 
-### Layer Tags
+#### 7.9. Layer tags
 
-You can tag individual layers in the layer queue. Layers with certain tags can be configured to skip warnings:
+Individual layers in the layer queue can be tagged. Layers with certain tags can be configured to skip warnings:
 
 ![skip_warnings_for_tag](configuring_screenshots/skip_warnings_for_tag.png)
 ![fogless_friday](configuring_screenshots/fogless_friday.png)
 
-### 9. Layer table
+### 8. Layer table
 
-#### 9.1. Default displayed columns
+#### 8.1. Default displayed columns
 
 The layer table can show more about each layer than it does by default, and each column it shows is another way to
 filter. Configure the columns under _Layers > Layer Table_. They apply to the layers table and to every layer
@@ -545,7 +545,7 @@ table's default sort and the extra comparison controls its filter menu offers.
 
 See [layer_data.md](layer_data.md) for where this data comes from, and how to build your own.
 
-#### 9.2. Randomization
+#### 8.2. Randomization
 
 _Layer Generation Weights_ controls how SLM picks layers at random. It covers layer generation, which runs when
 the queue runs out of layers, vote generation, and the layer table's random sort.
@@ -554,32 +554,32 @@ Generation walks down a configurable pick order of layer columns and matchups:
 
 ![layer_weights_pick_order](configuring_screenshots/layer_weights_pick_order.png)
 
-At each step it draws one value at random, using the weights you configure for that column, and the draw narrows
-the pool the next step draws from:
+At each step it draws one value at random, using the weights configured for that column, and the draw narrows the pool
+the next step draws from:
 
 ![layer_weights_maps](configuring_screenshots/layer_weights_maps.png)
 
-A value you do not list weighs 0.1. Matchups are unordered, so `[ADF, PLA]` and `[PLA, ADF]` are one entry.
+An unlisted value weighs 0.1. Matchups are unordered, so `[ADF, PLA]` and `[PLA, ADF]` are one entry.
 
 Generation keeps going down the pick order until one layer remains, or until the pick order runs out, in which case
 it picks one of the remaining layers at random.
 
-The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time,
-and a value with no layers left is never picked. Your background filtering and the values already picked both narrow
-what remains, so configured weights do not map cleanly onto the distributions you end up seeing.
+The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time, and
+a value with no layers left is never picked. Your background filtering and the values already picked both narrow what
+remains, so configured weights do not map cleanly onto the resulting distributions.
 
-### 10. Plugins
+### 9. Plugins
 
 Plugins add features to SLM. Manage them under _Plugins_ on the settings page. Doing so takes the `plugins:manage`
 permission.
 
 > [!WARNING]
 > A plugin can do anything SLM can, including editing the queue, running commands on your game servers, and reading
-> and changing SLM's database. Install plugins only from authors you trust.
+> and changing SLM's database. Install plugins only from trusted authors.
 
-#### 10.1. Built-in plugins
+#### 9.1. Built-in plugins
 
-SLM ships with these plugins. They are installed but stopped until you start them.
+SLM ships with these plugins. They are installed but stopped by default.
 
 | Plugin           | What it does                                                              |
 | ---------------- | ------------------------------------------------------------------------- |
@@ -587,40 +587,40 @@ SLM ships with these plugins. They are installed but stopped until you start the
 | Balance Triggers | Watches recent match outcomes and warns admins when they look one-sided   |
 | Teamkill Warns   | Warns players when they have been teamkilled                              |
 
-#### 10.2. Installing a plugin
+#### 9.2. Installing a plugin
 
 1. Get the url of the plugin's `plugin.json` from its author.
 2. Paste it under _Install a plugin_ and click _Install_.
 3. Start the plugin with its toggle.
 
-SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author's site goes down. _Refresh_
-downloads it again, which is how you upgrade.
+SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author's site goes down. To
+upgrade the plugin, click _Refresh_ to download it again.
 
-You can also copy a plugin's folder into `data/plugins` and click _Rescan folder_. The folder must be named after the
-plugin's id. A plugin installed this way has no url, so upgrade it by replacing the folder.
+A plugin can also be installed by copying its folder into `data/plugins` and clicking _Rescan folder_. The folder must
+be named after the plugin's id. A plugin installed this way has no url, so upgrade it by replacing the folder.
 
-#### 10.3. Running and configuring a plugin
+#### 9.3. Running and configuring a plugin
 
-A plugin's toggle starts and stops it, and SLM remembers the choice across restarts. Its status reads _Running_,
-_Stopped_ or _Failed_. A failed plugin shows the reason, such as a configuration that is not valid, or a plugin written
-for a different version of SLM.
+Use a plugin's toggle to start and stop it. SLM remembers the choice across restarts. The plugin's status reads
+_Running_, _Stopped_ or _Failed_. A failed plugin shows the reason, such as a configuration that is not valid, or a
+plugin written for a different version of SLM.
 
 A plugin's settings and in-game commands are edited in its row. Its commands take triggers like SLM's own (see
-[5.2](#52-command-triggers)). If another command already owns one of its triggers, SLM warns that the trigger
-does nothing, and you set a different one.
+[4.2](#42-command-triggers)). If another command already owns one of its triggers, SLM warns that the trigger does
+nothing. Set a different one.
 
 A plugin can define actions of its own that need a permission. Grant them to a role under _Plugin Grants_ (see
-[3.3](#33-assigning-permissions-to-roles)).
+[1.4](#14-assigning-permissions-to-roles)).
 
 When an upgraded plugin changes what it shows in the browser, open pages ask to reload. They do not reload by
 themselves, so nobody loses an edit in progress.
 
-#### 10.4. Uninstalling a plugin
+#### 9.4. Uninstalling a plugin
 
-_Uninstall_ removes the plugin but keeps its settings and data, so reinstalling it restores them. To remove those as
-well, use _Delete data_ under _Leftover data_. That cannot be undone.
+Use _Uninstall_ to remove the plugin. SLM keeps the plugin's settings and data, so reinstalling it restores them. To
+remove those as well, use _Delete data_ under _Leftover data_. That cannot be undone.
 
-### 11. Nav links
+### 10. Nav links
 
 The _Links_ menu in the nav bar holds links for your users, such as your community's rules or a Discord invite. A
 fresh install starts with links to SLM on GitHub and to its install guide.
@@ -629,34 +629,3 @@ fresh install starts with links to SLM on GitHub and to its install guide.
 - A server can add its own in its server settings. They show below the global ones while that server is selected.
 
 Each link is a label and a url.
-
-### 12. Integrations
-
-SLM authenticates to three outside services. Enter their credentials under _Integrations_ on the settings page.
-
-A saved token is encrypted and never shown again. The field shows a placeholder, and typing in it replaces the
-token. Clearing the field removes it. The _Enabled_ switch turns an integration off without deleting its token.
-Changes take effect as soon as you save, without a restart.
-
-Editing this section takes a `global-settings:write` grant covering `integrations`. The default managers role
-cannot edit it (see [3.2](#32-default-roles)).
-
-**Battlemetrics** supplies player flags, notes and profiles, and lets users flag players from SLM (see
-[7. Player flagging](#7-player-flagging)). Enter a personal access token with these permissions:
-
-- player flags: add and remove. It does not need to create new ones.
-- player notes: read and create
-- rcon: read
-
-Set _Organization ID_ to your org's battlemetrics id. SLM shows only the flags that belong to it. With no token,
-SLM polls nothing and hides the parts of the app that show flags.
-
-**Squad Browser** resolves the join link behind the dashboard's join button from the name your server reports over
-RCON, whether or not anyone is playing on it. Enter a squad browser api key, which starts with `sqb_`.
-
-**Steam** builds the same link from the lobby of a player in game. It answers only while someone is on the server,
-and only for players whose steam profile makes game details public. Enter a web api key from
-https://steamcommunity.com/dev/apikey.
-
-With both join-link sources configured, SLM asks the squad browser first, and steam covers the servers it does not
-list. With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.

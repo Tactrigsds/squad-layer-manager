@@ -1,19 +1,19 @@
 # Learning how to use SLM
 
-You learn SLM mostly inside the app, by using it. Start with the tutorials, then practise on the sandbox server.
+SLM is mostly learned inside the app, by using it. Start with the tutorials, then practise on the sandbox server.
 
 ## Tutorials
 
-The tutorials walk you through the server dashboard, where you run a live server: the layer queue, votes, players and
-team swaps. Open _Tutorials_ from the nav bar. SLM also offers them the first time you open a server's dashboard.
+The tutorials walk through the server dashboard, where admins run a live server: the layer queue, votes, players and
+team swaps. Open _Tutorials_ from the nav bar. SLM also offers them the first time a user opens a server's dashboard.
 
 | Tutorial          | Length | Covers                                                                              |
 | ----------------- | ------ | ----------------------------------------------------------------------------------- |
 | The layer queue   | 10 min | reading and editing the queue, picking layers, filters and repeat rules, generation |
 | Player management | 15 min | the activity log, match history, teams and groups, warns, kicks, timeouts and swaps |
 
-Each tutorial runs on a sandbox server, so nothing you do in it reaches a real server. You can leave a tutorial and
-resume it later, and replay one you have finished. Follow them on a desktop, with a mouse and keyboard.
+Each tutorial runs on a sandbox server, so no action taken in it reaches a real server. A tutorial can be left and
+resumed later, and replayed once finished. Follow them on a desktop, with a mouse and keyboard.
 
 ## Practising on the sandbox server
 
@@ -22,8 +22,7 @@ votes and player actions without affecting real players. See [sandbox_servers.md
 
 ## Tooltips
 
-Tooltips can be found throughout the app. Hover over a button, icon or label you do not recognise to see more about
-it.
+Tooltips can be found throughout the app. Hover over an unfamiliar button, icon or label to see more about it.
 
 ## In-game commands
 

@@ -10,20 +10,20 @@ credentials.
 ## Using one
 
 Set a server's connection type to `sandbox`, or let startup seed one (see below). Drive it from **Server Actions ->
-Sandbox Controls**, which appears only on sandbox servers, and only for users holding `sandbox:control` on that
-server. From there you can connect fabricated players, speak as them in all or admin chat, form squads, end matches,
-and drop the RCON connection to watch SLM reconnect.
+Sandbox Controls**, which appears only on sandbox servers, and only for users holding `sandbox:control` on that server.
+From there, connect fabricated players, speak as them in all or admin chat, form squads, end matches, and drop the RCON
+connection to watch SLM reconnect.
 
 The window embeds the [server console](./server_console.md). The console is available on every server, under its
 own permission.
 
 The window shows nothing about the world except the fabricated players' names, which every action uses to address a
-player. Check the roster, chat and queue on the dashboard. The dashboard shows what SLM sees, which is what you are
-testing.
+player. Check the roster, chat and queue on the dashboard. The dashboard shows what SLM sees, which is the thing under
+test.
 
-`pnpm emuctl` drives the dev instance's emulator, which is a separate process from any sandbox server. Both dispatch
-the same verbs (`src/models/sandbox.models.ts`, executed by `src/emulator/verbs.ts`), so neither can grow a verb the
-other lacks.
+Use `pnpm emuctl` to drive the dev instance's emulator, which is a separate process from any sandbox server. Both
+dispatch the same verbs (`src/models/sandbox.models.ts`, executed by `src/emulator/verbs.ts`), so neither can grow a
+verb the other lacks.
 
 ## Seeding
 
@@ -31,8 +31,8 @@ other lacks.
 It is enabled immediately. It becomes the default server only when there is no other one, so an install already
 running real servers gets the sandbox alongside them, never in front of them.
 
-If you delete the sandbox while the setting is on, the next restart creates a new one. Turn the setting off to
-remove it for good.
+If the sandbox is deleted while the setting is on, the next restart creates a new one. Turn the setting off to remove it
+for good.
 
 ## What is real and what is not
 
@@ -47,7 +47,7 @@ Three things differ from a live server:
   live org. SLM does not start the BattleMetrics integration for them.
 - **Admin lists are global**, so a fabricated player is not in one and does not read as an in-game admin. Chat
   commands from sandbox players resolve permissions the same way they would anywhere, which usually means denied.
-- **The world is in memory.** An SLM restart gives you a fresh world against a database that still remembers the old
+- **The world is in memory.** An SLM restart starts a fresh world against a database that still remembers the old
   one's matches. The emulator survives a managed server restart (a settings edit does not reset it) but not a
   process restart.
 
@@ -63,4 +63,4 @@ the same tables makes the sandbox a faithful rehearsal, with no special code pat
 server-scoped permission, holding it implies `squad-server:view` for that server.
 
 The control router can only act on an emulator SLM started. A serverId naming a real server finds no emulator
-and stops there, so the controls cannot drive a real server.
+and stops there, so nobody can use the controls to drive a real server.

@@ -10,8 +10,8 @@ cd ~/projects/slm/<name>
 pnpm dev                   # provisions and runs the workspace
 ```
 
-`pnpm dev` prints the one URL the workspace answers on. That URL carries a `?login=`, so opening it lands you signed
-in.
+`pnpm dev` prints the one URL the workspace answers on. That URL carries a `?login=`, so opening it starts a
+signed-in session.
 
 For an existing checkout, including one made by `git worktree add` or an agent, run `pnpm dev` there. It provisions
 the workspace before starting it.
@@ -162,10 +162,10 @@ A checkout with no `.env` anywhere gets one written from `.env.example.dev`, nam
 `.env.example.dev` carries the public development encryption key, and a dev instance is blocked from everything that
 needs any other credential.
 
-The gitignored build artifacts a fresh checkout lacks (`assets/layer-engine.wasm`, `layer-db.json`) are copied from
-the primary checkout by whatever creates the worktree, provisioning included, so the engine is in place before
-anything reaches a dev instance. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild
-over its own copy. Run `pnpm build:engine` if you change it. A checkout with nothing to copy them from, the primary
+The gitignored build artifacts a fresh checkout lacks (`assets/layer-engine.wasm`, `layer-db.json`) are copied from the
+primary checkout by whatever creates the worktree, provisioning included, so the engine is in place before anything
+reaches a dev instance. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild over its
+own copy. Run `pnpm build:engine` after changing `layer-engine/`. A checkout with nothing to copy them from, the primary
 checkout itself included, has the engine built for it instead.
 
 The list of them is kept in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because

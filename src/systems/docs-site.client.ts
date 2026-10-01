@@ -190,6 +190,35 @@ function setupCopyButtons() {
 }
 
 // A released version's pages are frozen, so the list of versions, and whether this one is outdated, come from the root.
+// remembers whether the reader collapsed the table of contents, across pages and visits
+const TOC_COLLAPSED_KEY = 'docs-toc-collapsed'
+
+function setupTocToggle() {
+	const btn = document.querySelector<HTMLButtonElement>('[data-toc-toggle]')
+	const toc = btn?.closest<HTMLElement>('.docs-toc')
+	if (!btn || !toc) return
+	const apply = (collapsed: boolean) => {
+		toc.toggleAttribute('data-collapsed', collapsed)
+		const label = collapsed ? 'Expand subheadings' : 'Collapse subheadings'
+		btn.setAttribute('aria-expanded', String(!collapsed))
+		btn.setAttribute('aria-label', label)
+		btn.title = label
+	}
+	let collapsed = false
+	try {
+		collapsed = localStorage.getItem(TOC_COLLAPSED_KEY) === '1'
+	} catch {}
+	apply(collapsed)
+	btn.hidden = false
+	btn.addEventListener('click', () => {
+		collapsed = !collapsed
+		apply(collapsed)
+		try {
+			localStorage.setItem(TOC_COLLAPSED_KEY, collapsed ? '1' : '0')
+		} catch {}
+	})
+}
+
 async function setupVersions() {
 	const list = document.querySelector('[data-version-list]')
 	const banner = document.querySelector<HTMLElement>('[data-version-banner]')
@@ -237,4 +266,5 @@ async function setupVersions() {
 setupSearch()
 setupVideo()
 setupCopyButtons()
+setupTocToggle()
 void setupVersions()

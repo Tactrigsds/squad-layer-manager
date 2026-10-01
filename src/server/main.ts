@@ -90,7 +90,7 @@ await Instr.spanOp('main', { module }, async () => {
 	const secretsFromEnv = Env.getSecretsFromEnvironment()
 	if (ENV.NODE_ENV === 'production' && secretsFromEnv.length > 0) {
 		log.warn(
-			'%s read from the environment rather than a secrets file, which is readable via `docker inspect`. See docs/installing.md#33-secrets',
+			'%s read from the environment rather than a secrets file, which is readable via `docker inspect`. See docs/installing.md#5-secrets',
 			secretsFromEnv.join(', '),
 		)
 	}

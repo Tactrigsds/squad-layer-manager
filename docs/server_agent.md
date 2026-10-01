@@ -25,10 +25,10 @@ server's agent. Keep it with your other secrets.
 
 The agent needs three things from the server's connection settings:
 
-- the _url_ SLM is served on. This is the same `ORIGIN` you serve the app on, with the path `/server-agent`. Use
-  `wss://` if you serve SLM over https, and `ws://` over plain http.
+- the _url_ SLM is served on. This is the app's `ORIGIN`, with the path `/server-agent`. Use `wss://` if SLM is
+  served over https, and `ws://` over plain http.
 - the _server id_, shown with the rest of the server's connection settings.
-- the _token_ you just set.
+- the _token_ from the previous step.
 
 ## Running the agent
 
@@ -79,8 +79,8 @@ docker run -d --restart unless-stopped \
 
 ## The RCON proxy
 
-The proxy is required. Supply `--rcon-host`, `--rcon-port` and `--rcon-password` for it. The three options are all
-or nothing. If you supply only some of them, the agent refuses to start.
+The proxy is required. Supply `--rcon-host`, `--rcon-port` and `--rcon-password` for it. The three options are all or
+nothing. The agent refuses to start if only some of them are supplied.
 
 An agent declares which of the two data sources (the log and RCON) it
 can supply, and SLM rejects an agent that does not supply both. A server in agent mode has no other route to the

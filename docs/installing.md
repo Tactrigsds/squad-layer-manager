@@ -8,32 +8,31 @@ To see SLM before installing it for real, run a demo instance:
 docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
 ```
 
-Open http://localhost:3000 and sign in with any username from the form on the front page. The demo starts with
-example data and needs no Discord server. Everything in it is thrown away when you stop the container. The demo
-encrypts its settings with a key published in this repository, so enter no real credential into it.
+Open http://localhost:3000 and sign in with any username from the form on the front page. The demo starts with example
+data and needs no Discord server. Everything in it is thrown away when the container stops. The demo encrypts its
+settings with a key published in this repository, so enter no real credential into it.
 
-## Installing for real
+## Installation Procedure
 
 ### 1. Prerequisites
 
 1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
 2. A domain, and some way to send traffic to SLM.
-3. A Discord server you have permission to install apps on.
+3. A Discord server on which your account can install apps.
 
 ### 2. Where to install
 
-SLM needs access to your squad server's log files. There are three ways to give it that:
+SLM needs access to your squad server's log files, and an RCON connection. There are three ways to achieve this:
 
-- mount the log files into the container
-- connect over SFTP (this works with PSG-hosted servers)
-- run a server agent on the game host, which streams the log data and proxies RCON (see
-  [server_agent.md](server_agent.md))
+- Mount the log files into the container, and access RCON remotely, over a VLAN or an intranet. This is theoretically
+  the lowest latency, and relatively secure.
+- Access the log files over SFTP (this works with PSG-hosted servers), and access RCON remotely through an exposed
+  port. Log events arrive with higher latency, and remote RCON access is insecure, because RCON is not encrypted.
+- **Recommended:** run the SLM server agent on the game host. It streams log data and proxies RCON over a secure
+  websocket connection. Your squad server or hosting provider does not need to expose an additional port, and how and
+  where SLM is hosted stays under your control. See [server_agent.md](server_agent.md).
 
-SLM can manage any number of squad servers, so factor that in when deciding where to install it.
-
-### 3. Installation
-
-#### 3.1. Docker Compose
+### 3. Docker Compose
 
 ```sh
 mkdir squad-layer-manager && cd squad-layer-manager
@@ -46,29 +45,30 @@ This installs the newest release. To pick something else, pass a flag after `bas
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash -s -- --channel latest
 ```
 
-| flag               | installs                                                                        |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `--channel stable` | the newest release, and each new release when you upgrade. This is the default. |
-| `--channel latest` | every change as soon as it passes tests                                         |
-| `--version <v>`    | one release, e.g. `--version 2026.9.4`, and stays on it                         |
+| flag               | installs                                                                    |
+| ------------------ | --------------------------------------------------------------------------- |
+| `--channel stable` | the newest release, and each later release on upgrade. This is the default. |
+| `--channel latest` | every change as soon as it passes tests                                     |
+| `--version <v>`    | one release, e.g. `--version 2026.9.4`, and stays on it                     |
 
-To install into another directory, add it last: `bash -s -- --channel latest /opt/slm`. Your choice is saved as
-`SLM_IMAGE_TAG` in `.env`, and you can change it later (see [Upgrading](#310-upgrading)).
+To install into another directory, add it last: `bash -s -- --channel latest /opt/slm`. The choice is saved as
+`SLM_IMAGE_TAG` in `.env`, and can be changed later (see [Upgrading](#12-upgrading)).
 
-This lays down the files a deployment is made of:
+This lays down the files for the deployment:
 
 - `docker-compose.yaml`
 - `.env`, copied from `.env.example`, which is left alongside it
-- `.env.secrets`, copied from `.env.secrets.example`, holding every credential SLM reads (see [3.3](#33-secrets))
+- `.env.secrets`, copied from `.env.secrets.example`, holding credentials needed by SLM on startup (see
+  [Secrets](#5-secrets))
 - the `edit-global-settings.sh` and `restore.sh` helpers
 - an `observability/` directory of Grafana and OpenTelemetry collector config
 
 It also creates `data/`, which holds the database file and any other persistent data, and is bind-mounted into the
 app container.
 
-#### 3.2. Discord app
+### 4. Discord app
 
-SLM authenticates users through a discord app you own, installed on your org's discord server.
+SLM authenticates users through your own discord app, installed on your org's discord server.
 
 Create one at [discord.com/developers/applications](https://discord.com/developers/applications).
 
@@ -77,11 +77,11 @@ Then make the settings match these screenshots:
 ![discord_1](../images/discord_1.png)
 The `applications.commands` and `bot` scopes are both required.
 
-Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is wherever you plan to serve SLM from.
+Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is the address SLM will be served from.
 ![discord_2](../images/discord_2.png)
 
 Set ORIGIN in `.env` to match (without `/login/callback`), and fill out `DISCORD_CLIENT_ID` in `.env`.
-`DISCORD_CLIENT_SECRET` is a credential, so it goes in `.env.secrets` instead (see [3.3](#33-secrets)).
+`DISCORD_CLIENT_SECRET` is a credential, so it goes in `.env.secrets` instead (see [Secrets](#5-secrets)).
 
 Configure the bot's intents like this:
 ![discord_3](../images/discord_3.png)
@@ -95,9 +95,9 @@ that is not the one configured below.
 Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find it, enable Developer Mode in your
 discord settings and right-click the server icon. Only members of that server can be granted access to SLM.
 
-Set at least one `SUPER_USERS` id to your discord user id (click your profile picture with developer mode enabled),
-or nobody can administer the app. Super users hold every permission unconditionally, so you cannot lock them out.
-This person must be a member of your org's discord server.
+Set at least one `SUPER_USERS` id to your discord user id (click your profile picture with developer mode enabled), or
+nobody can administer the app. Super users hold every permission unconditionally, so they cannot be locked out. This
+person must be a member of your org's discord server.
 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
 sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
@@ -121,28 +121,28 @@ Grant them in one of two ways:
 - **Specific channels:** leave them off the role, and add them for the SLM bot's role in each channel's _Edit
   Channel > Permissions_. The bot then replies only in those channels.
 
-#### 3.3. Secrets
+### 5. Secrets
 
-Put every credential SLM reads in `.env.secrets`, and the rest of the configuration in `.env`.
+Secrets that SLM needs at startup are in `.env.secrets`, and the rest of the base configuration is in `.env`.
 
-| variable                             | what it is                                                                                  |
-| ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `SETTINGS_ENCRYPTION_KEY`            | encrypts sensitive settings at rest (see [3.4](#34-encryption-key))                         |
-| `SETTINGS_ENCRYPTION_KEY_PREVIOUS`   | the key you are rotating away from, set only while rotating (see [3.4](#34-encryption-key)) |
-| `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                                                      |
-| `DISCORD_BOT_TOKEN`                  | the discord bot token                                                                       |
-| `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                                           |
-| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                                            |
+| variable                             | what it is                                                                                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `SETTINGS_ENCRYPTION_KEY`            | encrypts sensitive settings at rest (see [Encryption key](#7-encryption-key))                      |
+| `SETTINGS_ENCRYPTION_KEY_PREVIOUS`   | the key being rotated away from, set only while rotating (see [Encryption key](#7-encryption-key)) |
+| `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                                                             |
+| `DISCORD_BOT_TOKEN`                  | the discord bot token                                                                              |
+| `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                                                  |
+| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                                                   |
 
 The BattleMetrics, Squad Browser and Steam credentials are not environment variables. Enter them on the settings
-page once SLM is running (see [configuring.md, Integrations](configuring.md#12-integrations)).
+page once SLM is running (see [Integrations](#11-integrations)).
 
-`install.sh` writes this file for you from `.env.secrets.example`, `chmod 600`, with a freshly generated
-`SETTINGS_ENCRYPTION_KEY` already in it. Fill in the rest as you work through the sections below. Keep it out of
-version control, and out of any backup you would not also put a password in.
+`install.sh` writes this file from `.env.secrets.example`, `chmod 600`, with a freshly generated
+`SETTINGS_ENCRYPTION_KEY` already in it. Fill in the rest while working through the sections below. Keep it out of
+version control, and out of any backup not secure enough to hold a password.
 
-**Mount this file into the container. Do not pass these as environment variables.** The `docker-compose.yaml` you
-installed already does:
+**Mount this file into the container. Do not pass these as environment variables.** The installed `docker-compose.yaml`
+already does:
 
 ```yaml
 services:
@@ -155,12 +155,14 @@ services:
 SLM reads `.env.secrets` as a file and never loads it into its environment, so the credentials do not show up in
 `docker inspect` or in anything SLM starts. `.env` is passed to the container with `env_file`.
 
+### 6. Integration with secrets managers
+
 If a secrets manager delivers your credentials, point SLM at what it mounts. SLM reads two layouts:
 
 - `SECRETS_FILE`: one file in the same `KEY=value` format as `.env.secrets`, wherever it is mounted.
 - `SECRETS_DIR`: a directory holding one file per credential, named after the variable. Docker and podman secrets,
   a kubernetes secret volume and systemd's `LoadCredential=` all produce this layout. SLM reads only the variables
-  in the table above from it, and drops a trailing newline.
+  listed under [Secrets](#5-secrets) from it, and drops a trailing newline.
 
 As docker secrets, one per credential:
 
@@ -191,57 +193,34 @@ disk in plaintext, exactly as `.env.secrets` is, and neither shows up in `docker
 tooling produces. Docker secrets protect the values at rest only under Swarm, or when a secrets manager delivers
 them.
 
-#### 3.4. Encryption key
+### 7. Encryption key
 
 SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, its server-agent token, and the
 integration tokens entered on the settings page. The key is `SETTINGS_ENCRYPTION_KEY`. It is required, and the app
-refuses to start without it. `install.sh` generates one into `.env.secrets` for you. If it could not, or you
-installed by hand, generate one and paste it in yourself:
+refuses to start without it. `install.sh` generates one into `.env.secrets`. If it could not, or SLM was installed by
+hand, generate one and paste it in:
 
 ```sh
 openssl rand -base64 32
 ```
 
-The app refuses a key shorter than 16 characters. Keep the key wherever you keep your backups: a backup restored
-without its key comes up with every server disabled and every integration token unset (see
+The app refuses a key shorter than 16 characters. Keep the key wherever your backups are kept: a backup restored without
+its key comes up with every server disabled and every integration token unset (see
 [backups and restoring](backups.md#restoring)).
 
 To rotate the key, move the current value to `SETTINGS_ENCRYPTION_KEY_PREVIOUS`, put the new one in
 `SETTINGS_ENCRYPTION_KEY`, and start the app. That boot re-encrypts everything under the new key and logs each
 server it did it for. Remove `SETTINGS_ENCRYPTION_KEY_PREVIOUS` afterwards.
 
-If you lose the key, re-enter the RCON and SFTP passwords, agent tokens and integration tokens on the settings
-page. SLM disables a server whose secrets it cannot decrypt until you do, and treats an integration token it cannot
+If the key is lost, re-enter the RCON and SFTP passwords, agent tokens and integration tokens on the settings page. SLM
+disables a server whose secrets it cannot decrypt until they are re-entered, and treats an integration token it cannot
 decrypt as unset.
 
-#### 3.5. Battlemetrics
-
-SLM's battlemetrics integration lets users update player flags from in game and from the dashboard, and shows a
-player's flags and profile beside the actions taken against them. It is optional, and you configure it on the
-settings page once SLM is running, with a personal access token and your org's id: see
-[configuring.md, Integrations](configuring.md#12-integrations).
-
-#### 3.6. Join button
-
-The server dashboard can offer a button that joins the server you are looking at. SLM can resolve the link in two
-ways, and neither needs configuring per server. Configure either one, or both.
-
-The squad browser identifies a server by the name it reports over RCON. It answers whether or not anyone is playing
-on the server, and takes a squad browser api key.
-
-Steam answers from the lobby of a player in game. It only works while someone is on the server, and only for players
-whose steam profile sets game details to public, and takes a steam web api key.
-
-Both are optional. Enter either key, or both, on the settings page once SLM is running: see
-[configuring.md, Integrations](configuring.md#12-integrations). If neither is set, the button is hidden.
-
-The button never appears for a sandbox server, which SLM emulates in-process and nobody can join.
-
-#### 3.7. Backups
+### 8. Backups
 
 The database is snapshotted into `BACKUPS_DIR` before every migration, whether the app applies them at boot
-(`DB_AUTOMIGRATE`, the default) or you run them yourself. Nothing is applied if the snapshot fails. This snapshot is
-not optional. It is what you roll back to after a bad upgrade. Periodic backups are off until you set an interval.
+(`DB_AUTOMIGRATE`, the default) or they are run by hand. Nothing is applied if the snapshot fails. This snapshot is not
+optional. It is the restore point after a bad upgrade. Periodic backups are off until an interval is set.
 
 | variable                     | default          | what it does                                                          |
 | ---------------------------- | ---------------- | --------------------------------------------------------------------- |
@@ -252,19 +231,18 @@ not optional. It is what you roll back to after a bad upgrade. Periodic backups 
 Backups can also be uploaded to an SFTP destination. See [backups and restoring](backups.md) for that, for what the
 filenames mean, and for putting one back with `restore.sh`.
 
-#### 3.8. Telemetry
+### 9. Telemetry
 
-Detailed logs and telemetry are available via grafana at `http://localhost:3001`, which you may also want to expose
-to the internet. Change the default admin password before doing so. Three dashboards come preconfigured for
-monitoring SLM. Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
+Detailed logs and telemetry are available via grafana at `http://localhost:3001`. Grafana can also be exposed to the
+internet. Change the default admin password before doing so. Three dashboards come preconfigured for monitoring SLM.
+Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
 [VictoriaMetrics](https://victoriametrics.com/) store per signal. [observability/README.md](../observability/README.md)
 covers how the pieces fit together and the retention windows.
 
-If you do not want any telemetry, set `OTEL_ENABLED=false` and comment out or delete the `victoria-metrics`,
-`victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before
-starting the app.
+To run without telemetry, set `OTEL_ENABLED=false` and comment out or delete the `victoria-metrics`, `victoria-logs`,
+`victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before starting the app.
 
-#### 3.9. Starting SLM
+### 10. Starting SLM
 
 With docker installed and running, and a public url for the server, start it up:
 
@@ -277,9 +255,44 @@ If docker is configured to start on boot, the app starts automatically after a r
 Stop everything with `docker compose down`. To stop only the app and leave grafana running, use `docker compose stop
 app`.
 
-Once the app is running you can sign in with discord OAuth, and move on to [configuring SLM](configuring.md).
+Once the app is running, sign in with discord OAuth. Set up the integrations below, then move on to
+[configuring SLM](configuring.md).
 
-#### 3.10. Upgrading
+### 11. Integrations
+
+SLM authenticates to three outside services: BattleMetrics, Squad Browser and Steam. All three are optional. Their
+credentials are not environment variables. Once SLM is running, enter them under _Integrations_ on the settings page.
+
+A saved token is encrypted and never shown again. The field shows a placeholder, and typing in it replaces the token.
+Clearing the field removes it. Use the _Enabled_ switch to turn an integration off without deleting its token. Changes
+take effect as soon as they are saved, without a restart.
+
+Editing this section takes a `global-settings:write` grant covering `integrations`. The default managers role cannot
+edit it (see [configuring.md, Default roles](configuring.md#13-default-roles)).
+
+**BattleMetrics** lets users update player flags from in game and from the dashboard, and shows a player's flags, notes
+and profile beside the actions taken against them. Enter a personal access token with these permissions:
+
+- player flags: add and remove. It does not need to create new ones.
+- player notes: read and create
+- rcon: read
+
+Set _Organization ID_ to your org's battlemetrics id. SLM shows only the flags that belong to it. With no token, SLM
+polls nothing and hides the parts of the app that show flags.
+
+**Join button.** Use the join button on the server dashboard to open the server in Squad. SLM looks up the link through
+the Squad Browser or through Steam. Configure one of the two for the button to work. Configuring both is not required.
+
+- **Squad Browser** identifies a server by the name the server reports over RCON, and answers whether or not anyone is
+  playing on the server. Enter a squad browser api key, which starts with `sqb_`.
+- **Steam** builds the link from the lobby of a player in game. Steam answers only while someone is on the server, and
+  only for players whose steam profile makes game details public. Enter a web api key from
+  https://steamcommunity.com/dev/apikey.
+
+If both are configured, SLM asks the Squad Browser first, and Steam covers the servers the Squad Browser does not list.
+With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.
+
+### 12. Upgrading
 
 ```sh
 docker compose pull && docker compose up -d
@@ -296,15 +309,15 @@ docker compose pull && docker compose up -d
 An install without `SLM_IMAGE_TAG` follows `latest`.
 
 Before upgrading, read the notes for every release since yours in [CHANGELOG.md](../CHANGELOG.md), under "For
-operators". A "Breaking" note describes a change you must make to upgrade. The same notes are logged when the upgraded app starts, and
-everyone signed in to SLM can see what changed on its What's new page.
+operators". A "Breaking" note describes a change the operator must make to upgrade. The same notes are logged when the
+upgraded app starts, and everyone signed in to SLM can see what changed on its What's new page.
 
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
-up first (see [3.7](#37-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
+up first (see [Backups](#8-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
 putting the snapshot back and pinning the image it belongs to.
 
 An install that predates `.env.secrets` keeps working unchanged, because SLM reads the credentials from wherever it
-finds them. To move them out of the environment (see [3.3](#33-secrets)):
+finds them. To move them out of the environment (see [Secrets](#5-secrets)):
 
 1. Take the variables in that section out of your `.env`.
 2. Put them in a `.env.secrets` next to it.
@@ -316,7 +329,7 @@ volumes:
 ```
 
 The BattleMetrics, Squad Browser and Steam credentials moved from the environment to the settings page (see
-[configuring.md, Integrations](configuring.md#12-integrations)). The first boot after upgrading copies `BM_PAT`,
+[Integrations](#11-integrations)). The first boot after upgrading copies `BM_PAT`,
 `BM_ORG_ID`, `SQUADBROWSER_API_KEY`, `STEAM_API_KEY` and the matching `*_ENABLED` switches into the settings, and
 logs that it did. Remove them from `.env` and `.env.secrets` after that boot: SLM warns on every start while one is
 still set, and no longer reads it.

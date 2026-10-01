@@ -4,10 +4,10 @@ SLM is a tool for managing upcoming layers on a Squad server, and other things a
 
 **Documentation: https://tactrigsds.github.io/squad-layer-manager/**
 
-It is the main admin tool of the Tactical Triggernometry server, used for queueing layers, reading the current state
-of team balance, and running teamswaps. It also issues warns, kicks and timeouts, and it integrates with
-BattleMetrics so you can set player flags and open player profiles without leaving the app. Those flags can then be
-used to categorise players for team balance or monitoring.
+It is the main admin tool of the TacTrig server, used for queueing layers, reading the current state of team balance,
+and running teamswaps. Admins also use it to issue warns, kicks and timeouts, and it integrates with BattleMetrics so
+admins can set player flags and open player profiles without leaving the app. Those flags can then be used to categorise
+players for team balance or monitoring.
 
 Everything is available in two ways: through a web GUI that authenticates against your Discord server via OAuth, and
 through in-game commands.
@@ -34,6 +34,10 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 Read these pages on the [documentation site](https://tactrigsds.github.io/squad-layer-manager/), which adds search,
 or as markdown here:
 
+- [Layer selection](docs/layer_selection.md): the queue, filters, repeat rules, votes and layer requests
+- [Player management](docs/player_management.md): teams, admin actions, swaps, and the activity feed and history
+- [Integrations and hosting](docs/integrations_and_hosting.md): in-game commands, Discord, BattleMetrics,
+  permissions, plugins and self-hosting
 - [Installing](docs/installing.md): get SLM running
 - [Configuring](docs/configuring.md): configure SLM for your squad server
 - [Learning how to use SLM](docs/server_dashboard.md): the in-app tutorials for running a live server

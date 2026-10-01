@@ -7,7 +7,7 @@ the command's arguments exactly as written.
 A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut, which is what
 command aliases used to be.
 
-See [configuring.md](configuring.md#5-in-game-commands) for the commands themselves, and for the prefix every
+See [configuring.md](configuring.md#4-in-game-commands) for the commands themselves, and for the prefix every
 trigger starts with.
 
 ## Shortcuts
@@ -56,10 +56,9 @@ because `/broadcast` takes a single argument. Leave the args off entirely for a 
 
 ## What a trigger cannot do
 
-All triggers across all commands share one namespace, so two commands cannot claim the same trigger. A trigger runs
-in its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin command. A public
-trigger can pass a player's own words into a public command's free-text argument. Keep that in mind when you write
-one.
+All triggers across all commands share one namespace, so two commands cannot claim the same trigger. A trigger runs in
+its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin command. A public trigger
+can pass a player's own words into a public command's free-text argument. Write public triggers with that in mind.
 
 ## Finding them
 
