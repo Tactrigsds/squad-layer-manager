@@ -36,7 +36,7 @@ export const STUB_ORG_ID = 'stub-org'
 
 const DEFAULT_FLAGS: BmFlag[] = [
 	{ id: '00000000-0000-4000-8000-000000000001', name: 'Seeder', color: '#00ff00', description: 'Seeds the server', icon: 'star' },
-	{ id: '00000000-0000-4000-8000-000000000002', name: 'Watchlist', color: '#ff0000', description: 'Under watch', icon: 'eye' },
+	{ id: '00000000-0000-4000-8000-000000000002', name: 'Watchlist', color: '#ff0000', description: 'Under watch', icon: 'visibility' },
 ]
 
 export class BmServer {

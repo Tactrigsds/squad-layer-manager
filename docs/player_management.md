@@ -16,9 +16,24 @@ the teams.
 ## Player details
 
 Click a player for their IDs and profile links, their groups and BattleMetrics flags, their team and squad, and their
-recent chat. Click _Load notes_ there to read the notes on their BattleMetrics profile.
+recent chat.
 
 ![a player's details](features_screenshots/player_details.png)
+
+## BattleMetrics notes
+
+A note is free text on a player's [BattleMetrics](integrations_and_hosting.md#battlemetrics) profile. Admins use notes
+to brief each other: why a player was warned, or what to watch for next match. SLM signs each note it posts with the
+name of the admin who wrote it.
+
+Click _Load notes_ in a player's details window to list their notes, newest first. A note that records a flag change
+shows the flag and the reason given for it. SLM fetches a player's notes only when asked, because each fetch counts
+against your organization's BattleMetrics request limit.
+
+![a player's BattleMetrics notes](features_screenshots/bm_notes.png)
+
+To add a note, click the notebook button beside the player's flags, or right-click a player, a squad or a selection and
+choose _Add Note..._. In game, type `/note Kestrel mic spam in local`.
 
 ## Admin actions
 
