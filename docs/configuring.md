@@ -261,7 +261,7 @@ _Settings > In-game Commands_. `/timeout` and `/to` are two triggers for the sam
 the command's arguments exactly as written.
 
 A trigger can also pin some of those arguments, which turns it into a shortcut. Give `/to2h` the `args` template
-`{{arg1}} 2h {{rest2}}`, and typing `/to2h Alice spamming` runs `/timeout Alice 2h spamming`. This is what command
+`{{arg1}} 2h {{rest}}`, and typing `/to2h Alice spamming` runs `/timeout Alice 2h spamming`. This is what command
 aliases used to be.
 
 See [command_triggers.md](command_triggers.md) for the template syntax, what happens to words the caller leaves out,

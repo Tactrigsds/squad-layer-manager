@@ -98,7 +98,7 @@ describe('buildExamples', () => {
 	})
 
 	it('takes an optional word from the placeholder default that fills its argument', () => {
-		const config = { ...configs.warn, triggers: [{ string: '!warnsp', args: '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}' }] }
+		const config = { ...configs.warn, triggers: [{ string: '!warnsp', args: '{{arg1}} {{^rest}}spam{{/rest}}{{rest}}' }] }
 		expect(examplesOf('warn', config, seeds)).toEqual([
 			{ command: '!warnsp Alice', note: 'The shortest form' },
 			{ command: '!warnsp Alice toxicity', note: 'With reason' },
