@@ -38,7 +38,7 @@ function installPair(version: string) {
 test.beforeAll(async () => {
 	layersDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-layer-pool-'))
 	installPair(OLD_VERSION)
-	app = await createAppFixture({ env: { LAYERS_DIR: layersDir, CACHE_LAYER_ARTIFACT: 'true' } })
+	app = await createAppFixture({ env: { LAYERS_DIR: layersDir, LAYERS_VERSION: '@latest', CACHE_LAYER_ARTIFACT: 'true' } })
 })
 
 test.afterAll(async () => {
