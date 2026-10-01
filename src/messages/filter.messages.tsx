@@ -440,17 +440,28 @@ export const clearOtherFilters = def('Remove all other filters and select this o
 
 export const layerIndicators = def('Layer indicators')
 
-export const repeatsDetectedLabel = def('Repeats Detected:')
-
-export const matchingFiltersLabel = def('Matching Filters:')
-
-export const unsupportedModLabel = def('Mod Not Installed:')
-
-export const unsupportedModTitle = def('{collection} is not installed', (collection: string) => ({ collection }))
+export const unsupportedModTitle = def('Will not load: {collection} is not installed', (collection: string) => ({ collection }))
 
 export const unsupportedModDescription = def(
 	'This server does not have the mod this layer comes from. Add it under the server’s installed mods to play this layer.',
 )
+
+export const unsupportedModHint = def('Add it under the server’s installed mods.')
+
+// One row of the layer indicators tooltip. `field` and `value` are already rendered (the row mutes the field and
+// bolds the value), so the message positions them rather than formatting them.
+export const repeatRow = def((field: React.ReactNode, value: React.ReactNode) => rt('{field} {value} repeats', { field, value }))
+
+export const repeatRowFieldOnly = def((field: React.ReactNode) => rt('{field} repeats', { field }))
+
+export const repeatRowDistance = def('{offset} ago, rule > {within}', (offset: number, within: number) => ({ offset, within }))
+
+export const repeatRowWithin = def('rule > {within}', (within: number) => ({ within }))
+
+// a filter the layer matches, or one it misses whose inverted alert is set
+export const filterRowIn = def((name: React.ReactNode) => rt('In {name}', { name }))
+
+export const filterRowNotIn = def((name: React.ReactNode) => rt('Not in {name}', { name }))
 
 // Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
 // message positions them rather than formatting them.
