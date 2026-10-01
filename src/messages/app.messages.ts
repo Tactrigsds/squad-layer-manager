@@ -41,6 +41,14 @@ export const versionInfo = def((info: { appVersion?: string; layersVersion?: str
 
 export const versionInfoCopied = def('Version information has been copied')
 
+// -------- donations --------
+
+export const supportSlm = def('Support SLM')
+
+export const donationPitch = def('SLM is free and open source. Donations fund its development.')
+
+export const donateOnKofi = def('Donate on Ko-fi')
+
 // -------- acknowledgements --------
 
 export const acknowledgementsHeading = def('Acknowledgements')

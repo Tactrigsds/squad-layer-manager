@@ -47,3 +47,7 @@ or as markdown here:
 - [Writing a plugin](docs/writing_plugins.md): the plugin contract, and packing one for admins to install
 - [Plugin UI](docs/plugin_ui.md): where a plugin can render in the app, and the components it can use
 - [Contributing](CONTRIBUTING.md): local dev setup, the test suites, and the pre-push hook
+
+## Support SLM
+
+SLM is free and open source. Donations fund its development: [ko-fi.com/grey275](https://ko-fi.com/grey275).
