@@ -21,14 +21,14 @@ export const CHAT_GROUP_CHANNELS = {
 
 // A string that runs a command. A bare string passes whatever follows it straight through as the command's arguments
 // (`/timeout Alice 2h spam`). An object pins some of them with a template over the words typed after it, which is what
-// used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }`. See docs/command_triggers.md.
+// used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest}}' }`. See docs/command_triggers.md.
 export type CommandTrigger = string | { string: string; args: string }
 
 // The indices count the words the CALLER TYPES after the trigger, not the words of the command that ends up running:
-// pinned text occupies no index, so `{{arg1}} 2h {{rest2}}` takes a player and a reason, never a duration. `{{restN}}`
-// is the Nth typed word onwards joined by spaces, `{{rest}}` is all of them. 1-based, matching how they read in chat.
+// pinned text occupies no index, so `{{arg1}} 2h {{rest}}` takes a player and a reason, never a duration. `{{rest}}`
+// is every typed word after the highest `{{argN}}`, joined by spaces. 1-based, matching how they read in chat.
 export const TRIGGER_ARG_SYNTAX =
-	'{{arg1}} for the first word typed after the trigger, {{arg2}} for the second, {{rest2}} for the second onwards'
+	'{{arg1}} for the first word typed after the trigger, {{arg2}} for the second, {{rest}} for every word after the highest-numbered one'
 
 export function triggerString(trigger: CommandTrigger): string {
 	return typeof trigger === 'string' ? trigger : trigger.string
@@ -668,7 +668,7 @@ export const CommandTriggerSchema = z.union([
 				SDoc.of({
 					label: t('Arguments'),
 					description: t(
-						"The arguments this trigger runs the command with. A template over the words typed after it: '{{arg1}}' for the first word typed after the trigger, '{{arg2}}' for the second, '{{rest2}}' for the second onwards",
+						"The arguments this trigger runs the command with. A template over the words typed after it: '{{arg1}}' for the first word typed after the trigger, '{{arg2}}' for the second, '{{rest}}' for every word after the highest-numbered one",
 					),
 				}),
 			),
@@ -1192,33 +1192,36 @@ function matchCommandText(configs: AnyCommandConfigs, cmdText: string): { cmdId:
 // -------- trigger argument templates --------
 
 export type TriggerRef = { name: string; index: number; rest: boolean }
+type TemplateRef = TriggerRef & { hasDefault: boolean }
 
 const ARG_REF = /^arg([1-9]\d*)$/
-const REST_REF = /^rest([1-9]\d*)?$/
 
-export function parseTriggerRef(name: string): TriggerRef | undefined {
-	const arg = ARG_REF.exec(name)
-	if (arg) return { name, index: Number(arg[1]), rest: false }
-	const rest = REST_REF.exec(name)
-	if (rest) return { name, index: rest[1] ? Number(rest[1]) : 1, rest: true }
-	return undefined
-}
-
-function templateRefs(template: string): TriggerRef[] {
-	const refs: TriggerRef[] = []
-	for (const { name } of Templating.templateVars(template) ?? []) {
-		const ref = parseTriggerRef(name)
-		if (ref) refs.push(ref)
+// `{{rest}}` starts after the highest `{{argN}}`, so it never takes a word an `{{argN}}` already took
+function triggerRefs(vars: readonly Templating.TemplateVar[]): { code: 'ok'; refs: TemplateRef[] } | { code: 'err:unknown'; name: string } {
+	const refs: TemplateRef[] = []
+	let highest = 0
+	for (const { name, inverted } of vars) {
+		const arg = ARG_REF.exec(name)
+		if (arg) {
+			const index = Number(arg[1])
+			highest = Math.max(highest, index)
+			refs.push({ name, index, rest: false, hasDefault: inverted })
+		} else if (name === 'rest') {
+			refs.push({ name, index: 0, rest: true, hasDefault: inverted })
+		} else {
+			return { code: 'err:unknown', name }
+		}
 	}
-	return refs
+	for (const ref of refs) if (ref.rest) ref.index = highest + 1
+	return { code: 'ok', refs }
 }
 
 // An unsupplied word renders empty, leaving a gap where its token was, so the result is re-split rather than trusted
 // as written. That collapse is what makes a trigger parameter optional: the token simply isn't there.
 export function expandTriggerArgs(template: string, words: readonly string[]): string[] {
-	const vars = Object.fromEntries(
-		templateRefs(template).map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : (words[r.index - 1] ?? '')]),
-	)
+	const res = triggerRefs(Templating.templateVars(template) ?? [])
+	const refs = res.code === 'ok' ? res.refs : []
+	const vars = Object.fromEntries(refs.map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : (words[r.index - 1] ?? '')]))
 	return Templating.renderTemplate(template, vars)
 		.split(/\s+/)
 		.filter((w) => w !== '')
@@ -1250,17 +1253,16 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	if (vars === undefined) {
 		return { code: 'err:invalid-args', msg: 'The arguments are not a valid template. Check for an unclosed {{#section}}.' }
 	}
-	const refs: (TriggerRef & { hasDefault: boolean })[] = []
-	for (const { name, inverted } of vars) {
-		const ref = parseTriggerRef(name)
-		if (!ref) return { code: 'err:invalid-args', msg: `Unknown placeholder "{{${name}}}". Use ${TRIGGER_ARG_SYNTAX}.` }
-		refs.push({ ...ref, hasDefault: inverted })
+	const parsed = triggerRefs(vars)
+	if (parsed.code === 'err:unknown') {
+		return { code: 'err:invalid-args', msg: `Unknown placeholder "{{${parsed.name}}}". Use ${TRIGGER_ARG_SYNTAX}.` }
 	}
+	const refs = parsed.refs
 	// a skipped index would make the caller type a word the trigger throws away, and no honest usage string could be
 	// written for it
-	const highest = refs.reduce((max, r) => Math.max(max, r.index), 0)
+	const highest = refs.reduce((max, r) => (r.rest ? max : Math.max(max, r.index)), 0)
 	for (let i = 1; i <= highest; i++) {
-		if (!refs.some((r) => r.index === i || (r.rest && r.index <= i))) {
+		if (!refs.some((r) => r.index === i)) {
 			return { code: 'err:invalid-args', msg: `{{arg${i}}} is skipped. The words typed after a trigger have to be used in order.` }
 		}
 	}
@@ -1336,7 +1338,7 @@ export function argTemplateSignature(
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
 	// one placeholder per argument, in order: every kind takes a single word except the rest kinds, which take the
 	// remainder
-	const template = args.map((def, i) => (REST_KINDS.includes(def.kind) ? `{{rest${i + 1}}}` : `{{arg${i + 1}}}`)).join(' ')
+	const template = args.map((def, i) => (REST_KINDS.includes(def.kind) ? '{{rest}}' : `{{arg${i + 1}}}`)).join(' ')
 	const res = resolveTriggerArgs(cmdId, template)
 	if (res.code !== 'ok') return []
 	return res.params.map((p) => ({ ref: `{{${p.ref.name}}}`, arg: formatArg(p.def, requiredReasonActions) }))

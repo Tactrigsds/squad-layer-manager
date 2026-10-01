@@ -27,8 +27,8 @@ describe('help', () => {
 	})
 
 	it('gives a shortcut its own line, naming what it stands for', () => {
-		const lines = helpLines(withTimeout(['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }]), 'moderation')
-		expect(lines).toContain('[/to2h] <player> [reason|message]: Shortcut for "/timeout {{arg1}} 2h {{rest2}}"')
+		const lines = helpLines(withTimeout(['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest}}' }]), 'moderation')
+		expect(lines).toContain('[/to2h] <player> [reason|message]: Shortcut for "/timeout {{arg1}} 2h {{rest}}"')
 	})
 
 	// the command is only reachable through triggers that pin arguments, so there is no plain form to head the listing

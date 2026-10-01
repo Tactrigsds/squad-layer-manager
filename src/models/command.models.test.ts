@@ -258,7 +258,7 @@ describe('parseCommand', () => {
 
 	// what a command alias used to do, now reached without a second lookup or a precedence rule
 	it('feeds the words through a trigger that pins arguments', () => {
-		const cfgs = withTrigger('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })
+		const cfgs = withTrigger('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest}}' })
 		expect(CMD.parseCommand(msg('!to2h Alice spamming chat'), cfgs, prefixes)).toMatchObject({
 			code: 'ok',
 			cmd: 'timeout',
@@ -289,12 +289,12 @@ describe('argTemplateSignature', () => {
 		expect(CMD.argTemplateSignature('timeout')).toEqual([
 			{ ref: '{{arg1}}', arg: '<player>' },
 			{ ref: '{{arg2}}', arg: '<duration>' },
-			{ ref: '{{rest3}}', arg: '[reason|message]' },
+			{ ref: '{{rest}}', arg: '[reason|message]' },
 		])
 	})
 
 	it('reflects the configured reason requirement', () => {
-		expect(CMD.argTemplateSignature('timeout', ['timeout']).at(-1)).toEqual({ ref: '{{rest3}}', arg: '<reason|message>' })
+		expect(CMD.argTemplateSignature('timeout', ['timeout']).at(-1)).toEqual({ ref: '{{rest}}', arg: '<reason|message>' })
 	})
 
 	it('is empty for a command that takes no arguments', () => {
@@ -317,10 +317,10 @@ describe('argTemplateSignature', () => {
 describe('resolveTriggerArgs', () => {
 	// the shape migration 0080 had to drop: the pinned argument sits between two the caller types
 	it('maps placeholders onto the args they fill', () => {
-		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h {{rest2}}')
+		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h {{rest}}')
 		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([
 			['arg1', 'player', true],
-			['rest2', 'reason', true],
+			['rest', 'reason', true],
 		])
 	})
 
@@ -332,12 +332,12 @@ describe('resolveTriggerArgs', () => {
 	})
 
 	it('skips the literal token checks for an arg a placeholder fills', () => {
-		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} {{arg2}} {{rest3}}')).toMatchObject({ code: 'ok' })
-		expect(CMD.resolveTriggerArgs('removeFromSquad', '{{arg1}} {{rest2}}')).toMatchObject({ code: 'ok' })
+		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} {{arg2}} {{rest}}')).toMatchObject({ code: 'ok' })
+		expect(CMD.resolveTriggerArgs('removeFromSquad', '{{arg1}} {{rest}}')).toMatchObject({ code: 'ok' })
 	})
 
 	it('still checks literal int and duration tokens', () => {
-		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} notaduration {{rest2}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} notaduration {{rest}}')).toMatchObject({ code: 'err:invalid-args' })
 		expect(CMD.resolveTriggerArgs('removeLayerRequest', 'notanint')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
@@ -350,6 +350,7 @@ describe('resolveTriggerArgs', () => {
 		expect(CMD.resolveTriggerArgs('broadcast', '{{palyer}}')).toMatchObject({ code: 'err:invalid-args' })
 		expect(CMD.resolveTriggerArgs('broadcast', '{{arg}}')).toMatchObject({ code: 'err:invalid-args' })
 		expect(CMD.resolveTriggerArgs('broadcast', '{{arg0}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{rest2}}')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	it('rejects a malformed template rather than letting it render unexpanded', () => {
@@ -389,18 +390,23 @@ describe('resolveTriggerArgs', () => {
 
 describe('expandTriggerArgs', () => {
 	it('substitutes single words and the remainder', () => {
-		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest2}}', ['Alice', 'spamming', 'chat'])).toEqual(['Alice', '2h', 'spamming', 'chat'])
+		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest}}', ['Alice', 'spamming', 'chat'])).toEqual(['Alice', '2h', 'spamming', 'chat'])
 		expect(CMD.expandTriggerArgs('{{rest}}', ['back', 'in', '5'])).toEqual(['back', 'in', '5'])
 	})
 
 	// an omitted word leaves no token behind, which is what makes the argument it feeds optional
 	it('collapses the gap an omitted word leaves', () => {
-		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest2}}', ['Alice'])).toEqual(['Alice', '2h'])
+		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest}}', ['Alice'])).toEqual(['Alice', '2h'])
 		expect(CMD.expandTriggerArgs('{{rest}}', [])).toEqual([])
 	})
 
+	it('starts the remainder after the highest numbered placeholder, wherever it is written', () => {
+		expect(CMD.expandTriggerArgs('{{rest}} {{arg1}}', ['Alice', 'spamming', 'chat'])).toEqual(['spamming', 'chat', 'Alice'])
+		expect(CMD.expandTriggerArgs('{{arg2}} {{arg1}} {{rest}}', ['a', 'b', 'c', 'd'])).toEqual(['b', 'a', 'c', 'd'])
+	})
+
 	it('falls back to an inverted section when the word is omitted', () => {
-		const args = '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}'
+		const args = '{{arg1}} {{^rest}}spam{{/rest}}{{rest}}'
 		expect(CMD.expandTriggerArgs(args, ['Alice'])).toEqual(['Alice', 'spam'])
 		expect(CMD.expandTriggerArgs(args, ['Alice', 'stop', 'that'])).toEqual(['Alice', 'stop', 'that'])
 	})
@@ -417,7 +423,7 @@ describe('expandTriggerArgs', () => {
 
 describe('formatTriggerUsage', () => {
 	it('names the arg a whole-slot placeholder fills, and the placeholder otherwise', () => {
-		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })).toBe('!to2h <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest}}' })).toBe('!to2h <player> [reason|message]')
 		expect(CMD.formatTriggerUsage('broadcast', { string: '!eta', args: 'Round ends in {{arg1}} minutes' })).toBe('!eta <arg1>')
 	})
 
@@ -426,14 +432,14 @@ describe('formatTriggerUsage', () => {
 	})
 
 	it('follows the configured reason requirement', () => {
-		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest2}}' }, ['kick'])).toBe('!k <player> <reason|message>')
-		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest2}}' })).toBe('!k <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' }, ['kick'])).toBe('!k <player> <reason|message>')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' })).toBe('!k <player> [reason|message]')
 		expect(CMD.formatTriggerUsage('kick', '!kick', ['kick'])).toBe('!kick <player> <reason|message>')
 	})
 
 	// a default fills the arg when the word is left out, so the word itself is optional either way
 	it('reads a placeholder with a default as optional', () => {
-		const trigger = { string: '!warnsp', args: '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}' }
+		const trigger = { string: '!warnsp', args: '{{arg1}} {{^rest}}spam{{/rest}}{{rest}}' }
 		expect(CMD.formatTriggerUsage('warn', trigger)).toBe('!warnsp <player> [reason|message]')
 	})
 

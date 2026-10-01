@@ -81,7 +81,7 @@ beforeAll(async () => {
 			// leaves it out
 			s.commands.warn.triggers.push(
 				{ string: cmd('warntox'), args: '{{arg1}} tox' },
-				{ string: cmd('warnsp'), args: '{{arg1}} {{^rest2}}tox{{/rest2}}{{rest2}}' },
+				{ string: cmd('warnsp'), args: '{{arg1}} {{^rest}}tox{{/rest}}{{rest}}' },
 			)
 			s.rbac.roles['capped-timeouter'] = role([], { users: [CAPPED_USER] }, { maxTimeout: 2 * HOUR })
 			// granted to whoever is an in-game admin, with no discord-user assignment at all

@@ -12,33 +12,36 @@ trigger starts with.
 
 ## Shortcuts
 
-| Trigger   | Pinned args                                  | Typed in chat           | Runs                         |
-| --------- | -------------------------------------------- | ----------------------- | ---------------------------- |
-| `/to`     | (none)                                       | `/to Alice 2h spamming` | `/timeout Alice 2h spamming` |
-| `/to2h`   | `{{arg1}} 2h {{rest2}}`                      | `/to2h Alice spamming`  | `/timeout Alice 2h spamming` |
-| `/rules`  | `Read the rules`                             | `/rules`                | `/broadcast Read the rules`  |
-| `/say`    | `{{rest}}`                                   | `/say back in 5`        | `/broadcast back in 5`       |
-| `/warnsp` | `{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}` | `/warnsp Alice`         | `/warn Alice spam`           |
+| Trigger   | Pinned args                               | Typed in chat           | Runs                         |
+| --------- | ----------------------------------------- | ----------------------- | ---------------------------- |
+| `/to`     | (none)                                    | `/to Alice 2h spamming` | `/timeout Alice 2h spamming` |
+| `/to2h`   | `{{arg1}} 2h {{rest}}`                    | `/to2h Alice spamming`  | `/timeout Alice 2h spamming` |
+| `/rules`  | `Read the rules`                          | `/rules`                | `/broadcast Read the rules`  |
+| `/say`    | `{{rest}}`                                | `/say back in 5`        | `/broadcast back in 5`       |
+| `/warnsp` | `{{arg1}} {{^rest}}spam{{/rest}}{{rest}}` | `/warnsp Alice`         | `/warn Alice spam`           |
 
 ## How the numbers work
 
 **The numbers count the words the caller types, not the words of the command that ends up running.** `{{arg1}}` is
-the first word typed after the trigger, `{{arg2}}` the second, and so on. `{{restN}}` is the Nth word typed onwards,
-joined by spaces, and `{{rest}}` is all of them. Use `{{restN}}` for anything that can be more than one word, such
-as a reason.
+the first word typed after the trigger, `{{arg2}}` the second, and so on. `{{rest}}` is every word typed after the
+highest-numbered placeholder, joined by spaces. Use `{{rest}}` for anything that can be more than one word, such as a
+reason.
 
-Pinned text is not counted. In `{{arg1}} 2h {{rest2}}` the caller never types the duration, so no placeholder
+A typed word never fills two placeholders. The numbers start at 1 and cannot skip one: `{{arg1}} {{arg3}}` is rejected,
+because the second word typed would fill nothing.
+
+Pinned text is not counted. In `{{arg1}} 2h {{rest}}` the caller never types the duration, so no placeholder
 indexes it.
 
 ```
 they type:   Alice      spamming badly
-             {{arg1}}   {{rest2}}          <- the numbers count these words
+             {{arg1}}   {{rest}}           <- the placeholders take these words in order
 it runs:     Alice  2h  spamming badly
                     ^^ pinned text, never typed, so no placeholder refers to it
 ```
 
 Once a trigger has pinned arguments, the command's card in _Settings > In-game Commands_ shows which placeholder
-fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest3}} <reason|message>`), including whether each
+fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest}} <reason|message>`), including whether each
 one is required under the current reason settings.
 
 ## Words the caller leaves out
