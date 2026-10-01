@@ -1,11 +1,11 @@
 # Server console
 
-The console is a live tail of what a squad server is saying and being told. It is available on every server,
-including sandboxes. The dashboard shows what SLM believes is true. The console shows what went over the wire, which
-is what you need when the two disagree.
+The console is a live tail of what a squad server is saying and being told. It is available on every server, including
+sandboxes. The dashboard shows what SLM believes is true. The console shows what went over the wire. Use the console when
+the two disagree.
 
 Open it from **Server Actions -> Server Console**. It is a draggable window, so it can stay open beside the dashboard
-while you reproduce something.
+while a problem is reproduced.
 
 ## Channels
 
@@ -26,8 +26,7 @@ getting the same answers, plus a tick rate line every couple of seconds. With th
 - an rcon exchange whose response is identical to the last response to that same command, request included
 - the `Server Tick Rate` heartbeat
 
-The count beside the checkbox shows how many entries are hidden. Untick the box when you need to confirm that
-nothing changed.
+The count beside the checkbox shows how many entries are hidden. Untick the box to confirm that nothing changed.
 
 Responses are matched to commands by rcon request id. SLM keeps several commands in flight at once, and the server
 answers them in whatever order it finishes. A response next to a command in the stream is not necessarily its answer.

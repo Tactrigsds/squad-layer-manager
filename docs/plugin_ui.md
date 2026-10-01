@@ -4,8 +4,7 @@ A plugin's client entry adds to SLM's own pages. It cannot add a page or render 
 named anchors in its UI, and a plugin registers into them. This page covers the anchors, the components SLM lends
 a plugin, and how to style and structure the browser half.
 
-It assumes you have read [Writing a plugin](writing_plugins.md), which covers the manifest, the server entry and
-your own rpc.
+Read [Writing a plugin](writing_plugins.md) first. It covers the manifest, the server entry and your own rpc.
 
 ## Contents
 
@@ -37,8 +36,8 @@ export default definePluginClient(manifest, (ctx) => {
 })
 ```
 
-SLM calls the setup function in every open page when the plugin becomes active. It removes everything the
-function registered when the plugin stops. There is nothing to clean up by hand.
+SLM calls the setup function in every open page when the plugin becomes active. SLM removes everything the setup
+function registered when the plugin stops, so nothing needs cleaning up by hand.
 
 `ctx` carries:
 
@@ -47,20 +46,20 @@ function registered when the plugin stops. There is nothing to clean up by hand.
 | `ctx.plugin` | your id and manifest                                         |
 | `ctx.log`    | a browser logger named `plugin:<id>`, like the server half's |
 
-The setup function runs once per page, not once per server. A component registered here is given the id of the
-server it is being shown for as a prop.
+The setup function runs once per page, not once per server. A component registered in the setup function receives the id
+of the server it is shown for as a prop.
 
 ## Anchors
 
 An anchor is a place in SLM's UI that accepts plugin content. There are three kinds.
 
-| Kind       | What you register                | Who renders it    |
+| Kind       | What is registered               | Who renders it    |
 | ---------- | -------------------------------- | ----------------- |
-| slot       | a React component                | you               |
+| slot       | a React component                | the plugin        |
 | decoration | data: a tint, a title and a body | SLM               |
 | feed line  | an icon and a line of content    | SLM, around yours |
 
-These are all of them so far:
+SLM provides these anchors:
 
 | Anchor                          | Kind       | Where it is                                                        | Props                                       |
 | ------------------------------- | ---------- | ------------------------------------------------------------------ | ------------------------------------------- |
@@ -71,16 +70,16 @@ These are all of them so far:
 
 Both slots also appear on the phone layout, in the matches and queue tabs.
 
-The set is closed and typed. Registering to an anchor that does not exist is a type error. If you need one that
-is not here, open an issue on SLM describing where and why.
+The set is closed and typed. Registering to an anchor that does not exist is a type error. To request a new anchor, open
+an issue on SLM describing where and why.
 
-Every kind is contained. A slot that throws renders nothing, and logs the error to the browser console under
-your plugin's id. A decoration selector or feed renderer that throws reads as none, silently. None of them takes the
-page down.
+SLM isolates a failure in any of the three kinds. A slot that throws renders nothing, and SLM logs the error to the
+browser console under your plugin's id. A decoration selector or feed renderer that throws reads as none, and SLM logs
+nothing. No failure takes the page down.
 
 ## Slots
 
-A slot mounts your component at the anchor, with the anchor's props.
+SLM mounts a slot's component at the anchor and passes it the anchor's props.
 
 ```tsx
 // alert.tsx
@@ -95,16 +94,16 @@ export function Alert(props: { serverId: string }) {
 }
 ```
 
-Return null when there is nothing to show. A slot is rendered on every dashboard load, and most of the time it
-should take no space.
+Return null when there is nothing to show. SLM renders a slot on every dashboard load, and an empty slot should take no
+space.
 
-Several plugins can register at one anchor, and one plugin can register more than once. They render in the order
-they were registered.
+Several plugins can register at one anchor, and one plugin can register more than once. The components render in
+registration order.
 
 ## Decorations
 
-A decoration contributes data to something SLM renders. You do not write markup, so every plugin's decoration
-looks like SLM's own.
+A decoration contributes data to something SLM renders. A plugin writes no markup, so every plugin's decoration looks
+like SLM's own.
 
 ```ts
 import * as Decorations from 'slm/plugin/decorations'
@@ -116,22 +115,22 @@ Decorations.register(ctx, 'match-history:row', {
 })
 ```
 
-`stores` names the data sources to watch for one row. `select` is called with the current value of each, in the
-same order, followed by the row's props. SLM calls it again whenever one of them changes.
+`stores` names the data sources to watch for one row. SLM calls `select` with the current value of each, in the same
+order, followed by the row's props. SLM calls `select` again whenever one of those sources changes.
 
-A decoration is `{ tint?, title?, body? }`. `tint` is `info`, `warn` or `violation`, and defaults to `info`.
-Return an array to say several things about one row, or null for nothing.
+A decoration is `{ tint?, title?, body? }`. `tint` is `info`, `warn` or `violation`, and defaults to `info`. Return an
+array to attach several decorations to one row, or null for none.
 
 On `match-history:row`:
 
 - the row takes the background of the most severe tint any plugin contributed
-- each tint gets one icon at the end of the row
+- each tint adds one icon at the end of the row
 - hovering an icon lists every decoration of that tint, with its title and body
 
-`layerId` and `ordinal` are there to name a side. Which faction a team played depends on both, so a body that says
-"Team A (USMC)" needs them. See `plugins/balance-triggers/events.client.ts`.
+`layerId` and `ordinal` let a body name a side. Which faction a team played depends on both, so a body that reads "Team
+A (USMC)" needs them. See `plugins/balance-triggers/events.client.ts`.
 
-Values that have not arrived yet read as `undefined`. Write `select` to handle that, as above.
+Values that have not arrived yet read as `undefined`. Write `select` to accept `undefined`, as above.
 
 ## Feed lines
 
@@ -152,13 +151,13 @@ line reads like every other one in the feed.
 
 `icon` is one of `plugin`, `info`, `success`, `warning`, `error`, and defaults to `plugin`.
 
-The event carries `name`, `payload`, `message`, `time`, `serverId` and `matchId`. `payload` is whatever you
+The event carries `name`, `payload`, `message`, `time`, `serverId` and `matchId`. `payload` is whatever was
 emitted, stored as-is, so the renderer casts it.
 
-Return null to fall back to `message` for a particular event. `message` is also what the audit log shows, and what
-the feed shows while your plugin is stopped, so write it to stand on its own.
+Return null to fall back to `message` for a particular event. The audit log also shows `message`, and the feed shows it
+while your plugin is stopped, so write `message` to stand on its own.
 
-A renderer only ever sees your own plugin's events. Registering the same name twice replaces the first.
+A renderer receives only your own plugin's events. Registering the same name twice replaces the first.
 
 ## Getting data
 
@@ -174,9 +173,9 @@ const rpc = Rpc.client<typeof router>(ctx, serverId) // calls
 const streams = Rpc.stores<typeof router>(ctx) // streams, as stores
 ```
 
-`Rpc.stores` is what components and decorations read. `streams.greetings(serverId, input)` returns a store for
-that server and input. Every caller passing equal arguments shares one store and one stream, so a slot and fifty
-decorated rows asking for the same thing open one subscription.
+Components and decorations read the stores that `Rpc.stores` provides. `streams.greetings(serverId, input)` returns a
+store for that server and input. Every caller passing equal arguments shares one store and one stream, so a slot and
+fifty decorated rows asking for the same thing open one subscription.
 
 A store reads `undefined` before its first value, while the server is loading, and when the user is refused by the
 procedure's declared access. Treat all three as "nothing to show".
@@ -184,8 +183,8 @@ procedure's declared access. Treat all three as "nothing to show".
 Read a store in a component with `Zus.useStore(store, selector)`. Pass the store itself as a decoration's
 `stores` entry.
 
-`Rpc.client` is for calls: an action a user takes from your slot. It takes the server id because every procedure
-runs against one server.
+Use `Rpc.client` for calls: an action a user takes from your slot. `Rpc.client` takes the server id because every
+procedure runs against one server.
 
 ```tsx
 const rpc = Rpc.client<typeof router>(ctx, props.serverId)
@@ -195,12 +194,12 @@ await rpc.flagMatch({ matchId })
 A call refused by the procedure's declared access resolves to the permission denial. A call that cannot be made
 at all, because the plugin is stopped or the server is not loaded, throws.
 
-The layer engine and SLM's own client state are not part of the contract. For anything about layers, queue or
-history, ask from your server half and hand the result over through your rpc.
+The layer engine and SLM's own client state are not part of the plugin API. To read layers, the queue or history, query
+them in your server half and pass the result to the client through your rpc.
 
 ## Components
 
-SLM lends a plugin some of its own components. Each renders exactly as it does in SLM and finds its own data.
+SLM lends a plugin some of its own components. Each renders exactly as it does in SLM and fetches its own data.
 
 | Import                                | Exports                                                                                                                           |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -213,8 +212,8 @@ SLM lends a plugin some of its own components. Each renders exactly as it does i
 
 ### Primitives
 
-`slm/components/ui` is what SLM builds its own panels from. A slot made of these looks like the page it is on,
-and needs no classes of its own.
+SLM builds its own panels from `slm/components/ui`. A slot made of these components matches the page around it, and
+needs no classes of its own.
 
 ```tsx
 import { Alert, AlertDescription, AlertTitle, Badge, Button } from 'slm/components/ui'
@@ -233,12 +232,13 @@ import { Alert, AlertDescription, AlertTitle, Badge, Button } from 'slm/componen
 | `Badge`   | `default`, `primary`, `secondary`, `outline`, `info`, `warning`, `destructive`                |
 | `Button`  | `default`, `primary`, `ok`, `outline`, `secondary`, `ghost`, `link`; sizes `sm`, `lg`, `icon` |
 
-`Alert` with a tint is what the host renders a decoration as. `Card` is the panel the match history and the
-queue sit in. `Tooltip` wraps a `TooltipTrigger` and a `TooltipContent`, and places itself.
+The host renders a decoration as an `Alert` with a tint. SLM draws the match history and queue panels with `Card`.
+`Tooltip` wraps a `TooltipTrigger` and a `TooltipContent`, and positions itself.
 
 ### Pickers
 
-A picker chooses one of SLM's own entities: a filter, a server or a Discord channel. It fetches its own options.
+A picker lets the user choose one of SLM's own entities: a filter, a server or a Discord channel. Each picker fetches
+its own options.
 
 ```tsx
 import { FilterSelect, ServerMultiSelect } from 'slm/components/pickers'
@@ -263,8 +263,7 @@ For a setting rather than a choice made in a slot, declare the field in your con
 
 ### Combo box
 
-`ComboBox` and `ComboBoxMulti` are what the pickers are built from. Use them for a searchable list of your own
-options.
+The pickers are built from `ComboBox` and `ComboBoxMulti`. Use them for a searchable list of your own options.
 
 ```tsx
 import { ComboBox, LOADING } from 'slm/components/combo-box'
@@ -272,8 +271,8 @@ import { ComboBox, LOADING } from 'slm/components/combo-box'
 ;<ComboBox title="mode" value={mode} options={modes ?? LOADING} onSelect={setMode} />
 ```
 
-Options are strings, or `{ value, label }` objects when the label is not the value. Pass `LOADING` while the list
-is still being fetched. `ComboBoxMulti` takes `values` and hands `onSelect` the new array.
+Options are strings, or `{ value, label }` objects when the label is not the value. Pass `LOADING` while the list is
+still being fetched. `ComboBoxMulti` takes `values` and passes `onSelect` the new array.
 
 ### Layer name
 
@@ -286,7 +285,7 @@ import { LayerName } from 'slm/components/layer'
 ;<LayerName layerId={layerId} />
 ```
 
-Pass `allowShowInfo={false}` to make it plain text. For a layer's name inside a string, such as a feed line's
+Pass `allowShowInfo={false}` to render the name as plain text. For a layer's name inside a string, such as a feed line's
 title, use `slm/lib/display-helpers`.
 
 ### Settings link
@@ -301,13 +300,13 @@ import { PluginSettingsLink } from 'slm/components/plugin-settings-link'
 </PluginSettingsLink>
 ```
 
-`path` is a dotted path into your config schema. With it, the link lands on that field. Without it, it lands on
-your section. It renders nothing for a user who cannot open the settings page, so there is no permission check to
-write.
+`path` is a dotted path into your config schema. With `path`, the link opens that field. Without `path`, the link opens
+your plugin's section. `PluginSettingsLink` renders nothing for a user who cannot open the settings page, so the plugin
+needs no permission check.
 
 ### Icons
 
-`Icons` is the [lucide](https://lucide.dev/icons) set SLM draws from, as one namespace.
+`Icons` exports the [lucide](https://lucide.dev/icons) set SLM draws from, as one namespace.
 
 ```tsx
 import { Icons } from 'slm/components/icons'
@@ -321,10 +320,10 @@ Do not import `lucide-react` directly. See [Things that will bite you](#things-t
 
 Your components render inside SLM's page, under SLM's stylesheet, with a stylesheet of your own beside it.
 
-SLM uses [Tailwind](https://tailwindcss.com). Write utility classes as you would in SLM itself. `pnpm plugin:pack`
-compiles every class your sources use into `client.css`, against SLM's theme and variants, and SLM loads that file
-with your client. SLM's own stylesheet only carries the classes SLM uses, so nothing works without this step, which
-is also why in-tree plugins under `plugins/` need no such step: `pnpm dev` compiles them with the app.
+SLM uses [Tailwind](https://tailwindcss.com). Write utility classes as SLM itself does. `pnpm plugin:pack` compiles
+every class your sources use into `client.css`, against SLM's theme and variants, and SLM loads that file with your
+client. SLM's own stylesheet includes only the classes SLM uses, so a class missing from `client.css` has no effect.
+In-tree plugins under `plugins/` skip this step, because `pnpm dev` compiles their classes with the app.
 
 For colour, use SLM's theme rather than Tailwind's palette. The theme follows light and dark mode, and the palette
 does not.
@@ -339,11 +338,12 @@ does not.
 
 `src/theme.css` lists every token.
 
-Plain CSS goes in `client.css` next to `client.tsx`. It is compiled into the same file, so `@apply` and
-`theme()` work in it. Prefix your selectors with your plugin id. Nothing else keeps them out of SLM's.
+Plain CSS goes in `client.css` next to `client.tsx`. `pnpm plugin:pack` compiles that CSS into the same output file, so
+`@apply` and `theme()` work in it. Prefix your selectors with your plugin id. Without the prefix, a selector can match
+SLM's own elements.
 
-Do not set a z-index. Anything that has to float over the page (a tooltip, a popover) should come from
-[Components](#components), which already layer correctly inside dialogs and windows.
+Do not set a z-index. Build anything that floats over the page, such as a tooltip or a popover, from
+[Components](#components). Those components layer correctly inside dialogs and windows.
 
 ## Laying out the files
 
@@ -384,21 +384,21 @@ export default definePluginClient(manifest, (ctx) => {
 })
 ```
 
-With this layout, editing `alert.tsx` in `pnpm dev` swaps the component in place and keeps its state. A component
-defined inside `client.tsx` reloads the page on every edit instead. [The dev loop](writing_plugins.md#the-dev-loop)
-explains why.
+With this layout, `pnpm dev` swaps the component in place when `alert.tsx` changes, and keeps its state. When a
+component defined inside `client.tsx` changes, `pnpm dev` reloads the page instead. [The dev
+loop](writing_plugins.md#the-dev-loop) explains why.
 
-`plugins/balance-triggers` is laid out this way, and uses a slot and a decoration.
+`plugins/balance-triggers` follows this layout, and registers a slot and a decoration.
 
 ## Things that will bite you
 
-**A class you build at runtime is not compiled.** The packer finds classes by reading your source, so
+**A class built at runtime is not compiled.** `pnpm plugin:pack` finds classes by reading your source, so
 `` `text-${tint}` `` produces nothing. Write each full class name out, as in a lookup table keyed by tint.
 
-**Only `slm/*` and the host's packages resolve.** Those are `react`, `rxjs`, `zod` and `drizzle-orm`. Any other package you import by name, such as
-`lucide-react`, loads and then fails to resolve. That takes your whole client half down, while the server half
-keeps running and the plugin still reads as healthy. `pnpm plugin:pack` refuses to build such a bundle. Vendor
-anything else by importing it through a relative path.
+**Only `slm/*` and the host's packages resolve.** Those are `react`, `rxjs`, `zod` and `drizzle-orm`. An import of any
+other package by name, such as `lucide-react`, fails to resolve when the client loads. The failure stops your whole
+client half. The server half keeps running, and the plugin still reads as healthy. `pnpm plugin:pack` refuses to build
+such a bundle. Vendor anything else by importing it through a relative path.
 
 **Never import your server entry as a value.** `import type { router } from './server.ts'` is erased. A plain
 import pulls your server code, and everything it imports, into the browser bundle.
@@ -407,8 +407,7 @@ import pulls your server code, and everything it imports, into the browser bundl
 client and show a prompt to reload. Your server half is already on the new version by then, so an rpc change that
 the old client cannot read will fail until the page reloads.
 
-**The setup function runs in every open tab.** It is not a place to do anything once. That belongs in `activate()`
-on the server.
+**The setup function runs in every open tab.** Put work that must happen once in `activate()` on the server.
 
 **Your component is not tied to one server.** The same component renders for whichever server is being shown. Key
-any state you keep on `serverId`.
+any component state on `serverId`.

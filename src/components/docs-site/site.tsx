@@ -1,10 +1,22 @@
 // The documentation site's pages, rendered to static HTML by src/scripts/build-docs.ts and never mounted in the app.
 // The only script a page loads is docs-site.client.ts, for search and the video facade.
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Code, Copy, Menu, Pencil, Search } from 'lucide-react'
+import {
+	Check,
+	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
+	ChevronsDownUp,
+	ChevronsUpDown,
+	Code,
+	Copy,
+	Link as LinkIcon,
+	Menu,
+	Pencil,
+	Search,
+} from 'lucide-react'
 import * as React from 'react'
 
 import LogoMark from '@/components/logo-mark'
-import { cn } from '@/lib/utils'
 import * as DS from '@/models/docs-site.models'
 
 export type SiteInfo = {
@@ -14,6 +26,8 @@ export type SiteInfo = {
 	root: string
 	// where the pages' images and other copied files are served from
 	assetBase: string
+	// pages the version at `base` does not have, which are linked in the next version instead
+	absent?: ReadonlySet<string>
 	// the version these pages belong to, or the one the root points at
 	version: string
 	repoUrl: string
@@ -139,6 +153,7 @@ function SectionNav({ site, section }: { site: SiteInfo; section: DS.SectionId |
 }
 
 export function Sidebar({ site, page }: { site: SiteInfo; page: DS.Page }) {
+	if (!DS.hasSidebar(page.section)) return null
 	return (
 		<nav aria-label="Pages" className="docs-sidebar">
 			{DS.groupsIn(page.section).map((group) => (
@@ -159,19 +174,29 @@ export function DocPage(props: { site: SiteInfo; page: DS.Page; html: string; he
 	const { site, page } = props
 	const { prev, next } = DS.neighbours(page)
 	const section = DS.SECTIONS.find((s) => s.id === page.section)!
-	const toc = props.headings.filter((h) => h.depth === 2 || h.depth === 3)
+	const toc = props.headings.filter((h) => h.depth >= 2 && h.depth <= 4)
+	// indent from the page's shallowest section heading, so a page whose sections start at h3 is not indented under
+	// an h2 it does not have
+	const topDepth = Math.min(...toc.map((h) => h.depth))
+	const hasSubheadings = toc.some((h) => h.depth > topDepth)
 	return (
 		<div className="docs-shell">
-			<div className="docs-sidebar-col max-lg:hidden">
-				<Sidebar site={site} page={page} />
-			</div>
+			{DS.hasSidebar(page.section) && (
+				<div className="docs-sidebar-col max-lg:hidden">
+					<Sidebar site={site} page={page} />
+				</div>
+			)}
 			<main id="content" className="docs-main">
 				<p className="docs-version-banner" data-version-banner="" hidden role="note" />
 				<article className="docs-article" data-pagefind-body="">
 					<div className="docs-label docs-crumbs" data-pagefind-ignore="">
 						<span data-pagefind-filter="section">{section.label}</span>
-						<span aria-hidden="true">/</span>
-						<span>{page.group}</span>
+						{page.group !== section.label && (
+							<>
+								<span aria-hidden="true">/</span>
+								<span>{page.group}</span>
+							</>
+						)}
 					</div>
 					<div className="docs-prose" dangerouslySetInnerHTML={{ __html: props.html }} />
 				</article>
@@ -206,9 +231,12 @@ export function DocPage(props: { site: SiteInfo; page: DS.Page; html: string; he
 			<aside aria-label="On this page" className="docs-toc max-xl:hidden">
 				{toc.length > 0 && (
 					<>
-						<div className="docs-label pb-1">On this page</div>
+						<div className="flex items-center justify-between pb-1">
+							<div className="docs-label">On this page</div>
+							{hasSubheadings && <TocToggle />}
+						</div>
 						{toc.map((h) => (
-							<a key={h.id} href={`#${h.id}`} className={h.depth === 3 ? 'ps-5' : undefined}>
+							<a key={h.id} href={`#${h.id}`} data-level={h.depth - topDepth}>
 								{h.text}
 							</a>
 						))}
@@ -219,6 +247,25 @@ export function DocPage(props: { site: SiteInfo; page: DS.Page; html: string; he
 				</div>
 			</aside>
 		</div>
+	)
+}
+
+// Collapses the table of contents to its top-level sections. Hidden until docs-site.client.ts runs, since it cannot
+// work without it, and that script restores the reader's last choice.
+function TocToggle() {
+	return (
+		<button
+			type="button"
+			className="docs-toc-toggle"
+			data-toc-toggle=""
+			aria-expanded="true"
+			aria-label="Collapse subheadings"
+			title="Collapse subheadings"
+			hidden
+		>
+			<ChevronsDownUp className="docs-toc-collapse size-4" aria-hidden="true" />
+			<ChevronsUpDown className="docs-toc-expand size-4" aria-hidden="true" />
+		</button>
 	)
 }
 
@@ -255,21 +302,23 @@ function SourceLinkPair({ site, page }: { site: SiteInfo; page: DS.Page }) {
 	)
 }
 
-// A heading with a link to the line it was written on. The link shows on hover and keyboard focus.
-export function SourceHeading(props: {
-	level: 1 | 2 | 3 | 4 | 5 | 6
-	id?: string
-	sourceHref: string | null
-	line: number | null
-	children?: React.ReactNode
-}) {
+// A heading with a link to itself, for copying the address of a section, and a link to the same heading in its
+// markdown on GitHub. GitHub and rehype-slug derive heading ids the same way, so the id doubles as the GitHub anchor.
+// Both links show on hover and keyboard focus.
+export function SourceHeading(props: { level: 1 | 2 | 3 | 4 | 5 | 6; id?: string; sourceHref: string | null; children?: React.ReactNode }) {
 	const Tag = `h${props.level}` as const
 	return (
 		<Tag id={props.id} className="docs-heading">
 			{props.children}
+			{props.id && props.level > 1 && (
+				<a href={`#${props.id}`} className="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore="">
+					<LinkIcon className="size-3.5" aria-hidden="true" />
+				</a>
+			)}
 			{props.sourceHref && props.level > 1 && (
 				<a href={props.sourceHref} className="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore="">
-					<Code className="size-3.5" aria-hidden="true" />L{props.line}
+					<Code className="size-3.5" aria-hidden="true" />
+					source
 				</a>
 			)}
 		</Tag>
@@ -310,17 +359,8 @@ function SearchDialog() {
 	)
 }
 
-// width and height are CSS pixels. A `wide` image spans both columns, and a `tall` one two rows, so the images beside
-// it stack instead of leaving a gap.
-export type Screenshot = {
-	src: string
-	width?: number
-	height?: number
-	wide: boolean
-	tall: boolean
-	title: string
-	caption: string
-}
+// A landing highlight links to `page` (a markdown source in DS.PAGES), at the heading `anchor` when it names one.
+export type Highlight = { title: string; text: string; page: string; anchor?: string }
 
 export function LandingPage(props: {
 	site: SiteInfo
@@ -328,10 +368,10 @@ export function LandingPage(props: {
 	description: string
 	demoCommand: string
 	youtubeId: string | null
-	screenshots: Screenshot[]
+	highlights: Highlight[]
 }) {
 	const { site } = props
-	const guide = DS.pagesIn('guide')[0]
+	const features = DS.pagesIn('features')[0]
 	return (
 		<main id="content" className="docs-landing">
 			<div className="flex max-w-[760px] flex-col gap-4">
@@ -339,30 +379,28 @@ export function LandingPage(props: {
 				<p className="text-[21px] leading-[1.45] text-text">{props.tagline}</p>
 				<p className="text-[16.5px] leading-[1.6] text-text-2">{props.description}</p>
 				<div className="mt-1 flex flex-wrap gap-2.5">
-					<a href={DS.pageHref(site, guide)} className="docs-btn docs-btn-primary">
-						Install
+					<a href={DS.pageHref(site, DS.pagesIn('guide')[0])} className="docs-btn docs-btn-primary">
+						Setup guide
 					</a>
-					<a href={DS.pageHref(site, DS.PAGE_BY_FILE.get('docs/server_dashboard.md')!)} className="docs-btn">
-						Read the docs
+					<a href={DS.pageHref(site, features)} className="docs-btn">
+						Features
+					</a>
+					<a href={DS.pageHref(site, DS.pagesIn('developers')[0])} className="docs-btn">
+						Developer docs
 					</a>
 				</div>
 			</div>
 			{props.youtubeId && <VideoFacade id={props.youtubeId} />}
-			{props.screenshots.length > 0 && (
-				<div className="docs-shots">
-					{props.screenshots.map((s) => (
-						<figure key={s.src} className={cn('docs-shot', s.wide && 'docs-shot-wide', s.tall && 'docs-shot-tall')}>
-							<a href={s.src}>
-								<img src={s.src} width={s.width} height={s.height} alt={s.title} loading="lazy" decoding="async" />
-							</a>
-							<figcaption className="flex flex-col gap-0.5">
-								<span className="font-cond text-[17px] font-bold">{s.title}</span>
-								<span className="text-[14.5px] leading-normal text-text-2">{s.caption}</span>
-							</figcaption>
-						</figure>
-					))}
-				</div>
-			)}
+			<ul className="docs-highlights">
+				{props.highlights.map((h) => (
+					<li key={h.title}>
+						<a href={DS.pageHref(site, DS.PAGE_BY_FILE.get(h.page)!, h.anchor ? `#${h.anchor}` : '')}>
+							<h2 className="font-cond text-[19px] font-bold text-text">{h.title}</h2>
+							<p className="text-[15px] leading-normal text-text-2">{h.text}</p>
+						</a>
+					</li>
+				))}
+			</ul>
 			<div className="flex max-w-[760px] flex-col gap-2.5">
 				<h2 className="font-cond text-[22px] font-bold">Try it</h2>
 				<p className="text-text-2">Run a demo instance with no authentication:</p>

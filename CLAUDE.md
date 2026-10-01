@@ -103,7 +103,35 @@ sharper verb: "describes", "warns", "records", "declares", "rejects". Keep the g
 precise one, as "gets" is for a function that fetches a value.
 
 - Before: "A "Breaking" note tells you something to do."
-- After: "A "Breaking" note describes a change you must make to upgrade."
+- After: "A "Breaking" note describes a change the operator must make to upgrade."
+
+Name the thing instead of leaning on a pronoun. Repeat the noun when "it", "they", "them" or "this" would point back
+past the nearest noun, or at something named in an earlier sentence. The reader should never have to search backwards
+to work out what a pronoun means.
+
+- Before: "Several admins can edit the queue at once. _Start Editing_ shows the others that you are changing it."
+- After: "Several admins can edit the queue at once. _Start Editing_ announces to the other admins that you are editing
+  the queue."
+
+Do not use a concept before the reader has met it. Where a term first appears, explain it in place, say that a later
+section describes it, or link to its explanation when that is too far away to point at.
+
+- Before: "When the queue runs out, SLM generates a layer from your pool." (the pool is explained in the next section)
+- After: "When the queue runs out, SLM generates a layer from your layer pool, the set of layers your server may play.
+  _Filters and the layer pool_ describes the pool below."
+
+A page, dialog, button, command or setting that the user operates is an instrument, not an actor. When the user
+performs the action, do not make the tool the subject that performs it: say what the user does with the tool, or that
+the tool provides the function. Make a system the subject only when it acts on its own, such as SLM generating a layer
+when the queue runs out, or a panel displaying what it records.
+
+- Before: "The history page searches past events, players and matches."
+- After: "Use the history page to search past events, players and matches."
+
+Do not make the reader the subject of a statement or of a clause ("You configure SLM from the settings page", "the
+roles you set in `.env`"). Make the thing the subject instead: "SLM can be configured from the settings page", "the
+roles that are set in `.env`". An imperative that tells the reader what to do ("Use the history page to search past
+events") is fine, and so is "your" ("your server").
 
 Keep concrete numbers, file paths, code and tables. Those are the signal.
 

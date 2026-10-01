@@ -54,47 +54,39 @@ const PORT = Number(process.env.DOCS_PORT ?? 4400)
 const LANDING = {
 	tagline: 'SLM is a tool for managing upcoming layers on a Squad server, and other things also.',
 	description:
-		'It is the main admin tool of the Tactical Triggernometry server, used for queueing layers, reading the current state of team balance, and running teamswaps. It also handles warns, kicks and timeouts, and it integrates with BattleMetrics. Everything is available through a web GUI that signs in with Discord, and through in-game commands.',
+		'It is the main admin tool of the TacTrig server. Admins use it from a web app that signs in with Discord, and from in-game commands.',
 	demoCommand: 'docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest',
 	youtubeId: null as string | null,
-	screenshots: [
+	highlights: [
 		{
-			file: 'docs/landing_screenshots/teams_panel.png',
-			title: 'Teams panel',
-			caption: 'Both teams by squad. Each player is coloured by their group, squad leaders are starred, and teamkills are counted.',
+			title: 'Control over layer selection',
+			text: 'Filters, repeat rules and a layer pool decide what can be played. SLM warns before a mistake is saved, and warns in-game admins before one is played.',
+			page: 'docs/layer_selection.md',
 		},
 		{
-			file: 'docs/configuring_screenshots/teams_breakdown.png',
-			title: 'Team balance',
-			caption: 'Group players by BattleMetrics flag, admin list or Discord role, and compare how the groups split across the teams.',
+			title: 'Player management',
+			text: 'Warn, kick and time out players, swap them between teams, and take switch requests, from the dashboard or in game. Group players to compare how the teams are made up.',
+			page: 'docs/player_management.md',
 		},
 		{
-			file: 'docs/landing_screenshots/player_details.png',
-			title: 'Player details',
-			caption: "A player's IDs and profile links, their groups and BattleMetrics flags, their team and squad, and their recent chat.",
+			title: 'Works with your tools',
+			text: 'Users sign in with Discord, and Discord roles grant permissions. Read and set BattleMetrics flags and notes without leaving SLM.',
+			page: 'docs/integrations_and_hosting.md',
+			anchor: 'integrations',
 		},
 		{
-			file: 'docs/landing_screenshots/player_actions.png',
-			title: 'Player actions',
-			caption: 'Right-click a player to swap, kill, kick, time out or warn them, or to manage their flags.',
+			title: 'Extensible with plugins',
+			text: 'Plugins add commands, settings and behaviour. Install one from a URL, or write your own.',
+			page: 'docs/integrations_and_hosting.md',
+			anchor: 'plugins',
 		},
 		{
-			file: 'docs/landing_screenshots/layer_details.png',
-			title: 'Layer details',
-			caption:
-				"A layer's balance and asymmetry scores, and how its two teams compare on anti-infantry, armor, logistics and transportation.",
+			title: 'Built to self-host',
+			text: 'One Docker image manages all of your servers. SLM backs up its database before each upgrade, and a sandbox server lets you try it without real players.',
+			page: 'docs/integrations_and_hosting.md',
+			anchor: 'self-hosting',
 		},
-		{
-			file: 'docs/configuring_screenshots/filter_edit.png',
-			title: 'Filters',
-			caption: 'Filters narrow the playable set of layers with logical expressions.',
-		},
-		{
-			file: 'docs/configuring_screenshots/default_repeat_rules.png',
-			title: 'Repeat rules',
-			caption: 'Repeat rules catch mistakes like queueing the same map or faction twice in a row.',
-		},
-	],
+	] satisfies Site.Highlight[],
 }
 
 // Self-hosted from @fontsource, latin only. Every face is `font-display: optional`: one that is cached, or arrives
@@ -110,10 +102,6 @@ const FONTS = [
 	{ family: 'Roboto Condensed', pkg: 'roboto-condensed', weight: 700, style: 'normal', preload: true },
 	{ family: 'Roboto Condensed', pkg: 'roboto-condensed', weight: 800, style: 'normal', preload: true },
 ]
-
-// A landing screenshot wider than this spans both columns. The columns are 508px (half the 1040px content width,
-// less the gap), and one slightly wider still reads well scaled down into a column.
-const LANDING_WIDE_FROM = 640
 
 const LANGS = {
 	sh: () => import('shiki/langs/shellscript.mjs'),
@@ -244,9 +232,15 @@ async function buildRoot(highlighter: Highlighter) {
 	const dir = path.join(OUT, 'static')
 	fs.rmSync(dir, { recursive: true, force: true })
 	fs.mkdirSync(dir)
+	const absent = new Set(
+		DS.versionedPages()
+			.filter((p) => !fs.existsSync(path.join(OUT, shown, p.slug, 'index.html')))
+			.map((p) => p.slug),
+	)
 	const site = {
 		...(await buildStatic(dir, `${SITE_ROOT}static/`)),
 		base: `${SITE_ROOT}${shown}/`,
+		absent,
 		root: SITE_ROOT,
 		assetBase: `${SITE_ROOT}static/`,
 		version: shown,
@@ -257,18 +251,7 @@ async function buildRoot(highlighter: Highlighter) {
 	for (const page of DS.unversionedPages()) fs.rmSync(path.join(OUT, page.slug), { recursive: true, force: true })
 	const pageSite = { ...site, ref: 'main' }
 	const assets = renderPages(DS.unversionedPages(), OUT, pageSite, highlighter, problems)
-	const screenshots = LANDING.screenshots.map((s) => {
-		assets.add(s.file)
-		const size = imageSize(s.file)
-		return {
-			src: DS.assetHref(`${SITE_ROOT}static/`, s.file),
-			...size,
-			wide: (size.width ?? 0) > LANDING_WIDE_FROM,
-			tall: (size.width ?? 0) <= LANDING_WIDE_FROM && (size.height ?? 0) > (size.width ?? 0),
-			title: s.title,
-			caption: s.caption,
-		}
-	})
+	checkHighlights(absent, shown, problems)
 	const firstGuide = DS.pagesIn('guide')[0]
 	const sidebar = React.createElement(Site.Sidebar, { site, page: firstGuide })
 	writePage(
@@ -277,7 +260,7 @@ async function buildRoot(highlighter: Highlighter) {
 		React.createElement(
 			Site.DocsDocument,
 			{ site, title: 'Squad Layer Manager', description: LANDING.tagline, section: null, sidebar },
-			React.createElement(Site.LandingPage, { site, ...LANDING, screenshots }),
+			React.createElement(Site.LandingPage, { site, ...LANDING }),
 		),
 	)
 	writePage(
@@ -298,6 +281,21 @@ async function buildRoot(highlighter: Highlighter) {
 	// GitHub Pages runs Jekyll over a branch unless this file exists, and Jekyll drops anything starting with "_"
 	fs.writeFileSync(path.join(OUT, '.nojekyll'), '')
 	if (CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), `${CNAME}\n`)
+}
+
+// every landing highlight must link to a published page, and to a heading that page has
+function checkHighlights(absent: ReadonlySet<string>, shown: string, problems: LinkProblem[]) {
+	for (const h of LANDING.highlights) {
+		const page = DS.PAGE_BY_FILE.get(h.page)
+		if (!page) {
+			problems.push({ file: h.page, message: `the landing highlight "${h.title}" links to a page the site does not publish` })
+			continue
+		}
+		if (!h.anchor) continue
+		const version = absent.has(page.slug) ? DS.NEXT_VERSION : shown
+		const html = fs.readFileSync(path.join(OUT, version, page.slug, 'index.html'), 'utf8')
+		if (!html.includes(` id="${h.anchor}"`)) problems.push({ file: h.page, message: `no heading for the landing highlight #${h.anchor}` })
+	}
 }
 
 // the stylesheet, script and fonts a set of pages loads, written into `dir` and served from `base`
@@ -327,19 +325,12 @@ function markdownComponents(
 ) {
 	const heading =
 		(level: 1 | 2 | 3 | 4 | 5 | 6) =>
-		({ node, children, id }: React.ComponentProps<'h1'> & ExtraProps) => {
-			const line = node?.position?.start.line ?? null
-			return React.createElement(
+		({ children, id }: React.ComponentProps<'h1'> & ExtraProps) =>
+			React.createElement(
 				Site.SourceHeading,
-				{
-					level,
-					id,
-					line,
-					sourceHref: line === null ? null : `${site.repoUrl}/blob/${site.ref}/${page.file}#L${line}`,
-				},
+				{ level, id, sourceHref: id ? `${site.repoUrl}/blob/${site.ref}/${page.file}#${id}` : null },
 				children,
 			)
-		}
 	const components: Components = {
 		h1: heading(1),
 		h2: heading(2),

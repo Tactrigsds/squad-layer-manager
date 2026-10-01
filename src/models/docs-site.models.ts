@@ -1,7 +1,7 @@
 // The static documentation site (src/scripts/build-docs.ts): which markdown files become pages, where they are
 // served, and how a link written against the repo resolves on the site.
 
-export type SectionId = 'guide' | 'developers' | 'changelog'
+export type SectionId = 'features' | 'guide' | 'developers' | 'changelog'
 
 export type Page = {
 	// repo-relative markdown source
@@ -19,12 +19,34 @@ export type Page = {
 }
 
 export const SECTIONS: { id: SectionId; label: string }[] = [
+	{ id: 'features', label: 'Features' },
 	{ id: 'guide', label: 'Setup guide' },
 	{ id: 'developers', label: 'Developers' },
 	{ id: 'changelog', label: 'Changelog' },
 ]
 
 export const PAGES: Page[] = [
+	{
+		file: 'docs/layer_selection.md',
+		slug: 'layer-selection',
+		label: 'Layer selection',
+		section: 'features',
+		group: 'Features',
+	},
+	{
+		file: 'docs/player_management.md',
+		slug: 'player-management',
+		label: 'Player management',
+		section: 'features',
+		group: 'Features',
+	},
+	{
+		file: 'docs/integrations_and_hosting.md',
+		slug: 'integrations-and-hosting',
+		label: 'Integrations and hosting',
+		section: 'features',
+		group: 'Features',
+	},
 	{ file: 'docs/installing.md', slug: 'installing', label: 'Installing', section: 'guide', group: 'Start here' },
 	{
 		file: 'docs/server_dashboard.md',
@@ -105,6 +127,11 @@ export function pagesIn(section: SectionId) {
 	return PAGES.filter((p) => p.section === section)
 }
 
+// a section of one page has nothing to navigate between
+export function hasSidebar(section: SectionId) {
+	return pagesIn(section).length > 1
+}
+
 // consecutive pages sharing a group, in manifest order
 export function groupsIn(section: SectionId) {
 	const groups: { label: string; pages: Page[] }[] = []
@@ -161,11 +188,14 @@ function joinRepoPath(dir: string, rel: string) {
 	return parts.join('/')
 }
 
-// where pages are served from: `base` is the version's folder, `root` the site root
-export type Bases = { base: string; root: string }
+// where pages are served from: `base` is the version's folder, `root` the site root. `absent` holds the slugs of pages
+// that version does not have, such as a page added after it was released, which are linked in the next version instead.
+export type Bases = { base: string; root: string; absent?: ReadonlySet<string> }
 
 export function pageHref(bases: Bases, page: Page, hash = '') {
-	return `${page.unversioned ? bases.root : bases.base}${page.slug}/${hash}`
+	if (page.unversioned) return `${bases.root}${page.slug}/${hash}`
+	if (bases.absent?.has(page.slug)) return `${bases.root}${NEXT_VERSION}/${page.slug}/${hash}`
+	return `${bases.base}${page.slug}/${hash}`
 }
 
 export function versionedPages() {

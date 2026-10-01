@@ -12,10 +12,10 @@ LLM co-authored code is acceptable, but it:
 - Must be thoroughly tested, including e2e/integration tests where applicable
 - Must have a human-authored PR description and comments
 
-You are responsible for the code you submit, and you must be able to read and understand it to respond to
-feedback. If you are not a programmer fluent in TypeScript (or Rust where applicable), do not contribute.
+Contributors are responsible for the code they submit, and must be able to read and understand it to respond to
+feedback. Contributions are accepted only from programmers fluent in TypeScript (or Rust where applicable).
 
-If you find a problem with the app, open an issue to validate it before working on a PR.
+Open an issue to validate a problem with the app before working on a PR for it.
 
 ## Getting your bearings
 
@@ -112,8 +112,8 @@ between files as ordinary relative markdown links, so they work on GitHub too. T
 into a link to its page, and a link to any other file into a link to it on GitHub.
 
 The build fails on a link to a heading that does not exist, and on a code block labelled with a language it has no
-grammar for. Add a grammar to `LANGS` in [src/scripts/build-docs.ts](src/scripts/build-docs.ts) if you need a new
-one.
+grammar for. Add a grammar to `LANGS` in [src/scripts/build-docs.ts](src/scripts/build-docs.ts) to support a new
+language.
 
 The site keeps one folder per version. `/next/` is built from main. Each release is built once from its tag into its
 own folder (`/v2026.9.4/`) and never rebuilt. The landing page and the changelog are kept at the root, rebuilt from
@@ -145,9 +145,9 @@ Commit the result on a branch and merge it. Once CI passes on the merged commit,
 `pnpm release` also lists the commits since the last release that have no fragment. Read them before merging: add
 a fragment for any that should have had one and run it again.
 
-Versions are `year.month.number` (`2026.9.4` is the fourth release of September 2026). A version records when
-a release was cut, not what broke. Breaking changes are listed in each release's operator notes. The plugin API keeps its own semver version
-(`API_VERSION` in `src/models/plugins.models.ts`), since plugins depend on it.
+Versions are `year.month.number` (`2026.9.4` is the fourth release of September 2026). A version records when a release
+was cut, not what broke. Breaking changes are listed in each release's operator notes. The plugin API keeps its own
+semver version (`API_VERSION` in `src/models/plugins.models.ts`), since plugins depend on it.
 
 ## Releasing a layer artifact pair
 
@@ -167,7 +167,7 @@ pnpm release:layers 10.5.1 --dry-run    # build it and stop
 - the csv comes off the newest Layer Data release, since each one carries the csv it was built from.
   `--csv-release` picks a different one, `--csv` uses a local file
 - the column config is read back out of a pair already in `assets/layers`, since preprocess bakes the defs it built
-  with into `layer-data.json`. Your own `layer-db.json` wins if you have one
+  with into `layer-data.json`. A local `layer-db.json` takes precedence when one exists
 
 The image ships that pair, so a layer release is also a commit on main. Each step gates the next:
 
@@ -176,14 +176,14 @@ The image ships that pair, so a layer release is also a commit on main. Each ste
 2. `pnpm preprocess` builds the pair into `assets/layers`
 3. `pnpm test:e2e` runs against what was just built
 4. the json and the `.bin.gz` are committed and pushed to main. The uncompressed table and the csv stay out of git
-5. all four go up as a prerelease tagged `layer-db-v<version>`, drafted unless you pass `--publish`
+5. all four go up as a prerelease tagged `layer-db-v<version>`, drafted unless `--publish` is passed
 
 The push happens before the release so nothing is announced that main does not have. Needs the
 [`gh` cli](https://cli.github.com) logged in.
 
-The version is a label you choose. Nothing reads it out of the repo. It stamps the filenames, and the same csv
-builds whatever version you name. It has to sort _above_ the pair it replaces or `@latest` will not pick it up. That
-rules out a suffix, since a suffixed version is a semver prerelease and sorts below.
+The version is a label passed on the command line. Nothing reads it out of the repo. It stamps the filenames, and
+the same csv builds whatever version is named. It has to sort _above_ the pair it replaces or `@latest` will not pick
+it up. That rules out a suffix, since a suffixed version is a semver prerelease and sorts below.
 
 ## The pre-push hook
 
@@ -194,7 +194,7 @@ pnpm setup:hooks    # git config core.hooksPath .githooks
 pnpm remove:hooks   # undo
 ```
 
-Installing it is recommended. CI runs the same checks, and the hook catches failures before you push. It skips the
+Installing it is recommended. CI runs the same checks, and the hook catches failures before a push. It skips the
 e2e and integration tests because they take too long. CI runs those on every pull request and on pushes to main.
 
 To skip it for a push:
@@ -221,8 +221,8 @@ For editor support, install the [Oxc extension](https://zed.dev/extensions/oxc) 
 the repo's own oxfmt. `.zed/settings.json` and the devcontainer already point at it.
 
 The formatter also sorts imports into four groups, separated by blank lines: side effect, external, internal (`@/`,
-`$root/`), then relative. A side-effect import is hoisted to the top of the file wherever you write it, because its
-evaluation order matters and the sorter cannot reason about it.
+`$root/`), then relative. A side-effect import is hoisted to the top of the file wherever it is written, because
+its evaluation order matters and the sorter cannot reason about it.
 
 The whole-tree reformat commits are listed in [.git-blame-ignore-revs](.git-blame-ignore-revs). To keep `git blame`
 readable:

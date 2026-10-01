@@ -1,17 +1,17 @@
 # Backups and restoring
 
 Where backups come from, what the files mean, and how to put one back. Turning them on is part of
-[installing](installing.md#37-backups).
+[installing](installing.md#8-backups).
 
 ## When backups happen
 
 Backups happen for two reasons. One of them is not optional.
 
-**Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app
-applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod` yourself, and it
-is what you restore from if an upgrade goes wrong. Nothing is applied if the snapshot fails.
-The most recent pre-migration backup is never deleted by retention, however old it gets: it is the only way back
-from the migration it was taken before.
+**Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app applies
+migrations itself at boot (`DB_AUTOMIGRATE`, the default) or `pnpm db:migrate:prod` is run by hand, and it is the
+snapshot to restore from if an upgrade goes wrong. Nothing is applied if the snapshot fails. The most recent
+pre-migration backup is never deleted by retention, however old it gets: it is the only way back from the migration it
+was taken before.
 
 **Periodic backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app
 snapshots its database on that interval.
@@ -44,11 +44,11 @@ The timestamp sorts chronologically.
 
 ## Uploading to SFTP
 
-Setting `BACKUP_SFTP_HOST` uploads each backup to that host as it is taken.
+When `BACKUP_SFTP_HOST` is set, SLM uploads each backup to that host as it is taken.
 
 | variable                             | default | what it does                                           |
 | ------------------------------------ | ------- | ------------------------------------------------------ |
-| `BACKUP_SFTP_HOST`                   | unset   | setting this uploads each backup to that host          |
+| `BACKUP_SFTP_HOST`                   | unset   | SLM uploads each backup to this host                   |
 | `BACKUP_SFTP_PORT`                   | `22`    |                                                        |
 | `BACKUP_SFTP_USERNAME`               |         | required when a host is set                            |
 | `BACKUP_SFTP_PASSWORD`               |         | this or a private key is required when a host is set   |
@@ -66,7 +66,7 @@ not uploaded.
 
 ## Restoring
 
-`restore.sh` puts a backup back. Stop the app first, and start it again yourself once `SLM_IMAGE_TAG` in `.env` names
+Run `restore.sh` to put a backup back. Stop the app first, and start it again once `SLM_IMAGE_TAG` in `.env` names
 the image the restored database belongs to:
 
 ```sh
@@ -86,39 +86,37 @@ It refuses to run while the app is up. Choose which backup it puts back:
 ./restore.sh --from slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz    # a specific one
 ```
 
-`--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
-`data/backups` or pass the full path.
+`--from` also takes a path. Use it to restore a backup fetched back off the SFTP target. Drop it in `data/backups` or
+pass the full path.
 
-Because the filename carries the owning build's sha, `--list` shows the build, and `--commit-sha` can pick the
-newest backup from a particular version without unpacking anything. `--commit-sha` accepts a full sha, a short one,
-or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
+Because the filename carries the owning build's sha, `--list` shows the build. Use `--commit-sha` to pick the newest
+backup from a particular version without unpacking anything. `--commit-sha` accepts a full sha, a short one, or a
+`commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
 
-`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks
-the backup and reports which app build the database belongs to, which image tag to pin, how far behind the
-current build it is, and whether its secrets decrypt with the `SETTINGS_ENCRYPTION_KEY` this install is configured
-with. Run it first when rolling back an upgrade, so you know which version to set `SLM_IMAGE_TAG` to before you start
-the app.
+`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks the
+backup and reports which app build the database belongs to, which image tag to pin, how far behind the current build it
+is, and whether its secrets decrypt with the `SETTINGS_ENCRYPTION_KEY` this install is configured with. Run it first
+when rolling back an upgrade, to find which version to set `SLM_IMAGE_TAG` to before starting the app.
 
 A backup is only complete with the key that encrypted it. Restored under a different key, the database comes up with
-every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep
-the key wherever you keep the backups, and restore the two together. If the backup belongs to an older key you still
-have, set that key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` for the first boot after restoring. That boot re-encrypts
-everything under the current key, and you can remove the variable again (see
-[installing.md, encryption key](installing.md#34-encryption-key)).
+every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep the
+key wherever the backups are kept, and restore the two together. If the backup belongs to an older key that is still
+available, set that key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` for the first boot after restoring. That boot re-encrypts
+everything under the current key, and the variable can be removed again (see
+[installing.md, encryption key](installing.md#7-encryption-key)).
 
 The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
-undone. Delete it once you have confirmed the restore. The backup is checked (`integrity_check`) before anything is
-moved, so a corrupt archive changes nothing.
+undone. Delete it once the restore is confirmed. The backup is checked (`integrity_check`) before anything is moved, so
+a corrupt archive changes nothing.
 
-Do not restore by hand. `gunzip -c backup.gz > data/db.sqlite3` leaves the old `-wal` file in place. SQLite replays
-it over the restored file, and you silently get the **old** database back, with `integrity_check` reporting it as
-fine. Restoring while the app is running also loses data: the app keeps writing to a database that is no longer at
-that path.
+Do not restore by hand. `gunzip -c backup.gz > data/db.sqlite3` leaves the old `-wal` file in place. SQLite replays it
+over the restored file, and the **old** database silently comes back, with `integrity_check` reporting it as fine.
+Restoring while the app is running also loses data: the app keeps writing to a database that is no longer at that path.
 
 ## Pinning a version
 
-`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see Upgrading in [installing.md](installing.md)).
-Pinning means setting it to a tag that names a single build, so `docker compose up -d` keeps giving you the same one.
+`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see [installing.md, Upgrading](installing.md#12-upgrading)).
+Pinning means setting it to a tag that names a single build, so `docker compose up -d` keeps running the same one.
 
 A release such as `2026.9.4` is one build. CI also publishes every commit as `commit-<short sha>`, so any build that
 has ever existed can be pinned:
@@ -137,7 +135,7 @@ docker compose up -d app
 While it is pinned, `docker compose pull && docker compose up -d` no longer upgrades anything: a release or `commit-`
 tag always resolves to that one build. To upgrade again, set `SLM_IMAGE_TAG` back to `stable` or `latest` and pull.
 
-You do not have to guess a sha. `./restore.sh --list` shows the build every backup belongs to, `--inspect` names the
+There is no need to guess a sha. `./restore.sh --list` shows the build every backup belongs to, `--inspect` names the
 tag for one of them, and the app's own version is on its about page.
 
 ## Rolling back a bad upgrade
@@ -160,7 +158,7 @@ This backup belongs to build main;9c1f0a2b3d4e. Pin it by setting `SLM_IMAGE_TAG
 It is 2 migration(s) behind the current build (0031_seed_pools, 0032_pool_constraints).
 ```
 
-Restore first, on the image you are currently running, and pin afterwards:
+Restore first, on the image currently running, and pin afterwards:
 
 ```sh
 docker compose stop app
