@@ -163,6 +163,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('sandbox:control', 'server'),
 
 	...definePermission('battlemetrics:write-flags', 'global'),
+	...definePermission('battlemetrics:write-notes', 'global'),
 
 	...definePermission('users:manage-steam-links', 'global'),
 

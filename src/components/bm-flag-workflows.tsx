@@ -313,6 +313,7 @@ function useManageFlagsAction(playerId: string) {
 			toast.error(...tr.toast(BM_Msgs.updateFailed(res.code)))
 			return
 		}
+		BattlemetricsClient.NotesActions.refreshLoaded([playerId])
 		toast(...tr.toast(BM_Msgs.flagsUpdated(res.added, res.removed, res.noteAdded)))
 	}
 
@@ -371,6 +372,7 @@ function useAddFlagsAction(playerIds: string[], target: Tgt.Target) {
 			toast.error(...tr.toast(BM_Msgs.addFailed(res.code)))
 			return
 		}
+		BattlemetricsClient.NotesActions.refreshLoaded(playerIds)
 		toast(...tr.toast(BM_Msgs.flagsAdded(res.flaggedCount, res.playerCount, res.noteAdded)))
 	}
 

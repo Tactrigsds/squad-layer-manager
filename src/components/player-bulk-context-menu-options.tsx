@@ -21,6 +21,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
+import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, type MenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
 import { ContextMenuShortcut } from './ui/context-menu'
@@ -408,6 +409,11 @@ export default function PlayerBulkContextMenuOptions({
 				onPreset={warnPreset}
 			/>
 			<AddPlayerFlagsMenuItem
+				slots={slots}
+				playerIds={playerIds}
+				target={fullSquad ? { kind: 'squad', squadName: fullSquad.squadName, count: playerIds.length } : msgTarget}
+			/>
+			<AddNoteMenuItem
 				slots={slots}
 				playerIds={playerIds}
 				target={fullSquad ? { kind: 'squad', squadName: fullSquad.squadName, count: playerIds.length } : msgTarget}

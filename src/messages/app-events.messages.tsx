@@ -456,6 +456,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const changes = [...e.added.map(describe('+')), ...e.removed.map(describe('−'))].join(', ')
 			return `updated Battlemetrics flags for ${playerName?.(e.playerId) ?? `player ${e.playerId}`}${changes ? `: ${changes}` : ''}`
 		}
+		case 'PLAYER_NOTE_ADDED':
+			return `added a Battlemetrics note for ${playerName?.(e.playerId) ?? `player ${e.playerId}`}: "${e.note}"`
 		case 'APP_STARTED':
 			return `SLM started${e.version ? ` (${e.version})` : ''}`
 		case 'APP_RESTARTED':

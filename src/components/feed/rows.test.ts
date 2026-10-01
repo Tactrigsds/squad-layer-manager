@@ -75,6 +75,7 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	FILTER_CONTRIBUTOR_CHANGED: { action: 'added', filterId: 'f1', filterName: 'f' },
 	USER_ACCOUNT_CHANGED: { action: 'created', targetUserId: 1n },
 	PLAYER_FLAGS_UPDATED: { playerId: 'eos1', added: [], removed: [] },
+	PLAYER_NOTE_ADDED: { playerId: 'eos1', note: 'mic spam' },
 	APP_STARTED: {},
 	APP_RESTARTED: {},
 	ANNOUNCEMENT_SENT: { message: 'restarting soon', expiresAt: 0 },

@@ -50,6 +50,28 @@ export function useRefreshPlayerBmData() {
 	return useMutation(RPC.orpc.battlemetrics.refreshPlayerBmData.mutationOptions())
 }
 
+export function playerNotesQueryOptions(playerId: string) {
+	return RPC.orpc.battlemetrics.listPlayerNotes.queryOptions({ input: { playerId }, staleTime: Infinity })
+}
+
+export namespace NotesActions {
+	// skips the server's cached list
+	export async function reload(playerId: string) {
+		const res = await RPC.orpc.battlemetrics.listPlayerNotes.call({ playerId, fresh: true })
+		RPC.queryClient.setQueryData(playerNotesQueryOptions(playerId).queryKey, res)
+	}
+
+	// Refetches the notes lists already loaded for these players, after a note was added to them. The server has
+	// already added the note to its cached list, so this sends no request to BattleMetrics.
+	export function refreshLoaded(playerIds: string[]) {
+		for (const playerId of playerIds) {
+			const { queryKey } = playerNotesQueryOptions(playerId)
+			if (RPC.queryClient.getQueryData(queryKey) === undefined) continue
+			void RPC.queryClient.invalidateQueries({ queryKey })
+		}
+	}
+}
+
 export function usePlayerFlagIds(playerId: string): string[] | null {
 	const bmData = usePlayerBmData()
 	const player = bmData[playerId]

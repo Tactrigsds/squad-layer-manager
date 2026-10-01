@@ -884,6 +884,7 @@ export function defaultRbacSettings() {
 		'squad-server:broadcast',
 		'squad-server:kick-players',
 		'battlemetrics:write-flags',
+		'battlemetrics:write-notes',
 	]
 	// admin:manage-servers lets them enable/disable and set the default server; without a write-sensitive grant they
 	// still can't create servers (which requires supplying connection details). Policing other people's notes sits here

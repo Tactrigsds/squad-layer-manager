@@ -138,6 +138,31 @@ test.describe('admin actions from the teams panel', () => {
 		await window.getByRole('button', { name: 'Close window' }).click()
 	})
 
+	test("adding a BattleMetrics note, then reading it in the player's details window", async ({ page }) => {
+		const panel = DB.teamsSection(page)
+		const row = panel.getByRole('row', { name: /sq_member/ })
+		await expect(row).toBeVisible({ timeout: 20_000 })
+		await row.click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Add Note...' }).click()
+
+		const dialog = page.getByRole('alertdialog', { name: /Add a BattleMetrics note for/ })
+		await expect(dialog.getByRole('button', { name: 'Add Note', exact: true })).toBeDisabled()
+		await dialog.getByRole('textbox', { name: 'Note' }).fill('Mic spam in local.')
+		await dialog.getByRole('textbox', { name: 'Note' }).press('Control+Enter')
+		await expect(dialog).toBeHidden()
+		await app.waitFor(
+			() => app.bm.notes.some((n) => n.bmPlayerId === app.bm.findByEos(member.eos)?.bmPlayerId && n.note.endsWith('Mic spam in local.')),
+			{ label: 'the note reaching BattleMetrics', timeoutMs: 20_000 },
+		)
+
+		await row.getByRole('button', { name: 'sq_member' }).click()
+		const window = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /sq_member/ }) })
+		await window.getByRole('button', { name: 'Load notes' }).click()
+		const notes = window.getByRole('region', { name: 'BM notes' })
+		await expect(notes.getByRole('listitem').filter({ hasText: 'Mic spam in local.' })).toContainText('SLM')
+		await window.getByRole('button', { name: 'Close window' }).click()
+	})
+
 	test('a required reason holds the kick dialog shut until one is picked', async ({ page }) => {
 		const panel = DB.teamsSection(page)
 

@@ -327,6 +327,13 @@ export const PlayerFlagsUpdatedSchema = event('PLAYER_FLAGS_UPDATED', {
 })
 export type PlayerFlagsUpdated = z.infer<typeof PlayerFlagsUpdatedSchema>
 
+export const PlayerNoteAddedSchema = event('PLAYER_NOTE_ADDED', {
+	playerId: SM.PlayerIdSchema,
+	// as the admin wrote it, without the signature SLM adds on BM
+	note: z.string(),
+})
+export type PlayerNoteAdded = z.infer<typeof PlayerNoteAddedSchema>
+
 export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 	// what drove the queue change:
 	//  - 'user-edit': an SLM user (or an internal SLM op like a vote result) changed the queue
@@ -458,6 +465,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	FilterContributorChangedSchema,
 	UserAccountChangedSchema,
 	PlayerFlagsUpdatedSchema,
+	PlayerNoteAddedSchema,
 	AppStartedSchema,
 	AppRestartedSchema,
 	AnnouncementSentSchema,
@@ -499,6 +507,7 @@ export const APP_EVENT_META = {
 	PLAYER_TIMED_OUT: EM.meta<PlayerTimedOut>({ players: [{ assocType: 'player', get: (e) => e.target }] }),
 	TIMEOUT_CANCELLED: EM.meta<TimeoutCancelled>({ players: [{ assocType: 'player', get: (e) => e.target }] }),
 	PLAYER_FLAGS_UPDATED: EM.meta<PlayerFlagsUpdated>({ players: [{ assocType: 'player', get: (e) => e.playerId }] }),
+	PLAYER_NOTE_ADDED: EM.meta<PlayerNoteAdded>({ players: [{ assocType: 'player', get: (e) => e.playerId }] }),
 	TEAMSWAPS_UPDATED: EM.meta<TeamswapsUpdated>({
 		players: [{ assocType: 'player', get: (e) => summarizeTeamswapChanges(e).map((c) => c.playerId) }],
 		users: [{ get: (e) => summarizeTeamswapChanges(e).map((c) => (c.kind === 'added' ? c.byUserId : undefined)) }],

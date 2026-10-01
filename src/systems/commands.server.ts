@@ -1095,6 +1095,22 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		return { code: 'ok' }
 	},
 
+	addNote: async (h, args) => {
+		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
+		const target = args.player
+		const actor = { label: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`, appActor: ingameActor(h.sender) }
+		const res = await Battlemetrics.addNoteToPlayer(h.ctx, target.ids, args.note, actor).catch((err) => {
+			log.warn({ err, targetIds: target.ids }, 'failed to add BM note')
+			return 'failed' as const
+		})
+		if (res === 'not-found') {
+			return await h.error('not-in-battlemetrics', h.ctx.tr.text(CMD_Msgs.playerNotInBattlemetrics(target.ids.username)))
+		}
+		if (res === 'failed') return await h.error('bm-request-failed', h.ctx.tr.text(CMD_Msgs.noteFailed(target.ids.username)))
+		await h.reply(CMD_Msgs.noteAdded(target.ids.username))
+		return { code: 'ok' }
+	},
+
 	listFlags: async (h, args) => {
 		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
 		function formatFlagList(flags: BM.PlayerFlag[]) {

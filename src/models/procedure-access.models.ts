@@ -38,6 +38,8 @@ export const PROCEDURE_ACCESS = {
 	'battlemetrics.listOrgFlags': Access.PUBLIC,
 	'battlemetrics.updateFlags': global('battlemetrics:write-flags'),
 	'battlemetrics.addFlags': global('battlemetrics:write-flags'),
+	'battlemetrics.listPlayerNotes': PLAYER_LOOKUP,
+	'battlemetrics.addNote': global('battlemetrics:write-notes'),
 
 	'squadServer.listAdminListGroups': GLOBAL_SETTINGS_READ,
 	'squadServer.watchLoadedServers': Access.FILTERED,
