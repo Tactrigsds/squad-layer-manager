@@ -9,7 +9,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as Msgs from '@/models/messages.models'
 import type * as SETTINGS from '@/models/settings.models'
-import type * as SR from '@/models/squad-rcon.models'
+import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
 import * as Instr from '@/server/instrumentation'
@@ -19,6 +19,7 @@ import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
 
 const module = initModule('squad-rcon')
 let log!: CS.Logger
+let reportedUnmatchedListPlayers = false
 
 export function setup() {
 	log = module.getLogger()
@@ -144,27 +145,22 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 	// roster rather than per player, which is what it used to be.
 	const adminLists = await AdminList.getListsForServerId(ctx, ctx.serverId, { ttl: Infinity })
 
-	for (const line of res.data.split('\n')) {
-		if (line.includes('epic:')) {
-			log.info('found line with epic id: %s', line)
-		}
-		const match = line.match(
-			/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamId>\d|N\/A) \| Squad ID: (?<squadId>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/,
-		)
-		if (!match) continue
+	const parsed = SR.parseListPlayers(res.data)
+	if (parsed.unmatched.length > 0) {
+		// polled every few seconds, so a format change is reported loudly once and quietly after that
+		const level = reportedUnmatchedListPlayers ? 'debug' : 'warn'
+		reportedUnmatchedListPlayers = true
+		log[level]('ListPlayers rows not understood, these players are left out of the roster:\n%s', parsed.unmatched.join('\n'))
+	}
 
-		const data: any = match.groups!
-		data.playerID = +data.playerID
-		data.isLeader = data.isLeader === 'True'
-		data.teamId = data.teamId !== 'N/A' ? +data.teamId : null
-		data.squadId = data.squadId !== 'N/A' && data.squadId !== null ? +data.squadId : null
-		data.role = SM.toDedupedRoleName(data.role)
-		const idsInput = { username: match.groups!.name, idsStr: match[2] }
+	for (const row of parsed.rows) {
+		const data: any = { ...row, role: SM.toDedupedRoleName(row.role) }
+		const idsInput = { username: row.name, idsStr: row.idsStr }
 		let ids: SM.PlayerIds.Type
 		try {
 			ids = SM.PlayerIds.parse(idsInput)
 		} catch (e) {
-			log.error(e, 'Failed to parse player ids. line: %s, input: %o', line, idsInput)
+			log.error(e, 'Failed to parse player ids. row: %o, input: %o', row, idsInput)
 			continue
 		}
 		data.ids = ids
@@ -182,7 +178,7 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 
 		const playerResult = SM.PlayerSchema.safeParse(data)
 		if (!playerResult.success) {
-			log.error(playerResult.error, 'Failed to parse player. line: %s, input: %o', line, data)
+			log.error(playerResult.error, 'Failed to parse player. row: %o, input: %o', row, data)
 			continue
 		}
 		players.push(playerResult.data)
