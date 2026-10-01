@@ -4,7 +4,7 @@ import { toast } from '@/lib/toast'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import { tr } from '@/systems/messages.client'
 
-import { ContextMenuItem } from './ui/context-menu'
+import { ContextMenuItem, ContextMenuShortcut } from './ui/context-menu'
 
 function copy(text: string, copied: Parameters<typeof tr.toast>[0]) {
 	void navigator.clipboard.writeText(text).then(() => toast(...tr.toast(copied)))
@@ -29,11 +29,13 @@ export default function TimeContextMenuOptions(props: { target: Interactions.Tim
 						{tr.text(whole ? CHAT_Msgs.copyLinkToSelection() : CHAT_Msgs.copyLinkToRow())}
 						{target.link.caveat && <span className="text-2xs text-muted-foreground">{target.link.caveat}</span>}
 					</span>
+					{whole && <ContextMenuShortcut>{CHAT_Msgs.selectionShortcuts.copyLink}</ContextMenuShortcut>}
 				</ContextMenuItem>
 			)}
 			{target.rows && (
 				<ContextMenuItem onSelect={() => copyRows(target.rows!)}>
 					{tr.text(whole ? CHAT_Msgs.copySelectionAsText() : CHAT_Msgs.copyRowAsText())}
+					{whole && <ContextMenuShortcut>{CHAT_Msgs.selectionShortcuts.copyText}</ContextMenuShortcut>}
 				</ContextMenuItem>
 			)}
 		</>
