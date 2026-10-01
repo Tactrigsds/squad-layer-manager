@@ -22,6 +22,8 @@ export const debugAndHelpInfo = def('Debug & Help Info')
 
 export const repositoryHeading = def('Repository:')
 
+export const docsHeading = def('Documentation for this version:')
+
 export const reportIssuesHeading = def('Report issues here, including the information below:')
 
 export const helpHeading = def('Ask for help here:')

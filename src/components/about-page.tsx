@@ -39,6 +39,7 @@ export default function AboutPage() {
 	const config = Zus.useStore(ConfigClient.Store)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const user = UsersClient.useLoggedInUser()
+	const docsUrl = ConfigClient.useDocsUrl()
 	if (!config || !user) return null
 
 	const versionText = tr.text(
@@ -99,6 +100,7 @@ export default function AboutPage() {
 							</TSR.Link>
 						</div>
 					</div>
+					{docsUrl && <LinkRow heading={tr.text(APP_Msgs.docsHeading())} url={docsUrl} />}
 					<LinkRow heading={tr.text(APP_Msgs.repositoryHeading())} url={config.repoUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.helpHeading())} url={config.helpUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.reportIssuesHeading())} url={config.issuesUrl} />
