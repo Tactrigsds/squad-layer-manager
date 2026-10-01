@@ -1,7 +1,17 @@
+import { Icons } from 'slm/components/icons'
+import { Alert, AlertDescription, AlertTitle } from 'slm/components/ui'
 import * as Zus from 'slm/lib/zustand'
 
 import * as E from './events.client.ts'
 import * as TR from './triggers.ts'
+
+// the variant and icon the host gives a decoration of the same level, so the alert and the row it
+// describes read as one
+const LEVEL_DISPLAY = {
+	violation: { variant: 'destructive', icon: Icons.AlertOctagon },
+	warn: { variant: 'warning', icon: Icons.AlertTriangle },
+	info: { variant: 'info', icon: Icons.Info },
+} as const
 
 export function BalanceTriggerAlert(props: { serverId: string }) {
 	const state = Zus.useStore(E.activeEvents(props.serverId), (s) => s)
@@ -13,13 +23,17 @@ export function BalanceTriggerAlert(props: { serverId: string }) {
 	)
 	if (events.length === 0 || !current) return null
 	return (
-		<div className="flex flex-row flex-wrap items-start gap-1 p-2">
-			{events.map((event) => (
-				<div key={event.id} className={`max-w-full rounded border p-2 text-sm ${E.TINT_CLASSES[event.level] ?? ''}`}>
-					<p className="font-medium">{TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId}</p>
-					<p>{E.describe(event, current.layerId, current.ordinal)}</p>
-				</div>
-			))}
+		<div className="flex flex-col gap-1">
+			{events.map((event) => {
+				const display = LEVEL_DISPLAY[event.level as keyof typeof LEVEL_DISPLAY] ?? LEVEL_DISPLAY.info
+				return (
+					<Alert key={event.id} variant={display.variant}>
+						<display.icon />
+						<AlertTitle>{TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId}</AlertTitle>
+						<AlertDescription>{E.describe(event, current.layerId, current.ordinal)}</AlertDescription>
+					</Alert>
+				)
+			})}
 		</div>
 	)
 }

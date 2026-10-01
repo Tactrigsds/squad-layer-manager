@@ -28,12 +28,6 @@ export function activeEvents(serverId: string) {
 // most severe first, as the match history tooltip orders them
 export const LEVEL_ORDER: Record<string, number> = { violation: 3, warn: 2, info: 1 }
 
-export const TINT_CLASSES: Record<string, string> = {
-	info: 'border-blue-500/50 text-blue-500',
-	warn: 'border-yellow-500/50 text-yellow-600',
-	violation: 'border-red-500/50 text-red-500',
-}
-
 // the same sentence the post-roll reminder uses, with the side named for the match it is shown against
 export function describe(event: S.TriggerEvent, layerId: string, ordinal: number) {
 	const faction = L.toLayer(layerId)[MH.getTeamNormalizedFactionProp(ordinal, event.strongerTeam as MH.NormedTeamProp)]

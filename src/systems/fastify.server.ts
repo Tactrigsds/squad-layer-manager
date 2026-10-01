@@ -258,7 +258,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const slash = rest.indexOf('/')
 		const filePath = slash > 0 ? Plugins.servableAsset(rest.slice(0, slash), rest.slice(slash + 1)) : null
 		if (!filePath) return res.code(404).send()
-		res.header('Content-Type', 'text/javascript; charset=utf-8')
+		res.header('Content-Type', filePath.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8')
 		// the url carries the bundle's content hash, so a stale copy is impossible
 		res.header('Cache-Control', 'public, max-age=31536000, immutable')
 		return res.send(await fsp.readFile(filePath, 'utf8'))

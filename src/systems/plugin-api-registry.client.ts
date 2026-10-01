@@ -10,6 +10,7 @@ import * as componentsIcons from '@/plugin-api/components/icons'
 import * as componentsLayer from '@/plugin-api/components/layer'
 import * as componentsPickers from '@/plugin-api/components/pickers'
 import * as componentsPluginSettingsLink from '@/plugin-api/components/plugin-settings-link'
+import * as componentsUi from '@/plugin-api/components/ui'
 import * as libDisplayHelpers from '@/plugin-api/lib/display-helpers'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libTemplating from '@/plugin-api/lib/templating'
@@ -43,6 +44,7 @@ export function setup() {
 		'slm/components/layer': componentsLayer,
 		'slm/components/pickers': componentsPickers,
 		'slm/components/plugin-settings-link': componentsPluginSettingsLink,
+		'slm/components/ui': componentsUi,
 		'slm/lib/display-helpers': libDisplayHelpers,
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/templating': libTemplating,

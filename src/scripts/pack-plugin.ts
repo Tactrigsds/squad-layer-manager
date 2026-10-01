@@ -1,3 +1,5 @@
+import { compile, optimize } from '@tailwindcss/node'
+import { Scanner } from '@tailwindcss/oxide'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -7,13 +9,16 @@ import * as SHIM from '@/models/plugin-api-shim'
 import * as PLG from '@/models/plugins.models'
 
 // Builds a plugin source directory into a package SLM can install: plugin.json plus one esm bundle
-// per entry. Everything the host provides stays external -- `slm/*` and the shared packages resolve
-// at load time through the host, which is what keeps one zod and one React in the process.
+// per entry, and a stylesheet for the client. Everything the host provides stays external -- `slm/*`
+// and the shared packages resolve at load time through the host, which is what keeps one zod and one
+// React in the process.
 //
 //   pnpm plugin:pack <source-dir> [out-dir]
 //
 // The source directory holds plugin.ts (the manifest, default-exported), server.ts, and optionally
-// client.tsx. Serve the output directory over http and install its plugin.json url.
+// client.tsx and client.css. Serve the output directory over http and install its plugin.json url.
+
+const repoRoot = path.resolve(import.meta.dirname, '..', '..')
 
 const [srcArg, outArg] = process.argv.slice(2)
 if (!srcArg) {
@@ -89,6 +94,34 @@ for (const entry of ENTRIES) {
 	built.push(entry.out)
 }
 
+// The client's stylesheet: the Tailwind utilities its sources use, plus its own client.css if it has
+// one. The app's stylesheet is built from the app's sources alone, so a utility the app happens not to
+// use exists nowhere unless the plugin brings it. `@reference` reads the app's theme and variants without
+// re-emitting any of them, and the utilities land in the app's own cascade layer, so the two sheets read
+// as one.
+async function compileStyles(): Promise<string> {
+	const ownCss = path.join(srcDir, 'client.css')
+	const input = [
+		`@reference ${JSON.stringify(path.join(repoRoot, 'src', 'index.css'))};`,
+		`@import "tailwindcss/utilities" layer(utilities) source(none);`,
+		...(fs.existsSync(ownCss) ? [`@import ${JSON.stringify(ownCss)};`] : []),
+	].join('\n')
+	const compiler = await compile(input, { base: srcDir, onDependency: () => {} })
+	const scanner = new Scanner({
+		sources: [
+			{ base: srcDir, pattern: '**/*', negated: false },
+			{ base: outDir, pattern: '**/*', negated: true },
+			{ base: path.join(srcDir, 'node_modules'), pattern: '**/*', negated: true },
+		],
+	})
+	return optimize(compiler.build(scanner.scan()), { minify: true }).code
+}
+
+if (built.includes('client.mjs')) {
+	fs.writeFileSync(path.join(outDir, 'client.css'), await compileStyles())
+	built.push('client.css')
+}
+
 const packageManifest: PLG.PackageManifest = {
 	id: manifest.id,
 	name: manifest.name,
@@ -97,7 +130,7 @@ const packageManifest: PLG.PackageManifest = {
 	description: manifest.description,
 	manifest: 'plugin.mjs',
 	server: 'server.mjs',
-	...(built.includes('client.mjs') ? { client: 'client.mjs' } : {}),
+	...(built.includes('client.mjs') ? { client: 'client.mjs', styles: 'client.css' } : {}),
 }
 fs.writeFileSync(path.join(outDir, PLG.PACKAGE_MANIFEST_FILE), JSON.stringify(packageManifest, null, '\t') + '\n')
 console.log(`packed ${manifest.id} v${manifest.version} -> ${path.relative(process.cwd(), outDir)} (${built.join(', ')})`)

@@ -16,7 +16,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
  */
-export const API_VERSION = { major: 0, minor: 8, patch: 1 }
+export const API_VERSION = { major: 0, minor: 8, patch: 2 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {
@@ -169,6 +169,8 @@ export const RuntimeInfoSchema = z.object({
 	// unloads -- so the client asks for a reload.
 	manifestEntry: z.string().nullable(),
 	clientEntry: z.string().nullable(),
+	// the client's stylesheet, hash-stamped like the bundles. A change here swaps in place: css unloads
+	clientStyles: z.string().nullable(),
 })
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>
 
@@ -198,6 +200,8 @@ export const PackageManifestSchema = z.object({
 	manifest: z.string().prefault('plugin.mjs'),
 	server: z.string().prefault('server.mjs'),
 	client: z.string().optional(),
+	// the stylesheet plugin:pack compiles from the client's sources, loaded into the page alongside it
+	styles: z.string().optional(),
 })
 export type PackageManifest = z.infer<typeof PackageManifestSchema>
 

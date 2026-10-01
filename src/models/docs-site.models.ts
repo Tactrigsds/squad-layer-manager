@@ -80,6 +80,13 @@ export const PAGES: Page[] = [
 		section: 'developers',
 		group: 'Plugins',
 	},
+	{
+		file: 'docs/plugin_ui.md',
+		slug: 'plugin-ui',
+		label: 'Plugin UI',
+		section: 'developers',
+		group: 'Plugins',
+	},
 	{ file: 'docs/brand.md', slug: 'brand', label: 'Brand', section: 'developers', group: 'Reference' },
 	{
 		file: 'CHANGELOG.md',

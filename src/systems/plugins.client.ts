@@ -401,6 +401,34 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 	return React.useSyncExternalStore(subscribe, getSnapshot)
 }
 
+// ---- stylesheets ----
+
+// A packaged client's compiled stylesheet, one <link> per plugin. Unlike its module, css unloads: an
+// upgrade swaps the link and a stop removes it, with no reload asked for.
+const styleLinks = new Map<string, HTMLLinkElement>()
+
+// Resolves once the sheet is applied, so a client loaded after it never paints unstyled. A sheet that
+// fails to load resolves too: the client still runs, with the failure in the console.
+function syncStyles(info: PLG.RuntimeInfo, href: string | null): Promise<void> {
+	const current = styleLinks.get(info.id)
+	if (current?.getAttribute('href') === href) return Promise.resolve()
+	current?.remove()
+	styleLinks.delete(info.id)
+	if (!href) return Promise.resolve()
+	const link = document.createElement('link')
+	link.rel = 'stylesheet'
+	link.href = href
+	styleLinks.set(info.id, link)
+	return new Promise((resolve) => {
+		link.onload = () => resolve()
+		link.onerror = () => {
+			pluginLogger(info).error('loading its stylesheet failed: %s', href)
+			resolve()
+		}
+		document.head.append(link)
+	})
+}
+
 // ---- host lifecycle ----
 
 // what this page has already evaluated for each plugin. Never dropped: esm cannot unload, so once a
@@ -438,12 +466,14 @@ async function reconcile(infos: PLG.RuntimeInfo[]) {
 				promptReload(info)
 				continue
 			}
+			await syncStyles(info, info.clientStyles)
 			if (liveClients.has(info.id)) continue
 			liveClients.add(info.id)
 			evaluatedFrom.set(info.id, source)
 			await loadClient(info)
 		} else if (!active && liveClients.has(info.id)) {
 			liveClients.delete(info.id)
+			void syncStyles(info, null)
 			for (const undo of undoByPlugin.get(info.id) ?? []) undo()
 			undoByPlugin.delete(info.id)
 			bumpVersion()

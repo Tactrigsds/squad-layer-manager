@@ -141,6 +141,7 @@ async function pluginInfo() {
 				source: string
 				sourceUrl: string | null
 				clientEntry: string | null
+				clientStyles: string | null
 				permissions: { name: string; scope: string; description: string }[]
 		  }
 		| undefined
@@ -158,6 +159,7 @@ describe('packaged plugins', () => {
 		expect(info).toMatchObject({ version: '1.0.0', status: 'inactive', enabled: false, source: 'url', sourceUrl: manifestUrl })
 		// the client bundle is served from SLM, not from the origin it came from
 		expect(info?.clientEntry).toMatch(/^\/plugin-assets\/hello\/client\.mjs\?v=/)
+		expect(info?.clientStyles).toMatch(/^\/plugin-assets\/hello\/client\.css\?v=/)
 	})
 
 	it('starts, applies its migration and reaches core through the shimmed imports', async () => {
@@ -200,6 +202,12 @@ describe('packaged plugins', () => {
 		const client_ = await get((await pluginInfo())!.clientEntry!)
 		expect(client_.status).toBe(200)
 		expect(await client_.text()).toContain('definePluginClient')
+
+		// the stylesheet carries the utilities the client's sources use, which the app's own does not
+		const styles = await get((await pluginInfo())!.clientStyles!)
+		expect(styles.status).toBe(200)
+		expect(styles.headers.get('content-type')).toContain('text/css')
+		expect(await styles.text()).toContain('.italic{')
 
 		// only the files plugin.json names as browser-facing are reachable
 		expect((await get('/plugin-assets/hello/server.mjs')).status).toBe(404)

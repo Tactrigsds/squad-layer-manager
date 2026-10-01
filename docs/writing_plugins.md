@@ -18,6 +18,9 @@ only install one you would be willing to run as a fork.
 - [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
+- [Your events in the feed](#your-events-in-the-feed)
+- [In-game commands](#in-game-commands)
+- [Permissions](#permissions)
 - [Pickers](#pickers)
 - [What you can reach](#what-you-can-reach)
 - [Logging and telemetry](#logging-and-telemetry)
@@ -52,6 +55,7 @@ part of the contract. `plugins/balance-triggers` is a real one.
 | `plugin.ts`  | yes      | the manifest, default-exported. Every other file imports it, so it must have no side effects. |
 | `server.ts`  | yes      | `activate(ctx)`, plus `migrations` if the plugin stores anything                              |
 | `client.tsx` | no       | what the plugin adds to the browser                                                           |
+| `client.css` | no       | plain css for the browser, beside the classes the packer compiles                             |
 
 Any other module is an ordinary import and is bundled in.
 
@@ -351,71 +355,32 @@ made the call. See "Permissions" below.
 
 ## The client entry
 
-A client entry registers into the host's anchors. There is no way to mount outside them.
+`client.tsx` adds to SLM's own pages through anchors: a component mounted in the server dashboard, data on a match
+history row, or your own line in the activity feed.
 
 ```tsx
 // client.tsx
-import * as Zus from 'slm/lib/zustand'
 import { definePluginClient } from 'slm/plugin/client'
-import * as Decorations from 'slm/plugin/decorations'
-import * as Rpc from 'slm/plugin/rpc.client'
 import * as Slots from 'slm/plugin/slots'
 
+import { Greeting } from './greeting.tsx'
 import manifest from './plugin.ts'
-import type { router } from './server.ts'
 
 export default definePluginClient(manifest, (ctx) => {
-	const streams = Rpc.stores<typeof router>(ctx)
-
-	// a slot mounts a component
-	Slots.register(ctx, 'server-dashboard:alerts', function Greeting(props) {
-		const rows = Zus.useStore(streams.greetings(props.serverId, {}), (r) => r ?? [])
-		if (rows.length === 0) return null
-		return <p>{rows[0].text}</p>
-	})
-
-	// a decoration contributes data, and the host renders and styles it
-	Decorations.register(ctx, 'match-history:row', {
-		stores: (props) => [streams.greetings(props.serverId, {})],
-		select: (rows, props) => (rows?.length ? { tint: 'info', title: 'Greeted', body: rows[0].text } : null),
-	})
+	Slots.register(ctx, 'server-dashboard:alerts', Greeting)
 })
 ```
 
-There is one anchor of each kind so far.
-
-| Kind       | Anchor                          | Props                                       |
-| ---------- | ------------------------------- | ------------------------------------------- |
-| slot       | `server-dashboard:alerts`       | `serverId`                                  |
-| slot       | `server-dashboard:queue-alerts` | `serverId`                                  |
-| decoration | `match-history:row`             | `serverId`, `matchId`, `layerId`, `ordinal` |
-
-A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `violation`. Return an array to
-contribute several to one row, or null for none. A boundary catches a slot that throws. A selector that throws
-reads as no decoration. Neither takes the page down.
+[Plugin UI](plugin_ui.md) covers the anchors, the components SLM lends a plugin, styling, and how to lay out the
+client files.
 
 ## Your events in the feed
 
 `AppEvents.emit(ctx, name, payload, message)` records an event against the server and the match in progress. It
-shows up in the activity feed and the audit log as `message`, attributed to your plugin.
+shows up in the activity feed and the audit log as `message`, attributed to your plugin. Write `message` to stand
+on its own: it is what the audit log shows, and what the feed shows while your plugin is stopped.
 
-A client entry can render those lines itself, keyed by the `name` it was recorded under:
-
-```tsx
-import * as Events from 'slm/plugin/events'
-
-Events.register(ctx, 'counted', (e) => ({
-	icon: 'success',
-	content: <>counted {(e.payload as { count: number }).count} matches</>,
-}))
-```
-
-`content` is the predicate alone: the host renders the time, the icon and your plugin's name in front of it, so
-the line reads like every other one in the feed. `icon` is one of `plugin`, `info`, `success`, `warning`,
-`error`, defaulting to `plugin`. Return null to take the `message` fallback for a particular event.
-
-`message` is still what the audit log shows, and what an admin sees while the plugin is stopped, so write it to
-stand on its own. The event's `payload` is yours and is stored as-is, which is why the renderer casts it.
+A client entry can render the feed line itself. See [Feed lines](plugin_ui.md#feed-lines).
 
 ## In-game commands
 
@@ -547,16 +512,8 @@ There are six: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural o
 a plain string or array of strings. A config written through the YAML editor is unaffected, and an id whose target
 has since been deleted still round-trips rather than being dropped.
 
-The same six are components, for a slot that picks something rather than a setting that stores it:
-
-```tsx
-import { FilterSelect } from 'slm/components/pickers'
-
-;<FilterSelect value={filterId} onChange={setFilterId} />
-```
-
-Each takes `value` and `onChange` (or `values` and `onChange` for the plural), and finds its own options.
-For anything else, `slm/components/combo-box` is what they are built from.
+The same six are components, for a slot that picks something rather than a setting that stores it. See
+[Components](plugin_ui.md#components).
 
 ## What you can reach
 
@@ -575,6 +532,7 @@ absent.
 | `slm/plugin/commands`                                      | in-game commands                             |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
 | `slm/plugin/permissions`                                   | actions your plugin defines for itself       |
+| `slm/components/ui`                                        | alerts, badges, buttons, cards and tooltips  |
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
 | `slm/components/layer`                                     | a layer's name, rendered as the app does it  |
 | `slm/components/plugin-settings-link`                      | a link to your own config                    |
@@ -648,6 +606,7 @@ plugin.json   your manifest, as data
 plugin.mjs    your plugin.ts
 server.mjs    your server.ts
 client.mjs    your client.tsx, if you have one
+client.css    the classes it uses, compiled against SLM's theme, plus your client.css
 ```
 
 The bundles carry no copy of SLM. Publish them together, in one directory: SLM installs from the url of
