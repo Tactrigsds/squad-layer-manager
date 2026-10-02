@@ -132,13 +132,15 @@ function SiteHeader({ site, section, sidebar }: { site: SiteInfo; section: DS.Se
 				<div className="max-lg:hidden">
 					<SectionNav site={site} section={section} />
 				</div>
-				<SupportLink className="max-sm:hidden" />
-				<a href={Project.DISCORD_URL} className="docs-icon-btn" aria-label="SLM on Discord">
-					<DiscordMark className="size-5" />
-				</a>
-				<a href={site.repoUrl} className="docs-icon-btn" aria-label="SLM on GitHub">
-					<GitHubMark className="size-5" />
-				</a>
+				<div className="flex items-center gap-1">
+					<SupportLink className="me-1 max-sm:hidden" />
+					<a href={Project.DISCORD_URL} className="docs-icon-btn" aria-label="SLM on Discord">
+						<DiscordMark className="size-5" />
+					</a>
+					<a href={site.repoUrl} className="docs-icon-btn" aria-label="SLM on GitHub">
+						<GitHubMark className="size-5" />
+					</a>
+				</div>
 			</div>
 		</header>
 	)
@@ -562,7 +564,7 @@ export function RedirectDocument({ to }: { to: string }) {
 				<meta charSet="utf-8" />
 				<meta httpEquiv="refresh" content={`0; url=${to}`} />
 				<link rel="canonical" href={to} />
-				<title>SLM Docs</title>
+				<title>{DS.tabTitle(null)}</title>
 			</head>
 			<body>
 				<a href={to}>Continue to the documentation</a>

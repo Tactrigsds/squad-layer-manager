@@ -204,7 +204,7 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 				Site.DocsDocument,
 				{
 					site,
-					title: `${title} · SLM Docs`,
+					title: DS.tabTitle(title),
 					description: `${title}, from the Squad Layer Manager documentation.`,
 					section: page.section,
 					sidebar: React.createElement(Site.Sidebar, { site, page }),
@@ -271,7 +271,7 @@ async function buildRoot(highlighter: Highlighter) {
 		'index.html',
 		React.createElement(
 			Site.DocsDocument,
-			{ site, title: 'Squad Layer Manager', description: LANDING.tagline, section: null, sidebar },
+			{ site, title: DS.tabTitle(null), description: LANDING.tagline, section: null, sidebar },
 			React.createElement(Site.LandingPage, { site, ...LANDING, highlights: LANDING.highlights.map(withImageSize) }),
 		),
 	)
@@ -280,7 +280,7 @@ async function buildRoot(highlighter: Highlighter) {
 		'404.html',
 		React.createElement(
 			Site.DocsDocument,
-			{ site, title: 'Page not found · SLM Docs', description: 'Page not found', section: null, sidebar },
+			{ site, title: DS.tabTitle('Page not found'), description: 'Page not found', section: null, sidebar },
 			React.createElement(Site.NotFoundPage, { site }),
 		),
 	)

@@ -166,6 +166,11 @@ export const PAGES: Page[] = [
 	},
 ]
 
+// the browser tab title: the site's name alone, or the article in front of it
+export function tabTitle(article: string | null) {
+	return article === null ? 'SLM Docs' : `${article} - SLM Docs`
+}
+
 export const PAGE_BY_FILE = new Map(PAGES.map((p) => [p.file, p]))
 
 export function pagesIn(section: SectionId) {
