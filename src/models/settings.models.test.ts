@@ -271,3 +271,26 @@ describe('secret settings', () => {
 		expect(SETTINGS.integrationEnabled({ enabled: false, token: 'x' })).toBe(false)
 	})
 })
+
+describe('trimStaleSettingsGrants', () => {
+	const grantsOf = (serverSettingsGrants: unknown[]) => ({ rbac: { roles: { mod: { serverSettingsGrants } } } })
+	const trimmedGrants = (serverSettingsGrants: unknown[]) => {
+		const { settings } = SETTINGS.trimStaleSettingsGrants(grantsOf(serverSettingsGrants))
+		return (settings as ReturnType<typeof grantsOf>).rbac.roles.mod.serverSettingsGrants
+	}
+
+	test('drops a stale path and keeps the live ones', () => {
+		expect(trimmedGrants([{ access: 'write', serverIds: [], paths: ['queue', 'noSuchSetting'] }])).toEqual([
+			{ access: 'write', serverIds: [], paths: ['queue'] },
+		])
+	})
+
+	test('narrows a write grant whose every path went stale to read, rather than to every setting', () => {
+		expect(trimmedGrants([{ serverIds: ['a'], paths: ['noSuchSetting'] }])).toEqual([{ access: 'read', serverIds: ['a'], paths: [] }])
+	})
+
+	test('leaves an unrestricted write grant alone', () => {
+		const grants = [{ access: 'write', serverIds: [], paths: [] }]
+		expect(trimmedGrants(grants)).toBe(grants)
+	})
+})

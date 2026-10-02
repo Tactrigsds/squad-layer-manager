@@ -394,7 +394,15 @@ export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; drop
 					serverKeys,
 					(path, i) => `rbac.roles.${roleId}.serverSettingsGrants[${gi}].paths[${i}] ("${path}")`,
 				)
-				return paths === grant.paths ? grantRaw : { ...grant, paths }
+				if (paths === grant.paths) return grantRaw
+				// a write grant with no paths covers every non-sensitive setting, so one whose every path went stale
+				// keeps only the view access it gave rather than widening to all of them
+				const isWrite = grant.access === undefined || grant.access === 'write'
+				if (isWrite && Array.isArray(paths) && paths.length === 0) {
+					dropped.push(`rbac.roles.${roleId}.serverSettingsGrants[${gi}] (write narrowed to read)`)
+					return { ...grant, access: 'read', paths }
+				}
+				return { ...grant, paths }
 			})
 			if (nextGrants.some((g, i) => g !== (serverGrants as unknown[])[i])) serverGrants = nextGrants
 		}
