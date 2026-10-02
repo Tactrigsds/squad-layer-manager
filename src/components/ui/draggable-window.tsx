@@ -6,7 +6,6 @@ import {
 	type DraggableWindowContextValue,
 	DraggableWindowOutletContext,
 	DraggableWindowStore,
-	type InitialPosition,
 	useDraggableWindow,
 	useDraggableWindowContext,
 	useOpenWindows,
@@ -23,108 +22,8 @@ import { createPortal } from 'react-dom'
 
 import * as Browser from '@/lib/browser'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as DW from '@/models/draggable-windows.models'
 import { tr } from '@/systems/messages.client'
-
-// ============================================================================
-// Position Calculation
-// ============================================================================
-
-const FALLBACK_POSITIONS: Record<InitialPosition, InitialPosition[]> = {
-	below: ['below', 'above', 'right', 'left', 'viewport-center'],
-	above: ['above', 'below', 'right', 'left', 'viewport-center'],
-	left: ['left', 'right', 'above', 'below', 'viewport-center'],
-	right: ['right', 'left', 'above', 'below', 'viewport-center'],
-	'viewport-center': ['viewport-center'],
-}
-
-// In a right-to-left page 'left' and 'right' swap, so a window opens on the same side of its anchor relative to the
-// reading direction. Positions stay physical screen coordinates after this.
-const MIRRORED_POSITION: Record<InitialPosition, InitialPosition> = {
-	below: 'below',
-	above: 'above',
-	left: 'right',
-	right: 'left',
-	'viewport-center': 'viewport-center',
-}
-
-function calculatePosition(
-	anchorRect: DOMRect | null,
-	contentRect: { width: number; height: number },
-	position: InitialPosition,
-	offset: number,
-	collisionPadding: number,
-): { x: number; y: number } | null {
-	const viewport = {
-		width: window.innerWidth,
-		height: window.innerHeight,
-	}
-
-	let x: number
-	let y: number
-
-	if (position === 'viewport-center' || !anchorRect) {
-		x = (viewport.width - contentRect.width) / 2
-		y = (viewport.height - contentRect.height) / 2
-	} else if (position === 'below') {
-		x = anchorRect.left + anchorRect.width / 2 - contentRect.width / 2
-		y = anchorRect.bottom + offset
-	} else if (position === 'above') {
-		x = anchorRect.left + anchorRect.width / 2 - contentRect.width / 2
-		y = anchorRect.top - contentRect.height - offset
-	} else if (position === 'left') {
-		x = anchorRect.left - contentRect.width - offset
-		y = anchorRect.top + anchorRect.height / 2 - contentRect.height / 2
-	} else {
-		// right
-		x = anchorRect.right + offset
-		y = anchorRect.top + anchorRect.height / 2 - contentRect.height / 2
-	}
-
-	// Check if position fits within viewport
-	const fitsHorizontally = x >= collisionPadding && x + contentRect.width <= viewport.width - collisionPadding
-	const fitsVertically = y >= collisionPadding && y + contentRect.height <= viewport.height - collisionPadding
-
-	if (fitsHorizontally && fitsVertically) {
-		return { x, y }
-	}
-
-	return null
-}
-
-function getInitialPosition(
-	anchorRect: DOMRect | null,
-	contentRect: { width: number; height: number },
-	preferredPosition: InitialPosition,
-	offset: number,
-	collisionPadding: number,
-): { x: number; y: number } {
-	const fallbacks = FALLBACK_POSITIONS[preferredPosition]
-	const rtl = document.documentElement.dir === 'rtl'
-
-	for (const position of fallbacks) {
-		const result = calculatePosition(anchorRect, contentRect, rtl ? MIRRORED_POSITION[position] : position, offset, collisionPadding)
-		if (result) {
-			return result
-		}
-	}
-
-	// Last resort: viewport center with clamping
-	const viewport = {
-		width: window.innerWidth,
-		height: window.innerHeight,
-	}
-
-	return {
-		x: Math.max(
-			collisionPadding,
-			Math.min((viewport.width - contentRect.width) / 2, viewport.width - contentRect.width - collisionPadding),
-		),
-		y: Math.max(
-			collisionPadding,
-			Math.min((viewport.height - contentRect.height) / 2, viewport.height - contentRect.height - collisionPadding),
-		),
-	}
-}
 
 // ============================================================================
 // Window Instance
@@ -181,17 +80,10 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		const currentPos = positionRef.current
 		if (!content || !currentPos || isResizingRef.current) return
 
-		const contentRect = content.getBoundingClientRect()
-		const viewport = {
-			width: window.innerWidth,
-			height: window.innerHeight,
-		}
-
-		const clampedX = Math.max(collisionPadding, Math.min(currentPos.x, viewport.width - contentRect.width - collisionPadding))
-		const clampedY = Math.max(collisionPadding, Math.min(currentPos.y, viewport.height - contentRect.height - collisionPadding))
-
-		if (clampedX !== currentPos.x || clampedY !== currentPos.y) {
-			applyPosition({ x: clampedX, y: clampedY })
+		const viewport = { width: window.innerWidth, height: window.innerHeight }
+		const clamped = DW.clampToViewport(currentPos, content.getBoundingClientRect(), collisionPadding, viewport)
+		if (clamped.x !== currentPos.x || clamped.y !== currentPos.y) {
+			applyPosition(clamped)
 		}
 	}, [collisionPadding, applyPosition])
 
@@ -240,9 +132,15 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			}
 		}
 
-		const contentRect = content.getBoundingClientRect()
-		const pos = getInitialPosition(windowState.anchorRect, contentRect, initialPosition, offset, collisionPadding)
-
+		const pos = DW.solveInitialPosition({
+			anchor: windowState.anchorRect,
+			size: content.getBoundingClientRect(),
+			preferred: initialPosition,
+			offset,
+			padding: collisionPadding,
+			viewport: { width: window.innerWidth, height: window.innerHeight },
+			rtl: document.documentElement.dir === 'rtl',
+		})
 		applyPosition(pos)
 	}, [
 		phone,

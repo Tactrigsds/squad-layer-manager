@@ -16,7 +16,7 @@ import { baseLogger } from '@/systems/logger.client'
 // Types
 // ============================================================================
 
-export type InitialPosition = 'above' | 'below' | 'left' | 'right' | 'viewport-center'
+export type InitialPosition = DW.InitialPosition
 
 // Something a window cannot outlive. `onBeforeDispose` fires once, just before the dependency is destroyed, and
 // returns the unsubscribe. A dependency that is already gone calls the listener synchronously instead.
