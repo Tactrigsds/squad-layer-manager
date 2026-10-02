@@ -129,6 +129,27 @@ sharedAppTest.describe('server console', () => {
 		expect(await distanceFromBottom()).toBeLessThan(16)
 		await expect(page.getByRole('button', { name: 'Scroll to bottom' })).toBeHidden()
 		await viewport.evaluate((el) => (el.querySelector('li')!.parentElement!.style.paddingBottom = ''))
+		await expect.poll(distanceFromBottom).toBeLessThan(16)
+
+		// The same clamp can also come between frames, from anything that forces layout: a click's hit test is one.
+		// Rows drop off, the click on Hide noise forces the clamp and then adds rows, and the clamp's scroll event
+		// arrives after both with no resize observer in between.
+		await viewport.evaluate(async (el) => {
+			const list = el.querySelector('ol')!
+			const rows = [...list.children].slice(0, 30)
+			const before = el.scrollTop
+			for (const row of rows) row.remove()
+			// where mutation observers run after a React commit
+			await Promise.resolve()
+			// reading the position forces the layout that clamps it
+			if (el.scrollTop >= before) throw new Error('the rows dropped did not clamp the viewport')
+			list.prepend(...rows)
+			list.style.paddingBottom = '4000px'
+			for (let i = 0; i < 3; i++) await new Promise((resolve) => requestAnimationFrame(resolve))
+		})
+		expect(await distanceFromBottom()).toBeLessThan(16)
+		await expect(page.getByRole('button', { name: 'Scroll to bottom' })).toBeHidden()
+		await viewport.evaluate((el) => (el.querySelector('ol')!.style.paddingBottom = ''))
 
 		// a deliberate scroll up hands the position back to the reader, and says how to give it up again
 		await viewport.hover()
