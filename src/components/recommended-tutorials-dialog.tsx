@@ -40,6 +40,7 @@ export default function RecommendedTutorialsDialog(props: { surface: TUT.Surface
 	)
 
 	const open =
+		!import.meta.env.DEV &&
 		!closed &&
 		// a tutorial drives this same page, so prompting during one puts the dialog on top of the tour's own step
 		run.code === 'none' &&
