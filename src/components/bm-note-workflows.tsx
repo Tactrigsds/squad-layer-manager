@@ -9,6 +9,7 @@ import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as MsgFmt from '@/messages/format'
 import type * as Tgt from '@/messages/target'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -167,7 +168,8 @@ export function PlayerNotesRow(props: { playerId: string; username?: string }) {
 	return (
 		<section
 			aria-label={tr.text(BM_Msgs.notesLabel())}
-			className="col-span-2 mt-0.5 overflow-hidden rounded-[3px] border border-border bg-ctl-lo"
+			// contained so a long note wraps at the window's width instead of widening the window to fit it
+			className="col-span-2 mt-0.5 overflow-hidden rounded-[3px] border border-border bg-ctl-lo [contain:inline-size]"
 		>
 			<div className="flex items-center gap-1.5 border-b border-border bg-panel-hi py-1 ps-2 pe-1.5">
 				<span className="fd-lbl-k2">
@@ -282,7 +284,7 @@ function NoteItem({ note }: { note: BM.PlayerNote }) {
 	const author = note.author
 	const name = author.kind === 'slm' ? author.name : (author.name ?? tr.text(BM_Msgs.unknownBmUser()))
 	return (
-		<li className="grid gap-0.5 border-b border-panel-hi px-2 py-1.5 last:border-b-0">
+		<li className="group/note grid gap-0.5 border-b border-panel-hi px-2 py-1.5 last:border-b-0">
 			<div className="flex items-center gap-1.5">
 				<span className="truncate text-xs font-semibold">{name}</span>
 				{author.kind === 'slm' ? (
@@ -304,7 +306,42 @@ function NoteItem({ note }: { note: BM.PlayerNote }) {
 					{tr.text(BM_Msgs.noteFlagChange(note.flagChange.action, note.flagChange.flagName))}
 				</div>
 			)}
-			{note.text && <p className="m-0 whitespace-pre-wrap break-words text-xs text-text-2">{note.text}</p>}
+			{note.text && (
+				<>
+					<p
+						ref={trackNoteClamp}
+						className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-xs text-text-2 group-data-[expanded]/note:line-clamp-none"
+					>
+						{note.text}
+					</p>
+					<button
+						type="button"
+						aria-expanded={false}
+						onClick={toggleNoteExpanded}
+						className="hidden justify-self-start text-2xs text-primary hover:underline group-data-[clamped]/note:inline"
+					>
+						<span className="group-data-[expanded]/note:hidden">{tr.text(UI_Msgs.showMore())}</span>
+						<span className="hidden group-data-[expanded]/note:inline">{tr.text(UI_Msgs.showLess())}</span>
+					</button>
+				</>
+			)}
 		</li>
 	)
+}
+
+// The clamp state is kept as attributes on the note's <li> rather than in React, so a long list of notes measures and
+// expands without re-rendering. data-clamped shows the toggle while the text overflows its four lines.
+function trackNoteClamp(text: HTMLParagraphElement) {
+	const item = text.closest('li')!
+	const observer = new ResizeObserver(() => {
+		if (item.hasAttribute('data-expanded')) return
+		item.toggleAttribute('data-clamped', text.scrollHeight > text.clientHeight)
+	})
+	observer.observe(text)
+	return () => observer.disconnect()
+}
+
+function toggleNoteExpanded(e: React.MouseEvent<HTMLButtonElement>) {
+	const expanded = e.currentTarget.closest('li')!.toggleAttribute('data-expanded')
+	e.currentTarget.setAttribute('aria-expanded', String(expanded))
 }
