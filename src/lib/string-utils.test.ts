@@ -59,6 +59,32 @@ describe('Str.nearest', () => {
 	})
 })
 
+describe('Str.nearestWithinEdits', () => {
+	const layers = ['Manicouagan_AAS_v2', 'Manicouagan_AAS_v3', 'Narva_RAAS_v1']
+
+	test('finds the candidate the fewest edits away, ignoring case', () => {
+		expect(Str.nearestWithinEdits('manicougan_aas_v3', layers, 4)).toBe('Manicouagan_AAS_v3')
+	})
+
+	test('counts a swap of two adjacent characters as one edit', () => {
+		expect(Str.nearestWithinEdits('RFG', ['RGF', 'USA'], 1)).toBe('RGF')
+	})
+
+	test('offers nothing beyond the edit limit', () => {
+		expect(Str.nearestWithinEdits('Narva_RAAS_v1x', layers, 0)).toBeNull()
+		expect(Str.nearestWithinEdits('Atlantis_RAAS_v1', layers, 4)).toBeNull()
+	})
+
+	test('breaks a tie in favour of the earlier candidate', () => {
+		expect(Str.nearestWithinEdits('Manicouagan_AAS_v', layers, 2)).toBe('Manicouagan_AAS_v2')
+	})
+
+	test('handles a candidate longer than any before it', () => {
+		const long = 'x'.repeat(200)
+		expect(Str.nearestWithinEdits(`${long}y`, ['a', long], 1)).toBe(long)
+	})
+})
+
 describe('Str.simpleUniqueStringMatch', () => {
 	const names = [PYOTR, TANAKA, 'Bob', JOSE_PRECOMPOSED]
 

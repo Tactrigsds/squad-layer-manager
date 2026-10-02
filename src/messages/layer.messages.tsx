@@ -201,9 +201,33 @@ export const pasteErrorsTitle = def('{count, plural, one {# line cannot be added
 
 export const pasteErrorLine = def('Line {lineNumber}', (lineNumber: number) => ({ lineNumber }))
 
-export const pasteErrorUnparsable = def('not a layer')
+export const pasteProblemUnknownLayer = def('unknown layer {value}', (value: string) => ({ value }))
 
-export const pasteErrorUnknownLayer = def('no such layer')
+export const pasteProblemUnknownFaction = def('unknown faction {value} for team {team}', (value: string, team: number) => ({
+	value,
+	team,
+}))
+
+export const pasteProblemUnknownUnit = def('unknown unit {value} for team {team}', (value: string, team: number) => ({ value, team }))
+
+export const pasteProblemDidYouMean = def('(did you mean {suggestion}?)', (suggestion: string) => ({ suggestion }))
+
+export const pasteProblemMissingFaction = def('no faction for team {team}', (team: number) => ({ team }))
+
+export const pasteProblemUnavailableFaction = def(
+	'{faction} is not available to team {team} on this layer',
+	(faction: string, team: number) => ({ faction, team }),
+)
+
+export const pasteProblemMirrorMatchup = def('{faction} cannot play against itself', (faction: string) => ({ faction }))
+
+export const pasteErrorUnknownLayer = def('this layer cannot be played with these factions and units')
+
+export const validateLayers = def('Validate layers')
+
+export const validateLayersHelp = def(
+	'When this is on, SLM adds nothing until every line names a playable layer. Turn it off to add lines that match no known layer as raw layers.',
+)
 
 export const pasteErrorModNotInstalled = def('{collection} is not installed on this server', (collection: string) => ({ collection }))
 

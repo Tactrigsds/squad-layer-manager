@@ -400,13 +400,52 @@ describe('parseRawLayerLines', () => {
 		const lines = L.parseRawLayerLines(`\n${vanilla}\n\n  \nnot a layer at all\n`)
 		expect(lines.map((l) => [l.lineNumber, l.code])).toEqual([
 			[2, 'ok'],
-			[5, 'err:unknown-layer'],
+			[5, 'err:unparsable'],
 		])
 	})
 
-	it('flags a layer the catalog does not have', () => {
-		const [line] = L.parseRawLayerLines('Atlantis_RAAS_v1 RGF USMC')
-		expect(line.code).toBe('err:unknown-layer')
+	it.each([
+		[
+			'a layer, suggesting the closest catalog name',
+			'Manicougan_AAS_v3 USA+LightInfantry PLANMC+CombinedArms',
+			[{ code: 'unknown-layer', value: 'Manicougan_AAS_v3', suggestion: 'Manicouagan_AAS_v3' }],
+		],
+		['a gamemode', 'Narva_RASS_v1 RGF USMC', [{ code: 'unknown-layer', value: 'Narva_RASS_v1', suggestion: 'Narva_RAAS_v1' }]],
+		['a faction', 'Narva_RAAS_v1 RFG USMC', [{ code: 'unknown-faction', team: 1, value: 'RFG', suggestion: 'RGF' }]],
+		[
+			'a unit',
+			'Narva_RAAS_v1 RGF+CombindArms USMC',
+			[{ code: 'unknown-unit', team: 1, value: 'CombindArms', suggestion: 'CombinedArms' }],
+		],
+		['a left-out faction', 'Narva_RAAS_v1 RGF', [{ code: 'missing-faction', team: 2 }]],
+	])('flags a misspelled %s as unparsable, keeping the raw layer', (_, text, problems) => {
+		const [line] = L.parseRawLayerLines(text)
+		expect(line).toMatchObject({ code: 'err:unparsable', problems })
+		expect(line.code === 'err:unparsable' && line.layer && L.isRawLayer(line.layer)).toBe(true)
+	})
+
+	it('names each misspelled part of one line', () => {
+		const [line] = L.parseRawLayerLines('Narva_RAAS_v1 RFG USMC+CombindArms')
+		expect(line).toMatchObject({
+			code: 'err:unparsable',
+			problems: [
+				{ code: 'unknown-faction', team: 1, value: 'RFG' },
+				{ code: 'unknown-unit', team: 2, value: 'CombindArms' },
+			],
+		})
+	})
+
+	it('flags a unit the faction cannot field on the layer as an unknown layer', () => {
+		const [line] = L.parseRawLayerLines('Narva_RAAS_v1 RGF USMC+AirAssault')
+		expect(line).toMatchObject({
+			code: 'err:unknown-layer',
+			problems: [{ code: 'unavailable-faction', team: 2, faction: 'USMC', unit: 'AirAssault' }],
+		})
+	})
+
+	it('flags a faction against itself as an unknown layer', () => {
+		const [line] = L.parseRawLayerLines('Narva_RAAS_v1 RGF RGF')
+		expect(line).toMatchObject({ code: 'err:unknown-layer', problems: [{ code: 'mirror-matchup', faction: 'RGF' }] })
 	})
 
 	it('passes a modded layer when its collection is installed', () => {
