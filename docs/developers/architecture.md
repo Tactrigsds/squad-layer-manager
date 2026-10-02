@@ -3,7 +3,7 @@
 The shape of SLM and the patterns that recur throughout it. It is a guide, not a specification. Where the code and this
 document disagree, the code wins. Individual modules document their own quirks in-code.
 
-[CLAUDE.md](../CLAUDE.md) states the rules that this document gives the reasoning for.
+[CLAUDE.md](../../CLAUDE.md) states the rules that this document gives the reasoning for.
 
 ## Contents
 
@@ -34,7 +34,7 @@ Two Rust components are kept alongside the TypeScript:
   page over the wire.
 - **The server agent**, an optional binary installed next to a game server. It streams that server's logs to SLM and
   proxies its RCON, so SLM never holds the RCON password and never needs to reach the RCON port. It is not required
-  to run SLM. See [server_agent.md](server_agent.md).
+  to run SLM. See [server_agent.md](../guide/operations/server_agent.md).
 
 The tree, in layering order:
 
@@ -514,7 +514,7 @@ has any reference, or to store an apply-filter loop (which has no fixed point on
 The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
 `SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Id resolution is a catalog lookup over
 `mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
-source (`data/sources/`, see docs/layer_data.md) whose collection becomes the id's Collection segment. The Collection
+source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collection becomes the id's Collection segment. The Collection
 column is how filters and pools single a source out.
 
 Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
@@ -676,7 +676,7 @@ The browser runs the engine for everything the UI does, so the server's copy exi
 autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
 drops it, because loading costs considerably more resident memory than holding it does.
 
-The data it reads is a versioned pair of artifacts. See [layer_data.md](layer_data.md).
+The data it reads is a versioned pair of artifacts. See [layer_data.md](../guide/operations/layer_data.md).
 
 ## Data and persistence
 

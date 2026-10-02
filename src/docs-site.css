@@ -132,7 +132,7 @@
 		align-items: center;
 		gap: 8px;
 		width: min(420px, 100%);
-		min-width: 0;
+		min-width: 38px;
 		height: 36px;
 		margin-inline-start: 8px;
 		padding: 0 10px;
@@ -154,7 +154,8 @@
 	}
 	.docs-sections {
 		display: flex;
-		gap: 20px;
+		flex-wrap: wrap;
+		gap: 8px 20px;
 		font-family: var(--font-cond);
 		font-weight: 700;
 		font-size: 13px;
@@ -162,6 +163,7 @@
 		text-transform: uppercase;
 	}
 	.docs-sections a {
+		white-space: nowrap;
 		color: var(--text-2);
 		text-decoration: none;
 	}
@@ -221,7 +223,7 @@
 	.docs-version-panel {
 		position: absolute;
 		top: calc(100% + 6px);
-		inset-inline-end: 0;
+		inset-inline-start: 0;
 		min-width: 180px;
 		max-height: 60vh;
 		overflow-y: auto;
@@ -840,26 +842,54 @@
 			inset 0 -1px 0 var(--pri-lo);
 	}
 	.docs-highlights {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+		display: flex;
+		flex-direction: column;
 		gap: 16px;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
-	.docs-highlights a {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		height: 100%;
-		padding: 18px 20px;
-		text-decoration: none;
+	.docs-highlights li {
+		display: grid;
+		grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		align-items: center;
+		gap: 24px;
+		padding: 16px;
 		background: var(--panel);
 		border: 1px solid var(--line);
 		border-radius: 3px;
 	}
-	.docs-highlights a:hover {
-		border-color: var(--pri);
+	.docs-highlights li:nth-child(even) {
+		grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+	}
+	.docs-highlights li:nth-child(even) .docs-highlight-shot {
+		order: 2;
+	}
+	.docs-highlight-shot {
+		aspect-ratio: 16 / 10;
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: 3px;
+	}
+	.docs-highlight-icon {
+		display: grid;
+		place-items: center;
+		background: var(--ground);
+	}
+	.docs-highlight-shot img {
+		display: block;
+		max-width: none;
+		height: auto;
+	}
+	@media (width < 768px) {
+		.docs-highlights li,
+		.docs-highlights li:nth-child(even) {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 14px;
+		}
+		.docs-highlights li:nth-child(even) .docs-highlight-shot {
+			order: 0;
+		}
 	}
 	.docs-video {
 		position: relative;

@@ -226,18 +226,12 @@ function buildStampOf(dbPath: string): DbMeta.BuildStamp | null {
 	}
 }
 
-// CI publishes every commit as `commit-<first 7 of sha>` (see .github/workflows/docker-ci.yml). null when the stamp
-// isn't a git sha we can turn into a tag (e.g. an "unknown" build with no GIT_SHA baked in).
-function imageTagFor(sha: string): string | null {
-	return /^[0-9a-f]{7,40}$/i.test(sha) ? `commit-${sha.slice(0, 7)}` : null
-}
-
 // the line(s) telling the operator which image this backup belongs to, so they can pin it before starting the app.
 function pinGuidance(stamp: DbMeta.BuildStamp | null): string {
 	if (!stamp) {
 		return 'This backup carries no build stamp (it predates version stamping); use the migration gap reported here to work out which image to pin.'
 	}
-	const tag = imageTagFor(stamp.gitSha)
+	const tag = DbMeta.imageTagFor(stamp.gitSha)
 	const version = formatVersion(stamp.gitBranch, stamp.gitSha)
 	return tag
 		? `This backup belongs to build ${version}. Pin it by setting \`SLM_IMAGE_TAG=${tag}\` in .env before starting the app.`

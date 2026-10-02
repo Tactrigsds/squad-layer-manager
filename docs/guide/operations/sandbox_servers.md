@@ -14,7 +14,7 @@ Sandbox Controls**, which appears only on sandbox servers, and only for users ho
 From there, connect fabricated players, speak as them in all or admin chat, form squads, end matches, and drop the RCON
 connection to watch SLM reconnect.
 
-The window embeds the [server console](./server_console.md). The console is available on every server, under its
+The window embeds the [server console](server_console.md). The console is available on every server, under its
 own permission.
 
 The window shows nothing about the world except the fabricated players' names, which every action uses to address a

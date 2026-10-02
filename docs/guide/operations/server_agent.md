@@ -13,12 +13,12 @@ Use it when SLM runs somewhere other than the game host. It is the recommended c
 The agent tails the server's `SquadGame.log` and sends new lines as they are written. If the connection drops, the
 agent reconnects on its own.
 
-The source is at [server-agent/agent](../server-agent/agent). It is a small rust program.
+The source is at [server-agent/agent](../../../server-agent/agent). It is a small rust program.
 
 ## Setting up the server in SLM
 
 Set the server's connection mode to _server agent_. See
-[configuring.md](configuring.md#21-connecting-the-server) for where to find that setting.
+[Connecting the server](../configuring/servers.md#connecting-the-server) for where to find that setting.
 
 Then choose or generate a secret token. The agent sends it to authenticate, so anyone who has it can connect as this
 server's agent. Keep it with your other secrets.

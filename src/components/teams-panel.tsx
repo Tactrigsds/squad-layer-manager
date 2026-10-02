@@ -946,7 +946,7 @@ type CombinedRowMeta = BaseRowMeta & {
 type CombinedTableMeta = BasePlayerTableMeta & CombinedRowMeta
 
 // A body cell renders from plain values rather than TanStack's row and table objects, which are mutable: the memoized
-// PlayerRow would render them stale (see "Component rules" in docs/architecture.md).
+// PlayerRow would render them stale (see "Component rules" in docs/developers/architecture.md).
 type RowCellProps<T, M> = { player: T; playerId: SM.PlayerId; selected: boolean; meta: M }
 type RowCellRenderer<T, M> = (props: RowCellProps<T, M>) => React.ReactNode
 type PlayerColumn<T, M> = { def: ColumnDef<T, any>; cell: RowCellRenderer<T, M> }
@@ -1855,7 +1855,7 @@ function rowPlayerId(target: EventTarget): SM.PlayerId | null {
 
 // What a table's one context menu is showing. Rows and squad labels mount no menu of their own: right-click and
 // long-press are delegated to the table body, which reads the target off the element hit, the same way the
-// activity feed's rows work (docs/architecture.md, "The activity feed is built as dom").
+// activity feed's rows work (docs/developers/architecture.md, "The activity feed is built as dom").
 type RowMenuTarget = { kind: 'player'; playerId: SM.PlayerId } | { kind: 'squad'; squad: SM.UniqueSquad }
 
 // a squad label or squad header row wins over the player row around it

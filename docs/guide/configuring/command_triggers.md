@@ -7,7 +7,7 @@ the command's arguments exactly as written.
 A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut, which is what
 command aliases used to be.
 
-See [configuring.md](configuring.md#4-in-game-commands) for the commands themselves, and for the prefix every
+See [In-game commands](admin_actions.md#in-game-commands) for the commands themselves, and for the prefix every
 trigger starts with.
 
 ## Shortcuts

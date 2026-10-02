@@ -18,7 +18,7 @@ resumed later, and replayed once finished. Follow them on a desktop, with a mous
 ## Practising on the sandbox server
 
 A fresh install comes with a server named _Sandbox_, attached to an emulated Squad server. Use it to try the queue,
-votes and player actions without affecting real players. See [sandbox_servers.md](sandbox_servers.md).
+votes and player actions without affecting real players. See [sandbox_servers.md](operations/sandbox_servers.md).
 
 ## Tooltips
 
@@ -38,5 +38,5 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 
 ## Setting SLM up
 
-To install SLM, see [installing.md](installing.md). To change how it behaves, such as vote timing or what SLM
-announces in game, see [configuring.md](configuring.md).
+To install SLM, see [installing.md](../installing.md). To change how it behaves, such as vote timing or what SLM
+announces in game, see [configuring.md](configuring/overview.md).

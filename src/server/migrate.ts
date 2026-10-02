@@ -198,6 +198,13 @@ export function getPendingMigrations(driver: MigrationDriver, opts: { sqlDir: st
 	return collectMigrationNames(opts.sqlDir, opts.tsMigrations).filter((name) => !applied.has(name))
 }
 
+// Read-only: migrations recorded as applied that this build does not ship, meaning a newer build has migrated the
+// database. Used by the boot interlock (see db.ts), since an older build cannot run against a newer schema.
+export function getUnknownAppliedMigrations(driver: MigrationDriver, opts: { sqlDir: string; tsMigrations: TsMigration[] }): string[] {
+	const known = new Set(collectMigrationNames(opts.sqlDir, opts.tsMigrations))
+	return [...getAppliedNames(driver)].filter((name) => !known.has(name)).sort()
+}
+
 function getAppliedNames(driver: MigrationDriver): Set<string> {
 	const exists = driver.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='${TABLE}'`).get()
 	if (!exists) return new Set()

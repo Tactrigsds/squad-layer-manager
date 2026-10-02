@@ -1,7 +1,7 @@
 # Backups and restoring
 
 Where backups come from, what the files mean, and how to put one back. Turning them on is part of
-[installing](installing.md#8-backups).
+[installing](../../installing.md#8-backups).
 
 ## When backups happen
 
@@ -22,7 +22,7 @@ minute apart, and the next periodic backup comes a full interval later.
 
 Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
 
-## What the filenames mean
+## The Filename format
 
 Every backup is named for where it came from:
 
@@ -103,7 +103,7 @@ every server disabled and every integration token unset, and each has to be re-e
 key wherever the backups are kept, and restore the two together. If the backup belongs to an older key that is still
 available, set that key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` for the first boot after restoring. That boot re-encrypts
 everything under the current key, and the variable can be removed again (see
-[installing.md, encryption key](installing.md#7-encryption-key)).
+[installing.md, encryption key](../../installing.md#7-encryption-key)).
 
 The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
 undone. Delete it once the restore is confirmed. The backup is checked (`integrity_check`) before anything is moved, so
@@ -115,7 +115,7 @@ Restoring while the app is running also loses data: the app keeps writing to a d
 
 ## Pinning a version
 
-`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see [installing.md, Upgrading](installing.md#12-upgrading)).
+`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see [installing.md, Upgrading](../../installing.md#13-upgrading)).
 Pinning means setting it to a tag that names a single build, so `docker compose up -d` keeps running the same one.
 
 A release such as `2026.9.4` is one build. CI also publishes every commit as `commit-<short sha>`, so any build that

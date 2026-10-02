@@ -1,22 +1,26 @@
 # Server console
 
-The console is a live tail of what a squad server is saying and being told. It is available on every server, including
-sandboxes. The dashboard shows what SLM believes is true. The console shows what went over the wire. Use the console when
-the two disagree.
+The console streams a squad server's raw traffic as it arrives: the RCON commands SLM sends and the server's responses,
+the server's log lines, every chat message players send, and the state of SLM's connections to the server. It is
+available on every server, including sandboxes. The dashboard shows the state SLM derives from that traffic, and the
+console shows the traffic itself. Use the console when the dashboard does not match what is happening on the server.
 
 Open it from **Server Actions -> Server Console**. It is a draggable window, so it can stay open beside the dashboard
 while a problem is reproduced.
 
 ## Channels
 
-There are three channels. Read them together (**All**) or one at a time.
+There are four channels. Read them together (**All**) or one at a time.
 
 - **RCON**: every command and response, in both directions. `rcon <-` is a command arriving at the game server,
   `rcon ->` is the server answering. The direction is always written from the server's point of view, even though
   SLM is at the other end, so a sandbox and a real server read the same way.
 - **Logs**: the raw log lines as ingested, before parsing. Lines from every source (local file, SFTP poll, server
   agent, sandbox) appear here as SLM received them.
-- **Player Commands**: what players typed, by channel and author.
+- **Player Commands**: every chat message, with its chat channel and author. The channel records all chat, not only
+  commands.
+- **Connection**: SLM's connection attempts to the server, and any refusals, retries and disconnects, with the error
+  behind each failure. It is the only channel that records anything while the server is unreachable.
 
 ## Hide noise
 

@@ -761,7 +761,7 @@ registry. Those are most of what running it proves, so pack and install it befor
 
 ## How an admin installs it
 
-The admin's side is in [configuring.md](configuring.md#9-plugins).
+The admin's side is in [Plugins](../guide/configuring/plugins.md).
 
 On the settings page, under Plugins, they paste the `plugin.json` url. SLM downloads the files into its own
 plugins folder and runs that local copy, so your plugin keeps working when your host does not. SLM fetches again only
