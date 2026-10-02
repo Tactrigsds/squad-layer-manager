@@ -6,9 +6,6 @@
 // entry, and returns subtrees that need no encoding by reference, copying an object or array only once a child of it
 // changed. A payload of plain JSON values comes back as the same reference.
 //
-// One divergence: an array hole reads as undefined here and is recorded as such, where the stock serializer leaves it
-// for JSON.stringify to write as null.
-//
 // Custom serializers are not supported.
 import {
 	STANDARD_RPC_JSON_SERIALIZER_BUILT_IN_TYPES as T,
@@ -63,6 +60,8 @@ function encode(data: unknown, path: Path, meta: Meta, maps: Path[], blobs: Blob
 			const v = data[i]
 			let encoded: unknown
 			if (v === undefined) {
+				// a hole is left for JSON.stringify to write as null, as the stock serializer does; plugin results carry them
+				if (!(i in data)) continue
 				path[depth] = i
 				meta.push([T.UNDEFINED, ...path])
 				encoded = null
@@ -79,6 +78,8 @@ function encode(data: unknown, path: Path, meta: Meta, maps: Path[], blobs: Blob
 			}
 		}
 		path.pop()
+		// a trailing hole is never assigned
+		if (out) out.length = len
 		return out ?? data
 	}
 

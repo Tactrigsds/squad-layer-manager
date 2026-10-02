@@ -45,6 +45,11 @@ describe('FastRPCJsonSerializer', () => {
 				[2n, { d: new Date(1) }],
 			]),
 			[1, undefined, 3, null, [undefined, 4n]],
+			// holes: alone, beside a copied element, and trailing
+			// oxlint-disable-next-line no-sparse-arrays
+			[1, , 3],
+			// oxlint-disable-next-line no-sparse-arrays
+			[4n, , undefined, ,],
 			{ a: undefined, b: 1, c: { d: 2n, e: [new Date(2), 'x'] } },
 			{ a: 1, toJSON: () => 'nope', b: 2n },
 			{ toJSON: () => 'nope', a: 1 },
