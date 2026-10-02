@@ -40,6 +40,23 @@ function assertNotLegacyDbPath() {
 	)
 }
 
+// Migrations only go forward, so a build older than the one that last migrated the database would run against a
+// schema it doesn't know. Only a warning outside production: a development database is cloned from the main checkout,
+// which is routinely ahead of an older worktree's branch.
+function assertNotNewerThanBuild(driver: Database, migrateOpts: { sqlDir: string; tsMigrations: Migrate.TsMigration[] }) {
+	const unknown = Migrate.getUnknownAppliedMigrations(driver, migrateOpts)
+	if (unknown.length === 0) return
+	const stamp = DbMeta.readBuildStamp(driver)
+	const tag = stamp && DbMeta.imageTagFor(stamp.gitSha)
+	const msg =
+		`the database was migrated by a newer build of SLM than this one (${ENV.PUBLIC_GIT_SHA}), and records ${unknown.length} ` +
+		`migration(s) this build does not have: ${unknown.join(', ')}. SLM cannot be downgraded. ` +
+		(tag ? `Set SLM_IMAGE_TAG=${tag}, the build that last ran against it, ` : 'Run the build that last ran against it, ') +
+		'or restore a backup taken before the upgrade (see docs/guide/operations/backups.md).'
+	if (ENV.NODE_ENV === 'production') throw new Error(`Refusing to start: ${msg}`)
+	log.warn(msg)
+}
+
 export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	log = module.getLogger()
 	ENV = envBuilder()
@@ -62,6 +79,7 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	// intentionally run pre-migration pass skipMigrationCheck.
 	if (!opts?.skipMigrationCheck) {
 		const migrateOpts = { sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'), tsMigrations }
+		assertNotNewerThanBuild(driver, migrateOpts)
 		if (ENV.DB_AUTOMIGRATE) {
 			const { applied } = await Migrate.applyPendingMigrations(driver, {
 				...migrateOpts,
@@ -158,7 +176,7 @@ async function acquireTxLock(): Promise<() => void> {
 
 // Only queries may be awaited inside a transaction: the lock above is process-wide, so a callback that waits on
 // anything else stalls every other write in the process for as long as it waits (and whatever it waited on is not
-// rolled back with the transaction anyway). See docs/architecture.md.
+// rolled back with the transaction anyway). See docs/developers/architecture.md.
 //
 // That property is detectable rather than merely conventional. better-sqlite3 is synchronous, so an awaited drizzle
 // query settles on a microtask, and the microtask queue always drains before the loop reaches the check phase --
@@ -200,7 +218,7 @@ function reportAsyncTx(callSite: Error): void {
 	const msg =
 		'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, ' +
 		'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its ' +
-		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/architecture.md.'
+		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/developers/architecture.md.'
 	switch (ENV.NODE_ENV) {
 		// a violation is a latency bug rather than a correctness one, and rolling a transaction back over it in prod
 		// would turn slow writes into failed ones

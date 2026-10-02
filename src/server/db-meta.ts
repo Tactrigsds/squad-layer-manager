@@ -33,3 +33,9 @@ export function readBuildStamp(driver: Database): BuildStamp | null {
 	if (gitSha === undefined || gitBranch === undefined) return null
 	return { gitSha, gitBranch }
 }
+
+// CI publishes every commit as `commit-<first 7 of sha>` (see .github/workflows/docker-ci.yml). null when the stamp
+// isn't a git sha we can turn into a tag (e.g. an "unknown" build with no GIT_SHA baked in).
+export function imageTagFor(sha: string): string | null {
+	return /^[0-9a-f]{7,40}$/i.test(sha) ? `commit-${sha.slice(0, 7)}` : null
+}

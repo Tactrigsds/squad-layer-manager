@@ -167,3 +167,16 @@ describe('applyPendingMigrations', () => {
 		expect(driver.pragma('foreign_keys', { simple: true })).toBe(1)
 	})
 })
+
+describe('getUnknownAppliedMigrations', () => {
+	test('names the migrations a newer build applied that this build does not ship', async () => {
+		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
+		writeSqlMigration('0002_second', 'CREATE TABLE second (id INTEGER PRIMARY KEY)')
+		await apply()
+		expect(Migrate.getUnknownAppliedMigrations(driver, { sqlDir, tsMigrations: [] })).toEqual([])
+
+		// the older build: same database, one migration fewer on disk
+		fs.rmSync(path.join(sqlDir, '0002_second.sql'))
+		expect(Migrate.getUnknownAppliedMigrations(driver, { sqlDir, tsMigrations: [] })).toEqual(['0002_second'])
+	})
+})
