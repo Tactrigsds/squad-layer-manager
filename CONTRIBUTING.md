@@ -142,6 +142,11 @@ pnpm release    # moves changes/*.md into changelog/<version>/ and regenerates C
 Commit the result on a branch and merge it. Once CI passes on the merged commit, it tags the commit
 `v<version>` and the image `:<version>` and `:stable`.
 
+To deploy a change without waiting for the integration suite, add the `fasttrack` label to its pull request before
+merging. CI on main then publishes `:latest` and deploys once the build and the quality checks pass, in about 3
+minutes instead of 12. The integration suite still runs on the merged commit, so check the suite's result after the
+deploy. A fasttracked release commit is not tagged until the suite passes on it.
+
 `pnpm release` also lists the commits since the last release that have no fragment. Read them before merging: add
 a fragment for any that should have had one and run it again.
 
