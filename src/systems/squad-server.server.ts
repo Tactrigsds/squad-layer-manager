@@ -1194,11 +1194,18 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 	})
 	log.info('Initialized server %s', serverId)
+	// Not awaited. The warn needs the roster, and against an unreachable server the roster fetch retries for about
+	// 15s, which the boot would otherwise spend holding this server's lifecycle lock and serving no requests.
 	if (Settings.GLOBAL_SETTINGS.warnOnSlmStart) {
-		const restartedBy = AppEventsSys.restartInfo
-			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
-			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy))
+		const warnCtx = { ...ctx, ...managedServer }
+		void (async () => {
+			const restartedBy = AppEventsSys.restartInfo
+				? await Users.resolveDisplayName(warnCtx, AppEventsSys.restartInfo.userId, 'someone')
+				: undefined
+			await SquadRcon.warnAllAdmins(warnCtx, SS_Msgs.slmStarted(restartedBy))
+		})().catch((err) => {
+			if (!Prom.isAbortError(err)) log.error(err, 'Server %s: warning admins that SLM started failed', serverId)
+		})
 	}
 }
 

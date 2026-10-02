@@ -1,5 +1,6 @@
 import { Mutex } from 'async-mutex'
 import * as E from 'drizzle-orm'
+import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
@@ -8,6 +9,7 @@ import type * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
@@ -146,12 +148,18 @@ export const loadState = Instr.spanOp(
 // Fills the cache with the newest finished matches. Only at boot: a roll would otherwise re-read the whole of the
 // match that just ended under its transaction, for a reader who may never open it, and getMatchEvents fills the
 // cache on first open anyway.
+//
+// One match per turn of the event loop. Reading a match is a synchronous query and parse of every one of its rows,
+// and every managed server primes at once while the app boots.
 async function primeEventsCache(ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) {
 	const matchIdsToPrime = ctx.matchHistory.recentMatches
 		.filter((match) => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
 		.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
 		.map((match) => match.historyEntryId)
-	if (matchIdsToPrime.length > 0) await MatchEventsCache.getFeedEventsForMatches(ctx, ...matchIdsToPrime)
+	for (const matchId of matchIdsToPrime) {
+		await Timers.setImmediate(undefined, { signal: ctx.signal })
+		await MatchEventsCache.getFeedEventsForMatches(ctx, matchId)
+	}
 }
 
 // Otherwise nothing populates match history until rcon connects and syncs, and a server whose rcon never connects
@@ -163,7 +171,11 @@ export const initState = Instr.spanOp(
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) => {
 		await loadState(ctx)
 		addReleaseTask(ctx.matchHistory.dispatchUpdate)
-		addReleaseTask(() => primeEventsCache(ctx).catch((err) => log.error(err, 'priming the match events cache failed')))
+		addReleaseTask(() =>
+			primeEventsCache(ctx).catch((err) => {
+				if (!Prom.isAbortError(err)) log.error(err, 'priming the match events cache failed')
+			}),
+		)
 		// Runs for the life of the server, off the mutex and off this thread: every match without a scoreline
 		// gets one, oldest history included, at a pace that leaves the rcon loop alone.
 		addReleaseTask(() =>

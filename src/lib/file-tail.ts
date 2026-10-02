@@ -1,5 +1,6 @@
 import EventEmitter from 'node:events'
 import * as fsp from 'node:fs/promises'
+import { StringDecoder } from 'node:string_decoder'
 
 import { getChildModule, type OtelModule } from './otel'
 
@@ -28,6 +29,8 @@ const DEFAULT_TAIL_LAST_BYTES = 0
 export class FileTail extends EventEmitter {
 	private options: FileTailOptions
 	private lastByteReceived: number | null = null
+	// the game can flush the log mid-character, so a read can end inside a multi-byte sequence
+	private decoder = new StringDecoder('utf8')
 	private missing = false
 	private active = false
 	private loopPromise: Promise<void> | null = null
@@ -92,6 +95,7 @@ export class FileTail extends EventEmitter {
 			this.log.info('log file shrank (rotated or truncated), restarting from its start')
 			this.options.onStatus?.('warn', `${this.options.filePath} shrank, so it was rotated or restarted; reading it from the start`)
 			this.lastByteReceived = 0
+			this.decoder = new StringDecoder('utf8')
 		}
 
 		if (this.lastByteReceived === fileSize) return
@@ -103,7 +107,8 @@ export class FileTail extends EventEmitter {
 			const { bytesRead } = await handle.read(buffer, 0, length, this.lastByteReceived)
 			if (bytesRead === 0) return
 			this.lastByteReceived += bytesRead
-			this.emit('chunk', buffer.subarray(0, bytesRead).toString('utf8'))
+			const chunk = this.decoder.write(buffer.subarray(0, bytesRead))
+			if (chunk.length > 0) this.emit('chunk', chunk)
 		} finally {
 			await handle.close()
 		}

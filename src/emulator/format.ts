@@ -114,6 +114,8 @@ export function showServerInfo(info: {
 	})
 }
 
+export const RECENTLY_DISCONNECTED_SHOWN = 15
+
 export function listPlayers(players: PlayerLike[], disconnected: PlayerLike[]): string {
 	const lines = ['----- Active Players -----']
 	let id = 0
@@ -126,8 +128,8 @@ export function listPlayers(players: PlayerLike[], disconnected: PlayerLike[]): 
 			}`,
 		)
 	}
-	lines.push('----- Recently Disconnected Players [Max of 15] -----')
-	for (const p of disconnected.slice(-15)) {
+	lines.push(`----- Recently Disconnected Players [Max of ${RECENTLY_DISCONNECTED_SHOWN}] -----`)
+	for (const p of disconnected.slice(-RECENTLY_DISCONNECTED_SHOWN)) {
 		lines.push(`ID: ${id++} | Online IDs: ${idsStr(p)} | Since Disconnect: 00m.30s | Name: ${p.name}`)
 	}
 	return lines.join('\n')

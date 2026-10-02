@@ -258,8 +258,14 @@ export class World {
 	disconnectPlayer(p: EmuPlayer) {
 		this.players.delete(p.eos)
 		if (p.squadId !== null) this.#dropFromSquad(p)
-		this.disconnected.push(p)
+		this.#recordDisconnected(p)
 		this.#log(Fmt.logPlayerDisconnected(p))
+	}
+
+	// ListPlayers shows only the most recent RECENTLY_DISCONNECTED_SHOWN, so nothing older is kept
+	#recordDisconnected(p: EmuPlayer) {
+		this.disconnected.push(p)
+		if (this.disconnected.length > Fmt.RECENTLY_DISCONNECTED_SHOWN) this.disconnected.shift()
 	}
 
 	chat(p: EmuPlayer, channel: Fmt.ChatChannel, message: string) {
@@ -562,7 +568,7 @@ export class World {
 				if (this.unkickable.has(p.eos)) return `Failed to kick player ${playerId}. ${p.name}`
 				this.#log(Fmt.logKickingPlayer(p, reason || 'Kicked by admin'), Fmt.logPlayerKicked(p, playerId))
 				this.players.delete(p.eos)
-				this.disconnected.push(p)
+				this.#recordDisconnected(p)
 				this.#log(Fmt.logPlayerDisconnected(p))
 				return `Kicked player ${playerId}. ${p.name}`
 			}
