@@ -56,6 +56,9 @@ export type InitRequest = {
 			layerData: WorkerLayerData | null
 			// the content hash of that layer data (see layer-data.client.ts), or null where the page could not learn it
 			layerDataHash: string | null
+			// the layer data the server runs on, from the config stream. Not taken from a header on the artifact: a CDN
+			// can cache the artifact and keep serving the header it was first sent with, after a deploy changed it
+			serverLayerDataHash: string
 			cacheLayerArtifact: boolean
 		}
 }
@@ -221,14 +224,14 @@ async function init(
 	const holdsLayerData = !!prev && input.layerDataHash !== null && prev.layerDataHash === input.layerDataHash
 	if (!input.layerData && !holdsLayerData) return { code: 'need-layer-data' }
 
-	const artifact = await takeLayerArtifact(prev?.artifactHash ?? null)
-
 	// the artifact and the layer data are halves of one pair, and the page fetched its half separately. A page that
 	// loaded layer data the server has since replaced cannot be served by any engine; it has to reload.
-	if (artifact.layerDataHash && input.layerDataHash && artifact.layerDataHash !== input.layerDataHash) {
-		log.warn('page is on layer data %s but the server serves %s', input.layerDataHash, artifact.layerDataHash)
+	if (input.layerDataHash && input.layerDataHash !== input.serverLayerDataHash) {
+		log.warn('page is on layer data %s but the server serves %s', input.layerDataHash, input.serverLayerDataHash)
 		return { code: 'err:stale-layer-data' }
 	}
+
+	const artifact = await takeLayerArtifact(prev?.artifactHash ?? null)
 
 	if (holdsLayerData && artifact.code === 'unchanged') return { code: 'ok', state: prev! }
 
@@ -326,9 +329,8 @@ type FetchedArtifact = {
 	buffer: ArrayBuffer
 	hash: string | null
 	fromCache: boolean
-	layerDataHash: string | null
 }
-type ArtifactResult = FetchedArtifact | { code: 'unchanged'; layerDataHash: string | null }
+type ArtifactResult = FetchedArtifact | { code: 'unchanged' }
 
 // `knownHash` is the artifact the caller already holds, whose validity is all it needs to know. A copy in OPFS is read
 // whether or not this deployment caches the artifact: cacheLayerArtifact (see config.server.ts) only decides whether
@@ -344,12 +346,11 @@ async function fetchLayerArtifact(knownHash: string | null): Promise<ArtifactRes
 	}
 
 	const res = await requestArtifact(knownHash ?? cached?.hash ?? null)
-	const layerDataHash = res.headers.get(AR.LAYER_DATA_HASH_HEADER)
 	if (res.status === 304) {
-		if (knownHash) return { code: 'unchanged', layerDataHash }
+		if (knownHash) return { code: 'unchanged' }
 		try {
 			const file = await cached!.handle.getFile()
-			return { code: 'fetched', buffer: await file.arrayBuffer(), hash: cached!.hash, fromCache: true, layerDataHash }
+			return { code: 'fetched', buffer: await file.arrayBuffer(), hash: cached!.hash, fromCache: true }
 		} catch (error) {
 			log.warn(error, 'failed to read the cached layer artifact, fetching directly')
 			return await fetchLayerArtifactDirect(null)
@@ -357,15 +358,14 @@ async function fetchLayerArtifact(knownHash: string | null): Promise<ArtifactRes
 	}
 
 	const hash = AR.parseContentHashEtag(res.headers.get('ETag'))
-	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false, layerDataHash }
+	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false }
 }
 
 async function fetchLayerArtifactDirect(knownHash: string | null): Promise<ArtifactResult> {
 	const res = await requestArtifact(knownHash)
-	const layerDataHash = res.headers.get(AR.LAYER_DATA_HASH_HEADER)
-	if (res.status === 304) return { code: 'unchanged', layerDataHash }
+	if (res.status === 304) return { code: 'unchanged' }
 	const hash = AR.parseContentHashEtag(res.headers.get('ETag'))
-	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false, layerDataHash }
+	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false }
 }
 
 async function requestArtifact(knownHash: string | null) {

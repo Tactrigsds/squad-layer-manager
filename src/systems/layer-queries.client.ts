@@ -613,6 +613,7 @@ async function setup() {
 		filters,
 		layerData: null,
 		layerDataHash: LayerDataClient.hash,
+		serverLayerDataHash: config.layerDataHash,
 		cacheLayerArtifact: config.cacheLayerArtifact,
 	}
 	const initPromise = (async () => {
