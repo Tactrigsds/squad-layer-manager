@@ -1320,31 +1320,44 @@ export async function kickPlayerAction(
 	await SquadRcon.kickPlayer(ctx, target, reason)
 }
 
-// a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
-// batch, and each kick's server event is attributed to it.
+// a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the players
+// the roster confirms gone, and each kick's server event is attributed to it. Returns those players.
 export async function kickPlayersAction(
 	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
-) {
-	if (targets.length === 0) return
+): Promise<SM.PlayerId[]> {
+	if (targets.length === 0) return []
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-	const appEvent = AppEvents.create<AppEvents.PlayerKicked>({
-		type: 'PLAYER_KICKED',
-		actor,
-		serverId: ctx.serverId,
-		matchId: currentMatch?.historyEntryId ?? null,
-		causeId: null,
-		targets,
-		reason,
-	})
-	await emitAppEvent(ctx, appEvent)
 	const message = ctx.tr.text(SM_Msgs.notifyKicked(reason && AAR.renderAppliedReason(reason)))
-	for (const target of targets) {
-		await kickPlayerAction(ctx, target, { type: 'event', id: appEvent.id }, message)
+	let appEvent: AppEvents.PlayerKicked
+	{
+		// The app event can only be written once the roster confirms the kicks, and a kick's server event references it.
+		// Holding the processing lock keeps those server events buffered until the app event exists.
+		using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
+		const kicked = await SquadRcon.kickPlayersConfirmed(ctx, targets, message)
+		if (kicked.length === 0) return []
+		appEvent = AppEvents.create<AppEvents.PlayerKicked>({
+			type: 'PLAYER_KICKED',
+			actor,
+			serverId: ctx.serverId,
+			matchId: currentMatch?.historyEntryId ?? null,
+			causeId: null,
+			targets: kicked,
+			reason,
+		})
+		await emitAppEvent(ctx, appEvent)
+		for (const target of kicked) {
+			PendingEvents.armExpectation(
+				ctx.server.eventState,
+				{ type: 'PLAYER_KICKED', playerId: target },
+				{ type: 'event', id: appEvent.id },
+			)
+		}
 	}
 	await notifyAdminsOfWebAction(ctx, appEvent)
+	return appEvent.targets
 }
 
 export async function broadcastAction(

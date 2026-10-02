@@ -84,4 +84,17 @@ describe('afkPlayers', () => {
 		Afk.observe(t, r, 2 * MIN)
 		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN).map((a) => a.id)).toEqual(['early', 'late'])
 	})
+
+	it('skips an unkickable player across games until they leave', () => {
+		const t = Afk.init()
+		const r = roster(player('dev', null), player('a', null))
+		Afk.observe(t, r, 0)
+		t.unkickable.add('dev')
+		Afk.note(t, { type: 'NEW_GAME' } as SE.Event, MIN)
+		Afk.observe(t, r, MIN)
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN).map((a) => a.id)).toEqual(['a'])
+		Afk.observe(t, roster(player('a', null)), 10 * MIN)
+		Afk.observe(t, r, 10 * MIN)
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 20 * MIN).map((a) => a.id)).toEqual(['a', 'dev'])
+	})
 })

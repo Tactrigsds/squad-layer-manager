@@ -32,6 +32,9 @@ waiting. At 3 it leaves three waiting. At -2 it kicks until two slots are open, 
 A kick counts as a free slot for 30 seconds, while the queued player loads in. So it does not kick twice for the
 same player.
 
+The game server refuses to kick some players, such as Squad's developers. The AFK kicker skips a refused player
+until they leave the server, and does not warn them again.
+
 ## Warnings
 
 While the server is full, every AFK player is warned once per **Warn interval**. A player about to be kicked gets

@@ -151,6 +151,8 @@ export class World {
 	matchStartedAt: Date | null = null
 	publicQueue = 0
 	publicQueueLimit = 25
+	// eos ids AdminKick refuses, as the real server refuses Squad's developers
+	unkickable = new Set<string>()
 	fogOfWar: 'on' | 'off' = 'on'
 	// A roll reassigns players to the other team index. This is what SLM's team model assumes: it
 	// norms team ids to sides A/B keyed on the match ordinal's parity, so a player's side is only
@@ -556,6 +558,8 @@ export class World {
 				const p = this.findPlayer(target)
 				if (!p) return `Could not find player ${target}`
 				const playerId = this.playerIdOf(p)
+				// stand-in wording: the real server's reply for a protected player has not been captured
+				if (this.unkickable.has(p.eos)) return `Failed to kick player ${playerId}. ${p.name}`
 				this.#log(Fmt.logKickingPlayer(p, reason || 'Kicked by admin'), Fmt.logPlayerKicked(p, playerId))
 				this.players.delete(p.eos)
 				this.disconnected.push(p)

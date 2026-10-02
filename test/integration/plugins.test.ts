@@ -166,19 +166,21 @@ describe('plugin host', () => {
 		})
 	})
 
-	it('afk-kicker warns and then kicks the squadless player a full server needs gone, and nobody else', async () => {
+	it('afk-kicker warns and then kicks the squadless player a full server needs gone, and leaves an unkickable one', async () => {
 		const world = app.emu.world
 		const idler = world.connectPlayer(makePlayer({ name: ' afk_idler', teamId: 1 }))
-		// everyone else in a squad, so the idler is the only candidate
+		const developer = world.connectPlayer(makePlayer({ name: ' afk_developer', teamId: 2 }))
+		world.unkickable.add(developer.eos)
+		// everyone else in a squad, so the idler and the developer are the only candidates
 		for (const teamId of [1, 2]) {
-			const members = world.playerList().filter((p) => p !== idler && p.teamId === teamId)
+			const members = world.playerList().filter((p) => p !== idler && p !== developer && p.teamId === teamId)
 			const [leader, ...rest] = members
 			if (!leader) continue
 			const squad = world.createSquad(leader, `AFK_TEST_${teamId}`)
 			for (const p of rest) world.joinSquad(p, squad)
 		}
 		await app.waitForRosterSync()
-		const squadded = world.playerList().filter((p) => p !== idler)
+		const squadded = world.playerList().filter((p) => p !== idler && p !== developer)
 
 		await client.plugins.setEnabled({ pluginId: 'afk-kicker', enabled: true })
 		await client.plugins.updateSettings({
@@ -191,7 +193,8 @@ describe('plugin host', () => {
 			await app.waitFor(() => warnsTo(app, idler).find((w) => w.includes('PERIODIC')), { label: 'the periodic AFK warning' })
 			expect(world.players.has(idler.eos)).toBe(true)
 
-			world.publicQueue = 1
+			// both are selected in one round, and only the idler's kick lands
+			world.publicQueue = 2
 			await app.waitFor(() => (world.players.has(idler.eos) ? undefined : true), { label: 'the AFK player being kicked' })
 		} finally {
 			world.publicQueue = 0
@@ -199,9 +202,18 @@ describe('plugin host', () => {
 		}
 
 		expect(warnsTo(app, idler).at(-1)).toContain('FINAL')
+		expect(world.players.has(developer.eos)).toBe(true)
+		expect(warnsTo(app, developer).filter((w) => w.includes('FINAL'))).toHaveLength(1)
 		for (const p of squadded) expect(world.players.has(p.eos)).toBe(true)
-		const kicks = readRows<{ actorPluginId: string | null }>(`SELECT actorPluginId FROM appEvents WHERE type = 'PLAYER_KICKED'`)
+		const kicks = readRows<{ id: string; actorPluginId: string | null }>(
+			`SELECT id, actorPluginId FROM appEvents WHERE type = 'PLAYER_KICKED'`,
+		)
 		expect(kicks.map((k) => k.actorPluginId)).toEqual(['afk-kicker'])
+		const kicked = readRows<{ value: string }>(
+			`SELECT value FROM appEventAssociations WHERE appEventId = ? AND dimension = 'player'`,
+			kicks[0].id,
+		)
+		expect(kicked.map((r) => r.value)).toEqual([idler.eos])
 
 		await client.plugins.setEnabled({ pluginId: 'afk-kicker', enabled: false })
 	})

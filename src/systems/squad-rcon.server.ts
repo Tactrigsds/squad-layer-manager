@@ -568,6 +568,27 @@ export async function kickPlayer(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids
 	ctx.squadRcon.teams.invalidate(ctx)
 }
 
+/**
+ * Kicks players and returns the ones a fresh roster no longer lists. The server refuses to kick some players, such
+ * as Squad's developers, and the reply to a refused kick has not been captured, so the roster is the evidence.
+ */
+export async function kickPlayersConfirmed(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[], reason?: string) {
+	log.info(`Kicking players %o`, targets)
+	await Promise.all(
+		targets.map((id) => ctx.rcon.execute(`AdminKick "${id}" ${reason ?? ''}`.trim(), { level: 'info', signal: ctx.signal })),
+	)
+	ctx.squadRcon.teams.invalidate(ctx)
+	const teams = await ctx.squadRcon.teams.get(ctx)
+	if (teams.code !== 'ok') {
+		log.warn('Could not read the roster after kicking %o, so no kick is confirmed: %s', targets, teams.msg)
+		return []
+	}
+	const remaining = new Set(teams.players.map((p) => SM.PlayerIds.getPlayerId(p.ids)))
+	const refused = targets.filter((id) => remaining.has(id))
+	if (refused.length > 0) log.warn('Players still on the server after a kick: %o', refused)
+	return targets.filter((id) => !remaining.has(id))
+}
+
 export async function removeFromSquad(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Removing player %s from squad`, id)

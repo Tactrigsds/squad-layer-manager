@@ -19,10 +19,12 @@ export type Tracker = {
 	lastWarned: Map<SM.PlayerId, number>
 	/** when each recent kick was sent, until its slot has had time to show up in the server info */
 	recentKicks: number[]
+	/** players the server refused to kick, left alone until they leave */
+	unkickable: Set<SM.PlayerId>
 }
 
 export function init(): Tracker {
-	return { lastActive: new Map(), squadlessSince: new Map(), lastWarned: new Map(), recentKicks: [] }
+	return { lastActive: new Map(), squadlessSince: new Map(), lastWarned: new Map(), recentKicks: [], unkickable: new Set() }
 }
 
 /**
@@ -53,7 +55,7 @@ function actors(event: SE.Event): string[] {
 }
 
 export function note(tracker: Tracker, event: SE.Event, now: number): void {
-	// recentKicks survives: it tracks slots, not players
+	// recentKicks survives because it tracks slots, and unkickable because a player's protection outlasts the game
 	if (event.type === 'NEW_GAME') {
 		tracker.lastActive.clear()
 		tracker.squadlessSince.clear()
@@ -72,17 +74,19 @@ export function observe(tracker: Tracker, roster: ReadonlyMap<SM.PlayerId, SM.Pl
 	for (const map of [tracker.lastActive, tracker.squadlessSince, tracker.lastWarned]) {
 		for (const id of map.keys()) if (!roster.has(id)) map.delete(id)
 	}
+	for (const id of tracker.unkickable) if (!roster.has(id)) tracker.unkickable.delete(id)
 }
 
 export type Rule = { kind: 'squadless' | 'idle'; window: number }
 
 export type Afk = { id: SM.PlayerId; player: SM.Player; since: number; reason: Rule['kind'] }
 
-/** Every AFK player on the roster, longest AFK first. */
+/** Every AFK player on the roster who can be kicked, longest AFK first. */
 export function afkPlayers(tracker: Tracker, roster: ReadonlyMap<SM.PlayerId, SM.Player>, rule: Rule, now: number): Afk[] {
 	const clock = rule.kind === 'idle' ? tracker.lastActive : tracker.squadlessSince
 	const out: Afk[] = []
 	for (const [id, player] of roster) {
+		if (tracker.unkickable.has(id)) continue
 		const since = clock.get(id)
 		if (since !== undefined && now - since >= rule.window) out.push({ id, player, since, reason: rule.kind })
 	}
