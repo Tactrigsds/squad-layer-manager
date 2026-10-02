@@ -1,10 +1,14 @@
-@import 'tailwindcss';
+/* source(none): automatic detection watches the whole checkout, so the dev server rebuilt this stylesheet whenever
+   the emulator wrote to data/dev, and every rebuild relaid out the entire page */
+@import 'tailwindcss' source(none);
 @import './theme.css';
 @import './foundry.css';
 
 @plugin 'tailwindcss-animate';
 
 @source './**/*.{vue,js,ts,jsx,tsx}';
+@source '../plugins/**/*.{ts,tsx}';
+@source '../index.html';
 
 @custom-variant dark (&:is(.dark *));
 

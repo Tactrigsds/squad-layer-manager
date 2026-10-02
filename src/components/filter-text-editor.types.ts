@@ -9,5 +9,7 @@ export type FilterTextEditorHandle = {
 
 export interface FilterTextEditorProps {
 	stores: EditFrame.KeyProp
+	// whether the text tab is showing; the buffer follows the filter only while it is
+	active: boolean
 	ref?: React.Ref<FilterTextEditorHandle>
 }

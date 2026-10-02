@@ -7,6 +7,7 @@ import React from 'react'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
+import { useDebouncedCommit } from '@/hooks/use-debounced-commit'
 import * as Arr from '@/lib/array-utils'
 import * as Obj from '@/lib/object-utils'
 import type { Clearable, Focusable } from '@/lib/react'
@@ -145,7 +146,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
 					<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.loadingEditor())}</p>}>
-						<FilterTextEditor ref={editorRef} stores={props.stores} />
+						<FilterTextEditor ref={editorRef} stores={props.stores} active={activeTab === 'text'} />
 					</React.Suspense>
 				</div>
 			</div>
@@ -410,6 +411,8 @@ function ChildNodeSeparator(props: {
 	stores: EditFrame.KeyProp
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
+	// dnd-kit re-renders only on the fields read before its first layout effect, so read this before any branch
+	const isDropTarget = dropProps.isDropTarget
 	const activeItem = DndKit.useDragging()
 	const [expanded, setExpanded] = React.useState(false)
 	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
@@ -424,11 +427,6 @@ function ChildNodeSeparator(props: {
 	if (props.item.slots[0].position === 'on') {
 		depth++
 	}
-
-	// WARNING: without this useEffect the component breaks. something fucky must be happening with dndkit or some memoization issue
-	React.useEffect(() => {
-		console.debug('item', props.item, 'Drop target', dropProps.isDropTarget, 'itemPath', itemPath, 'activePath', activePath)
-	}, [dropProps.isDropTarget, itemPath, activePath, props.item])
 
 	if (expanded) {
 		return (
@@ -449,7 +447,7 @@ function ChildNodeSeparator(props: {
 				ref={dropProps.ref}
 				aria-label={tr.text(F_Msgs.insertCondition())}
 				onClick={() => setExpanded(true)}
-				data-is-over={dropProps.isDropTarget && isValid}
+				data-is-over={isDropTarget && isValid}
 				className={cn(
 					'group absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1',
 					// while dragging the target grows over the rows either side rather than pushing them apart,
@@ -1638,9 +1636,6 @@ export function StringEqConfig<T extends string | null>(props: {
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
-	// keep the callback identity out of the options memo -- parents often pass a fresh closure each render
-	const onSetAllValuesAllowedRef = React.useRef(props.onSetAllValuesAllowed)
-	onSetAllValuesAllowedRef.current = props.onSetAllValuesAllowed
 	const hasUnlockAction = !!props.onSetAllValuesAllowed
 	const options = React.useMemo(() => {
 		const column = LC.isEnumColumn(props.column) ? props.column : undefined
@@ -1654,40 +1649,17 @@ export function StringEqConfig<T extends string | null>(props: {
 				options.push({ label: '(none)', value: null, disabled: !matched && !hasUnlockAction, sortLast: !matched })
 				continue
 			}
-			let label: React.ReactNode
-			if (!matched && hasUnlockAction) {
-				label = (
-					<span
-						className="flex items-center gap-1 group w-full"
-						onClick={(e) => {
-							if (e.target !== e.currentTarget) return
-							e.stopPropagation()
-						}}
-					>
-						<span className="text-muted-foreground pointer-events-none">{value}</span>
-						<span title={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}>
-							<Icons.Unlock
-								className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-ok pointer-events-auto"
-								onClick={() => {
-									onSetAllValuesAllowedRef.current?.()
-								}}
-							/>
-						</span>
-					</span>
-				)
-			} else {
-				label = value
-			}
 			options.push({
-				label,
+				label: value,
 				...enumOptionExtras(column, value),
 				value,
 				disabled: !matched && !hasUnlockAction,
 				sortLast: !matched,
+				locked: !matched && hasUnlockAction,
 			})
 		}
 		return options
-	}, [props.column, props.allowedValues, hasUnlockAction, props.onSetAllValuesAllowedLabel])
+	}, [props.column, props.allowedValues, hasUnlockAction])
 	return (
 		<ComboBox
 			ref={props.ref}
@@ -1700,6 +1672,8 @@ export function StringEqConfig<T extends string | null>(props: {
 			options={options}
 			groupings={LC.isEnumColumn(props.column) ? enumGroupings(props.column) : []}
 			onSelect={(v) => props.setValue(v as T | undefined)}
+			onUnlock={props.onSetAllValuesAllowed}
+			unlockLabel={props.onSetAllValuesAllowedLabel ?? 'deselect all other filters and select this one'}
 		/>
 	)
 }
@@ -2019,13 +1993,23 @@ function NumericValueConfig(props: {
 	setValue: (value?: number) => void
 	ref?: React.ForwardedRef<Focusable & Clearable>
 }) {
-	const [value, setValue] = React.useState(props.value?.toString() ?? '')
 	const inputRef = React.useRef<HTMLInputElement>(null)
+	// a committed value is a shared op, so typing is batched rather than dispatched per keystroke
+	const commit = useDebouncedCommit((text: string) => props.setValue(parseNumericText(text)), 250)
+
+	// follow a value set elsewhere, such as by another editor, unless the input already reads as that value
+	React.useEffect(() => {
+		const input = inputRef.current
+		if (!input || commit.isPending()) return
+		if (!Object.is(parseNumericText(input.value), props.value)) input.value = props.value?.toString() ?? ''
+	}, [props.value, commit])
+
 	React.useImperativeHandle(props.ref, () => ({
 		...eltToFocusable(inputRef.current!),
 		clear: (ephemeral) => {
+			commit.cancel()
+			inputRef.current!.value = ''
 			if (!ephemeral) props.setValue()
-			setValue('')
 		},
 	}))
 	return (
@@ -2033,13 +2017,14 @@ function NumericValueConfig(props: {
 			ref={inputRef}
 			className={props.className}
 			placeholder={props.placeholder}
-			value={value}
-			onChange={(e) => {
-				setValue(e.target.value)
-				const value = e.target.value.trim()
-				// TODO debounce
-				return props.setValue(value === '' ? undefined : parseFloat(value))
-			}}
+			defaultValue={props.value?.toString() ?? ''}
+			onChange={(e) => commit.schedule(e.target.value)}
+			onBlur={commit.flush}
 		/>
 	)
+}
+
+function parseNumericText(text: string) {
+	const trimmed = text.trim()
+	return trimmed === '' ? undefined : parseFloat(trimmed)
 }

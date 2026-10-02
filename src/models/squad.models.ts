@@ -3,7 +3,7 @@ import * as dateFns from 'date-fns'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
 import * as CD from '@/lib/ctx-def'
-import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
+import { createLogMatcher, eventDef, type EventSchema, indexByCategory, matchLogIndexed } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as Str from '@/lib/string-utils'
@@ -1084,6 +1084,16 @@ export namespace LogEvents {
 	}
 
 	export async function* parseLogStream(chunk$: AsyncGenerator<string>, errors: Error[], opts: ParseLogStreamOpts = {}) {
+		for await (const batch of parseLogStreamBatches(chunk$, errors, opts)) yield* batch
+	}
+
+	// Yields everything one delivery produced as one array, so a consumer can persist a burst together. A null
+	// marks a line that failed to parse; its error has been pushed onto `errors`.
+	export async function* parseLogStreamBatches(
+		chunk$: AsyncGenerator<string>,
+		errors: Error[],
+		opts: ParseLogStreamOpts = {},
+	): AsyncGenerator<(ParseOutputEvent | null)[]> {
 		const { onTickRate, idleFlushMs } = opts
 		let foundLogStart: boolean = false
 		let lineBuffer: string[] = []
@@ -1113,7 +1123,7 @@ export namespace LogEvents {
 			if (foundLogStart && lineBuffer.length > 0) {
 				const bufferContent = lineBuffer.join('\n')
 				lineBuffer = []
-				const [event, err] = matchLog(bufferContent, EventMatchers)
+				const [event, err] = matchLogIndexed(bufferContent, EventMatcherIndex)
 				if (err !== null) {
 					errors.push(err)
 					yield null
@@ -1141,7 +1151,8 @@ export namespace LogEvents {
 				delivery ??= source.next()
 				const received = idleFlushMs === undefined ? await delivery : await raceIdle(delivery, idleFlushMs)
 				if (received === IDLE) {
-					yield* closeTick()
+					const out = [...closeTick()]
+					if (out.length > 0) yield out
 					continue
 				}
 				delivery = null
@@ -1150,6 +1161,7 @@ export namespace LogEvents {
 				lines[0] = carry + lines[0]
 				carry = lines.pop() ?? ''
 				if (lines.length === 0) continue
+				const out: (ParseOutputEvent | null)[] = []
 				for (const line of lines) {
 					if (onTickRate) {
 						const rate = parseTickRate(line)
@@ -1163,20 +1175,21 @@ export namespace LogEvents {
 					if (foundLogStart && lineBuffer.length > 0) {
 						const bufferContent = lineBuffer.join('\n')
 						lineBuffer = [line]
-						const [event, err] = matchLog(bufferContent, EventMatchers)
+						const [event, err] = matchLogIndexed(bufferContent, EventMatcherIndex)
 						if (event === null && err == null) continue
 						if (err !== null) {
 							errors.push(err)
-							yield null
+							out.push(null)
 							continue
 						}
 						;(event as any).raw = bufferContent.trim()
-						yield* handleEvent(event!)
+						for (const parsed of handleEvent(event!)) out.push(parsed)
 						continue
 					}
 					foundLogStart = true
 					lineBuffer = [line]
 				}
+				if (out.length > 0) yield out
 			}
 		} finally {
 			await source.return?.(undefined)
@@ -1184,13 +1197,14 @@ export namespace LogEvents {
 
 		if (foundLogStart && lineBuffer.length > 0) {
 			const bufferContent = lineBuffer.join('\n')
-			const [event, err] = matchLog(bufferContent, EventMatchers)
+			const [event, err] = matchLogIndexed(bufferContent, EventMatcherIndex)
 			if (err !== null) {
 				errors.push(err)
-				yield null
+				yield [null]
 			} else if (event !== null) {
 				;(event as any).raw = bufferContent.trim()
-				yield* handleEvent(event)
+				const out = handleEvent(event)
+				if (out.length > 0) yield out
 			}
 		}
 	}
@@ -1912,6 +1926,8 @@ export namespace LogEvents {
 		UnknownEventMatcher,
 	] as const
 
+	export const EventMatcherIndex = indexByCategory(EventMatchers)
+
 	type LogEventType = (typeof EventMatchers)[number]['event']['type']
 	export const LOG_EVENT_TYPES = z.enum(EventMatchers.map((m) => m.event.type) as [LogEventType, ...LogEventType[]])
 
@@ -1950,9 +1966,26 @@ export namespace LogEvents {
 		| VehicleExited
 		| UnknownEvent
 
-	function parseTimestamp(raw: string) {
-		const date = dateFns.parse(raw + 'Z', 'yyyy.MM.dd-HH.mm.ss:SSSX', new Date())
-		return date.getTime()
+	const TIMESTAMP = /^(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2}):(\d{3})$/
+	// every log entry carries one, and dateFns.parse costs most of what parsing an entry does. Anything the fast
+	// path can't vouch for goes through dateFns, so an out-of-range field reads the same either way.
+	export function parseTimestamp(raw: string) {
+		const m = TIMESTAMP.exec(raw)
+		if (m) {
+			const [year, month, day, hour, minute, second, ms] = [+m[1], +m[2], +m[3], +m[4], +m[5], +m[6], +m[7]]
+			const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms))
+			if (
+				date.getUTCFullYear() === year &&
+				date.getUTCMonth() === month - 1 &&
+				date.getUTCDate() === day &&
+				date.getUTCHours() === hour &&
+				date.getUTCMinutes() === minute &&
+				date.getUTCSeconds() === second
+			) {
+				return date.getTime()
+			}
+		}
+		return dateFns.parse(raw + 'Z', 'yyyy.MM.dd-HH.mm.ss:SSSX', new Date()).getTime()
 	}
 
 	// Normalizes the `caused by <token>` weapon from Die()/Wound() lines.

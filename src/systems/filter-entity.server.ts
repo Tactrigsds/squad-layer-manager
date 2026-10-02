@@ -495,21 +495,19 @@ export async function* watchFilters({
 			users: await Users.buildUsers(dbUsers),
 		},
 	}
-	for await (const [ctx, mutation] of Rx.Ext.toAsyncGenerator(filterMutation$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
+	yield* Rx.Ext.toAsyncGenerator(mutationWithParts$.pipe(Rx.Ext.withAbortSignal(signal!)))
+}
+
+// the users a mutation names, built once for every watcher rather than once per watcher
+const mutationWithParts$ = filterMutation$.pipe(
+	Rx.concatMap(async ([ctx, mutation]) => {
 		const dbUsers = await Users.selectUsers(ctx).where(
 			E.inArray(Schema.users.discordId, [...new Set([mutation.value.owner, mutation.userId])]),
 		)
-		const users = await Users.buildUsers(dbUsers)
-
-		yield {
-			code: 'mutation' as const,
-			mutation,
-			parts: {
-				users,
-			},
-		}
-	}
-}
+		return { code: 'mutation' as const, mutation, parts: { users: await Users.buildUsers(dbUsers) } }
+	}),
+	Rx.share(),
+)
 
 export async function setup() {
 	log = module.getLogger()

@@ -3,6 +3,7 @@ import React from 'react'
 
 import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
@@ -139,11 +140,17 @@ function setItemValues(comp: F.EditableCompNode, values: F.Value[] | undefined) 
 	else F.setCompValue(comp, values?.[0])
 }
 
+// Most menu items are empty, and a failed safeParse builds a ZodError with a stack. Only an `in` with an empty list
+// can be valid without a value.
+function isValidMenuItem(node: F.EditableCompNode): node is F.CompNode {
+	return (node.type === 'in' || F.editableCompHasValue(node)) && F.isValidCompNode(node)
+}
+
 function getFilterFromComparisons(items: Record<string, F.EditableCompNode>) {
 	const nodes: F.FilterNode[] = []
 	for (const key in items) {
 		const item = items[key]
-		if (!F.isValidCompNode(item)) continue
+		if (!isValidMenuItem(item)) continue
 		nodes.push(item)
 	}
 
@@ -152,28 +159,31 @@ function getFilterFromComparisons(items: Record<string, F.EditableCompNode>) {
 }
 
 export namespace Sel {
-	export function filterMenuConstraints(store: Store): LQY.Constraint[] {
-		let items: LQY.FilterMenuItem[] = []
-		const ctx = { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig }
-		for (const [field, node] of Object.entries(store.filterMenu.menuItems)) {
-			// a virtual column has no artifact column to take a distinct over, so its editor offers the whole enum
-			const returnPossibleValues = LC.isEnumeratedColumn(field, ctx) && !LC.isVirtualColumn(field, store.filterMenu.colConfig)
-			let excludedSiblings: string[] | undefined
-			if (field === 'Layer') {
-				excludedSiblings = [...(L.LAYER_STRING_PROPERTIES as string[])]
-			} else if (Arr.includes(L.LAYER_STRING_PROPERTIES, field)) {
-				excludedSiblings = ['Layer']
+	export const filterMenuConstraints = RSel.createSelector(
+		[(store: Store) => store.filterMenu.menuItems, (store: Store) => store.filterMenu.colConfig],
+		(menuItems, colConfig): LQY.Constraint[] => {
+			const items: LQY.FilterMenuItem[] = []
+			const ctx = { ...CS.init(), effectiveColsConfig: colConfig }
+			for (const [field, node] of Object.entries(menuItems)) {
+				// a virtual column has no artifact column to take a distinct over, so its editor offers the whole enum
+				const returnPossibleValues = LC.isEnumeratedColumn(field, ctx) && !LC.isVirtualColumn(field, colConfig)
+				let excludedSiblings: string[] | undefined
+				if (field === 'Layer') {
+					excludedSiblings = [...(L.LAYER_STRING_PROPERTIES as string[])]
+				} else if (Arr.includes(L.LAYER_STRING_PROPERTIES, field)) {
+					excludedSiblings = ['Layer']
+				}
+				items.push({
+					field,
+					node: isValidMenuItem(node) ? node : undefined,
+					returnPossibleValues,
+					excludedSiblings,
+				})
 			}
-			items.push({
-				field,
-				node: F.isValidCompNode(node) ? node : undefined,
-				returnPossibleValues,
-				excludedSiblings,
-			})
-		}
-		if (items.length === 0) return []
-		return [CB.filterMenuItems('filter-menu', items)]
-	}
+			if (items.length === 0) return []
+			return [CB.filterMenuItems('filter-menu', items)]
+		},
+	)
 
 	export function swapFactionsDisabled(state: Store) {
 		return !teamFieldPairs().some(([field1, field2]) =>

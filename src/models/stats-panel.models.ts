@@ -71,18 +71,14 @@ export namespace Sel {
 		},
 	)
 
-	// The current match's scoreline, tallied from the live buffer as it plays. A finished match carries its own,
-	// computed once on the server, so this is only ever the match still in progress. The buffer is mutated in
-	// place, and its generation counter is what invalidates the cache.
-	export const liveCombatStats = RSel.createDeepSelector(
-		[
-			(...[store]: TeamInputs) => store.chat.eventGeneration,
-			(...[store]: TeamInputs) => ChatPrt.Sel.chatEvents(store),
-			(...[, currentMatch]: TeamInputs) => currentMatch?.historyEntryId,
-		],
-		// the live buffer spans several matches, so the tally is scoped to the current one
-		(_generation, buffer, matchId) => (matchId === undefined ? null : MH.tallyCombatStats(buffer, matchId)),
-	)
+	// The current match's scoreline, tallied by the chat state as the match plays. A finished match carries its own,
+	// computed once on the server, so this is only ever the match still in progress.
+	export function liveCombatStats(...[store, currentMatch]: TeamInputs): MH.MatchCombatStats | null {
+		const matchId = currentMatch?.historyEntryId
+		if (matchId === undefined) return null
+		const tally = store.chat.chatState.combatTally
+		return tally?.matchId === matchId ? tally.stats : MH.EMPTY_COMBAT_STATS
+	}
 
 	const groupingIds = RSel.createDeepSelector(
 		[(...[, , , , , , settings]: BreakdownInputs) => settings?.playerGroupings],

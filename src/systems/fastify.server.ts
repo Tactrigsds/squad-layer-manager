@@ -305,7 +305,13 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			return res.code(304).send()
 		}
 		res.header('Content-Type', 'application/json')
-		if (req.headers['accept-encoding']?.includes('gzip')) {
+		res.header('Vary', 'Accept-Encoding')
+		const acceptEncoding = req.headers['accept-encoding'] ?? ''
+		if (/\bbr\b/.test(acceptEncoding)) {
+			res.header('Content-Encoding', 'br')
+			return res.send(LayerData.brotli)
+		}
+		if (acceptEncoding.includes('gzip')) {
 			res.header('Content-Encoding', 'gzip')
 			return res.send(LayerData.gzipped)
 		}
@@ -388,9 +394,19 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 
 	// A match's event history is upwards of a megabyte of json and compresses ~11x. `ws` leaves permessage-deflate
 	// off by default because it costs a zlib context per connection, so the threshold keeps the live chat stream's
-	// small frames uncompressed and no-context-takeover keeps a sliding window from being retained per socket.
+	// small frames uncompressed and no-context-takeover keeps a sliding window from being retained per socket. Each
+	// socket still holds its zlib state once it has compressed a frame. memLevel 7 cuts that by 64KB at no measurable
+	// cost in ratio. The window stays at 32KB: event history repeats the same players' records tens of KB apart, and an
+	// 8KB window sends ~60% more bytes for it.
 	instance.register(fastifyWebsocket, {
-		options: { perMessageDeflate: { threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true } },
+		options: {
+			perMessageDeflate: {
+				threshold: 1024,
+				serverNoContextTakeover: true,
+				clientNoContextTakeover: true,
+				zlibDeflateOptions: { memLevel: 7 },
+			},
+		},
 	})
 	instance.register(async function (instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {

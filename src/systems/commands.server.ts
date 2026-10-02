@@ -576,7 +576,7 @@ async function resolveArgDefs(
 				let res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(pool, (p) => p.ids, window[0])
 				// the live roster is tried first so a token that named an online player keeps naming them
 				if (def.kind === 'recent-player' && res.code === 'err:not-found') {
-					pool = [...ctx.server.chatState.interpolatedState.recentPlayers.values()]
+					pool = [...ctx.server.chatInterpolatedState.recentPlayers.values()]
 					res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(pool, (p) => p.ids, window[0])
 				}
 				if (res.code !== 'ok') {

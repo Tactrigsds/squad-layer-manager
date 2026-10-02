@@ -4,6 +4,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as FRM from '@/lib/frame'
 import * as RSel from '@/lib/reselect'
 import * as Str from '@/lib/string-utils'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import * as MH from '@/models/match-history.models'
@@ -16,6 +17,7 @@ import type { PublicSettings } from '@/systems/settings.server'
 // A/B are the two per-team tables (desktop); 'combined' is the single-table mobile layout. Squad filters are
 // per-table because a squad id only means something within one team's roster.
 export type SquadFilterTarget = MH.NormedTeamId | 'combined'
+export type FilterColumn = 'role' | 'group' | 'party' | 'squad'
 // sorting either per-team table sorts both, so A and B share the 'teams' entry
 export type SortingTarget = 'teams' | 'combined'
 
@@ -94,6 +96,11 @@ export function initTeamsPanel(args: Args) {
 	)
 }
 
+// a player outside the selection has no entry, which the record's type does not say
+function isSelected(selection: Record<SM.PlayerId, boolean>, playerId: SM.PlayerId) {
+	return (selection[playerId] as boolean | undefined) ?? false
+}
+
 function hasSelection(state: Deps) {
 	for (const id in state.playerSelection) {
 		if (state.playerSelection[id]) return true
@@ -123,6 +130,21 @@ export type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId
 // identifies a squad-group header row, and the entry holding that squad's real size in Sel.squadSizes
 export function squadGroupKey(normedTeam: MH.NormedTeamId, squadId: number | null) {
 	return `${normedTeam}:${squadId ?? 'unassigned'}`
+}
+
+// reused per enriched player for the same reason as the enrichment itself (see TeamsPanelModels)
+const combinedPlayerCache = new WeakMap<TeamsPanelModels.EnrichedPlayer, CombinedPlayer>()
+
+function toCombinedPlayer(player: TeamsPanelModels.EnrichedPlayer, normedTeam: MH.NormedTeamId, displayIndex: number): CombinedPlayer {
+	const cached = combinedPlayerCache.get(player)
+	if (cached && cached.normedTeam === normedTeam && cached.displayIndex === displayIndex) return cached
+	const combined = { ...player, normedTeam, displayIndex }
+	combinedPlayerCache.set(player, combined)
+	return combined
+}
+
+function digits(n: number) {
+	return String(n).length
 }
 
 // enough for anything reading the raw roster rather than the enriched players
@@ -250,16 +272,20 @@ export namespace Sel {
 		(showSelected, adminsOnly, showSpoilers, roleFilter) => ({ showSelected, adminsOnly, showSpoilers, roleFilter }),
 	)
 
-	// filter options are drawn from both teams so the shared role/group/party filters offer every value
-	export const availableRoles = RSel.createSelector([(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)], (players) =>
-		[...new Set(players.map((p) => p.role).filter((r): r is string => r != null))].sort(),
+	// filter options are drawn from both teams so the shared role/group/party filters offer every value. Deep, because
+	// the roster changes on every kill and the group colors and table meta built from these must not.
+	export const availableRoles = RSel.createDeepSelector(
+		[(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)],
+		(players) => [...new Set(players.map((p) => p.role).filter((r): r is string => r != null))].sort(),
 	)
-	export const availableGroups = RSel.createSelector([(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)], (players) =>
-		[...new Set(players.map((p) => p.group).filter((g): g is string => g != null))].sort(),
+	export const availableGroups = RSel.createDeepSelector(
+		[(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)],
+		(players) => [...new Set(players.map((p) => p.group).filter((g): g is string => g != null))].sort(),
 	)
 
-	export const availableParties = RSel.createSelector([(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)], (players) =>
-		[...new Set(players.map((p) => p.partyId).filter((id): id is string => id != null))].sort(PG.comparePartyIds),
+	export const availableParties = RSel.createDeepSelector(
+		[(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)],
+		(players) => [...new Set(players.map((p) => p.partyId).filter((id): id is string => id != null))].sort(PG.comparePartyIds),
 	)
 
 	export const filterOptions = RSel.createSelector([availableRoles, availableGroups, availableParties], (roles, groups, parties) => ({
@@ -270,8 +296,8 @@ export namespace Sel {
 
 	// squad creator eos ids resolved to display names, for the squad group-header rows. Both variants share one map:
 	// a squad's creator is always on its own team, so the extra entries are never looked up.
-	export const playerNamesById = RSel.createSelector(
-		[(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)],
+	export const playerNamesById = RSel.createDeepSelector(
+		[ChatPrt.Sel.players],
 		(players) => new Map(players.map((p) => [SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? ''])),
 	)
 
@@ -311,7 +337,7 @@ export namespace Sel {
 		[enrichedForTeam('A'), enrichedForTeam('B'), teamOrder],
 		(playersA, playersB, order): CombinedPlayer[] =>
 			order.flatMap((normedTeam, displayIndex) =>
-				(normedTeam === 'A' ? playersA : playersB).map((p) => ({ ...p, normedTeam, displayIndex })),
+				(normedTeam === 'A' ? playersA : playersB).map((p) => toCombinedPlayer(p, normedTeam, displayIndex)),
 			),
 	)
 
@@ -376,6 +402,30 @@ export namespace Sel {
 		],
 		applyShowSelected,
 	)
+
+	// The longest content of each column that sizes to it, by characters. Fitted columns re-measure when this changes
+	// rather than on every roster update, since measuring forces two synchronous layouts.
+	export const columnWidthSignature = RSel.createSelector([(players: TeamsPanelModels.EnrichedPlayer[]) => players], (players) => {
+		let name = 0
+		let group = 0
+		let squad = 0
+		let party = 0
+		let role = 0
+		let vehicle = 0
+		let tks = 0
+		let stats = 0
+		for (const p of players) {
+			name = Math.max(name, (p.ids.usernameNoTag ?? p.ids.username ?? '').length + (p.inAdminCam ? 2 : 0))
+			group = Math.max(group, p.group?.length ?? 0)
+			squad = Math.max(squad, (p.squadId === null ? 0 : digits(p.squadId)) + (p.isLeader ? 4 : 0))
+			party = Math.max(party, p.partyId?.length ?? 0)
+			role = Math.max(role, p.role?.length ?? 0)
+			vehicle = Math.max(vehicle, p.vehicle?.length ?? 0)
+			tks = Math.max(tks, digits(p.stats?.teamkills ?? 0))
+			stats = Math.max(stats, digits(p.stats?.kills ?? 0) + digits(p.stats?.wounds ?? 0) + digits(p.stats?.deaths ?? 0))
+		}
+		return `${name},${group},${squad},${party},${role},${vehicle},${tks},${stats}`
+	})
 }
 
 export namespace Actions {
@@ -385,6 +435,25 @@ export namespace Actions {
 
 	export function setSearchQuery(stores: KeyProp, searchQuery: string) {
 		slice(stores).setState({ searchQuery })
+	}
+
+	// drag-to-select calls this once per row the cursor crosses, so a call that changes nothing writes nothing
+	export function setPlayersSelected(stores: KeyProp, playerIds: Iterable<SM.PlayerId>, selected: boolean) {
+		const store = Zus.resolveStore<Store & Deps>(stores.teamsPanel)
+		const current = store.getState().playerSelection
+		let next: Record<SM.PlayerId, boolean> | null = null
+		for (const id of playerIds) {
+			if (isSelected(current, id) === selected) continue
+			next ??= { ...current }
+			if (selected) next[id] = true
+			else delete next[id]
+		}
+		if (next) store.setState({ playerSelection: next })
+	}
+
+	export function togglePlayerSelected(stores: KeyProp, playerId: SM.PlayerId) {
+		const selection = Zus.resolveStore<Store & Deps>(stores.teamsPanel).getState().playerSelection
+		setPlayersSelected(stores, [playerId], !isSelected(selection, playerId))
 	}
 
 	export function setShowSelected(stores: KeyProp, showSelected: boolean) {
@@ -446,6 +515,21 @@ export namespace Actions {
 	}
 
 	// middle-clicking a column header clears that column's filter along with its sort
+	export function setColumnFilter(stores: KeyProp, target: SquadFilterTarget, column: FilterColumn, value: string | null) {
+		switch (column) {
+			case 'role':
+				return setRoleFilter(stores, value)
+			case 'group':
+				return setGroupFilter(stores, value)
+			case 'party':
+				return setPartyFilter(stores, value)
+			case 'squad':
+				return setSquadFilter(stores, target, value)
+			default:
+				assertNever(column)
+		}
+	}
+
 	export function clearColumnFilter(stores: KeyProp, target: SquadFilterTarget, columnId: string) {
 		if (columnId === 'role') setRoleFilter(stores, null)
 		if (columnId === 'group') setGroupFilter(stores, null)

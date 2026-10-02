@@ -680,14 +680,14 @@ export async function runCommand(
 
 // Resolves a procedure by path against the plugin's router and calls it with a per-server ctx. The
 // same entry point for both transports: what differs is whether the result is awaited or iterated.
-function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[], input: unknown): Promise<unknown> {
+function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[], input: unknown, signal?: AbortSignal): Promise<unknown> {
 	const client = createRouterClient(rt.router!, { context: sctx })
 	let target: unknown = client
 	for (const key of path) {
 		target = (target as Record<string, unknown> | undefined)?.[key]
 	}
 	if (typeof target !== 'function') throw new Error(`plugin ${rt.ref.id}: no procedure at '${path.join('.')}'`)
-	return (target as (input: unknown) => Promise<unknown>)(input)
+	return (target as (input: unknown, opts: { signal?: AbortSignal }) => Promise<unknown>)(input, { signal })
 }
 
 // the ctx a plugin procedure runs with: the live per-server instance when the plugin has one, a
@@ -870,6 +870,15 @@ function listLeftoverData(): PLG.LeftoverData[] {
 	return out.toSorted((a, b) => (a.pluginId < b.pluginId ? -1 : 1))
 }
 
+// Read once per change for every client watching: listLeftoverData scans sqlite_master and counts every leftover table.
+// Every change to what it reads (a reload, a purge) is announced on update$.
+const pluginsInfo$ = update$.pipe(
+	Rx.startWith(null),
+	Rx.map(() => ({ plugins: listRuntimeInfo(), leftoverData: listLeftoverData() })),
+	Rx.Ext.distinctDeepEquals(),
+	Rx.shareReplay({ bufferSize: 1, refCount: true }),
+)
+
 // Drops everything an uninstalled plugin owns, in one transaction. Safe to enumerate by prefix because
 // the migration runner rejects any DDL that creates something outside it.
 function purgeLeftoverData(pluginId: string): { code: 'ok'; tables: string[] } | { code: 'err:plugin-present' } {
@@ -918,13 +927,7 @@ export function servableAsset(pluginId: string, rel: string): string | null {
 export const router = {
 	// public: every client needs to know which plugins are active to load their client entries
 	watchPlugins: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
-		const obs = update$.pipe(
-			Rx.startWith(null),
-			Rx.map(() => ({ plugins: listRuntimeInfo(), leftoverData: listLeftoverData() })),
-			Rx.Ext.distinctDeepEquals(),
-			Rx.Ext.withAbortSignal(signal!),
-		)
-		yield* Rx.Ext.toAsyncGenerator(obs)
+		yield* Rx.Ext.toAsyncGenerator(pluginsInfo$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
 	getSettings: orpcBase.input(z.object({ pluginId: z.string() })).handler(async ({ context: ctx, input }) => {
@@ -1002,10 +1005,18 @@ export const router = {
 				return
 			}
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (serverCtx) =>
-				Rx.defer(() => callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input)).pipe(
-					Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
-					Rx.map((data) => ({ code: 'ok' as const, data })),
-				),
+				Rx.defer(() => {
+					// Rx.from never returns an async iterable it is unsubscribed from, so the procedure's own signal is
+					// what ends a generator that is waiting on its next value
+					const call = new AbortController()
+					return Rx.from(
+						callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input, call.signal),
+					).pipe(
+						Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
+						Rx.map((data) => ({ code: 'ok' as const, data })),
+						Rx.finalize(() => call.abort()),
+					)
+				}),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),

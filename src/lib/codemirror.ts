@@ -4,8 +4,8 @@
 import { indentWithTab } from '@codemirror/commands'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import type { Extension } from '@codemirror/state'
-import { EditorState } from '@codemirror/state'
-import { EditorView, hoverTooltip, keymap } from '@codemirror/view'
+import { Annotation, EditorState } from '@codemirror/state'
+import { EditorView, hoverTooltip, keymap, type ViewUpdate } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
 import { stateExtensions, updateSchema } from 'codemirror-json-schema'
 import { yamlCompletion, yamlSchemaHover } from 'codemirror-json-schema/yaml'
@@ -50,7 +50,14 @@ export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[
 	]
 }
 
+// marks a change made by setDoc rather than by the user
+export const programmaticChange = Annotation.define<true>()
+
+export function isProgrammaticUpdate(update: ViewUpdate) {
+	return update.transactions.some((tr) => tr.annotation(programmaticChange))
+}
+
 // Replace the entire document contents.
 export function setDoc(view: EditorView, text: string) {
-	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: programmaticChange.of(true) })
 }

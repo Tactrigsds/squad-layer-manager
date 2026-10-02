@@ -226,8 +226,25 @@ export type VoteStateUpdateOrInitialWithParts =
 	  }
 	| {
 			code: 'update'
-			update: VoteStateUpdate & Parts<USR.UserPart>
+			update: (VoteStateUpdate & Parts<USR.UserPart>) | VoteCastUpdate
 	  }
+
+// One cast vote, sent to watchers in place of the whole state. The state carries every vote cast so far, so sending
+// it on every cast costs each watcher the square of the turnout.
+export type VoteCast = { playerIds: SM.PlayerIds.Type; choice: string }
+export type VoteCastUpdate = { cast: VoteCast; source: VoteStateUpdate['source'] }
+
+export function isVoteCastUpdate(update: VoteStateUpdate | VoteCastUpdate): update is VoteCastUpdate {
+	return 'cast' in update && !('state' in update)
+}
+
+// Copies rather than mutates: the state a client holds is shared with everything rendering it.
+export function applyVoteCast(state: VoteState | null, cast: VoteCast): VoteState | null {
+	if (state?.code !== 'in-progress') return state
+	const votes = [...state.votes]
+	SM.PlayerIds.upsert(votes, ({ playerIds }) => playerIds, cast)
+	return { ...state, votes }
+}
 
 export type VoteStateUpdateOrInitial =
 	| {
@@ -238,6 +255,8 @@ export type VoteStateUpdateOrInitial =
 
 export type VoteStateUpdate = {
 	state: VoteState | null
+	// the vote this update records, when it records exactly one
+	cast?: VoteCast
 	source:
 		| {
 				type: 'system'

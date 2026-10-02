@@ -42,6 +42,30 @@ function combat(
 	} as unknown as CHAT.EventEnriched
 }
 
+describe('recent matches updates', () => {
+	const match = (ordinal: number, extra: Partial<MH.MatchDetails> = {}) =>
+		({ ordinal, historyEntryId: ordinal + 100, status: 'post-game', isCurrentMatch: false, ...extra }) as MH.MatchDetails
+
+	it('rebuilds the next window from a patch over the previous one', () => {
+		const prev = [match(1), match(2), match(3, { isCurrentMatch: true, status: 'in-progress' })]
+		const next = [match(2), match(3), match(4, { isCurrentMatch: true, status: 'in-progress' })]
+		const patch = MH.diffRecentMatches(prev, next)
+		expect(patch.upserts.map((m) => m.ordinal)).toEqual([3, 4])
+		expect(MH.applyRecentMatchesUpdate(prev, patch)).toEqual(next)
+	})
+
+	it('sends nothing for an update that changed nothing, and empties on an empty window', () => {
+		const prev = [match(1), match(2)]
+		expect(
+			MH.diffRecentMatches(
+				prev,
+				prev.map((m) => ({ ...m })),
+			).upserts,
+		).toEqual([])
+		expect(MH.applyRecentMatchesUpdate(prev, MH.diffRecentMatches(prev, []))).toEqual([])
+	})
+})
+
 describe('tallyCombatStats', () => {
 	it('credits a kill to the attacker’s team and the death to the victim’s', () => {
 		const stats = MH.tallyCombatStats([combat('PLAYER_DIED', b1, a1), combat('PLAYER_DIED', a1, b1), combat('PLAYER_DIED', a2, b1)])

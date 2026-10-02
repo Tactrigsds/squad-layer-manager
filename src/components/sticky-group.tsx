@@ -145,14 +145,10 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, sti
 		const el = stickyRef.current
 		if (!el) return
 
-		// getBoundingClientRect() reports the border-box size (content +
-		// padding + border) — the actual space the element occupies in flow.
-		// This is deliberately NOT ResizeObserver's `contentRect`, which
-		// excludes padding and border and would under-report the offset
-		// descendants need by however much padding/border this element has.
-		function measure() {
-			return el!.getBoundingClientRect().height
-		}
+		// The border box, not the content box: descendants need the whole space this element takes in flow. It
+		// comes from the observer, which reports it after a layout the browser ran anyway, so nothing here forces
+		// one. The observer's first report arrives before the first paint, so headers never show unstacked.
+		let height = 0
 
 		function applyStyles() {
 			const { offset, depth } = parentStore.getState()
@@ -162,32 +158,20 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, sti
 			// deeper stickies pin below their ancestors, so they must also paint below them
 			el!.style.zIndex = String(Math.max(stickyCeiling - depth, stickyFloor))
 
-			// Tell any nested <StickyGroup> what offset/depth to build on.
-			ownStore.setState(
-				ownScroller
-					? { offset: 0, depth: 0 }
-					: {
-							offset: offset + measure(),
-							depth: depth + 1,
-						},
-			)
+			const next = ownScroller ? { offset: 0, depth: 0 } : { offset: offset + height, depth: depth + 1 }
+			const current = ownStore.getState()
+			if (current.offset !== next.offset || current.depth !== next.depth) ownStore.setState(next)
 		}
 
-		// Measured synchronously so the correct (padding-inclusive) offset is
-		// published on first paint, rather than waiting for ResizeObserver's
-		// first async callback — avoiding a one-frame jump as headers settle
-		// into their correct stacked position.
 		applyStyles()
 
-		// Re-run if an ancestor's offset or depth changes (e.g. an ancestor
-		// header's height changed, shifting everything below it).
+		// an ancestor's offset or depth changed, shifting everything below it
 		const unsubscribeParent = parentStore.subscribe(applyStyles)
 
-		// Re-run if this element's own height changes. We ignore the
-		// observer's own contentRect and just re-measure via
-		// getBoundingClientRect() inside applyStyles for the same
-		// border-box-accuracy reason as above.
-		const resizeObserver = new ResizeObserver(applyStyles)
+		const resizeObserver = new ResizeObserver((entries) => {
+			height = entries[entries.length - 1].borderBoxSize[0].blockSize
+			applyStyles()
+		})
 		resizeObserver.observe(el)
 
 		return () => {

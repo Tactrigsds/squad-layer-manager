@@ -142,18 +142,10 @@ function useTooltipState() {
  *
  */
 const Tooltip = (props: { children: React.ReactNode; pinnable?: boolean; help?: boolean }) => {
-	return (
-		<HoverTooltip pinnable={props.pinnable ?? false} delayMs={props.help ? HELP_TIP_DELAY_MS : 0}>
-			{props.children}
-		</HoverTooltip>
-	)
-}
-Tooltip.displayName = 'Tooltip'
-
-function HoverTooltip(props: { children: React.ReactNode; pinnable: boolean; delayMs: number }) {
-	const follow = useFollowTooltip({ pinnable: props.pinnable, delayMs: props.delayMs })
+	const follow = useFollowTooltip({ pinnable: props.pinnable ?? false, delayMs: props.help ? HELP_TIP_DELAY_MS : 0 })
 	return <TooltipCtx.Provider value={follow}>{props.children}</TooltipCtx.Provider>
 }
+Tooltip.displayName = 'Tooltip'
 
 const TooltipTrigger = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement> & { asChild?: boolean }>(
 	({ asChild, ...props }, forwardedRef) => {
@@ -182,9 +174,11 @@ const TooltipTrigger = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLEl
 )
 TooltipTrigger.displayName = 'TooltipTrigger'
 
+// mounts the tooltip node only while open, so a closed tooltip is one context read
 const TooltipContent = (props: { children?: React.ReactNode; className?: string }) => {
 	const { open, contentProps } = useTooltipState()
-	return <TrackingTooltip {...contentProps} className={props.className} content={open ? props.children : null} />
+	if (!open) return null
+	return <TrackingTooltip {...contentProps} className={props.className} content={props.children} />
 }
 TooltipContent.displayName = 'TooltipContent'
 

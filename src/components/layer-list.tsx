@@ -549,9 +549,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	} satisfies Partial<ItemDropdownProps>
 
 	const layersStatus = resToOptional(SquadServerClient.useLayersStatus(props.stores.squadServer.serverId))?.data
-	const serverInfo = SquadServerClient.useServerInfo(props.stores.squadServer.serverId)
+	const playerCount = SquadServerClient.usePlayerCount(props.stores.squadServer.serverId)
 	const tally =
-		voteState && V.isVoteStateWithVoteData(voteState) && serverInfo ? V.tallyVotes(voteState, serverInfo.playerCount) : undefined
+		voteState && V.isVoteStateWithVoteData(voteState) && playerCount !== null ? V.tallyVotes(voteState, playerCount) : undefined
 
 	const itemChoiceTallyPercentage = isVoteChoice && voteState ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
@@ -757,7 +757,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 								loaderName="selectLayers"
 								createActivity={UP.createEditingQueueVariant(editActivity)}
 								matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
-								preload="viewport"
+								preload="intent"
 								render={Button}
 								data-tour={isTourRow ? 'queue-item-edit' : undefined}
 								size="icon-sm"

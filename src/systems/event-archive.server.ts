@@ -131,13 +131,26 @@ export const compactAgedMatches = Instr.spanOp(
 			for (const { id: matchId } of candidates) {
 				ctx.signal.throwIfAborted()
 
+				const se = Schema.serverEvents
+				// time and data as stored, since packing only writes them back out (see EA.pack). json_valid stands
+				// in for the parse a mapped select does, so a row the archive could not read back is refused here.
 				const rows = await ctx
 					.db()
-					.select()
-					.from(Schema.serverEvents)
-					.where(E.eq(Schema.serverEvents.matchId, matchId))
-					.orderBy(E.asc(Schema.serverEvents.id))
+					.select({
+						id: se.id,
+						type: se.type,
+						time: E.sql<number>`${se.time}`,
+						appEventId: se.appEventId,
+						version: se.version,
+						data: E.sql<string>`${se.data}`,
+						valid: E.sql<number>`json_valid(${se.data})`,
+					})
+					.from(se)
+					.where(E.eq(se.matchId, matchId))
+					.orderBy(E.asc(se.id))
 				if (rows.length === 0) continue
+				const invalid = rows.find((row) => row.valid !== 1)
+				if (invalid) throw new Error(`server event ${invalid.id} of match ${matchId} does not hold valid json`)
 
 				// packed before the transaction opens: zlib runs on the threadpool, and awaiting it under the
 				// process-wide transaction lock would stall every other write in the process for its duration.
@@ -161,7 +174,7 @@ export const compactAgedMatches = Instr.spanOp(
 
 				matches++
 				events += rows.length
-				for (const row of rows) rawBytes += JSON.stringify(row.data).length
+				for (const row of rows) rawBytes += row.data.length
 				packedBytes += blob.length
 
 				// hand the loop back between matches: compression and the write lock are both blocking enough

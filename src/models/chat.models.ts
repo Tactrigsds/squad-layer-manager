@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
+import * as MH from '@/models/match-history.models'
 import { t } from '@/models/messages.models'
 import { applyEventTeamMutations } from '@/models/pending-events.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -72,16 +73,56 @@ export type InterpolableState = {
 }
 
 export namespace InterpolableState {
-	// New collection identities so the selectors reading them recompute; the entries inside are shared, since every
-	// mutation here replaces a player or squad rather than writing through one.
-	export function clone(state: InterpolableState): InterpolableState {
+	type Collection = keyof InterpolableState
+
+	// the collections a batch has already copied, and may therefore write in place
+	const batchOwned = new WeakMap<InterpolableState, Set<Collection>>()
+
+	/**
+	 * The state to apply one batch of events to, copy-on-write. Each collection stays shared with `state` until the
+	 * batch first writes it, so a collection the batch leaves alone keeps its identity, and so does every selector
+	 * reading it. The entries inside are always shared: every mutation replaces a player, squad or stat line rather
+	 * than writing through one.
+	 *
+	 * A state that never went through here (the server's, a replay's) has no previous version anyone reads, so its
+	 * collections are written in place.
+	 */
+	export function beginBatch(state: InterpolableState): InterpolableState {
+		const next = { ...state }
+		batchOwned.set(next, new Set())
+		return next
+	}
+
+	// `state[key]`, safe to write: copied first if this batch has not written it yet
+	export function writable<K extends Collection>(state: InterpolableState, key: K): InterpolableState[K] {
+		const owned = batchOwned.get(state)
+		if (!owned || owned.has(key)) return state[key]
+		owned.add(key)
+		state[key] = copyCollection(state[key]) as InterpolableState[K]
+		return state[key]
+	}
+
+	// swaps in a collection the caller built, which is the batch's own to write from then on
+	export function replace<K extends Collection>(state: InterpolableState, key: K, value: InterpolableState[K]) {
+		state[key] = value
+		batchOwned.get(state)?.add(key)
+	}
+
+	function copyCollection(collection: InterpolableState[Collection]): InterpolableState[Collection] {
+		if (collection instanceof Map) return new Map(collection as Map<unknown, unknown>) as InterpolableState[Collection]
+		if (Array.isArray(collection)) return [...collection]
+		return { ...collection }
+	}
+
+	// a view of the roster for applyEventTeamMutations, which copies each collection only once it is reached for
+	export function writableTeams(state: InterpolableState): SM.LiveTeams {
 		return {
-			players: new Map(state.players),
-			recentPlayers: new Map(state.recentPlayers),
-			squads: new Map(state.squads),
-			recentSquads: new Map(state.recentSquads),
-			playerStats: { ...state.playerStats },
-			adminCamPlayerIds: [...state.adminCamPlayerIds],
+			get players() {
+				return writable(state, 'players')
+			},
+			get squads() {
+				return writable(state, 'squads')
+			},
 		}
 	}
 
@@ -92,7 +133,7 @@ export namespace InterpolableState {
 		const id = SM.PlayerIds.getPlayerId(player.ids)
 		const existing = state.recentPlayers.get(id)
 		if (existing && SM.recentPlayerUnchanged(existing, player)) return
-		state.recentPlayers.set(id, SM.toRecentPlayer(player))
+		writable(state, 'recentPlayers').set(id, SM.toRecentPlayer(player))
 	}
 
 	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.Ref) {
@@ -101,7 +142,17 @@ export namespace InterpolableState {
 
 	// records a squad instance as having existed in the current match, refreshing an existing entry (e.g. a rename).
 	export function recordRecentSquad(state: InterpolableState, squad: SM.RecentSquad) {
-		state.recentSquads.set(squad.uniqueId, SM.toRecentSquad(squad))
+		const existing = state.recentSquads.get(squad.uniqueId)
+		if (
+			existing &&
+			existing.squadId === squad.squadId &&
+			existing.squadName === squad.squadName &&
+			existing.creator === squad.creator &&
+			existing.teamId === squad.teamId
+		) {
+			return
+		}
+		writable(state, 'recentSquads').set(squad.uniqueId, SM.toRecentSquad(squad))
 	}
 
 	export function findRecentSquad(state: InterpolableState, uniqueSquadId: number) {
@@ -428,7 +479,12 @@ export namespace Wire {
 }
 
 export type ChatState = {
+	// the current match's entries: a NEW_GAME drops every entry from another match
 	eventBuffer: EventEnriched[]
+
+	// bumped whenever eventBuffer changes other than by appending, so a reader that has already scanned a prefix of
+	// it can tell whether that prefix still holds (see createBufferFilter)
+	bufferEpoch: number
 
 	// the state of the chat as of the last event
 	interpolatedState: InterpolableState
@@ -436,6 +492,13 @@ export type ChatState = {
 	connectionError: ConnectionErrorEvent | null
 
 	synced: boolean
+
+	// the match of the latest RCON_CONNECTED that was not a reconnect. SLM missed whatever that match did before it,
+	// so the match's per-player combat stats are incomplete.
+	freshConnectionMatchId: number | null
+
+	// the latest match's scoreline, counted an event at a time as the buffer fills
+	combatTally: { matchId: number; stats: MH.MatchCombatStats } | null
 }
 
 export function getInitialInterpolatedState(): InterpolableState {
@@ -453,16 +516,26 @@ export function getInitialChatState(): ChatState {
 	return {
 		interpolatedState: getInitialInterpolatedState(),
 		eventBuffer: [],
+		bufferEpoch: 0,
 		synced: false,
 		connectionError: null,
+		freshConnectionMatchId: null,
+		combatTally: null,
 	}
+}
+
+// the epoch carries on across a reset, so a reader holding the old buffer's epoch can't mistake the new one for it
+function resetChatState(state: ChatState) {
+	const bufferEpoch = state.bufferEpoch + 1
+	Object.assign(state, getInitialChatState())
+	state.bufferEpoch = bufferEpoch
 }
 
 const chatLog: CS.Log = { ...CS.init(), log: baseLogger.child({ name: 'chat' }) }
 
 export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opts?: InterpolationOptions) {
 	if (event.type === 'INIT') {
-		Object.assign(state, getInitialChatState())
+		resetChatState(state)
 		return
 	}
 	if (event.type === 'SYNCED') {
@@ -483,7 +556,7 @@ export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opt
 		if (event.resumedEventId !== null) {
 			throw new Error(`resumed from the wrong event id!`)
 		}
-		Object.assign(state, getInitialChatState())
+		resetChatState(state)
 		return
 	}
 
@@ -493,23 +566,54 @@ export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opt
 	}
 
 	const enriched = interpolateEvent(state.interpolatedState, event, opts)
+	if (enriched.type === 'NEW_GAME') {
+		dropOtherMatches(state, enriched.matchId)
+	} else if (enriched.type === 'RCON_CONNECTED' && !enriched.reconnected) {
+		state.freshConnectionMatchId = enriched.matchId
+	} else if (enriched.type === 'PLAYER_DIED' || enriched.type === 'PLAYER_WOUNDED') {
+		const tally = state.combatTally?.matchId === enriched.matchId ? state.combatTally : null
+		const stats = MH.addCombatEvent(tally?.stats ?? MH.EMPTY_COMBAT_STATS, enriched)
+		if (stats !== tally?.stats) state.combatTally = { matchId: enriched.matchId, stats }
+	}
 	// collapse any server event attributed to an app event (source={type:'event'}) into that app event's entry, so a
 	// bulk action renders as one expandable summary. Falls back to a standalone entry if the app event isn't buffered.
 	const src = (enriched as { source?: { type: string; id?: AppEvents.AppEventId } }).source
 	if (src?.type === 'event' && src.id !== undefined) {
 		const attributedTo = src.id
-		const appEntry = state.eventBuffer.find((e): e is EnrichedAppEvent => e.type === 'APP_EVENT' && e.id === attributedTo)
+		const appEntry = findAppEntry(state.eventBuffer, attributedTo)
 		if (appEntry) {
 			appEntry.collapsed.push(enriched)
+			state.bufferEpoch++
 			return
 		}
 	}
 	// standalone warns (not folded into an app event above) get deduplicated by text+source into burst groups
 	if (enriched.type === 'PLAYER_WARNED') {
-		mergeOrPushWarn(state.eventBuffer, enriched)
+		if (mergeOrPushWarn(state.eventBuffer, enriched)) state.bufferEpoch++
 		return
 	}
 	state.eventBuffer.push(enriched)
+}
+
+// The live buffer only ever holds the current match: every reader of it wants that match alone, and a past match is
+// read from its history. A NEW_GAME's own match can have entries ahead of it, such as the RCON_CONNECTED that found it.
+function dropOtherMatches(state: ChatState, matchId: number) {
+	const kept = state.eventBuffer.filter((entry) => entry.matchId === matchId)
+	if (kept.length !== state.eventBuffer.length) {
+		state.eventBuffer = kept
+		state.bufferEpoch++
+	}
+	if (state.freshConnectionMatchId !== matchId) state.freshConnectionMatchId = null
+	if (state.combatTally && state.combatTally.matchId !== matchId) state.combatTally = null
+}
+
+// searched from the end: the app event a server event is attributed to is almost always among the latest entries
+function findAppEntry(buffer: EventEnriched[], id: AppEvents.AppEventId): EnrichedAppEvent | undefined {
+	for (let i = buffer.length - 1; i >= 0; i--) {
+		const entry = buffer[i]
+		if (entry.type === 'APP_EVENT' && entry.id === id) return entry
+	}
+	return undefined
 }
 
 // warns arriving within this window of an existing matching group are merged into it; anything further apart
@@ -532,8 +636,9 @@ function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string
 }
 
 // merge a standalone warn into a recent matching group, upgrading a lone prior warn in place if needed; else append.
-// scans back past interleaving events until the burst window is exceeded (buffer is time-ordered).
-function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Player>) {
+// scans back past interleaving events until the burst window is exceeded (buffer is time-ordered). True when it
+// merged, i.e. changed an existing entry rather than appending.
+function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Player>): boolean {
 	const key = warnDedupKey(warn.reason, warn.source)
 	const cutoff = warn.time - WARN_AGGREGATION_WINDOW_MS
 	for (let i = buffer.length - 1; i >= 0; i--) {
@@ -542,7 +647,7 @@ function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Playe
 		if (entry.type === 'WARNS_AGGREGATED' && warnDedupKey(entry.reason, entry.source) === key) {
 			entry.warns.push(warn)
 			entry.id = warn.id
-			return
+			return true
 		}
 		if (entry.type === 'PLAYER_WARNED' && warnDedupKey(entry.reason, entry.source) === key) {
 			buffer[i] = {
@@ -554,10 +659,11 @@ function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Playe
 				source: entry.source,
 				warns: [entry, warn],
 			}
-			return
+			return true
 		}
 	}
 	buffer.push(warn)
+	return false
 }
 
 // Interleaves app events into a stream of server events for replay through handleEvent. The server events keep the
@@ -567,6 +673,8 @@ function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Playe
 // attributed to it, since handleEvent can only collapse an attributed server event onto an entry already in the buffer.
 export function mergeAppEvents(serverEvents: SE.Event[], appEvents: AppEvents.AppEvent[]): (SE.Event | AppFeedEvent)[] {
 	const pending = [...appEvents].sort((a, b) => a.time - b.time)
+	const pendingIndex = new Map<AppEvents.AppEventId, number>()
+	for (let i = pending.length - 1; i >= 0; i--) pendingIndex.set(pending[i].id, i)
 	const merged: (SE.Event | AppFeedEvent)[] = []
 	let next = 0
 	for (const event of serverEvents) {
@@ -575,7 +683,7 @@ export function mergeAppEvents(serverEvents: SE.Event[], appEvents: AppEvents.Ap
 		let until = next
 		while (until < pending.length && pending[until].time <= event.time) until++
 		if (attributedTo !== undefined) {
-			const attributionIndex = pending.findIndex((a, i) => i >= next && a.id === attributedTo)
+			const attributionIndex = pendingIndex.get(attributedTo) ?? -1
 			if (attributionIndex >= until) until = attributionIndex + 1
 		}
 		for (; next < until; next++) merged.push({ type: 'APP_EVENT', appEvent: pending[next] })
@@ -593,6 +701,43 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 		if (typeof id === 'number') return id
 	}
 	return undefined
+}
+
+const NO_ENTRIES: EventEnriched[] = []
+
+/**
+ * A filter over a live buffer that scans only the entries appended since its previous call. It rescans from the start
+ * when the buffer changed some other way (see ChatState.bufferEpoch) or when any of `deps` changed, since `keep` is
+ * assumed to close over them. The result keeps its identity until an entry is kept or dropped.
+ */
+export function createBufferFilter() {
+	let buffer: EventEnriched[] | null = null
+	let epoch = -1
+	let scanned = 0
+	let lastDeps: readonly unknown[] = []
+	let result = NO_ENTRIES
+	return (state: ChatState, keep: (entry: EventEnriched) => boolean, deps: readonly unknown[]): EventEnriched[] => {
+		if (
+			state.eventBuffer !== buffer ||
+			state.bufferEpoch !== epoch ||
+			state.eventBuffer.length < scanned ||
+			deps.length !== lastDeps.length ||
+			deps.some((dep, i) => dep !== lastDeps[i])
+		) {
+			buffer = state.eventBuffer
+			epoch = state.bufferEpoch
+			lastDeps = deps
+			scanned = 0
+			result = NO_ENTRIES
+		}
+		const entries = state.eventBuffer
+		let appended: EventEnriched[] | null = null
+		for (; scanned < entries.length; scanned++) {
+			if (keep(entries[scanned])) (appended ??= []).push(entries[scanned])
+		}
+		if (appended) result = result.length === 0 ? appended : result.concat(appended)
+		return result
+	}
 }
 
 // the unique (instance) id of the squad a player is in per the interpolated state, or undefined if squadless
@@ -743,12 +888,12 @@ export type InterpolationOptions = {
 	broadcastSuppressionPatterns?: string[]
 }
 
-function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: InterpolationOptions): EventEnriched {
+export function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: InterpolationOptions): EventEnriched {
 	switch (event.type) {
 		case 'MAP_SET':
 		case 'NEW_GAME':
 		case 'RESET': {
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			if (event.type === 'MAP_SET') {
 				const source = event.source
 				return {
@@ -761,15 +906,17 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				// and last match's scores go with it. NEW_GAME is the only boundary -- a RESET reseeds the roster for
 				// a boundary NEW_GAME already announced, but is ALSO emitted on a same-match rcon reconnect
 				// (source 'rcon-reconnected'), where wiping would cost the match its scores so far.
-				state.playerStats = {}
-				state.recentPlayers = new Map()
-				for (const [id, player] of state.players) state.recentPlayers.set(id, SM.toRecentPlayer(player))
-				state.recentSquads = new Map()
-				for (const [id, squad] of state.squads) state.recentSquads.set(id, SM.toRecentSquad(squad))
+				const recentPlayers = new Map<SM.PlayerId, SM.RecentPlayer>()
+				for (const [id, player] of state.players) recentPlayers.set(id, SM.toRecentPlayer(player))
+				const recentSquads = new Map<number, SM.RecentSquad>()
+				for (const [id, squad] of state.squads) recentSquads.set(id, SM.toRecentSquad(squad))
+				InterpolableState.replace(state, 'playerStats', {})
+				InterpolableState.replace(state, 'recentPlayers', recentPlayers)
+				InterpolableState.replace(state, 'recentSquads', recentSquads)
 			} else if (event.type === 'RESET') {
 				// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought
 				// was in admin camera is no longer known to be
-				state.adminCamPlayerIds = []
+				if (state.adminCamPlayerIds.length > 0) state.adminCamPlayerIds = []
 				// the reseeded roster may name players and squads we haven't seen participate yet
 				for (const player of state.players.values()) InterpolableState.recordRecentPlayer(state, player)
 				for (const squad of state.squads.values()) InterpolableState.recordRecentSquad(state, squad)
@@ -800,7 +947,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (state.players.has(SM.PlayerIds.getPlayerId(event.player.ids))) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			InterpolableState.recordRecentPlayer(state, event.player)
 			// the event already carries the whole player; enrichment has nothing to add
 			return event
@@ -816,12 +963,19 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				// the log stream carries no role and no admin-list membership: the log does not report either, and this
 				// is what fills them in. Replaced rather than written through: feed entries emitted earlier hold this
 				// object, and they describe the roster as it was when they happened.
+				if (
+					known.role === event.player.role &&
+					known.isAdmin === event.player.isAdmin &&
+					Arr.shallowEquals(known.adminGroups ?? [], event.player.adminGroups ?? [])
+				) {
+					return { ...event, player: known }
+				}
 				const corrected = { ...known, role: event.player.role, isAdmin: event.player.isAdmin, adminGroups: event.player.adminGroups }
-				state.players.set(playerId, corrected)
+				InterpolableState.writable(state, 'players').set(playerId, corrected)
 				InterpolableState.recordRecentPlayer(state, corrected)
 				return { ...event, player: corrected }
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			InterpolableState.recordRecentPlayer(state, event.player)
 			return { ...event, player: event.player }
 		}
@@ -831,8 +985,8 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!player) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
-			state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== event.player)
-			applyEventTeamMutations(chatLog, state, event)
+			dropFromAdminCam(state, event.player)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, player }
 		}
 
@@ -840,7 +994,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!state.players.has(event.player)) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			const changed = state.players.get(event.player)!
 			InterpolableState.recordRecentPlayer(state, changed)
 			return { ...event, player: changed }
@@ -852,7 +1006,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				return noop(`Squad ${event.uniqueId} had details changed but was not found in the squad list`)
 			}
 			const prevDetails: SE.SquadDetailsChanged['details'] = { locked: prev.locked }
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, squad: state.squads.get(event.uniqueId)!, prevDetails }
 		}
 
@@ -860,7 +1014,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!state.squads.has(event.uniqueId)) {
 				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			const renamed = state.squads.get(event.uniqueId)!
 			InterpolableState.recordRecentSquad(state, renamed)
 			return { ...event, squad: renamed }
@@ -872,7 +1026,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
 			const prevTeamId = before.teamId
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, player: state.players.get(event.player)!, prevTeamId }
 		}
 
@@ -892,7 +1046,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 					}`,
 				)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, player: state.players.get(event.player)!, squad }
 		}
 
@@ -905,7 +1059,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!promoted || promoted.squadId !== squad.squadId || promoted.teamId !== squad.teamId) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} promoted to leader but was not found in the player list`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, player: state.players.get(event.player)!, squad }
 		}
 
@@ -914,7 +1068,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} disbanded but was not found in the squad list`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, squad }
 		}
 
@@ -928,7 +1082,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found for PLAYER_LEFT_SQUAD`)
 			}
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			return { ...event, player: state.players.get(event.player)!, wasLeader, squad }
 		}
 
@@ -942,7 +1096,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			// dropping the squad here would strand every later PLAYER_JOINED_SQUAD referencing it (squad-not-found),
 			// leaving its members stuck as Unassigned. applyEventTeamMutations tracks it regardless and only skips
 			// establishing membership when the creator is unknown.
-			applyEventTeamMutations(chatLog, state, event)
+			applyEventTeamMutations(chatLog, InterpolableState.writableTeams(state), event)
 			InterpolableState.recordRecentSquad(state, squad)
 			const creator = state.players.get(event.squad.creator)
 			if (!creator) {
@@ -995,9 +1149,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			if (event.type === 'POSSESSED_ADMIN_CAMERA' && !state.adminCamPlayerIds.includes(event.player)) {
 				state.adminCamPlayerIds = [...state.adminCamPlayerIds, event.player]
 			}
-			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') {
-				state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== event.player)
-			}
+			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') dropFromAdminCam(state, event.player)
 			return { ...event, player }
 		}
 
@@ -1069,14 +1221,14 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				)
 			}
 			if (event.type === 'PLAYER_DIED') {
-				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(victim.ids), 'deaths')
+				bumpPlayerStat(state, SM.PlayerIds.getPlayerId(victim.ids), 'deaths')
 				if (event.variant === 'normal') {
-					bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'kills')
+					bumpPlayerStat(state, SM.PlayerIds.getPlayerId(attacker.ids), 'kills')
 				} else if (event.variant === 'teamkill') {
-					bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'teamkills')
+					bumpPlayerStat(state, SM.PlayerIds.getPlayerId(attacker.ids), 'teamkills')
 				}
 			} else if (event.variant === 'normal') {
-				bumpPlayerStat(state.playerStats, SM.PlayerIds.getPlayerId(attacker.ids), 'wounds')
+				bumpPlayerStat(state, SM.PlayerIds.getPlayerId(attacker.ids), 'wounds')
 			}
 			return { ...event, victim, attacker }
 		}
@@ -1116,10 +1268,16 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 	}
 }
 
-// stat objects are replaced rather than mutated so InterpolableState.clone can shallow-copy the map
-function bumpPlayerStat(stats: PlayerStatsMap, playerId: SM.PlayerId, key: keyof PlayerStats) {
+// stat objects are replaced rather than mutated so InterpolableState.beginBatch can shallow-copy the map
+function bumpPlayerStat(state: InterpolableState, playerId: SM.PlayerId, key: keyof PlayerStats) {
+	const stats = InterpolableState.writable(state, 'playerStats')
 	const prev = stats[playerId] ?? { kills: 0, wounds: 0, deaths: 0, teamkills: 0 }
 	stats[playerId] = { ...prev, [key]: prev[key] + 1 }
+}
+
+// admin camera membership is replaced rather than edited, so it needs no copy-on-write
+function dropFromAdminCam(state: InterpolableState, playerId: SM.PlayerId) {
+	if (state.adminCamPlayerIds.includes(playerId)) state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== playerId)
 }
 
 export type PrimaryFilterState =

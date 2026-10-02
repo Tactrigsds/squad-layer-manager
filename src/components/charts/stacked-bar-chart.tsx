@@ -217,16 +217,34 @@ export function StackedBarChart(props: {
 	)
 }
 
+// React reads the snapshot on every render and again after each commit, so it is cached: reading clientWidth there
+// would force a layout mid-render every time the chart's data changes. The observer refreshes it after layouts the
+// browser runs anyway.
+const measuredWidths = new WeakMap<HTMLElement, number>()
+
 function useMeasuredWidth(el: HTMLElement | null) {
 	const subscribe = React.useCallback(
 		(onResize: () => void) => {
 			if (!el) return () => {}
-			const observer = new ResizeObserver(onResize)
+			const observer = new ResizeObserver(() => {
+				const width = el.clientWidth
+				if (measuredWidths.get(el) === width) return
+				measuredWidths.set(el, width)
+				onResize()
+			})
 			observer.observe(el)
 			return () => observer.disconnect()
 		},
 		[el],
 	)
-	const getSnapshot = React.useCallback(() => el?.clientWidth ?? 0, [el])
+	const getSnapshot = React.useCallback(() => {
+		if (!el) return 0
+		let width = measuredWidths.get(el)
+		if (width === undefined) {
+			width = el.clientWidth
+			measuredWidths.set(el, width)
+		}
+		return width
+	}, [el])
 	return React.useSyncExternalStore(subscribe, getSnapshot, () => 0)
 }

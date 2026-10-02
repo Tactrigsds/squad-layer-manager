@@ -83,12 +83,13 @@ export const getOrpcBase = (module: OtelModule) => {
 
 type AccessCheck = () => Promise<RBAC.PermissionDeniedResponse | null>
 
-// resolves on the next change to this user's permissions that leaves `check` in the state `want` describes
+// resolves on the next change to this user's permissions that leaves `check` in the state `want` describes. A check
+// still running when the next change lands answers for perms that are already stale, so only the latest one counts.
 async function accessBecomes(ctx: C.OrpcBase, check: AccessCheck, want: 'granted' | 'denied', signal: AbortSignal) {
 	const Rbac = await rbacServer()
 	return await Rx.Ext.firstValueFrom(
 		Rbac.userInvalidation$(ctx.user.discordId).pipe(
-			Rx.concatMap(check),
+			Rx.switchMap(check),
 			Rx.filter((denial) => (want === 'granted' ? denial === null : denial !== null)),
 		),
 		signal,
@@ -103,20 +104,36 @@ async function* heldDenial(ctx: C.OrpcBase, check: AccessCheck, denial: RBAC.Per
 // Forwards the stream until the caller loses access, then yields the denial in its place and holds as heldDenial does.
 // The handler's own stream is left to end with the call's signal: an async generator cannot be returned from while it
 // is waiting on its next value.
+//
+// Revocation is delivered through one listener rather than by racing each step against a long-lived promise: every
+// Promise.race adds a reaction to its inputs, so racing a promise that stays pending for the life of the stream keeps
+// every value the stream has yielded reachable until the stream ends.
 async function* guardStream(ctx: C.OrpcBase, check: AccessCheck, inner: AsyncIterator<unknown>) {
+	type Step = { denial: RBAC.PermissionDeniedResponse } | { r: IteratorResult<unknown> }
 	// scoped to this stream, so the permission watch ends with it rather than with the connection
 	const watching = new AbortController()
-	const revoked = accessBecomes(ctx, check, 'denied', AbortSignal.any([ctx.signal, watching.signal])).then(
-		(denial) => ({ denial }),
+	let revokedWith: RBAC.PermissionDeniedResponse | null = null
+	let onRevoke: ((denial: RBAC.PermissionDeniedResponse) => void) | null = null
+	void accessBecomes(ctx, check, 'denied', AbortSignal.any([ctx.signal, watching.signal])).then(
+		(denial) => {
+			revokedWith = denial!
+			onRevoke?.(denial!)
+		},
 		// aborted: the stream is over one way or the other, and the loop below ends on its own
-		() => new Promise<never>(() => {}),
+		() => {},
 	)
 	try {
 		while (true) {
-			const step = await Promise.race([inner.next().then((r) => ({ r })), revoked])
+			const step = revokedWith
+				? { denial: revokedWith }
+				: await new Promise<Step>((resolve, reject) => {
+						onRevoke = (denial) => resolve({ denial })
+						inner.next().then((r) => resolve({ r }), reject)
+					})
+			onRevoke = null
 			if ('denial' in step) {
 				Promise.resolve(inner.return?.(undefined)).catch(() => {})
-				yield* heldDenial(ctx, check, step.denial!)
+				yield* heldDenial(ctx, check, step.denial)
 				return
 			}
 			if (step.r.done) return step.r.value

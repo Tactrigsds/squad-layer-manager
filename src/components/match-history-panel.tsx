@@ -64,32 +64,37 @@ function useStackedRows(boxRef: React.RefObject<HTMLElement | null>, tableRef: R
 	const [stacked, setStacked] = React.useState(false)
 	const needed = React.useRef(0)
 
-	const measure = React.useCallback(() => {
-		const available = boxRef.current?.clientWidth
-		// zero means it is not on screen to measure, which is not news about how wide it is
-		if (!available) return
-		const table = tableRef.current
-		// Only the eight-column layout can price the eight columns; stacked, the table is one cell wide and
-		// the last reading stands. The probe restores the width before yielding, so nothing paints mid-probe.
-		if (table && !stacked) {
-			const restore = table.style.width
-			table.style.width = 'min-content'
-			needed.current = table.getBoundingClientRect().width
-			table.style.width = restore
-		}
-		if (!needed.current) return
-		setStacked(available < needed.current + (stacked ? UNSTACK_HEADROOM_PX : 0))
-	}, [boxRef, tableRef, stacked])
+	// `probe` re-prices the columns, which costs a forced layout of the table. Only a render can change that price;
+	// a resize changes only what is available.
+	const measure = React.useCallback(
+		(probe: boolean) => {
+			const available = boxRef.current?.clientWidth
+			// zero means it is not on screen to measure, which is not news about how wide it is
+			if (!available) return
+			const table = tableRef.current
+			// Only the eight-column layout can price the eight columns; stacked, the table is one cell wide and
+			// the last reading stands. The probe restores the width before yielding, so nothing paints mid-probe.
+			if (probe && table && !stacked) {
+				const restore = table.style.width
+				table.style.width = 'min-content'
+				needed.current = table.getBoundingClientRect().width
+				table.style.width = restore
+			}
+			if (!needed.current) return
+			setStacked(available < needed.current + (stacked ? UNSTACK_HEADROOM_PX : 0))
+		},
+		[boxRef, tableRef, stacked],
+	)
 
 	// after every render, since what the columns cost moves with the rows on the page, not just with the width
 	React.useLayoutEffect(() => {
-		measure()
+		measure(true)
 	})
 
 	React.useLayoutEffect(() => {
 		const box = boxRef.current
 		if (!box) return
-		const observer = new ResizeObserver(() => measure())
+		const observer = new ResizeObserver(() => measure(false))
 		observer.observe(box)
 		return () => observer.disconnect()
 	}, [boxRef, measure])

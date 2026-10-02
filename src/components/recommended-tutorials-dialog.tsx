@@ -90,7 +90,7 @@ export default function RecommendedTutorialsDialog(props: { surface: TUT.Surface
 				</ul>
 				<DialogFooter className="items-center sm:justify-between">
 					<div className="flex items-center gap-2">
-						<Checkbox id={checkboxId} checked={dismissing} onCheckedChange={(checked) => setDismissing(checked === true)} />
+						<Checkbox id={checkboxId} checked={dismissing} onCheckedChange={(checked) => setDismissing(checked)} />
 						<Label htmlFor={checkboxId} className="text-sm font-normal text-muted-foreground">
 							{tr.text(TUT_Msgs.dontShowAgain())}
 						</Label>

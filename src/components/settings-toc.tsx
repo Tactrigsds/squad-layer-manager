@@ -5,6 +5,7 @@ import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
+import * as Obj from '@/lib/object-utils'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_ENTRY_PATHS, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
@@ -33,6 +34,39 @@ type TocNode = { id: string; label: string; path: string; keywords?: string[]; w
 type TocEntry = { label: string; keywords: string[] }
 // entries of a TOC_ENTRY_PATHS list, read from the draft, by dotted path
 type EntriesByPath = ReadonlyMap<string, TocEntry[]>
+
+type HighlightStore = Zus.StoreApi<{ id: string | null }>
+type HighlightStoreProp = { tocHighlight: HighlightStore }
+
+// Only one table of contents is mounted at a time, so these module-level caches serve every instance. They keep the
+// selected values identity-stable, so an edit to a setting re-renders nothing here.
+function deepStable<A extends unknown[], R>(selector: (...args: A) => R): (...args: A) => R {
+	let prev: { value: R } | undefined
+	return (...args) => {
+		const next = selector(...args)
+		if (prev && Obj.deepEqual(prev.value, next)) return prev.value
+		prev = { value: next }
+		return next
+	}
+}
+const selectTocModes = deepStable(SettingsEditorFrame.Sel.tocModes)
+const selectCommentedAnchorIds = deepStable(SettingsEditorFrame.Sel.commentedAnchorIds)
+function selectAdminActionReasons(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
+	return SettingsEditorFrame.Sel.globalDraft(...states)?.adminActionReasons
+}
+function selectMessageVariables(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
+	return SettingsEditorFrame.Sel.globalDraft(...states)?.messageVariables
+}
+
+const pluginJsonSchemas = new WeakMap<object, Node>()
+function pluginJsonSchema(configSchema: z.ZodType): Node {
+	let jsonSchema = pluginJsonSchemas.get(configSchema)
+	if (!jsonSchema) {
+		jsonSchema = z.toJSONSchema(configSchema, { io: 'input', unrepresentable: 'any' }) as Node
+		pluginJsonSchemas.set(configSchema, jsonSchema)
+	}
+	return jsonSchema
+}
 
 const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
 const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
@@ -167,7 +201,7 @@ function TocItem({
 	expanded,
 	toggle,
 	forceOpen,
-	activeId,
+	stores,
 	showMarkers,
 	commentedIds,
 }: {
@@ -176,13 +210,13 @@ function TocItem({
 	expanded: Set<string>
 	toggle: (id: string) => void
 	forceOpen: boolean
-	activeId: string | null
+	stores: HighlightStoreProp
 	showMarkers: boolean
 	commentedIds: ReadonlySet<string>
 }) {
 	const hasChildren = node.children.length > 0
 	const isOpen = forceOpen || expanded.has(node.id)
-	const isActive = node.id === activeId
+	const isActive = Zus.useStore(stores.tocHighlight, (s) => s.id === node.id)
 	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const header = (
@@ -245,7 +279,7 @@ function TocItem({
 					expanded={expanded}
 					toggle={toggle}
 					forceOpen={forceOpen}
-					activeId={activeId}
+					stores={stores}
 					showMarkers={showMarkers}
 					commentedIds={commentedIds}
 				/>
@@ -274,18 +308,38 @@ function useActiveAnchor(deps: unknown): string | null {
 		const content = document.getElementById(SettingsNav.CONTENT_ID)
 		if (!main || !content) return
 		let raf = 0
+		// the page holds thousands of nodes, so the sticky headers and anchors are collected again only after the
+		// content changes rather than on every scroll frame
+		let stale = true
+		let stickies: { el: HTMLElement; offset: number }[] = []
+		let anchors: HTMLElement[] = []
+		const collect = () => {
+			stale = false
+			stickies = Array.from(content.querySelectorAll<HTMLElement>('[style*="position: sticky"]'), (el) => ({
+				el,
+				offset: parseFloat(getComputedStyle(el).top) || 0,
+			}))
+			anchors = Array.from(content.querySelectorAll<HTMLElement>('[id^="setting:"],[id^="section:"]'))
+		}
+		const observer = new MutationObserver(() => {
+			stale = true
+		})
+		observer.observe(content, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'id', 'class'] })
+		const onResize = () => {
+			stale = true
+		}
+		window.addEventListener('resize', onResize)
 		const compute = () => {
 			raf = 0
+			if (stale) collect()
 			const mainTop = main.getBoundingClientRect().top
 			// push the fold line below any currently-pinned sticky headers, so the section visible beneath the pinned
 			// stack wins (a header is "pinned" when its top has reached its sticky offset)
 			let fold = mainTop + 12
-			for (const s of content.querySelectorAll<HTMLElement>('[style*="position: sticky"]')) {
-				const offset = parseFloat(getComputedStyle(s).top) || 0
-				const r = s.getBoundingClientRect()
+			for (const { el, offset } of stickies) {
+				const r = el.getBoundingClientRect()
 				if (Math.abs(r.top - (mainTop + offset)) < 2) fold = Math.max(fold, r.bottom)
 			}
-			const anchors = content.querySelectorAll<HTMLElement>('[id^="setting:"],[id^="section:"]')
 			let current: string | null = null
 			// anchors are in document order (top-to-bottom); the last one above the fold is the active one. the tolerance
 			// covers the small breathing gap scrollToId leaves between a navigated target and the pinned stack above it.
@@ -302,6 +356,8 @@ function useActiveAnchor(deps: unknown): string | null {
 		compute()
 		return () => {
 			main.removeEventListener('scroll', onScroll)
+			window.removeEventListener('resize', onResize)
+			observer.disconnect()
 			if (raf !== 0) cancelAnimationFrame(raf)
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,6 +369,18 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 	for (const node of nodes) {
 		map.set(node.id, parentId)
 		buildParentMap(node.children, node.id, map)
+	}
+}
+
+// A spread hook argument keeps React Compiler off the function it is in, so these subscriptions are kept out of
+// SettingsToc. The entry lists are selected apart from the rest of the global draft, so edits elsewhere leave the
+// entries and their tree untouched.
+function useSectionState(sectionKeys: SettingsEditorFrame.Key[]) {
+	return {
+		modes: Zus.useStore(...sectionKeys, selectTocModes),
+		commentedIdList: Zus.useStore(...sectionKeys, selectCommentedAnchorIds),
+		adminActionReasons: Zus.useStore(...sectionKeys, selectAdminActionReasons),
+		messageVariables: Zus.useStore(...sectionKeys, selectMessageVariables),
 	}
 }
 
@@ -331,11 +399,8 @@ export default function SettingsToc({
 	servers: { id: string; displayName: string }[]
 	sectionKeys: SettingsEditorFrame.Key[]
 }) {
-	const { globalMode, serverModes, pluginModes, newServerMode, creatingServer } = Zus.useStore(
-		...sectionKeys,
-		SettingsEditorFrame.Sel.tocModes,
-	)
-	const commentedIdList = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.commentedAnchorIds)
+	const { modes, commentedIdList, adminActionReasons, messageVariables } = useSectionState(sectionKeys)
+	const { globalMode, serverModes, pluginModes, newServerMode, creatingServer } = modes
 	const commentedIds = React.useMemo(() => new Set(commentedIdList), [commentedIdList])
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
@@ -367,10 +432,6 @@ export default function SettingsToc({
 		return map
 	}, [perms, servers])
 
-	const globalDraft = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.globalDraft)
-	// held apart so edits elsewhere in the global draft leave the entries, and the tree built from them, untouched
-	const adminActionReasons = globalDraft?.adminActionReasons
-	const messageVariables = globalDraft?.messageVariables
 	const globalEntries = React.useMemo((): EntriesByPath => {
 		const sources: Record<string, unknown> = { adminActionReasons, messageVariables }
 		return new Map([...TOC_ENTRY_PATHS].map((p) => [p, tocEntries(p, sources[p])]))
@@ -398,7 +459,7 @@ export default function SettingsToc({
 		return pluginInfos.map((info): TocNode => {
 			// as for global/server sections, the field anchors only exist in the gui editor
 			const configSchema = (pluginModes[info.id] ?? 'gui') === 'yaml' ? undefined : pluginManifests[info.id]?.configSchema
-			const jsonSchema = configSchema && (z.toJSONSchema(configSchema, { io: 'input', unrepresentable: 'any' }) as Node)
+			const jsonSchema = configSchema && pluginJsonSchema(configSchema)
 			return {
 				id: `section:plugin:${info.id}`,
 				label: info.name,
@@ -509,6 +570,13 @@ export default function SettingsToc({
 	const focusHighlightId = focusedId ?? (q ? (flatIds[0] ?? null) : null)
 	const highlightId = focusHighlightId ?? activeId
 
+	// read by each row, so a scroll that moves the highlight re-renders the two rows it moves between
+	const [highlightStore] = React.useState<HighlightStore>(() => Zus.createStore(() => ({ id: highlightId })))
+	React.useLayoutEffect(() => {
+		highlightStore.setState({ id: highlightId })
+	}, [highlightStore, highlightId])
+	const itemStores = React.useMemo(() => ({ tocHighlight: highlightStore }), [highlightStore])
+
 	// keep the highlighted item in view within the (independently scrolling) sidebar
 	React.useEffect(() => {
 		if (!highlightId) return
@@ -576,7 +644,7 @@ export default function SettingsToc({
 								expanded={expanded}
 								toggle={toggle}
 								forceOpen={forceOpen}
-								activeId={highlightId}
+								stores={itemStores}
 								showMarkers={showMarkers}
 								commentedIds={commentedIds}
 							/>

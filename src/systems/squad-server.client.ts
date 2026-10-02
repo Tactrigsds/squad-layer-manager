@@ -65,6 +65,12 @@ export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind('squadServer.serv
 export const [useServerInfo, serverInfo$] = ReactRx.bind('squadServer.serverInfo', (serverId: string) =>
 	serverInfoRes$(serverId).pipe(Rx.map((res) => (res.code === 'ok' ? res.data : null))),
 )
+export const [usePlayerCount] = ReactRx.bind('squadServer.playerCount', (serverId: string) =>
+	serverInfo$(serverId).pipe(
+		Rx.map((info) => info?.playerCount ?? null),
+		Rx.distinctUntilChanged(),
+	),
+)
 
 export const [useServerRolling, serverRolling$] = ReactRx.bind('squadServer.serverRolling', (serverId: string) =>
 	RPC.observe('squadServer.watchServerRolling', () => RPC.orpc.squadServer.watchServerRolling.call({ serverId })).pipe(

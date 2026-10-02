@@ -35,12 +35,13 @@ export let StaticLayerComponents: LC.LayerComponents = unloadedLayerDataProxy('S
 export let StaticFactionunitConfigs: FactionUnitConfigMapping = unloadedLayerDataProxy('StaticFactionunitConfigs')
 export let StaticExtraColumns: LC.ColumnDef[] = unloadedLayerDataProxy('StaticExtraColumns')
 
-export function setLayerData(data: LayerData) {
+// without factionUnits, StaticFactionunitConfigs stays unloaded (the layer query worker has no use for it)
+export function setLayerData(data: LayerData | Omit<LayerData, 'factionUnits'>) {
 	// JSON.parse allocates a fresh string per occurrence, and this data is a small vocabulary repeated across many
 	// records: 14893 faction/unit entries drawn from 25 distinct values, and the same again in factionUnits.
 	Obj.internStrings(data)
 	StaticLayerComponents = data.components
-	StaticFactionunitConfigs = data.factionUnits
+	if ('factionUnits' in data) StaticFactionunitConfigs = data.factionUnits
 	StaticExtraColumns = data.extraColumns
 }
 

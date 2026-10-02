@@ -49,9 +49,8 @@ export function initChat(args: Args) {
 		handleChatEvents(events) {
 			const config = SettingsClient.getSettings()
 			set((state) => {
-				let chatState = state.chatState
-				// this is done to cache break the selectors
-				chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
+				const chatState = state.chatState
+				chatState.interpolatedState = CHAT.InterpolableState.beginBatch(chatState.interpolatedState)
 				for (const event of events) {
 					CHAT.handleEvent(chatState, event, config?.chat)
 				}
@@ -60,12 +59,38 @@ export function initChat(args: Args) {
 		},
 	} satisfies ChatSlice)
 
+	// Live events arrive one per message, and every batch costs each reader of the chat state a recompute, so they are
+	// held for up to LIVE_EVENT_BATCH_MS and applied together. A lifecycle event (the start or end of a sync, a
+	// connection change) is applied straight away, behind whatever is held.
+	let held: (CHAT.Event | CHAT.LifecycleEvent)[] = []
+	let flushTimer: ReturnType<typeof setTimeout> | null = null
+	function flushHeld() {
+		if (flushTimer !== null) {
+			clearTimeout(flushTimer)
+			flushTimer = null
+		}
+		if (held.length === 0) return
+		const events = held
+		held = []
+		get().handleChatEvents(events)
+	}
+	function receive(events: (CHAT.Event | CHAT.LifecycleEvent)[]) {
+		for (const event of events) held.push(event)
+		if (events.some(isLifecycleEvent)) flushHeld()
+		else if (flushTimer === null) flushTimer = setTimeout(flushHeld, LIVE_EVENT_BATCH_MS)
+	}
+	args.cleanup.push(() => {
+		if (flushTimer !== null) clearTimeout(flushTimer)
+	})
+
 	let previouslyConnected = false
 	const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
 
 	const chatEvent$ = RPC.observe(
 		'squadServer.watchChatEvents',
 		() => {
+			// the resume cursor has to count the events still held, or the server would send them again
+			flushHeld()
 			const eventBuffer = get().chatState.eventBuffer
 			return RPC.orpc.squadServer.watchChatEvents.call({
 				lastEventId: CHAT.lastServerEventId(eventBuffer),
@@ -85,9 +110,23 @@ export function initChat(args: Args) {
 
 	args.cleanup.push(
 		Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map((e) => [e]))).subscribe((events) => {
-			get().handleChatEvents(events as (CHAT.Event | CHAT.LifecycleEvent)[])
+			receive(events as (CHAT.Event | CHAT.LifecycleEvent)[])
 		}),
 	)
+}
+
+const LIVE_EVENT_BATCH_MS = 100
+
+function isLifecycleEvent(event: CHAT.Event | CHAT.LifecycleEvent): event is CHAT.LifecycleEvent {
+	switch (event.type) {
+		case 'INIT':
+		case 'SYNCED':
+		case 'CONNECTION_ERROR':
+		case 'CHAT_RECONNECTED':
+			return true
+		default:
+			return false
+	}
 }
 
 export namespace Sel {
@@ -175,50 +214,35 @@ export namespace Sel {
 	)
 	// true when SLM (re)started mid-match: a fresh RCON connection (reconnected === false) within the current
 	// match means we missed the events preceding the restart, so per-player combat stats are incomplete.
-	// not memoized on the buffer ref (it's mutated in place); the caller re-runs it on every store change.
 	export function statsMayBeInaccurate(store: Store, currentMatch: MH.MatchDetails | undefined): boolean {
-		if (!currentMatch) return false
-		for (const event of chatEvents(store)) {
-			if (event.type === 'RCON_CONNECTED' && !event.reconnected && event.matchId === currentMatch.historyEntryId) {
-				return true
-			}
-		}
-		return false
+		return !!currentMatch && store.chat.chatState.freshConnectionMatchId === currentMatch.historyEntryId
 	}
-	export function overallKds(store: Store) {
-		const events = chatEvents(store)
-		let team1Kills = 0
-		let team1Deaths = 0
-		let team2Kills = 0
-		let team2Deaths = 0
 
-		for (const event of events) {
-			if (event.type === 'PLAYER_DIED') {
-				const victimTeam = event.victim.teamId
-				const attackerTeam = event.attacker.teamId
-
-				if (victimTeam === 1) {
-					team1Deaths++
-				} else if (victimTeam === 2) {
-					team2Deaths++
-				}
-
-				if (event.variant === 'normal') {
-					if (attackerTeam === 1) {
-						team1Kills++
-					} else if (attackerTeam === 2) {
-						team2Kills++
-					}
-				}
-			}
+	// The current match's entries involving one player, for a details window. Each call makes a selector with a cache
+	// of its own, which scans only the entries added since it last ran.
+	export function playerFeedEvents(playerId: SM.PlayerId) {
+		const filter = CHAT.createBufferFilter()
+		return (store: Store, currentMatch: MH.MatchDetails | undefined): CHAT.EventEnriched[] => {
+			const matchId = currentMatch?.historyEntryId
+			if (matchId === undefined) return NO_EVENTS
+			return filter(store.chat.chatState, (e) => e.matchId === matchId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)), [
+				matchId,
+			])
 		}
+	}
 
-		const team1Ratio = team1Deaths === 0 ? (team1Kills > 0 ? 999 : 0) : team1Kills / team1Deaths
-		const team2Ratio = team2Deaths === 0 ? (team2Kills > 0 ? 999 : 0) : team2Kills / team2Deaths
-
-		return { team1Ratio, team2Ratio }
+	// The current match's entries for one squad instance, for a details window. See playerFeedEvents.
+	export function squadFeedEvents(uniqueSquadId: number) {
+		const filter = CHAT.createBufferFilter()
+		return (store: Store, currentMatch: MH.MatchDetails | undefined): CHAT.EventEnriched[] => {
+			const matchId = currentMatch?.historyEntryId
+			if (matchId === undefined) return NO_EVENTS
+			return filter(store.chat.chatState, (e) => e.matchId === matchId && CHAT.isSquadFeedEvent(e, uniqueSquadId, false), [matchId])
+		}
 	}
 }
+
+const NO_EVENTS: CHAT.EventEnriched[] = []
 
 export namespace Actions {
 	export function setSecondaryFilterState(stores: KeyProp, state: CHAT.SecondaryFilterState) {

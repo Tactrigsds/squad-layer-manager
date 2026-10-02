@@ -1,10 +1,8 @@
-import crypto from 'crypto'
 import EventEmitter from 'events'
-import fs from 'fs'
-import { readFile } from 'fs/promises'
-import path from 'path'
+import type fs from 'fs'
 import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
+import { StringDecoder } from 'string_decoder'
 
 import type * as CS from '@/models/context-shared'
 
@@ -59,7 +57,8 @@ export class SftpTail extends EventEmitter {
 	private lastByteReceived: number | null = null
 	private fetchLoopActive = false
 	private fetchLoopPromise: Promise<void> | null = null
-	private tmpFilePath: string | null = null
+	// carries a multi-byte character split across two reads over to the next chunk
+	private decoder = new StringDecoder('utf8')
 	private isConnected = false
 	private consecutiveFailures = 0
 	private log: CS.Logger
@@ -87,15 +86,6 @@ export class SftpTail extends EventEmitter {
 	}
 
 	watch() {
-		// Setup temp file.
-		this.tmpFilePath = path.join(
-			'/tmp/',
-			'slm-' +
-				crypto.createHash('md5').update(`${this.options.ftp.host}:${this.options.ftp.port}:${this.filePath}`).digest('hex') +
-				'.log',
-		)
-
-		// Start fetch loop.
 		this.log.info('Starting fetch loop...')
 		this.fetchLoopActive = true
 		this.fetchLoopPromise = this.fetchLoop()
@@ -137,20 +127,14 @@ export class SftpTail extends EventEmitter {
 				this.options.onStatus?.('warn', `${this.filePath} shrank, so it was rotated or restarted; resuming from the new end`)
 			}
 			this.lastByteReceived = Math.max(0, fileSize - this.options.tailLastBytes)
+			this.decoder = new StringDecoder('utf8')
 		}
 
-		// Download the data to a temp file overwritting any previous data.
 		this.log.trace({ offset: this.lastByteReceived }, 'Downloading file...')
-		await this.downloadToFile(this.tmpFilePath!, this.filePath!, this.lastByteReceived!)
-
-		// Update the last byte marker - this is so we can get data since this position on the next
-		// SFTP download.
-		const downloadSize = fs.statSync(this.tmpFilePath!).size
-		this.lastByteReceived += downloadSize
-		this.log.trace({ downloadSize }, 'Downloaded file to %s', this.tmpFilePath!)
-
-		// Get contents of download.
-		const chunk = await readFile(this.tmpFilePath!, 'utf8')
+		const downloaded = await this.download(this.filePath!, this.lastByteReceived!)
+		this.lastByteReceived += downloaded.length
+		this.log.trace({ downloadSize: downloaded.length }, 'Downloaded')
+		const chunk = this.decoder.write(downloaded)
 
 		// Only return if something was fetched.
 		if (chunk.length === 0) {
@@ -217,11 +201,6 @@ export class SftpTail extends EventEmitter {
 				)
 				await this.sleep(this.options.reconnectInterval)
 			}
-		}
-
-		if (this.tmpFilePath && fs.existsSync(this.tmpFilePath)) {
-			fs.unlinkSync(this.tmpFilePath)
-			this.log.debug('Deleted temp file.')
 		}
 
 		await this.disconnect()
@@ -325,13 +304,13 @@ export class SftpTail extends EventEmitter {
 		)
 	}
 
-	async downloadToFile(localPath: string, remotePath: string, startPosition: number): Promise<void> {
+	async download(remotePath: string, startPosition: number): Promise<Buffer> {
 		const sftp = this.sftp
 		if (!sftp) throw new Error('SFTP not connected')
 
 		return new Promise((resolve, reject) => {
-			const writeStream = fs.createWriteStream(localPath, { flags: 'w' })
 			const readStream = sftp.createReadStream(remotePath, { start: startPosition })
+			const parts: Buffer[] = []
 
 			let settled = false
 			const finish = (err?: Error) => {
@@ -340,10 +319,9 @@ export class SftpTail extends EventEmitter {
 				clearTimeout(timer)
 				if (err) {
 					readStream.destroy()
-					writeStream.destroy()
 					reject(err)
 				} else {
-					resolve()
+					resolve(Buffer.concat(parts))
 				}
 			}
 
@@ -354,10 +332,9 @@ export class SftpTail extends EventEmitter {
 				this.options.ftp.timeout,
 			)
 
+			readStream.on('data', (part: Buffer) => parts.push(part))
 			readStream.on('error', (err: Error) => finish(err))
-			writeStream.on('error', (err) => finish(err))
-			writeStream.on('finish', () => finish())
-			readStream.pipe(writeStream)
+			readStream.on('end', () => finish())
 		})
 	}
 

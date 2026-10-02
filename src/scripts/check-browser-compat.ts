@@ -49,6 +49,7 @@ const ALLOWED: Record<string, string> = {
 	'NavigateEvent.canIntercept': 'a navigation-api handler that starts with `e.canIntercept &&`',
 	'Navigation.currentEntry': 'the same handler',
 	'TouchEvent.changedTouches': "read as `'changedTouches' in e ? ... : ...`",
+	'Intl.DurationFormat': "messages/format.ts loads formatjs's polyfill before the first render where it is missing",
 
 	// lowered at build time
 	'Symbol.dispose': 'the `using` lowering reads `Symbol.dispose || Symbol.for("Symbol.dispose")`',

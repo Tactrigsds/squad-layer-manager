@@ -128,6 +128,13 @@ export default function NavBar() {
 	const showSettingsLink = !PageAccess.usePageDenial('/_app/settings')
 	const historyDenied = PageAccess.usePageDenial('/_app/history')
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
+	// mounted on intent or on the first open, then kept, so the first open does not wait on the frame's setup and query
+	const [exploreLayersMounted, setExploreLayersMounted] = React.useState(false)
+	const exploreLayersIntent = useHoverIntent(() => setExploreLayersMounted(true))
+	const openExploreLayers = () => {
+		setExploreLayersMounted(true)
+		setExploreLayersOpen(true)
+	}
 	const siteMode = SiteMode.useSiteMode()
 	// the desktop site on a phone: offer the way back to the phone layout
 	const showMobileSwitch = !isSmall && (siteMode === 'desktop' || SiteMode.isMobileDevice())
@@ -348,7 +355,8 @@ export default function NavBar() {
 					open={openState !== null}
 					onOpenChange={onPrimaryDropdownOpenChange}
 					pageItems={pageMenuItems(pageLinks)}
-					onExploreLayers={() => setExploreLayersOpen(true)}
+					onExploreLayers={openExploreLayers}
+					onExploreLayersIntent={() => setExploreLayersMounted(true)}
 					serverName={selectedServer?.displayName}
 					squadServerKey={isOnServerDashboard ? squadServerKey : undefined}
 					servers={settings?.servers ?? []}
@@ -363,7 +371,7 @@ export default function NavBar() {
 				</span>
 				{statusCluster}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} iconOnly />}
-				<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
+				<ExploreLayersDialog mounted={exploreLayersMounted} open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
 				{avatar}
 			</nav>
 		)
@@ -433,12 +441,13 @@ export default function NavBar() {
 					size={isMedium ? 'sm' : 'icon-sm'}
 					className="shrink-0"
 					title={isMedium ? undefined : tr.text(APP_Msgs.exploreLayers())}
-					onClick={() => setExploreLayersOpen(true)}
+					{...exploreLayersIntent}
+					onClick={openExploreLayers}
 				>
 					{isMedium ? tr.text(APP_Msgs.exploreLayers()) : <Icons.Search />}
 				</Button>
 			</div>
-			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
+			<ExploreLayersDialog mounted={exploreLayersMounted} open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
 			{statusCluster}
 			{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} iconOnly={!isDesktop} />}
 			{isOnServerDashboard && squadServerKey && <JoinServerButton serverId={squadServerKey.serverId} />}
@@ -570,7 +579,41 @@ function NormalizeTeamsToggle() {
 // the explore frame is scoped to the selected server, since its pool filters and repeat-rule constraints come from that
 // server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
 // the dialog constrained by the server the page happened to load with
-function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function ExploreLayersDialog(props: { mounted: boolean; open: boolean; onOpenChange: (open: boolean) => void }) {
+	// the frame stays once mounted, so the dialog reopens where it was left
+	if (!props.mounted) return null
+	return <ExploreLayersDialogBody open={props.open} onOpenChange={props.onOpenChange} />
+}
+
+// waits as StartActivityInteraction's intent preload does, so a pointer sweeping past does nothing. Keyboard focus is
+// deliberate and counts at once.
+const HOVER_INTENT_DELAY_MS = 150
+function useHoverIntent(onIntent: () => void) {
+	const timer = React.useRef<number | null>(null)
+	React.useEffect(
+		() => () => {
+			if (timer.current !== null) clearTimeout(timer.current)
+		},
+		[],
+	)
+	return {
+		onPointerEnter: () => {
+			if (timer.current !== null) return
+			timer.current = window.setTimeout(() => {
+				timer.current = null
+				onIntent()
+			}, HOVER_INTENT_DELAY_MS)
+		},
+		onPointerLeave: () => {
+			if (timer.current === null) return
+			clearTimeout(timer.current)
+			timer.current = null
+		},
+		onFocus: onIntent,
+	}
+}
+
+function ExploreLayersDialogBody(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
 	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID, rememberCollection: true })
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
@@ -594,6 +637,7 @@ function PhoneMenu(props: {
 	onOpenChange: (open: boolean) => void
 	pageItems: React.ReactNode
 	onExploreLayers: () => void
+	onExploreLayersIntent: () => void
 	serverName?: string
 	squadServerKey?: SquadServerFrame.Key
 	servers: { id: string; displayName: string; enabled: boolean; broken?: boolean }[]
@@ -618,7 +662,7 @@ function PhoneMenu(props: {
 				<DropdownMenuLabel>{tr.text(APP_Msgs.navPages())}</DropdownMenuLabel>
 				{props.pageItems}
 				<DropdownMenuSeparator />
-				<DropdownMenuItem className="cursor-pointer" onClick={props.onExploreLayers}>
+				<DropdownMenuItem className="cursor-pointer" onFocus={props.onExploreLayersIntent} onClick={props.onExploreLayers}>
 					{tr.text(APP_Msgs.exploreLayers())}
 				</DropdownMenuItem>
 				{props.serverName && props.squadServerKey && (

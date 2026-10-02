@@ -101,8 +101,49 @@ export function wireInvalidationSources() {
 	for (const sub of sourceSubs) sub.unsubscribe()
 	sourceSubs = [
 		AdminList.changed$.subscribe(() => invalidateAll()),
-		Discord.guildRbacEvents$.subscribe((e) => (e.type === 'roles' ? invalidateAll() : invalidateUser(e.discordId))),
+		Discord.guildRbacEvents$.subscribe((e) => {
+			if (e.type === 'member') invalidateUser(e.discordId)
+			else if (e.type === 'role-deleted') {
+				if (isDiscordRoleReferenced(e.roleId)) invalidateAll()
+			} else assertNever(e)
+		}),
 	]
+}
+
+function isDiscordRoleReferenced(roleId: bigint) {
+	if (superRoleIds.has(roleId)) return true
+	return roleAssignments.some((a) => a.type === 'discord-role' && a.discordRoleId === roleId)
+}
+
+// Every notification re-runs each affected client's guarded stream checks and refetches its users and perms, and
+// sources arrive in bursts (several members' roles changing at once, an admin list refresh beside a settings save).
+// The first notification goes out at once. The rest within the window are merged and sent when it closes, one 'all'
+// subsuming every user.
+const NOTIFY_WINDOW_MS = 250
+let heldNotifications: { all: boolean; users: Set<bigint> } | null = null
+
+function notify(e: RbacInvalidation) {
+	if (heldNotifications) {
+		if (e.scope === 'all') heldNotifications.all = true
+		else heldNotifications.users.add(e.discordId)
+		return
+	}
+	invalidation$.next(e)
+	heldNotifications = { all: false, users: new Set() }
+	setTimeout(flushNotifications, NOTIFY_WINDOW_MS)
+}
+
+function flushNotifications() {
+	const held = heldNotifications!
+	if (!held.all && held.users.size === 0) {
+		heldNotifications = null
+		return
+	}
+	// a burst still going gets one merged notification per window rather than one per event
+	heldNotifications = { all: false, users: new Set() }
+	setTimeout(flushNotifications, NOTIFY_WINDOW_MS)
+	if (held.all) invalidation$.next({ scope: 'all' })
+	else for (const discordId of held.users) invalidation$.next({ scope: 'user', discordId })
 }
 
 // NUL rather than ':' -- a server id may hold most things, but not a NUL byte, so the split is unambiguous
@@ -119,7 +160,7 @@ export function invalidateAll() {
 	cache.users.clear()
 	cache.players.clear()
 	userPlayerIndex.clear()
-	invalidation$.next({ scope: 'all' })
+	notify({ scope: 'all' })
 }
 
 // drops one discord identity's cached perms (and its linked player entries) and notifies that user's session(s)
@@ -133,7 +174,7 @@ export function invalidateUser(discordId: bigint) {
 		}
 		userPlayerIndex.delete(discordId)
 	}
-	invalidation$.next({ scope: 'user', discordId })
+	notify({ scope: 'user', discordId })
 }
 
 // called by settings.server whenever global settings are (re)loaded so role/permission changes take effect without a restart

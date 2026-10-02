@@ -21,6 +21,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useDebouncedCommit } from '@/hooks/use-debounced-commit'
+import * as Browser from '@/lib/browser'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -550,11 +552,11 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			)
 		case 'text':
 			return (
-				<Input
+				<DraftInput
 					autoFocus
 					className="h-7 w-full text-xs"
 					defaultValue={(draft[field.key as 'chat' | 'damageSource' | 'target'] as string | undefined) ?? ''}
-					onChange={(e) => set({ [field.key]: e.target.value || undefined })}
+					onCommit={(value) => set({ [field.key]: value || undefined })}
 				/>
 			)
 		case 'layer-part':
@@ -601,13 +603,13 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 			)
 		case 'number':
 			return (
-				<Input
+				<DraftInput
 					autoFocus
 					type="number"
 					min={control.min}
 					className="h-7 w-full text-xs"
 					defaultValue={draft[control.field] ?? ''}
-					onChange={(e) => set({ [control.field]: e.target.value === '' ? undefined : Number(e.target.value) })}
+					onCommit={(value) => set({ [control.field]: value === '' ? undefined : Number(value) })}
 				/>
 			)
 		case 'number-range': {
@@ -650,14 +652,32 @@ function BoundInput(props: { type: 'number' | 'datetime-local'; label: string; d
 	return (
 		<label className="flex min-w-0 flex-1 flex-col gap-0.5 text-2xs text-muted-foreground">
 			{props.label}
-			<Input
+			<DraftInput
 				type={props.type}
 				min={0}
 				className="h-7 w-full min-w-0 text-xs"
 				defaultValue={props.defaultValue}
-				onChange={(e) => props.onChange(e.target.value)}
+				onCommit={props.onChange}
 			/>
 		</label>
+	)
+}
+
+// Typing into the draft re-renders the whole page, so a field's edits reach the draft in batches. A blur or the run
+// chord flushes them first, and the chord's keydown reaches this input before the page's document listener runs.
+function DraftInput(props: Omit<React.ComponentProps<typeof Input>, 'onChange' | 'onBlur'> & { onCommit: (value: string) => void }) {
+	const { onCommit, onKeyDown, ...inputProps } = props
+	const commit = useDebouncedCommit(onCommit, 250)
+	return (
+		<Input
+			{...inputProps}
+			onChange={(e) => commit.schedule(e.target.value)}
+			onBlur={commit.flush}
+			onKeyDown={(e) => {
+				if (Browser.isSubmitChord(e)) commit.flush()
+				onKeyDown?.(e)
+			}}
+		/>
 	)
 }
 

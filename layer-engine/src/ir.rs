@@ -49,14 +49,37 @@ impl Tri {
         Tri { t: vec![0; words], u: vec![0; words] }
     }
 
+    /// Drops the unknown track, which only matters while the result can still be negated.
+    pub fn into_hits(self) -> Hits {
+        Hits { bits: self.t }
+    }
+}
+
+/// The rows a filter keeps: a WHERE keeps only TRUE, so a finished filter is one bitset.
+#[derive(Clone)]
+pub struct Hits {
+    pub bits: Vec<u64>,
+}
+
+impl Hits {
+    pub fn all(rows: usize) -> Self {
+        Hits { bits: all_rows(rows) }
+    }
+
     pub fn count(&self) -> usize {
-        self.t.iter().map(|w| w.count_ones() as usize).sum()
+        self.bits.iter().map(|w| w.count_ones() as usize).sum()
     }
 
     /// Iterates the row indices that matched.
     pub fn rows(&self) -> impl Iterator<Item = usize> + '_ {
-        self.t.iter().enumerate().flat_map(|(w, word)| {
-            let mut bits = *word;
+        self.rows_in(0, self.bits.len() * 64)
+    }
+
+    /// Iterates the matched rows in [from, to).
+    pub fn rows_in(&self, from: usize, to: usize) -> impl Iterator<Item = usize> + '_ {
+        let words = if from >= to { 0..0 } else { from / 64..(to - 1) / 64 + 1 };
+        words.flat_map(move |w| {
+            let mut bits = self.bits[w] & range_mask(w, from, to);
             std::iter::from_fn(move || {
                 if bits == 0 {
                     return None;
@@ -70,19 +93,41 @@ impl Tri {
 
     #[inline]
     pub fn contains(&self, row: usize) -> bool {
-        self.t[row / 64] & (1u64 << (row % 64)) != 0
+        self.bits[row / 64] & (1u64 << (row % 64)) != 0
     }
 
     /// Whether any row in [from, to) matched. Lets a caller ask about a whole block at once.
     pub fn any_in(&self, from: usize, to: usize) -> bool {
-        range_any(&self.t, from, to)
+        range_any(&self.bits, from, to)
     }
 
     /// Whether every row in [from, to) matched, which is the common case for a block under a pool filter built only
     /// from a layer's own columns.
     pub fn all_in(&self, from: usize, to: usize) -> bool {
-        range_all(&self.t, from, to)
+        range_all(&self.bits, from, to)
     }
+
+    /// How many rows in [from, to) matched.
+    pub fn count_in(&self, from: usize, to: usize) -> usize {
+        if from >= to {
+            return 0;
+        }
+        (from / 64..(to - 1) / 64 + 1).map(|w| (self.bits[w] & range_mask(w, from, to)).count_ones() as usize).sum()
+    }
+}
+
+/// The bits of word `w` that fall inside [from, to), for a non-empty range that touches `w`.
+#[inline]
+fn range_mask(w: usize, from: usize, to: usize) -> u64 {
+    let mut mask = !0u64;
+    if w == from / 64 {
+        mask &= !0u64 << (from % 64);
+    }
+    if w == (to - 1) / 64 {
+        let rem = to % 64;
+        mask &= if rem == 0 { !0u64 } else { !0u64 >> (64 - rem) };
+    }
+    mask
 }
 
 #[inline]
@@ -130,21 +175,7 @@ fn range_any(bits: &[u64], from: usize, to: usize) -> bool {
     if from >= to {
         return false;
     }
-    let (fw, lw) = (from / 64, (to - 1) / 64);
-    for (w, word) in bits.iter().enumerate().take(lw + 1).skip(fw) {
-        let mut value = *word;
-        if w == fw {
-            value &= !0u64 << (from % 64);
-        }
-        if w == lw {
-            let rem = to % 64;
-            value &= if rem == 0 { !0u64 } else { !0u64 >> (64 - rem) };
-        }
-        if value != 0 {
-            return true;
-        }
-    }
-    false
+    (from / 64..(to - 1) / 64 + 1).any(|w| bits[w] & range_mask(w, from, to) != 0)
 }
 
 /// Whether every bit in [from, to) is set, word at a time.
@@ -153,30 +184,21 @@ fn range_all(bits: &[u64], from: usize, to: usize) -> bool {
     if from >= to {
         return true;
     }
-    let (fw, lw) = (from / 64, (to - 1) / 64);
-    for (w, word) in bits.iter().enumerate().take(lw + 1).skip(fw) {
-        let mut mask = !0u64;
-        if w == fw {
-            mask &= !0u64 << (from % 64);
-        }
-        if w == lw {
-            let rem = to % 64;
-            mask &= if rem == 0 { !0u64 } else { !0u64 >> (64 - rem) };
-        }
-        if *word & mask != mask {
-            return false;
-        }
-    }
-    true
+    (from / 64..(to - 1) / 64 + 1).all(|w| {
+        let mask = range_mask(w, from, to);
+        bits[w] & mask == mask
+    })
 }
 
 /// Cheap leaves first within an AND, so the candidate is already narrow when an expensive nested block runs. A
-/// predicate on a layer's own column is the cheapest thing there is, since it runs once per block.
-fn cost(store: &Store, ir: &Ir) -> u32 {
+/// predicate on a layer's own column is the cheapest scan there is, since it runs once per block. An id lookup does
+/// not scan at all.
+pub fn cost(store: &Store, ir: &Ir) -> u32 {
     match ir {
         Ir::True | Ir::False => 0,
         Ir::Not { child } => 1 + cost(store, child),
         Ir::And { children } | Ir::Or { children } => 1 + children.iter().map(|c| cost(store, c)).sum::<u32>(),
+        Ir::EqVal { col, .. } | Ir::InVals { col, .. } if store.is_id(*col) => 0,
         Ir::IsNull { col }
         | Ir::EqVal { col, .. }
         | Ir::InVals { col, .. }
@@ -406,6 +428,8 @@ pub fn eval_with(store: &Store, ir: &Ir, cand: &[u64]) -> Tri {
             acc.unwrap_or_else(|| Tri::empty(words))
         }
         Ir::IsNull { col } => scan_col(store, *col, cand, |v| (v.is_none(), false)),
+        Ir::EqVal { col, val } if store.is_id(*col) => id_rows(store, std::slice::from_ref(val), cand),
+        Ir::InVals { col, vals } if store.is_id(*col) => id_rows(store, vals, cand),
         // one membership pass rather than an OR of equalities: the real pool filters carry 60-value layer lists, and
         // as an OR chain each value would be its own scan
         Ir::InVals { col, vals } => match store.col_data(*col) {
@@ -451,6 +475,18 @@ pub fn eval_with(store: &Store, ir: &Ir, cand: &[u64]) -> Tri {
         Ir::LtCol { col, other } => cmp_col(store, *col, *other, cand, |a, b| a < b),
         Ir::GtCol { col, other } => cmp_col(store, *col, *other, cand, |a, b| a > b),
     }
+}
+
+/// Resolves each id to its row instead of scanning the table. Every row has an id, so nothing is ever unknown.
+fn id_rows(store: &Store, ids: &[i64], cand: &[u64]) -> Tri {
+    let mut tri = Tri::empty(words_for(store.row_count()));
+    for id in ids {
+        let Ok(id) = i32::try_from(*id) else { continue };
+        if let Some(row) = store.row_of_id(id) {
+            tri.t[row / 64] |= cand[row / 64] & (1u64 << (row % 64));
+        }
+    }
+    tri
 }
 
 /// A comparison against null is null, which is what keeps null rows out of both a predicate and its negation.

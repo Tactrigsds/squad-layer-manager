@@ -53,6 +53,19 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 		(s) => Object.values(s.filterMenu.menuItems).filter((c) => F.editableCompHasValue(c)).length,
 	)
 	const [filtersOpen, setFiltersOpen] = React.useState(false)
+	// built apart from the rail, so a new footer re-renders only the footer and not every filter menu item
+	const filterMenu = <LayerFilterMenu stores={{ filterMenu: frameKey }} />
+	const layerTable = (
+		<LayerTable
+			extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
+			stores={{ layerTable: frameKey }}
+			canChangeRowsPerPage={false}
+			canToggleColumns={props.canToggleColumns}
+			enableForceSelect
+			compact={phone}
+			autoCompact
+		/>
+	)
 
 	return (
 		<HeadlessDialogContent
@@ -92,9 +105,7 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 									<DialogHeader>
 										<DialogTitle>{tr.text(F_Msgs.filtersButton())}</DialogTitle>
 									</DialogHeader>
-									<div className="flex-1 min-h-0 overflow-auto">
-										<LayerFilterMenu stores={{ filterMenu: frameKey }} />
-									</div>
+									<div className="flex-1 min-h-0 overflow-auto">{filterMenu}</div>
 									<DialogFooter>
 										<Button variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
 											{tr.text(UI_Msgs.done())}
@@ -104,15 +115,7 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 							</Dialog>
 						</div>
 					)}
-					<LayerTable
-						extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
-						stores={{ layerTable: frameKey }}
-						canChangeRowsPerPage={false}
-						canToggleColumns={props.canToggleColumns}
-						enableForceSelect
-						compact={phone}
-						autoCompact
-					/>
+					{layerTable}
 				</div>
 				{!phone && (
 					<div
@@ -122,7 +125,7 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 					>
 						<div className="flex flex-col gap-1">
 							<span className="fd-lbl-k">{tr.text(F_Msgs.constraints())}</span>
-							<LayerFilterMenu stores={{ filterMenu: frameKey }} />
+							{filterMenu}
 						</div>
 						<div className="flex-1" />
 						<div className="flex flex-col gap-1.5 border-t border-line pt-2 shadow-[inset_0_1px_0_var(--line-soft)]">

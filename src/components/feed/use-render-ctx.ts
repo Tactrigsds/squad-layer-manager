@@ -42,11 +42,22 @@ export function usePaintedSelection(host: Element | null) {
 }
 
 /**
+ * Re-renders the caller whenever any player's group colour may have changed. For a short feed whose rows react
+ * renders, which read their colours as they render.
+ */
+export function useFollowGroupColors() {
+	BattlemetricsClient.usePlayerBmData()
+	BattlemetricsClient.useGroupingInputs()
+}
+
+/**
  * The ambient state a dom-built row is built against, registered so its interactions can find it again.
  *
  * Its identity is what says a row is out of date: changing it rebuilds every row built from it. Player colours are
  * deliberately not part of that -- see RC.applyGroupColors -- because they follow a stream, and a rebuild would cost
- * every open disclosure in the feed.
+ * every open disclosure in the feed. A ctx's holder does not re-render when a colour changes either: a row reads its
+ * colours when it is built, and the row's owner repaints them (FeedList) or re-renders (useFollowGroupColors,
+ * PlayerDisplay).
  */
 export function useRenderCtx(
 	stores: SquadServerFrame.KeyProp,
@@ -62,15 +73,8 @@ export function useRenderCtx(
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const outletKey = useOutletKey()
 	const zIndexBase = React.useContext(BaseZIndexContext)
-	const groupColor = BattlemetricsClient.useGroupColorResolver()
 	const scopeId = React.useMemo(() => RC.newScopeId(), [])
 	const actorLabels = useActorLabels(events)
-
-	// held behind a ref so a bm update doesn't change the ctx's identity, which is what a rebuild keys on
-	const groupColorRef = React.useRef(groupColor)
-	React.useLayoutEffect(() => {
-		groupColorRef.current = groupColor
-	}, [groupColor])
 
 	const ctx = React.useMemo<RC.RenderCtx>(() => {
 		const byId = new Map<number, MH.MatchDetails>()
@@ -84,7 +88,8 @@ export function useRenderCtx(
 			matchById: (matchId) => (matchId === null || matchId === undefined ? undefined : byId.get(matchId)),
 			latestMatch: recentMatches[recentMatches.length - 1],
 			currentMatch,
-			groupColor: (playerId, player) => groupColorRef.current(playerId, player),
+			// read when a row is built, never subscribed to: a bm update would otherwise re-render every holder of a ctx
+			groupColor: BattlemetricsClient.groupColorNow,
 			linkToRows,
 			selectionText,
 			...actorLabels,

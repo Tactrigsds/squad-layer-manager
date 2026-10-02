@@ -1,13 +1,15 @@
-import { EmojiStyle } from 'emoji-picker-react'
+import type { EmojiStyle } from 'emoji-picker-react'
 import * as Icons from 'lucide-react'
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
 import EmojiButton from './emoji-button'
-import { UnifiedEmojiPicker } from './emoji-picker'
+
+// emoji-picker-react is ~300KB, fetched when a picker first opens
+const UnifiedEmojiPicker = React.lazy(() => import('./emoji-picker').then((m) => ({ default: m.UnifiedEmojiPicker })))
 
 export type EmojiPickerPopoverProps = {
 	value?: string
@@ -23,16 +25,7 @@ export type EmojiPickerPopoverProps = {
 }
 
 export function EmojiPickerPopover(props: EmojiPickerPopoverProps) {
-	const {
-		value: emoji,
-		onSelect,
-		disabled = false,
-		className,
-		emojiStyle = EmojiStyle.NATIVE,
-		guildEmojiSize = 48,
-		width = 350,
-		height = 450,
-	} = props
+	const { value: emoji, onSelect, disabled = false, className, emojiStyle, guildEmojiSize = 48, width = 350, height = 450 } = props
 
 	const [open, setOpen] = useState(false)
 
@@ -49,18 +42,20 @@ export function EmojiPickerPopover(props: EmojiPickerPopoverProps) {
 					/>
 				</PopoverTrigger>
 				<PopoverContent className="w-auto p-0" align="start">
-					<UnifiedEmojiPicker
-						// if we don't coalesce here the component breaks
-						hidden={props.hidden ?? []}
-						onEmojiClick={(emoji) => {
-							onSelect(emoji)
-							setOpen(false)
-						}}
-						emojiStyle={emojiStyle}
-						guildEmojiSize={guildEmojiSize}
-						width={width}
-						height={height}
-					/>
+					<React.Suspense fallback={<div style={{ width, height }} />}>
+						<UnifiedEmojiPicker
+							// if we don't coalesce here the component breaks
+							hidden={props.hidden ?? []}
+							onEmojiClick={(emoji) => {
+								onSelect(emoji)
+								setOpen(false)
+							}}
+							emojiStyle={emojiStyle}
+							guildEmojiSize={guildEmojiSize}
+							width={width}
+							height={height}
+						/>
+					</React.Suspense>
 				</PopoverContent>
 			</Popover>
 			{emoji && !disabled && (

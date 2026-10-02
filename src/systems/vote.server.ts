@@ -97,21 +97,16 @@ export const router = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) =>
-				Rx.from(
-					(async function* () {
-						let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
+				ctx.vote.update$.pipe(
+					Rx.startWith(null),
+					Rx.concatMap(async (update): Promise<V.VoteStateUpdateOrInitialWithParts> => {
+						if (update) return { code: 'update', update: await includeVoteStateUpdatePartShared(update) }
 						const voteState = ctx.vote.state
-						if (voteState) {
-							const ids = getVoteStateDiscordIds(voteState)
-							const users = await Users.buildUsers(await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids)))
-							initialState = { ...voteState, parts: { users } }
-						}
-						yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
-						for await (const update of Rx.Ext.toAsyncGenerator(ctx.vote.update$)) {
-							const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
-							yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
-						}
-					})(),
+						if (!voteState) return { code: 'initial-state', state: null }
+						const ids = getVoteStateDiscordIds(voteState)
+						const users = await Users.buildUsers(await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids)))
+						return { code: 'initial-state', state: { ...voteState, parts: { users } } }
+					}),
 				),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 
@@ -355,10 +350,11 @@ export const handleVote = Instr.spanOp(
 		}
 
 		const choiceItemId = voteState.choiceIds[choiceIdx - 1]
-		SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, { playerIds: msg.playerIds, choice: choiceItemId })
-		// voteState.votes[msg.playerIds] = choice
+		const cast: V.VoteCast = { playerIds: msg.playerIds, choice: choiceItemId }
+		SM.PlayerIds.upsert(voteState.votes, ({ playerIds }) => playerIds, cast)
 		const update: V.VoteStateUpdate = {
 			state: voteState,
+			cast,
 			source: {
 				type: 'manual',
 				event: 'vote',
@@ -685,6 +681,21 @@ async function broadcastVoteUpdate(
 		default:
 			assertNever(voteState.voterType)
 	}
+}
+
+// every watcher is handed the same update object, so the user lookup runs once per update rather than once per watcher
+const sharedUpdateParts = new WeakMap<V.VoteStateUpdate, ReturnType<typeof includeVoteStateUpdatePart>>()
+function includeVoteStateUpdatePartShared(
+	update: V.VoteStateUpdate,
+): Promise<(V.VoteStateUpdate & Parts<USR.UserPart>) | V.VoteCastUpdate> {
+	// a cast names no SLM user, so there is nothing to look up
+	if (update.cast) return Promise.resolve({ cast: update.cast, source: update.source })
+	let withParts = sharedUpdateParts.get(update)
+	if (!withParts) {
+		withParts = includeVoteStateUpdatePart(getBaseCtx(), update)
+		sharedUpdateParts.set(update, withParts)
+	}
+	return withParts
 }
 
 async function includeVoteStateUpdatePart(ctx: C.Db, update: V.VoteStateUpdate) {

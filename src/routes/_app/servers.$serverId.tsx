@@ -149,6 +149,7 @@ function ServerDashboardHost(props: { serverId: string }) {
 				),
 			),
 		)
+		let interactionSentAt: number | null = null
 		sub.add(
 			active$.subscribe((active) => {
 				try {
@@ -158,8 +159,13 @@ function ServerDashboardHost(props: { serverId: string }) {
 						// engage() re-establishes via the idempotent ensureViewingPanel, so interacting also
 						// recovers presence after another of this user's clients remotely reset this one
 						engage()
-						UPClient.Actions.dispatch({ code: 'page-interaction' })
+						const now = Date.now()
+						if (interactionSentAt === null || now - interactionSentAt >= UP.INTERACTION_HEARTBEAT) {
+							interactionSentAt = now
+							UPClient.Actions.dispatch({ code: 'page-interaction' })
+						}
 					} else {
+						interactionSentAt = null
 						UPClient.Actions.dispatch({ code: 'interaction-timeout' })
 					}
 				} catch (error) {

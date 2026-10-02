@@ -16,7 +16,6 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
-import * as ApiRegistry from '@/systems/plugin-api-registry.client'
 
 // Client half of the plugin host: watches which plugins are active, loads their client entries, and
 // holds what those entries register -- slot components, row decorations, event renderers, rpc query
@@ -442,8 +441,6 @@ const BUILTIN = 'builtin'
 
 export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 	builtins = builtinPlugins
-	// before any packaged bundle is imported: its `slm/*` and react shims read from what this publishes
-	ApiRegistry.setup()
 	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(builtinPlugins.map((e) => [e.manifest.id, e.manifest])) }))
 	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((next) => {
 		const infos = next.plugins as PLG.RuntimeInfo[]
@@ -481,8 +478,24 @@ async function reconcile(infos: PLG.RuntimeInfo[]) {
 	}
 }
 
+// A packaged bundle's `slm/*` and react shims read the registry as they evaluate, so it is published before the
+// first such import. It is imported lazily because it holds whole namespaces (all of lucide, zod and rxjs), which
+// would otherwise ship unshaken on every page load.
+let apiRegistry: Promise<void> | null = null
+function ensureApiRegistry() {
+	apiRegistry ??= import('@/systems/plugin-api-registry.client').then(
+		(m) => m.setup(),
+		(err: unknown) => {
+			apiRegistry = null
+			throw err
+		},
+	)
+	return apiRegistry
+}
+
 async function loadManifest(info: PLG.RuntimeInfo) {
 	try {
+		await ensureApiRegistry()
 		const mod = (await import(/* @vite-ignore */ info.manifestEntry!)) as { default: PLG.Manifest }
 		Store.setState((s) => ({ ...s, manifests: { ...s.manifests, [info.id]: mod.default } }))
 	} catch (err) {
@@ -492,6 +505,7 @@ async function loadManifest(info: PLG.RuntimeInfo) {
 
 async function loadClient(info: PLG.RuntimeInfo) {
 	try {
+		if (info.clientEntry) await ensureApiRegistry()
 		const mod = info.clientEntry
 			? ((await import(/* @vite-ignore */ info.clientEntry)) as { default: ClientModule }).default
 			: (await builtins.find((e) => e.manifest.id === info.id)?.client?.())?.default

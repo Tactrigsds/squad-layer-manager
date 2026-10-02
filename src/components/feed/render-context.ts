@@ -347,7 +347,7 @@ export function matchIdOf(node: Element): number | undefined {
 }
 
 /**
- * Repaints every name under `root` against the current grouping.
+ * Repaints the names under `root` against the current grouping: every name, or only the players in `only`.
  *
  * Battlemetrics data arrives as a stream, and a name's colour is the only thing in a row that follows it. Rebuilding
  * the rows for that would throw away every open disclosure and every measured row height, so the colours are written
@@ -358,10 +358,11 @@ export function applyGroupColors(
 	root: Element,
 	resolve: (playerId: SM.PlayerId, player: PG.PlayerFactsSource) => string | null,
 	factsOf: (playerId: SM.PlayerId) => PG.PlayerFactsSource | undefined,
+	only?: ReadonlySet<SM.PlayerId>,
 ) {
 	for (const node of root.querySelectorAll<HTMLElement>(`[${PLAYER_ATTR}]`)) {
 		const playerId = node.getAttribute(PLAYER_ATTR)
-		if (!playerId) continue
+		if (!playerId || (only && !only.has(playerId))) continue
 		const facts = factsOf(playerId)
 		node.style.color = (facts && resolve(playerId, facts)) ?? ''
 	}

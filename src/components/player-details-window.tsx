@@ -65,7 +65,7 @@ import * as UsersClient from '@/systems/users.client'
 import { CopyIdButton } from './copy-id-button'
 import * as Selection from './feed/selection'
 import { ServerEvent } from './feed/server-event'
-import { useEventsSelectionText, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
+import { useEventsSelectionText, useFollowGroupColors, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import {
 	DraggableWindowClose,
@@ -250,13 +250,8 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const currentMatchEvents = Zus.useStore(
 		squadServerFrameKey,
-		Zus.useShallow((s) =>
-			currentMatch
-				? ChatPrt.Sel.chatEvents(s).filter(
-						(e) => e.matchId === currentMatch.historyEntryId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)),
-					)
-				: [],
-		),
+		MatchHistoryClient.currentMatch$(serverId),
+		React.useMemo(() => ChatPrt.Sel.playerFeedEvents(playerId), [playerId]),
 	)
 
 	// Pages arrive newest-first and so do the events within one, so a single reverse over the flattened list
@@ -327,6 +322,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 		},
 	}))
 	const feedCtx = useRenderCtx(stores, allEvents, { linkToRows, selectionText: useEventsSelectionText(filteredEvents) })
+	useFollowGroupColors()
 	const { scrollAreaRef, contentRef, content, showScrollButton, isAtTop, scrollToBottom, scrollBy } = useTailingScroll()
 	usePaintedSelection(content)
 

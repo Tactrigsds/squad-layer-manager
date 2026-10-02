@@ -30,10 +30,23 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const compactRef = React.useRef(compact)
 	compactRef.current = compact
 
+	const activeRef = React.useRef(props.active)
+
 	const getState = () => Zus.getState(props.stores.filterEditor)
+
+	function syncFromStore(view: CM.EditorView) {
+		const node = F.treeToFilterNode(getState().tree)
+		// an edit here round-trips through the frame and comes back as a new tree. Re-serializing on that would
+		// rewrite the buffer under the cursor, which YAML's significant indentation makes worse than it was in JSON.
+		if (Obj.deepEqual(node, lastEmittedRef.current)) return
+		lastEmittedRef.current = node
+		CM.setDoc(view, stringifyWithNodeComments(node, compactRef.current))
+	}
 
 	const onChange = React.useCallback(
 		(value: string) => {
+			// a setDoc since this edit has replaced it
+			if (viewRef.current && value !== viewRef.current.state.doc.toString()) return
 			let obj: any
 			try {
 				obj = parseWithNodeComments(value)
@@ -80,7 +93,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			extensions: [
 				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
-					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
+					if (u.docChanged && !CM.isProgrammaticUpdate(u)) onChangeDebounced(u.state.doc.toString())
 				}),
 			],
 		})
@@ -91,14 +104,10 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			if (!document.hidden) view.requestMeasure()
 		})
 
+		// a hidden editor is brought up to date when its tab is shown instead
 		const unsub = Zus.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
-			if (frameState.tree === prevFrameState.tree) return
-			const node = F.treeToFilterNode(frameState.tree)
-			// an edit here round-trips through the frame and comes back as a new tree. Re-serializing on that would
-			// rewrite the buffer under the cursor, which YAML's significant indentation makes worse than it was in JSON.
-			if (Obj.deepEqual(node, lastEmittedRef.current)) return
-			lastEmittedRef.current = node
-			CM.setDoc(view, stringifyWithNodeComments(node, compactRef.current))
+			if (!activeRef.current || frameState.tree === prevFrameState.tree) return
+			syncFromStore(view)
 		})
 
 		return () => {
@@ -109,6 +118,12 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onChangeDebounced, props.stores])
+
+	React.useEffect(() => {
+		activeRef.current = props.active
+		if (props.active && viewRef.current) syncFromStore(viewRef.current)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [props.active])
 
 	function switchCompact(next: boolean) {
 		setCompact(next)

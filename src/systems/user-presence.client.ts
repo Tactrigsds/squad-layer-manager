@@ -18,6 +18,7 @@ import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
+import * as LayerDataClient from '@/systems/layer-data.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
@@ -37,19 +38,14 @@ export type LoaderCacheEntry<Config extends ActivityLoaderConfig, Loaded extends
 export type LoaderData<Config extends ActivityLoaderConfig> = Lifecycle.LoaderData<Config>
 export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.LoaderKey<Config>
 
-// bridges non-component code to the currently-active squadServer frame. Relies on the frame
-// already being alive (set up by the servers/$serverId route loader) -- ensureSetup just dedupes onto it.
-function getCurrentServerKey() {
+// reads the currently-active squadServer frame from non-component code. Relies on the frame already being alive (set
+// up by the servers/$serverId route loader), and peeks rather than taking a reference: this runs on every presence
+// update.
+function getCurrentLayerList(): LL.Item[] {
 	const serverId = SquadServerClient.SelectedServerStore.getState().selectedServerId
 	const serverConfig = SettingsClient.getSettings()?.servers.find((s) => s.id === serverId)
-	// don't build a frame for a server with no live managed server -- it would just spam subscription errors
-	if (!SettingsClient.isServerUsable(serverConfig)) return undefined
-	return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
-}
-
-function getCurrentLayerList(): LL.Item[] {
-	const key = getCurrentServerKey()
-	return key ? (frameManager.getState(key)?.queue.layerList ?? []) : []
+	if (!SettingsClient.isServerUsable(serverConfig)) return []
+	return frameManager.peekState(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))?.queue.layerList ?? []
 }
 
 export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
@@ -74,16 +70,18 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		return undefined
 	})({
 		unloadOnLeave: true,
+		// a preloaded frame re-queries the layer worker on every queue change until it is unloaded
+		staleTime: 30_000,
 
 		load(args) {
+			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
+			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
 			let editedLayerId: string | undefined
 			if (args.key.id === 'EDITING_ITEM') {
-				const layerList = getCurrentLayerList()
+				const layerList = frameManager.getState(squadServer)?.queue.layerList ?? []
 				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.opts.itemId))
 				if (item) editedLayerId = item.layerId
 			}
-			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
-			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
 			const input = SelectLayersFrame.createInput({
 				cursor: args.key.opts.cursor,
 				initialEditedLayerId: editedLayerId,
@@ -288,9 +286,6 @@ export namespace Actions {
 			return
 		}
 		Store.setState({ session: res.session })
-		for (const op of ops) {
-			console.log('dispatch ', op.code, op.code === 'update-activity' ? op.update.code : null)
-		}
 		void RPC.orpc.userPresence.dispatchOp.call(ops)
 	}
 
@@ -584,22 +579,27 @@ export async function setup() {
 	// last held as `?prior=`, and the server reclaims that same wsClientId with its activity and locks
 	// intact (see reclaimClientId in user-presence.server.ts). So there's nothing to replay from the client here.
 
-	const settingsModified$ = Rx.combineLatest([
-		Zus.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
-		// see squad-server.client: toStream needs fireImmediately to carry the store's current value
-		Zus.toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }),
-	]).pipe(
-		Rx.map(([serverId, settings]) => settings?.servers.find((s) => s.id === serverId)),
-		Rx.distinctUntilChanged(),
-		Rx.switchMap((serverConfig) => {
-			// only track settings-modified for a usable server; otherwise there's no frame to read and no edits to flush
-			if (!SettingsClient.isServerUsable(serverConfig)) return Rx.of(false)
-			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
-			return Zus.toStream(Zus.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
-				Rx.map((s) => s.settings.modified),
+	// the squad-server frame set up below applies queue ops, which parse layer ids against layer data
+	const settingsModified$ = Rx.defer(() => LayerDataClient.setup()).pipe(
+		Rx.switchMap(() =>
+			Rx.combineLatest([
+				Zus.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
+				// see squad-server.client: toStream needs fireImmediately to carry the store's current value
+				Zus.toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }),
+			]).pipe(
+				Rx.map(([serverId, settings]) => settings?.servers.find((s) => s.id === serverId)),
 				Rx.distinctUntilChanged(),
-			)
-		}),
+				Rx.switchMap((serverConfig) => {
+					// only track settings-modified for a usable server; otherwise there's no frame to read and no edits to flush
+					if (!SettingsClient.isServerUsable(serverConfig)) return Rx.of(false)
+					const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
+					return Zus.toStream(Zus.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+						Rx.map((s) => s.settings.modified),
+						Rx.distinctUntilChanged(),
+					)
+				}),
+			),
+		),
 	)
 	const wsClientId$ = ConfigClient.fetchConfig().then((config) => config.wsClientId)
 	settingsModified$.pipe(Rx.withLatestFrom(wsClientId$)).subscribe(([modified, wsClientId]) => {

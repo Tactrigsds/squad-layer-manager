@@ -16,14 +16,17 @@
 		<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<!-- the app cannot render until this arrives (src/systems/layer-data.client.ts). crossorigin matches fetch()'s default credentials mode, without which the preload goes unused -->
+		<link rel="preload" href="/layer-data.json" as="fetch" crossorigin />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
 			href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&display=swap"
 			rel="stylesheet"
 		/>
+		<!-- one instance of the variable font: flag icons render at 12-13px, which optical sizing clamps to opsz 20 -->
 		<link
-			href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&display=swap"
 			rel="stylesheet"
 		/>
 	</head>

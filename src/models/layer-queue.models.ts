@@ -41,5 +41,9 @@ export namespace Ctx {
 		session: ODSM.Server.Session<SLL.Operation, SLL.State>
 		op$: Rx.Subject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>
 		updateLayerMtx: MutexInterface
+
+		// While a roll is being recorded, the writes of the queue head to the game server that its saves would make.
+		// The roll runs them once it has released its locks (see onNewGameDuringRoll). Null otherwise.
+		deferredServerSyncs: (() => Promise<void>)[] | null
 	}
 }

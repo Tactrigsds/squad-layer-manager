@@ -125,6 +125,8 @@ export const quotedSelectionSummary = def(
 )
 
 export const results = def((n: number) => t('{n, plural, one {# result} other {# results}}', { n }))
+// a count that stopped at `n`, so the true number is larger
+export const resultsAtLeast = def((n: number) => t('{n, plural, other {#+ results}}', { n }))
 export const loadMore = def('Load more')
 export const noResults = def('No results')
 export const eventResults = def('Event results')

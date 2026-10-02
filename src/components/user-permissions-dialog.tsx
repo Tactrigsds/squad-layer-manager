@@ -113,7 +113,7 @@ function RoleSection(props: {
 			<div className="flex items-center justify-between">
 				<div className="flex items-center space-x-3">
 					{props.simulate && (
-						<Checkbox id={props.checkboxId} checked={props.enabled} onCheckedChange={(checked) => props.onToggle(checked === true)} />
+						<Checkbox id={props.checkboxId} checked={props.enabled} onCheckedChange={(checked) => props.onToggle(checked)} />
 					)}
 					<div>
 						<Label htmlFor={props.checkboxId} className="font-semibold">

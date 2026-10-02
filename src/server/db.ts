@@ -50,6 +50,9 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	driver.pragma('journal_mode = WAL')
 	driver.pragma('synchronous = NORMAL')
 	driver.pragma('busy_timeout = 5000')
+	// a checkpoint resets the wal but leaves the file at its high-water mark, so one long burst of writes
+	// (a compaction pass, a migration) would otherwise hold that much disk for the life of the process
+	driver.pragma(`journal_size_limit = ${64 * 1024 * 1024}`)
 
 	// Schema-vs-code guard, run while foreign_keys is still at its default (OFF) — same as the
 	// standalone `pnpm db:migrate`, since drizzle-kit's table-rebuild migrations require FK
@@ -89,7 +92,7 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	db = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug('%s %o', highlight(query), params)
+				if (log.isLevelEnabled('debug')) log.debug('%s %o', highlight(query), params)
 			},
 		},
 	})
@@ -97,7 +100,7 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	dbRedactParams = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
-				log.debug('%s', highlight(query))
+				if (log.isLevelEnabled('debug')) log.debug('%s', highlight(query))
 			},
 		},
 	})
@@ -210,6 +213,63 @@ function reportAsyncTx(callSite: Error): void {
 			throw callSite
 		default:
 			assertNever(ENV.NODE_ENV)
+	}
+}
+
+// A transaction held open across many small synchronous writes, so a burst of them shares one COMMIT. Each write
+// runs in its own savepoint, so one that throws rolls back alone. It holds the process-wide lock from open to
+// commit, so the code between the two must await nothing but other writes to it, the same rule runTransaction
+// enforces. Committing on a later turn of the event loop is reported the same way.
+export type WriteBatch = {
+	write<V>(cb: () => V): V
+	commit(): void
+}
+
+export async function openWriteBatch(): Promise<WriteBatch> {
+	const callSite = new Error()
+	const release = await acquireTxLock()
+	try {
+		driver.exec('BEGIN IMMEDIATE')
+	} catch (err) {
+		release()
+		throw err
+	}
+	let yielded = false
+	const immediate = setImmediate(() => {
+		yielded = true
+	})
+	let open = true
+	return {
+		write(cb) {
+			if (!open) throw new Error('write to a committed batch')
+			driver.exec('SAVEPOINT batch_write')
+			try {
+				const res = cb()
+				driver.exec('RELEASE batch_write')
+				return res
+			} catch (err) {
+				driver.exec('ROLLBACK TO batch_write')
+				driver.exec('RELEASE batch_write')
+				throw err
+			}
+		},
+		commit() {
+			if (!open) return
+			open = false
+			clearImmediate(immediate)
+			try {
+				driver.exec('COMMIT')
+			} catch (err) {
+				if (driver.inTransaction) driver.exec('ROLLBACK')
+				throw err
+			} finally {
+				release()
+			}
+			if (yielded) {
+				callSite.message = 'write batch was held open across a turn of the event loop. See openWriteBatch.'
+				log.error({ err: callSite }, callSite.message)
+			}
+		},
 	}
 }
 

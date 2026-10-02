@@ -1165,7 +1165,7 @@ function PrefixRow({
 				className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
 				title={tr.text(CMD_Msgs.replyToUnknownHint())}
 			>
-				<Checkbox checked={replyToUnknown} onCheckedChange={(v) => onSetReplyToUnknown(v === true)} />
+				<Checkbox checked={replyToUnknown} onCheckedChange={(v) => onSetReplyToUnknown(v)} />
 				{tr.text(CMD_Msgs.replyToUnknown())}
 			</label>
 			<span className="whitespace-nowrap text-xs text-muted-foreground">{tr.text(CMD_Msgs.prefixUses(usage))}</span>
@@ -1455,7 +1455,7 @@ function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 					{tr.text(CMD_Msgs.enabled())}
 				</label>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-					<Checkbox checked={quickReference} onCheckedChange={(v) => patch({ quickReference: v === true })} />
+					<Checkbox checked={quickReference} onCheckedChange={(v) => patch({ quickReference: v })} />
 					<span className="flex items-center gap-1">
 						{tr.text(CMD_Msgs.quickReference())}
 						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />
@@ -2027,6 +2027,27 @@ function TextAreaCell({
 	)
 }
 
+// Each keywords textarea fills the height its cell has left. Every cell mounting in one commit is measured in one
+// pass and written in another, so a table of reasons costs one forced layout rather than one per row.
+const pendingKeywordsFits = new Set<HTMLTextAreaElement>()
+
+function scheduleKeywordsFit(elt: HTMLTextAreaElement) {
+	if (pendingKeywordsFits.size === 0) queueMicrotask(fitKeywordsCells)
+	pendingKeywordsFits.add(elt)
+}
+
+function fitKeywordsCells() {
+	const elts = [...pendingKeywordsFits].filter((elt) => elt.isConnected && elt.parentElement)
+	pendingKeywordsFits.clear()
+	const heights = elts.map((elt) => {
+		const parent = elt.parentElement!
+		let others = 0
+		for (const child of parent.children) if (child !== elt) others += (child as HTMLElement).offsetHeight
+		return others > 0 ? parent.clientHeight - others : null
+	})
+	for (let i = 0; i < elts.length; i++) if (heights[i] !== null) elts[i].style.height = `${heights[i]}px`
+}
+
 // Keywords are edited as space/comma-separated text in a single cell and stored as string[] (a keyword can't contain
 // whitespace, so the separators are unambiguous). A keyword is required, and typing one out for every reason is busy
 // work, so the cell follows `seedFrom$` (the label) for as long as it still holds exactly what that seeded, or nothing
@@ -2072,18 +2093,7 @@ function KeywordsCell({
 		<Textarea
 			ref={(elt) => {
 				ref.current = elt
-				if (!elt) return
-				const parent = ref.current?.parentElement
-				if (!parent) return
-				let otherEltsSize = 0
-				if (parent) {
-					for (const child of parent.children) {
-						const childOffsetHeight = (child as HTMLElement).offsetHeight ?? 0
-						console.log({ child, offsetHeight: childOffsetHeight, equal: child == elt })
-						if (child != elt) otherEltsSize += childOffsetHeight
-					}
-				}
-				if (otherEltsSize > 0) elt.style.height = `${parent.clientHeight - otherEltsSize}px`
+				if (elt) scheduleKeywordsFit(elt)
 			}}
 			defaultValue={format(value$.getValue())}
 			placeholder={tr.text(AAR_Msgs.keywordsPlaceholder())}
@@ -2667,7 +2677,12 @@ function RoleDetail({
 			<RoleSubsection title={tr.text(RBAC_Msgs.permissions())} description={tr.text(RBAC_Msgs.permissionsBlurb())}>
 				<RolePermissionsTable
 					roleId={roleId}
-					cfg={cfg}
+					permissions={cfg.permissions}
+					globalSettingsGrants={cfg.globalSettingsGrants}
+					serverGrants={cfg.serverGrants}
+					serverSettingsGrants={cfg.serverSettingsGrants}
+					maxTimeout={cfg.maxTimeout}
+					maxLayerRequests={cfg.maxLayerRequests}
 					timeout$={timeout$}
 					layerRequests$={layerRequests$}
 					reset$={reset$}
@@ -2676,11 +2691,11 @@ function RoleDetail({
 			</RoleSubsection>
 
 			<RoleSubsection title={tr.text(RBAC_Msgs.pluginActions())} description={tr.text(RBAC_Msgs.pluginActionsBlurb())}>
-				<RolePluginGrants roleId={roleId} cfg={cfg} update={update} />
+				<RolePluginGrants roleId={roleId} grants={cfg.pluginGrants} update={update} />
 			</RoleSubsection>
 
 			<RoleSubsection title={tr.text(RBAC_Msgs.assignments())} description={tr.text(RBAC_Msgs.assignmentsBlurb())}>
-				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
+				<RoleAssignmentsEditor roleId={roleId} assignments={cfg.assignments} update={update} assigned={assigned} />
 			</RoleSubsection>
 		</div>
 	)
@@ -2690,9 +2705,10 @@ function RoleDetail({
 // permission type alone, and a plugin action needs the plugin's id beside it. Listed from the live declarations so
 // an admin picks rather than types, with any grant nothing declares kept and shown as unresolved -- a stopped or
 // not-yet-installed plugin must not silently lose the grants an admin made for it.
-function RolePluginGrants({ roleId, cfg, update }: { roleId: string; cfg: RoleConfig; update: RbacUpdate }) {
+function RolePluginGrants(props: { roleId: string; grants: RoleConfig['pluginGrants']; update: RbacUpdate }) {
+	const { roleId, update } = props
 	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
-	const grants = cfg.pluginGrants ?? []
+	const grants = props.grants ?? []
 	const declared = plugins.flatMap((info) => info.permissions.map((decl) => ({ pluginId: info.id, pluginName: info.name, decl })))
 	const heldBy = (pluginId: string, name: string) => grants.find((g) => g.pluginId === pluginId && g.permission === name)
 	const unresolved = grants.filter((g) => !declared.some((d) => d.pluginId === g.pluginId && d.decl.name === g.permission))
@@ -2720,7 +2736,7 @@ function RolePluginGrants({ roleId, cfg, update }: { roleId: string; cfg: RoleCo
 				const grant = heldBy(pluginId, decl.name)
 				return (
 					<div key={`${pluginId}:${decl.name}`} className="flex flex-wrap items-start gap-2">
-						<Checkbox className="mt-1" checked={!!grant} onCheckedChange={(v) => toggle(pluginId, decl.name, v === true)} />
+						<Checkbox className="mt-1" checked={!!grant} onCheckedChange={(v) => toggle(pluginId, decl.name, v)} />
 						<div className="min-w-0 space-y-0.5">
 							<div className="flex flex-wrap items-baseline gap-2">
 								<span className="font-mono text-xs">{decl.name}</span>
@@ -2768,30 +2784,37 @@ function RolePluginGrants({ roleId, cfg, update }: { roleId: string; cfg: RoleCo
 // on write by PermRows, so this component only ever deals in rows.
 function RolePermissionsTable({
 	roleId,
-	cfg,
+	permissions,
+	globalSettingsGrants,
+	serverGrants,
+	serverSettingsGrants,
+	maxTimeout,
+	maxLayerRequests,
 	timeout$,
 	layerRequests$,
 	reset$,
 	update,
-}: {
+}: Pick<
+	RoleConfig,
+	'permissions' | 'globalSettingsGrants' | 'serverGrants' | 'serverSettingsGrants' | 'maxTimeout' | 'maxLayerRequests'
+> & {
 	roleId: string
-	cfg: RoleConfig
 	timeout$: ValueState
 	layerRequests$: ValueState
 	reset$: Rx.Subject<void>
 	update: RbacUpdate
 }) {
-	const rows = PermRows.rowsFromConfig(cfg)
+	const rows = PermRows.rowsFromConfig({
+		permissions,
+		globalSettingsGrants,
+		serverGrants,
+		serverSettingsGrants,
+		maxTimeout,
+		maxLayerRequests,
+	})
 
-	// `quiet` is threaded through for the timeout duration cell, whose uncontrolled input would be clobbered by a reset$
-	function setRows(next: PermRows.PermRow[], quiet?: boolean) {
-		update((r) => withRoleConfig(r, roleId, (c) => PermRows.configFromRows(c, next)), quiet)
-	}
-	function patchRow(id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) {
-		setRows(
-			rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-			quiet,
-		)
+	function setRows(next: PermRows.PermRow[]) {
+		update((r) => withRoleConfig(r, roleId, (c) => PermRows.configFromRows(c, next)))
 	}
 
 	const wildcarded = rows.some((r) => r.type === PermRows.ALL_PERMISSIONS && r.effect === 'allow')
@@ -2824,72 +2847,19 @@ function RolePermissionsTable({
 							</TableCell>
 						</TableRow>
 					)}
-					{rows.map((row) => {
-						// `*` already grants every permission, so the allow rows under it are redundant. Deny still wins over it.
-						const subsumed = wildcarded && row.effect === 'allow' && row.type !== PermRows.ALL_PERMISSIONS
-						return (
-							<TableRow key={row.id} className={cn(subsumed && 'opacity-50')}>
-								<TableCell className="align-top">
-									<Select
-										value={row.effect}
-										disabled={!PermRows.canDeny(row.type)}
-										onValueChange={(v) => patchRow(row.id, { effect: v as PermRows.Effect })}
-									>
-										<SelectTrigger className="h-8">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="allow">{tr.text(RBAC_Msgs.allow())}</SelectItem>
-											<SelectItem value="deny">{tr.text(RBAC_Msgs.deny())}</SelectItem>
-										</SelectContent>
-									</Select>
-								</TableCell>
-								<TableCell className="align-top">
-									<div className="flex items-start gap-1">
-										<code className="text-xs leading-8">
-											{row.type === PermRows.ALL_PERMISSIONS ? tr.text(RBAC_Msgs.allPermissions()) : row.type}
-										</code>
-										{PermRows.permDescription(row.type) && <HelpTip text={tr.text(PermRows.permDescription(row.type)!)} />}
-										{subsumed && (
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<Icons.Info className="mt-2 h-3 w-3 shrink-0 text-muted-foreground" />
-												</TooltipTrigger>
-												<TooltipContent>{tr.text(RBAC_Msgs.subsumedByWildcard())}</TooltipContent>
-											</Tooltip>
-										)}
-									</div>
-								</TableCell>
-								<TableCell className="align-top">
-									<PermScopeCell
-										row={row}
-										timeout$={timeout$}
-										layerRequests$={layerRequests$}
-										reset$={reset$}
-										onPatch={patchRow}
-									/>
-								</TableCell>
-								<TableCell className="align-top">
-									{/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
-									    enough that reusing the icon for "remove the whole permission" would be a trap */}
-									<Tooltip help>
-										<TooltipTrigger asChild>
-											<Button
-												type="button"
-												size="icon"
-												variant="ghost"
-												className="h-8 w-8 text-destructive"
-												onClick={() => setRows(rows.filter((r) => r.id !== row.id))}
-											>
-												<Icons.Trash2 className="h-4 w-4" />
-											</Button>
-										</TooltipTrigger>
-										<TooltipContent>{tr.text(RBAC_Msgs.removePermission())}</TooltipContent>
-									</Tooltip>
-								</TableCell>
-							</TableRow>
-						)
-					})}
+					{rows.map((row) => (
+						<PermRowView
+							key={row.id}
+							roleId={roleId}
+							row={row}
+							// `*` already grants every permission, so the allow rows under it are redundant. Deny still wins over it.
+							subsumed={wildcarded && row.effect === 'allow' && row.type !== PermRows.ALL_PERMISSIONS}
+							timeout$={timeout$}
+							layerRequests$={layerRequests$}
+							reset$={reset$}
+							update={update}
+						/>
+					))}
 				</TableBody>
 			</Table>
 			<ComboBox
@@ -2903,6 +2873,110 @@ function RolePermissionsTable({
 		</div>
 	)
 }
+
+type PermRowViewProps = {
+	roleId: string
+	row: PermRows.PermRow
+	subsumed: boolean
+	timeout$: ValueState
+	layerRequests$: ValueState
+	reset$: Rx.Subject<void>
+	update: RbacUpdate
+}
+
+// Typing a timeout or a request cap changes one row, so the rows compare by value and only that row re-renders. Edits
+// re-derive the rows from the config they apply to, which keeps the handlers free of the rendered rows.
+const PermRowView = React.memo(
+	function PermRowView({ roleId, row, subsumed, timeout$, layerRequests$, reset$, update }: PermRowViewProps) {
+		// `quiet` is threaded through for the timeout duration cell, whose uncontrolled input would be clobbered by a reset$
+		function patchRow(id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) {
+			update(
+				(r) =>
+					withRoleConfig(r, roleId, (c) =>
+						PermRows.configFromRows(
+							c,
+							PermRows.rowsFromConfig(c).map((other) => (other.id === id ? { ...other, ...patch } : other)),
+						),
+					),
+				quiet,
+			)
+		}
+		function removeRow(id: string) {
+			update((r) =>
+				withRoleConfig(r, roleId, (c) =>
+					PermRows.configFromRows(
+						c,
+						PermRows.rowsFromConfig(c).filter((other) => other.id !== id),
+					),
+				),
+			)
+		}
+		return (
+			<TableRow className={cn(subsumed && 'opacity-50')}>
+				<TableCell className="align-top">
+					<Select
+						value={row.effect}
+						disabled={!PermRows.canDeny(row.type)}
+						onValueChange={(v) => patchRow(row.id, { effect: v as PermRows.Effect })}
+					>
+						<SelectTrigger className="h-8">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="allow">{tr.text(RBAC_Msgs.allow())}</SelectItem>
+							<SelectItem value="deny">{tr.text(RBAC_Msgs.deny())}</SelectItem>
+						</SelectContent>
+					</Select>
+				</TableCell>
+				<TableCell className="align-top">
+					<div className="flex items-start gap-1">
+						<code className="text-xs leading-8">
+							{row.type === PermRows.ALL_PERMISSIONS ? tr.text(RBAC_Msgs.allPermissions()) : row.type}
+						</code>
+						{PermRows.permDescription(row.type) && <HelpTip text={tr.text(PermRows.permDescription(row.type)!)} />}
+						{subsumed && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Icons.Info className="mt-2 h-3 w-3 shrink-0 text-muted-foreground" />
+								</TooltipTrigger>
+								<TooltipContent>{tr.text(RBAC_Msgs.subsumedByWildcard())}</TooltipContent>
+							</Tooltip>
+						)}
+					</div>
+				</TableCell>
+				<TableCell className="align-top">
+					<PermScopeCell row={row} timeout$={timeout$} layerRequests$={layerRequests$} reset$={reset$} onPatch={patchRow} />
+				</TableCell>
+				<TableCell className="align-top">
+					{/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
+					    enough that reusing the icon for "remove the whole permission" would be a trap */}
+					<Tooltip help>
+						<TooltipTrigger asChild>
+							<Button
+								type="button"
+								size="icon"
+								variant="ghost"
+								className="h-8 w-8 text-destructive"
+								onClick={() => removeRow(row.id)}
+							>
+								<Icons.Trash2 className="h-4 w-4" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>{tr.text(RBAC_Msgs.removePermission())}</TooltipContent>
+					</Tooltip>
+				</TableCell>
+			</TableRow>
+		)
+	},
+	(prev, next) =>
+		prev.roleId === next.roleId &&
+		prev.subsumed === next.subsumed &&
+		prev.timeout$ === next.timeout$ &&
+		prev.layerRequests$ === next.layerRequests$ &&
+		prev.reset$ === next.reset$ &&
+		prev.update === next.update &&
+		Obj.deepEqual(prev.row, next.row),
+)
 
 // the Scope cell is a switch over the permission's scope kind, so a new permission needs no new editor: it inherits the
 // cell for whichever scope it declares in PERMISSION_DEFINITION.
@@ -3096,17 +3170,17 @@ function ScopeValueRows({
 
 function RoleAssignmentsEditor({
 	roleId,
-	cfg,
+	assignments,
 	update,
 	assigned,
 }: {
 	roleId: string
-	cfg: RoleConfig
+	assignments: RoleConfig['assignments']
 	update: RbacUpdate
 	assigned: boolean
 }) {
-	const roleAssignIds = (cfg.assignments?.discordRoleIds ?? []).map(String)
-	const userAssignIds = (cfg.assignments?.discordUserIds ?? []).map(String)
+	const roleAssignIds = (assignments?.discordRoleIds ?? []).map(String)
+	const userAssignIds = (assignments?.discordUserIds ?? []).map(String)
 
 	// replace `oldId` with `nextId` in one of the assignment id lists; '' as oldId adds, '' as nextId removes
 	function changeAssignment(bucket: 'discordRoleIds' | 'discordUserIds', oldId: string, nextId: string) {
@@ -3129,14 +3203,14 @@ function RoleAssignmentsEditor({
 	const groupsRes = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const availableLists = groupsRes.data?.code === 'ok' ? groupsRes.data.lists : []
 	const availablePairs = availableLists.flatMap((l) => l.groups.map((g) => encodeListGroup(l.listId, g)))
-	const selectedGroups = cfg.assignments?.adminListGroups ?? []
+	const selectedGroups = assignments?.adminListGroups ?? []
 	const selectedPairs = selectedGroups.map((g) => encodeListGroup(g.listId, g.groupId))
 	const groupOptions = [...new Set([...availablePairs, ...selectedPairs])].sort().map((pair) => ({
 		value: pair,
 		label: availablePairs.includes(pair) ? pair : tr.text(RBAC_Msgs.groupNotInAnyList(pair)),
 	}))
 	const availableListIds = availableLists.map((l) => l.listId)
-	const selectedIngameLists = cfg.assignments?.ingameAdminLists ?? []
+	const selectedIngameLists = assignments?.ingameAdminLists ?? []
 	const ingameListOptions = [...new Set([...availableListIds, ...selectedIngameLists])].sort().map((listId) => ({
 		value: listId,
 		label: availableListIds.includes(listId) ? listId : tr.text(SM_Msgs.adminListNotConfigured(listId)),
@@ -3159,7 +3233,7 @@ function RoleAssignmentsEditor({
 			)}
 			<div className="flex items-center gap-2">
 				<Switch
-					checked={!!cfg.assignments?.everyMember}
+					checked={!!assignments?.everyMember}
 					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { everyMember: on })))}
 				/>
 				<span className="text-sm">{tr.text(RBAC_Msgs.everyMember())}</span>

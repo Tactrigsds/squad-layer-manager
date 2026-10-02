@@ -86,34 +86,28 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	}
 
 	const user = useLoggedInUser()
-	const [submitted, setSubmitted] = React.useState(false)
 	const phone = Browser.useIsSmallViewport()
 
-	const canSubmit = Zus.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
 	const selectedCount = Zus.useStore(frameKey, (s) => s.layerTable.selected.length)
+	const canSubmit = selectedCount > 0
 
 	const submit = props.selectQueueItems
 		? () => {
 				if (!canSubmit) return
-				setSubmitted(true)
 				const selectedLayers = Zus.getState(frameKey).layerTable.selected
-				try {
-					const source: LL.Source = { type: 'manual', userId: user!.discordId }
-					if (selectMode === 'layers' || selectedLayers.length === 1) {
-						const items: LL.NewSingleItem[] = selectedLayers.map((layerId) => ({ type: 'single-list-item', layerId }))
-						props.selectQueueItems!(items)
-					} else if (selectMode === 'vote') {
-						const item: LL.NewVoteItem = {
-							type: 'vote-list-item',
-							layerId: selectedLayers[0],
-							choices: selectedLayers.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, source)),
-						}
-						props.selectQueueItems!([item])
+				const source: LL.Source = { type: 'manual', userId: user!.discordId }
+				if (selectMode === 'layers' || selectedLayers.length === 1) {
+					const items: LL.NewSingleItem[] = selectedLayers.map((layerId) => ({ type: 'single-list-item', layerId }))
+					props.selectQueueItems!(items)
+				} else if (selectMode === 'vote') {
+					const item: LL.NewVoteItem = {
+						type: 'vote-list-item',
+						layerId: selectedLayers[0],
+						choices: selectedLayers.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, source)),
 					}
-					props.onClose()
-				} finally {
-					setSubmitted(false)
+					props.selectQueueItems!([item])
 				}
+				props.onClose()
 			}
 		: undefined
 
@@ -174,8 +168,10 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	)
 })
 
+const NO_LAYERS: L.LayerId[] = []
+
 export default function SelectLayersDialog(props: SelectLayersDialogProps) {
-	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
+	const defaultSelected = props.defaultSelected ?? NO_LAYERS
 
 	const onOpenChange = props.onOpenChange
 	const onClose = () => {
@@ -185,18 +181,20 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>
-			<SelectLayersDialogContent
-				title={props.title}
-				description={props.description}
-				pinMode={props.pinMode}
-				selectQueueItems={props.selectQueueItems}
-				defaultSelected={defaultSelected}
-				stores={props.stores}
-				modeSwitchAdditions={props.modeSwitchAdditions}
-				footerBeforeSubmit={props.footerBeforeSubmit}
-				cursor={props.cursor}
-				onClose={onClose}
-			/>
+			{props.open && (
+				<SelectLayersDialogContent
+					title={props.title}
+					description={props.description}
+					pinMode={props.pinMode}
+					selectQueueItems={props.selectQueueItems}
+					defaultSelected={defaultSelected}
+					stores={props.stores}
+					modeSwitchAdditions={props.modeSwitchAdditions}
+					footerBeforeSubmit={props.footerBeforeSubmit}
+					cursor={props.cursor}
+					onClose={onClose}
+				/>
+			)}
 		</HeadlessDialog>
 	)
 }

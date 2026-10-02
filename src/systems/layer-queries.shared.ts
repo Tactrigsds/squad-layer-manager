@@ -43,6 +43,21 @@ export type QueryLayersResponsePart =
 // streamed query need the log and the generation config on top
 export type QueryCtx = LE.Ctx & F.Ctx
 
+// Repeat rules re-read the same lookback window for every item and every rule, so a request parses each layer id once.
+type LayerParser = (layerId: L.LayerId) => L.UnvalidatedLayer
+
+function layerParser(): LayerParser {
+	const parsed = new Map<L.LayerId, L.UnvalidatedLayer>()
+	return (layerId) => {
+		let layer = parsed.get(layerId)
+		if (!layer) {
+			layer = L.toLayer(layerId)
+			parsed.set(layerId, layer)
+		}
+		return layer
+	}
+}
+
 function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
 }
@@ -712,11 +727,18 @@ export async function getLayersOutOfPool(args: {
 	if (compiled.code !== 'ok') return compiled
 
 	// ids that aren't in the canonical layer format can never be in the pool
-	const known = layerIds.filter((id) => L.isKnownLayer(id))
+	const known: L.LayerId[] = []
+	const packed: number[] = []
+	for (const id of layerIds) {
+		const layer = L.toLayer(id)
+		if (!L.isKnownLayer(layer)) continue
+		known.push(id)
+		packed.push(LC.packId(layer))
+	}
 	const res = ctx.engine.query<LE.MatchesResponse>({
 		kind: 'matches',
 		filters: [compiled.where],
-		ids: known.map((id) => LC.packId(id)),
+		ids: packed,
 	})
 	const inPool = new Set<L.LayerId>()
 	for (let i = 0; i < known.length; i++) {
@@ -744,11 +766,19 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		filterIrs.push(res.ir)
 	}
 
-	const layerIds = [...new Set(LQY.getAllLayerIds(layerItems))].filter((id) => L.isKnownLayer(id))
+	const parse = layerParser()
+	const layerIds: L.LayerId[] = []
+	const packed: number[] = []
+	for (const id of new Set(LQY.getAllLayerIds(layerItems))) {
+		const layer = parse(id)
+		if (!L.isKnownLayer(layer)) continue
+		layerIds.push(id)
+		packed.push(LC.packId(layer))
+	}
 	const res = ctx.engine.query<LE.MatchesResponse>({
 		kind: 'matches',
 		filters: filterIrs,
-		ids: layerIds.map((id) => LC.packId(id)),
+		ids: packed,
 	})
 
 	const present = new Set<L.LayerId>()
@@ -776,7 +806,15 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const descriptors = getRepeatRuleMatchDescriptors(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
+						const descriptors = getRepeatRuleMatchDescriptors(
+							list,
+							i,
+							constraint.id,
+							constraint.rule,
+							item.layerId,
+							item.itemId,
+							parse,
+						)
 						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}
@@ -795,7 +833,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 
 					// read off the layer id rather than the engine: the collection is one of the id's own components
 					case 'installed-mods': {
-						const collection = L.toLayer(item.layerId).Collection
+						const collection = parse(item.layerId).Collection
 						if (collection && !constraint.collections.includes(collection)) {
 							itemDescriptors.push({
 								type: 'installed-mods',
@@ -832,7 +870,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			})
 		}
 		// seeding and training layers are played outside the pool and repeat rules by design
-		if (L.isSeedingOrTrainingLayer(item.layerId)) continue
+		if (L.isSeedingOrTrainingLayer(parse(item.layerId))) continue
 		if (LQY.getTags(item)?.some((tag) => skipWarningsForTags.includes(tag))) continue
 		for (const constraint of constraints) {
 			const descriptors = matchDescriptors.get(item.itemId)?.filter((d) => d.constraintId === constraint.id)
@@ -925,6 +963,7 @@ function postProcessLayers(
 		cursorIndex = LQY.resolveCursorIndex(list, cursor)
 	}
 	const constraints = baseInput.constraints ?? []
+	const parse = layerParser()
 
 	return page.rows.map((row, rowIndex) => {
 		const layer = decodeRow(ctx, row, page.names)
@@ -957,7 +996,15 @@ function postProcessLayers(
 		for (let i = 0; i < constraints.length; i++) {
 			const constraint = constraints[i]
 			if (constraint.type !== 'do-not-repeat' || !cursorIndex) continue
-			const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
+			const descriptors = getRepeatRuleMatchDescriptors(
+				list,
+				cursorIndex.outerIndex,
+				constraint.id,
+				constraint.rule,
+				layerId,
+				undefined,
+				parse,
+			)
 			if (descriptors) {
 				constraintResults[i] = true
 				if (constraint.showIndicator !== 'disabled') matchDescriptors.push(...descriptors)
@@ -975,17 +1022,19 @@ export function getRepeatRuleMatchDescriptors(
 	rule: LQY.RepeatRule,
 	targetLayerId: L.LayerId,
 	targetItemId?: LQY.ItemId,
+	parse: LayerParser = L.toLayer,
 ) {
-	const targetLayer = L.toLayer(targetLayerId)
+	const targetLayer = parse(targetLayerId)
 	const previousLayers = list.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
 	const descriptors: LQY.RepeatMatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
-		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
-		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		const layerItem = previousLayers[i]
-		const layer = L.toLayer(layerItem.layerId)
+		const layer = parse(layerItem.layerId)
+		// LQY.isLookbackTerminatingLayerItem, inlined so the layer is parsed once
+		if (layerItem.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(layer)) break
+		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		const getViolationDescriptor = (
 			field: LQY.RepeatMatchDescriptorField,
 			sourceField: LQY.RepeatMatchDescriptorField = field,

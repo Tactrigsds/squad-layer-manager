@@ -4,6 +4,7 @@ import * as React from 'react'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
@@ -136,98 +137,102 @@ export type QueryLayersPacket =
 	| ({ code: 'layers-page' } & QueryLayersPageData)
 	| { code: 'menu-item-possible-values'; values: Record<string, string[]> }
 
-async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGenerator<QueryLayersPacket> {
-	for await (const res of streamLayerQueriesResponse(input)) {
-		if (res.code === 'err:invalid-node') {
-			console.error('queryLayers: Invalid node error:', res.errors)
-			throw new Error('Invalid node')
-		} else if (res.code === 'err:missing-item-states') {
-			throw new Error('err:missing-item-states')
-		}
-		if (res.code === 'menu-item-possible-values') {
-			yield res
-			continue
-		}
+function toQueryLayersPacket(
+	res: Exclude<WorkerTypes.QueryLayersResponse['payload'], { code: 'end' }>,
+	input: LQY.LayersQueryInput,
+): QueryLayersPacket {
+	if (res.code === 'err:invalid-node') {
+		console.error('queryLayers: Invalid node error:', res.errors)
+		throw new Error('Invalid node')
+	} else if (res.code === 'err:missing-item-states') {
+		throw new Error('err:missing-item-states')
+	}
+	if (res.code === 'menu-item-possible-values') return res
 
-		let page = {
-			...res,
-			input,
-		}
-		if (input.selectedLayers) {
-			const layerIdsForPage = input.selectedLayers.slice(
-				(input.pageIndex ?? 0) * input.pageSize,
-				(input.pageIndex ?? 0) * input.pageSize + input.pageSize,
-			)
-			const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
-				const layer = page!.layers.find((l) => l.id === id)
-				if (layer) {
-					return layerToRowData(layer, input.constraints ?? [])
+	let page = {
+		...res,
+		input,
+	}
+	if (input.selectedLayers) {
+		const layerIdsForPage = input.selectedLayers.slice(
+			(input.pageIndex ?? 0) * input.pageSize,
+			(input.pageIndex ?? 0) * input.pageSize + input.pageSize,
+		)
+		const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
+			const layer = page!.layers.find((l) => l.id === id)
+			if (layer) {
+				return layerToRowData(layer, input.constraints ?? [])
+			}
+			const newLayer: any = {
+				...L.toLayer(id),
+				constraints: Array(input.constraints?.length ?? 0).fill(false),
+				matchDescriptors: [],
+			}
+			return layerToRowData(newLayer, input.constraints ?? [])
+		})
+		if (input.sort) {
+			;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
+				const sort = input.sort!
+				if (sort.type === 'random') {
+					// For random sort just shuffle the entries
+					return Math.random() - 0.5
+				} else if (sort.type === 'column') {
+					const column = sort.sortBy
+					const direction = sort.direction === 'ASC' ? 1 : -1
+
+					if (a[column] === b[column]) return 0
+					if (a[column] === null || a[column] === undefined) return direction
+					if (b[column] === null || b[column] === undefined) return -direction
+
+					return a[column] < b[column] ? -direction : direction
+				} else {
+					assertNever(sort)
 				}
-				const newLayer: any = {
-					...L.toLayer(id),
-					constraints: Array(input.constraints?.length ?? 0).fill(false),
-					matchDescriptors: [],
-				}
-				return layerToRowData(newLayer, input.constraints ?? [])
 			})
-			if (input.sort) {
-				;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
-					const sort = input.sort!
-					if (sort.type === 'random') {
-						// For random sort just shuffle the entries
-						return Math.random() - 0.5
-					} else if (sort.type === 'column') {
-						const column = sort.sortBy
-						const direction = sort.direction === 'ASC' ? 1 : -1
-
-						if (a[column] === b[column]) return 0
-						if (a[column] === null || a[column] === undefined) return direction
-						if (b[column] === null || b[column] === undefined) return -direction
-
-						return a[column] < b[column] ? -direction : direction
-					} else {
-						assertNever(sort)
-					}
-				})
-			}
-			page = { ...page, layers: selectedLayers as any }
 		}
-		if (page) {
-			yield {
-				...page,
-				layers: page.layers?.map((layer: any) => layerToRowData(layer, input.constraints ?? [])),
-			}
-		}
+		page = { ...page, layers: selectedLayers as any }
+	}
+	return {
+		...page,
+		layers: page.layers?.map((layer: any) => layerToRowData(layer, input.constraints ?? [])),
 	}
 }
 
-// replaces the react-query cache for layer page queries: each entry is a shareReplay'd packet stream, so
-// completed results replay synchronously and concurrent subscribers (e.g. prefetch + table) share one worker query
+// replaces the react-query cache for layer page queries: each entry is a shared packet stream, so completed results
+// replay synchronously and concurrent subscribers (e.g. prefetch + table) share one worker query
 const queryLayersCache = new Map<string, Rx.Observable<QueryLayersPacket>>()
 const QUERY_LAYERS_CACHE_MAX_ENTRIES = 50
 
-// starts the query eagerly on first call for a given input; the returned observable replays all packets
+// The query starts on the first subscribe. Once it completes it replays to later subscribers; until then, losing
+// the last subscriber cancels it in the worker, and the next subscriber starts it over.
 export function queryLayers$(input: LQY.LayersQueryInput): Rx.Observable<QueryLayersPacket> {
 	const key = JSON.stringify(getDepKey(input, Store.getState().backgroundStateEpoch))
-	let packet$ = queryLayersCache.get(key)
-	if (!packet$) {
-		packet$ = Rx.from(streamQueryLayersPackets(input)).pipe(Rx.shareReplay())
-		queryLayersCache.set(key, packet$)
-		// kick off the query immediately; drop failed queries so the next subscriber retries
-		packet$.subscribe({ error: () => queryLayersCache.delete(key) })
-		while (queryLayersCache.size > QUERY_LAYERS_CACHE_MAX_ENTRIES) {
-			queryLayersCache.delete(queryLayersCache.keys().next().value!)
-		}
-	} else {
+	const cached = queryLayersCache.get(key)
+	if (cached) {
 		// refresh the entry's insertion-order position so hot queries survive eviction
 		queryLayersCache.delete(key)
-		queryLayersCache.set(key, packet$)
+		queryLayersCache.set(key, cached)
+		return cached
+	}
+	const packet$: Rx.Observable<QueryLayersPacket> = workerRequest$('queryLayers', input).pipe(
+		Rx.map((res) => toQueryLayersPacket(res, input)),
+		Rx.tap({
+			error: () => {
+				if (queryLayersCache.get(key) === packet$) queryLayersCache.delete(key)
+			},
+		}),
+		Rx.shareReplay({ bufferSize: Infinity, refCount: true }),
+	)
+	queryLayersCache.set(key, packet$)
+	while (queryLayersCache.size > QUERY_LAYERS_CACHE_MAX_ENTRIES) {
+		queryLayersCache.delete(queryLayersCache.keys().next().value!)
 	}
 	return packet$
 }
 
+// runs the query to completion so a later queryLayers$ for the same input replays it
 export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
-	void queryLayers$(input)
+	queryLayers$(input).subscribe({ error: () => {} })
 }
 
 export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: QueryLayersInputOpts): LQY.LayersQueryInput {
@@ -286,8 +291,8 @@ export function useLayerComponents(
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
 		enabled: options?.enabled,
-		queryFn: async () => {
-			const res = await sendWorkerRequest('queryLayerComponent', input)
+		queryFn: async ({ signal }: { signal: AbortSignal }) => {
+			const res = await sendWorkerRequest('queryLayerComponent', input, signal)
 			if (Array.isArray(res)) return res
 			if (res?.code === 'err:invalid-node') {
 				console.error('queryLayerComponents: Invalid node error:', res.errors)
@@ -305,14 +310,17 @@ export function useLayerComponents(
 // built lazily: layer data has to be loaded before the catalog's collections can be read
 let catalogWideSettings: SETTINGS.PublicServerSettings | undefined
 
+export namespace Sel {
+	// recomputed only when the saved settings change, rather than on every squad-server frame update
+	export const layerItemStatusConstraints = RSel.createDeepSelector(
+		[(state: SquadServerFrame.State | undefined | null) => state?.settings.saved],
+		(saved) => SETTINGS.getSettingsConstraints(saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings())),
+	)
+}
+
 // squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
 export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
-	return Zus.useStore(
-		squadServerFrameKey ?? null,
-		Zus.useDeep((state: SquadServerFrame.State | undefined) =>
-			SETTINGS.getSettingsConstraints(state?.settings.saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings())),
-		),
-	)
+	return Zus.useStore(squadServerFrameKey ?? null, Sel.layerItemStatusConstraints)
 }
 
 function filterAndReportInvalidDescriptors(allConstraints: LQY.Constraint[], matchDescriptors: LQY.MatchDescriptor[] | undefined) {
@@ -389,8 +397,11 @@ export function useLayerItemStatusData(
 	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints])
 }
 
-export async function fetchLayersOutOfPool(input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }): Promise<L.LayerId[] | null> {
-	const res = await sendWorkerRequest('getLayersOutOfPool', input)
+export async function fetchLayersOutOfPool(
+	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] },
+	signal?: AbortSignal,
+): Promise<L.LayerId[] | null> {
+	const res = await sendWorkerRequest('getLayersOutOfPool', input, signal)
 	if (res.code !== 'ok') {
 		console.error('getLayersOutOfPool:', res)
 		return null
@@ -398,18 +409,26 @@ export async function fetchLayersOutOfPool(input: { layerIds: L.LayerId[]; const
 	return res.outOfPool
 }
 
-// resolved reactively into the squad-server frame's layerItemStatuses state; not a query
+// resolved reactively into the squad-server frame's layerItemStatuses state; not a query. Unsubscribing before the
+// result arrives cancels the request in the worker.
+export function layerItemStatuses$(input: LQY.LayerItemStatusesInput): Rx.Observable<LQY.LayerItemStatuses | null> {
+	return workerRequest$('getLayerItemStatuses', input).pipe(
+		Rx.map((res) => {
+			if (res.code === 'err:invalid-node') {
+				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
+				return null
+			}
+			if (res.code === 'err:missing-item-states') {
+				console.error('getLayerItemStatuses: missing item states')
+				return null
+			}
+			return res.statuses
+		}),
+	)
+}
+
 export async function fetchLayerItemStatuses(input: LQY.LayerItemStatusesInput): Promise<LQY.LayerItemStatuses | null> {
-	const res = await sendWorkerRequest('getLayerItemStatuses', input)
-	if (res.code === 'err:invalid-node') {
-		console.error('getLayerItemStatuses: Invalid node error:', res.errors)
-		return null
-	}
-	if (res.code === 'err:missing-item-states') {
-		console.error('getLayerItemStatuses: missing item states')
-		return null
-	}
-	return res.statuses
+	return await Rx.firstValueFrom(layerItemStatuses$(input))
 }
 
 export function useLayerExists(input?: LQY.LayerExistsInput, options: { enabled?: boolean; usePlaceholderData?: boolean } = {}) {
@@ -417,8 +436,8 @@ export function useLayerExists(input?: LQY.LayerExistsInput, options: { enabled?
 		enabled: input && options.enabled !== false,
 		placeholderData: options.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
-		queryFn: async () => {
-			const res = await sendWorkerRequest('layerExists', input!)
+		queryFn: async ({ signal }: { signal: AbortSignal }) => {
+			const res = await sendWorkerRequest('layerExists', input!, signal)
 			if (res.code === 'err:missing-item-states') throw new Error('err:missing-item-states')
 			return res.results
 		},
@@ -459,23 +478,25 @@ function getDepKey(input: unknown, backgroundStateEpoch: number) {
 	}
 }
 
-/**
- * Static configuration for query priorities.
- * Lower numbers = higher priority (processed first).
- */
-export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> = {
-	'filter-update': 5,
-	'generation-update': 5,
-	init: 5,
-	getLayerItemStatuses: 4,
-	getLayersOutOfPool: 4,
-	queryLayers: 3,
-	genVote: 3,
+type RequestType = WorkerTypes.RequestInner['type']
+type RequestInput<T extends RequestType> = Extract<WorkerTypes.RequestInner, { type: T }>['input']
+type ResponsePayload<T extends RequestType> = Exclude<Extract<WorkerTypes.ResponseInner, { type: T }>['payload'], { code: 'end' }>
+
+// Lower runs first. The worker runs init, filter-update and generation-update as ordering barriers, so their priority
+// is never compared. Queue statuses gate saving, so they go ahead of the layer table.
+const QUERY_PRIORITIES: Record<RequestType, number> = {
+	init: 0,
+	'filter-update': 0,
+	'generation-update': 0,
+	getLayerItemStatuses: 1,
+	getLayersOutOfPool: 1,
+	queryLayerComponent: 2,
 	layerExists: 2,
 	getLayerInfo: 2,
-	checkBackburnerTemplates: 2,
-	queryLayerComponent: 1,
-} as const
+	queryLayers: 3,
+	genVote: 3,
+	checkBackburnerTemplates: 4,
+}
 
 const seqIdCounter = Gen.counter()
 function getSeqId() {
@@ -486,89 +507,69 @@ function getSeqId() {
 // (notably Chrome for Android); both expose the same postMessage/message surface
 let worker!: Worker | MessagePort
 
-async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
-	type: T,
-	input: Extract<WorkerTypes.ToWorker, { type: T }>['input'],
-	_priority?: number,
-): Promise<Extract<WorkerTypes.FromWorker, { type: T }>['payload']> {
-	if (type !== 'init') await ensureFullSetup()
+// one listener routes every reply to the request that sent it
+const responseHandlers = new Map<
+	number,
+	(response: Exclude<WorkerTypes.FromWorker, { type: 'worker-log' | 'layer-download-started' }>) => void
+>()
 
-	const seqId = getSeqId()
-
-	// Get priority from configuration
-	const priority = _priority ?? QUERY_PRIORITIES[type] ?? 0
-
-	const message = { type, input, seqId, priority }
-
-	worker.postMessage(message)
-
-	const response$ = Rx.fromEvent(worker, 'message').pipe(
-		Rx.concatMap((e: any) => {
-			const response = e.data as WorkerTypes.FromWorker
-			if (response.type === 'worker-log' || response.type === 'layer-download-started') return Rx.EMPTY
-			if (response.seqId !== seqId) {
-				return Rx.EMPTY
-			}
-
-			if (response.type === 'worker-error') {
-				const error = new Error('error from worker: ' + response.error)
+// Posts the request on subscribe. Unsubscribing before the last reply cancels the request in the worker. A
+// queryLayers request emits each packet and completes on the end packet; any other request emits its one payload.
+function workerRequest$<T extends RequestType>(type: T, input: RequestInput<T>): Rx.Observable<ResponsePayload<T>> {
+	const request$ = new Rx.Observable<ResponsePayload<T>>((subscriber) => {
+		const seqId = getSeqId()
+		let settled = false
+		function settle() {
+			settled = true
+			responseHandlers.delete(seqId)
+		}
+		responseHandlers.set(seqId, (response) => {
+			if (response.type === 'worker-error' || response.type !== type) {
+				settle()
+				const error = new Error(
+					response.type === 'worker-error' ? 'error from worker: ' + response.error : `Unexpected response type: ${response.type}`,
+				)
 				toast.error(error.message)
-				throw error
+				subscriber.error(error)
+				return
 			}
-
-			if (response.type !== type) {
-				const error = new Error(`Unexpected response type: ${response.type}`)
-				toast.error(error.message)
-				throw error
+			const payload = response.payload as ResponsePayload<T> | { code: 'end' }
+			if (type === 'queryLayers' && (payload as { code: string }).code !== 'end') {
+				subscriber.next(payload as ResponsePayload<T>)
+				return
 			}
-
-			return Rx.of(response.payload)
-		}),
-	)
-
-	return (await Rx.firstValueFrom(response$)) as any
+			// settled before emitting: a first() downstream unsubscribes on next, which must not read as a cancel
+			settle()
+			if (type !== 'queryLayers') subscriber.next(payload as ResponsePayload<T>)
+			subscriber.complete()
+		})
+		worker.postMessage({ type, input, seqId, priority: QUERY_PRIORITIES[type] } as WorkerTypes.ToWorker)
+		return () => {
+			if (settled) return
+			responseHandlers.delete(seqId)
+			worker.postMessage({ type: 'cancel', seqId } satisfies WorkerTypes.ToWorker)
+		}
+	})
+	if (type === 'init') return request$
+	return Rx.defer(() => ensureFullSetup()).pipe(Rx.switchMap(() => request$))
 }
 
-async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
-	await ensureFullSetup()
+async function sendWorkerRequest<T extends RequestType>(type: T, input: RequestInput<T>, signal?: AbortSignal) {
+	return await Rx.Ext.firstValueFrom(workerRequest$(type, input), signal)
+}
 
-	const seqId = getSeqId()
-
-	const message: WorkerTypes.ToWorker = {
-		type: 'queryLayers',
-		input,
-		seqId,
-		priority: QUERY_PRIORITIES.queryLayers,
+function onWorkerMessage(event: MessageEvent<WorkerTypes.FromWorker>) {
+	const message = event.data
+	if (message.type === 'worker-log') {
+		LOGS.showLogEvent(message.payload)
+		return
 	}
-
-	worker.postMessage(message)
-
-	const response$ = Rx.fromEvent(worker, 'message').pipe(
-		Rx.concatMap((e: any) => {
-			const response = e.data as WorkerTypes.FromWorker
-			if (response.type === 'worker-log' || response.type === 'layer-download-started') return Rx.EMPTY
-			if (response.seqId !== seqId) {
-				return Rx.EMPTY
-			}
-
-			if (response.type === 'worker-error') {
-				const error = new Error('error from worker: ' + response.error)
-				toast.error(error.message)
-				throw error
-			}
-
-			if (response.type !== 'queryLayers') {
-				const error = new Error(`Unexpected response type: ${response.type}`)
-				toast.error(error.message)
-				throw error
-			}
-
-			return Rx.of(response.payload)
-		}),
-		Rx.takeWhile((e) => e.code !== 'end'),
-	)
-
-	yield* Rx.Ext.toAsyncGenerator(response$)
+	if (message.type === 'layer-download-started') {
+		const store = Store.getState()
+		if (store.status === 'initializing') store.setStatus('downloading-layers')
+		return
+	}
+	responseHandlers.get(message.seqId)?.(message)
 }
 
 let setup$: Promise<void> | null = null
@@ -590,53 +591,41 @@ export async function ensureFullSetup() {
 async function setup() {
 	if (typeof SharedWorker !== 'undefined') {
 		const sharedWorker = new LQSharedWorker({ name: 'layer-queries-worker' })
-		// Rx.fromEvent listens via addEventListener, which does not start the port on its own
+		// addEventListener does not start the port on its own
 		sharedWorker.port.start()
 		worker = sharedWorker.port
 	} else {
 		worker = new LQWorker({ name: 'layer-queries-worker' })
 	}
 
-	// subscribe before any await so a download already in flight in the shared worker still surfaces its status
-	const workerMessages$ = Rx.fromEvent(worker, 'message').pipe(
-		Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
-		Rx.share(),
-	)
-	workerMessages$
-		.pipe(
-			Rx.filter((message) => message.type === 'worker-log'),
-			Rx.tap((message) => LOGS.showLogEvent(message.payload)),
-		)
-		.subscribe()
-	workerMessages$
-		.pipe(
-			Rx.tap((message) => {
-				if (message.type !== 'layer-download-started') return
-				const store = Store.getState()
-				if (store.status !== 'initializing') return
-				store.setStatus('downloading-layers')
-			}),
-			Rx.takeWhile((msg) => msg.type !== 'init'),
-		)
-		.subscribe()
+	// listening before any await so a download already in flight in the shared worker still surfaces its status
+	worker.addEventListener('message', onWorkerMessage as (event: Event) => void)
 
-	const config = await ConfigClient.fetchConfig()
+	const [config, filters, layerData] = await Promise.all([
+		ConfigClient.fetchConfig(),
+		Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$()),
+		LayerDataClient.setup(),
+	])
 
-	const filters = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-	const layerData = await LayerDataClient.setup()
-
-	const ctx: WorkerTypes.InitRequest['input'] = {
+	const input: WorkerTypes.InitRequest['input'] = {
 		...CS.init(),
 		generationConfig: config.layerGeneration,
 		filters,
-		layerData,
+		layerData: null,
 		layerDataHash: LayerDataClient.hash,
 		cacheLayerArtifact: config.cacheLayerArtifact,
 	}
+	const initPromise = (async () => {
+		const result = await sendWorkerRequest('init', input)
+		if (result.code !== 'need-layer-data') return result
+		// another tab may already have handed a shared worker this layer data, so it is only cloned over on request
+		return await sendWorkerRequest('init', {
+			...input,
+			layerData: { components: layerData.components, extraColumns: layerData.extraColumns },
+		})
+	})()
 
-	const initPromise = sendWorkerRequest('init', ctx)
-	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
-
+	// both requests wait on ensureFullSetup, so they reach the worker only after init
 	FilterEntityClient.filterEntities$.pipe(Rx.observeOn(Rx.asyncScheduler)).subscribe((filters) => {
 		void sendWorkerRequest('filter-update', filters)
 		Store.getState().incrementBackgroundStateEpoch()
@@ -663,6 +652,7 @@ async function setup() {
 		// the page is on its way out: settling would run queries against layer data the worker does not hold
 		return await new Promise<never>(() => {})
 	}
+	if (result.code === 'need-layer-data') throw new Error('the layer query worker asked again for the layer data it was sent')
 }
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {

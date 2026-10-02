@@ -3,6 +3,7 @@ import superjson from 'superjson'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
+import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
@@ -114,27 +115,56 @@ export function combatStatsFromColumns(row: CombatStatsColumns): MatchCombatStat
  * Tally a match's scoreline from its feed. Costs a walk of every event the match produced, which is why a finished
  * match's tally is computed once on the server and stored (see backfillCombatStats) rather than per reader.
  *
- * `matchId` scopes the walk to one match, for the live buffer, which spans several. A replayed match's events are
- * already its own.
+ * `matchId` scopes the walk to one match, for a list of events spanning several. A replayed match's events are
+ * already its own. The live match is tallied an event at a time instead, as it plays (see CHAT.ChatState.combatTally).
  */
 export function tallyCombatStats(events: Iterable<CHAT.EventEnriched>, matchId?: number): MatchCombatStats {
 	const kills = [0, 0]
 	const wounds = [0, 0]
 	const deaths = [0, 0]
 	for (const event of events) {
-		if (event.type !== 'PLAYER_DIED' && event.type !== 'PLAYER_WOUNDED') continue
 		if (matchId !== undefined && event.matchId !== matchId) continue
-		// unknown team ids fall outside 0..1 and so count towards neither side
-		const victimIdx = (event.victim.teamId ?? 0) - 1
-		const attackerIdx = (event.attacker.teamId ?? 0) - 1
-		if (event.type === 'PLAYER_DIED' && (victimIdx === 0 || victimIdx === 1)) deaths[victimIdx]++
-		// teamkills and suicides are still deaths, but they are not the attacking team's doing
-		if (event.variant !== 'normal' || (attackerIdx !== 0 && attackerIdx !== 1)) continue
-		if (event.type === 'PLAYER_DIED') kills[attackerIdx]++
-		else wounds[attackerIdx]++
+		const credit = combatCredit(event)
+		if (!credit) continue
+		if (credit.deathTo !== -1) deaths[credit.deathTo]++
+		if (credit.creditTo === -1) continue
+		if (event.type === 'PLAYER_DIED') kills[credit.creditTo]++
+		else wounds[credit.creditTo]++
 	}
 	const team = (idx: number): TeamCombatStats => ({ kills: kills[idx], wounds: wounds[idx], deaths: deaths[idx] })
 	return { team1: team(0), team2: team(1) }
+}
+
+export const EMPTY_COMBAT_STATS: MatchCombatStats = {
+	team1: { kills: 0, wounds: 0, deaths: 0 },
+	team2: { kills: 0, wounds: 0, deaths: 0 },
+}
+
+/** The scoreline with one more event counted: `stats` itself when the event counts for neither team. */
+export function addCombatEvent(stats: MatchCombatStats, event: CHAT.EventEnriched): MatchCombatStats {
+	const credit = combatCredit(event)
+	if (!credit) return stats
+	const teams = [{ ...stats.team1 }, { ...stats.team2 }]
+	if (credit.deathTo !== -1) teams[credit.deathTo].deaths++
+	if (credit.creditTo !== -1) {
+		if (event.type === 'PLAYER_DIED') teams[credit.creditTo].kills++
+		else teams[credit.creditTo].wounds++
+	}
+	return { team1: teams[0], team2: teams[1] }
+}
+
+// the team index (0 or 1) a combat event's death and its kill or wound count towards, -1 for neither; null when the
+// event counts for nothing at all
+function combatCredit(event: CHAT.EventEnriched): { deathTo: number; creditTo: number } | null {
+	if (event.type !== 'PLAYER_DIED' && event.type !== 'PLAYER_WOUNDED') return null
+	// unknown team ids fall outside 0..1 and so count towards neither side
+	const victimIdx = (event.victim.teamId ?? 0) - 1
+	const attackerIdx = (event.attacker.teamId ?? 0) - 1
+	const deathTo = event.type === 'PLAYER_DIED' && (victimIdx === 0 || victimIdx === 1) ? victimIdx : -1
+	// teamkills and suicides are still deaths, but they are not the attacking team's doing
+	const creditTo = event.variant === 'normal' && (attackerIdx === 0 || attackerIdx === 1) ? attackerIdx : -1
+	if (deathTo === -1 && creditTo === -1) return null
+	return { deathTo, creditTo }
 }
 
 /** Whether a match recorded any combat at all. One SLM saw nothing of has a stored tally like any other, all zeros. */
@@ -144,6 +174,42 @@ export function hasCombat(stats: MatchCombatStats) {
 
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
+}
+
+// What a watcher of the match history receives: the whole window once, then only the entries that changed since
+// the last thing it was sent, along with the ordinal range the window now covers. A roll touches two or three
+// entries of a hundred, and it fans out to every watcher several times.
+export type PublicMatchHistoryUpdate =
+	| { code: 'state'; recentMatches: MatchDetails[] }
+	| { code: 'patch'; upserts: MatchDetails[]; firstOrdinal: number | null; lastOrdinal: number | null }
+
+export function diffRecentMatches(prev: MatchDetails[], next: MatchDetails[]): PublicMatchHistoryUpdate & { code: 'patch' } {
+	const prevByOrdinal = new Map(prev.map((match) => [match.ordinal, match]))
+	const upserts: MatchDetails[] = []
+	for (const match of next) {
+		const before = prevByOrdinal.get(match.ordinal)
+		if (before !== match && !Obj.deepEqual(before, match)) upserts.push(match)
+	}
+	return { code: 'patch', upserts, firstOrdinal: next[0]?.ordinal ?? null, lastOrdinal: next.at(-1)?.ordinal ?? null }
+}
+
+export function applyRecentMatchesUpdate(prev: MatchDetails[], update: PublicMatchHistoryUpdate): MatchDetails[] {
+	switch (update.code) {
+		case 'state':
+			return update.recentMatches
+		case 'patch': {
+			const { firstOrdinal, lastOrdinal } = update
+			if (firstOrdinal === null || lastOrdinal === null) return []
+			const byOrdinal = new Map<number, MatchDetails>()
+			for (const match of prev) {
+				if (match.ordinal >= firstOrdinal && match.ordinal <= lastOrdinal) byOrdinal.set(match.ordinal, match)
+			}
+			for (const match of update.upserts) byOrdinal.set(match.ordinal, match)
+			return [...byOrdinal.values()].sort((a, b) => a.ordinal - b.ordinal)
+		}
+		default:
+			assertNever(update)
+	}
 }
 
 export const NormedTeamIdSchema = z.enum(['A', 'B'])

@@ -45,16 +45,7 @@ export default function FilterEntitySelect(props: {
 	const enableCheckboxId = React.useId()
 	return (
 		<div className={cn('flex space-x-2 items-center flex-nowrap', props.className)}>
-			{props.allowToggle && (
-				<Checkbox
-					id={enableCheckboxId}
-					onCheckedChange={(v) => {
-						if (v === 'indeterminate') return
-						props.setEnabled?.(v)
-					}}
-					checked={props.enabled}
-				/>
-			)}
+			{props.allowToggle && <Checkbox id={enableCheckboxId} onCheckedChange={(v) => props.setEnabled?.(v)} checked={props.enabled} />}
 			<ComboBox
 				title={props.title ?? tr.text(F_Msgs.filterPicker())}
 				className="grow"
