@@ -41,6 +41,10 @@ export type AdminListStatus =
 // leaves an orphan that `pruneRemoved` drops rather than a stale list anyone can still reach.
 const resources = new Map<SM.AdminListId, AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal>>()
 
+// The last successful read of each list, served in place of a failed one. An unreachable source would otherwise demote
+// every admin on the list until the next read, which is an hour away for a remote source.
+const lastReads = new Map<SM.AdminListId, { list: SM.AdminList; time: number }>()
+
 export let status$: IsolatedBehaviorSubject<AdminListStatus>
 
 const ADMIN_LIST_TTL = ZodUtils.HumanTime.parse('1h')
@@ -63,9 +67,22 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 			// read fresh rather than closing over setup-time settings, so an edit is picked up by invalidation alone
 			const def = Settings.GLOBAL_SETTINGS.adminLists[listId]
 			if (!def) throw new Error(`admin list '${listId}' is no longer configured`)
-			const res = await fetchAdminList(listId, def, _ctx.signal)
-			status$.next({ code: 'ok' })
-			return res
+			try {
+				const list = await fetchAdminList(listId, def, _ctx.signal)
+				lastReads.set(listId, { list, time: Date.now() })
+				status$.next({ code: 'ok' })
+				return list
+			} catch (err) {
+				if (_ctx.signal.aborted) throw err
+				status$.next({ code: 'error', message: err instanceof Error ? err.message : String(err) })
+				const last = lastReads.get(listId)
+				if (!last) {
+					log.error(err, `Admin list '${listId}' has never been read successfully, so it grants nothing until it is`)
+					return emptyAdminList()
+				}
+				log.warn(err, `Keeping the copy of admin list '${listId}' read at ${new Date(last.time).toISOString()}`)
+				return last.list
+			}
 		},
 		module,
 		{
@@ -131,6 +148,7 @@ export function pruneRemoved() {
 	for (const [listId, resource] of [...resources]) {
 		if (configured.has(listId)) continue
 		resources.delete(listId)
+		lastReads.delete(listId)
 		resource.dispose()
 	}
 }
@@ -148,7 +166,7 @@ export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminList
 		return await resourceFor(listId).get(ctx, opts)
 	} catch (err) {
 		log.warn(err, `Could not read admin list '${listId}'`)
-		return null
+		return lastReads.get(listId)?.list ?? null
 	}
 }
 
@@ -211,6 +229,7 @@ export function setup() {
 	CleanupSys.register(() => {
 		for (const resource of resources.values()) resource.dispose()
 		resources.clear()
+		lastReads.clear()
 	}, status$)
 }
 
@@ -277,6 +296,14 @@ function parseAdminsCfgInto(l: SM.AdminList, data: string) {
 	}
 }
 
+function emptyAdminList(): SM.AdminList {
+	return {
+		groups: new Map(),
+		steam: { players: new Map(), admins: new Set() },
+		eos: { players: new Map(), admins: new Set() },
+	}
+}
+
 function markAdmins(l: SM.AdminList, identifyingPerms: readonly string[]) {
 	for (const idType of [l.eos, l.steam]) {
 		for (const [id, group] of OneToMany.iter(idType.players)) {
@@ -290,11 +317,7 @@ function markAdmins(l: SM.AdminList, identifyingPerms: readonly string[]) {
 // An Admins.cfg the app holds in memory rather than fetching, parsed by exactly the path a fetched one takes so an
 // emulated list cannot behave differently from a real one.
 export function parseAdminsCfg(data: string, identifyingPerms: readonly string[]): SM.AdminList {
-	const l: SM.AdminList = {
-		groups: new Map(),
-		steam: { players: new Map(), admins: new Set() },
-		eos: { players: new Map(), admins: new Set() },
-	}
+	const l = emptyAdminList()
 	parseAdminsCfgInto(l, data)
 	markAdmins(l, identifyingPerms)
 	return l
@@ -306,17 +329,7 @@ const fetchAdminList = Instr.spanOp(
 	async (listId: SM.AdminListId, def: SM.AdminListDef, signal?: AbortSignal): Promise<SM.AdminList> => {
 		const sources = [def.source]
 		const adminIdentifyingPerms = def.adminIdentifyingPermissions
-		const l: SM.AdminList = {
-			groups: new Map(),
-			steam: {
-				players: new Map(),
-				admins: new Set(),
-			},
-			eos: {
-				players: new Map(),
-				admins: new Set(),
-			},
-		}
+		const l = emptyAdminList()
 
 		for (const [_idx, source] of sources.entries()) {
 			const sourceLabel = source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
@@ -326,6 +339,7 @@ const fetchAdminList = Instr.spanOp(
 				switch (source.type) {
 					case 'remote': {
 						const resp = await fetch(source.source, { signal })
+						if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`)
 						data = await resp.text()
 						break
 					}
@@ -380,7 +394,7 @@ const fetchAdminList = Instr.spanOp(
 				}
 			} catch (error) {
 				if (signal?.aborted) throw signal.reason
-				log.error(error, `Error fetching ${source.type} admin list '${listId}': ${sourceLabel}`)
+				throw new Error(`Could not read ${source.type} admin list '${listId}' from ${sourceLabel}`, { cause: error })
 			}
 
 			parseAdminsCfgInto(l, data)
