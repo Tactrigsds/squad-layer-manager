@@ -1,4 +1,4 @@
-import { DurationFormat } from '@formatjs/intl-durationformat'
+import type * as FormatjsDuration from '@formatjs/intl-durationformat'
 import * as dateFns from 'date-fns'
 
 import * as DH from '@/lib/display-helpers'
@@ -11,16 +11,28 @@ import { t } from '@/models/messages.models'
 // it is imported by models that the display layer
 // itself imports, so an edge from there into @/lib or @/models closes a module-init cycle.
 
+// Firefox below 136 and Chrome below 129 lack Intl.DurationFormat. The polyfill is fetched only for them, by
+// loadDurationFormat(), which the client awaits before its first render.
+let DurationFormat = (Intl as { DurationFormat?: typeof FormatjsDuration.DurationFormat }).DurationFormat
+
+export async function loadDurationFormat() {
+	DurationFormat ??= (await import('@formatjs/intl-durationformat')).DurationFormat
+}
+
+function durationFormat(locale: string, style: 'long' | 'narrow') {
+	if (!DurationFormat) throw new Error('Intl.DurationFormat is unavailable and loadDurationFormat() has not run')
+	return new DurationFormat(locale, { style })
+}
+
 // date-fns only measures the duration here; naming its parts is Intl's, which is what makes "1 minute, 30 seconds"
-// come out in the reader's language and with the reader's separator. Uses formatjs's DurationFormat rather than the
-// platform's so the output does not depend on how new the browser is.
+// come out in the reader's language and with the reader's separator.
 export function formatInterval(interval: number, options?: { round?: 'second'; locale?: string }) {
 	const { round, locale } = options ?? {}
 	const normalizedInterval = round === 'second' ? Math.round(interval / 1000) * 1000 : interval
 	const duration = dateFns.intervalToDuration({ start: 0, end: normalizedInterval })
 	// an interval short enough to round away has no parts, and DurationFormat rejects that
 	if (!Object.keys(duration).length) return ''
-	return new DurationFormat(locale ?? I18n.getAmbientLocale(), { style: 'long' }).format(duration)
+	return durationFormat(locale ?? I18n.getAmbientLocale(), 'long').format(duration)
 }
 
 // minute-granular "1h 47m" for tight roster rows. Sub-minute intervals round up to a minute so a player who was
@@ -28,7 +40,7 @@ export function formatInterval(interval: number, options?: { round?: 'second'; l
 export function formatIntervalCompact(interval: number, locale?: string) {
 	const minutes = Math.max(1, Math.round(interval / 60_000))
 	const duration = minutes >= 60 ? { hours: Math.floor(minutes / 60), minutes: minutes % 60 } : { minutes }
-	return new DurationFormat(locale ?? I18n.getAmbientLocale(), { style: 'narrow' }).format(duration)
+	return durationFormat(locale ?? I18n.getAmbientLocale(), 'narrow').format(duration)
 }
 
 const SECOND = 1000
@@ -71,7 +83,7 @@ export function formatRelativeTime(time: number | Date, options?: { locale?: str
 // "3 minutes", "2 hours": an elapsed time to one unit, for where the exact figure is noise
 export function formatIntervalApprox(interval: number, locale?: string) {
 	const [unit, value] = approxUnit(interval)
-	return new DurationFormat(locale ?? I18n.getAmbientLocale(), { style: 'long' }).format({ [`${unit}s`]: Math.abs(value) })
+	return durationFormat(locale ?? I18n.getAmbientLocale(), 'long').format({ [`${unit}s`]: Math.abs(value) })
 }
 
 const DATE_FORMATS = {

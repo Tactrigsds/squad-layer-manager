@@ -285,6 +285,13 @@ export class FrameManager {
 		return key
 	}
 
+	// the state of the live instance for this input, without taking a reference to it
+	peekState<T extends FrameTypes>(frame: Frame<T>, input: T['input']): T['state'] | undefined {
+		const key = frame.createKey(frame.id, input)
+		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
+		return entry?.[1].store.getState() as T['state'] | undefined
+	}
+
 	// will only resolve keys known to the frame manager
 	getInstance<T extends FrameTypes>(key: InstanceKey<T>) {
 		const directKey = this.keys.get(key)

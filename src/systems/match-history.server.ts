@@ -140,18 +140,19 @@ export const loadState = Instr.spanOp(
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
-
-		// Prime the newest matches the cache can hold (skip the current match - its events are still being generated)
-		const matchIdsToPrime = state.recentMatches
-			.filter((match) => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
-			.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
-			.map((match) => match.historyEntryId)
-		if (matchIdsToPrime.length > 0) {
-			// getFeedEventsForMatches populates the cache internally with a single batched query
-			void MatchEventsCache.getFeedEventsForMatches(ctx, ...matchIdsToPrime)
-		}
 	},
 )
+
+// Fills the cache with the newest finished matches. Only at boot: a roll would otherwise re-read the whole of the
+// match that just ended under its transaction, for a reader who may never open it, and getMatchEvents fills the
+// cache on first open anyway.
+async function primeEventsCache(ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) {
+	const matchIdsToPrime = ctx.matchHistory.recentMatches
+		.filter((match) => !match.isCurrentMatch && !ctx.matchEventsCache.events.has(match.historyEntryId))
+		.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
+		.map((match) => match.historyEntryId)
+	if (matchIdsToPrime.length > 0) await MatchEventsCache.getFeedEventsForMatches(ctx, ...matchIdsToPrime)
+}
 
 // Otherwise nothing populates match history until rcon connects and syncs, and a server whose rcon never connects
 // has none for its whole life, while the managed server is live from initialization. It still can: this only loads
@@ -162,6 +163,7 @@ export const initState = Instr.spanOp(
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) => {
 		await loadState(ctx)
 		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		addReleaseTask(() => primeEventsCache(ctx).catch((err) => log.error(err, 'priming the match events cache failed')))
 		// Runs for the life of the server, off the mutex and off this thread: every match without a scoreline
 		// gets one, oldest history included, at a pace that leaves the rcon loop alone.
 		addReleaseTask(() =>
@@ -198,6 +200,14 @@ export const getCurrentMatch = Instr.spanOp(
 		return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
 	},
 )
+
+/**
+ * getCurrentMatch without waiting on matchHistory.mtx, for a caller that holds updateLayerMtx and so must not take it.
+ * The window is replaced whole rather than edited, so this reads it from before or after any change in flight.
+ */
+export function peekCurrentMatch(ctx: MH.Ctx): MH.MatchDetails | undefined {
+	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
+}
 
 /**
  * The current match, where its absence is a bug rather than a state to handle: a caller reached only from a live
@@ -248,15 +258,20 @@ export const matchHistoryRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ signal, context: _ctx, input }) {
 			const state$ = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) =>
-				Rx.from(
-					(async function* () {
-						yield getPublicMatchHistoryState(ctx)
-						const historyUpdate$ = ctx.matchHistory.update$.pipe(Rx.Ext.withAbortSignal(signal!))
-						for await (const _ of Rx.Ext.toAsyncGenerator(historyUpdate$)) {
-							yield getPublicMatchHistoryState(ctx)
-						}
-					})(),
-				),
+				Rx.defer(() => {
+					// a full state first, then only the entries each update changed
+					let sent: MH.MatchDetails[] | null = null
+					return ctx.matchHistory.update$.pipe(
+						Rx.startWith(undefined),
+						Rx.map((): MH.PublicMatchHistoryUpdate & Parts<USR.UserPart> => {
+							const next = ctx.matchHistory.recentMatches
+							const update: MH.PublicMatchHistoryUpdate =
+								sent === null ? { code: 'state', recentMatches: next } : MH.diffRecentMatches(sent, next)
+							sent = next
+							return { ...update, parts: ctx.matchHistory.parts }
+						}),
+					)
+				}),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 
 			yield* Rx.Ext.toAsyncGenerator(state$)
@@ -391,9 +406,10 @@ export const addNewCurrentMatch = Instr.spanOp(
 				.insert(Schema.matchHistory)
 				.values(superjsonify(Schema.matchHistory, { ...entry, ...MH.layerParts(entry.layerId), ordinal, serverId: ctx.serverId }))
 
-			// events are persisted as they're emitted, so the in-memory cache is just dropped; it only ever
-			// holds the current match
+			// events are persisted as they're emitted, so the in-memory caches are just dropped; they only ever
+			// hold the current match
 			ctx.server.emittedEvents = []
+			ctx.server.emittedAppEvents = []
 
 			await loadState(ctx, { startAtOrdinal: ordinal })
 			addReleaseTask(ctx.matchHistory.dispatchUpdate)

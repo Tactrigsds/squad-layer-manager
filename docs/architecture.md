@@ -375,6 +375,11 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
   bands are relative to the nearest enclosing `BaseZIndexContext`, so a popover opened inside a dialog lands above
   that dialog without either callsite knowing about the other.
+- **One overlay per list, not per item.** A closed Radix ContextMenu or DropdownMenu is about fifteen fibers and a
+  document keydown listener, and a closed Select renders every one of its items. A list delegates right-click and
+  long-press to its body and opens one shared menu with the target it reads off the element hit (`PlayerTable` in
+  `teams-panel.tsx`, and the feed below). `Tooltip` keeps its state machine in a plain object
+  (`use-follow-tooltip.ts`) and mounts its node only while open, so a closed one costs three hooks.
 
 ### The activity feed is built as dom, not rendered
 

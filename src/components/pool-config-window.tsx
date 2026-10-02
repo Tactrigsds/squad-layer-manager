@@ -138,9 +138,12 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						onClick={() => void ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })}
 						className="min-w-30"
 					>
-						<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
+						<Spinner
+							className="invisible animate-none data-[saving=true]:visible data-[saving=true]:animate-spin"
+							data-saving={saving}
+						/>
 						{tr.text(SETTINGS_Msgs.saveChanges())}
-						<Spinner className="invisible" />
+						<Spinner className="invisible animate-none" />
 					</Button>
 				</div>
 			)}

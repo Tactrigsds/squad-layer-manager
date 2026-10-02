@@ -61,6 +61,8 @@ function messageCatalogues(): Plugin {
 	}
 }
 
+const UNSPLIT_ROUTES = new Set<string>(['/', '/_app', '/_app/servers/$serverId'])
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
@@ -68,6 +70,11 @@ export default defineConfig({
 		messageCatalogues(),
 		tanstackRouter({
 			target: 'react',
+			autoCodeSplitting: true,
+			codeSplittingOptions: {
+				// most loads land on the dashboard, which would otherwise wait on its route chunk after the entry
+				splitBehavior: ({ routeId }) => (UNSPLIT_ROUTES.has(routeId) ? [] : undefined),
+			},
 		}),
 		ViteEjsPlugin({
 			NODE_ENV: ENV.NODE_ENV,
@@ -155,6 +162,9 @@ export default defineConfig({
 		// syntax the floor cannot parse is lowered rather than shipped. This covers only syntax; `pnpm check:compat`
 		// is what checks the apis and css the bundle reaches for.
 		target: BUILD_TARGET,
+		// the vehicle icons are imported eagerly as a set, so inlined they put every one into the importing chunk as
+		// incompressible base64 whether it is drawn or not
+		assetsInlineLimit: (filePath) => (filePath.includes('/vehicle-icons/') ? false : undefined),
 	},
 	// optimizeDeps: {
 	// 	exclude: ['ace-builds'],

@@ -1,4 +1,5 @@
 import type * as FRM from '@/lib/frame'
+import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
@@ -93,12 +94,15 @@ function denoise(events: readonly ConsoleEvent[]): ConsoleEvent[] {
 
 export namespace Sel {
 	// hidden is reported so the console can say how much it is keeping from you, rather than quietly dropping it
-	export function view(state: Store): { events: ConsoleEvent[]; hidden: number } {
-		const inTab = state.tab === 'unified' ? state.events : state.events.filter((e) => e.type === state.tab)
-		if (!state.hideNoise) return { events: inTab, hidden: 0 }
-		const events = denoise(inTab)
-		return { events, hidden: inTab.length - events.length }
-	}
+	export const view = RSel.createSelector(
+		[(state: Store) => state.events, (state: Store) => state.tab, (state: Store) => state.hideNoise],
+		(allEvents, tab, hideNoise): { events: ConsoleEvent[]; hidden: number } => {
+			const inTab = tab === 'unified' ? allEvents : allEvents.filter((e) => e.type === tab)
+			if (!hideNoise) return { events: inTab, hidden: 0 }
+			const events = denoise(inTab)
+			return { events, hidden: inTab.length - events.length }
+		},
+	)
 }
 
 export namespace Actions {

@@ -160,20 +160,38 @@ export function FeedList(props: { events: CHAT.EventEnriched[] | null; stores: S
 		host.appendChild(fragment)
 		Selection.paint(host)
 
-		const facts = new Map<string, PG.PlayerFactsSource>()
-		for (const event of next) collectFacts(facts, event)
-		factsRef.current = facts
+		// the rows kept from before keep their facts, so only the rebuilt ones are collected
+		if (shared === 0) factsRef.current = new Map()
+		for (let i = shared; i < next.length; i++) collectFacts(factsRef.current, next[i])
 
 		builtRef.current = { ctx, rows }
 		const nextAppEvents = rows.filter((row) => row.appEvent)
 		setAppEvents((current) => (sameAppEvents(current, nextAppEvents) ? current : nextAppEvents))
 	}, [events, ctx])
 
-	// a new row is built with the colour it should have; this is for the colours changing under rows already built
-	const groupColor = BattlemetricsClient.useGroupColorResolver()
+	// A new row is built with the colour it should have; this is for the colours changing under rows already built.
+	// When only battlemetrics data changed, only the players whose entry changed are repainted.
+	const grouping = BattlemetricsClient.useGroupingInputs()
+	const bmData = BattlemetricsClient.usePlayerBmData()
+	const paintedRef = React.useRef({ grouping, bmData })
 	React.useLayoutEffect(() => {
-		if (hostRef.current) RC.applyGroupColors(hostRef.current, groupColor, (playerId) => factsRef.current.get(playerId))
-	}, [groupColor])
+		const painted = paintedRef.current
+		paintedRef.current = { grouping, bmData }
+		const host = hostRef.current
+		if (!host || (painted.grouping === grouping && painted.bmData === bmData)) return
+		let only: Set<SM.PlayerId> | undefined
+		if (painted.grouping === grouping) {
+			only = new Set()
+			for (const playerId in bmData) if (bmData[playerId] !== painted.bmData[playerId]) only.add(playerId)
+			if (only.size === 0) return
+		}
+		RC.applyGroupColors(
+			host,
+			(playerId, player) => BattlemetricsClient.groupColorOf(grouping, bmData[playerId]?.flagIds, player),
+			(playerId) => factsRef.current.get(playerId),
+			only,
+		)
+	}, [grouping, bmData])
 
 	return (
 		<>

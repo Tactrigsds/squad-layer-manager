@@ -77,8 +77,11 @@ export default function HistoryPage(props: HistoryPageProps) {
 	// Runs from anywhere on the page, which is why it listens on the document rather than on the page's own
 	// element: nothing is focused after a load or a click on dead space, so the key event targets `body` and
 	// never reaches a handler mounted inside the tree.
+	// written after render, since a ref written during render keeps React Compiler off this component
 	const runRef = React.useRef(run)
-	runRef.current = run
+	React.useLayoutEffect(() => {
+		runRef.current = run
+	})
 	React.useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (!Browser.isSubmitChord(e)) return
@@ -322,20 +325,21 @@ function Results(props: {
 	selection: HQ.RowSelectionParam | undefined
 	onSelect: (selection: HQ.RowSelectionParam | undefined) => void
 }) {
-	switch (props.query.type) {
+	const { query, onRun, selection, onSelect } = props
+	switch (query.type) {
 		case 'events':
 			return (
 				<HistoryEvents
-					query={props.query}
-					onReorder={(order) => props.onRun({ ...props.query, order })}
-					selection={{ value: props.selection, onChange: props.onSelect }}
+					query={query}
+					onReorder={(order) => onRun({ ...query, order })}
+					selection={{ value: selection, onChange: onSelect }}
 					linkable
 				/>
 			)
 		case 'players':
-			return <PlayersResults query={props.query} onRun={props.onRun} />
+			return <PlayersResults query={query} onRun={onRun} />
 		case 'matches':
-			return <MatchesResults query={props.query} onRun={props.onRun} />
+			return <MatchesResults query={query} onRun={onRun} />
 	}
 }
 

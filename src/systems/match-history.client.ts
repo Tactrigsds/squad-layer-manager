@@ -2,7 +2,7 @@ import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as CHAT from '@/models/chat.models'
-import type * as MH from '@/models/match-history.models'
+import * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'
 
@@ -12,7 +12,12 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bindWithDefaul
 	(serverId: string) =>
 		RPC.observe('matchHistory.watchMatchHistoryState', () => RPC.orpc.matchHistory.watchMatchHistoryState.call({ serverId })).pipe(
 			RPC.dropUnavailable(),
-			Rx.map(PartsSys.stripParts),
+			Rx.tap((update) => void PartsSys.stripParts(update)),
+			// every (re)subscription opens with a whole state, so a patch is never applied to another stream's window
+			Rx.scan(
+				(state: MH.PublicMatchHistoryState, update) => ({ recentMatches: MH.applyRecentMatchesUpdate(state.recentMatches, update) }),
+				{ recentMatches: [] },
+			),
 		),
 	{ recentMatches: [] } satisfies MH.PublicMatchHistoryState,
 )

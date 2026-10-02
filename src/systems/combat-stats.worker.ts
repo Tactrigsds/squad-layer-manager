@@ -83,6 +83,7 @@ ensureLoggerSetup()
 
 const driver = new DatabaseConstructor(dbPath, { readonly: true })
 driver.pragma('busy_timeout = 5000')
+driver.pragma(`mmap_size = ${256 * 1024 * 1024}`)
 const db = drizzle(driver)
 
 // bound to the same module name the main thread's half logs under, so a failed tally reads as one thing

@@ -69,6 +69,7 @@ export default function HistoryEvents(props: {
 	const matches = React.useMemo(() => okPages.flatMap((page) => page.matches), [okPages])
 	const nextCursor = okPages.at(-1)?.nextCursor
 	const total = okPages[0]?.total
+	const totalCapped = okPages[0]?.totalCapped ?? false
 	const failure = HistoryClient.queryFailure(first.data, first.error)
 
 	// in flight for as long as react-query says the next page is, which also makes a second call while it is a
@@ -144,7 +145,9 @@ export default function HistoryEvents(props: {
 			)}
 			<div className="flex items-center gap-2">
 				{(props.showTotal ?? true) && total !== undefined && (
-					<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(total))}</div>
+					<div className="text-xs text-muted-foreground">
+						{tr.text(totalCapped ? HistoryMsgs.resultsAtLeast(total) : HistoryMsgs.results(total))}
+					</div>
 				)}
 				{props.onReorder && <OrderToggle order={props.query.order ?? 'newest'} onReorder={props.onReorder} />}
 			</div>

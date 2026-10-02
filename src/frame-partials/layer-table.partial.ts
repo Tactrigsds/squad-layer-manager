@@ -184,6 +184,9 @@ export function initLayerTable(args: Args) {
 	args.cleanup.push(
 		args.update$
 			.pipe(
+				// setting requestedQuery below emits update$ again before this emission is done; queued, that nested
+				// emission waits its turn, so the latest input is the one that reaches the throttle last
+				Rx.observeOn(Rx.queueScheduler),
 				Rx.Ext.traceTag('QUERY_LAYERS'),
 				Rx.map(([store]) => {
 					const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
@@ -319,18 +322,23 @@ export namespace Sel {
 		)
 	}
 
+	const pageRowsById = RSel.createSelector(
+		[(...[store]: PoolArgs) => store.layerTable.pageData],
+		(pageData) => new Map(pageData?.layers.map((row) => [row.id, row])),
+	)
+	const selectedIds = RSel.createSelector([(...[store]: PoolArgs) => store.layerTable.selected], (selected) => new Set(selected))
+
 	export const rowSelectionStatus = RSel.memoizeFactory((rowId: L.LayerId) =>
 		RSel.createDeepSelector(
 			[
-				(...[store]: PoolArgs) => store.layerTable.pageData,
-				(...[store]: PoolArgs) => store.layerTable.selected,
+				(...args: PoolArgs) => pageRowsById(...args).get(rowId),
+				(...args: PoolArgs) => selectedIds(...args).has(rowId),
+				(...[store]: PoolArgs) => store.layerTable.selected.length,
 				(...[store]: PoolArgs) => store.layerTable.minSelected,
 				canForceSelect,
 			],
-			(pageData, selected, minSelected, canForceSelect) => {
-				const row = pageData?.layers.find((r) => r.id === rowId)
+			(row, isSelected, selectedCount, minSelected, canForceSelect) => {
 				if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false, blockedByMods: false }
-				const isSelected = selected.includes(rowId)
 
 				// no permission lifts this one: the server has no mod that could load the layer
 				const blockedByMods = row.isUnsupported
@@ -339,7 +347,7 @@ export namespace Sel {
 
 				// Check if unchecking would violate minSelected
 				if (isSelected) {
-					const wouldBeUnderMin = (minSelected ?? 0) > selected.length - 1
+					const wouldBeUnderMin = (minSelected ?? 0) > selectedCount - 1
 					if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
 				}
 

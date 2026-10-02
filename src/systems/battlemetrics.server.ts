@@ -4,12 +4,13 @@ import * as E from 'drizzle-orm'
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
+import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as BM from '@/models/battlemetrics.models'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
@@ -59,7 +60,7 @@ export async function setup(ctx: C.Db) {
 			const now = Date.now()
 			let loaded = 0
 			for (const [eosId, entry] of Object.entries(stored)) {
-				if (entry.expiresAt <= now) continue
+				if (!isServable(entry, now)) continue
 				playerFlagsAndProfileCache.set(eosId, entry)
 				loaded++
 			}
@@ -175,13 +176,26 @@ async function checkPersonalToken(ctx: CS.Ctx & CS.AbortSignal, auth: Auth) {
 // -------- cache --------
 
 const PLAYER_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
+// Entries written together (one bulk poll, a boot) would otherwise all fall due in the same later poll, and that poll
+// would queue a request per player at once.
+const PLAYER_CACHE_TTL_JITTER = 0.2
+// how long past its expiry an entry is still shown while its refresh is on the way
+const PLAYER_CACHE_STALE_GRACE = 2 * 60 * 60 * 1000
+
+// `expiresAt` is when the entry falls due for a refresh. Until PLAYER_CACHE_STALE_GRACE past it, the entry is still
+// served to whatever only displays it, and its bmPlayerId spares the refresh a quick-match.
+type PlayerCacheEntry = { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }
 
 // Keyed by EOS ID (required). Each entry also keeps the BM-internal player ID
 // needed for flag mutation endpoints, which is not part of PlayerFlagsAndProfile.
-const playerFlagsAndProfileCache = new FixedSizeMap<string, { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }>(500)
+const playerFlagsAndProfileCache = new FixedSizeMap<string, PlayerCacheEntry>(500)
 
 let orgFlagsCache: BM.PlayerFlag[] | null = null
 let orgFlagsFetchPromise: Promise<BM.PlayerFlag[]> | null = null
+
+function isServable(entry: PlayerCacheEntry, now: number) {
+	return now <= entry.expiresAt + PLAYER_CACHE_STALE_GRACE
+}
 
 function getCachedPlayer(eosId: string): BM.PlayerFlagsAndProfile | undefined {
 	const entry = playerFlagsAndProfileCache.get(eosId)
@@ -191,7 +205,8 @@ function getCachedPlayer(eosId: string): BM.PlayerFlagsAndProfile | undefined {
 }
 
 function setCachedPlayer(eosId: string, bmPlayerId: string, value: BM.PlayerFlagsAndProfile) {
-	playerFlagsAndProfileCache.set(eosId, { value, bmPlayerId, expiresAt: Date.now() + PLAYER_CACHE_TTL })
+	const ttl = PLAYER_CACHE_TTL * (1 + (Math.random() * 2 - 1) * PLAYER_CACHE_TTL_JITTER)
+	playerFlagsAndProfileCache.set(eosId, { value, bmPlayerId, expiresAt: Date.now() + ttl })
 }
 
 // -------- cache eviction --------
@@ -202,7 +217,7 @@ function evictExpiredCacheEntries() {
 	const now = Date.now()
 	let evicted = 0
 	for (const [eosId, entry] of playerFlagsAndProfileCache.entries()) {
-		if (entry.expiresAt <= now) {
+		if (!isServable(entry, now)) {
 			playerFlagsAndProfileCache.delete(eosId)
 			evicted++
 		}
@@ -215,13 +230,13 @@ function evictExpiredCacheEntries() {
 const CACHE_PERSIST_KEY = 'bm:playerCache'
 const CACHE_PERSIST_INTERVAL_MS = 5 * 60 * 1000
 
-type PersistedCacheValue = Record<string, { value: BM.PlayerFlagsAndProfile; bmPlayerId: string; expiresAt: number }>
+type PersistedCacheValue = Record<string, PlayerCacheEntry>
 
 async function persistCache() {
 	const now = Date.now()
 	const toStore: PersistedCacheValue = {}
 	for (const [eosId, entry] of playerFlagsAndProfileCache.entries()) {
-		if (entry.expiresAt <= now) continue
+		if (!isServable(entry, now)) continue
 		toStore[eosId] = entry
 	}
 	await PersistedCache.save(CACHE_PERSIST_KEY, toStore)
@@ -233,6 +248,10 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000
 
 const playerUpdate$ = new IsolatedSubject<BM.PlayerBmDataUpdate>()
 
+// A bulk fetch lands one player at a time, so the watch stream sends whatever lands within this window as one message.
+const PLAYER_UPDATE_BATCH_MS = 100
+const playerUpdateBatch$ = playerUpdate$.pipe(Rx.Ext.bufferBurst(PLAYER_UPDATE_BATCH_MS), Rx.share())
+
 export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
 
 // -------- rate-limit queue --------
@@ -240,19 +259,27 @@ export type { PublicPlayerBmData } from '@/models/battlemetrics.models'
 const RATE_LIMITS = {
 	perSecond: 10,
 	perMinute: 60,
+	// held back from background requests, so a burst of polling never leaves an admin waiting out the minute
+	interactiveReservePerMinute: 15,
 	backoffDefaultMs: 30_000,
 } as const
+
+// Which requests go first when the budget runs short: an interactive one has a user waiting on it, a background one
+// is a poll. Mutable, so a background fetch that a user comes to wait on can be promoted while it is queued.
+export type Lane = { interactive: boolean }
+const BACKGROUND: Readonly<Lane> = { interactive: false }
+const INTERACTIVE: Readonly<Lane> = { interactive: true }
 
 // BM limits each token separately, so the org token and every personal token get their own budget
 type RateLimiter = {
 	timestamps: number[]
-	queue: Array<() => void>
-	drainScheduled: boolean
+	queue: Array<{ lane: Lane; resolve: () => void }>
+	drainTimer: ReturnType<typeof setTimeout> | null
 	backoffUntil: number
 }
 
 function createRateLimiter(): RateLimiter {
-	return { timestamps: [], queue: [], drainScheduled: false, backoffUntil: 0 }
+	return { timestamps: [], queue: [], drainTimer: null, backoffUntil: 0 }
 }
 
 const orgRateLimiter = createRateLimiter()
@@ -284,17 +311,32 @@ function countInWindow(limiter: RateLimiter, now: number, windowMs: number): num
 	return count
 }
 
-function canDispatch(limiter: RateLimiter, now: number): boolean {
-	if (now < limiter.backoffUntil) return false
-	return countInWindow(limiter, now, 1_000) < RATE_LIMITS.perSecond && countInWindow(limiter, now, 60_000) < RATE_LIMITS.perMinute
+function perMinuteFor(lane: Lane) {
+	return lane.interactive ? RATE_LIMITS.perMinute : RATE_LIMITS.perMinute - RATE_LIMITS.interactiveReservePerMinute
 }
 
+function canDispatch(limiter: RateLimiter, now: number, lane: Lane): boolean {
+	if (now < limiter.backoffUntil) return false
+	return countInWindow(limiter, now, 1_000) < RATE_LIMITS.perSecond && countInWindow(limiter, now, 60_000) < perMinuteFor(lane)
+}
+
+function nextInQueue(limiter: RateLimiter): number {
+	const idx = limiter.queue.findIndex((e) => e.lane.interactive)
+	return idx === -1 ? 0 : idx
+}
+
+// (Re)arms the drain for when the request at the head of the queue may next go out. Re-armed rather than left alone
+// when already armed: promoting a queued request to interactive can bring that moment forward.
 function scheduleDrain(limiter: RateLimiter) {
-	if (limiter.drainScheduled || limiter.queue.length === 0) return
-	limiter.drainScheduled = true
+	if (limiter.drainTimer !== null) {
+		clearTimeout(limiter.drainTimer)
+		limiter.drainTimer = null
+	}
+	if (limiter.queue.length === 0) return
 
 	const now = Date.now()
 	pruneTimestamps(limiter, now)
+	const perMinute = perMinuteFor(limiter.queue[nextInQueue(limiter)].lane)
 
 	let delayMs = 0
 	if (now < limiter.backoffUntil) {
@@ -304,14 +346,16 @@ function scheduleDrain(limiter: RateLimiter) {
 			const oldest1s = limiter.timestamps.find((t) => t > now - 1_000)!
 			delayMs = Math.max(delayMs, oldest1s + 1_000 - now)
 		}
-		if (countInWindow(limiter, now, 60_000) >= RATE_LIMITS.perMinute) {
-			const oldest60s = limiter.timestamps[0]
-			delayMs = Math.max(delayMs, oldest60s + 60_000 - now)
+		const inMinute = countInWindow(limiter, now, 60_000)
+		if (inMinute >= perMinute) {
+			// pruned, so every timestamp is in the window: a slot frees once all but perMinute - 1 have aged out
+			const freeing = limiter.timestamps[limiter.timestamps.length - perMinute]
+			delayMs = Math.max(delayMs, freeing + 60_000 - now)
 		}
 	}
 
-	setTimeout(() => {
-		limiter.drainScheduled = false
+	limiter.drainTimer = setTimeout(() => {
+		limiter.drainTimer = null
 		drainQueue(limiter)
 	}, delayMs + 1)
 }
@@ -319,12 +363,20 @@ function scheduleDrain(limiter: RateLimiter) {
 function drainQueue(limiter: RateLimiter) {
 	const now = Date.now()
 	pruneTimestamps(limiter, now)
-	while (limiter.queue.length > 0 && canDispatch(limiter, now)) {
+	while (limiter.queue.length > 0) {
+		const idx = nextInQueue(limiter)
+		if (!canDispatch(limiter, now, limiter.queue[idx].lane)) break
 		limiter.timestamps.push(now)
-		const resolve = limiter.queue.shift()!
-		resolve()
+		const [entry] = limiter.queue.splice(idx, 1)
+		entry.resolve()
 	}
 	scheduleDrain(limiter)
+}
+
+function promote(limiter: RateLimiter, lane: Lane) {
+	if (lane.interactive) return
+	lane.interactive = true
+	if (limiter.queue.some((e) => e.lane === lane)) drainQueue(limiter)
 }
 
 const meter = Otel.metrics.getMeter('battlemetrics')
@@ -357,27 +409,32 @@ meter
 		result.observe(orgRateLimiter.queue.length)
 	})
 
-function acquireRateSlot(limiter: RateLimiter, signal?: AbortSignal): Promise<void> {
+function acquireRateSlot(limiter: RateLimiter, lane: Lane, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.reject(signal.reason)
 	const now = Date.now()
 	pruneTimestamps(limiter, now)
-	if (canDispatch(limiter, now)) {
+	if (limiter.queue.length === 0 && canDispatch(limiter, now, lane)) {
 		limiter.timestamps.push(now)
 		return Promise.resolve()
 	}
 	return new Promise<void>((resolve, reject) => {
-		const entry = () => {
-			signal?.removeEventListener('abort', onAbort)
-			resolve()
+		const entry = {
+			lane,
+			resolve: () => {
+				signal?.removeEventListener('abort', onAbort)
+				resolve()
+			},
 		}
 		const onAbort = () => {
 			const idx = limiter.queue.indexOf(entry)
 			if (idx !== -1) limiter.queue.splice(idx, 1)
+			scheduleDrain(limiter)
 			reject(signal!.reason)
 		}
 		signal?.addEventListener('abort', onAbort, { once: true })
 		limiter.queue.push(entry)
-		scheduleDrain(limiter)
+		if (lane.interactive) drainQueue(limiter)
+		else scheduleDrain(limiter)
 	})
 }
 
@@ -415,9 +472,11 @@ async function bmFetch<T = null>(
 		responseSchema?: z.ZodType<T>
 		passthroughCodes?: number[]
 		auth?: Auth
+		lane?: Lane
 	},
 ): Promise<readonly [T, Response]> {
 	const auth = init?.auth ?? ORG_AUTH
+	const lane = init?.lane ?? INTERACTIVE
 	const limiter = rateLimiterFor(auth)
 	return Instr.spanOp(
 		'bmFetch',
@@ -446,7 +505,7 @@ async function bmFetch<T = null>(
 
 			let lastError!: Error
 			for (let attempt = 0; attempt < RETRY.maxAttempts; attempt++) {
-				await acquireRateSlot(limiter, ctx.signal)
+				await acquireRateSlot(limiter, lane, ctx.signal)
 				const res = await fetch(url, { method, headers, body, signal: ctx.signal }).catch((error) => {
 					log.error(`${method} ${path}: ${error.message}`)
 					return error as Error
@@ -711,7 +770,12 @@ export const removePlayerFlags = Instr.spanOp(
 	},
 )
 
-async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bmPlayerId: string): Promise<BM.PlayerFlagsAndProfile> {
+async function fetchPlayerDetail(
+	ctx: CS.Ctx & CS.AbortSignal,
+	eosId: string,
+	bmPlayerId: string,
+	lane: Lane,
+): Promise<BM.PlayerFlagsAndProfile> {
 	const BM_ORG_ID = orgId()
 	const detailPath =
 		`/players/${bmPlayerId}` +
@@ -722,6 +786,7 @@ async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bm
 
 	const [detailData] = await bmFetch(ctx, 'GET', detailPath, {
 		responseSchema: BM.PlayerDetailResponse,
+		lane,
 	})
 
 	const detailIncluded = detailData.included ?? []
@@ -738,19 +803,122 @@ async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bm
 
 	const flagIds = flagPlayers.map((fp) => fp.relationships?.playerFlag?.data?.id ?? fp.id)
 
-	const canonicalId = SM.PlayerIds.getPlayerId(resolvedPlayerIds)
-	const value: BM.PlayerFlagsAndProfile = {
+	return {
 		flagIds,
 		bmPlayerId,
 		playerIds: resolvedPlayerIds,
 		profileUrl: `https://www.battlemetrics.com/rcon/players/${bmPlayerId}`,
 		hoursPlayed: 0,
 	}
-	setCachedPlayer(canonicalId, bmPlayerId, value)
+}
 
-	playerUpdate$.next({ playerId: canonicalId, data: value })
+function storePlayer(value: BM.PlayerFlagsAndProfile) {
+	const playerId = SM.PlayerIds.getPlayerId(value.playerIds)
+	// every watcher already holds a servable entry: it was in their initial snapshot or sent since
+	const prev = playerFlagsAndProfileCache.get(playerId)
+	const unchanged = prev !== undefined && isServable(prev, Date.now()) && Obj.deepEqual(prev.value, value)
+	setCachedPlayer(playerId, value.bmPlayerId, value)
+	if (!unchanged) playerUpdate$.next({ playerId, data: value })
+}
 
-	return value
+// -------- quick-match batching --------
+
+// Players seen for the first time arrive in bursts (a roster at boot, a wave of connects while seeding), and one
+// quick-match resolves many of them for a single request.
+const QUICK_MATCH_BATCH_MS = 500
+const QUICK_MATCH_MAX_IDENTIFIERS = 100
+
+type QuickMatchWaiter = { lane: Lane; resolve: (bmPlayerId: string | null) => void; reject: (err: unknown) => void }
+let quickMatchWaiters = new Map<string, QuickMatchWaiter[]>()
+let quickMatchTimer: ReturnType<typeof setTimeout> | null = null
+let quickMatchFlushesNow = false
+
+// the BM player id behind an EOS id, or null when BM has never seen it
+function quickMatch(eosId: string, lane: Lane): Promise<string | null> {
+	return new Promise((resolve, reject) => {
+		const waiters = quickMatchWaiters.get(eosId)
+		if (waiters) waiters.push({ lane, resolve, reject })
+		else quickMatchWaiters.set(eosId, [{ lane, resolve, reject }])
+		if (lane.interactive && !quickMatchFlushesNow) {
+			if (quickMatchTimer !== null) clearTimeout(quickMatchTimer)
+			quickMatchTimer = setTimeout(flushQuickMatches, 0)
+			quickMatchFlushesNow = true
+		} else {
+			quickMatchTimer ??= setTimeout(flushQuickMatches, QUICK_MATCH_BATCH_MS)
+		}
+	})
+}
+
+function flushQuickMatches() {
+	quickMatchTimer = null
+	quickMatchFlushesNow = false
+	const all = [...quickMatchWaiters]
+	quickMatchWaiters = new Map()
+	for (let i = 0; i < all.length; i += QUICK_MATCH_MAX_IDENTIFIERS) {
+		void runQuickMatch(all.slice(i, i + QUICK_MATCH_MAX_IDENTIFIERS))
+	}
+}
+
+async function runQuickMatch(batch: [string, QuickMatchWaiter[]][]) {
+	const lane: Lane = { interactive: batch.some(([, waiters]) => waiters.some((w) => w.lane.interactive)) }
+	try {
+		const [matchData] = await bmFetch({ ...CS.init(), signal: CleanupSys.shutdownSignal }, 'POST', '/players/quick-match', {
+			body: { data: batch.map(([eosId]) => ({ type: 'identifier', attributes: { type: 'eosID', identifier: eosId } })) },
+			responseSchema: BM.PlayerQuickMatchResponse,
+			lane,
+		})
+		const bmIdByEosId = new Map<string, string>()
+		for (const item of matchData.data) {
+			const bmId = item.relationships?.player?.data?.id
+			if (bmId) bmIdByEosId.set(item.attributes.identifier, bmId)
+		}
+		for (const [eosId, waiters] of batch) {
+			for (const w of waiters) w.resolve(bmIdByEosId.get(eosId) ?? null)
+		}
+	} catch (err) {
+		for (const [, waiters] of batch) {
+			for (const w of waiters) w.reject(err)
+		}
+	}
+}
+
+// -------- player fetches --------
+
+// One fetch per player at a time, shared by everyone asking for that player, so none of their signals may cancel it.
+// `superseded` is set when a fresh fetch replaces this one: this one may have read BM before the change the fresh one
+// was started for, so its answer must not overwrite the cache.
+type PlayerFetch = { lane: Lane; superseded: boolean; promise: Promise<BM.PlayerFlagsAndProfile | null> }
+const playerFetches = new Map<string, PlayerFetch>()
+
+// Reads the player from BM and caches the result. A cached entry's bmPlayerId is reused whether or not the entry has
+// expired, so only a player seen for the first time costs a quick-match. `fresh` starts a fetch rather than joining
+// the one running.
+function fetchPlayer(ctx: CS.Ctx, eosId: string, lane: Lane, opts?: { fresh?: boolean }): Promise<BM.PlayerFlagsAndProfile | null> {
+	const running = playerFetches.get(eosId)
+	if (running && !opts?.fresh) {
+		if (lane.interactive) promote(orgRateLimiter, running.lane)
+		return running.promise
+	}
+	if (running) running.superseded = true
+	const job: PlayerFetch = { lane: { interactive: lane.interactive }, superseded: false, promise: undefined! }
+	job.promise = (async () => {
+		const shared = { ...ctx, signal: CleanupSys.shutdownSignal }
+		const bmPlayerId = playerFlagsAndProfileCache.get(eosId)?.bmPlayerId ?? (await quickMatch(eosId, job.lane))
+		if (!bmPlayerId) return null
+		const value = await fetchPlayerDetail(shared, eosId, bmPlayerId, job.lane)
+		if (!job.superseded) storePlayer(value)
+		return value
+	})().finally(() => {
+		if (playerFetches.get(eosId) === job) playerFetches.delete(eosId)
+	})
+	playerFetches.set(eosId, job)
+	return job.promise
+}
+
+// for the callers that only need the cache to hold the player: an unexpired entry is left alone
+function ensurePlayerFetched(ctx: CS.Ctx, eosId: string): Promise<unknown> {
+	if (getCachedPlayer(eosId)) return Promise.resolve()
+	return fetchPlayer(ctx, eosId, BACKGROUND)
 }
 
 const bulkFetchOnlinePlayers = Instr.spanOp(
@@ -759,48 +927,30 @@ const bulkFetchOnlinePlayers = Instr.spanOp(
 	async (ctx: CS.Ctx & C.ManagedServer): Promise<string[] | undefined> => {
 		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return
-		const onlinePlayers = teamsRes.players
+		const onlineEosIds = teamsRes.players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
+		const due = onlineEosIds.filter((eosId) => !getCachedPlayer(eosId))
 
-		const onlineEosIds = onlinePlayers.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
-
-		if (uncached.length > 0) {
-			// Resolve all uncached EOS IDs to BM player IDs in one request.
-			const [matchData] = await bmFetch(ctx, 'POST', '/players/quick-match', {
-				body: { data: uncached.map((p) => ({ type: 'identifier', attributes: { type: 'eosID', identifier: p.ids.eos } })) },
-				responseSchema: BM.PlayerQuickMatchResponse,
-			})
-
-			// Build a map from EOS ID → BM player ID using the identifier value in the response.
-			const eosIdToBmId = new Map<string, string>()
-			for (const item of matchData.data) {
-				const bmId = item.relationships?.player?.data?.id
-				if (bmId) eosIdToBmId.set(item.attributes.identifier, bmId)
-			}
-
-			// Fetch full detail for each matched player in parallel.
-			await Promise.all(
-				uncached.map(async (p) => {
-					const bmPlayerId = eosIdToBmId.get(p.ids.eos)
-					if (!bmPlayerId) return
-					await fetchPlayerDetail(ctx, p.ids.eos, bmPlayerId).catch((err) => {
-						log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm detail')
-					})
+		let failed = 0
+		await Promise.all(
+			due.map((eosId) =>
+				fetchPlayer(ctx, eosId, BACKGROUND).catch((err) => {
+					failed++
+					log.debug({ err, eosId }, 'failed to fetch player bm detail')
 				}),
-			)
-		}
+			),
+		)
+		if (failed > 0) log.warn('failed to fetch bm data for %d of %d players', failed, due.length)
 
-		log.info('fetched %d online players (%d fetched from BM api)', onlineEosIds.length, uncached.length)
+		log.info('fetched %d online players (%d fetched from BM api)', onlineEosIds.length, due.length)
 		return onlineEosIds
 	},
 )
 
-export async function invalidateAndRefetchPlayer(
-	ctx: CS.Ctx & C.ManagedServer & CS.AbortSignal,
-	eosId: string,
-): Promise<BM.PlayerFlagsAndProfile | null> {
-	playerFlagsAndProfileCache.delete(eosId)
-	const updated = await fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(eosId))
+// reads BM again for this player, after a change the cached answer predates. The cached entry stays if the read fails.
+export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & CS.AbortSignal, eosId: string): Promise<BM.PlayerFlagsAndProfile | null> {
+	if (!isEnabled()) return null
+	const updated = await Prom.raceAbort(fetchPlayer(ctx, eosId, INTERACTIVE, { fresh: true }), ctx.signal)
+	// persist immediately so the db doesn't serve stale flags on next startup
 	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
 	return updated
 }
@@ -810,20 +960,9 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 	{ module, attrs: (_ctx, playerIds) => ({ [ATTRS.Player.EOS_ID]: playerIds.eos, [ATTRS.Player.STEAM_ID]: playerIds.steam }) },
 	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
 		if (!isEnabled()) return null
-		const eosId = playerIds.eos
-		const cached = getCachedPlayer(eosId)
+		const cached = getCachedPlayer(playerIds.eos)
 		if (cached) return cached
-
-		const [matchData] = await bmFetch(ctx, 'POST', '/players/quick-match', {
-			body: { data: [{ type: 'identifier', attributes: { type: 'eosID', identifier: eosId } }] },
-			responseSchema: BM.PlayerQuickMatchResponse,
-		})
-
-		if (matchData.data.length === 0) return null
-		const bmPlayerId = matchData.data[0].relationships?.player?.data?.id
-		if (!bmPlayerId) return null
-
-		return fetchPlayerDetail(ctx, eosId, bmPlayerId)
+		return await Prom.raceAbort(fetchPlayer(ctx, playerIds.eos, INTERACTIVE), ctx.signal)
 	},
 )
 
@@ -842,16 +981,10 @@ export function setupSquadServerInstance(ctx: C.ManagedServer) {
 					if (!isEnabled()) return
 					const serverCtx = SquadServer.resolveCtx({ signal }, serverId)
 
-					const onlineEosIds = await bulkFetchOnlinePlayers(serverCtx).catch((err) => {
+					// what it fetched reaches watchers through storePlayer
+					await bulkFetchOnlinePlayers(serverCtx).catch((err) => {
 						log.warn({ err }, 'bulk fetch online players failed')
-						return [] as string[]
 					})
-					if (onlineEosIds) {
-						for (const eosId of onlineEosIds) {
-							const value = getCachedPlayer(eosId)
-							if (value) playerUpdate$.next({ playerId: eosId, data: value })
-						}
-					}
 				}),
 			)
 			.subscribe(),
@@ -859,21 +992,15 @@ export function setupSquadServerInstance(ctx: C.ManagedServer) {
 			.pipe(
 				// PLAYER_RECONCILED included: a backfilled player is one we became aware of and should fetch BM data for.
 				Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_RECONCILED'),
-				// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
-				// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
-				Instr.durableSub(
-					'bm-on-player-connected',
-					{ module, root: true, taskScheduling: 'parallel' },
-					async ([eventCtx, event], signal) => {
-						if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
-						if (!isEnabled()) return
-						const playerIds = event.player.ids
-						const serverCtx = SquadServer.eventCtx(eventCtx, signal)
-						await fetchSinglePlayerBmData(serverCtx, playerIds).catch((err) => {
-							log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
-						})
-					},
-				),
+				// parallel so one player's fetch doesn't queue behind another's, and a burst of connects shares one quick-match
+				Instr.durableSub('bm-on-player-connected', { module, root: true, taskScheduling: 'parallel' }, async ([eventCtx, event]) => {
+					if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
+					if (!isEnabled()) return
+					const playerIds = event.player.ids
+					await ensurePlayerFetched(eventCtx, playerIds.eos).catch((err) => {
+						log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
+					})
+				}),
 			)
 			.subscribe(),
 	)
@@ -882,7 +1009,17 @@ export function setupSquadServerInstance(ctx: C.ManagedServer) {
 // -------- oRPC handlers --------
 
 export const router = {
+	// an expired entry is answered at once and refreshed behind it: the refresh reaches the caller over the watch stream
 	getPlayerBmData: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
+		const entry = isEnabled() ? playerFlagsAndProfileCache.get(input.playerId) : undefined
+		if (entry && isServable(entry, Date.now())) {
+			if (Date.now() > entry.expiresAt) {
+				fetchPlayer(ctx, input.playerId, INTERACTIVE).catch((err) =>
+					log.warn({ err, playerId: input.playerId }, 'failed to refresh bm data'),
+				)
+			}
+			return entry.value
+		}
 		return fetchSinglePlayerBmData(ctx, SM.PlayerIds.queryFromPlayerId(input.playerId))
 	}),
 
@@ -898,7 +1035,7 @@ export const router = {
 		.handler(async ({ input, context: ctx }) => {
 			const failed: string[] = []
 			for (const playerId of input.playerIds) {
-				await refreshPlayerFlags(ctx, playerId, SM.PlayerIds.queryFromPlayerId(playerId)).catch((err) => {
+				await invalidateAndRefetchPlayer(ctx, playerId).catch((err) => {
 					log.warn({ err, playerId }, 'failed to refresh player bm data')
 					failed.push(playerId)
 				})
@@ -906,13 +1043,14 @@ export const router = {
 			return { code: 'ok' as const, refreshedCount: input.playerIds.length - failed.length, failed }
 		}),
 
+	// the cached entries as one message, then each batch of changed entries as it lands
 	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: _ctx }) {
-		const initial$ = Rx.from(
-			[...playerFlagsAndProfileCache.entries()]
-				.filter(([, entry]) => Date.now() <= entry.expiresAt)
-				.map(([playerId, entry]): BM.PlayerBmDataUpdate => ({ playerId, data: entry.value })),
-		)
-		yield* Rx.Ext.toAsyncGenerator(Rx.merge(initial$, playerUpdate$).pipe(Rx.Ext.withAbortSignal(signal!)))
+		const now = Date.now()
+		const snapshot: BM.PlayerBmDataUpdate[] = []
+		for (const [playerId, entry] of playerFlagsAndProfileCache.entries()) {
+			if (isServable(entry, now)) snapshot.push({ playerId, data: entry.value })
+		}
+		yield* Rx.Ext.toAsyncGenerator(Rx.merge(Rx.of(snapshot), playerUpdateBatch$).pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
 	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {
@@ -1066,7 +1204,7 @@ export const router = {
 				postFlagChangeNotes(ctx, auth, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
 			])
 
-			const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
+			const updated = await invalidateAndRefetchPlayer(ctx, input.playerId)
 			await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
 
 			return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
@@ -1120,7 +1258,7 @@ export const router = {
 				const noteAdded = await postFlagChangeNotes(ctx, auth, current.bmPlayerId, 'added', added, actorLabel(ctx))
 				if (!noteAdded) allNotesAdded = false
 
-				await refreshPlayerFlags(ctx, playerId, playerIds)
+				await invalidateAndRefetchPlayer(ctx, playerId)
 				await persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
 				flaggedCount++
 			}
@@ -1168,14 +1306,6 @@ async function postFlagChangeNotes(
 		),
 	)
 	return results.every(Boolean)
-}
-
-async function refreshPlayerFlags(ctx: CS.Ctx & CS.AbortSignal, eosId: string, playerIds: SM.PlayerIds.IdQuery<'eos'>) {
-	playerFlagsAndProfileCache.delete(eosId)
-	const updated = await fetchSinglePlayerBmData(ctx, playerIds)
-	// persist immediately so the db doesn't serve stale flags on next startup
-	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
-	return updated
 }
 
 async function persistFlagsUpdatedEvent(ctx: USR.Ctx & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {

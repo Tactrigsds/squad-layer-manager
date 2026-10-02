@@ -1,4 +1,3 @@
-import * as dateFns from 'date-fns'
 import React from 'react'
 
 export function Timer(props: {
@@ -15,36 +14,50 @@ export function Timer(props: {
 		throw new Error('Timer requires exclusively either start or deadline')
 	}
 
-	// I don't trust react to do this performantly
+	// written straight to the dom, once per displayed second, rather than through a re-render
 	React.useLayoutEffect(() => {
-		const intervalId = setInterval(() => {
+		const elt = eltRef.current!
+		let shown: string | null = null
+		let timeout: ReturnType<typeof setTimeout> | undefined
+		const tick = () => {
+			const now = Date.now()
 			let displayTimeMs: number
-
 			if (props.deadline) {
-				displayTimeMs = Math.max(props.deadline - Date.now(), 0)
+				displayTimeMs = Math.max(props.deadline - now, 0)
 			} else if (props.start) {
-				displayTimeMs = Math.max(Date.now() - props.start, 0)
+				displayTimeMs = Math.max(now - props.start, 0)
 			} else {
 				displayTimeMs = 0
 			}
 
 			const formatted = formatTime(displayTimeMs)
-			if (formatted !== eltRef.current!.innerText) {
-				eltRef.current!.innerText = formatted
+			if (formatted !== shown) {
+				elt.textContent = formatted
+				shown = formatted
 			}
-		}, 50)
-		return () => clearInterval(intervalId)
+			if (props.deadline && displayTimeMs === 0) return
+			// sleep until the displayed second changes
+			timeout = setTimeout(tick, props.deadline ? (displayTimeMs % 1000) + 1 : 1000 - (displayTimeMs % 1000))
+		}
+		tick()
+		return () => clearTimeout(timeout)
 	}, [props.start, props.deadline, formatTime])
 
 	// tabular-nums keeps digit width stable so the ticking text doesn't jitter
 	return <div ref={eltRef} className={props.className} style={{ fontVariantNumeric: 'tabular-nums' }} />
 }
 
+function durationParts(timeMs: number) {
+	const totalSeconds = Math.floor(timeMs / 1000)
+	return {
+		hours: Math.floor(totalSeconds / 3600),
+		minutes: Math.floor(totalSeconds / 60) % 60,
+		seconds: String(totalSeconds % 60).padStart(2, '0'),
+	}
+}
+
 export function formatTimeLeft(timeLeft: number) {
-	const duration = dateFns.intervalToDuration({ start: 0, end: timeLeft })
-	const hours = duration.hours || 0
-	const minutes = duration.minutes || 0
-	const seconds = String(duration.seconds || 0).padStart(2, '0')
+	const { hours, minutes, seconds } = durationParts(timeLeft)
 
 	if (hours > 0) {
 		return `${hours}:${String(minutes).padStart(2, '0')}:${seconds}`
@@ -56,10 +69,7 @@ export function formatTimeLeft(timeLeft: number) {
 }
 
 export function formatTimeLeftWithZeros(timeLeft: number) {
-	const duration = dateFns.intervalToDuration({ start: 0, end: timeLeft })
-	const hours = duration.hours || 0
-	const minutes = duration.minutes || 0
-	const seconds = String(duration.seconds || 0).padStart(2, '0')
+	const { hours, minutes, seconds } = durationParts(timeLeft)
 
 	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${seconds}`
 }

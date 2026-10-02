@@ -24,21 +24,21 @@ type PackedEvent = {
 	data: unknown
 }
 
-export type ArchivableEvent = Pick<SchemaModels.ServerEvent, 'id' | 'type' | 'time' | 'appEventId' | 'version' | 'data'>
+// A serverEvents row as compaction reads it: `time` as stored, and `data` as the json text the column holds, so
+// packing a match never parses its events.
+export type ArchivableEvent = Pick<SchemaModels.ServerEvent, 'id' | 'type' | 'appEventId' | 'version'> & { time: number; data: string }
 
 // Async on purpose: node runs zlib on the threadpool, so a compaction pass doesn't block the event loop
 // the way better-sqlite3 does. Callers must therefore pack OUTSIDE the write transaction and only insert
 // inside it -- awaiting non-query work under the process-wide transaction lock stalls every other write.
+//
+// The json is the text JSON.stringify gives for a PackedEvent[], assembled around each row's `data` as stored.
 export async function pack(events: ArchivableEvent[]): Promise<Buffer> {
-	const packed: PackedEvent[] = events.map((e) => ({
-		id: e.id,
-		type: e.type,
-		time: e.time.getTime(),
-		appEventId: e.appEventId,
-		version: e.version,
-		data: e.data,
-	}))
-	return await zstdCompress(Buffer.from(JSON.stringify(packed), 'utf8'), {
+	const packed = events.map(
+		(e) =>
+			`{"id":${e.id},"type":${JSON.stringify(e.type)},"time":${e.time},"appEventId":${JSON.stringify(e.appEventId)},"version":${JSON.stringify(e.version)},"data":${e.data}}`,
+	)
+	return await zstdCompress(Buffer.from(`[${packed.join(',')}]`, 'utf8'), {
 		params: { [zlib.constants.ZSTD_c_compressionLevel]: COMPRESSION_LEVEL },
 	})
 }

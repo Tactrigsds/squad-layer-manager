@@ -156,6 +156,8 @@ const setup: Frame['setup'] = (args) => {
 				}
 			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
 	})
+	// set before the table starts querying, so its first query is not one built without the pool and repeat rules
+	set({ baseQueryInput: Sel.baseQueryInput(args.get(), input.squadServer ? Zus.getState(input.squadServer) : undefined) })
 	LayerTablePrt.initLayerTable(args)
 
 	let baseQueryInput$: Rx.Observable<LQY.BaseQueryInput>

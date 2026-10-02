@@ -1,5 +1,5 @@
 import { useCommandState } from 'cmdk'
-import { Check, ChevronDown, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown, LoaderCircle, Unlock } from 'lucide-react'
 import React, { useCallback, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button.tsx'
@@ -74,6 +74,9 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onOpenChange?: (open: boolean) => void
 	children?: React.ReactNode
 	ref?: React.ForwardedRef<ComboBoxHandle>
+	// offered on each `locked` option: lifts whatever excludes it, then selects it
+	onUnlock?: () => void
+	unlockLabel?: string
 }
 
 export interface ComboBoxOption<T> {
@@ -94,6 +97,8 @@ export interface ComboBoxOption<T> {
 	// to the back regardless of group. A list means the option belongs to every one of those groups, and its
 	// first entry is the one that orders, heads and prefixes it.
 	groups?: Record<string, string | readonly string[]>
+	// excluded by other constraints, and shown muted with the combo box's unlock affordance (see `onUnlock`)
+	locked?: boolean
 }
 
 // cmdk owns the highlight (it follows both the pointer and arrow keys), so we read it rather than tracking
@@ -390,7 +395,17 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 												<span className="min-w-0 flex-1 truncate">
 													<PrefixedLabel
 														prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-														label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+														label={
+															option.locked && props.onUnlock ? (
+																<LockedOptionLabel
+																	label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+																	unlockLabel={props.unlockLabel}
+																	onUnlock={props.onUnlock}
+																/>
+															) : (
+																(option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value))
+															)
+														}
 														render={prefixRenderer}
 													/>
 												</span>
@@ -403,5 +418,27 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				)}
 			</PopoverContent>
 		</Popover>
+	)
+}
+
+// Clicking the row outside the unlock icon does nothing, since the option is excluded. Clicking the icon unlocks, and
+// the click then reaches the row, which selects the option.
+function LockedOptionLabel(props: { label: React.ReactNode; unlockLabel?: string; onUnlock: () => void }) {
+	return (
+		<span
+			className="flex items-center gap-1 group w-full"
+			onClick={(e) => {
+				if (e.target !== e.currentTarget) return
+				e.stopPropagation()
+			}}
+		>
+			<span className="text-muted-foreground pointer-events-none">{props.label}</span>
+			<span title={props.unlockLabel}>
+				<Unlock
+					className="h-3 w-3 opacity-0 group-hover:opacity-100 cursor-pointer text-ok pointer-events-auto"
+					onClick={props.onUnlock}
+				/>
+			</span>
+		</span>
 	)
 }

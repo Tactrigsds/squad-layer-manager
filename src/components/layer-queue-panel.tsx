@@ -380,7 +380,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const stateControls = (
 		<div className={cn('grid items-center', phone && 'ms-auto')}>
 			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
-				<span className="fd-spin" />
+				{/* paused while hidden: an invisible element's animation still restyles the page on every tick */}
+				<span className="fd-spin [animation-play-state:paused] group-data-[status=saving]:[animation-play-state:running]" />
 				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
 			</div>
 			<PermissionDeniedTooltip denied={startEditingDenied}>

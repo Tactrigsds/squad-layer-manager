@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import React from 'react'
 
+import * as Obj from '@/lib/object-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
@@ -32,10 +33,25 @@ export namespace Actions {
 	}
 }
 
+// Every reader of the map recomputes when its identity changes, so a batch that changes no entry keeps the map, and an
+// entry that comes back unchanged keeps its object. A changed entry also lands in the per-player query cache.
 export const [usePlayerBmData, playerBmData$] = ReactRx.bindWithDefault<BM.PublicPlayerBmData>(
 	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
 		RPC.dropUnavailable(),
-		Rx.scan((acc, update) => ({ ...acc, [update.playerId]: update.data }), {} as BM.PublicPlayerBmData),
+		Rx.scan((acc, updates) => {
+			let next: BM.PublicPlayerBmData | null = null
+			for (const { playerId, data } of updates) {
+				if (Obj.deepEqual((next ?? acc)[playerId], data)) continue
+				next ??= { ...acc }
+				next[playerId] = data
+				RPC.queryClient.setQueryData(
+					RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }).queryKey,
+					data,
+				)
+			}
+			return next ?? acc
+		}, {} as BM.PublicPlayerBmData),
+		Rx.distinctUntilChanged(),
 	),
 	{},
 )
@@ -95,9 +111,7 @@ export namespace NotesActions {
 }
 
 export function usePlayerFlagIds(playerId: string): string[] | null {
-	const bmData = usePlayerBmData()
-	const player = bmData[playerId]
-	return player?.flagIds ?? null
+	return Zus.useStore(playerBmData$, (bmData) => bmData[playerId]?.flagIds) ?? null
 }
 
 export function usePlayerFlags(playerId: string): BM.PlayerFlag[] | null {
@@ -108,41 +122,65 @@ export function usePlayerFlags(playerId: string): BM.PlayerFlag[] | null {
 }
 
 export function usePlayerProfile(playerId: string) {
-	const bmData = usePlayerBmData()
-	const player = bmData[playerId]
+	const player = Zus.useStore(playerBmData$, (bmData) => bmData[playerId])
 	if (!player) return null
 	const { flagIds: _, ...profile } = player
 	return profile
 }
 
+// What decides a player's group colour, apart from their own flags.
+export type GroupingInputs = {
+	orgFlags: BM.PlayerFlag[] | undefined
+	playerGroupings: PG.PlayerGroupings
+	activeGroupingId: string | null
+}
+
 // The color of the group a player falls into under the active grouping, or null when nothing matches. The roster
 // entry is passed in rather than looked up here: what it carries is per-server (the admin list a server recognises,
 // the name it saw them under) and this has no server.
-//
-// The resolver form is for a caller colouring many players at once -- the activity feed names hundreds -- which
-// would otherwise be one subscription to the whole bm stream per name.
-export function useGroupColorResolver(): (playerId: string, player: PG.PlayerFactsSource | undefined) => string | null {
-	const bmData = usePlayerBmData()
-	const orgFlags = useOrgFlags()
-	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
-	const playerGroupings = config?.playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
-	const groupingIds = PG.groupingIdsWithParty(playerGroupings)
-	const activeGroupingId = Zus.useStore(Store, Sel.activeGroupingId(groupingIds))
-
-	return React.useCallback(
-		(playerId, player) => {
-			if (activeGroupingId === null || !player) return null
-			const flagIds = bmData[playerId]?.flagIds
-			const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
-			const group = PG.groupOf(playerGroupings, activeGroupingId, PG.playerFacts(player, flags))
-			return group === undefined ? null : PG.groupColorOf(playerGroupings, activeGroupingId, group, orgFlags)
-		},
-		[bmData, orgFlags, playerGroupings, activeGroupingId],
-	)
+export function groupColorOf(
+	inputs: GroupingInputs,
+	flagIds: string[] | undefined,
+	player: PG.PlayerFactsSource | undefined,
+): string | null {
+	const { orgFlags, playerGroupings, activeGroupingId } = inputs
+	if (activeGroupingId === null || !player) return null
+	const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
+	const group = PG.groupOf(playerGroupings, activeGroupingId, PG.playerFacts(player, flags))
+	return group === undefined ? null : PG.groupColorOf(playerGroupings, activeGroupingId, group, orgFlags)
 }
 
+// identity-stable until one of the inputs changes
+export function useGroupingInputs(): GroupingInputs {
+	const orgFlags = useOrgFlags()
+	const playerGroupings = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerGroupings) ?? PG.EMPTY_PLAYER_GROUPINGS
+	const groupingIds = PG.groupingIdsWithParty(playerGroupings)
+	const activeGroupingId = Zus.useStore(Store, Sel.activeGroupingId(groupingIds))
+	return React.useMemo(() => ({ orgFlags, playerGroupings, activeGroupingId }), [orgFlags, playerGroupings, activeGroupingId])
+}
+
+// A player's group colour as of now, without subscribing to anything. For a row built from a template, which reads
+// it once; whoever owns the row repaints it when the colour changes (see RC.applyGroupColors).
+export function groupColorNow(playerId: string, player: PG.PlayerFactsSource | undefined): string | null {
+	const playerGroupings = SettingsClient.PublicSettingsStore.getState()?.playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
+	const inputs: GroupingInputs = {
+		orgFlags:
+			RPC.queryClient.getQueryData(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }).queryKey) ?? undefined,
+		playerGroupings,
+		activeGroupingId: Sel.activeGroupingId(PG.groupingIdsWithParty(playerGroupings))(Store.getState()),
+	}
+	return groupColorOf(inputs, currentBmData()[playerId]?.flagIds, player)
+}
+
+function currentBmData(): BM.PublicPlayerBmData {
+	const value = playerBmData$.getValue()
+	return value instanceof Promise ? {} : value
+}
+
+// Re-renders only when this player's colour can have changed: their own flags, or the grouping itself.
 export function usePlayerGroupColor(playerId: string, player: PG.PlayerFactsSource | undefined): string | null {
-	return useGroupColorResolver()(playerId, player)
+	const flagIds = Zus.useStore(playerBmData$, (bmData) => bmData[playerId]?.flagIds)
+	return groupColorOf(useGroupingInputs(), flagIds, player)
 }
 
 export type PlayerGrouping = { groupingId: string; group: string; color: string }
@@ -151,14 +189,13 @@ export type PlayerGrouping = { groupingId: string; group: string; color: string 
 // what "Other" means, and is not worth a row each. Reports all of them rather than the active one: which grouping is
 // active is a view setting, while a player's standing under each is a fact about them.
 export function usePlayerGroupings(playerId: string, player: PG.PlayerFactsSource | undefined): PlayerGrouping[] {
-	const bmData = usePlayerBmData()
+	const flagIds = Zus.useStore(playerBmData$, (bmData) => bmData[playerId]?.flagIds)
 	const orgFlags = useOrgFlags()
 	const playerGroupings = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerGroupings)
 
 	return React.useMemo(() => {
 		if (!player) return []
 		const configured = playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
-		const flagIds = bmData[playerId]?.flagIds
 		const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
 		const facts = PG.playerFacts(player, flags)
 		const groupings: PlayerGrouping[] = []
@@ -168,20 +205,11 @@ export function usePlayerGroupings(playerId: string, player: PG.PlayerFactsSourc
 			groupings.push({ groupingId, group, color: PG.groupColorOf(configured, groupingId, group, orgFlags) })
 		}
 		return groupings
-	}, [playerId, player, bmData, orgFlags, playerGroupings])
+	}, [player, flagIds, orgFlags, playerGroupings])
 }
 
 export function setup() {
 	playerBmData$.subscribe()
-
-	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call())
-		.pipe(RPC.dropUnavailable())
-		.subscribe((update) => {
-			RPC.queryClient.setQueryData(
-				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: update.playerId }, staleTime: Infinity }).queryKey,
-				update.data,
-			)
-		})
 
 	void (async () => {
 		const orgFlagsRes = await RPC.queryClient.fetchQuery(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }))

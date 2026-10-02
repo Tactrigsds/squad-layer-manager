@@ -2,7 +2,9 @@ import { type CollisionDetector, CollisionPriority, CollisionType } from '@dnd-k
 import * as DndKitReact from '@dnd-kit/react'
 import React from 'react'
 
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as DND from '@/models/dndkit.models'
+import { tr } from '@/systems/messages.client'
 
 // like @dnd-kit/collision's pointerIntersection, but measured against the droppable element's LIVE rect: the
 // cached shape can lag a drag-start expansion, and it disagrees with the pointer under page zoom. Used wherever a
@@ -39,8 +41,54 @@ export function useDroppable(item: DND.DropItem, input?: Omit<DndKitReact.UseDro
 	return DndKitReact.useDroppable({ id: DND.serializeDropItem(item), ...(input ?? {}) })
 }
 
+export const DRAG_INSTRUCTIONS_ID = 'drag-instructions'
+
+// The attributes dnd-kit's Accessibility plugin would set. That plugin rescans every draggable on each registration,
+// which is quadratic in the number of grips on a page.
+function markActivator(element: Element) {
+	if (!element.hasAttribute('tabindex')) element.setAttribute('tabindex', '0')
+	if (!element.hasAttribute('role') && element.tagName !== 'BUTTON') element.setAttribute('role', 'button')
+	if (!element.hasAttribute('aria-roledescription')) element.setAttribute('aria-roledescription', tr.text(UI_Msgs.dragRoleDescription()))
+	if (!element.hasAttribute('aria-describedby')) element.setAttribute('aria-describedby', DRAG_INSTRUCTIONS_ID)
+}
+
 export function useDraggable(item: DND.DragItem, input?: Omit<DndKitReact.UseDraggableInput, 'id'>) {
-	return DndKitReact.useDraggable({ id: DND.serializeDragItem(item), ...(input ?? {}) })
+	const drag = DndKitReact.useDraggable({ id: DND.serializeDragItem(item), ...(input ?? {}) })
+	const hasHandleRef = React.useRef(false)
+	const baseHandleRef = drag.handleRef
+	const baseRef = drag.ref
+	const handleRef = React.useCallback(
+		(element: Element | null) => {
+			baseHandleRef(element)
+			hasHandleRef.current = !!element
+			if (element) markActivator(element)
+		},
+		[baseHandleRef],
+	)
+	// a handle is a descendant of the element, so its ref is attached first
+	const ref = React.useCallback(
+		(element: Element | null) => {
+			baseRef(element)
+			if (element && !hasHandleRef.current) markActivator(element)
+		},
+		[baseRef],
+	)
+	return {
+		get draggable() {
+			return drag.draggable
+		},
+		get isDragging() {
+			return drag.isDragging
+		},
+		get isDropping() {
+			return drag.isDropping
+		},
+		get isDragSource() {
+			return drag.isDragSource
+		},
+		handleRef,
+		ref,
+	}
 }
 
 export function useDragging() {

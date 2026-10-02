@@ -49,14 +49,22 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.disc
 let ENV!: ReturnType<typeof envBuilder>
 
 // home-guild membership/role changes that affect rbac, for consumers (rbac.server) to invalidate on. 'member' =
-// one member's roles/membership changed (targeted); 'roles' = a role definition changed, affecting every holder.
-export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'roles' }
+// one member's roles/membership changed (targeted); 'role-deleted' = every holder lost that role. Creating or editing a
+// role changes nobody's role ids, which is all rbac reads, so neither is announced.
+export type GuildRbacEvent = { type: 'member'; discordId: bigint } | { type: 'role-deleted'; roleId: bigint }
 export const guildRbacEvents$ = new IsolatedSubject<GuildRbacEvent>()
 
-// What happens to messages people post in the home guild: one arriving or being edited, with its current content, or
-// one being deleted. Silent when the bot could not get the Message Content intent (see readsMessageContent). An edit
-// includes discord adding a link preview, which leaves the content as it was.
-export type MessageEvent = { type: 'posted'; message: D.Message } | { type: 'deleted'; messageId: string }
+// a role's colour or position changed, which can change the name colour of everyone holding it
+export const roleDisplayChanged$ = new IsolatedSubject<void>()
+
+// What happens to messages people post in the home guild: one arriving, being edited, or being deleted. Silent when
+// the bot could not get the Message Content intent (see readsMessageContent). An edit includes discord adding a link
+// preview, which leaves the content as it was. An edited message arrives partial when discord.js no longer holds it,
+// and a partial has no content or author until it is fetched, which costs a REST call the consumer decides to spend.
+export type MessageEvent =
+	| { type: 'posted'; message: D.Message }
+	| { type: 'edited'; message: D.Message | D.PartialMessage }
+	| { type: 'deleted'; messageId: string }
 export const messageEvents$ = new IsolatedSubject<MessageEvent>()
 
 // whether the portal granted the privileged Message Content intent, which messages$ depends on. Null until the bot
@@ -69,9 +77,19 @@ export function readsMessageContent() {
 const BASE_INTENTS = [D.GatewayIntentBits.Guilds, D.GatewayIntentBits.GuildMembers]
 const MESSAGE_INTENTS = [...BASE_INTENTS, D.GatewayIntentBits.GuildMessages, D.GatewayIntentBits.MessageContent]
 
+// Every message in every channel the bot can see is cached by default, 200 per channel, and only an edit arriving soon
+// after the post reads one back. Older edits arrive partial instead.
+const MESSAGE_CACHE_PER_CHANNEL = 20
+const MESSAGE_SWEEP = { interval: 10 * 60, lifetime: 30 * 60 }
+
 async function login(intents: D.GatewayIntentBits[]) {
-	// partial messages, so an edit or deletion of one discord.js no longer holds in its cache still arrives
-	const loggingIn = new D.Client({ intents, partials: [D.Partials.Message] })
+	const loggingIn = new D.Client({
+		intents,
+		// partial messages, so an edit or deletion of one discord.js no longer holds in its cache still arrives
+		partials: [D.Partials.Message],
+		makeCache: D.Options.cacheWithLimits({ ...D.Options.DefaultMakeCacheSettings, MessageManager: MESSAGE_CACHE_PER_CHANNEL }),
+		sweepers: { ...D.Options.DefaultSweeperSettings, messages: MESSAGE_SWEEP },
+	})
 	try {
 		await new Promise((resolve, reject) => {
 			loggingIn.once('ready', resolve)
@@ -144,7 +162,10 @@ export async function setup() {
 	client.on('messageCreate', (message) => {
 		if (message.guildId === homeGuildId && !message.author.bot) messageEvents$.next({ type: 'posted', message })
 	})
-	client.on('messageUpdate', (_old, updated) => void postedFromUpdate(updated, homeGuildId))
+	client.on('messageUpdate', (_old, updated) => {
+		if (updated.guildId !== homeGuildId || (!updated.partial && updated.author.bot)) return
+		messageEvents$.next({ type: 'edited', message: updated })
+	})
 	client.on('messageDelete', (message) => {
 		if (message.guildId === homeGuildId) messageEvents$.next({ type: 'deleted', messageId: message.id })
 	})
@@ -161,34 +182,23 @@ export async function setup() {
 		if (rolesChanged) guildRbacEvents$.next({ type: 'member', discordId: BigInt(newMember.id) })
 	})
 	client.on('guildMemberAdd', (member) => {
+		notAMember.delete(`${member.guild.id}:${member.id}`)
 		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
 	})
 	client.on('guildMemberRemove', (member) => {
 		if (member.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'member', discordId: BigInt(member.id) })
 	})
-	// a role definition/deletion/creation changes membership or grants for every holder
-	client.on('roleCreate', (role) => {
-		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
-	})
-	client.on('roleUpdate', (_, role) => {
-		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+	client.on('roleUpdate', (prev, role) => {
+		if (role.guild.id !== homeGuildId) return
+		if (prev.color !== role.color || prev.position !== role.position) roleDisplayChanged$.next()
 	})
 	client.on('roleDelete', (role) => {
-		if (role.guild.id === homeGuildId) guildRbacEvents$.next({ type: 'roles' })
+		if (role.guild.id !== homeGuildId) return
+		guildRbacEvents$.next({ type: 'role-deleted', roleId: BigInt(role.id) })
+		roleDisplayChanged$.next()
 	})
 
 	return res
-}
-
-// an edited message arrives partial when discord.js no longer holds it, and a partial has no content to read
-async function postedFromUpdate(updated: D.Message | D.PartialMessage, homeGuildId: string) {
-	if (updated.guildId !== homeGuildId) return
-	try {
-		const message = updated.partial ? await updated.fetch() : updated
-		if (!message.author.bot) messageEvents$.next({ type: 'posted', message })
-	} catch (err) {
-		log.warn({ err }, 'could not fetch edited message %s', updated.id)
-	}
 }
 
 // how long to wait for graceful shutdown before forcing the exit
@@ -323,21 +333,34 @@ async function fetchGuild(guildId: bigint) {
 	}
 }
 
+type MemberLookupFailure = { code: 'err:discord'; err: string; errCode: number | string }
+
+// Someone who has left the guild (or never joined) is looked up by every user build that names them: a REST round
+// trip and a 404 each time. Remembered for a while instead, and forgotten as soon as they join.
+const NOT_A_MEMBER_TTL_MS = 10 * 60 * 1000
+const notAMember = new Map<string, { expiresAt: number; res: MemberLookupFailure }>()
+
 export async function fetchMember(guildId: bigint, memberId: bigint) {
 	const guildRes = await fetchGuild(guildId)
 	if (guildRes.code !== 'ok') return guildRes
 
+	const key = `${guildId}:${memberId}`
+	const known = notAMember.get(key)
+	if (known) {
+		if (known.expiresAt > Date.now()) return known.res
+		notAMember.delete(key)
+	}
 	try {
 		const member = await guildRes.guild.members.fetch(memberId.toString())
 		return { code: 'ok' as const, member }
 	} catch (err) {
 		log.warn({ err }, 'Failed to fetch member with id %s', memberId)
 		if (err instanceof D.DiscordAPIError) {
-			return {
-				code: 'err:discord' as const,
-				err: err.message,
-				errCode: err.code,
+			const res: MemberLookupFailure = { code: 'err:discord', err: err.message, errCode: err.code }
+			if (err.code === D.RESTJSONErrorCodes.UnknownMember || err.code === D.RESTJSONErrorCodes.UnknownUser) {
+				notAMember.set(key, { expiresAt: Date.now() + NOT_A_MEMBER_TTL_MS, res })
 			}
+			return res
 		}
 		throw err
 	}

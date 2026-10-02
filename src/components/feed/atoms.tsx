@@ -381,10 +381,11 @@ export type PlayerDisplayProps = {
 	disableContextMenu?: boolean
 }
 
-export function PlayerDisplay(props: PlayerDisplayProps & { ctx: RC.RenderCtx }) {
+// `groupColor` is for a caller that subscribes to the player's colour itself; a row reads it off the ctx instead
+export function PlayerDisplay(props: PlayerDisplayProps & { ctx: RC.RenderCtx; groupColor?: string | null }) {
 	const { ctx, player } = props
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
-	const groupColor = ctx.groupColor(playerId, player)
+	const groupColor = props.groupColor !== undefined ? props.groupColor : ctx.groupColor(playerId, player)
 
 	const showTeam = !!props.showTeam && player.teamId !== null && props.matchId !== undefined && props.matchId !== null
 	const showSquad = !!props.showSquad && player.squadId !== null

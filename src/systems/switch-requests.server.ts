@@ -224,6 +224,16 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 
 	opts?.mutate?.(sr.state)
 
+	// every roster event runs a pass, and almost always with nothing queued or in flight: nothing to plan or announce
+	if (
+		requestsBefore.length === 0 &&
+		sr.state.requests.length === 0 &&
+		sr.swapping.size === 0 &&
+		sr.state.disconnectedThisMatch.size === disconnectedSizeBefore
+	) {
+		return { planned: undefined, failed: [] }
+	}
+
 	const now = Date.now()
 	const players = SquadServer.getCurrTeams(ctx)?.players
 	const roster = players ? SRQ.rosterOf([...players.values()]) : null

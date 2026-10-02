@@ -37,7 +37,7 @@ import { tr } from '@/systems/messages.client'
 import * as RC from './feed/render-context'
 import * as Selection from './feed/selection'
 import { ServerEvent } from './feed/server-event'
-import { useEventsSelectionText, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
+import { useEventsSelectionText, useFollowGroupColors, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -91,13 +91,8 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 	const currentMatchEvents = Zus.useStore(
 		squadServerFrameKey,
-		Zus.useShallow((s) =>
-			!currentMatch
-				? []
-				: ChatPrt.Sel.chatEvents(s).filter(
-						(e) => e.matchId === currentMatch.historyEntryId && CHAT.isSquadFeedEvent(e, uniqueSquadId, false),
-					),
-		),
+		MatchHistoryClient.currentMatch$(serverId),
+		React.useMemo(() => ChatPrt.Sel.squadFeedEvents(uniqueSquadId), [uniqueSquadId]),
 	)
 
 	const isCurrentMatchSquad = currentMatchEvents.length > 0
@@ -139,6 +134,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		}
 	})
 	const feedCtx = useRenderCtx(stores, allEvents, { linkToRows, selectionText: useEventsSelectionText(allEvents) })
+	useFollowGroupColors()
 
 	const { scrollAreaRef, contentRef, content, showScrollButton, scrollToBottom } = useTailingScroll()
 	usePaintedSelection(content)
@@ -214,7 +210,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					<div className="flex items-center justify-between gap-2 py-0.5">
 						<h3 className="text-xs font-medium">{tr.text(SM_Msgs.squadEvents())}</h3>
 						<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-							<Checkbox checked={squadMessagesOnly} onCheckedChange={(checked) => setSquadMessagesOnly(checked === true)} />
+							<Checkbox checked={squadMessagesOnly} onCheckedChange={(checked) => setSquadMessagesOnly(checked)} />
 							{tr.text(SM_Msgs.hideTeamChat())}
 						</label>
 					</div>

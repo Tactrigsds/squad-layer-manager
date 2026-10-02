@@ -19,6 +19,7 @@
 //! genuinely per-row scopes pay per row.
 
 use serde::{Deserialize, Serialize};
+use std::cell::OnceCell;
 
 pub const MAGIC: &[u8; 5] = b"SLMC3";
 pub const NULL_U8: u8 = 255;
@@ -113,6 +114,21 @@ impl Enum<'_> {
     }
 }
 
+/// An owned enum column, for the ones derived at load rather than read out of the artifact.
+enum Codes {
+    U8(Vec<u8>),
+    U16(Vec<u16>),
+}
+
+impl Codes {
+    fn as_enum(&self) -> Enum<'_> {
+        match self {
+            Codes::U8(c) => Enum::U8(c),
+            Codes::U16(c) => Enum::U16(c),
+        }
+    }
+}
+
 /// How a column varies, so a scan can hoist the lookup out of its row loop. `PerRow` is the fallback for the scopes
 /// whose value depends on the block and the pattern row together.
 #[derive(Clone, Copy)]
@@ -134,6 +150,17 @@ pub struct Store {
     faction_alliance: Vec<u8>,
     score_key: Vec<u32>,
     score_layer_start: Vec<u32>,
+    /// Alliance_1/2 per pattern row. The artifact derives alliance from faction, so it varies per pattern row like any
+    /// per-team column; materializing it lets alliance predicates take the per-pattern scan instead of the per-row one.
+    alliance: [Codes; 2],
+    /// Per team, the side pair (a distinct faction and unit) of each pattern row, or NULL_U16. With `pair_record`
+    /// this turns a score read into two array lookups rather than a binary search over the layer's side records.
+    side_pair: [Vec<u16>; 2],
+    pair_count: usize,
+    /// layer * pair_count + side pair -> the side record's offset from the layer's first record, or NULL_U16
+    pair_record: Vec<u16>,
+    /// min/max per column, computed on first ask: the table never changes, and a per-row column costs a full walk
+    pub(crate) ranges: Vec<OnceCell<Option<(i64, i64)>>>,
     /// the columns the id packing and side-record lookups need, resolved once
     layer_col: usize,
     faction_col: [usize; 2],
@@ -176,6 +203,11 @@ impl Store {
             faction_alliance: Vec::new(),
             score_key: Vec::new(),
             score_layer_start: Vec::new(),
+            alliance: [Codes::U8(Vec::new()), Codes::U8(Vec::new())],
+            side_pair: [Vec::new(), Vec::new()],
+            pair_count: 0,
+            pair_record: Vec::new(),
+            ranges: Vec::new(),
             layer_col,
             faction_col,
             unit_col,
@@ -186,6 +218,9 @@ impl Store {
         store.faction_alliance = store.u8_section(store.manifest.faction_alliance).to_vec();
         store.score_key = store.u32_section(store.manifest.score_key).to_vec();
         store.score_layer_start = store.u32_section(store.manifest.score_layer_start).to_vec();
+        store.alliance = [store.derive_alliance(0)?, store.derive_alliance(1)?];
+        store.index_side_records()?;
+        store.ranges = (0..store.manifest.columns.len()).map(|_| OnceCell::new()).collect();
 
         if store.block_row_start.len() != store.manifest.block_count + 1 {
             return Err("blockRowStart does not match blockCount".into());
@@ -194,6 +229,63 @@ impl Store {
             return Err("blockRowStart does not end at rowCount".into());
         }
         Ok(store)
+    }
+
+    fn derive_alliance(&self, team: usize) -> Result<Codes, String> {
+        let faction = self.pattern_enum(self.faction_col[team]).ok_or("Faction columns must be pattern scope")?;
+        let alliance_of = |p: usize| faction.get(p).and_then(|f| self.faction_alliance.get(f as usize).copied());
+        let rows = self.manifest.pattern_row_count;
+        // an alliance index of 255 would read back as null in a u8 column
+        if self.faction_alliance.contains(&NULL_U8) {
+            Ok(Codes::U16((0..rows).map(|p| alliance_of(p).map_or(NULL_U16, |a| a as u16)).collect()))
+        } else {
+            Ok(Codes::U8((0..rows).map(|p| alliance_of(p).unwrap_or(NULL_U8)).collect()))
+        }
+    }
+
+    fn index_side_records(&mut self) -> Result<(), String> {
+        let units = self.manifest.unit_count;
+        let sides = self.manifest.faction_count * units;
+        // faction * units + unit -> side pair, numbered in order of first appearance
+        let mut pair_of = vec![NULL_U16; sides];
+        let mut pairs = 0usize;
+        let mut side_pair = [Vec::new(), Vec::new()];
+        for (team, out) in side_pair.iter_mut().enumerate() {
+            let faction = self.pattern_enum(self.faction_col[team]).ok_or("Faction columns must be pattern scope")?;
+            let unit = self.pattern_enum(self.unit_col[team]).ok_or("Unit columns must be pattern scope")?;
+            *out = Vec::with_capacity(self.manifest.pattern_row_count);
+            for p in 0..self.manifest.pattern_row_count {
+                let pair = match (faction.get(p), unit.get(p)) {
+                    (Some(f), Some(u)) => {
+                        let slot = pair_of.get_mut(f as usize * units + u as usize).ok_or("faction or unit out of range")?;
+                        if *slot == NULL_U16 {
+                            *slot = u16::try_from(pairs).ok().filter(|p| *p != NULL_U16).ok_or("too many faction/unit pairs")?;
+                            pairs += 1;
+                        }
+                        *slot
+                    }
+                    _ => NULL_U16,
+                };
+                out.push(pair);
+            }
+        }
+        let layers = self.score_layer_start.len().saturating_sub(1);
+        let mut pair_record = vec![NULL_U16; layers * pairs];
+        for layer in 0..layers {
+            let lo = self.score_layer_start[layer] as usize;
+            let hi = self.score_layer_start[layer + 1] as usize;
+            for record in lo..hi {
+                let side = (self.score_key[record] as usize).wrapping_sub(layer * sides);
+                if let Some(&pair) = pair_of.get(side).filter(|p| **p != NULL_U16) {
+                    let offset = u16::try_from(record - lo).map_err(|_| "too many side records for one layer")?;
+                    pair_record[layer * pairs + pair as usize] = offset;
+                }
+            }
+        }
+        self.side_pair = side_pair;
+        self.pair_count = pairs;
+        self.pair_record = pair_record;
+        Ok(())
     }
 
     // ---------------------------- sections ----------------------------
@@ -309,6 +401,7 @@ impl Store {
         match &self.manifest.columns[self.resolve(col)] {
             ColumnSpec::Block { section, .. } => ColData::PerBlock(self.enum_section(*section)),
             ColumnSpec::Pattern { section, .. } => ColData::PerPattern(self.enum_section(*section)),
+            ColumnSpec::Alliance { team, .. } => ColData::PerPattern(self.alliance[*team as usize - 1].as_enum()),
             _ => ColData::PerRow,
         }
     }
@@ -325,8 +418,8 @@ impl Store {
                 self.enum_section(*section).get(self.pattern_row_of(block, row))
             }
             ColumnSpec::Alliance { team, .. } => {
-                let faction = self.value(self.faction_col[*team as usize - 1], row)?;
-                Some(self.faction_alliance[faction as usize] as i64)
+                let block = self.block_of(row);
+                self.alliance[*team as usize - 1].as_enum().get(self.pattern_row_of(block, row))
             }
             ColumnSpec::Id { .. } => {
                 let block = self.block_of(row);
@@ -451,6 +544,10 @@ impl Store {
         }
     }
 
+    pub fn is_id(&self, col: usize) -> bool {
+        matches!(&self.manifest.columns[self.resolve(col)], ColumnSpec::Id { .. })
+    }
+
     pub fn is_bitmap(&self, col: usize) -> bool {
         matches!(&self.manifest.columns[self.resolve(col)], ColumnSpec::Bitmap { .. })
     }
@@ -464,9 +561,8 @@ impl Store {
 pub enum Reader<'a> {
     Block(Enum<'a>),
     Pattern(Enum<'a>),
-    Alliance { faction: Enum<'a>, alliance: &'a [u8] },
     Id { layer: Enum<'a>, sides: [Enum<'a>; 4], factions: i64, units: i64 },
-    Score { layer: Enum<'a>, faction: Enum<'a>, unit: Enum<'a>, keys: &'a [u32], layer_start: &'a [u32], vals: &'a [i32], metrics: usize, metric: usize, factions: i64, units: i64 },
+    Score { layer: Enum<'a>, side_pair: &'a [u16], pairs: usize, pair_record: &'a [u16], layer_start: &'a [u32], vals: &'a [i32], metrics: usize, metric: usize },
     Diff { a: Box<Reader<'a>>, b: Box<Reader<'a>>, correction: Option<&'a [u8]> },
     Bitmap { bits: &'a [u8], nulls: Option<&'a [u8]> },
     Dict { codes: &'a [u16], dict: &'a [i32] },
@@ -479,7 +575,6 @@ impl Reader<'_> {
         match self {
             Reader::Block(values) => values.get(block),
             Reader::Pattern(values) => values.get(pattern_row),
-            Reader::Alliance { faction, alliance } => Some(alliance[faction.get(pattern_row)? as usize] as i64),
             Reader::Id { layer, sides, factions, units } => {
                 let l = layer.get(block)?;
                 let f1 = sides[0].get(pattern_row)?;
@@ -488,13 +583,17 @@ impl Reader<'_> {
                 let u2 = sides[3].get(pattern_row)?;
                 Some((((l * factions + f1) * units + u1) * factions + f2) * units + u2)
             }
-            Reader::Score { layer, faction, unit, keys, layer_start, vals, metrics, metric, factions, units } => {
-                let l = layer.get(block)?;
-                let key = ((l * factions + faction.get(pattern_row)?) * units + unit.get(pattern_row)?) as u32;
-                let lo = layer_start[l as usize] as usize;
-                let hi = layer_start[l as usize + 1] as usize;
-                let record = lo + keys[lo..hi].binary_search(&key).ok()?;
-                match vals[record * metrics + metric] {
+            Reader::Score { layer, side_pair, pairs, pair_record, layer_start, vals, metrics, metric } => {
+                let l = layer.get(block)? as usize;
+                let pair = side_pair[pattern_row];
+                if pair == NULL_U16 {
+                    return None;
+                }
+                let offset = pair_record[l * pairs + pair as usize];
+                if offset == NULL_U16 {
+                    return None;
+                }
+                match vals[(layer_start[l] as usize + offset as usize) * metrics + metric] {
                     NULL_I32 => None,
                     v => Some(v as i64),
                 }
@@ -534,10 +633,7 @@ impl Store {
             ColumnSpec::Alias { .. } => Reader::None,
             ColumnSpec::Block { section, .. } => Reader::Block(self.enum_section(*section)),
             ColumnSpec::Pattern { section, .. } => Reader::Pattern(self.enum_section(*section)),
-            ColumnSpec::Alliance { team, .. } => match self.pattern_enum(self.faction_col[*team as usize - 1]) {
-                Some(faction) => Reader::Alliance { faction, alliance: &self.faction_alliance },
-                None => Reader::None,
-            },
+            ColumnSpec::Alliance { team, .. } => Reader::Pattern(self.alliance[*team as usize - 1].as_enum()),
             ColumnSpec::Id { .. } => {
                 let sides = [
                     self.pattern_enum(self.faction_col[0]),
@@ -552,26 +648,19 @@ impl Store {
                     _ => Reader::None,
                 }
             }
-            ColumnSpec::Score { team, metric, .. } => {
-                let layer = self.block_enum(self.layer_col);
-                let faction = self.pattern_enum(self.faction_col[*team as usize - 1]);
-                let unit = self.pattern_enum(self.unit_col[*team as usize - 1]);
-                match (layer, faction, unit) {
-                    (Some(layer), Some(faction), Some(unit)) => Reader::Score {
-                        layer,
-                        faction,
-                        unit,
-                        keys: &self.score_key,
-                        layer_start: &self.score_layer_start,
-                        vals: self.i32_section(self.manifest.score_vals),
-                        metrics: self.manifest.score_metrics,
-                        metric: *metric,
-                        factions,
-                        units,
-                    },
-                    _ => Reader::None,
-                }
-            }
+            ColumnSpec::Score { team, metric, .. } => match self.block_enum(self.layer_col) {
+                Some(layer) => Reader::Score {
+                    layer,
+                    side_pair: &self.side_pair[*team as usize - 1],
+                    pairs: self.pair_count,
+                    pair_record: &self.pair_record,
+                    layer_start: &self.score_layer_start,
+                    vals: self.i32_section(self.manifest.score_vals),
+                    metrics: self.manifest.score_metrics,
+                    metric: *metric,
+                },
+                None => Reader::None,
+            },
             ColumnSpec::Diff { a, b, correction, .. } => Reader::Diff {
                 a: Box::new(self.reader(*a)),
                 b: Box::new(self.reader(*b)),

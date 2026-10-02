@@ -1,15 +1,26 @@
-import { Cursor, defaultPreset, PreventSelection } from '@dnd-kit/dom'
+import { Accessibility, Cursor, defaultPreset, PreventSelection } from '@dnd-kit/dom'
 import * as DndKitReact from '@dnd-kit/react'
 import React from 'react'
 
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as DND from '@/models/dndkit.models'
 import * as DndKit from '@/systems/dndkit.client'
+import { tr } from '@/systems/messages.client'
 
 // dnd-kit's Cursor and PreventSelection plugins each inject a global `* { ... !important }` stylesheet on
 // drag start and remove it on drop. A universal-selector rule forces a full-document style recalc (every
 // element, ~thousands) four times per drag -- the dominant cause of drag/drop freezes here. Drop them; the
 // grabbing cursor and drag-time selection suppression are cosmetic and not worth a whole-document restyle.
-const DRAG_PLUGINS = defaultPreset.plugins.filter((p) => p !== Cursor && p !== PreventSelection)
+// Accessibility is replaced by DndKit.useDraggable's own attributes and DragInstructions below.
+const DRAG_PLUGINS = defaultPreset.plugins.filter((p) => p !== Cursor && p !== PreventSelection && p !== Accessibility)
+
+export function DragInstructions() {
+	return (
+		<div id={DndKit.DRAG_INSTRUCTIONS_ID} hidden>
+			{tr.text(UI_Msgs.dragInstructions())}
+		</div>
+	)
+}
 
 export function DragContextProvider(props: { children: React.ReactNode }) {
 	const handlersRef = React.useRef(new Map<string, DND.DragEndHandler>())

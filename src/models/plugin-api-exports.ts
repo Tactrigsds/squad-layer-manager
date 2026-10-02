@@ -42,6 +42,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'toShortTeamsDisplay',
 	],
 	'slm/lib/rxjs-ext': [
+		'bufferBurst',
 		'distinctDeepEquals',
 		'filterTruthy',
 		'firstValueFrom',

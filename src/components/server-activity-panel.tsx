@@ -206,14 +206,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	)
 
 	// Event filtering logic
-	const prevState = React.useRef<{
-		eventGeneration: number
-		filteredEvents: CHAT.EventEnriched[]
-		eventFilterState: CHAT.SecondaryFilterState
-		selectedOnly: boolean
-		selectedPlayerIds: ReadonlySet<SM.PlayerId>
-		matchId: number
-	} | null>(null)
+	const liveFilter = React.useMemo(() => CHAT.createBufferFilter(), [])
 	const prevHistoricalState = React.useRef<{
 		selectedMatchOrdinal: number
 		filteredEvents: CHAT.EventEnriched[]
@@ -263,47 +256,26 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		return null
 	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState, selectedOnly, selectedPlayerIds])
 
+	const liveMatchId = displayMatch?.historyEntryId
 	const liveFilteredEvents = Zus.useStore(
 		stores.squadServer!,
 		React.useCallback(
 			(s: SquadServerFrame.State) => {
 				if (selectedMatchOrdinal !== null) return null // Using historical events instead
-				if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
+				if (!s.chat.chatState.synced || liveMatchId === undefined) return null
 
 				const eventFilterState = s.chat.secondaryFilterState
 				const selectedOnly = s.chat.selectedOnly
 				const selectedPlayerIds = SquadServerFrame.Sel.settledSelectedPlayerIds(s)
-
-				// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
-				if (
-					displayMatch?.historyEntryId === prevState.current?.matchId &&
-					s.chat.eventGeneration === prevState.current?.eventGeneration &&
-					eventFilterState === prevState.current.eventFilterState &&
-					selectedOnly === prevState.current.selectedOnly &&
-					(!selectedOnly || prevState.current.selectedPlayerIds === selectedPlayerIds)
-				) {
-					return prevState.current?.filteredEvents
-				}
-
-				const eventBuffer = s.chat.chatState.eventBuffer
-				const filtered: CHAT.EventEnriched[] = []
-				for (const event of eventBuffer) {
-					if (event.matchId !== displayMatch?.historyEntryId) continue
-					if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })) {
-						filtered.push(event)
-					}
-				}
-				prevState.current = {
-					eventGeneration: s.chat.eventGeneration,
-					filteredEvents: filtered,
-					eventFilterState,
-					selectedOnly,
-					selectedPlayerIds,
-					matchId: displayMatch?.historyEntryId,
-				}
-				return filtered
+				// the selection only enters the filter when selectedOnly is set, so selection churn doesn't rescan otherwise
+				return liveFilter(
+					s.chat.chatState,
+					(event) =>
+						event.matchId === liveMatchId && CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly }),
+					[liveMatchId, eventFilterState, selectedOnly, selectedOnly ? selectedPlayerIds : null],
+				)
 			},
-			[displayMatch?.historyEntryId, selectedMatchOrdinal],
+			[liveMatchId, selectedMatchOrdinal, liveFilter],
 		),
 	)
 

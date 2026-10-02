@@ -12,40 +12,84 @@ pub mod ir;
 pub mod query;
 pub mod store;
 
-use ir::Tri;
-use query::Request;
+use query::{FilterCache, Request};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::hash::Hasher;
 use store::Store;
 
 pub struct Engine {
     pub store: Store,
     /// Evaluated filters, keyed by their IR. The queue re-asks "does this layer match this pool filter" on every
     /// change, and the pool filter is the same one every time, so caching the bitset turns those into bit tests.
-    cache: RefCell<HashMap<String, std::rc::Rc<Tri>>>,
+    cache: RefCell<FilterCache>,
 }
-
-const MAX_CACHED_FILTERS: usize = 64;
 
 impl Engine {
     pub fn load(bytes: Vec<u8>) -> Result<Engine, String> {
         let store = Store::load(bytes)?;
-        Ok(Engine { store, cache: RefCell::new(HashMap::new()) })
+        Ok(Engine { store, cache: RefCell::new(FilterCache::default()) })
     }
 
     pub fn query(&self, request_json: &str) -> Result<String, String> {
         let request: Request = serde_json::from_str(request_json).map_err(|e| format!("bad request: {e}"))?;
-        let mut cache = self.cache.borrow_mut();
-        // a filter's bitset only depends on the layer table, which is immutable for the engine's lifetime, so an
-        // entry can never go stale; a changed filter simply lowers to different IR and lands under a different key
-        if cache.len() > MAX_CACHED_FILTERS {
-            cache.clear();
-        }
-        query::handle(&self.store, request, &mut cache)
+        query::handle(&self.store, request, &mut self.cache.borrow_mut())
     }
 
     pub fn column_index(&self, name: &str) -> Option<usize> {
         self.store.column_index(name)
+    }
+}
+
+/// The standard library hashes with SipHash, which buys DoS resistance we have no use for: the keys here are
+/// dictionary indices and group keys this crate produced itself. Over 2.7M rows that costs more than the lookup it
+/// protects, so integer keys get a multiply-xor hash instead.
+#[derive(Default)]
+pub struct IntHasher(u64);
+
+pub type IntMap<K, V> = std::collections::HashMap<K, V, std::hash::BuildHasherDefault<IntHasher>>;
+pub type IntSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<IntHasher>>;
+
+impl IntHasher {
+    #[inline]
+    fn mix(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+impl Hasher for IntHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        // the table indexes by the low bits, so fold the high ones down into them
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.mix(byte as u64);
+        }
+    }
+    #[inline]
+    fn write_u8(&mut self, i: u8) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.mix(i)
+    }
+    #[inline]
+    fn write_i64(&mut self, i: i64) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.mix(i as u64)
     }
 }
 

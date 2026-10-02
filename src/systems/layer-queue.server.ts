@@ -86,6 +86,7 @@ export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverSta
 		session: ODSM.Server.initSession<SLL.Operation, SLL.State>(sllState),
 		op$: new IsolatedSubject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>(),
 		updateLayerMtx: new Mutex(),
+		deferredServerSyncs: null,
 	}
 
 	ctx.cleanup.push(payload.update$, payload.nextLayerSyncState$, payload.ingameVote$, payload.op$, payload.updateLayerMtx)
@@ -562,13 +563,12 @@ export async function saveQueueAndUpdateServer(
 			},
 		)
 
-		// These reach the game server over rcon, so they're deferred rather than awaited under the (global) tx lock.
-		// unlockTasks are the outermost transaction's, so this also keeps them out of the map-roll tx that
-		// onNewGameDuringRoll wraps around this. The mutex context is ambient, so it still covers them; `tx` is dropped
-		// because it's spent by then, and a nested runTransaction would otherwise join a committed transaction and run
-		// in autocommit with a rollback() that does nothing.
+		// These reach the game server over rcon, so they're deferred rather than awaited under the (global) tx lock:
+		// onto the outermost transaction's unlockTasks, or while a roll is being recorded, onto the syncs the roll runs
+		// once it has released its locks. `tx` is dropped because it's spent by then, and a nested runTransaction would
+		// otherwise join a committed transaction and run in autocommit with a rollback() that does nothing.
 		const deferredCtx = { ...ctx, tx: undefined }
-		txCtx.tx.unlockTasks.push(async () => {
+		const syncToServer = async () => {
 			if (nextLayerId && nextItemId) {
 				await syncNextLayerToServer(
 					deferredCtx,
@@ -590,7 +590,10 @@ export async function saveQueueAndUpdateServer(
 			) {
 				await warnShowNext(deferredCtx, 'all-admins', { updated: true })
 			}
-		})
+		}
+		const deferredServerSyncs = ctx.layerQueue.deferredServerSyncs
+		if (deferredServerSyncs) deferredServerSyncs.push(syncToServer)
+		else txCtx.tx.unlockTasks.push(syncToServer)
 
 		return {
 			code: 'ok' as const,
@@ -734,12 +737,12 @@ export async function warnShowNext(
 /**
  * sets next layer on server according to the current queue, generating a new queue item if needed. modifies serverState in place.
  */
-// matchHistory.mtx is declared here (rather than acquired lazily by the nested getCurrentMatch call
-// below) so that every op taking both locks takes them as one ordered set. Acquiring updateLayerMtx
-// first and matchHistory.mtx later deadlocks against onNewGameDuringRoll, which takes them together.
+// Holds updateLayerMtx alone across its round trips. It must not take matchHistory.mtx, even nested: that mutex
+// gates every getCurrentMatch caller, and acquiring it under updateLayerMtx deadlocks against onNewGameDuringRoll,
+// which takes the two together.
 export const syncNextLayerToServer = Instr.spanOp(
 	'syncNextLayerToServer',
-	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
+	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx] },
 	async (
 		ctx: SQS.Ctx & SR.Ctx.Rcon & LQ.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 		settings: SETTINGS.ServerSettings,
@@ -766,18 +769,43 @@ export const syncNextLayerToServer = Instr.spanOp(
 		// the write and the read-back that verifies it are a round trip each, so the queue head and the server
 		// legitimately disagree until setNextLayer returns. Clients spin on this rather than calling it out of sync.
 		syncState$.next({ code: 'syncing' })
-		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
+		// Queued ahead of the command, so it is in place before the MAP_SET the command logs is processed. Only an
+		// attribution whose app event is already written can go first: an override's MAP_SET app event is written
+		// once the set has succeeded, and the server event that links to it must not land before it.
+		const attributeAhead = mapSetCause?.reason !== 'override'
+		const logAttributionError = (err: unknown) => {
+			if (!Prom.isAbortError(err)) log.error(err)
+		}
+		if (attributeAhead) {
+			// detached: awaiting it under updateLayerMtx deadlocks against a roll waiting on that mutex
+			SquadServer.pushAttribution(ctx, {
+				type: 'MAP_SET_ATTRIBUTION',
+				itemId,
+				layerId: nextQueuedLayerId,
+				appEventId: mapSetCause?.reason === 'queue-updated' ? mapSetCause.causeId : undefined,
+			}).catch(logAttributionError)
+		}
+		let res: Awaited<ReturnType<typeof SquadRcon.setNextLayer>>
+		try {
+			res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
+		} catch (err) {
+			if (attributeAhead) SquadServer.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
+			throw err
+		}
 		// we do this so we can stay in this async context so we hold on to the mutex that we acquired
 		switch (res.code) {
 			case 'err:unable-to-set-next-layer':
 				syncState$.next({ code: 'err:refused', actualLayerId: res.unexpectedLayerId })
+				if (attributeAhead) SquadServer.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
 				break
 			case 'err:rcon':
 				syncState$.next({ code: 'err:rcon' })
-				// deliberately detached (see below): observe the rejection instead of awaiting
-				SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
-					if (!Prom.isAbortError(err)) log.error(err)
-				})
+				// the command may still have landed
+				if (!attributeAhead) {
+					SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch(
+						logAttributionError,
+					)
+				}
 				break
 			case 'ok': {
 				syncState$.next({ code: 'synced' })
@@ -793,7 +821,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 						actor: { type: 'system' },
 						serverId: ctx.serverId,
 						// no current match yet on a freshly-registered server (first sync hasn't run)
-						matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+						matchId: MatchHistory.peekCurrentMatch(ctx)?.historyEntryId ?? null,
 						causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
 					})
 					if (AppEvents.isFeedVisible(mapSet)) await SquadServer.emitAppEvent(ctx, mapSet)
@@ -803,15 +831,14 @@ export const syncNextLayerToServer = Instr.spanOp(
 					// the audit-only MAP_SET stays reachable from the QUEUE_UPDATED via its causeId.
 					mapSetAppEventId = mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : mapSet.id
 				}
-				// awaiting this will cause a deadlock on map roll, so it stays detached; observe its rejection
-				SquadServer.pushAttribution(ctx, {
-					type: 'MAP_SET_ATTRIBUTION',
-					itemId,
-					layerId: nextQueuedLayerId,
-					appEventId: mapSetAppEventId,
-				}).catch((err) => {
-					if (!Prom.isAbortError(err)) log.error(err)
-				})
+				if (!attributeAhead) {
+					SquadServer.pushAttribution(ctx, {
+						type: 'MAP_SET_ATTRIBUTION',
+						itemId,
+						layerId: nextQueuedLayerId,
+						appEventId: mapSetAppEventId,
+					}).catch(logAttributionError)
+				}
 				break
 			}
 			default:

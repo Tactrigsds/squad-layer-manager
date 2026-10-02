@@ -1,14 +1,5 @@
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
-import type {
-	CellContext,
-	ColumnDef,
-	ColumnHelper,
-	HeaderContext,
-	OnChangeFn,
-	Row,
-	RowSelectionState,
-	SortingState,
-} from '@tanstack/react-table'
+import type { ColumnDef, ColumnHelper, HeaderContext, OnChangeFn, Row, RowSelectionState, SortingState } from '@tanstack/react-table'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -24,6 +15,7 @@ import * as DH from '@/lib/display-helpers'
 import * as FitCols from '@/lib/fitted-columns'
 import * as MapUtils from '@/lib/map-utils'
 import { useNow } from '@/lib/react.ts'
+import * as RSel from '@/lib/reselect'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -124,7 +116,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const adminsOnlyId = React.useId()
 	const showSpoilersId = React.useId()
 	// read once: the input is uncontrolled, so the store only seeds it
-	const initialSearchQuery = React.useRef(Zus.getState(squadServer, TeamsPanelPrt.Sel.searchQuery)).current
+	const [initialSearchQuery] = React.useState(() => Zus.getState(squadServer, TeamsPanelPrt.Sel.searchQuery))
 	const onSearchChange = React.useCallback(
 		(searchQuery: string) => TeamsPanelPrt.Actions.setSearchQuery({ teamsPanel: squadServer }, searchQuery),
 		[squadServer],
@@ -280,7 +272,10 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 
 // The phone toolbar: search, one button that cycles both teams, one side, the other side, and the sheet behind
 // the sliders button with everything the desktop row spreads across the header.
-function PhoneTeamsToolbar(props: {
+function PhoneTeamsToolbar({
+	searchRef,
+	...props
+}: {
 	stores: SquadServerFrame.KeyProp
 	searchRef: React.RefObject<HTMLInputElement | null>
 	initialSearchQuery: string
@@ -357,7 +352,7 @@ function PhoneTeamsToolbar(props: {
 			</div>
 			{searchOpen && (
 				<Input
-					ref={props.searchRef}
+					ref={searchRef}
 					autoFocus
 					containerClassName="w-full"
 					placeholder={tr.text(SM_Msgs.searchPlayers())}
@@ -483,7 +478,9 @@ function PhoneSortSheet(props: {
 			<div className="grid grid-cols-2 gap-2 px-3 pb-2 [&_.fd-sel]:h-(--ctl) [&_.fd-sel]:w-full [&_.fd-sel]:bg-ctl [&_.fd-sel]:px-2.5 [&_.fd-sel]:text-sm">
 				<ColumnFilterSelect
 					value={filters.group}
-					onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStores, v)}
+					column="group"
+					teamsPanel={panelStores.teamsPanel}
+					squadFilterTarget="combined"
 					options={[
 						...groups.map((g) => ({ value: g, label: g })),
 						{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungroupedIn(groupingModes.active)) },
@@ -491,17 +488,23 @@ function PhoneSortSheet(props: {
 				/>
 				<ColumnFilterSelect
 					value={filters.role}
-					onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStores, v)}
+					column="role"
+					teamsPanel={panelStores.teamsPanel}
+					squadFilterTarget="combined"
 					options={roles.map((r) => ({ value: r, label: r }))}
 				/>
 				<ColumnFilterSelect
 					value={filters.party}
-					onChange={(v) => TeamsPanelPrt.Actions.setPartyFilter(panelStores, v)}
+					column="party"
+					teamsPanel={panelStores.teamsPanel}
+					squadFilterTarget="combined"
 					options={[...parties.map((id) => ({ value: id, label: id })), { value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) }]}
 				/>
 				<ColumnFilterSelect
 					value={filters.squad}
-					onChange={(v) => TeamsPanelPrt.Actions.setSquadFilter(panelStores, 'combined', v)}
+					column="squad"
+					teamsPanel={panelStores.teamsPanel}
+					squadFilterTarget="combined"
 					options={[
 						...squadsWithTeam.map(({ squad, normedTeam }) => ({
 							value: `${normedTeam}:${squad.squadId}`,
@@ -900,10 +903,16 @@ function shiftClickCellProps(
 	return {}
 }
 
-// shared across both table variants; each variant extends it with its squad-lookup shape
-type BasePlayerTableMeta = {
+// What the body cells read besides the player. Each variant extends it with its squad-lookup shape. Kept apart from
+// the header meta, whose filter options change with the roster, so the memoized rows only see what they render.
+type BaseRowMeta = {
 	matchId: number
 	groupColorByName: Map<string, string>
+	stores: SquadServerFrame.KeyProp
+}
+
+// shared across both table variants' headers
+type BasePlayerTableMeta = BaseRowMeta & {
 	// the grouping mode the group column shows, which names its no-group option
 	groupingId: string | null
 	filters: { role: string | null; group: string | null; party: string | null; squad: string | null }
@@ -912,29 +921,36 @@ type BasePlayerTableMeta = {
 	availableRoles: string[]
 	availableGroups: string[]
 	availableParties: string[]
-	stores: SquadServerFrame.KeyProp
 	statsSort: StatsSortState
 	// SLM was restarted mid-match, so combat stats are incomplete -- surfaced as a disclaimer on the stats header
 	statsMayBeInaccurate: boolean
 }
 
-// the column headers dispatch straight to the panel partial rather than being handed setters through meta
-function panelStoresOf(meta: BasePlayerTableMeta): TeamsPanelPrt.KeyProp {
+// the column headers and cells dispatch straight to the panel partial rather than being handed setters through meta
+function panelStoresOf(meta: BaseRowMeta): TeamsPanelPrt.KeyProp {
 	return { teamsPanel: meta.stores.squadServer! }
 }
 
-type TeamPlayerTableMeta = BasePlayerTableMeta & {
-	teamId: SM.TeamId
-	squads: SM.UniqueSquad[]
-}
+type TeamRowMeta = BaseRowMeta & { squads: SM.UniqueSquad[] }
+
+type TeamPlayerTableMeta = BasePlayerTableMeta & TeamRowMeta & { teamId: SM.TeamId }
 
 type CombinedPlayer = TeamsPanelPrt.CombinedPlayer
 
-type CombinedTableMeta = BasePlayerTableMeta & {
+type CombinedRowMeta = BaseRowMeta & {
 	squadsWithTeam: TeamsPanelPrt.SquadWithTeam[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
 	getTeamColor: (normedTeam: MH.NormedTeamId) => string
 }
+
+type CombinedTableMeta = BasePlayerTableMeta & CombinedRowMeta
+
+// A body cell renders from plain values rather than TanStack's row and table objects, which are mutable: the memoized
+// PlayerRow would render them stale (see "Component rules" in docs/architecture.md).
+type RowCellProps<T, M> = { player: T; playerId: SM.PlayerId; selected: boolean; meta: M }
+type RowCellRenderer<T, M> = (props: RowCellProps<T, M>) => React.ReactNode
+type PlayerColumn<T, M> = { def: ColumnDef<T, any>; cell: RowCellRenderer<T, M> }
+type PlayerColumns<T, M> = { defs: ColumnDef<T, any>[]; cells: Record<string, RowCellRenderer<T, M>> }
 
 // Describes the squad-group a player belongs to, used to render the group-separator header rows when
 // the table is sorted by squad. `key` identifies a contiguous group of same-squad rows. A null `squad`
@@ -979,20 +995,32 @@ function headerResetProps(
 const FILTER_ALL = TeamsPanelPrt.FILTER_ALL
 const FILTER_NONE = TeamsPanelPrt.FILTER_NONE
 
-function ColumnFilterSelect({
+type FilterOption = { value: string; label: string }
+
+function ColumnFilterSelectView({
 	value,
-	onChange,
 	options,
+	column,
+	teamsPanel,
+	squadFilterTarget,
 	triggerClassName,
 }: {
 	value: string | null
-	onChange: (v: string | null) => void
-	options: { value: string; label: string }[]
+	options: FilterOption[]
+	column: TeamsPanelPrt.FilterColumn
+	teamsPanel: TeamsPanelPrt.Key
+	// only the squad column reads it
+	squadFilterTarget: TeamsPanelPrt.SquadFilterTarget
 	triggerClassName?: string
 }) {
 	if (options.length === 0) return null
 	return (
-		<Select value={value ?? FILTER_ALL} onValueChange={(v) => onChange(v === FILTER_ALL ? null : v)}>
+		<Select
+			value={value ?? FILTER_ALL}
+			onValueChange={(v) =>
+				TeamsPanelPrt.Actions.setColumnFilter({ teamsPanel }, squadFilterTarget, column, v === FILTER_ALL ? null : v)
+			}
+		>
 			<SelectTrigger
 				onClick={(e) => e.stopPropagation()}
 				className={cn(
@@ -1013,6 +1041,27 @@ function ColumnFilterSelect({
 			</SelectContent>
 		</Select>
 	)
+}
+
+// A closed radix Select still renders every item, to read the selected one's text. The headers re-render with every
+// roster change, so the options are compared by content rather than by the array rebuilt each time.
+const ColumnFilterSelect = React.memo(
+	ColumnFilterSelectView,
+	(prev, next) =>
+		prev.value === next.value &&
+		prev.column === next.column &&
+		prev.teamsPanel === next.teamsPanel &&
+		prev.squadFilterTarget === next.squadFilterTarget &&
+		prev.triggerClassName === next.triggerClassName &&
+		sameFilterOptions(prev.options, next.options),
+)
+
+function sameFilterOptions(a: FilterOption[], b: FilterOption[]) {
+	if (a.length !== b.length) return false
+	for (let i = 0; i < a.length; i++) {
+		if (a[i].value !== b[i].value || a[i].label !== b[i].label) return false
+	}
+	return true
 }
 
 type StatsSortMetric = 'kills' | 'wounds' | 'deaths'
@@ -1150,8 +1199,8 @@ function statsHeader<T extends TeamsPanelModels.EnrichedPlayer>({ column, table 
 	return <StatsColumnHeader column={column} statsSort={statsSort} mayBeInaccurate={statsMayBeInaccurate} />
 }
 
-function statsCell<T extends TeamsPanelModels.EnrichedPlayer>({ row }: CellContext<T, number>) {
-	const s = row.original.stats
+function statsCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	const s = player.stats
 	return (
 		<span className="font-mono text-xs whitespace-nowrap">
 			{s?.kills ?? 0}/{s?.wounds ?? 0}/{s?.deaths ?? 0}
@@ -1169,7 +1218,6 @@ function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(metric: StatsSor
 		sortingFn: (a, b) => (a.original.stats?.[metric] ?? 0) - (b.original.stats?.[metric] ?? 0),
 		sortDescFirst: true,
 		header: statsHeader,
-		cell: statsCell,
 	}
 }
 
@@ -1177,64 +1225,72 @@ const playerColumnHelper = createColumnHelper<TeamsPanelModels.EnrichedPlayer>()
 const combinedColumnHelper = createColumnHelper<CombinedPlayer>()
 
 // Shared cell/column builders used by both the per-team and combined tables. Each reads only the
-// fields on BasePlayerTableMeta so it works regardless of which variant's meta is attached; the
-// squad column, which differs between variants, is parameterized via squadColumn().
+// fields on BaseRowMeta and BasePlayerTableMeta so it works regardless of which variant's meta is attached;
+// the squad column, which differs between variants, is parameterized via squadColumn().
 
-function selectColumnCell<T extends TeamsPanelModels.EnrichedPlayer>({ row, table }: CellContext<T, unknown>) {
-	const { stores } = table.options.meta as BasePlayerTableMeta
+function selectCell({ playerId, selected, meta }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
 	return (
 		<div onClick={(e) => e.stopPropagation()}>
 			<SelectOrSpinner
-				playerId={row.id}
-				checked={row.getIsSelected()}
-				onCheckedChange={(checked) => row.toggleSelected(checked)}
-				stores={stores}
+				playerId={playerId}
+				checked={selected}
+				onCheckedChange={(checked) => TeamsPanelPrt.Actions.setPlayersSelected(panelStoresOf(meta), [playerId], checked)}
+				stores={meta.stores}
 			/>
 		</div>
 	)
 }
 
-function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.ids.usernameNoTag ?? row.ids.username ?? '', {
-		id: 'name',
-		header: 'Name',
-		cell: ({ row, table }) => {
-			const meta = table.options.meta as BasePlayerTableMeta
-			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
-			return (
-				<span className="flex min-w-0 items-center gap-1">
-					<PlayerDisplay
-						stores={meta.stores}
-						player={row.original}
-						matchId={meta.matchId}
-						disableContextMenu
-						className="min-w-0 items-center [&>button]:truncate"
-					/>
-					<SwitchRequestIcon playerId={SM.PlayerIds.getPlayerId(row.original.ids)} teamId={row.original.teamId} stores={meta.stores} />
-					{row.original.inAdminCam && (
-						<span
-							title={tr.text(SM_Msgs.adminCamHint())}
-							onClickCapture={(e) => {
-								if (!e.shiftKey) return
-								e.preventDefault()
-								e.stopPropagation()
-								SquadServerFrame.Actions.selectAllInAdminCam(
-									meta.stores,
-									e.ctrlKey ? undefined : (row.original.teamId ?? undefined),
-								)
-							}}
-						>
-							<Icons.Camera className="h-3 w-3 text-[#b58cff] shrink-0" />
-						</span>
-					)}
+function nameCell({ player, playerId, meta }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
+	return (
+		<span className="flex min-w-0 items-center gap-1">
+			<PlayerDisplay
+				stores={meta.stores}
+				player={player}
+				matchId={meta.matchId}
+				disableContextMenu
+				className="min-w-0 items-center [&>button]:truncate"
+			/>
+			<SwitchRequestIcon playerId={playerId} teamId={player.teamId} stores={meta.stores} />
+			{player.inAdminCam && (
+				<span
+					title={tr.text(SM_Msgs.adminCamHint())}
+					onClickCapture={(e) => {
+						if (!e.shiftKey) return
+						e.preventDefault()
+						e.stopPropagation()
+						SquadServerFrame.Actions.selectAllInAdminCam(meta.stores, e.ctrlKey ? undefined : (player.teamId ?? undefined))
+					}}
+				>
+					<Icons.Camera className="h-3 w-3 text-[#b58cff] shrink-0" />
 				</span>
-			)
-		},
-	})
+			)}
+		</span>
+	)
 }
 
-function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.group ?? '', {
+function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	return {
+		def: helper.accessor((row) => row.ids.usernameNoTag ?? row.ids.username ?? '', { id: 'name', header: 'Name' }),
+		cell: nameCell,
+	}
+}
+
+function groupCell({ player, meta }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	const group = player.group
+	if (!group) return null
+	const color = meta.groupColorByName.get(group)
+	return (
+		<span className="flex items-center gap-1 max-w-24">
+			{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
+			<span className="truncate">{group}</span>
+		</span>
+	)
+}
+
+function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	const def = helper.accessor((row) => row.group ?? '', {
 		id: 'group',
 		// party ids sort by number; any other group name falls through to plain text order
 		sortingFn: (a, b) => PG.comparePartyIds(a.original.group ?? '', b.original.group ?? ''),
@@ -1248,7 +1304,9 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 					</span>
 					<ColumnFilterSelect
 						value={filters.group}
-						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
+						column="group"
+						teamsPanel={meta.stores.squadServer!}
+						squadFilterTarget={meta.squadFilterTarget}
 						options={[
 							...availableGroups.map((g) => ({ value: g, label: g })),
 							{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungroupedIn(meta.groupingId)) },
@@ -1258,23 +1316,16 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 				</span>
 			)
 		},
-		cell: ({ row, table }) => {
-			const group = row.original.group
-			if (!group) return null
-			const { groupColorByName } = table.options.meta as BasePlayerTableMeta
-			const color = groupColorByName.get(group)
-			return (
-				<span className="flex items-center gap-1 max-w-24">
-					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
-					<span className="truncate">{group}</span>
-				</span>
-			)
-		},
 	})
+	return { def, cell: groupCell }
 }
 
-function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.role ?? '', {
+function roleCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	return player.role ?? ''
+}
+
+function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	const def = helper.accessor((row) => row.role ?? '', {
 		id: 'role',
 		header: ({ table }) => {
 			const meta = table.options.meta as BasePlayerTableMeta
@@ -1284,7 +1335,9 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 					{tr.text(SM_Msgs.roleColumn())}
 					<ColumnFilterSelect
 						value={filters.role}
-						onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStoresOf(meta), v)}
+						column="role"
+						teamsPanel={meta.stores.squadServer!}
+						squadFilterTarget={meta.squadFilterTarget}
 						options={availableRoles.map((r) => ({ value: r, label: r }))}
 					/>
 				</span>
@@ -1292,10 +1345,15 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 		},
 		enableSorting: false,
 	})
+	return { def, cell: roleCell }
 }
 
-function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.partyId ?? '', {
+function partyCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	return player.partyId && <span className="font-mono text-xs">{player.partyId}</span>
+}
+
+function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	const def = helper.accessor((row) => row.partyId ?? '', {
 		id: 'party',
 		// players outside a party sort after every party, in either direction
 		sortingFn: (a, b) => {
@@ -1311,7 +1369,9 @@ function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 					<span>{tr.text(SM_Msgs.partyColumn())}</span>
 					<ColumnFilterSelect
 						value={meta.filters.party}
-						onChange={(v) => TeamsPanelPrt.Actions.setPartyFilter(panelStoresOf(meta), v)}
+						column="party"
+						teamsPanel={meta.stores.squadServer!}
+						squadFilterTarget={meta.squadFilterTarget}
 						options={[
 							...meta.availableParties.map((id) => ({ value: id, label: id })),
 							{ value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) },
@@ -1320,31 +1380,37 @@ function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 				</span>
 			)
 		},
-		cell: ({ row }) => row.original.partyId && <span className="font-mono text-xs">{row.original.partyId}</span>,
 	})
+	return { def, cell: partyCell }
+}
+
+function vehicleCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	return player.vehicle && <span className="block truncate">{player.vehicle}</span>
 }
 
 // a spoiler, and verbatim until more samples pin down what the game puts in it (see SM.PlayerSchema)
-function vehicleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.vehicle ?? '', {
+function vehicleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	const def = helper.accessor((row) => row.vehicle ?? '', {
 		id: 'vehicle',
 		header: () => tr.text(SM_Msgs.vehicleColumn()),
 		enableSorting: false,
-		cell: ({ row }) => row.original.vehicle && <span className="block truncate">{row.original.vehicle}</span>,
 	})
+	return { def, cell: vehicleCell }
+}
+
+function tksCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
+	const tks = player.stats?.teamkills ?? 0
+	return <span className={cn('font-mono text-xs tabular-nums', tks > 0 && 'text-destructive font-semibold')}>{tks}</span>
 }
 
 // team kills. Not gated behind showSpoilers -- teamkills are always shown so admins can act on them.
-function tksColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
-	return helper.accessor((row) => row.stats?.teamkills ?? 0, {
+function tksColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
+	const def = helper.accessor((row) => row.stats?.teamkills ?? 0, {
 		id: 'tks',
 		header: () => <span title={tr.text(SM_Msgs.teamKillsHint())}>{tr.text(SM_Msgs.teamKillsColumn())}</span>,
 		sortDescFirst: true,
-		cell: ({ row }) => {
-			const tks = row.original.stats?.teamkills ?? 0
-			return <span className={cn('font-mono text-xs tabular-nums', tks > 0 && 'text-destructive font-semibold')}>{tks}</span>
-		},
 	})
+	return { def, cell: tksCell }
 }
 
 // module-level render prop so its identity is stable across renders
@@ -1374,8 +1440,8 @@ function squadButton({
 	)
 }
 
-// Renders a squad label (command squads are plain text, others open the squad-details window) wrapped
-// in the squad context menu. `label` is precomputed by the caller so the two variants can format it
+// Renders a squad label (command squads are plain text, others open the squad-details window) that opens the
+// squad context menu (see RowMenuTarget). `label` is precomputed by the caller so the two variants can format it
 // differently (e.g. "12" vs "USA:12").
 function SquadCell({
 	squad,
@@ -1404,12 +1470,7 @@ function SquadCell({
 	)
 	return (
 		<span className="inline-flex items-center gap-1">
-			<ContextMenu>
-				<ContextMenuTrigger>{squadLabel}</ContextMenuTrigger>
-				<ContextMenuContent>
-					<SquadContextMenuOptions squad={squad} stores={stores} />
-				</ContextMenuContent>
-			</ContextMenu>
+			<span data-squad-menu={squad.uniqueId}>{squadLabel}</span>
 			{isLeader && (
 				<span
 					data-select-squad-leaders
@@ -1453,17 +1514,17 @@ function compareRolesForSort(a: TeamsPanelModels.EnrichedPlayer, b: TeamsPanelMo
 	return dedupedA.localeCompare(dedupedB)
 }
 
-function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePlayerTableMeta>(
+function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BaseRowMeta>(
 	helper: ColumnHelper<T>,
 	opts: {
 		getSquad: (player: T, meta: M) => SM.UniqueSquad | undefined
 		squadLabel: (squad: SM.UniqueSquad, player: T, meta: M) => string
 		fallbackLabel: (player: T, meta: M) => string
-		filterOptions: (meta: M) => { value: string; label: string }[]
+		filterOptions: (meta: M & BasePlayerTableMeta) => { value: string; label: string }[]
 	},
-) {
+): PlayerColumn<T, M> {
 	// unsquadded players get MAX_SAFE_INTEGER so they sort after real squads when ascending
-	return helper.accessor((row) => row.squadId ?? Number.MAX_SAFE_INTEGER, {
+	const def = helper.accessor((row) => row.squadId ?? Number.MAX_SAFE_INTEGER, {
 		id: 'squad',
 		// sort by squad, then role within the squad; reads row.original so the role tiebreaker isn't
 		// limited to the squadId accessor value cached by tanstack
@@ -1474,66 +1535,78 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 			return compareRolesForSort(a.original, b.original)
 		},
 		header: ({ table }) => {
-			const meta = table.options.meta as M
+			const meta = table.options.meta as M & BasePlayerTableMeta
 			return (
 				<span className="flex flex-col items-start">
 					{tr.text(SM_Msgs.squadColumn())}
 					<ColumnFilterSelect
 						value={meta.filters.squad}
-						onChange={(v) => TeamsPanelPrt.Actions.setSquadFilter(panelStoresOf(meta), meta.squadFilterTarget, v)}
+						column="squad"
+						teamsPanel={meta.stores.squadServer!}
+						squadFilterTarget={meta.squadFilterTarget}
 						options={opts.filterOptions(meta)}
 					/>
 				</span>
 			)
 		},
-		cell: ({ row, table }) => {
-			const meta = table.options.meta as M
-			const player = row.original
-			if (player.squadId === null) return ''
-			const squad = opts.getSquad(player, meta)
-			if (!squad) return opts.fallbackLabel(player, meta)
-			return (
-				<SquadCell
-					squad={squad}
-					label={opts.squadLabel(squad, player, meta)}
-					isLeader={player.isLeader}
-					teamId={player.teamId ?? undefined}
-					stores={meta.stores}
-				/>
-			)
-		},
 	})
+	const cell = ({ player, meta }: RowCellProps<T, M>) => {
+		if (player.squadId === null) return ''
+		const squad = opts.getSquad(player, meta)
+		if (!squad) return opts.fallbackLabel(player, meta)
+		return (
+			<SquadCell
+				squad={squad}
+				label={opts.squadLabel(squad, player, meta)}
+				isLeader={player.isLeader}
+				teamId={player.teamId ?? undefined}
+				stores={meta.stores}
+			/>
+		)
+	}
+	return { def, cell }
 }
 
-const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
-	playerColumnHelper.display({
-		id: 'select',
-		header: ({ table }) => {
-			const { stores, teamId } = table.options.meta as TeamPlayerTableMeta
-			return (
-				<Checkbox
-					checked={table.getIsAllRowsSelected()}
-					onCheckedChange={(checked) => table.toggleAllRowsSelected(!!checked)}
-					onClick={(e) => {
-						if (e.altKey) {
+// the stats column's def is appended per table, since its sort follows the metric picked in its header
+function playerColumns<T extends TeamsPanelModels.EnrichedPlayer, M extends BaseRowMeta>(
+	columns: PlayerColumn<T, M>[],
+): PlayerColumns<T, M> {
+	const cells: Record<string, RowCellRenderer<T, M>> = { stats: statsCell }
+	for (const column of columns) cells[column.def.id!] = column.cell
+	return { defs: columns.map((column) => column.def), cells }
+}
+
+const teamPlayerColumns = playerColumns<TeamsPanelModels.EnrichedPlayer, TeamRowMeta>([
+	{
+		def: playerColumnHelper.display({
+			id: 'select',
+			header: ({ table }) => {
+				const { stores, teamId } = table.options.meta as TeamPlayerTableMeta
+				return (
+					<Checkbox
+						checked={table.getIsAllRowsSelected()}
+						onCheckedChange={(checked) => table.toggleAllRowsSelected(checked)}
+						onClick={(e) => {
+							if (e.altKey) {
+								e.preventDefault()
+								SquadServerFrame.Actions.invertSelection(stores, e.ctrlKey ? undefined : teamId)
+								return
+							}
+							if (!e.shiftKey) return
 							e.preventDefault()
-							SquadServerFrame.Actions.invertSelection(stores, e.ctrlKey ? undefined : teamId)
-							return
-						}
-						if (!e.shiftKey) return
-						e.preventDefault()
-						SquadServerFrame.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
-					}}
-					title={tr.text(SM_Msgs.selectAllTeamHint())}
-					aria-label={tr.text(SM_Msgs.selectAllRows())}
-				/>
-			)
-		},
-		cell: selectColumnCell,
-	}),
+							SquadServerFrame.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
+						}}
+						title={tr.text(SM_Msgs.selectAllTeamHint())}
+						aria-label={tr.text(SM_Msgs.selectAllRows())}
+					/>
+				)
+			},
+		}),
+		cell: selectCell,
+	},
 	nameColumn(playerColumnHelper),
 	groupColumn(playerColumnHelper),
-	squadColumn<TeamsPanelModels.EnrichedPlayer, TeamPlayerTableMeta>(playerColumnHelper, {
+	squadColumn<TeamsPanelModels.EnrichedPlayer, TeamRowMeta>(playerColumnHelper, {
 		getSquad: (player, meta) => meta.squads.find((s) => s.squadId === player.squadId),
 		squadLabel: (squad) => (squad.squadName === 'Command Squad' ? `CMD(${squad.squadId})` : String(squad.squadId)),
 		fallbackLabel: (player) => String(player.squadId),
@@ -1549,50 +1622,48 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 	roleColumn(playerColumnHelper),
 	vehicleColumn(playerColumnHelper),
 	tksColumn(playerColumnHelper),
-]
+])
 
-const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
-	combinedColumnHelper.display({
-		id: 'select',
-		header: ({ table }) => {
-			const { stores } = table.options.meta as CombinedTableMeta
-			return (
-				<Checkbox
-					checked={table.getIsAllRowsSelected()}
-					onCheckedChange={(checked) => table.toggleAllRowsSelected(!!checked)}
-					onClick={(e) => {
-						if (e.altKey) {
+function factionCell({ player, meta }: RowCellProps<CombinedPlayer, CombinedRowMeta>) {
+	return (
+		<span className="font-semibold" style={{ color: meta.getTeamColor(player.normedTeam) }}>
+			{meta.getFaction(player.normedTeam)}
+		</span>
+	)
+}
+
+const combinedPlayerColumns = playerColumns<CombinedPlayer, CombinedRowMeta>([
+	{
+		def: combinedColumnHelper.display({
+			id: 'select',
+			header: ({ table }) => {
+				const { stores } = table.options.meta as CombinedTableMeta
+				return (
+					<Checkbox
+						checked={table.getIsAllRowsSelected()}
+						onCheckedChange={(checked) => table.toggleAllRowsSelected(checked)}
+						onClick={(e) => {
+							if (e.altKey) {
+								e.preventDefault()
+								SquadServerFrame.Actions.invertSelection(stores)
+								return
+							}
+							if (!e.shiftKey) return
 							e.preventDefault()
-							SquadServerFrame.Actions.invertSelection(stores)
-							return
-						}
-						if (!e.shiftKey) return
-						e.preventDefault()
-						SquadServerFrame.Actions.selectAllTeamPlayers(stores)
-					}}
-					title={tr.text(SM_Msgs.selectAllCombinedHint())}
-					aria-label={tr.text(SM_Msgs.selectAllRows())}
-				/>
-			)
-		},
-		cell: selectColumnCell,
-	}),
-	combinedColumnHelper.accessor((row) => row.displayIndex, {
-		id: 'faction',
-		header: 'Faction',
-		cell: ({ row, table }) => {
-			const normedTeam = row.original.normedTeam
-			const meta = table.options.meta as CombinedTableMeta
-			return (
-				<span className="font-semibold" style={{ color: meta.getTeamColor(normedTeam) }}>
-					{meta.getFaction(normedTeam)}
-				</span>
-			)
-		},
-	}),
+							SquadServerFrame.Actions.selectAllTeamPlayers(stores)
+						}}
+						title={tr.text(SM_Msgs.selectAllCombinedHint())}
+						aria-label={tr.text(SM_Msgs.selectAllRows())}
+					/>
+				)
+			},
+		}),
+		cell: selectCell,
+	},
+	{ def: combinedColumnHelper.accessor((row) => row.displayIndex, { id: 'faction', header: 'Faction' }), cell: factionCell },
 	nameColumn(combinedColumnHelper),
 	groupColumn(combinedColumnHelper),
-	squadColumn<CombinedPlayer, CombinedTableMeta>(combinedColumnHelper, {
+	squadColumn<CombinedPlayer, CombinedRowMeta>(combinedColumnHelper, {
 		getSquad: (player, meta) =>
 			meta.squadsWithTeam.find(({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam)?.squad,
 		squadLabel: (squad, player, meta) => {
@@ -1616,7 +1687,7 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 	roleColumn(combinedColumnHelper),
 	vehicleColumn(combinedColumnHelper),
 	tksColumn(combinedColumnHelper),
-]
+])
 
 // the grouping modes on offer and the one in effect
 function useGroupingModes(): { groupings: PG.PlayerGroupings; ids: string[]; active: string | null } {
@@ -1640,9 +1711,9 @@ function useGroupColorByName(groups: string[], modes: ReturnType<typeof useGroup
 }
 
 // Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
-// id/name, member count and creator, wraps the squad context menu, and its checkbox selects/deselects
+// id/name, member count and creator, opens the squad context menu, and its checkbox selects/deselects
 // every (visible) member of the squad. The "Unassigned" group (null squad) has no context menu.
-function SquadGroupHeaderRow(props: {
+function SquadGroupHeaderRowView(props: {
 	info: SquadGroupInfo
 	playerIds: string[]
 	colSpan: number
@@ -1703,12 +1774,13 @@ function SquadGroupHeaderRow(props: {
 		</>
 	)
 	// combined table: keep the faction in its own cell so it lines up under the faction column
-	const row = faction ? (
+	return faction ? (
 		<TableRow
 			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
 			data-collapsed={props.collapsed || undefined}
 			data-tour="squad-header"
 			data-tour-squad={squad?.squadName}
+			data-squad-menu={squad?.uniqueId}
 			onClick={toggleCollapsed}
 		>
 			<TableCell>{checkbox}</TableCell>
@@ -1730,6 +1802,7 @@ function SquadGroupHeaderRow(props: {
 			data-collapsed={props.collapsed || undefined}
 			data-tour="squad-header"
 			data-tour-squad={squad?.squadName}
+			data-squad-menu={squad?.uniqueId}
 			onClick={toggleCollapsed}
 		>
 			<TableCell colSpan={props.colSpan}>
@@ -1741,24 +1814,76 @@ function SquadGroupHeaderRow(props: {
 			</TableCell>
 		</TableRow>
 	)
-	if (!squad) return row
+}
+
+// the squad header rows are rebuilt on every table render, so they compare by content rather than identity
+const SquadGroupHeaderRow = React.memo(
+	SquadGroupHeaderRowView,
+	(prev, next) =>
+		prev.colSpan === next.colSpan &&
+		prev.collapsed === next.collapsed &&
+		prev.stores === next.stores &&
+		sameSquadGroup(prev.info, next.info) &&
+		samePlayerIds(prev.playerIds, next.playerIds),
+)
+
+function sameSquadGroup(a: SquadGroupInfo, b: SquadGroupInfo) {
 	return (
-		<ContextMenu>
-			<ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-			<ContextMenuContent>
-				<SquadContextMenuOptions squad={squad} stores={props.stores} />
-			</ContextMenuContent>
-		</ContextMenu>
+		a.key === b.key &&
+		a.squad === b.squad &&
+		a.creatorName === b.creatorName &&
+		a.totalSize === b.totalSize &&
+		a.faction?.label === b.faction?.label &&
+		a.faction?.color === b.faction?.color
 	)
 }
 
-// Generic table shell shared by both variants: owns row selection, drag-to-select, the stats-sort
-// popover state, header/body rendering and per-row context menus. Callers supply the data, the
-// variant's column list and the variant-specific meta (everything except statsSort, which lives here).
-function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
+function samePlayerIds(a: string[], b: string[]) {
+	if (a.length !== b.length) return false
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false
+	}
+	return true
+}
+
+// the player row a pointer event landed in, if any. Events from a row's portalled menu have no row among their DOM
+// ancestors, so they resolve to null.
+function rowPlayerId(target: EventTarget): SM.PlayerId | null {
+	if (!(target instanceof Element)) return null
+	return target.closest<HTMLElement>('tr[data-player-id]')?.dataset.playerId ?? null
+}
+
+// What a table's one context menu is showing. Rows and squad labels mount no menu of their own: right-click and
+// long-press are delegated to the table body, which reads the target off the element hit, the same way the
+// activity feed's rows work (docs/architecture.md, "The activity feed is built as dom").
+type RowMenuTarget = { kind: 'player'; playerId: SM.PlayerId } | { kind: 'squad'; squad: SM.UniqueSquad }
+
+// a squad label or squad header row wins over the player row around it
+function rowMenuTargetOf(target: EventTarget, stores: SquadServerFrame.KeyProp): RowMenuTarget | null {
+	if (!(target instanceof Element)) return null
+	const squadEl = target.closest<HTMLElement>('[data-squad-menu]')
+	if (squadEl) {
+		const uniqueId = Number(squadEl.dataset.squadMenu)
+		const squad = ChatPrt.Sel.squads(Zus.getState(stores.squadServer!)).find((sq) => sq.uniqueId === uniqueId)
+		if (squad) return { kind: 'squad', squad }
+	}
+	const playerId = rowPlayerId(target)
+	return playerId === null ? null : { kind: 'player', playerId }
+}
+
+const LONG_PRESS_MS = 700
+
+// off the page and out of the way of the pointer; radix places the menu from the point on the re-fired event
+const MENU_ANCHOR_STYLE: React.CSSProperties = { position: 'fixed', left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none' }
+
+// Generic table shell shared by both variants: owns drag-to-select, the stats-sort popover state, header/body
+// rendering and the rows' shared context menu. Callers supply the data, the variant's columns and the variant-specific meta
+// (everything except statsSort, which lives here).
+function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends BaseRowMeta>(props: {
 	data: T[]
-	baseColumns: ColumnDef<T, any>[]
+	columns: PlayerColumns<T, M>
 	meta: Omit<BasePlayerTableMeta, 'statsSort'>
+	rowMeta: M
 	// which of the panel's two sort states this table drives; squad-separator rows are gated on it too, because
 	// they are only coherent while the sort keeps same-squad rows contiguous
 	sortingTarget: TeamsPanelPrt.SortingTarget
@@ -1777,15 +1902,21 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const squadCollapse = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadCollapse)
 	const phone = Browser.useIsSmallViewport()
 	const [menuFor, setMenuFor] = React.useState<SM.PlayerId | null>(null)
+	// kept after the menu closes, so its content stays put through the exit animation
+	const [rowMenu, setRowMenu] = React.useState<RowMenuTarget | null>(null)
+	const menuAnchorRef = React.useRef<HTMLSpanElement | null>(null)
+	const longPressRef = React.useRef<number | undefined>(undefined)
+	React.useEffect(() => () => window.clearTimeout(longPressRef.current), [])
 	const stores = props.stores
+	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: stores.squadServer! }
 	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
 		(updater) => SquadServerFrame.Actions.setSelection(stores, updater),
 		[stores],
 	)
-	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
+	const dragRef = React.useRef<{ index: number; select: boolean } | null>(null)
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
-	const columns = React.useMemo(() => [...props.baseColumns, statsColumn<T>(statsMetric)], [props.baseColumns, statsMetric])
+	const columns = React.useMemo(() => [...props.columns.defs, statsColumn<T>(statsMetric)], [props.columns.defs, statsMetric])
 	const columnVisibility = React.useMemo(() => ({ role: showSpoilers, vehicle: showSpoilers, stats: showSpoilers }), [showSpoilers])
 
 	const table = useReactTable<T>({
@@ -1827,161 +1958,120 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const revealRef = React.useRef<HTMLDivElement | null>(null)
 	const revealZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	useTruncatedCellReveal(tableRef, revealRef)
+	const visibleColumnIdsKey = table
+		.getVisibleLeafColumns()
+		.map((column) => column.id)
+		.join(',')
+	const visibleColumnIds = React.useMemo(() => visibleColumnIdsKey.split(','), [visibleColumnIdsKey])
 	FitCols.useFittedColumns(tableRef, props.columnFit, [
-		rows,
-		columnVisibility,
+		TeamsPanelPrt.Sel.columnWidthSignature(props.data),
+		props.rowMeta,
+		visibleColumnIdsKey,
 		sorting,
 		squadCollapse,
 		statsMetric,
 		props.meta.statsMayBeInaccurate,
+		props.meta.filters,
+		props.meta.groupingId,
 	])
 
-	const renderPhoneCells = (row: Row<T>) => {
-		const cells = row.getVisibleCells()
-		const cell = (id: string) => {
-			const c = cells.find((c) => c.column.id === id)
-			if (!c) return null
-			return (
-				<span key={c.id} className="contents" {...shiftClickCellProps(id, row.original, props.stores)}>
-					{flexRender(c.column.columnDef.cell, c.getContext())}
-				</span>
-			)
-		}
-		// the squad header row already names the faction while the sort keeps squads together
-		const flat = !(props.getSquadGroup && squadGroupsEnabled)
-		const spoilers = cells.some((c) => c.column.id === 'role' || c.column.id === 'vehicle' || c.column.id === 'stats')
-		return (
-			<TableCell colSpan={cells.length} className="h-auto! px-2.5! pe-1! py-1.5 whitespace-normal">
-				<div className="flex items-center gap-1">
-					<div className="flex min-w-0 flex-1 flex-col gap-1">
-						<div className="flex items-center gap-2 min-w-0">
-							{cell('select')}
-							{flat && cell('faction')}
-							<span className="min-w-0 truncate">{cell('name')}</span>
-							{cell('group')}
-							<span className="flex-1" />
-							{cell('party')}
-							{cell('squad')}
-							{cell('tks')}
-						</div>
-						{spoilers && (
-							<div className="flex items-center gap-2 min-w-0 ps-7 text-xs text-text-2">
-								<span className="min-w-0 truncate">{cell('role')}</span>
-								<span className="min-w-0 truncate">{cell('vehicle')}</span>
-								<span className="flex-1" />
-								{cell('stats')}
-							</div>
-						)}
-					</div>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						className="shrink-0"
-						title={tr.text(SM_Msgs.moreActions())}
-						onMouseDown={(e) => e.stopPropagation()}
-						onClick={(e) => {
-							e.stopPropagation()
-							setMenuFor(row.id)
-						}}
-					>
-						<Icons.EllipsisVertical />
-					</Button>
-				</div>
-			</TableCell>
-		)
+	// the squad header row already names the faction while the sort keeps squads together
+	const flat = !(props.getSquadGroup && squadGroupsEnabled)
+	const renderPlayerRow = (row: Row<T>) => (
+		<PlayerRow
+			key={row.id}
+			player={row.original}
+			selected={(rowSelection[row.id] as boolean | undefined) ?? false}
+			savedSwap={savedSwaps.has(row.id)}
+			columnIds={visibleColumnIds}
+			cells={props.columns.cells}
+			meta={props.rowMeta}
+			phone={phone}
+			flat={flat}
+			onOpenMenu={setMenuFor}
+		/>
+	)
+
+	// a phone shows a player's menu as a sheet rather than at the finger; a squad's menu opens at the finger everywhere
+	const rowMenuTargetAt = (target: EventTarget) => {
+		const menuTarget = rowMenuTargetOf(target, stores)
+		return menuTarget?.kind === 'player' && phone ? null : menuTarget
+	}
+	const openRowMenu = (target: RowMenuTarget, clientX: number, clientY: number) => {
+		setRowMenu(target)
+		// radix's trigger places, opens and dismisses the menu, and all it reads off the event is the point
+		menuAnchorRef.current?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX, clientY }))
+	}
+	const clearLongPress = (e: React.PointerEvent) => {
+		if (e.pointerType !== 'mouse') window.clearTimeout(longPressRef.current)
 	}
 
-	const renderPlayerRow = (row: Row<T>, visibleIndex: number) => {
-		const isBulk = selectedIds.length >= 2 && rowSelection[row.id]
-		const rowEl = (
-			<TableRow
-				key={row.id}
-				data-tour="player-row"
-				data-tour-player={row.original.ids.username}
-				className={cn(
-					'cursor-pointer select-none',
-					savedSwaps.has(row.id)
-						? '[&>td]:bg-[rgba(230,180,34,0.16)]! data-[state=selected]:[&>td]:bg-[rgba(230,180,34,0.32)]!'
-						: undefined,
-				)}
-				data-state={row.getIsSelected() ? 'selected' : undefined}
-				// a long press on a phone: the menu opens as a sheet rather than at the finger
-				onContextMenu={
-					phone
-						? (e) => {
-								e.preventDefault()
-								setMenuFor(row.id)
-							}
-						: undefined
-				}
-				onClick={(e) => {
-					if (RC.opensWindow(e.target)) return
-					row.toggleSelected()
-				}}
-				onMouseDown={(e) => {
-					if (e.button !== 0) return
-					mouseDownRef.current = { index: visibleIndex, originalSelected: !rowSelection[row.id] }
-				}}
-				onMouseUp={() => {
-					mouseDownRef.current = null
-				}}
-				onMouseEnter={() => {
-					const md = mouseDownRef.current
-					if (!md) return
-					const [lo, hi] = [Math.min(md.index, visibleIndex), Math.max(md.index, visibleIndex)]
-					setRowSelection((current) => {
-						const next = { ...current }
-						for (let i = lo; i <= hi; i++) {
-							const p = rows[i]?.original
-							if (!p) continue
-							const pid = SM.PlayerIds.getPlayerId(p.ids)
-							if (md.originalSelected) {
-								next[pid] = true
-							} else {
-								delete next[pid]
-							}
-						}
-						return next
-					})
-					mouseDownRef.current = { index: visibleIndex, originalSelected: md.originalSelected }
-				}}
-			>
-				{phone
-					? renderPhoneCells(row)
-					: row.getVisibleCells().map((cell) => (
-							<TableCell key={cell.id} {...shiftClickCellProps(cell.column.id, row.original, props.stores)}>
-								{flexRender(cell.column.columnDef.cell, cell.getContext())}
-							</TableCell>
-						))}
-			</TableRow>
-		)
-		if (phone) return rowEl
-		return (
-			<ContextMenu key={row.id}>
-				<ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
-				<ContextMenuContent>
-					{isBulk ? (
-						<PlayerBulkContextMenuOptions playerIds={selectedIds} stores={props.stores} />
-					) : (
-						<PlayerContextMenuOptions playerId={row.id} stores={props.stores} />
-					)}
-				</ContextMenuContent>
-			</ContextMenu>
-		)
+	// Row clicks, drag-to-select and the context menu are delegated to the body, so a row's props stay unchanged unless
+	// its own player, selection or swap does.
+	const bodyHandlers: React.HTMLAttributes<HTMLTableSectionElement> = {
+		onContextMenu: (e) => {
+			window.clearTimeout(longPressRef.current)
+			const playerId = phone ? rowPlayerId(e.target) : null
+			const menuTarget = rowMenuTargetAt(e.target)
+			if (menuTarget) {
+				e.preventDefault()
+				openRowMenu(menuTarget, e.clientX, e.clientY)
+			} else if (playerId !== null) {
+				e.preventDefault()
+				setMenuFor(playerId)
+			}
+		},
+		onPointerDown: (e) => {
+			if (e.pointerType === 'mouse') return
+			window.clearTimeout(longPressRef.current)
+			const menuTarget = rowMenuTargetAt(e.target)
+			if (!menuTarget) return
+			const { clientX, clientY } = e
+			longPressRef.current = window.setTimeout(() => openRowMenu(menuTarget, clientX, clientY), LONG_PRESS_MS)
+		},
+		onPointerMove: clearLongPress,
+		onPointerUp: clearLongPress,
+		onPointerCancel: clearLongPress,
+		onClick: (e) => {
+			const playerId = rowPlayerId(e.target)
+			if (playerId === null || RC.opensWindow(e.target)) return
+			TeamsPanelPrt.Actions.togglePlayerSelected(panelStores, playerId)
+		},
+		onMouseDown: (e) => {
+			if (e.button !== 0) return
+			const playerId = rowPlayerId(e.target)
+			if (playerId === null) return
+			dragRef.current = { index: rows.findIndex((row) => row.id === playerId), select: !rowSelection[playerId] }
+		},
+		onMouseUp: () => {
+			dragRef.current = null
+		},
+		onMouseOver: (e) => {
+			const drag = dragRef.current
+			if (!drag) return
+			const playerId = rowPlayerId(e.target)
+			const index = playerId === null ? -1 : rows.findIndex((row) => row.id === playerId)
+			if (index === -1 || index === drag.index) return
+			const ids: SM.PlayerId[] = []
+			for (let i = Math.min(drag.index, index); i <= Math.max(drag.index, index); i++) {
+				if (rows[i]) ids.push(rows[i].id)
+			}
+			TeamsPanelPrt.Actions.setPlayersSelected(panelStores, ids, drag.select)
+			drag.index = index
+		},
 	}
 
 	// When sorting by squad, players of the same squad are contiguous; walk the sorted rows and emit a
-	// SquadGroupHeaderRow before each such run. `visibleIndex` passed to renderPlayerRow stays the row's
-	// index within `rows` so drag-select ranges remain correct across the injected header rows.
+	// SquadGroupHeaderRow before each such run.
 	const bodyRows: React.ReactNode[] = []
 	const groupHeadersEnabled = !!props.getSquadGroup && squadGroupsEnabled
 	if (groupHeadersEnabled) {
-		const colSpan = table.getVisibleLeafColumns().length
+		const colSpan = visibleColumnIds.length
 		let i = 0
 		while (i < rows.length) {
 			const info = props.getSquadGroup!(rows[i].original)
 			if (!info) {
-				bodyRows.push(renderPlayerRow(rows[i], i))
+				bodyRows.push(renderPlayerRow(rows[i]))
 				i++
 				continue
 			}
@@ -1998,11 +2088,11 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 					stores={props.stores}
 				/>,
 			)
-			if (!collapsed) for (let k = i; k < j; k++) bodyRows.push(renderPlayerRow(rows[k], k))
+			if (!collapsed) for (let k = i; k < j; k++) bodyRows.push(renderPlayerRow(rows[k]))
 			i = j
 		}
 	} else {
-		rows.forEach((row, visibleIndex) => bodyRows.push(renderPlayerRow(row, visibleIndex)))
+		for (const row of rows) bodyRows.push(renderPlayerRow(row))
 	}
 
 	return (
@@ -2018,8 +2108,8 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 			>
 				{props.columnFit && (
 					<colgroup>
-						{table.getVisibleLeafColumns().map((column) => (
-							<col key={column.id} data-col-id={column.id} />
+						{visibleColumnIds.map((id) => (
+							<col key={id} data-col-id={id} />
 						))}
 					</colgroup>
 				)}
@@ -2054,8 +2144,12 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 						</TableRow>
 					))}
 				</TableHeader>
-				<TableBody>{bodyRows}</TableBody>
+				<TableBody className="[-webkit-touch-callout:none]" {...bodyHandlers}>
+					{bodyRows}
+				</TableBody>
 			</Table>
+			{/* outside the body, so the re-fired event does not bubble back into its handlers */}
+			<RowMenu target={rowMenu} anchorRef={menuAnchorRef} stores={stores} />
 			<div
 				ref={revealRef}
 				hidden
@@ -2086,6 +2180,124 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	)
 }
 
+// Memoized, so a kill or a chat message re-renders the rows of the players it touched rather than every row. Every
+// prop is a plain value: TanStack's row objects are rebuilt with the data and mutated in place, and would defeat it.
+function PlayerRowView<T extends TeamsPanelModels.EnrichedPlayer, M extends BaseRowMeta>(props: {
+	player: T
+	selected: boolean
+	savedSwap: boolean
+	columnIds: string[]
+	cells: Record<string, RowCellRenderer<T, M>>
+	meta: M
+	phone: boolean
+	// the phone layout names the faction on each row unless squad header rows already do
+	flat: boolean
+	onOpenMenu: (playerId: SM.PlayerId) => void
+}) {
+	const { player, selected, meta, columnIds, cells, phone, onOpenMenu } = props
+	const playerId = SM.PlayerIds.getPlayerId(player.ids)
+	const cellProps: RowCellProps<T, M> = { player, playerId, selected, meta }
+	const phoneCell = (id: string) =>
+		columnIds.includes(id) ? (
+			<span key={id} className="contents" {...shiftClickCellProps(id, player, meta.stores)}>
+				{cells[id](cellProps)}
+			</span>
+		) : null
+	return (
+		<TableRow
+			data-tour="player-row"
+			data-tour-player={player.ids.username}
+			data-player-id={playerId}
+			className={cn(
+				'cursor-pointer select-none',
+				props.savedSwap ? '[&>td]:bg-[rgba(230,180,34,0.16)]! data-[state=selected]:[&>td]:bg-[rgba(230,180,34,0.32)]!' : undefined,
+			)}
+			data-state={selected ? 'selected' : undefined}
+		>
+			{phone ? (
+				<TableCell colSpan={columnIds.length} className="h-auto! px-2.5! pe-1! py-1.5 whitespace-normal">
+					<div className="flex items-center gap-1">
+						<div className="flex min-w-0 flex-1 flex-col gap-1">
+							<div className="flex items-center gap-2 min-w-0">
+								{phoneCell('select')}
+								{props.flat && phoneCell('faction')}
+								<span className="min-w-0 truncate">{phoneCell('name')}</span>
+								{phoneCell('group')}
+								<span className="flex-1" />
+								{phoneCell('party')}
+								{phoneCell('squad')}
+								{phoneCell('tks')}
+							</div>
+							{columnIds.some((id) => id === 'role' || id === 'vehicle' || id === 'stats') && (
+								<div className="flex items-center gap-2 min-w-0 ps-7 text-xs text-text-2">
+									<span className="min-w-0 truncate">{phoneCell('role')}</span>
+									<span className="min-w-0 truncate">{phoneCell('vehicle')}</span>
+									<span className="flex-1" />
+									{phoneCell('stats')}
+								</div>
+							)}
+						</div>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="shrink-0"
+							title={tr.text(SM_Msgs.moreActions())}
+							onMouseDown={(e) => e.stopPropagation()}
+							onClick={(e) => {
+								e.stopPropagation()
+								onOpenMenu(playerId)
+							}}
+						>
+							<Icons.EllipsisVertical />
+						</Button>
+					</div>
+				</TableCell>
+			) : (
+				columnIds.map((id) => (
+					<TableCell key={id} {...shiftClickCellProps(id, player, meta.stores)}>
+						{cells[id](cellProps)}
+					</TableCell>
+				))
+			)}
+		</TableRow>
+	)
+}
+
+const PlayerRow = React.memo(PlayerRowView) as typeof PlayerRowView
+
+// memoized, so the table re-rendering with the roster leaves the closed menu alone
+const RowMenu = React.memo(function RowMenu(props: {
+	target: RowMenuTarget | null
+	anchorRef: React.RefObject<HTMLSpanElement | null>
+	stores: SquadServerFrame.KeyProp
+}) {
+	const { target, stores } = props
+	return (
+		<ContextMenu>
+			<ContextMenuTrigger ref={props.anchorRef} aria-hidden style={MENU_ANCHOR_STYLE} />
+			<ContextMenuContent>
+				{target?.kind === 'player' && <PlayerRowMenuOptions playerId={target.playerId} stores={stores} />}
+				{target?.kind === 'squad' && <SquadRowMenuOptions squad={target.squad} stores={stores} />}
+			</ContextMenuContent>
+		</ContextMenu>
+	)
+})
+
+// mounted only while the menu is open, so the selection it reads does not re-render every row
+function PlayerRowMenuOptions(props: { playerId: SM.PlayerId; stores: SquadServerFrame.KeyProp }) {
+	const selectedIds = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.selectedPlayerIds)
+	if (selectedIds.size >= 2 && selectedIds.has(props.playerId)) {
+		return <PlayerBulkContextMenuOptions playerIds={[...selectedIds]} stores={props.stores} />
+	}
+	return <PlayerContextMenuOptions playerId={props.playerId} stores={props.stores} />
+}
+
+// the live squad, or the one the menu opened on once it has disbanded, so a fading menu keeps its content
+function SquadRowMenuOptions(props: { squad: SM.UniqueSquad; stores: SquadServerFrame.KeyProp }) {
+	const live = Zus.useStore(props.stores.squadServer!, (s) => ChatPrt.Sel.squads(s).find((sq) => sq.uniqueId === props.squad.uniqueId))
+	return <SquadContextMenuOptions squad={live ?? props.squad} stores={props.stores} />
+}
+
 const TEAM_TABLE_COLUMN_FIT: FitCols.Spec = {
 	shrinkable: [
 		{ id: 'name', minEm: 7 },
@@ -2109,14 +2321,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.displayedTeamPlayers(props.teamId),
 	)
-	const creatorNames = Zus.useStore(
-		squadServer,
-		currentMatch$,
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		TeamsPanelPrt.Sel.playerNamesById,
-	)
+	const creatorNames = Zus.useStore(squadServer, TeamsPanelPrt.Sel.playerNamesById)
 	const { roles, groups, parties } = Zus.useStore(
 		squadServer,
 		currentMatch$,
@@ -2141,26 +2346,25 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction: null, totalSize }
 	}
 
+	const rowMeta = { matchId, groupColorByName, stores: props.stores, squads } satisfies TeamRowMeta
 	const meta = {
-		matchId,
+		...rowMeta,
 		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
-		squads,
-		groupColorByName,
 		groupingId: groupingModes.active,
 		filters,
 		squadFilterTarget: props.teamId,
 		availableRoles: roles,
 		availableGroups: groups,
 		availableParties: parties,
-		stores: props.stores,
 		statsMayBeInaccurate,
 	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
 
 	return (
 		<PlayerTable
 			data={displayedPlayers}
-			baseColumns={teamPlayerColumns}
+			columns={teamPlayerColumns}
 			meta={meta}
+			rowMeta={rowMeta}
 			sortingTarget="teams"
 			label={tr.text(
 				SM_Msgs.teamTableLabel(tr.text(L_Msgs.teamName(props.teamId, match && MH.getNormedTeamFaction(match, props.teamId), true))),
@@ -2197,14 +2401,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		ClientOnlySettings.Store,
 		TeamsPanelPrt.Sel.squadsWithTeam,
 	)
-	const creatorNames = Zus.useStore(
-		squadServer,
-		currentMatch$,
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		TeamsPanelPrt.Sel.playerNamesById,
-	)
+	const creatorNames = Zus.useStore(squadServer, TeamsPanelPrt.Sel.playerNamesById)
 	const { roles, groups, parties } = Zus.useStore(
 		squadServer,
 		currentMatch$,
@@ -2260,27 +2457,24 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		[squadsWithTeam, getFaction, getTeamColor, creatorNames, squadSizes],
 	)
 
+	const rowMeta = { matchId, groupColorByName, stores: props.stores, squadsWithTeam, getFaction, getTeamColor } satisfies CombinedRowMeta
 	const meta = {
-		matchId,
-		squadsWithTeam,
-		groupColorByName,
+		...rowMeta,
 		groupingId: groupingModes.active,
 		filters,
 		squadFilterTarget: 'combined',
 		availableRoles: roles,
 		availableGroups: groups,
 		availableParties: parties,
-		getFaction,
-		getTeamColor,
-		stores: props.stores,
 		statsMayBeInaccurate,
 	} satisfies Omit<CombinedTableMeta, 'statsSort'>
 
 	return (
 		<PlayerTable
 			data={displayedPlayers}
-			baseColumns={combinedPlayerColumns}
+			columns={combinedPlayerColumns}
 			meta={meta}
+			rowMeta={rowMeta}
 			sortingTarget="combined"
 			label={tr.text(SM_Msgs.combinedTableLabel())}
 			stores={props.stores}
@@ -2290,24 +2484,32 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	)
 }
 
+type TeamCountsInputs = [frameState: SquadServerFrame.State, currentMatch: MH.MatchDetails | undefined]
+const teamCountsAfterSwap = RSel.createDeepSelector(
+	[
+		(...[frameState]: TeamCountsInputs) => TSWClient.Sel.localState(frameState).editedSwaps,
+		(...[frameState]: TeamCountsInputs) => ChatPrt.Sel.players(frameState),
+		(...[, currentMatch]: TeamCountsInputs) => currentMatch?.ordinal,
+	],
+	(editedSwaps, players, ordinal) => {
+		const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
+		if (ordinal === undefined) return counts
+		for (const player of players) {
+			if (player.teamId === null) continue
+			const playerId = SM.PlayerIds.getPlayerId(player.ids)
+			const sw = editedSwaps.get(playerId)
+			const destTeam = sw?.toTeam ?? MH.getNormedTeamId(player.teamId, ordinal)
+			counts[destTeam]++
+		}
+		return counts
+	},
+)
+
 function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
 	const counts = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		(frameState, currentMatch) => {
-			const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
-			if (!currentMatch) return counts
-			const editedSwaps = TSWClient.Sel.localState(frameState).editedSwaps
-			const players = ChatPrt.Sel.players(frameState)
-			for (const player of players) {
-				if (player.teamId === null) continue
-				const playerId = SM.PlayerIds.getPlayerId(player.ids)
-				const sw = editedSwaps.get(playerId)
-				const destTeam = sw?.toTeam ?? MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
-				counts[destTeam]++
-			}
-			return counts
-		},
+		teamCountsAfterSwap,
 	)
 	return (
 		<div className="flex flex-col items-center">

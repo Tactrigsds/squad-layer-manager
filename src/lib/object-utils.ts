@@ -2,7 +2,6 @@
 // ESM resolver rejects directory imports, which breaks anything importing this module under plain node
 import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
-import jp from 'jsonpath'
 
 import { isNullOrUndef } from './type-guards'
 
@@ -358,10 +357,6 @@ export function shallowEquals<T extends object>(a: T, b: T): boolean {
 export function destrNullable<T extends object>(obj: T | undefined) {
 	if (obj) return obj
 	return {} as T | { [k in keyof T]: undefined }
-}
-
-export function queryPath<T>(path: string, obj: any): T[] {
-	return jp.query(obj, path) as T[]
 }
 
 // Replaces every string in a JSON-derived structure with one canonical instance per distinct value, in place.

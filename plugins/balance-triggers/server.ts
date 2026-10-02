@@ -34,7 +34,7 @@ export const router = {
 	activeEvents: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
-		.handler(async function* ({ context }) {
+		.handler(async function* ({ context, signal }) {
 			const events$ = Rx.merge(Rx.of(context.serverId), update$).pipe(
 				Rx.filter((serverId) => serverId === context.serverId),
 				Rx.switchMap(async () => {
@@ -50,7 +50,7 @@ export const router = {
 					}
 				}),
 			)
-			yield* RxExt.toAsyncGenerator(events$)
+			yield* RxExt.toAsyncGenerator(events$.pipe(RxExt.withAbortSignal(signal!)))
 		}),
 }
 

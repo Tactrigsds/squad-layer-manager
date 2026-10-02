@@ -65,11 +65,13 @@ export function initAppliedFiltersStore(args: Args) {
 		if (membershipConstraints.length === 0) return
 		// only apply the pool filter once we know the edited layer is in the pool; otherwise the layer being edited
 		// would be filtered out of its own dialog
-		const outOfPool = await LayerQueriesClient.fetchLayersOutOfPool({
-			layerIds: [args.input.editedLayerId],
-			constraints: membershipConstraints,
-		})
-		// the worker request itself has no cancellation protocol, so this discards a result that is already computed
+		const outOfPool = await LayerQueriesClient.fetchLayersOutOfPool(
+			{
+				layerIds: [args.input.editedLayerId],
+				constraints: membershipConstraints,
+			},
+			args.signal,
+		)
 		if (args.signal.aborted) return
 		set({ poolApplyAs: outOfPool !== null && outOfPool.length === 0 ? 'regular' : 'disabled' })
 	})().catch(Prom.rethrowUnlessAborted)

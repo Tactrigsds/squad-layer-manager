@@ -38,31 +38,77 @@ export function firstValueFrom<T>(observable: Rx.Observable<T>, signal?: AbortSi
 	})
 }
 
+// the previous value is held per subscription, so an observable built with this can be subscribed more than once
 export function distinctDeepEquals<T>() {
-	const EMPTY = Symbol('empty')
-	let prev: typeof EMPTY | T = EMPTY
 	return (o: Rx.Observable<T>) =>
-		o.pipe(
-			Rx.concatMap((b) => {
-				if (Obj.deepEqual(b, prev)) return Rx.EMPTY
-				prev = b
-				return Rx.of(b)
-			}),
-		)
+		Rx.defer(() => {
+			let seen = false
+			let prev: T
+			return o.pipe(
+				Rx.filter((b) => {
+					if (seen && Obj.deepEqual(b, prev)) return false
+					seen = true
+					prev = b
+					return true
+				}),
+			)
+		})
 }
 
+/**
+ * Collects values into arrays: the first value starts a `ms` window, and everything arriving within it is emitted
+ * together when it closes. Unlike bufferTime, no timer runs while the source is quiet, and no empty array is emitted.
+ */
+export function bufferBurst<T>(ms: number): Rx.OperatorFunction<T, T[]> {
+	return (source) =>
+		new Rx.Observable<T[]>((subscriber) => {
+			let held: T[] = []
+			let timer: ReturnType<typeof setTimeout> | null = null
+			const flush = () => {
+				timer = null
+				const values = held
+				held = []
+				subscriber.next(values)
+			}
+			const sub = source.subscribe({
+				next: (value) => {
+					held.push(value)
+					timer ??= setTimeout(flush, ms)
+				},
+				error: (err) => subscriber.error(err),
+				complete: () => {
+					if (timer !== null) {
+						clearTimeout(timer)
+						flush()
+					}
+					subscriber.complete()
+				},
+			})
+			return () => {
+				if (timer !== null) clearTimeout(timer)
+				sub.unsubscribe()
+			}
+		})
+}
+
+/**
+ * Iterates an observable. A generator waiting on its next value cannot be returned from, so an abandoned iteration
+ * keeps its subscription until the source next emits. Pipe a source that can stay quiet through withAbortSignal, whose
+ * completion ends the wait.
+ */
 export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 	type Elt = { code: 'next'; value: T } | { code: 'error'; error: any } | { code: 'complete' }
 
 	// we need a queue here because we're translating push semantics into pull semantics so we would drop emissions otherwise
 	const queue: Elt[] = []
-	const signal = new Rx.Subject<void>()
-	function signalled() {
-		return Rx.firstValueFrom(signal)
-	}
+	let wake: (() => void) | null = null
 	function enqueue(elt: Elt) {
 		queue.push(elt)
-		if (queue.length === 1) signal.next()
+		if (wake) {
+			const w = wake
+			wake = null
+			w()
+		}
 	}
 
 	const sub = observable.subscribe({
@@ -72,14 +118,14 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 		error: (err) => {
 			enqueue({ code: 'error', error: err })
 		},
-		complete: async () => {
+		complete: () => {
 			enqueue({ code: 'complete' })
 		},
 	})
 
 	try {
 		while (true) {
-			if (queue.length === 0) await signalled()
+			if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve))
 			const elt = queue.shift()!
 			if (elt.code === 'next') {
 				yield elt.value

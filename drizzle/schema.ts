@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { blob, customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 
@@ -101,8 +102,6 @@ export const serverEvents = sqliteTable(
 		data: json('data').notNull(),
 	},
 	(table) => ({
-		typeIndex: index('typeIndex').on(table.type),
-		timeIndex: index('timeIndex').on(table.time),
 		matchIdIndex: index('matchIdIndex').on(table.matchId),
 		appEventIdIndex: index('appEventIdIndex').on(table.appEventId),
 	}),
@@ -145,24 +144,16 @@ export const appEvents = sqliteTable(
 	}),
 )
 
-export const players = sqliteTable(
-	'players',
-	{
-		eosId: text('eosId').notNull().primaryKey(),
-		steamId: bigintText('steamId').unique(),
-		epicId: text('epicId').unique(),
-		// exists for cases where we don't know wwhat the tag string is
-		username: text('username').notNull(),
-		usernameNoTag: text('usernameNoTag'),
-		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
-		modifiedAt: timestamp('modifiedAt').$defaultFn(() => new Date()),
-	},
-	(table) => ({
-		eosIdIndex: index('eosIdIndex').on(table.eosId),
-		usernameIndex: index('usernameIndex').on(table.username),
-		createdAtIndex: index('createdAtIndex').on(table.createdAt),
-	}),
-)
+export const players = sqliteTable('players', {
+	eosId: text('eosId').notNull().primaryKey(),
+	steamId: bigintText('steamId').unique(),
+	epicId: text('epicId').unique(),
+	// exists for cases where we don't know wwhat the tag string is
+	username: text('username').notNull(),
+	usernameNoTag: text('usernameNoTag'),
+	createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
+	modifiedAt: timestamp('modifiedAt').$defaultFn(() => new Date()),
+})
 
 // active-kick timeouts. A row is active while cancelled=false and expiresAt > now; enforced globally on
 // every SLM-managed server (players with an active timeout are kicked on connect / roster reset).
@@ -282,6 +273,10 @@ export const serverEventIndex = sqliteTable(
 		timeIndex: index('serverEventIndexTimeIndex').on(table.time),
 		matchIdIndex: index('serverEventIndexMatchIdIndex').on(table.matchId),
 		typeTimeIndex: index('serverEventIndexTypeTimeIndex').on(table.type, table.time),
+		// partial: only combat events carry a damage source
+		damageSourceTimeIndex: index('serverEventIndexDamageSourceTimeIndex')
+			.on(table.damageSourceId, table.time)
+			.where(sql`${table.damageSourceId} IS NOT NULL`),
 	}),
 )
 
@@ -424,7 +419,6 @@ export const squads = sqliteTable(
 		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
-		nameIndex: index('nameIndex').on(table.name),
 		creatorIdIndex: index('creatorIdIndex').on(table.creatorId),
 		squadMatchIdIndex: index('squadMatchIdIndex').on(table.matchId),
 	}),

@@ -39,7 +39,7 @@ export namespace Ctx {
 		emittedAppEvents: AppEvents.AppEvent[]
 		appEvent$: TracedSubject<AppEvents.AppEvent, CS.ServerId>
 
-		chatState: CHAT.ChatState
+		chatInterpolatedState: CHAT.InterpolableState
 
 		destroyed: boolean
 		cleanupId: number | null

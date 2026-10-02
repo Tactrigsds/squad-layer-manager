@@ -44,11 +44,22 @@ function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?
 	}
 }
 
-export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame.KeyProp; className?: string }) {
-	const [{ events, hidden }, tab, hideNoise, denied] = Zus.useStore(
-		stores.serverConsole,
-		(s) => [ConsoleFrame.Sel.view(s), s.tab, s.hideNoise, s.denied] as const,
+// events are immutable once received, so a batch only renders its new lines
+const ConsoleLine = React.memo(function ConsoleLine({ event }: { event: ConsoleEvent }) {
+	const { prefix, body, tone } = formatEvent(event)
+	return (
+		<li className="flex items-start gap-1.5 font-mono text-[11px] leading-tight ltr-isolate">
+			<span className={cn('shrink-0', tone)}>{prefix}</span>
+			<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
+		</li>
 	)
+})
+
+export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame.KeyProp; className?: string }) {
+	const { events, hidden } = Zus.useStore(stores.serverConsole, ConsoleFrame.Sel.view)
+	const tab = Zus.useStore(stores.serverConsole, (s) => s.tab)
+	const hideNoise = Zus.useStore(stores.serverConsole, (s) => s.hideNoise)
+	const denied = Zus.useStore(stores.serverConsole, (s) => s.denied)
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const find = useSubtreeFind()
@@ -89,7 +100,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					<Checkbox
 						checked={hideNoise}
 						aria-label={tr.text(SC_Msgs.hideNoise())}
-						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
+						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on)}
 					/>
 					{tr.text(SC_Msgs.hideNoise())}
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
@@ -113,15 +124,9 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 							<p className="text-xs text-muted-foreground">{tr.text(SC_Msgs.empty())}</p>
 						) : (
 							<ol className="space-y-0.5">
-								{events.map((event) => {
-									const { prefix, body, tone } = formatEvent(event)
-									return (
-										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight ltr-isolate">
-											<span className={cn('shrink-0', tone)}>{prefix}</span>
-											<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
-										</li>
-									)
-								})}
+								{events.map((event) => (
+									<ConsoleLine key={event.seq} event={event} />
+								))}
 							</ol>
 						)}
 					</div>

@@ -80,7 +80,7 @@ export function initSquadRcon(
 	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & CS.Otel, DecodedPacket]>
 	const rconEvent$: Rx.Observable<[CS.Otel, SM.RconEvents.Event]> = rconEventBase$.pipe(
 		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Otel, SM.RconEvents.Event]> => {
-			log.info('RCON PACKET: %s', pkt.body)
+			log.debug('RCON PACKET: %s', pkt.body)
 			const [event, err] = matchLog(pkt.body, SM.RCON_EVENT_MATCHERS)
 			if (err) {
 				log.error((err as any)?.stack ?? err, `Error matching event. packet: %s`, pkt.body)

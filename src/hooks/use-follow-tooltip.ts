@@ -20,7 +20,28 @@ let lastShownEndedAt = 0
 
 type Mode = 'closed' | 'follow' | 'pinned'
 
-export type FollowTooltip = ReturnType<typeof useFollowTooltip>
+type TriggerProps = {
+	ref: (node: HTMLElement | null) => void
+	'aria-describedby': string | undefined
+	'aria-expanded'?: boolean
+	onPointerDown: (e: React.PointerEvent) => void
+	onPointerEnter: (e: React.PointerEvent) => void
+	onPointerLeave: (e: React.PointerEvent) => void
+	onClick: (e: React.MouseEvent) => void
+	onFocus: () => void
+	onBlur: () => void
+}
+
+type ContentProps = {
+	id: string
+	nodeRef: React.RefObject<HTMLDivElement | null>
+	anchor: Flt.Point | null
+	interactive: boolean
+	onPointerEnter: (e: React.PointerEvent) => void
+	onPointerLeave: (e: React.PointerEvent) => void
+}
+
+export type FollowTooltip = { open: boolean; pinned: boolean; triggerProps: TriggerProps; contentProps: ContentProps }
 
 /**
  * Drives a `TrackingTooltip` from a single trigger.
@@ -40,198 +61,256 @@ export type FollowTooltip = ReturnType<typeof useFollowTooltip>
  * deliberate, and open at once.
  *
  * Touch has no hover, so a tap goes straight to the frozen state and only an outside press or a second tap closes it.
+ *
+ * Both options are read when the trigger mounts.
  */
-export function useFollowTooltip(opts?: { pinnable?: boolean; delayMs?: number }) {
-	const pinnable = opts?.pinnable ?? true
-	const delayMs = opts?.delayMs ?? 0
+export function useFollowTooltip(opts?: { pinnable?: boolean; delayMs?: number }): FollowTooltip {
 	const id = React.useId()
-	const [mode, setMode] = React.useState<Mode>('closed')
-	const [anchor, setAnchor] = React.useState<Flt.Point | null>(null)
-	const triggerRef = React.useRef<HTMLElement | null>(null)
-	const contentRef = React.useRef<HTMLDivElement | null>(null)
-	const overTrigger = React.useRef(false)
-	const overContent = React.useRef(false)
-	const hoverBlocked = React.useRef(false)
-	const openedByKeyboard = React.useRef(false)
-	const lastPointerType = React.useRef('mouse')
+	// The machine is a plain object rather than state and effects, so a closed tooltip costs three hooks and no
+	// listeners: a settings page mounts several hundred and shows one at a time.
+	const [machine] = React.useState(() => new FollowMachine(id, opts?.pinnable ?? true, opts?.delayMs ?? 0))
+	React.useEffect(() => machine.attach(), [machine])
+	return React.useSyncExternalStore(machine.subscribe, machine.getSnapshot)
+}
+
+class FollowMachine {
+	private mode: Mode = 'closed'
+	private anchor: Flt.Point | null = null
+	private trigger: HTMLElement | null = null
+	private readonly contentRef: React.RefObject<HTMLDivElement | null> = { current: null }
+	private overTrigger = false
+	private overContent = false
+	private hoverBlocked = false
+	private openedByKeyboard = false
+	private lastPointerType = 'mouse'
 	// a pointer press always lands before the focus it causes, so an unclaimed focus is a keyboard one
-	const focusFromPointer = React.useRef(false)
-	const closeTimer = React.useRef<number | null>(null)
-	const openTimer = React.useRef<number | null>(null)
+	private focusFromPointer = false
+	private closeTimer: number | null = null
+	private openTimer: number | null = null
+	private pollTimer: number | null = null
+	private listening: { keys: boolean; outside: boolean } = { keys: false, outside: false }
+	private onChange: (() => void) | null = null
+	private snapshot: FollowTooltip
 
-	const cancelOpen = React.useCallback(() => {
-		if (openTimer.current === null) return
-		window.clearTimeout(openTimer.current)
-		openTimer.current = null
-	}, [])
+	constructor(
+		private readonly id: string,
+		private readonly pinnable: boolean,
+		private readonly delayMs: number,
+	) {
+		this.snapshot = this.buildSnapshot()
+		// the tooltip node mounts only once open, and has to find the pointer for its first frame
+		Flt.watchPointer()
+	}
 
-	// a callback ref rather than the ref object, so it attaches to a trigger of any element type
-	const setTrigger = React.useCallback((node: HTMLElement | null) => {
-		triggerRef.current = node
-	}, [])
-
-	const cancelClose = React.useCallback(() => {
-		if (closeTimer.current === null) return
-		window.clearTimeout(closeTimer.current)
-		closeTimer.current = null
-	}, [])
-
-	const close = React.useCallback(() => {
-		cancelClose()
-		cancelOpen()
-		openedByKeyboard.current = false
-		setAnchor(null)
-		setMode('closed')
-	}, [cancelClose, cancelOpen])
-
-	const scheduleClose = React.useCallback(() => {
-		cancelClose()
-		closeTimer.current = window.setTimeout(() => {
-			closeTimer.current = null
-			if (overTrigger.current || overContent.current) return
-			close()
-		}, LEAVE_GRACE_MS)
-	}, [cancelClose, close])
-
-	const pin = React.useCallback(
-		(at: Flt.Point | null) => {
-			cancelClose()
-			cancelOpen()
-			setAnchor(at ?? triggerCorner(triggerRef.current))
-			setMode('pinned')
-		},
-		[cancelClose, cancelOpen],
-	)
-
-	React.useEffect(() => {
-		if (mode === 'closed') return
-		const onKeyDown = (ev: KeyboardEvent) => {
-			if (ev.key === 'Escape') close()
-		}
-		document.addEventListener('keydown', onKeyDown, true)
-		return () => document.removeEventListener('keydown', onKeyDown, true)
-	}, [mode, close])
-
-	React.useEffect(() => {
-		if (mode !== 'pinned') return
-		const onPointerDown = (ev: PointerEvent) => {
-			const target = ev.target as Node | null
-			if (!target) return
-			if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) return
-			close()
-		}
-		document.addEventListener('pointerdown', onPointerDown, true)
-		return () => document.removeEventListener('pointerdown', onPointerDown, true)
-	}, [mode, close])
-
-	React.useEffect(() => {
-		if (mode === 'closed') return
-		const check = () => {
-			const node = triggerRef.current
-			if (!node) return
-			const shown =
-				node.isConnected &&
-				(node.checkVisibility ? node.checkVisibility({ visibilityProperty: true }) : getComputedStyle(node).visibility !== 'hidden')
-			if (!shown) close()
-		}
-		const timer = window.setInterval(check, TRIGGER_GONE_POLL_MS)
-		return () => window.clearInterval(timer)
-	}, [mode, close])
-
-	React.useEffect(() => {
-		if (mode === 'closed') return
-		// the moment it stopped being shown, which is what the next trigger's skip window is measured from
+	subscribe = (onChange: () => void) => {
+		this.onChange = onChange
 		return () => {
-			lastShownEndedAt = Date.now()
+			if (this.onChange === onChange) this.onChange = null
 		}
-	}, [mode])
-
-	React.useEffect(
-		() => () => {
-			cancelClose()
-			cancelOpen()
-		},
-		[cancelClose, cancelOpen],
-	)
-
-	const triggerProps = {
-		ref: setTrigger,
-		'aria-describedby': mode === 'closed' ? undefined : id,
-		// only a pinnable trigger expands into something; a plain tooltip is described by its content, not disclosed
-		'aria-expanded': pinnable ? mode === 'pinned' : undefined,
-		onPointerDown: (e: React.PointerEvent) => {
-			lastPointerType.current = e.pointerType
-			focusFromPointer.current = true
-		},
-		onPointerEnter: (e: React.PointerEvent) => {
-			if (e.pointerType === 'touch') return
-			overTrigger.current = true
-			cancelClose()
-			if (mode !== 'closed' || hoverBlocked.current || openTimer.current !== null) return
-			if (delayMs === 0 || Date.now() - lastShownEndedAt < SKIP_DELAY_MS) {
-				setMode('follow')
-				return
-			}
-			openTimer.current = window.setTimeout(() => {
-				openTimer.current = null
-				if (overTrigger.current) setMode('follow')
-			}, delayMs)
-		},
-		onPointerLeave: (e: React.PointerEvent) => {
-			if (e.pointerType === 'touch') return
-			overTrigger.current = false
-			hoverBlocked.current = false
-			cancelOpen()
-			if (mode === 'pinned') scheduleClose()
-			else if (mode === 'follow') close()
-		},
-		onClick: (e: React.MouseEvent) => {
-			const byTouch = lastPointerType.current === 'touch'
-			if (mode === 'pinned') {
-				hoverBlocked.current = !byTouch
-				close()
-				return
-			}
-			openedByKeyboard.current = false
-			if (!pinnable && !byTouch) {
-				hoverBlocked.current = true
-				close()
-				return
-			}
-			// a keyboard-triggered click reports no coordinates, so fall back to the trigger itself
-			pin(e.detail === 0 ? null : { x: e.clientX, y: e.clientY })
-		},
-		onFocus: () => {
-			const byPointer = focusFromPointer.current
-			focusFromPointer.current = false
-			if (byPointer || mode !== 'closed') return
-			openedByKeyboard.current = true
-			pin(null)
-		},
-		onBlur: () => {
-			focusFromPointer.current = false
-			if (openedByKeyboard.current) close()
-		},
 	}
 
-	const contentProps = {
-		id,
-		nodeRef: contentRef,
-		anchor,
-		interactive: mode === 'pinned' && pinnable,
-		onPointerEnter: (e: React.PointerEvent) => {
-			if (e.pointerType === 'touch') return
-			overContent.current = true
-			cancelClose()
-		},
-		onPointerLeave: (e: React.PointerEvent) => {
-			if (e.pointerType === 'touch') return
-			overContent.current = false
-			scheduleClose()
-		},
+	getSnapshot = () => this.snapshot
+
+	// returns the detach for an effect, so an effect re-run (strict mode, a hidden Activity) restores the listeners
+	attach() {
+		this.syncListeners()
+		return () => {
+			this.cancelClose()
+			this.cancelOpen()
+			if (this.mode !== 'closed') lastShownEndedAt = Date.now()
+			this.syncListeners(true)
+		}
 	}
 
-	return { open: mode !== 'closed', pinned: mode === 'pinned', triggerProps, contentProps }
+	private setState(mode: Mode, anchor: Flt.Point | null) {
+		if (mode === this.mode && anchor === this.anchor) return
+		// the moment it stopped being shown, which is what the next trigger's skip window is measured from
+		if (mode !== this.mode && this.mode !== 'closed') lastShownEndedAt = Date.now()
+		this.mode = mode
+		this.anchor = anchor
+		this.syncListeners()
+		this.snapshot = this.buildSnapshot()
+		this.onChange?.()
+	}
+
+	private buildSnapshot(): FollowTooltip {
+		const mode = this.mode
+		return {
+			open: mode !== 'closed',
+			pinned: mode === 'pinned',
+			triggerProps: {
+				ref: this.setTrigger,
+				'aria-describedby': mode === 'closed' ? undefined : this.id,
+				// only a pinnable trigger expands into something; a plain tooltip is described by its content, not disclosed
+				'aria-expanded': this.pinnable ? mode === 'pinned' : undefined,
+				onPointerDown: this.onTriggerPointerDown,
+				onPointerEnter: this.onTriggerPointerEnter,
+				onPointerLeave: this.onTriggerPointerLeave,
+				onClick: this.onTriggerClick,
+				onFocus: this.onTriggerFocus,
+				onBlur: this.onTriggerBlur,
+			},
+			contentProps: {
+				id: this.id,
+				nodeRef: this.contentRef,
+				anchor: this.anchor,
+				interactive: mode === 'pinned' && this.pinnable,
+				onPointerEnter: this.onContentPointerEnter,
+				onPointerLeave: this.onContentPointerLeave,
+			},
+		}
+	}
+
+	// document listeners exist only while the tooltip is showing
+	private syncListeners(detached = false) {
+		const keys = !detached && this.mode !== 'closed'
+		const outside = !detached && this.mode === 'pinned'
+		if (keys !== this.listening.keys) {
+			if (keys) {
+				document.addEventListener('keydown', this.onDocumentKeyDown, true)
+				this.pollTimer = window.setInterval(this.checkTriggerShown, TRIGGER_GONE_POLL_MS)
+			} else {
+				document.removeEventListener('keydown', this.onDocumentKeyDown, true)
+				if (this.pollTimer !== null) window.clearInterval(this.pollTimer)
+				this.pollTimer = null
+			}
+		}
+		if (outside !== this.listening.outside) {
+			if (outside) document.addEventListener('pointerdown', this.onDocumentPointerDown, true)
+			else document.removeEventListener('pointerdown', this.onDocumentPointerDown, true)
+		}
+		this.listening = { keys, outside }
+	}
+
+	private onDocumentKeyDown = (ev: KeyboardEvent) => {
+		if (ev.key === 'Escape') this.close()
+	}
+
+	private onDocumentPointerDown = (ev: PointerEvent) => {
+		const target = ev.target as Node | null
+		if (!target) return
+		if (this.trigger?.contains(target) || this.contentRef.current?.contains(target)) return
+		this.close()
+	}
+
+	private checkTriggerShown = () => {
+		const node = this.trigger
+		if (!node) return
+		const shown =
+			node.isConnected &&
+			(node.checkVisibility ? node.checkVisibility({ visibilityProperty: true }) : getComputedStyle(node).visibility !== 'hidden')
+		if (!shown) this.close()
+	}
+
+	// a callback ref rather than a ref object, so it attaches to a trigger of any element type
+	private setTrigger = (node: HTMLElement | null) => {
+		this.trigger = node
+	}
+
+	private cancelOpen() {
+		if (this.openTimer === null) return
+		window.clearTimeout(this.openTimer)
+		this.openTimer = null
+	}
+
+	private cancelClose() {
+		if (this.closeTimer === null) return
+		window.clearTimeout(this.closeTimer)
+		this.closeTimer = null
+	}
+
+	private close = () => {
+		this.cancelClose()
+		this.cancelOpen()
+		this.openedByKeyboard = false
+		this.setState('closed', null)
+	}
+
+	private scheduleClose() {
+		this.cancelClose()
+		this.closeTimer = window.setTimeout(() => {
+			this.closeTimer = null
+			if (this.overTrigger || this.overContent) return
+			this.close()
+		}, LEAVE_GRACE_MS)
+	}
+
+	private pin(at: Flt.Point | null) {
+		this.cancelClose()
+		this.cancelOpen()
+		this.setState('pinned', at ?? triggerCorner(this.trigger))
+	}
+
+	private onTriggerPointerDown = (e: React.PointerEvent) => {
+		this.lastPointerType = e.pointerType
+		this.focusFromPointer = true
+	}
+
+	private onTriggerPointerEnter = (e: React.PointerEvent) => {
+		if (e.pointerType === 'touch') return
+		this.overTrigger = true
+		this.cancelClose()
+		if (this.mode !== 'closed' || this.hoverBlocked || this.openTimer !== null) return
+		if (this.delayMs === 0 || Date.now() - lastShownEndedAt < SKIP_DELAY_MS) {
+			this.setState('follow', this.anchor)
+			return
+		}
+		this.openTimer = window.setTimeout(() => {
+			this.openTimer = null
+			if (this.overTrigger) this.setState('follow', this.anchor)
+		}, this.delayMs)
+	}
+
+	private onTriggerPointerLeave = (e: React.PointerEvent) => {
+		if (e.pointerType === 'touch') return
+		this.overTrigger = false
+		this.hoverBlocked = false
+		this.cancelOpen()
+		if (this.mode === 'pinned') this.scheduleClose()
+		else if (this.mode === 'follow') this.close()
+	}
+
+	private onTriggerClick = (e: React.MouseEvent) => {
+		const byTouch = this.lastPointerType === 'touch'
+		if (this.mode === 'pinned') {
+			this.hoverBlocked = !byTouch
+			this.close()
+			return
+		}
+		this.openedByKeyboard = false
+		if (!this.pinnable && !byTouch) {
+			this.hoverBlocked = true
+			this.close()
+			return
+		}
+		// a keyboard-triggered click reports no coordinates, so fall back to the trigger itself
+		this.pin(e.detail === 0 ? null : { x: e.clientX, y: e.clientY })
+	}
+
+	private onTriggerFocus = () => {
+		const byPointer = this.focusFromPointer
+		this.focusFromPointer = false
+		if (byPointer || this.mode !== 'closed') return
+		this.openedByKeyboard = true
+		this.pin(null)
+	}
+
+	private onTriggerBlur = () => {
+		this.focusFromPointer = false
+		if (this.openedByKeyboard) this.close()
+	}
+
+	private onContentPointerEnter = (e: React.PointerEvent) => {
+		if (e.pointerType === 'touch') return
+		this.overContent = true
+		this.cancelClose()
+	}
+
+	private onContentPointerLeave = (e: React.PointerEvent) => {
+		if (e.pointerType === 'touch') return
+		this.overContent = false
+		this.scheduleClose()
+	}
 }
 
 function triggerCorner(el: HTMLElement | null): Flt.Point | null {

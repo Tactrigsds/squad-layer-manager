@@ -22,6 +22,10 @@ export const DISCONNECT_TIMEOUT = 5_000
 // export const INTERACT_TIMEOUT = 5_000
 export const INTERACT_TIMEOUT = 30_000
 
+// How often an active session repeats page-interaction. Every one is broadcast to every client, and all it changes
+// past the first is lastSeen; interaction-timeout stamps the session's end on its own.
+export const INTERACTION_HEARTBEAT = 15_000
+
 // A client is present in one place at a time, and the places have nothing in common: a server dashboard is
 // scoped by serverId, a filter page by filterId. So the root is a union rather than one tree -- read it
 // through dashRoot/filterRoot rather than reaching for opts.
@@ -474,6 +478,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 							// if there are other active clients, disappear instead of simply going to "away"
 							activityState: hasOtherActiveClient ? null : clientState.activityState,
 							away: true,
+							// the timeout fires INTERACT_TIMEOUT after the last activity, which the heartbeat stamped only roughly
+							lastSeen: Math.max(clientState.lastSeen ?? 0, op.time - INTERACT_TIMEOUT),
 						}
 						success = true
 						break

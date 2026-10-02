@@ -1,8 +1,9 @@
+import * as dateFns from 'date-fns'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { matchLog } from '@/lib/log-parsing'
+import { matchLog, matchLogIndexed } from '@/lib/log-parsing'
 import * as SM from '@/models/squad.models'
 
 async function* toChunks(...chunks: string[]): AsyncGenerator<string> {
@@ -883,6 +884,50 @@ describe('LogEvents.parse conservation', () => {
 		expect(withheld.filter(([type]) => !CHAIN_MEMBER_TYPES.has(type))).toEqual([])
 		if (withheld.length > 0) expect(errors.length).toBeGreaterThan(0)
 		else expect(errors).toEqual([])
+	})
+})
+
+describe('LogEvents.EventMatcherIndex', () => {
+	const strip = (res: readonly [unknown, Error | null]) => [res[0], res[1]?.message ?? null]
+
+	it('matches every entry exactly as the full matcher list does', () => {
+		const entries = CHAIN_TICKS.flatMap((tick) => toEntries(tick.lines))
+		entries.push(
+			'[2026.01.01-00.00.00:000][  1]LogEOS_Net: a category the index has no list for',
+			'[2026.01.01-00.00.00:000][  1]LogD3D11: digits in the category',
+			'not an entry at all',
+			'[2026.01.01-00.00.00:000][  1]LogSquad: Vote Possible choices: a\nb\nc',
+		)
+		expect(entries.length).toBeGreaterThan(500)
+		for (const entry of entries) {
+			expect(strip(matchLogIndexed(entry, SM.LogEvents.EventMatcherIndex))).toEqual(strip(matchLog(entry, SM.LogEvents.EventMatchers)))
+		}
+	})
+
+	it('reads a category off every matcher that names one', () => {
+		const indexed = new Set([...SM.LogEvents.EventMatcherIndex.byCategory.values()].flat())
+		expect(SM.LogEvents.EventMatcherIndex.uncategorized.map((m) => m.event.type)).toEqual(['UNKNOWN'])
+		expect(indexed.size).toBe(SM.LogEvents.EventMatchers.length)
+	})
+})
+
+describe('LogEvents.parseTimestamp', () => {
+	const viaDateFns = (raw: string) => dateFns.parse(raw + 'Z', 'yyyy.MM.dd-HH.mm.ss:SSSX', new Date()).getTime()
+
+	it('reads every timestamp the way dateFns does, including ones out of range', () => {
+		const raws = CHAIN_TICKS.flatMap((tick) => tick.lines.flatMap((line) => /^\[([0-9.:-]+)]/.exec(line)?.[1] ?? []))
+		raws.push(
+			'2024.02.29-23.59.59:999',
+			'2023.02.29-00.00.00:000',
+			'2026.13.01-00.00.00:000',
+			'2026.01.01-24.00.00:000',
+			'2026.01.01-00.60.00:000',
+			'0050.01.01-00.00.00:000',
+			'2026.1.01-00.00.00:000',
+			'2026.01.01-00.00.00',
+			'',
+		)
+		for (const raw of raws) expect([raw, SM.LogEvents.parseTimestamp(raw)]).toEqual([raw, viaDateFns(raw)])
 	})
 })
 

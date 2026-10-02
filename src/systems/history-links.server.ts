@@ -61,6 +61,15 @@ export function setup() {
 			case 'posted':
 				if (enabled(Settings.GLOBAL_SETTINGS)) inTurn(event.message.id, () => sync(event.message))
 				break
+			case 'edited': {
+				if (!enabled(Settings.GLOBAL_SETTINGS)) break
+				const edited = event.message
+				inTurn(edited.id, async () => {
+					const message = await full(edited)
+					if (message && !message.author.bot) await sync(message)
+				})
+				break
+			}
 			case 'deleted':
 				inTurn(event.messageId, () => unquote(event.messageId))
 				break
@@ -93,6 +102,16 @@ function inTurn(messageId: string, fn: () => Promise<void>) {
 	void turn.finally(() => {
 		if (turns.get(messageId) === turn) turns.delete(messageId)
 	})
+}
+
+async function full(message: D.Message | D.PartialMessage): Promise<D.Message | null> {
+	if (!message.partial) return message
+	try {
+		return await message.fetch()
+	} catch (err) {
+		log.warn({ err }, 'could not fetch edited message %s', message.id)
+		return null
+	}
 }
 
 async function sync(message: D.Message) {

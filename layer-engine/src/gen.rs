@@ -9,10 +9,10 @@
 //! of its parent, which is what keeps a page's layers distinct and what makes the weights renormalize the way the old
 //! sampled algorithm's "filtered" set did.
 
-use crate::ir::Tri;
-use crate::store::{BlockCursor, ColData, Store};
+use crate::ir::Hits;
+use crate::store::{BlockCursor, ColData, Reader, Store};
+use crate::{IntMap, IntSet};
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +44,7 @@ pub struct GenSpec {
 }
 
 impl StepSpec {
-    fn weight_map(&self) -> HashMap<i64, f64> {
+    fn weight_map(&self) -> IntMap<i64, f64> {
         self.weights.iter().map(|w| (w.key, w.weight)).collect()
     }
 }
@@ -54,10 +54,12 @@ impl StepSpec {
 /// Every column a step can name is a layer's own column or a per-team one (see WEIGHT_COLUMNS in
 /// models/layer-columns.ts), so this never touches the score scopes.
 struct StepKey<'a> {
-    sides: [Vec<crate::store::Reader<'a>>; 2],
+    sides: [Vec<Reader<'a>>; 2],
     radices: [&'a [i64]; 2],
     matchup: bool,
     side_radix: i64,
+    /// every column is a layer's own, so the key is constant across a block
+    per_block: bool,
 }
 
 impl<'a> StepKey<'a> {
@@ -68,7 +70,8 @@ impl<'a> StepKey<'a> {
             _ => (Vec::new(), [].as_slice(), false),
         };
         let side_radix: i64 = radices2.iter().product::<i64>().max(1);
-        StepKey { sides: [side1, side2], radices: [&step.radices1, radices2], matchup, side_radix }
+        let per_block = side1.iter().chain(side2.iter()).all(|r| matches!(r, Reader::Block(_)));
+        StepKey { sides: [side1, side2], radices: [&step.radices1, radices2], matchup, side_radix, per_block }
     }
 
     #[inline]
@@ -139,11 +142,30 @@ impl Node {
     fn expand(&mut self, store: &Store, step: &StepSpec, default_weight: f64) {
         let key_of = StepKey::new(store, step);
         let mut cursor = BlockCursor::new(store);
-        let mut by_key: HashMap<i64, Vec<u32>> = HashMap::new();
-        // rows stay ascending through every level, which is what lets the cursor replace a block lookup per row
-        for row in self.rows.drain(..) {
-            let (block, pattern_row) = cursor.locate(row as usize);
-            by_key.entry(key_of.key(block, pattern_row, row as usize)).or_default().push(row);
+        let mut by_key: IntMap<i64, Vec<u32>> = IntMap::default();
+        let rows = std::mem::take(&mut self.rows);
+        // rows stay ascending through every level, which is what lets the cursor replace a block lookup per row.
+        // Neighbouring rows usually share a key, so each run of them costs one map lookup rather than one per row.
+        let mut last_block = usize::MAX;
+        let mut run: Option<(i64, usize)> = None;
+        for (i, row) in rows.iter().enumerate() {
+            let (block, pattern_row) = cursor.locate(*row as usize);
+            let key = match run {
+                Some((key, _)) if key_of.per_block && block == last_block => key,
+                _ => key_of.key(block, pattern_row, *row as usize),
+            };
+            last_block = block;
+            match run {
+                Some((run_key, _)) if run_key == key => {}
+                Some((run_key, start)) => {
+                    by_key.entry(run_key).or_default().extend_from_slice(&rows[start..i]);
+                    run = Some((key, i));
+                }
+                None => run = Some((key, i)),
+            }
+        }
+        if let Some((run_key, start)) = run {
+            by_key.entry(run_key).or_default().extend_from_slice(&rows[start..]);
         }
         let weights = step.weight_map();
         let mut entries: Vec<(i64, Node)> = Vec::with_capacity(by_key.len());
@@ -243,10 +265,11 @@ fn take(
 }
 
 /// Generates `num_layers` distinct layers from the rows that passed the filter.
-pub fn generate(store: &Store, matched: &Tri, spec: &GenSpec, exclude: &[u32]) -> Vec<u32> {
-    let mut rows: Vec<u32> = matched.rows().map(|r| r as u32).collect();
+pub fn generate(store: &Store, matched: &Hits, spec: &GenSpec, exclude: &[u32]) -> Vec<u32> {
+    let mut rows: Vec<u32> = Vec::with_capacity(matched.count());
+    rows.extend(matched.rows().map(|r| r as u32));
     if !exclude.is_empty() {
-        let excluded: std::collections::HashSet<u32> = exclude.iter().copied().collect();
+        let excluded: IntSet<u32> = exclude.iter().copied().collect();
         rows.retain(|r| !excluded.contains(r));
     }
     let mut rng = Rng::new(spec.seed);
@@ -278,13 +301,36 @@ pub fn generate(store: &Store, matched: &Tri, spec: &GenSpec, exclude: &[u32]) -
 
 /// Distinct group counts for one step over the rows that passed the filter. Used by the settings editor to show what
 /// share a weight actually buys, which is only meaningful against the real group universe.
-pub fn group_counts(store: &Store, matched: &Tri, step: &StepSpec) -> HashMap<i64, u32> {
+pub fn group_counts(store: &Store, matched: &Hits, step: &StepSpec) -> IntMap<i64, u32> {
     let key_of = StepKey::new(store, step);
+    let mut counts: IntMap<i64, u32> = IntMap::default();
+    if key_of.per_block {
+        for block in 0..store.block_count() {
+            let (start, end) = store.block_rows(block);
+            let n = matched.count_in(start, end) as u32;
+            if n > 0 {
+                *counts.entry(key_of.key(block, 0, start)).or_insert(0) += n;
+            }
+        }
+        return counts;
+    }
     let mut cursor = BlockCursor::new(store);
-    let mut counts: HashMap<i64, u32> = HashMap::new();
+    let mut run: Option<(i64, u32)> = None;
     for row in matched.rows() {
         let (block, pattern_row) = cursor.locate(row);
-        *counts.entry(key_of.key(block, pattern_row, row)).or_insert(0) += 1;
+        let key = key_of.key(block, pattern_row, row);
+        match &mut run {
+            Some((run_key, n)) if *run_key == key => *n += 1,
+            _ => {
+                if let Some((run_key, n)) = run {
+                    *counts.entry(run_key).or_insert(0) += n;
+                }
+                run = Some((key, 1));
+            }
+        }
+    }
+    if let Some((run_key, n)) = run {
+        *counts.entry(run_key).or_insert(0) += n;
     }
     counts
 }
@@ -295,6 +341,10 @@ pub fn group_counts(store: &Store, matched: &Tri, step: &StepSpec) -> HashMap<i6
 /// block, a per-team column one per pattern row, and a score column one per side record. Only the scopes that vary
 /// with the block and the pattern row together are walked per row.
 pub fn range(store: &Store, col: usize) -> Option<(i64, i64)> {
+    *store.ranges[col].get_or_init(|| compute_range(store, col))
+}
+
+fn compute_range(store: &Store, col: usize) -> Option<(i64, i64)> {
     let mut min = i64::MAX;
     let mut max = i64::MIN;
     let mut any = false;

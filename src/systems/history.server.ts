@@ -27,7 +27,6 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
-import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -138,11 +137,13 @@ async function dispatch(
 ): Promise<HistoryWorker.EngineResponse | HistoryQuery.QueryError> {
 	if (!worker) return { code: 'err:engine-unavailable', message: 'the history query engine is not running' }
 	const seq = nextSeq++
-	// an aborted caller just stops waiting: the scan itself is synchronous sqlite and cannot be interrupted
+	// a running scan is synchronous sqlite and cannot be interrupted, so the worker stops at its next phase
+	// boundary, or skips the request if it has not started
 	const onAbort = () => {
 		const p = pending.get(seq)
 		if (!p) return
 		pending.delete(seq)
+		worker?.postMessage({ cancel: seq } satisfies HistoryWorker.Request)
 		p.reject(ctx.signal.reason)
 	}
 	try {
@@ -323,16 +324,19 @@ export const router = {
 						pageSize: HQ.PAGE_SIZES.events,
 						withTotal: !input.cursor,
 						order,
+						chat: Settings.GLOBAL_SETTINGS.chat,
+						includeMatchBoundaries: input.includeMatchBoundaries,
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, res.hits, input.render, input.format, input.includeMatchBoundaries, order)
+					const page = await assembleEventPage(ctx, res, input.render, input.format)
 					return {
 						code: 'ok' as const,
 						type: 'events' as const,
 						...page,
 						nextCursor: nextCursorOf(res.hits),
 						total: res.total,
+						totalCapped: res.totalCapped,
 						unrecognisedLayerMatches,
 					}
 				}
@@ -539,66 +543,15 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 	}
 }
 
-// Event bodies come last and only for the page, read per server because enrichment replays per-server app
-// events. The rows go out as rendered html rather than event data: the same builders the live feed uses run
-// here against a shadow dom, the client inserts the strings and holds them behind content-visibility, and
-// interactivity is all attributes resolved against the client's scope (see feed/render-context.ts).
-async function assembleEventPage(
-	ctx: QueryCtx,
-	hits: HistoryWorker.EventHit[],
-	render: RenderOpts,
-	format: 'html' | 'wire',
-	includeMatchBoundaries = false,
-	order: HistoryWorker.EventOrder = 'newest',
-) {
-	const { events, matches } = await loadEventPage(ctx, hits, includeMatchBoundaries, order)
-	if (format === 'wire') return { rowsHtml: [] as string[], events: events.length > 0 ? CHAT.Wire.encode(events) : null, matches }
+// Event bodies are read, replayed and filtered to the page on the worker (see loadEventPage there). The rows go
+// out as rendered html rather than event data: the same builders the live feed uses run here against a shadow
+// dom, the client inserts the strings and holds them behind content-visibility, and interactivity is all
+// attributes resolved against the client's scope (see feed/render-context.ts).
+async function assembleEventPage(ctx: QueryCtx, page: HistoryWorker.EventPage, render: RenderOpts, format: 'html' | 'wire') {
+	const matches = page.matches.flatMap((row) => toMatchDetails(row) ?? [])
+	if (format === 'wire') return { rowsHtml: [] as string[], events: page.events, matches }
+	const events = page.events ? CHAT.Wire.decode(page.events) : []
 	return { rowsHtml: renderEventRows(events, matches, render, await actorLabels(ctx, events)), events: null, matches }
-}
-
-// the enriched events behind one page of hits, in the order they were paged in, with the matches they belong to
-async function loadEventPage(
-	ctx: QueryCtx,
-	hits: HistoryWorker.EventHit[],
-	includeMatchBoundaries: boolean,
-	order: HistoryWorker.EventOrder,
-): Promise<{ events: CHAT.EventEnriched[]; matches: MH.MatchDetails[] }> {
-	if (hits.length === 0) return { events: [], matches: [] }
-	const matchIds = [...new Set(hits.map((h) => h.matchId))]
-	const matchRows = await ctx.db().select().from(Schema.matchHistory).where(E.inArray(Schema.matchHistory.id, matchIds))
-
-	const byServer = new Map<string, number[]>()
-	for (const row of matchRows) {
-		let ids = byServer.get(row.serverId)
-		if (!ids) byServer.set(row.serverId, (ids = []))
-		ids.push(row.id)
-	}
-
-	// hits from either family; a replayed entry is kept when it stands for one of them (see iterContainedEventIds)
-	const wanted = new Set<number>(hits.flatMap((h) => (h.serverEventId === undefined ? [] : [h.serverEventId])))
-	const wantedAppEvents = new Set<string>(hits.flatMap((h) => (h.appEventId === undefined ? [] : [h.appEventId])))
-	const events: CHAT.EventEnriched[] = []
-	for (const [serverId, ids] of byServer) {
-		const serverCtx = { ...ctx, serverId, matchEventsCache: MatchEventsCache.initMatchEventsCacheContext() }
-		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(serverCtx, Settings.GLOBAL_SETTINGS.chat, ...ids)
-		// by containment, not by id: a hit whose event replay folded into another entry -- a warn collapsed under
-		// the app event that issued it, one of a burst merged into a WARNS_AGGREGATED -- is shown by that entry,
-		// and matching on the top-level id alone would drop it from the page
-		events.push(
-			...enriched.filter((e) => {
-				if (includeMatchBoundaries && e.type === 'NEW_GAME') return true
-				if (typeof e.id === 'string' && wantedAppEvents.has(e.id)) return true
-				for (const id of CHAT.iterContainedEventIds(e)) {
-					if (wanted.has(id)) return true
-				}
-				return false
-			}),
-		)
-	}
-	// the same direction the hits were paged in, so each further page stacks on in reading order
-	events.sort((a, b) => (order === 'newest' ? b.time - a.time : a.time - b.time))
-	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
-	return { events: await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true }), matches }
 }
 
 // display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
@@ -706,11 +659,17 @@ async function eventsPage(ctx: QueryCtx, resolved: Resolved, order: HistoryWorke
 		pageSize: HQ.PAGE_SIZES.events,
 		withTotal: false,
 		order,
+		chat: Settings.GLOBAL_SETTINGS.chat,
+		includeMatchBoundaries: true,
 	})
 	if (res.code !== 'ok') return res
 	if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-	const loaded = await loadEventPage(ctx, res.hits, true, order)
-	return { code: 'ok' as const, ...loaded, nextCursor: nextCursorOf(res.hits) }
+	return {
+		code: 'ok' as const,
+		events: res.events ? CHAT.Wire.decode(res.events) : [],
+		matches: res.matches.flatMap((row) => toMatchDetails(row) ?? []),
+		nextCursor: nextCursorOf(res.hits),
+	}
 }
 
 async function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], opts: TextOpts) {

@@ -3,17 +3,16 @@ import * as Orpc from '@orpc/server'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
-import superjson from 'superjson'
+import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
-import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import * as AR from '@/app-routes'
 import * as Arr from '@/lib/array-utils'
 import * as Cleanup from '@/lib/cleanup'
 import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator-utils'
-import { IsolatedSubject, TracedSubject } from '@/lib/isolated-subject'
+import { IsolatedSubject, isolateCb, TracedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
@@ -67,6 +66,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as ServerConsole from '@/systems/server-console.server'
+import * as EventWrites from '@/systems/server-event-writes.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -110,6 +110,8 @@ const logLagHistogram = meter.createHistogram(ATTRS.SquadLogs.LAG, {
 })
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
+
+const LIVE_FEED_BATCH_MS = 50
 
 type State = {
 	managedServers: Map<string, C.ManagedServer>
@@ -174,26 +176,28 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = stream$(context.wsClientId, input.serverId, (serverCtx) => {
-				const read = async (): Promise<SM.LayersStatusResExt> => {
-					const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
-					const statusRes = await serverCtx.squadRcon.layersStatus.get(serverCtx)
-					return {
-						code: 'ok',
-						data: {
-							currentLayer: currentMatch ? L.toLayer(currentMatch.layerId) : null,
-							nextLayer: statusRes.code === 'ok' ? statusRes.data.nextLayer : null,
-							currentMatch,
-						},
+			const obs = stream$(context.wsClientId, input.serverId, () =>
+				sharedForServer(input.serverId, 'layersStatus', (serverCtx) => {
+					const read = async (): Promise<SM.LayersStatusResExt> => {
+						const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
+						const statusRes = await serverCtx.squadRcon.layersStatus.get(serverCtx)
+						return {
+							code: 'ok',
+							data: {
+								currentLayer: currentMatch ? L.toLayer(currentMatch.layerId) : null,
+								nextLayer: statusRes.code === 'ok' ? statusRes.data.nextLayer : null,
+								currentMatch,
+							},
+						}
 					}
-				}
-				const event$ = serverCtx.server.event$.pipe(Rx.filter(([, event]) => ['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)))
-				return Rx.merge(serverCtx.squadRcon.layersStatus.observe(serverCtx), event$).pipe(
-					Rx.startWith(null),
-					Rx.switchMap(() => read()),
-					Rx.Ext.distinctDeepEquals(),
-				)
-			}).pipe(Rx.Ext.withAbortSignal(signal!))
+					const event$ = serverCtx.server.event$.pipe(Rx.filter(([, event]) => ['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)))
+					return Rx.merge(serverCtx.squadRcon.layersStatus.observe(serverCtx), event$).pipe(
+						Rx.startWith(null),
+						Rx.switchMap(() => read()),
+						Rx.Ext.distinctDeepEquals(),
+					)
+				}),
+			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
@@ -219,8 +223,8 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = stream$(context.wsClientId, input.serverId, (ctx) =>
-				ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
+			const obs = stream$(context.wsClientId, input.serverId, () =>
+				sharedForServer(input.serverId, 'serverInfo', (ctx) => ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals())),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
@@ -279,10 +283,12 @@ export const orpcRouter = {
 				}
 				const initial$ = Rx.from(getInitialEvents()).pipe(Rx.concatAll())
 
+				// one frame per burst rather than per event: a burst of hundreds of events otherwise costs every client a
+				// timer and a frame each
 				const upcoming$ = Rx.merge(
 					ctx.server.event$.pipe(Rx.map(([_, e]): SE.Event | CHAT.AppFeedEvent => e)),
 					ctx.server.appEvent$.pipe(Rx.map(([_, appEvent]): SE.Event | CHAT.AppFeedEvent => ({ type: 'APP_EVENT', appEvent }))),
-				).pipe(Rx.map((event): (SE.Event | CHAT.AppFeedEvent)[] => [event]))
+				).pipe(Rx.Ext.bufferBurst(LIVE_FEED_BATCH_MS))
 
 				return Rx.concat(initial$, upcoming$).pipe(
 					// orpc will break without this
@@ -739,6 +745,9 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	// so a poll doesn't give up waiting for the log while the parser is still holding a tick.
 	const logIdleFlushMs = Math.max(logDeliveryMs * 1.5, 100)
 
+	const event$: SQS.Ctx.Payload['event$'] = new TracedSubject({ ...CS.init(), serverId })
+	const ingest: EventIngest = { serverId, event$, db: { ...getBaseCtx(), log }, writes: null, unpublished: [] }
+
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
 			squadId: globalState.squadIdCounter,
@@ -746,17 +755,17 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		currentMatch: 'PENDING',
 		log: log,
 		hooks: {
-			onNewGameDuringRoll: onNewGameDuringRoll(serverId),
-			onNewGameDuringSync: onNewGameDuringSync(serverId),
-			createEvent: createEvent(serverId),
+			onNewGameDuringRoll: publishingFirst(ingest, onNewGameDuringRoll(serverId)),
+			onNewGameDuringSync: publishingFirst(ingest, onNewGameDuringSync(serverId)),
+			createEvent: (event) => ingestEvent(ingest, event),
 			// Every caller resolves what the server is doing right now, at a moment the cached value is still the
 			// outgoing match's. observe() replays whatever is cached as its first emission whatever ttl it is asked
 			// for, so this has to be a get that refuses the cache outright.
-			fetchLayersStatus: async () => {
+			fetchLayersStatus: publishingFirst(ingest, async () => {
 				const ctx = resolveCtx(getBaseCtx(), serverId)
 				const res = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 0 })
 				return res.code === 'ok' ? res.data : null
-			},
+			}),
 			skipDestroyedOnTrainingLayers: () => serverSettings.settings.skipDestroyedOnTrainingLayers,
 			fetchUsernamesNoTag: async (players) => {
 				const ctx = resolveCtx(getBaseCtx(), serverId)
@@ -794,18 +803,19 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		tickRate$: new Rx.BehaviorSubject(null as number | null),
 		serverInfo$: new Rx.BehaviorSubject(null as SM.ServerInfo | null),
 
-		event$: new TracedSubject({ ...CS.init(), serverId }),
+		event$,
 		appEvent$: new TracedSubject({ ...CS.init(), serverId }),
 		processEventsMtx: new Mutex(),
 
 		eventState: eventState,
 
-		chatState: CHAT.getInitialChatState(),
+		chatInterpolatedState: CHAT.getInitialInterpolatedState(),
 		emittedEvents: [],
 		emittedAppEvents: [],
 		destroyed: false,
 		cleanupId: null,
 	}
+	ingestByServer.set(server, ingest)
 
 	const squadRcon = SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
 		cacheTTL: settings.rconCacheTTL,
@@ -877,15 +887,17 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	// // -------- watch events --------
 	server.event$.subscribe(([, event]) => {
 		try {
-			CHAT.handleEvent(server.chatState, event)
+			CHAT.interpolateEvent(server.chatInterpolatedState, event)
 		} catch (error) {
 			log.error(error, 'Error handling event: %s %d', event.type, event.id)
 		}
-		log.info(
-			'emitted event: %s %s',
-			event.type,
-			JSON.stringify(['NEW_GAME', 'RESET'].includes(event.type) ? Obj.omit(event as any, ['state']) : event),
-		)
+		if (log.isLevelEnabled('debug')) {
+			log.debug(
+				'emitted event: %s %s',
+				event.type,
+				JSON.stringify(['NEW_GAME', 'RESET'].includes(event.type) ? Obj.omit(event as any, ['state']) : event),
+			)
+		}
 		server.emittedEvents.push(event)
 	})
 
@@ -1006,7 +1018,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		)
 
 		const errors: Error[] = []
-		for await (const event of SM.LogEvents.parseLogStream(
+		let eventsSinceYield = 0
+		for await (const parsed of SM.LogEvents.parseLogStreamBatches(
 			Rx.Ext.toAsyncGenerator(countedChunk$.pipe(Rx.Ext.withAbortSignal(logStreamAc.signal))),
 			errors,
 			{
@@ -1025,24 +1038,35 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			}
 			errors.splice(0, errors.length)
 
-			if (!event) {
-				log.warn('No log event to process')
-				return
+			const now = Date.now()
+			const steps: (() => void)[] = []
+			for (const event of parsed) {
+				// a line that failed to parse, already reported above
+				if (!event) continue
+				logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
+				const lagSampleMs = PendingEvents.LogLagTuner.observe(ctx.server.eventState, event.time, now)
+				if (lagSampleMs !== null) {
+					// clock skew can push a lag negative; the tuner keeps the sign, the metric clamps to stay a valid histogram value
+					logLagHistogram.record(Math.max(0, lagSampleMs), {
+						[ATTRS.SquadServer.ID]: serverId,
+						[ATTRS.SquadLogs.SOURCE]: logSource,
+					})
+				}
+				steps.push(() => PendingEvents.onLogEvent(ctx.server.eventState, event))
 			}
 
-			logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
-			const lagSampleMs = PendingEvents.LogLagTuner.observe(ctx.server.eventState, event.time, Date.now())
-			if (lagSampleMs !== null) {
-				// clock skew can push a lag negative; the tuner keeps the sign, the metric clamps to stay a valid histogram value
-				logLagHistogram.record(Math.max(0, lagSampleMs), {
-					[ATTRS.SquadServer.ID]: serverId,
-					[ATTRS.SquadLogs.SOURCE]: logSource,
-				})
+			// a burst is persisted in slices, yielding between them so rcon, websockets and other servers are not
+			// starved for the whole of it
+			for (let i = 0; i < steps.length; i += LOG_EVENTS_PER_SLICE) {
+				if (eventsSinceYield >= LOG_EVENTS_PER_SLICE) {
+					eventsSinceYield = 0
+					await Timers.setImmediate()
+					if (logStreamAc.signal.aborted) return
+				}
+				const slice = steps.slice(i, i + LOG_EVENTS_PER_SLICE)
+				eventsSinceYield += slice.length
+				await collectEvents(ctx, ...slice)
 			}
-
-			await collectEvents(ctx, () => {
-				PendingEvents.onLogEvent(ctx.server.eventState, event)
-			})
 		}
 	})({ ...ctx, server })
 
@@ -1181,6 +1205,12 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 export async function pushAttribution(ctx: SQS.Ctx & C.Db & CS.AbortSignal, attribution: Omit<PendingEvents.Attribution, 'time'>) {
 	await collectEvents(ctx, () => {
 		PendingEvents.pushAttribution(ctx.server.eventState, attribution)
+	})
+}
+
+export async function withdrawAttribution(ctx: SQS.Ctx & CS.AbortSignal, itemId: string, layerId: L.LayerId) {
+	await collectEvents(ctx, () => {
+		PendingEvents.withdrawAttribution(ctx.server.eventState, itemId, layerId)
 	})
 }
 
@@ -1734,16 +1764,77 @@ export function actorFromUser(ctx: SQS.Ctx, source: USR.GuiOrChatUserId | 'autos
 	return { type: 'system' }
 }
 
-async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: () => void) {
+// Runs each step, then a processing pass over the pending-events state, all under one hold of processEventsMtx.
+// The events the passes produce are persisted as they are produced and published on event$ once their batch commits.
+async function collectEvents(ctx: SQS.Ctx & CS.AbortSignal, ...steps: (() => void)[]) {
 	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
-	addEventsCb()
-	for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
+	const ingest = ingestByServer.get(ctx.server)!
+	try {
+		for (const step of steps) {
+			step()
+			for await (const _event of PendingEvents.process(ctx.server.eventState, Date.now()));
+		}
+	} finally {
+		publishIngested(ingest)
+	}
+}
+
+// The events of one collectEvents call share a write batch, so a burst costs one COMMIT rather than one per event.
+// An event reaches event$ only once its batch has committed, so no listener sees a write that could still be lost.
+type EventIngest = {
+	serverId: string
+	event$: SQS.Ctx.Payload['event$']
+	db: C.Db & CS.Log
+	writes: DB.WriteBatch | null
+	unpublished: SE.Event[]
+}
+
+const ingestByServer = new WeakMap<SQS.Ctx.Payload, EventIngest>()
+
+// bounds how long a batch holds the process-wide transaction lock, and how long ingest runs without yielding
+const MAX_UNPUBLISHED_EVENTS = 50
+const LOG_EVENTS_PER_SLICE = 50
+
+async function ingestEvent(ingest: EventIngest, newEvent: SE.NewEvent): Promise<SE.Event> {
+	ingest.writes ??= await DB.openWriteBatch()
+	const writes = ingest.writes
+	const event = writes.write(() => EventWrites.insertEvent(ingest.db, ingest.serverId, newEvent))
+	ingest.unpublished.push(event)
+	if (ingest.unpublished.length >= MAX_UNPUBLISHED_EVENTS) {
+		publishIngested(ingest)
+		// one processing pass can release hundreds of held rcon events at once
+		await Timers.setImmediate()
+	}
+	return event
+}
+
+function publishIngested(ingest: EventIngest) {
+	const writes = ingest.writes
+	const events = ingest.unpublished
+	if (!writes) return
+	ingest.writes = null
+	ingest.unpublished = []
+	try {
+		writes.commit()
+	} catch (err) {
+		log.error(err, 'failed to commit %d server events, so they are not published', events.length)
+		return
+	}
+	for (const event of events) {
 		// the single funnel for every server event, whatever produced it
 		serverEventCounter.add(1, {
-			[ATTRS.SquadServer.ID]: ctx.serverId,
+			[ATTRS.SquadServer.ID]: ingest.serverId,
 			[ATTRS.ServerEvent.TYPE]: event.type,
 		})
-		ctx.server.event$.emit(event)
+		ingest.event$.emit(event)
+	}
+}
+
+// a hook that reaches rcon or opens a transaction of its own cannot run while a batch holds the transaction lock
+function publishingFirst<Args extends unknown[], R>(ingest: EventIngest, hook: (...args: Args) => Promise<R>) {
+	return (...args: Args) => {
+		publishIngested(ingest)
+		return hook(...args)
 	}
 }
 
@@ -1859,6 +1950,26 @@ export function ctx$(wsClientId: string, serverId: string) {
 
 export type ManagedServerCtx = NonNullable<Rx.ObservedValueOf<ReturnType<typeof ctx$>>>
 
+// A stream whose value is the same for every client, built once per managed server and shared by every watcher, so the
+// reads and comparisons behind it run once per change rather than once per client. Never for anything filtered by the
+// caller's permissions. Keyed by the managed server object, so a server that restarts builds its streams afresh.
+const sharedStreams = new WeakMap<C.ManagedServer, Map<string, Rx.Observable<unknown>>>()
+function sharedForServer<T>(serverId: string, key: string, build: (ctx: C.ManagedServer & C.Db) => Rx.Observable<T>): Rx.Observable<T> {
+	const managedServer = globalState.managedServers.get(serverId)
+	if (!managedServer) return Rx.EMPTY
+	let streams = sharedStreams.get(managedServer)
+	if (!streams) {
+		streams = new Map()
+		sharedStreams.set(managedServer, streams)
+	}
+	let shared = streams.get(key) as Rx.Observable<T> | undefined
+	if (!shared) {
+		shared = build({ ...getBaseCtx(), ...managedServer }).pipe(Rx.shareReplay({ bufferSize: 1, refCount: true }))
+		streams.set(key, shared)
+	}
+	return shared
+}
+
 // the only way an oRPC stream should resolve a managed server. While the managed server is absent the stream emits err:server-not-loaded
 // rather than going silent (a silent stream leaves the client suspended forever), and it switches over to the real
 // source as soon as the managed server appears -- so a server being enabled, or coming back after a crash, self-heals.
@@ -1968,301 +2079,6 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 		.filter((e): e is AppEvents.AppEvent => e !== null && AppEvents.isFeedVisible(e))
 })
 
-// index entries before their blueprint names have been resolved to damageSources rows, which needs the db
-type Interned = { damageSource: string | null; target: string | null }
-type PendingIndexRow = Omit<SchemaModels.NewPlayerEventIndexEntry, 'damageSourceId' | 'targetId'> & Interned
-type PendingEventIndexRow = Omit<SchemaModels.NewServerEventIndexEntry, 'damageSourceId' | 'targetId'> & Interned
-
-// the rows that hang off an event, and so can only be built once the insert has allocated its id
-type EventAssociationRows = {
-	eventIndexRow: PendingEventIndexRow
-	playerRows: SchemaModels.NewPlayer[]
-	playerIndexRows: PendingIndexRow[]
-	squadRows: SchemaModels.NewSquad[]
-	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
-	chatSearchRow?: { message: string; serverEventId: number; playerId: string; matchId: number; serverId: string; time: number }
-}
-
-function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
-	const persisted = Obj.omit(event, ['type', 'time', 'matchId'])
-	// queryable projection of source when it links to an app event
-	const source = (event as { source?: { type: string; id?: string } }).source
-	return {
-		type: event.type,
-		time: new Date(event.time),
-		matchId: event.matchId,
-		appEventId: source?.type === 'event' ? source.id! : null,
-		data: superjson.serialize(persisted),
-	}
-}
-
-function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): EventAssociationRows {
-	const target = SE.isTargetedEvent(event) ? SE.targetOf(event) : null
-	const eventIndexRow: PendingEventIndexRow = {
-		serverEventId: event.id,
-		time: new Date(event.time),
-		matchId: event.matchId,
-		serverId,
-		type: event.type,
-		// the event model calls this `weapon` because the log line does; see the damageSourceId comment in
-		// the schema for why the projection does not. Resolved to a damageSources row by insertAssociationRows.
-		damageSource: 'weapon' in event ? event.weapon : null,
-		variant: 'variant' in event ? event.variant : null,
-		channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
-		target: target?.className ?? null,
-		targetType: target?.targetType ?? null,
-	}
-	const playerRows: SchemaModels.NewPlayer[] = []
-	const playerIndexRows: PendingIndexRow[] = []
-	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
-		let playerId: SM.PlayerId
-		if (typeof player === 'object') {
-			playerRows.push({
-				steamId: player.ids.steam ? BigInt(player.ids.steam) : null,
-				eosId: player.ids.eos,
-				username: player.ids.username,
-				usernameNoTag: player.ids.usernameNoTag,
-				epicId: player.ids.epic,
-			})
-			playerId = SM.PlayerIds.getPlayerId(player.ids)
-		} else {
-			playerId = player
-		}
-		playerIndexRows.push({
-			playerId,
-			time: new Date(event.time),
-			serverEventId: event.id,
-			assocType,
-			matchId: event.matchId,
-			serverId,
-			type: event.type,
-			damageSource: eventIndexRow.damageSource,
-			variant: eventIndexRow.variant,
-			channel: eventIndexRow.channel,
-			target: eventIndexRow.target,
-			targetType: eventIndexRow.targetType,
-		})
-	}
-
-	const squadRows: SchemaModels.NewSquad[] = []
-	const squadAssociationRows: SchemaModels.NewSquadEventAssociation[] = []
-	for (const squad of SE.iterAssocUniqueSquads(ctx, event)) {
-		let uniqueSquadId: number
-		if (typeof squad === 'object') {
-			squadRows.push({
-				id: squad.uniqueId,
-				ingameSquadId: squad.squadId,
-				name: squad.squadName,
-				creatorId: squad.creator,
-				teamId: squad.teamId,
-				matchId: event.matchId,
-			})
-			uniqueSquadId = squad.uniqueId
-		} else {
-			uniqueSquadId = squad
-		}
-		squadAssociationRows.push({ squadId: uniqueSquadId, serverEventId: event.id })
-	}
-
-	const chatSearchRow =
-		event.type === 'CHAT_MESSAGE'
-			? {
-					message: event.message,
-					serverEventId: event.id,
-					playerId: event.player,
-					matchId: event.matchId,
-					serverId,
-					time: event.time,
-				}
-			: undefined
-
-	return { eventIndexRow, playerRows, playerIndexRows, squadRows, squadAssociationRows, chatSearchRow }
-}
-
-// blueprint name -> damageSources.id. Process-wide and never invalidated: the table is append-only and an id
-// is never reused, so a name seen once is correct for the life of the process. An install sees a couple of
-// thousand distinct names, so this settles quickly and takes the lookup off the per-kill path.
-const damageSourceIdCache = new Map<string, number>()
-
-async function internDamageSources(ctx: C.Db, names: (string | null)[]): Promise<Map<string, number>> {
-	const wanted = new Set(names.filter((n): n is string => n !== null && !damageSourceIdCache.has(n)))
-	if (wanted.size > 0) {
-		// returning() rather than a separate select: on conflict the row already exists but returns nothing,
-		// so the select afterwards covers both the rows this inserted and the ones it raced with
-		await ctx
-			.db()
-			.insert(Schema.damageSources)
-			.values([...wanted].map((name) => ({ name })))
-			.onConflictDoNothing({ target: Schema.damageSources.name })
-		const rows = await ctx
-			.db()
-			.select()
-			.from(Schema.damageSources)
-			.where(E.inArray(Schema.damageSources.name, [...wanted]))
-		for (const row of rows) damageSourceIdCache.set(row.name, row.id)
-	}
-	return damageSourceIdCache
-}
-
-async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
-	const { damageSource, target, ...eventIndexRow } = rows.eventIndexRow
-	const sourceIds = await internDamageSources(ctx, [damageSource, target])
-	const idOf = (name: string | null) => (name === null ? null : sourceIds.get(name)!)
-	await ctx
-		.db()
-		.insert(Schema.serverEventIndex)
-		.values({ ...eventIndexRow, damageSourceId: idOf(damageSource), targetId: idOf(target) })
-		.onConflictDoNothing({ target: Schema.serverEventIndex.serverEventId })
-
-	if (rows.playerRows.length > 0) {
-		await ctx
-			.db()
-			.insert(Schema.players)
-			.values(rows.playerRows)
-			.onConflictDoUpdate({
-				target: Schema.players.eosId,
-				set: {
-					steamId: sql`excluded.steamId`,
-					// a join log only knows the tagless name, and reports it as the username too. Keep the stored
-					// tagged username while it still ends in that name.
-					username: sql`CASE WHEN excluded.username = excluded.usernameNoTag AND substr(${Schema.players.username}, -length(excluded.username)) = excluded.username THEN ${Schema.players.username} ELSE excluded.username END`,
-					// polled players never carry it, so only a join log may set it
-					usernameNoTag: sql`coalesce(excluded.usernameNoTag, ${Schema.players.usernameNoTag})`,
-					modifiedAt: new Date(),
-				},
-			})
-	}
-
-	if (rows.playerIndexRows.length > 0) {
-		const insertedEosIds = new Set(rows.playerRows.map((p) => p.eosId))
-		const playersToLookup = [...new Set(rows.playerIndexRows.map((r) => r.playerId).filter((id) => !insertedEosIds.has(id)))]
-		let existingIds = new Set<SM.PlayerId>()
-		if (playersToLookup.length > 0) {
-			const existingPlayers = await ctx
-				.db()
-				.select({ eosId: Schema.players.eosId })
-				.from(Schema.players)
-				.where(E.inArray(Schema.players.eosId, playersToLookup))
-			existingIds = new Set(existingPlayers.map((p) => p.eosId))
-		}
-		const validRows = rows.playerIndexRows.filter((r) => {
-			if (insertedEosIds.has(r.playerId)) return true
-			if (existingIds.has(r.playerId)) return true
-			log.error('skipping playerEventIndex entry for unknown player %s (event %d)', r.playerId, r.serverEventId)
-			return false
-		})
-		if (validRows.length > 0) {
-			await ctx
-				.db()
-				.insert(Schema.playerEventIndex)
-				.values(
-					validRows.map(({ damageSource, target, ...row }) => ({
-						...row,
-						damageSourceId: idOf(damageSource),
-						targetId: idOf(target),
-					})),
-				)
-				.onConflictDoNothing({
-					target: [
-						Schema.playerEventIndex.playerId,
-						Schema.playerEventIndex.time,
-						Schema.playerEventIndex.serverEventId,
-						Schema.playerEventIndex.assocType,
-					],
-				})
-		}
-	}
-
-	if (rows.squadRows.length > 0) {
-		// creatorId references players.eosId, but the creator may have left before we ever persisted them (e.g. a
-		// squad snapshotted or synthesized from a poll). Null the reference out rather than failing the whole event.
-		const insertedEosIds = new Set(rows.playerRows.map((p) => p.eosId))
-		const creatorsToLookup = [
-			...new Set(rows.squadRows.map((s) => s.creatorId).filter((id): id is string => !!id && !insertedEosIds.has(id))),
-		]
-		let knownCreatorIds = new Set<string>()
-		if (creatorsToLookup.length > 0) {
-			const existingPlayers = await ctx
-				.db()
-				.select({ eosId: Schema.players.eosId })
-				.from(Schema.players)
-				.where(E.inArray(Schema.players.eosId, creatorsToLookup))
-			knownCreatorIds = new Set(existingPlayers.map((p) => p.eosId))
-		}
-		const squadRows = rows.squadRows.map((s) => {
-			if (!s.creatorId || insertedEosIds.has(s.creatorId) || knownCreatorIds.has(s.creatorId)) return s
-			log.warn({ squadId: s.id, creatorId: s.creatorId }, 'squad creator not in players table; inserting with null creatorId')
-			return { ...s, creatorId: null }
-		})
-		await ctx
-			.db()
-			.insert(Schema.squads)
-			.values(squadRows)
-			.onConflictDoUpdate({
-				target: Schema.squads.id,
-				set: {
-					ingameSquadId: sql`excluded.ingameSquadId`,
-					teamId: sql`excluded.teamId`,
-					name: sql`excluded.name`,
-					creatorId: sql`excluded.creatorId`,
-					matchId: sql`excluded.matchId`,
-				},
-			})
-	}
-
-	// chat text goes into the standalone fts index at insert time, so it survives the compaction that
-	// deletes the event it came from. Not awaited because run() on the better-sqlite3 driver executes
-	// synchronously and returns no thenable.
-	if (rows.chatSearchRow) {
-		const r = rows.chatSearchRow
-		ctx.db().run(
-			ctx
-				.db()
-				.insert(Schema.Virtual.chatSearch)
-				.values({ ...r, time: new Date(r.time) })
-				.getSQL(),
-		)
-	}
-
-	if (rows.squadAssociationRows.length > 0) {
-		await ctx
-			.db()
-			.insert(Schema.squadEventAssociations)
-			.values(rows.squadAssociationRows)
-			.onConflictDoNothing({
-				target: [Schema.squadEventAssociations.serverEventId, Schema.squadEventAssociations.squadId],
-			})
-	}
-}
-
-// Persists a single event and returns it with the id the insert allocated -- the createEvent hook every event
-// PendingEvents emits goes through. serverEvents.id is autoincrement, so the db, not the app, hands out ids and
-// they can't drift from what's on disk.
-//
-// One transaction per event: a statement that throws (a constraint violation, a bad steamId, an unknown-player
-// FK) rolls back only this event, and the throw propagates so the caller never emits an event we failed to
-// record. PendingEvents.process() logs it and moves on to the next pending event.
-const createEvent =
-	(serverId: string): PendingEvents.State['hooks']['createEvent'] =>
-	async (newEvent) => {
-		const ctx = resolveCtx(getBaseCtx(), serverId)
-		return Instr.spanOp(
-			'createEvent',
-			{ module },
-			async () =>
-				await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-					const [inserted] = await ctx
-						.db()
-						.insert(Schema.serverEvents)
-						.values(buildEventRow(newEvent))
-						.returning({ id: Schema.serverEvents.id })
-					const event = { ...newEvent, id: inserted.id } as SE.Event
-					await insertAssociationRows(ctx, buildAssociationRows({ ...ctx, log }, serverId, event))
-					return event
-				}),
-		)()
-	}
-
 const onNewGameDuringSync =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] =>
 	async (currentLayerId, _time) => {
@@ -2301,61 +2117,87 @@ const onNewGameDuringSync =
 		)()
 	}
 
+// Records the roll and returns once the match row, the queue shift and any generation are committed. The writes of
+// the new queue head to the game server are round trips, and the roll is reached from inside event processing, so
+// running them here would stall every server event and every match history reader for their duration. They run
+// after the roll has released its locks, serialized behind updateLayerMtx like any other write. The rolling flag
+// stays up until they have finished, as it marks the window in which the server's next layer is SLM's to set.
 const onNewGameDuringRoll =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] =>
 	async (newLayerId, time) => {
 		const ctx = resolveCtx(getBaseCtx(), serverId)
-		return Instr.spanOp(
-			'onNewGameDuringRoll',
-			{
-				module,
-				mutexes: () => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
-				levels: { event: 'info' },
-			},
-			async () => {
-				ctx.server.serverRolling$.next(Date.now())
-				try {
-					const { match } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-						const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
-
-						// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
-						// started and never set the head as next. Attributing the match to the head would also consume it
-						// for a layer it had no part in choosing.
-						const pickedByIngameVote = ctx.layerQueue.ingameVote$.getValue() !== null
-
-						let currentMatchLqItem: LL.Item | undefined
-						if (!pickedByIngameVote && nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
-							currentMatchLqItem = nextLqItem
-						}
-						// the new match must be recorded before the queue shift: emptying the queue triggers generation,
-						// whose do-not-repeat lookback must see the layer that just started playing
-						const { match } = await MatchHistory.addNewCurrentMatch(
-							ctx,
-							MH.getNewMatchHistoryEntry({
-								layerId: newLayerId,
-								serverId: ctx.serverId,
-								startTime: new Date(time),
-								lqItem: currentMatchLqItem,
-								source: pickedByIngameVote ? { type: 'ingame-vote' } : undefined,
-							}),
-						)
-						if (currentMatchLqItem) {
-							await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
-						}
-						LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-						return { match }
-					})
-					// after the transaction, not inside it: emptying the queue defers generation to the transaction's
-					// unlockTasks, which runTransaction awaits before resolving. Read any earlier and the queue is still
-					// empty. The rolling flag likewise stays up until generation has landed.
-					const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
-					return { match, nextLayerId }
-				} finally {
-					ctx.server.serverRolling$.next(null)
-				}
-			},
-		)()
+		ctx.server.serverRolling$.next(Date.now())
+		let serverSyncs: (() => Promise<void>)[] = []
+		try {
+			const res = await recordRoll(ctx, newLayerId, time)
+			serverSyncs = res.serverSyncs
+			return { match: res.match, nextLayerId: res.nextLayerId }
+		} finally {
+			if (serverSyncs.length === 0) ctx.server.serverRolling$.next(null)
+			// outside the roll's mutex context, so each sync takes updateLayerMtx for itself
+			else isolateCb(() => void runServerSyncsAfterRoll(ctx, serverSyncs))
+		}
 	}
+
+async function runServerSyncsAfterRoll(ctx: SQS.Ctx, serverSyncs: (() => Promise<void>)[]) {
+	try {
+		for (const sync of serverSyncs) await sync()
+	} catch (err) {
+		if (!Prom.isAbortError(err)) log.error(err, 'syncing the next layer after a roll failed')
+	} finally {
+		ctx.server.serverRolling$.next(null)
+	}
+}
+
+const recordRoll = Instr.spanOp(
+	'onNewGameDuringRoll',
+	{
+		module,
+		mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
+		levels: { event: 'info' },
+	},
+	async (ctx: C.ManagedServer & C.Db & CS.AbortSignal, newLayerId: L.LayerId, time: number) => {
+		ctx.layerQueue.deferredServerSyncs = []
+		try {
+			const { match } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+				const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
+
+				// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
+				// started and never set the head as next. Attributing the match to the head would also consume it
+				// for a layer it had no part in choosing.
+				const pickedByIngameVote = ctx.layerQueue.ingameVote$.getValue() !== null
+
+				let currentMatchLqItem: LL.Item | undefined
+				if (!pickedByIngameVote && nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+					currentMatchLqItem = nextLqItem
+				}
+				// the new match must be recorded before the queue shift: emptying the queue triggers generation,
+				// whose do-not-repeat lookback must see the layer that just started playing
+				const { match } = await MatchHistory.addNewCurrentMatch(
+					ctx,
+					MH.getNewMatchHistoryEntry({
+						layerId: newLayerId,
+						serverId: ctx.serverId,
+						startTime: new Date(time),
+						lqItem: currentMatchLqItem,
+						source: pickedByIngameVote ? { type: 'ingame-vote' } : undefined,
+					}),
+				)
+				if (currentMatchLqItem) {
+					await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+				}
+				LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+				return { match }
+			})
+			// after the transaction, not inside it: emptying the queue defers generation to the transaction's
+			// unlockTasks, which runTransaction awaits before resolving. Read any earlier and the queue is still empty.
+			const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
+			return { match, nextLayerId, serverSyncs: ctx.layerQueue.deferredServerSyncs }
+		} finally {
+			ctx.layerQueue.deferredServerSyncs = null
+		}
+	},
+)
 
 export async function waitForSynced(ctx: SQS.Ctx & CS.AbortSignal) {
 	if (ctx.server.eventState.syncState.type === 'synced') return

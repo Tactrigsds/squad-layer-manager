@@ -410,6 +410,9 @@ export namespace Sel {
 	export function stepIdx(s: TourStore): number | undefined {
 		return s.state.code === 'idle' ? undefined : s.state.stepIdx
 	}
+	export function overlayShown(s: TourStore) {
+		return s.state.code !== 'idle' || s.starting !== null
+	}
 }
 
 // ============================== engine ==============================
@@ -433,6 +436,24 @@ export type ScenarioClientDef = { steps: Step[] | (() => Step[] | Promise<Step[]
 const scenarios = new Map<TUT.ScenarioId, ScenarioClientDef>()
 export function registerScenario(scenarioId: TUT.ScenarioId, def: ScenarioClientDef) {
 	scenarios.set(scenarioId, def)
+}
+
+// The steps files reach into most of the app's views, so they are fetched when a run starts rather than at boot.
+const SCENARIO_MODULES: Record<TUT.ScenarioId, () => Promise<unknown>> = {
+	'layer-queue': () => import('@/systems/tutorials/layer-queue.steps'),
+	'player-management': () => import('@/systems/tutorials/player-management.steps'),
+}
+const scenarioLoads = new Map<TUT.ScenarioId, Promise<unknown>>()
+function loadScenario(scenarioId: TUT.ScenarioId): Promise<unknown> {
+	let load = scenarioLoads.get(scenarioId)
+	if (!load) {
+		load = SCENARIO_MODULES[scenarioId]().catch((err: unknown) => {
+			scenarioLoads.delete(scenarioId)
+			throw err
+		})
+		scenarioLoads.set(scenarioId, load)
+	}
+	return load
 }
 
 // accessors for the overlay: the run's data sources and the step being narrated. Not reactive themselves; the
@@ -619,6 +640,7 @@ function reconcilePause() {
 // Attach the engine to a run's server and put the reader on its dashboard. Everything a run needs that is not the
 // server itself: the resolved step list, the pause watcher, the presence the dashboard route races.
 async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
+	await loadScenario(scenarioId)
 	const def = scenarios.get(scenarioId)
 	if (!def) throw new Error(`no steps registered for tutorial ${scenarioId}`)
 	const run = acquireRun(serverId)
@@ -634,6 +656,8 @@ async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
 
 async function doStart(scenarioId: TUT.ScenarioId) {
 	Store.setState({ starting: scenarioId })
+	// fetched while the server stands the run up; attach awaits it
+	void loadScenario(scenarioId).catch(() => {})
 	try {
 		if (active) await doExit()
 		const res = await TutorialsClient.Actions.start(scenarioId)

@@ -819,3 +819,183 @@ describe('Wire codec', () => {
 		expect(CHAT.Wire.encode(buffer).events).toContain(polled)
 	})
 })
+
+describe('copy-on-write batches', () => {
+	function seededState(players: SM.Player[]): CHAT.ChatState {
+		const state = CHAT.getInitialChatState()
+		const teams = SM.toLiveTeams({ players, squads: [makeSquad(1, 1, 'a', 10)] })
+		state.interpolatedState.players = teams.players
+		state.interpolatedState.squads = teams.squads
+		for (const player of players) CHAT.InterpolableState.recordRecentPlayer(state.interpolatedState, player)
+		return state
+	}
+
+	// the way the client applies a batch: a fresh copy-on-write state, then every event in it
+	function applyBatch(state: CHAT.ChatState, events: CHAT.Event[]) {
+		const before = state.interpolatedState
+		state.interpolatedState = CHAT.InterpolableState.beginBatch(before)
+		for (const event of events) CHAT.handleEvent(state, event)
+		return before
+	}
+
+	function chat(player: SM.PlayerId, id: number): SE.ChatMessage {
+		return { type: 'CHAT_MESSAGE', id, time: 100 + id, matchId: 1, player, message: 'hi', channel: { type: 'ChatAll' } }
+	}
+	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number): SE.PlayerDied {
+		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId: 1, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+	}
+	function changedTeam(player: SM.PlayerId, id: number): SE.PlayerChangedTeam {
+		return { type: 'PLAYER_CHANGED_TEAM', id, time: 100 + id, matchId: 1, player, newTeamId: 2 }
+	}
+
+	it('keeps every collection when a batch writes none of them', () => {
+		const state = seededState([makePlayer('a'), makePlayer('b')])
+		const before = applyBatch(state, [chat('a', 1), chat('b', 2)])
+		const after = state.interpolatedState
+
+		expect(after).not.toBe(before)
+		expect(after.players).toBe(before.players)
+		expect(after.squads).toBe(before.squads)
+		expect(after.recentPlayers).toBe(before.recentPlayers)
+		expect(after.recentSquads).toBe(before.recentSquads)
+		expect(after.playerStats).toBe(before.playerStats)
+		expect(after.adminCamPlayerIds).toBe(before.adminCamPlayerIds)
+	})
+
+	it('copies only the collections a batch writes, and leaves the previous state as it was', () => {
+		const state = seededState([makePlayer('a'), makePlayer('b')])
+		const before = applyBatch(state, [died('b', 'a', 1), died('a', 'b', 2)])
+		const after = state.interpolatedState
+
+		expect(after.playerStats).not.toBe(before.playerStats)
+		expect(after.playerStats['a']).toEqual({ kills: 1, wounds: 0, deaths: 1, teamkills: 0 })
+		expect(before.playerStats).toEqual({})
+		expect(after.players).toBe(before.players)
+		expect(after.recentPlayers).toBe(before.recentPlayers)
+	})
+
+	it('copies a collection once per batch however often the batch writes it', () => {
+		const state = seededState([makePlayer('a'), makePlayer('b')])
+		const before = applyBatch(state, [changedTeam('a', 1)])
+		const afterFirst = state.interpolatedState.players
+		CHAT.handleEvent(state, changedTeam('b', 2))
+
+		expect(state.interpolatedState.players).toBe(afterFirst)
+		expect(before.players.get('a')!.teamId).toBe(1)
+		expect(before.players.get('b')!.teamId).toBe(1)
+		expect(state.interpolatedState.players.get('b')!.teamId).toBe(2)
+	})
+
+	it('keeps the roster when a reconcile reports nothing new about a known player', () => {
+		const a = makePlayer('a')
+		const state = seededState([a])
+		const before = applyBatch(state, [{ type: 'PLAYER_RECONCILED', id: 1, time: 101, matchId: 1, player: { ...a } }])
+
+		expect(state.interpolatedState.players).toBe(before.players)
+	})
+})
+
+describe('live buffer match pruning', () => {
+	function connected(player: SM.Player, id: number, matchId: number): SE.PlayerConnected {
+		return { type: 'PLAYER_CONNECTED', id, time: 100 + id, matchId, player }
+	}
+	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number, matchId: number): SE.PlayerDied {
+		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+	}
+	function rconConnected(id: number, matchId: number, reconnected: boolean): SE.RconConnected {
+		return { type: 'RCON_CONNECTED', id, time: 100 + id, matchId, reconnected }
+	}
+	function newGame(id: number, matchId: number): SE.NewGame {
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId, source: 'server-roll', layerId: 'l1' }
+	}
+
+	function playedMatch() {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, rconConnected(1, 1, false))
+		CHAT.handleEvent(state, connected(makePlayer('a', { teamId: 1 }), 2, 1))
+		CHAT.handleEvent(state, connected(makePlayer('b', { teamId: 2 }), 3, 1))
+		CHAT.handleEvent(state, died('b', 'a', 4, 1))
+		return state
+	}
+
+	it('drops the previous match at a NEW_GAME, keeping entries of the new match that came before it', () => {
+		const state = playedMatch()
+		CHAT.handleEvent(state, rconConnected(5, 2, true))
+		const epoch = state.bufferEpoch
+		CHAT.handleEvent(state, newGame(6, 2))
+
+		expect(state.eventBuffer.map((e) => e.id)).toEqual([5, 6])
+		expect(state.bufferEpoch).toBe(epoch + 1)
+		expect(CHAT.lastServerEventId(state.eventBuffer)).toBe(6)
+	})
+
+	it('scopes the combat tally and the fresh-connection marker to the new match', () => {
+		const state = playedMatch()
+		expect(state.freshConnectionMatchId).toBe(1)
+		expect(state.combatTally).toEqual({
+			matchId: 1,
+			stats: { team1: { kills: 1, wounds: 0, deaths: 0 }, team2: { kills: 0, wounds: 0, deaths: 1 } },
+		})
+
+		CHAT.handleEvent(state, newGame(5, 2))
+		expect(state.freshConnectionMatchId).toBeNull()
+		expect(state.combatTally).toBeNull()
+
+		CHAT.handleEvent(state, died('a', 'b', 6, 2))
+		expect(state.combatTally?.matchId).toBe(2)
+		expect(state.combatTally?.stats.team2.kills).toBe(1)
+	})
+
+	it('keeps the fresh-connection marker through the NEW_GAME of the match it found', () => {
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, rconConnected(1, 7, false))
+		CHAT.handleEvent(state, newGame(2, 7))
+		expect(state.freshConnectionMatchId).toBe(7)
+	})
+})
+
+describe('createBufferFilter', () => {
+	function connected(player: SM.Player, id: number): SE.PlayerConnected {
+		return { type: 'PLAYER_CONNECTED', id, time: 100 + id, matchId: 1, player }
+	}
+	const isEven = (e: CHAT.EventEnriched) => typeof e.id === 'number' && e.id % 2 === 0
+
+	it('scans only what was appended, and keeps its result while nothing new is kept', () => {
+		const state = CHAT.getInitialChatState()
+		const filter = CHAT.createBufferFilter()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		const first = filter(state, isEven, [])
+		expect(first.map((e) => e.id)).toEqual([2])
+
+		const seen: unknown[] = []
+		CHAT.handleEvent(state, connected(makePlayer('c'), 3))
+		const second = filter(
+			state,
+			(e) => {
+				seen.push(e.id)
+				return isEven(e)
+			},
+			[],
+		)
+		expect(seen).toEqual([3])
+		expect(second).toBe(first)
+
+		CHAT.handleEvent(state, connected(makePlayer('d'), 4))
+		expect(filter(state, isEven, []).map((e) => e.id)).toEqual([2, 4])
+	})
+
+	it('rescans when the buffer changes other than by appending, or when its deps change', () => {
+		const state = CHAT.getInitialChatState()
+		const filter = CHAT.createBufferFilter()
+		CHAT.handleEvent(state, connected(makePlayer('a'), 1))
+		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
+		expect(filter(state, isEven, ['x']).map((e) => e.id)).toEqual([2])
+
+		expect(filter(state, () => true, ['y']).map((e) => e.id)).toEqual([1, 2])
+
+		state.eventBuffer.shift()
+		state.bufferEpoch++
+		expect(filter(state, () => true, ['y']).map((e) => e.id)).toEqual([2])
+	})
+})

@@ -222,11 +222,31 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 	}
 }
 
+// The join is the same for every watcher, and a permission change re-runs every affected watcher at once, so it is read
+// once per change to the timeouts and filtered per caller. Subscribed at module load, ahead of any watcher, so the
+// cache is dropped before a watcher reacts to the same change.
+let activeTimeouts: Promise<ActiveTimeoutRow[]> | null = null
+update$.subscribe(() => (activeTimeouts = null))
+function cachedActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]> {
+	if (activeTimeouts) return activeTimeouts
+	const read = listActiveTimeouts(ctx).catch((err: unknown) => {
+		if (activeTimeouts === read) activeTimeouts = null
+		throw err
+	})
+	activeTimeouts = read
+	return read
+}
+
 // A timeout names the player, the admin who issued it and why, so it is shown only to those who can see the server that
 // issued it. One whose server is gone is shown to anyone who can see any server.
 async function listVisibleActiveTimeouts(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<ActiveTimeoutRow[]> {
-	const [rows, canAccess] = await Promise.all([listActiveTimeouts(ctx), Rbac.getUserAccessCheck(ctx)])
-	return rows.filter((row) => canAccess(row.issuedServerId === null ? RBAC.Req.viewAnyServer() : RBAC.Req.viewServer(row.issuedServerId)))
+	const [rows, canAccess] = await Promise.all([cachedActiveTimeouts(ctx), Rbac.getUserAccessCheck(ctx)])
+	const now = Date.now()
+	return rows.filter(
+		(row) =>
+			row.expiresAt.getTime() > now &&
+			canAccess(row.issuedServerId === null ? RBAC.Req.viewAnyServer() : RBAC.Req.viewServer(row.issuedServerId)),
+	)
 }
 
 export const router = {
@@ -287,7 +307,7 @@ export const router = {
 			if (teamsRes.code !== 'ok') return teamsRes
 			const target =
 				SM.PlayerIds.find(teamsRes.players, (p) => p.ids, input.playerId) ??
-				CHAT.InterpolableState.findRecentPlayer(ctx.server.chatState.interpolatedState, { eos: input.playerId })
+				CHAT.InterpolableState.findRecentPlayer(ctx.server.chatInterpolatedState, { eos: input.playerId })
 			if (!target) return { code: 'err:player-not-found' as const, msg: 'Player has not been on the server this match' }
 			return await kickWithTimeout(ctx, {
 				target,

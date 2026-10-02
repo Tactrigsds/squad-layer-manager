@@ -54,9 +54,11 @@ export function initServerSettings(args: Args) {
 		args.update$.subscribe(([storeState, storePrevState]) => {
 			const state = storeState.settings
 			const prevState = storePrevState.settings
-			const modified = !Obj.deepEqual(state.edited, state.saved)
-			if (modified !== state.modified) {
-				set({ modified })
+			if (state.edited !== prevState.edited || state.saved !== prevState.saved) {
+				const modified = !Obj.deepEqual(state.edited, state.saved)
+				if (modified !== state.modified) {
+					set({ modified })
+				}
 			}
 			if (state.edited !== prevState.edited) {
 				const parseRes = SETTINGS.PublicServerSettingsSchema.safeParse(state.edited)

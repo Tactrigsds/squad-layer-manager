@@ -276,8 +276,8 @@ export type State = {
 		// settings change applies straight away
 		skipDestroyedOnTrainingLayers: () => boolean
 		// Persists the event and returns it with the id the insert allocated. Every event this module emits goes
-		// through here first, so an event is on disk before any consumer (or our own state) ever sees it, and ids
-		// are handed out in emission order.
+		// through here first, so an event is written before our own state sees it and committed before any consumer
+		// does, and ids are handed out in emission order.
 		createEvent: (event: SE.NewEvent) => Promise<SE.Event>
 	}
 
@@ -349,6 +349,12 @@ export function init(opts: {
 
 export function pushAttribution(state: State, attribution: Omit<Attribution, 'time'>) {
 	state.attributions.push({ ...attribution, time: Date.now() })
+}
+
+// for a set-next the server refused, whose attribution was pushed before the command was sent
+export function withdrawAttribution(state: State, itemId: string, layerId: L.LayerId) {
+	const index = state.attributions.findIndex((a) => a.itemId === itemId && a.layerId === layerId)
+	if (index !== -1) state.attributions.splice(index, 1)
 }
 
 export function pushExpectation(state: State, expectation: EventExpectation) {
@@ -533,6 +539,13 @@ export async function* process(state: State, time: number): AsyncGenerator<SE.Ev
 		}
 	} else {
 		state.nonSyncedSince = null
+	}
+
+	// rcon and teams events wait for a log line to order them against. Until the first one arrives they would pile up
+	// without bound, and any older than the stale cutoff would be dropped on processing anyway.
+	if (state.lastKnownLogEventTime === null) {
+		state.eventBufs.rconEmittedEvents = state.eventBufs.rconEmittedEvents.filter((e) => !isStale(e, time))
+		state.eventBufs.teamsUpdates = state.eventBufs.teamsUpdates.filter((e) => !isStale(e, time))
 	}
 
 	const toProcess: PendingEvent[] = []
@@ -757,6 +770,11 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 	}
 }
 
+const STALE_EVENT_MS = 45_000
+function isStale(event: { time: number }, time: number) {
+	return event.time < time - STALE_EVENT_MS
+}
+
 async function* processPendingEvent(
 	state: State,
 	processedEventIds: Set<number>,
@@ -769,7 +787,7 @@ async function* processPendingEvent(
 		log.debug('Attempting to process raw event %s (%s)', pendingEvent.type, pendingEvent.id)
 	}
 
-	if (pendingEvent.time < time - 45_000) {
+	if (isStale(pendingEvent, time)) {
 		state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)
 		processedEventIds.add(pendingEvent.id)
 		return

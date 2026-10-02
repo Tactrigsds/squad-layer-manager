@@ -6,10 +6,10 @@ import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
-import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -49,10 +49,6 @@ export type State = ChatPrt.Store &
 
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
-		// player ids currently on screen (after search/filters) in the teams-panel tables, keyed per table so each
-		// team/combined table publishes its own displayed rows independently. Selection-adding actions intersect against
-		// the union so "select all X" only ever draws on what's currently visible.
-		visiblePlayersByTable: Record<string, SM.PlayerId[]>
 		// the selection once it stops moving. drag-to-select writes playerSelection once per row the cursor crosses, and
 		// consumers that do real work per change (the activity feed re-filters its whole event buffer) read this instead.
 		settledSelectedPlayerIds: Set<SM.PlayerId>
@@ -94,7 +90,6 @@ export const frame = frameManager.createFrame<Types>({
 			layerItemStatusesFor: null,
 			savedQueueWarnings: null,
 			playerSelection: {},
-			visiblePlayersByTable: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
 		// after the set above: its sync reads playerSelection on the first update, and every init emits one
@@ -114,16 +109,11 @@ export const frame = frameManager.createFrame<Types>({
 				.subscribe((settledSelectedPlayerIds) => args.set({ settledSelectedPlayerIds })),
 		)
 
-		Rx.combineLatest([
-			args.update$.pipe(
-				Rx.concatMap(([state, prev]): LL.List[] => (state.queue.layerList === prev.queue.layerList ? [] : [state.queue.layerList])),
-			),
-			MatchHistoryClient.recentMatches$(args.input.serverId),
-		]).subscribe(([layerList, recentMatches]) => {
-			args.set({
-				layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
-			})
-		})
+		args.cleanup.push(
+			LayerQueueClient.layerItemsState$(args.input.serverId)
+				.pipe(ReactRx.retryHot())
+				.subscribe((layerItemsState) => args.set({ layerItemsState })),
+		)
 
 		const state$ = Zus.toObservable(args.key, true)
 		args.cleanup.push(
@@ -145,13 +135,11 @@ export const frame = frameManager.createFrame<Types>({
 				.pipe(
 					Rx.debounceTime(250),
 					Rx.switchMap(([list, settings]) =>
-						Rx.from(
-							LayerQueriesClient.fetchLayerItemStatuses({
-								constraints: SETTINGS.getSettingsConstraints(settings),
-								skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-								list,
-							}),
-						).pipe(
+						LayerQueriesClient.layerItemStatuses$({
+							constraints: SETTINGS.getSettingsConstraints(settings),
+							skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
+							list,
+						}).pipe(
 							Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
 							Rx.catchError(() => Rx.EMPTY),
 						),
@@ -163,15 +151,6 @@ export const frame = frameManager.createFrame<Types>({
 		)
 	},
 })
-
-export function getLayerItemState$(squadServer: Key) {
-	const list$ = Zus.toObservable(squadServer, true).pipe(
-		Rx.map(([state]) => state.queue.layerList),
-		Rx.distinctUntilChanged(),
-	)
-	const history$ = MatchHistoryClient.recentMatches$(squadServer.serverId)
-	return Rx.combineLatest([list$, history$]).pipe(Rx.map(([list, history]) => LQY.resolveLayerItemsState(list, history)))
-}
 
 export namespace Sel {
 	export function settings(s: State) {
@@ -270,14 +249,19 @@ function sameSelection(a: Set<SM.PlayerId>, b: Set<SM.PlayerId>): boolean {
 	return true
 }
 
+// Player ids currently on screen (after search/filters) in the teams-panel tables, per frame instance and then per
+// table, so each team/combined table publishes its own displayed rows independently. Selection-adding actions
+// intersect against the union so "select all X" only ever draws on what's currently visible. Kept out of the frame
+// state because only actions read it, and a write there would re-run every subscriber of the frame.
+const visiblePlayersByTable = new WeakMap<object, Map<string, SM.PlayerId[]>>()
+
 // null means no table has registered visible rows, so callers should not constrain to visibility
-function visiblePlayerSet(state: State): Set<SM.PlayerId> | null {
-	const byTable = state.visiblePlayersByTable
-	const keys = Object.keys(byTable)
-	if (keys.length === 0) return null
+function visiblePlayerSet(stores: KeyProp): Set<SM.PlayerId> | null {
+	const byTable = visiblePlayersByTable.get(Zus.resolveReadStore(stores.squadServer!))
+	if (!byTable?.size) return null
 	const set = new Set<SM.PlayerId>()
-	for (const key of keys) {
-		for (const id of byTable[key]) set.add(id)
+	for (const ids of byTable.values()) {
+		for (const id of ids) set.add(id)
 	}
 	return set
 }
@@ -300,7 +284,7 @@ export namespace Actions {
 	// currently visible in the teams panel, so "select all X" respects the active search/filters.
 	export function selectPlayers(stores: KeyProp, playerIds: SM.PlayerId[]) {
 		const s = store(stores)
-		const visible = visiblePlayerSet(s.getState())
+		const visible = visiblePlayerSet(stores)
 		const constrained = visible ? playerIds.filter((id) => visible.has(id)) : playerIds
 		s.setState((state) => ({
 			playerSelection: { ...state.playerSelection, ...Object.fromEntries(constrained.map((id) => [id, true])) },
@@ -417,7 +401,7 @@ export namespace Actions {
 		const state = s.getState()
 		const players = ChatPrt.Sel.players(state)
 		const current = state.playerSelection
-		const visible = visiblePlayerSet(state)
+		const visible = visiblePlayerSet(stores)
 		// without a teamId every on-team player flips and stale entries are dropped; but hidden players
 		// must keep their current selection, so seed from `current` and only overwrite visible rows
 		const next: Record<SM.PlayerId, boolean> = teamId == null && visible == null ? {} : { ...current }
@@ -432,16 +416,14 @@ export namespace Actions {
 	}
 
 	export function setVisiblePlayers(stores: KeyProp, tableKey: string, playerIds: SM.PlayerId[]) {
-		store(stores).setState((state) => ({ visiblePlayersByTable: { ...state.visiblePlayersByTable, [tableKey]: playerIds } }))
+		const frameStore = Zus.resolveReadStore(stores.squadServer!)
+		let byTable = visiblePlayersByTable.get(frameStore)
+		if (!byTable) visiblePlayersByTable.set(frameStore, (byTable = new Map()))
+		byTable.set(tableKey, playerIds)
 	}
 
 	export function clearVisiblePlayers(stores: KeyProp, tableKey: string) {
-		store(stores).setState((state) => {
-			if (!(tableKey in state.visiblePlayersByTable)) return state
-			const visiblePlayersByTable = { ...state.visiblePlayersByTable }
-			delete visiblePlayersByTable[tableKey]
-			return { visiblePlayersByTable }
-		})
+		visiblePlayersByTable.get(Zus.resolveReadStore(stores.squadServer!))?.delete(tableKey)
 	}
 
 	function getEnrichedPlayers(stores: KeyProp): TeamsPanelModels.EnrichedPlayer[] {

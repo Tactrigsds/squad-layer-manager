@@ -388,7 +388,7 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 					className="mt-0.5"
 					checked={checked}
 					disabled={!!api.writeDenied}
-					onCheckedChange={(next) => api.set([], next === true)}
+					onCheckedChange={(next) => api.set([], next)}
 				/>
 			</PermissionDeniedTooltip>
 			<div className="min-w-0 space-y-1">

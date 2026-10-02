@@ -581,7 +581,7 @@ function PluginCommandCard({
 					{tr.text(CMD_Msgs.enabled())}
 				</label>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-					<Checkbox checked={entry.config.quickReference} onCheckedChange={(v) => onPatch({ quickReference: v === true })} />
+					<Checkbox checked={entry.config.quickReference} onCheckedChange={(v) => onPatch({ quickReference: v })} />
 					<span className="flex items-center gap-1">
 						{tr.text(CMD_Msgs.quickReference())}
 						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />

@@ -3,6 +3,8 @@
 import { execFileSync, execSync } from 'child_process'
 import process from 'process'
 
+import { inFlake } from '../scripts/nix-shell.mjs'
+
 // Read the ref information from stdin
 let input = ''
 process.stdin.setEncoding('utf-8')
@@ -88,7 +90,8 @@ process.stdin.on('end', () => {
 		// the integration suite runs the server from source through tsx, but the layer engine is wasm and is
 		// loaded at runtime either way, so it has to be built before anything boots the app.
 		console.log('🦀 Building layer engine...')
-		execSync('pnpm run build:engine', { stdio: 'inherit' })
+		const [engineCmd, engineArgs] = inFlake('pnpm', ['run', 'build:engine'])
+		execFileSync(engineCmd, engineArgs, { stdio: 'inherit' })
 		console.log('✅ Layer engine built\n')
 
 		console.log('✨ All checks passed! Ready to push.')

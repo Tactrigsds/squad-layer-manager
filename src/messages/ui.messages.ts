@@ -38,6 +38,16 @@ export const backToOptions = def('Back to options')
 
 export const nothingSelected = def('No items selected')
 
+// -------- drag and drop --------
+
+// what a screen reader calls a drag handle, in place of "button"
+export const dragRoleDescription = def('draggable')
+
+// read by screen readers on every drag handle
+export const dragInstructions = def(
+	'To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item in a given direction. Press space again to drop the item in its new position, or press escape to cancel.',
+)
+
 // -------- pagination --------
 
 export const pagination = def('pagination')

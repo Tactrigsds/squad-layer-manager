@@ -197,7 +197,9 @@ function validValue(state: SettingsEditor): any {
 
 export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' | 'issues' | 'valid'> {
 	const guiRes = state.mode === 'gui' && state.draft !== undefined ? editSchema(state).safeParse(state.draft) : undefined
-	const issues = guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
+	const parsedIssues = guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
+	// every field reads the issues, so an edit that leaves them unchanged must not hand out a new array
+	const issues = Obj.deepEqual(parsedIssues, state.issues) ? state.issues : parsedIssues
 	const value = state.mode === 'yaml' ? state.yamlValid : guiRes?.success ? guiRes.data : null
 	if (state.kind === 'new-server') {
 		return {

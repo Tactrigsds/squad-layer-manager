@@ -15,6 +15,40 @@ export type EnrichedPlayer = SM.Player & {
 	inAdminCam: boolean
 }
 
+type Enrichment = {
+	profile: BM.PlayerFlagsAndProfile | undefined
+	group: string | undefined
+	stats: CHAT.PlayerStats | undefined
+	inAdminCam: boolean
+	enriched: EnrichedPlayer
+}
+
+// One enriched object per roster entry, reused while its inputs are unchanged, so the teams panel's memoized rows
+// skip every player a kill or a chat message did not touch.
+const enrichments = new WeakMap<SM.Player, Enrichment>()
+
+function enrich(
+	player: SM.Player,
+	profile: BM.PlayerFlagsAndProfile | undefined,
+	group: string | undefined,
+	stats: CHAT.PlayerStats | undefined,
+	inAdminCam: boolean,
+): EnrichedPlayer {
+	const cached = enrichments.get(player)
+	if (cached && cached.profile === profile && cached.group === group && cached.stats === stats && cached.inAdminCam === inAdminCam) {
+		return cached.enriched
+	}
+	const enriched: EnrichedPlayer = {
+		...player,
+		bmProfile: profile ? Obj.omit(profile, ['playerIds']) : undefined,
+		group,
+		stats,
+		inAdminCam,
+	}
+	enrichments.set(player, { profile, group, stats, inAdminCam, enriched })
+	return enriched
+}
+
 export namespace Sel {
 	type Inputs = [
 		store: ChatPrt.Store,
@@ -30,18 +64,22 @@ export namespace Sel {
 		(a, b) => [...a, ...b],
 	)
 
-	export const playersForTeam = RSel.memoizeFactory((teamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createDeepSelector(
+	const teamRoster =
+		(teamId: MH.NormedTeamId | SM.TeamId) =>
+		(...[store, currentMatch]: Inputs) =>
+			ChatPrt.Sel.playersForTeam(teamId)(store, currentMatch)
+
+	// apart from playersForTeam so that a kill, which changes only the stats, does not resolve every group again
+	const groupsForTeam = RSel.memoizeFactory((teamId: MH.NormedTeamId | SM.TeamId) =>
+		RSel.createSelector(
 			[
-				(...[store, currentMatch]: Inputs) => ChatPrt.Sel.playersForTeam(teamId)(store, currentMatch),
-				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).playerStats,
-				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).adminCamPlayerIds,
+				teamRoster(teamId),
 				(...[, , bmData]: Inputs) => bmData,
 				(...[, , , bmStore]: Inputs) => bmStore.selectedGroupingId,
 				(...[, , , bmStore]: Inputs) => bmStore.orgFlags,
 				(...[, , , , settings]: Inputs) => settings?.playerGroupings,
 			],
-			(players, playerStats, adminCamPlayerIds, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
+			(players, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
 				const playerGroupings = settingsGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 				const groupingIds = PG.groupingIdsWithParty(playerGroupings)
 				const activeGroupingId =
@@ -54,20 +92,25 @@ export namespace Sel {
 						const flagIds = bmData[eosId]?.flagIds ?? []
 						return [eosId, PG.playerFacts(p, BM.resolveFlags(flagIds, orgFlags))]
 					})
-				const allGroups = PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
-
-				return players.map((p): EnrichedPlayer => {
-					const playerId = SM.PlayerIds.getPlayerId(p.ids)
-					const profile = bmData[playerId]
-					return {
-						...p,
-						bmProfile: profile ? Obj.omit(profile, ['playerIds']) : undefined,
-						group: allGroups.get(playerId),
-						stats: playerStats[playerId],
-						inAdminCam: adminCamPlayerIds.includes(playerId),
-					}
-				})
+				return PG.resolvePlayerGroups(playerFacts, playerGroupings, activeGroupingId)
 			},
+		),
+	)
+
+	export const playersForTeam = RSel.memoizeFactory((teamId: MH.NormedTeamId | SM.TeamId) =>
+		RSel.createDeepSelector(
+			[
+				teamRoster(teamId),
+				groupsForTeam(teamId),
+				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).playerStats,
+				(...[store]: Inputs) => ChatPrt.Sel.chatState(store).adminCamPlayerIds,
+				(...[, , bmData]: Inputs) => bmData,
+			],
+			(players, groups, playerStats, adminCamPlayerIds, bmData) =>
+				players.map((p) => {
+					const playerId = SM.PlayerIds.getPlayerId(p.ids)
+					return enrich(p, bmData[playerId], groups.get(playerId), playerStats[playerId], adminCamPlayerIds.includes(playerId))
+				}),
 		),
 	)
 }

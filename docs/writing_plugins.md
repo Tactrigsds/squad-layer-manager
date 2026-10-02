@@ -71,7 +71,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.8',
+	apiVersion: '^0.9',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -352,6 +352,16 @@ arguments, shared between every caller that passes equal ones.
 Every procedure declares what its caller needs in `.meta({ access })`, and the host checks it before the handler
 runs. Registering a router with a procedure that declares nothing fails. `context.user` is the signed-in user who
 made the call. See "Permissions" below.
+
+A stream that waits for changes must end when the caller goes away. The handler receives `signal`, which aborts at
+that moment. Pipe the source through `withAbortSignal(signal)` from `slm/lib/rxjs-ext`, which completes it as soon as
+`signal` aborts. Without it, the stream keeps running for a caller that has left, until its source next emits.
+
+```ts
+.handler(async function* ({ context, signal }) {
+	yield* RxExt.toAsyncGenerator(change$.pipe(Rx.map(() => read(context)), RxExt.withAbortSignal(signal!)))
+}),
+```
 
 ## The client entry
 

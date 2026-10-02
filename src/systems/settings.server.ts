@@ -564,6 +564,18 @@ publicSettings$.subscribe()
 
 // ============================== orpc router, organized into subrouters by access level ==============================
 
+// encoded once per change for every editor watching, rather than once per editor
+const maskedGlobalSettings$ = Rx.concat(
+	Rx.defer(() => Rx.of(GLOBAL_SETTINGS)),
+	settings$.pipe(
+		Rx.filter((e) => e.scope === 'global'),
+		Rx.map((e) => e.settings),
+	),
+).pipe(
+	Rx.map((settings) => SETTINGS.maskSecretSettingValue('', SETTINGS.GlobalSettingsSchema.encode(settings))),
+	Rx.shareReplay({ bufferSize: 1, refCount: true }),
+)
+
 // safe for any connected client: no connection details, no per-server admin-only settings
 const publicRouter = {
 	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
@@ -581,15 +593,7 @@ const globalRouter = {
 	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant
 	// for display/editing. A saved secret goes out as a placeholder: the editor can replace it, never read it.
 	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
-		yield* Rx.Ext.toAsyncGenerator(
-			settings$.pipe(
-				Rx.filter((e) => e.scope === 'global'),
-				Rx.map((e) => e.settings),
-				Rx.startWith(GLOBAL_SETTINGS),
-				Rx.map((settings) => SETTINGS.maskSecretSettingValue('', SETTINGS.GlobalSettingsSchema.encode(settings))),
-				Rx.Ext.withAbortSignal(ctx.signal),
-			),
-		)
+		yield* Rx.Ext.toAsyncGenerator(maskedGlobalSettings$.pipe(Rx.Ext.withAbortSignal(ctx.signal)))
 	}),
 
 	updateSettings: orpcBase

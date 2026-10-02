@@ -13,7 +13,7 @@ import type * as C from '@/server/context'
 
 // Compiles a history query's node tree to sql. The whole vocabulary is projected -- serverEventIndex,
 // playerEventIndex, chatSearch and matchHistory hold every filterable dimension -- so no query ever unpacks an
-// archived match to decide membership; bodies are read only to display a page (history.server.ts).
+// archived match to decide membership; bodies are read only to display a page (history-query.worker.ts).
 //
 // Shared rather than server-owned because it has callers in two execution contexts: the query engine on its
 // worker thread (history-query.worker.ts, which runs the queries these conditions feed) and the main thread,
@@ -678,12 +678,50 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 // not per-row: an event's rows differ by player, so the condition has to hold for the event as a whole. Being on
 // the roster a RESET restates is not being named in it, or every player's history would hold every RESET.
 function eventPlayerCond(t: EventTable, comp: F.CompNode, playerIds: string[], assocType?: HQ.PlayerRole): E.SQL {
-	const assoc = assocType === undefined ? sql`${pei.assocType} != ${GAME_PARTICIPANT}` : sql`${pei.assocType} = ${assocType}`
+	const assoc = playerAssocCond(assocType)
 	const cond =
 		playerIds.length === 0
 			? sql`0 = 1`
 			: sql`${t.serverEventId} IN (SELECT ${pei.serverEventId} FROM ${pei} WHERE ${assoc} AND ${inJsonSet(pei.playerId, playerIds)})`
 	return comp.neg ? negate(cond) : cond
+}
+
+function playerAssocCond(assocType?: HQ.PlayerRole): E.SQL {
+	return assocType === undefined ? sql`${pei.assocType} != ${GAME_PARTICIPANT}` : sql`${pei.assocType} = ${assocType}`
+}
+
+/**
+ * The one player every event `root` matches must name, when its top level is a conjunction holding a
+ * non-negated player leaf that resolved to a single id. `assoc` is that leaf's condition over playerEventIndex,
+ * and `rest` is the conjunction without it, to compile against serverEventIndex.
+ */
+export function soleEventPlayer(root: HQ.Node, art: ResolvedArtifacts): { playerId: string; assoc: E.SQL; rest: HQ.Node } | undefined {
+	let children: HQ.Node[]
+	if (HQ.isBlockNode(root)) {
+		const semantics = F.BLOCK_TYPE_SEMANTICS[root.type]
+		if (!semantics.conjunction || semantics.negated) return undefined
+		children = root.children
+	} else {
+		children = [root]
+	}
+	for (const [i, child] of children.entries()) {
+		if (!HQ.isCompNode(child)) continue
+		const comp = child as F.CompNode
+		if (comp.neg) continue
+		const column = HQ.compColumnKey(comp)
+		let assocType: HQ.PlayerRole | undefined
+		if (column === 'event.attacker') assocType = 'attacker'
+		else if (column === 'event.victim') assocType = 'victim'
+		else if (column !== 'player') continue
+		const ids = art.playerValues.get(child)
+		if (ids?.length !== 1) continue
+		return {
+			playerId: ids[0],
+			assoc: playerAssocCond(assocType),
+			rest: { type: 'and', children: children.filter((_, j) => j !== i) },
+		}
+	}
+	return undefined
 }
 
 /**

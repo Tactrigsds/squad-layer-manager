@@ -14,7 +14,9 @@ import { tr } from '@/systems/messages.client'
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
 // editor frames minted by the loader; each run creates a fresh instance, swept when the route is left
-let activeFrameKeys: EditFrame.Key[] = []
+// mutated in place rather than reassigned: route code splitting moves the component into its own module, and only a
+// const binding can be shared with it
+const activeFrameKeys: EditFrame.Key[] = []
 
 export const Route = createFileRoute('/_app/filters/new')({
 	component: RouteComponent,
@@ -22,8 +24,7 @@ export const Route = createFileRoute('/_app/filters/new')({
 	preloadStaleTime: Infinity,
 	onLeave: () => {
 		if (activeFrameKeys.length === 0) return
-		const keys = activeFrameKeys
-		activeFrameKeys = []
+		const keys = activeFrameKeys.splice(0)
 		void requestIdleCallback(() => {
 			for (const k of keys) frameManager.dropKey(k)
 		})

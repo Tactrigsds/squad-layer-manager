@@ -87,7 +87,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 								<Checkbox
 									id="layer"
 									checked={statuses.layer}
-									onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
+									onCheckedChange={(checked) => setDisplayProps({ layer: checked })}
 									disabled={props.readonly}
 								/>
 								<Label htmlFor="layer" className="fd-lbl-plain">
@@ -99,7 +99,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									<Checkbox
 										id="map"
 										checked={statuses.map}
-										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
+										onCheckedChange={(checked) => setDisplayProps({ map: checked })}
 										disabled={props.readonly}
 									/>
 									<Label htmlFor="map" className="fd-lbl-plain">
@@ -110,7 +110,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									<Checkbox
 										id="gamemode"
 										checked={statuses.gamemode}
-										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
+										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked })}
 										disabled={props.readonly}
 									/>
 									<Label htmlFor="gamemode" className="fd-lbl-plain">
@@ -126,7 +126,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 								<Checkbox
 									id="factions"
 									checked={statuses.factions}
-									onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
+									onCheckedChange={(checked) => setDisplayProps({ factions: checked })}
 									disabled={props.readonly}
 								/>
 								<Label htmlFor="factions" className="fd-lbl-plain">
@@ -137,7 +137,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 								<Checkbox
 									id="units"
 									checked={statuses.units}
-									onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
+									onCheckedChange={(checked) => setDisplayProps({ units: checked })}
 									disabled={props.readonly}
 								/>
 								<Label htmlFor="units" className="fd-lbl-plain">

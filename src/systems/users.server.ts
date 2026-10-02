@@ -24,6 +24,7 @@ import * as Rbac from '@/systems/rbac.server'
 // discordId set = only that user's session(s) should refetch (their perms/links changed); undefined = broadcast to
 // every session (user metadata like a nickname that others render). rbac invalidation is bridged in via setup().
 const invalidateUsers$ = new IsolatedSubject<{ discordId?: bigint }>()
+const ROLE_DISPLAY_THROTTLE_MS = 1000
 
 const module = initModule('users')
 let log!: CS.Logger
@@ -37,6 +38,10 @@ export function setup() {
 	ENV = envBuilder()
 	// reuse this channel to push rbac perm changes to clients: 'user' scope targets the one session, 'all' broadcasts
 	Rbac.invalidation$.subscribe((e) => invalidateUsers$.next(e.scope === 'user' ? { discordId: e.discordId } : {}))
+	// a role reorder arrives as one update per role moved
+	Discord.roleDisplayChanged$
+		.pipe(Rx.throttleTime(ROLE_DISPLAY_THROTTLE_MS, Rx.asyncScheduler, { leading: true, trailing: true }))
+		.subscribe(() => invalidateUsers$.next({}))
 }
 
 export async function recordUserAccount(

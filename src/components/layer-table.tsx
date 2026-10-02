@@ -952,9 +952,10 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 				)}
 				<div
 					data-loading={frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'}
-					className="flex items-center gap-2 invisible data-[loading=true]:visible "
+					className="group/loading flex items-center gap-2 invisible data-[loading=true]:visible "
 				>
-					<span className="fd-spin" />
+					{/* paused while hidden: an invisible element's animation still restyles the page on every tick */}
+					<span className="fd-spin [animation-play-state:paused] group-data-[loading=true]/loading:[animation-play-state:running]" />
 					{initStatus.status === 'initializing' && <p className={Typo.Muted}>{tr.text(L_Msgs.initializingDatabase())}</p>}
 					{initStatus.status === 'downloading-layers' && <p className={Typo.Muted}>{tr.text(L_Msgs.downloadingLayers())}</p>}
 				</div>
