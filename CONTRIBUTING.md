@@ -7,10 +7,12 @@ All contributions must pass all tests and linting checks before being reviewed.
 LLM co-authored code is acceptable, but it:
 
 - Must resolve a previously agreed upon and known issue
-- Must be disclosed as being LLM authored, and should include which models were used
+- Must be disclosed as being LLM authored, and should include which models were used. Access to the reasoning trace
+  is appreciated, but is not required.
 - Should be a reasonable size
 - Must be thoroughly tested, including e2e/integration tests where applicable
-- Must have a human-authored PR description and comments
+- Must have a human-authored PR description and comments. A PR description opens with a short description of the
+  problem, then describes the solution.
 
 Contributors are responsible for the code they submit, and must be able to read and understand it to respond to
 feedback. Contributions are accepted only from programmers fluent in TypeScript (or Rust where applicable).
@@ -19,7 +21,7 @@ Open an issue to validate a problem with the app before working on a PR for it.
 
 ## Getting your bearings
 
-[docs/architecture.md](docs/architecture.md) describes the shape of the app and the patterns that recur
+[docs/developers/architecture.md](docs/developers/architecture.md) describes the shape of the app and the patterns that recur
 throughout it: the layering, the conventions it leans on (context composition, result codes, namespace imports,
 schema-first models), the server and client state machinery, and the layer engine. Skim it before your first
 change. [CLAUDE.md](CLAUDE.md) states the rules that architecture.md explains.
@@ -64,7 +66,7 @@ pnpm dev
 
 Any checkout location works, including one made by `git worktree add` or an agent. `pnpm dev --reset-data` replaces
 that checkout's isolated database. `pnpm dev --emu-only` runs only the emulator with its REPL. See
-[docs/dev_instances.md](docs/dev_instances.md).
+[docs/developers/dev_instances.md](docs/developers/dev_instances.md).
 
 ## Tests
 
@@ -83,7 +85,7 @@ an emulated squad server. They need no external services, but they are much slow
 if the primary checkout has an untracked `flake.nix` and `nix` is installed, `test:e2e` runs inside its dev shell.
 
 `test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
-needs a client build to read. See [Browser support](docs/architecture.md#browser-support) for what each covers
+needs a client build to read. See [Browser support](docs/developers/architecture.md#browser-support) for what each covers
 and where the supported-browser floor is set.
 
 ## The server agent
@@ -95,7 +97,7 @@ not needed to run it. It streams a server's logs to SLM and proxies its RCON. Bu
 pnpm run build:agent   # cargo build --release, binary at server-agent/agent/target/release/slm-server-agent
 ```
 
-See [docs/server_agent.md](docs/server_agent.md) for how to configure it.
+See [docs/guide/operations/server_agent.md](docs/guide/operations/server_agent.md) for how to configure it.
 
 ## The documentation site
 
@@ -124,7 +126,7 @@ branch on every change to the docs on main, on every release tag, and on a manua
 Take screenshots at a device scale factor of 2, then mark them so the site shows them at their on-screen size:
 
 ```sh
-node scripts/stamp-png-density.mjs 2 docs/configuring_screenshots/new_shot.png
+node scripts/stamp-png-density.mjs 2 docs/images/configuring/new_shot.png
 ```
 
 ## The changelog and app releases

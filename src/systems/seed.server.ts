@@ -193,7 +193,7 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 		playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS) },
 		navLinks: [
 			{ label: 'SLM on GitHub', url: Project.REPO_URL },
-			{ label: 'Installing SLM', url: `${Project.REPO_URL}/blob/main/docs/installing.md` },
+			{ label: 'SLM docs', url: `${Project.DOCS_URL}/` },
 		],
 	}
 }

@@ -220,9 +220,9 @@ function setupTocToggle() {
 }
 
 async function setupVersions() {
-	const list = document.querySelector('[data-version-list]')
+	const lists = document.querySelectorAll('[data-version-list]')
 	const banner = document.querySelector<HTMLElement>('[data-version-banner]')
-	if (!list && !banner) return
+	if (lists.length === 0 && !banner) return
 	const res = await fetch(`${root}versions.json`).catch(() => null)
 	if (!res?.ok) return
 	const index = (await res.json()) as VersionIndex
@@ -230,7 +230,7 @@ async function setupVersions() {
 	const inVersion = location.pathname.startsWith(base) ? location.pathname.slice(base.length) + location.hash : ''
 	const label = (v: string) => (v === NEXT_VERSION ? 'Unreleased' : v)
 
-	if (list) {
+	for (const list of lists) {
 		const links = index.versions.map((v) => {
 			const a = document.createElement('a')
 			a.href = `${root}${v}/${inVersion}`

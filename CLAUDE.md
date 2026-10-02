@@ -39,7 +39,7 @@ src/lib/type-guards.ts, so adding a member raises a type error.
 Use namespace imports for all nontrivial modules, unless that module has an established convention against it. Each
 namespace must be consistent and unique across the app, except for special cases like the imports in context.ts and
 context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules and
-packages. The lib vocabulary is in docs/architecture.md under "Namespace imports everywhere".
+packages. The lib vocabulary is in docs/developers/architecture.md under "Namespace imports everywhere".
 
 Never import rxjs, zustand, react-rxjs or zod directly. Each is reached through its wrapper in `src/lib` (`Rx`,
 `Zus`, `ReactRx`, `@/lib/zod`), which re-exports the package alongside our own additions. Import other packages
@@ -57,7 +57,7 @@ on, and why. Everything else is noise. Default to no comment.
 Before writing one, try to make it unnecessary. A precise name is almost always better than a comment explaining a
 vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. Rationale that belongs to a
 particular piece of code is kept with it, in a comment, however long it has to be. Only the high-level shape of the
-app is kept in docs/architecture.md.
+app is kept in docs/developers/architecture.md.
 
 Never write a comment that:
 
@@ -141,7 +141,7 @@ interchangeable side, which is roughly the opposite of what it denotes, and be a
 between A/B and 1/2 will read as driving the `displayTeamsNormalized` setting. Use "one side" and "the other side"
 when you need a side with no identity.
 
-docs/ and the README are user-facing. Keep implementation detail out of them, except in docs/architecture.md, which
+docs/ and the README are user-facing. Keep implementation detail out of them, except in docs/developers/architecture.md, which
 is for contributors.
 
 # Editing
@@ -174,7 +174,7 @@ command line and kills it.
 
 # Running the app in a worktree
 
-Full details in docs/dev_instances.md.
+Full details in docs/developers/dev_instances.md.
 
 Do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. A development workspace runs its
 own instance instead, with its own database and an emulated Squad server:
@@ -217,7 +217,7 @@ Pass commonly used state via the ctx object. It is always the first argument, or
 element of the observable's data tuple. A domain's contexts are kept in that domain's models file (`V.Ctx`, `MH.Ctx`,
 ...), with the runtime object it carries at `Ctx.Payload`. Check the domain's models file first, then
 context-shared.ts for the shared primitives, then server/context.ts for server infrastructure. Every context has a
-`CtxDef` beside it; see docs/architecture.md, "Context as duck-typed dependency injection".
+`CtxDef` beside it; see docs/developers/architecture.md, "Context as duck-typed dependency injection".
 
 A function's ctx parameter type should name the minimum context it needs.
 

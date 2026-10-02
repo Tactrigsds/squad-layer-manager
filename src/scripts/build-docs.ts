@@ -52,39 +52,50 @@ const SERVE = process.argv.includes('--serve')
 const PORT = Number(process.env.DOCS_PORT ?? 4400)
 
 const LANDING = {
-	tagline: 'SLM is a tool for managing upcoming layers on a Squad server, and other things also.',
+	tagline: 'SLM is a tool for managing the upcoming layers on a Squad server, and other things also.',
 	description:
-		'It is the main admin tool of the TacTrig server. Admins use it from a web app that signs in with Discord, and from in-game commands.',
+		'Its web app and in-game admin commands simplify layer and player management, and work alongside existing tools such as Discord and BattleMetrics. It is the main admin tool of the TacTrig server.',
 	demoCommand: 'docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest',
 	youtubeId: null as string | null,
 	highlights: [
 		{
 			title: 'Control over layer selection',
-			text: 'Filters, repeat rules and a layer pool decide what can be played. SLM warns before a mistake is saved, and warns in-game admins before one is played.',
-			page: 'docs/layer_selection.md',
+			text: 'Designed to work in place of the in-game voting system, SLM provides convenient and fine-grained control over what kinds of layers are played on the server.',
+			page: 'docs/features/layer_selection.md',
+			linkLabel: 'Read about layer selection',
+			media: { kind: 'shot', file: 'docs/images/features/layer_queue.png', alt: 'the layer queue' },
 		},
 		{
 			title: 'Player management',
-			text: 'Warn, kick and time out players, swap them between teams, and take switch requests, from the dashboard or in game. Group players to compare how the teams are made up.',
-			page: 'docs/player_management.md',
-		},
-		{
-			title: 'Works with your tools',
-			text: 'Users sign in with Discord, and Discord roles grant permissions. Read and set BattleMetrics flags and notes without leaving SLM.',
-			page: 'docs/integrations_and_hosting.md',
-			anchor: 'integrations',
+			text: 'Warn, kick and time out players, manage team swaps, and flag and note players through BattleMetrics.',
+			page: 'docs/features/player_management.md',
+			linkLabel: 'Read about player management',
+			media: {
+				kind: 'shot',
+				file: 'docs/images/features/teams_panel.png',
+				alt: 'the teams panel',
+				crop: { x: 0, y: 0, width: 490 },
+			},
 		},
 		{
 			title: 'Extensible with plugins',
 			text: 'Plugins add commands, settings and behaviour. Install one from a URL, or write your own.',
-			page: 'docs/integrations_and_hosting.md',
+			page: 'docs/features/integrations_and_hosting.md',
 			anchor: 'plugins',
+			linkLabel: 'Read about plugins',
+			media: {
+				kind: 'shot',
+				file: 'docs/images/features/plugins.png',
+				alt: 'the plugins settings page',
+				crop: { x: 0, y: 0, width: 460 },
+			},
 		},
 		{
 			title: 'Built to self-host',
-			text: 'One Docker image manages all of your servers. SLM backs up its database before each upgrade, and a sandbox server lets you try it without real players.',
-			page: 'docs/integrations_and_hosting.md',
-			anchor: 'self-hosting',
+			text: 'Runs on any system with Docker installed.',
+			page: 'docs/installing.md',
+			linkLabel: 'Read the install guide',
+			media: { kind: 'docker' },
 		},
 	] satisfies Site.Highlight[],
 }
@@ -252,6 +263,7 @@ async function buildRoot(highlighter: Highlighter) {
 	const pageSite = { ...site, ref: 'main' }
 	const assets = renderPages(DS.unversionedPages(), OUT, pageSite, highlighter, problems)
 	checkHighlights(absent, shown, problems)
+	for (const h of LANDING.highlights) if (h.media.kind === 'shot') assets.add(h.media.file)
 	const firstGuide = DS.pagesIn('guide')[0]
 	const sidebar = React.createElement(Site.Sidebar, { site, page: firstGuide })
 	writePage(
@@ -260,7 +272,7 @@ async function buildRoot(highlighter: Highlighter) {
 		React.createElement(
 			Site.DocsDocument,
 			{ site, title: 'Squad Layer Manager', description: LANDING.tagline, section: null, sidebar },
-			React.createElement(Site.LandingPage, { site, ...LANDING }),
+			React.createElement(Site.LandingPage, { site, ...LANDING, highlights: LANDING.highlights.map(withImageSize) }),
 		),
 	)
 	writePage(
@@ -281,6 +293,13 @@ async function buildRoot(highlighter: Highlighter) {
 	// GitHub Pages runs Jekyll over a branch unless this file exists, and Jekyll drops anything starting with "_"
 	fs.writeFileSync(path.join(OUT, '.nojekyll'), '')
 	if (CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), `${CNAME}\n`)
+}
+
+function withImageSize(h: Site.Highlight): Site.SizedHighlight {
+	if (h.media.kind !== 'shot') return { ...h, media: h.media }
+	const { width, height } = imageSize(h.media.file)
+	if (width === undefined || height === undefined) throw new Error(`the landing highlight "${h.title}" needs a PNG screenshot`)
+	return { ...h, media: { ...h.media, size: { width, height } } }
 }
 
 // every landing highlight must link to a published page, and to a heading that page has

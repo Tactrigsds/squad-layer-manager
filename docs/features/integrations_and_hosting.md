@@ -8,11 +8,11 @@ decide what each admin may do, plugins extend SLM, and SLM is self-hosted.
 Admins can access many SLM features in game through chat commands: votes, swaps, warns, kicks, timeouts, broadcasts,
 flags and layer requests. A _trigger_ is the word typed in chat to run a command. Add your own triggers for any command,
 including shortcuts with arguments filled in, such as `/to2h` for a two-hour timeout. See
-[command_triggers.md](command_triggers.md).
+[command_triggers.md](../guide/configuring/command_triggers.md).
 
 The _Commands_ page in your install lists every command and how to use each one.
 
-![the commands page](configuring_screenshots/commands_page.png)
+![the commands page](../images/configuring/commands_page.png)
 
 ## Integrations
 
@@ -40,10 +40,10 @@ A role grants a set of permissions, scoped to every server or to named ones. Ass
 to the admins of an admin list, or to the members of an admin list group. Roles can cap what their members may do,
 such as the longest timeout or how many layers they may request.
 
-![the admins role in the Permissions & Roles settings](features_screenshots/permissions.png)
+![the admins role in the Permissions & Roles settings](../images/features/permissions.png)
 
 Use _Simulate Permissions_ to preview the app with a different set of roles. See
-[configuring.md](configuring.md#1-permissions-and-users).
+[Permissions and users](../guide/configuring/permissions.md).
 
 ## Plugins
 
@@ -56,22 +56,28 @@ and start the plugin on the settings page. SLM ships with three:
 | Balance Triggers | Watches recent match outcomes and warns admins when they look one-sided   |
 | Teamkill Warns   | Warns players when they have been teamkilled                              |
 
-To write your own, see [writing_plugins.md](writing_plugins.md).
+To write your own, see [writing_plugins.md](../developers/writing_plugins.md).
 
 ## Self-hosting
 
 SLM ships as one Docker image, with its database stored in a file beside it. An install script sets up the compose
-file and config, and SLM migrates its own database on upgrade. See [installing.md](installing.md).
+file and config, and SLM migrates its own database on upgrade. See [installing.md](../installing.md).
+
+The compose file also includes an optional observability stack: Grafana, an OpenTelemetry collector and VictoriaMetrics.
+Its preconfigured dashboards chart SLM's metrics, logs and traces, such as RCON traffic and failures, log ingestion and
+the connection state of each server. See [installing.md](../installing.md#9-telemetry).
+
+![a Grafana dashboard of RCON and log traffic](../images/features/grafana_dashboard.png)
 
 - **Many servers.** One install manages any number of Squad servers. Connect each one through its log file on disk,
-  over SFTP for hosted servers, or through the [server agent](server_agent.md), which keeps your RCON password on the
+  over SFTP for hosted servers, or through the [server agent](../guide/operations/server_agent.md), which keeps your RCON password on the
   game host.
 - **Sandbox server.** A fresh install starts with an emulated Squad server, for learning SLM and testing settings
-  without touching real players. See [sandbox_servers.md](sandbox_servers.md).
+  without touching real players. See [sandbox_servers.md](../guide/operations/sandbox_servers.md).
 - **Backups.** SLM backs up its database before every upgrade, and on a schedule if one is set, and can upload the
-  backups over SFTP. See [backups.md](backups.md).
+  backups over SFTP. See [backups.md](../guide/operations/backups.md).
 - **Server console.** Read the RCON traffic and log lines exactly as SLM receives them, to find whether a problem is
-  in the connection or in SLM. See [server_console.md](server_console.md).
+  in the connection or in SLM. See [server_console.md](../guide/operations/server_console.md).
 - **Monitoring.** The compose file runs Grafana with dashboards for each server's player count and join queue.
 - **Mods.** SLM's layer catalog covers vanilla Squad and several popular mods. See
   [Mod support](layer_selection.md#mod-support).
@@ -79,4 +85,4 @@ file and config, and SLM migrates its own database on upgrade. See [installing.m
 ## Learning SLM
 
 Two guided tutorials teach the layer queue and player management on a sandbox server. Open _Tutorials_ from the nav
-bar. See [server_dashboard.md](server_dashboard.md).
+bar. See [server_dashboard.md](../guide/server_dashboard.md).

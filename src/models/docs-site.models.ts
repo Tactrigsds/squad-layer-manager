@@ -1,7 +1,7 @@
 // The static documentation site (src/scripts/build-docs.ts): which markdown files become pages, where they are
 // served, and how a link written against the repo resolves on the site.
 
-export type SectionId = 'features' | 'guide' | 'developers' | 'changelog'
+export type SectionId = 'features' | 'guide' | 'developers' | 'faq' | 'changelog'
 
 export type Page = {
 	// repo-relative markdown source
@@ -22,26 +22,27 @@ export const SECTIONS: { id: SectionId; label: string }[] = [
 	{ id: 'features', label: 'Features' },
 	{ id: 'guide', label: 'Setup guide' },
 	{ id: 'developers', label: 'Developers' },
+	{ id: 'faq', label: 'FAQ' },
 	{ id: 'changelog', label: 'Changelog' },
 ]
 
 export const PAGES: Page[] = [
 	{
-		file: 'docs/layer_selection.md',
+		file: 'docs/features/layer_selection.md',
 		slug: 'layer-selection',
 		label: 'Layer selection',
 		section: 'features',
 		group: 'Features',
 	},
 	{
-		file: 'docs/player_management.md',
+		file: 'docs/features/player_management.md',
 		slug: 'player-management',
 		label: 'Player management',
 		section: 'features',
 		group: 'Features',
 	},
 	{
-		file: 'docs/integrations_and_hosting.md',
+		file: 'docs/features/integrations_and_hosting.md',
 		slug: 'integrations-and-hosting',
 		label: 'Integrations and hosting',
 		section: 'features',
@@ -49,32 +50,75 @@ export const PAGES: Page[] = [
 	},
 	{ file: 'docs/installing.md', slug: 'installing', label: 'Installing', section: 'guide', group: 'Start here' },
 	{
-		file: 'docs/server_dashboard.md',
+		file: 'docs/guide/server_dashboard.md',
 		slug: 'server-dashboard',
 		label: 'Learning how to use SLM',
 		section: 'guide',
 		group: 'Start here',
 	},
-	{ file: 'docs/configuring.md', slug: 'configuring', label: 'Configuring SLM', section: 'guide', group: 'Configuring' },
+	{ file: 'docs/guide/configuring/overview.md', slug: 'configuring', label: 'Configuring SLM', section: 'guide', group: 'Configuring' },
 	{
-		file: 'docs/command_triggers.md',
+		file: 'docs/guide/configuring/permissions.md',
+		slug: 'permissions',
+		label: 'Permissions and users',
+		section: 'guide',
+		group: 'Configuring',
+	},
+	{ file: 'docs/guide/configuring/servers.md', slug: 'servers', label: 'Servers', section: 'guide', group: 'Configuring' },
+	{
+		file: 'docs/guide/configuring/admin_actions.md',
+		slug: 'admin-actions',
+		label: 'Admin actions and commands',
+		section: 'guide',
+		group: 'Configuring',
+	},
+	{
+		file: 'docs/guide/configuring/command_triggers.md',
 		slug: 'command-triggers',
 		label: 'Command triggers',
 		section: 'guide',
 		group: 'Configuring',
 	},
-	{ file: 'docs/backups.md', slug: 'backups', label: 'Backups and restoring', section: 'guide', group: 'Operational details' },
-	{ file: 'docs/server_agent.md', slug: 'server-agent', label: 'Server agent', section: 'guide', group: 'Operational details' },
-	{ file: 'docs/layer_data.md', slug: 'layer-data', label: 'Layer data', section: 'guide', group: 'Operational details' },
+	{ file: 'docs/guide/configuring/players.md', slug: 'players', label: 'Players', section: 'guide', group: 'Configuring' },
 	{
-		file: 'docs/sandbox_servers.md',
+		file: 'docs/guide/configuring/layer_pool.md',
+		slug: 'layer-pool',
+		label: 'Layer pool and filters',
+		section: 'guide',
+		group: 'Configuring',
+	},
+	{
+		file: 'docs/guide/configuring/layer_rotation.md',
+		slug: 'layer-rotation',
+		label: 'Layer rotation',
+		section: 'guide',
+		group: 'Configuring',
+	},
+	{ file: 'docs/guide/configuring/plugins.md', slug: 'plugins', label: 'Plugins', section: 'guide', group: 'Configuring' },
+	{
+		file: 'docs/guide/operations/backups.md',
+		slug: 'backups',
+		label: 'Backups and restoring',
+		section: 'guide',
+		group: 'Operational details',
+	},
+	{
+		file: 'docs/guide/operations/server_agent.md',
+		slug: 'server-agent',
+		label: 'Server agent',
+		section: 'guide',
+		group: 'Operational details',
+	},
+	{ file: 'docs/guide/operations/layer_data.md', slug: 'layer-data', label: 'Layer data', section: 'guide', group: 'Operational details' },
+	{
+		file: 'docs/guide/operations/sandbox_servers.md',
 		slug: 'sandbox-servers',
 		label: 'Sandbox servers',
 		section: 'guide',
 		group: 'Operational details',
 	},
 	{
-		file: 'docs/server_console.md',
+		file: 'docs/guide/operations/server_console.md',
 		slug: 'server-console',
 		label: 'Server console',
 		section: 'guide',
@@ -82,34 +126,35 @@ export const PAGES: Page[] = [
 	},
 	{ file: 'CONTRIBUTING.md', slug: 'contributing', label: 'Getting started', section: 'developers', group: 'Contributing' },
 	{
-		file: 'docs/dev_instances.md',
+		file: 'docs/developers/dev_instances.md',
 		slug: 'dev-workspaces',
 		label: 'Development workspaces',
 		section: 'developers',
 		group: 'Contributing',
 	},
 	{
-		file: 'docs/architecture.md',
+		file: 'docs/developers/architecture.md',
 		slug: 'architecture',
 		label: 'Architecture',
 		section: 'developers',
 		group: 'Architecture',
 	},
 	{
-		file: 'docs/writing_plugins.md',
+		file: 'docs/developers/writing_plugins.md',
 		slug: 'writing-plugins',
 		label: 'Writing a plugin',
 		section: 'developers',
 		group: 'Plugins',
 	},
 	{
-		file: 'docs/plugin_ui.md',
+		file: 'docs/developers/plugin_ui.md',
 		slug: 'plugin-ui',
 		label: 'Plugin UI',
 		section: 'developers',
 		group: 'Plugins',
 	},
-	{ file: 'docs/brand.md', slug: 'brand', label: 'Brand', section: 'developers', group: 'Reference' },
+	{ file: 'docs/developers/brand.md', slug: 'brand', label: 'Brand', section: 'developers', group: 'Reference' },
+	{ file: 'docs/faq.md', slug: 'faq', label: 'FAQ', section: 'faq', group: 'FAQ' },
 	{
 		file: 'CHANGELOG.md',
 		slug: 'changelog',

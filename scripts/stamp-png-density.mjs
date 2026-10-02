@@ -1,7 +1,7 @@
 // Records the device scale factor a screenshot was taken at in its PNG pHYs chunk, which the docs site build reads to
 // show the image at the size it had on screen (src/scripts/build-docs.ts, imageSize).
 //
-//   node scripts/stamp-png-density.mjs 2 docs/configuring_screenshots/*.png
+//   node scripts/stamp-png-density.mjs 2 docs/images/configuring/*.png
 
 import * as fs from 'node:fs'
 import * as zlib from 'node:zlib'

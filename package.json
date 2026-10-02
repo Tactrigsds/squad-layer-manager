@@ -32,7 +32,7 @@
 		"build:prod": "pnpm run build:client && pnpm run build:landing-css && pnpm run precompress:dist && pnpm run build:server",
 		"server:prod": "NODE_ENV=production node --import ./register-source-maps.mjs --import ./register-otel.mjs dist-server/main-instrumented.js",
 		"server:dev": "NODE_ENV=development NODE_OPTIONS=\"--import ./register-source-maps.mjs --import ./register-otel.mjs\" tsx watch --inspect --include=./slm-config.jsonc --include=./.env --tsconfig tsconfig.node.json src/server/main-instrumented.ts",
-		"__dev-instance:comment__": "`pnpm dev` provisions and runs an isolated development workspace. `worktree new` is an optional checkout creator. See docs/dev_instances.md",
+		"__dev-instance:comment__": "`pnpm dev` provisions and runs an isolated development workspace. `worktree new` is an optional checkout creator. See docs/developers/dev_instances.md",
 		"worktree": "node scripts/worktree.mjs",
 		"dev": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts",
 		"emuctl": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emuctl.ts",

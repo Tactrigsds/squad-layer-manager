@@ -27,7 +27,7 @@ const reportPath = path.join(apiDir, 'api-report.md')
 // the value exports per entry, which the shim modules a packaged plugin imports are built from
 const exportsPath = path.join(repoRoot, 'src', 'models', 'plugin-api-exports.ts')
 // the plugin guide, whose example manifest has to declare a range this build accepts
-const guidePath = path.join(repoRoot, 'docs', 'writing_plugins.md')
+const guidePath = path.join(repoRoot, 'docs', 'developers', 'writing_plugins.md')
 const versionStr = PLG.formatApiVersion()
 
 function entryFiles(): string[] {

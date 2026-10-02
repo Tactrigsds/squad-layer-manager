@@ -17,20 +17,27 @@ settings with a key published in this repository, so enter no real credential in
 ### 1. Prerequisites
 
 1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
-2. A domain, and some way to send traffic to SLM.
-3. A Discord server on which your account can install apps.
+2. A Discord server on which your account can install apps.
+3. A domain, and a way to serve SLM over HTTPS. Two options are recommended:
+   - [Caddy](https://caddyserver.com/), the simplest. It gets and renews HTTPS certificates from Let's Encrypt by
+     itself.
+   - [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/), which is more managed, and does not need a port
+     exposed on your server.
+
+   Optionally, set up a second subdomain for the included Grafana instance (see [Telemetry](#9-telemetry)).
 
 ### 2. Where to install
 
 SLM needs access to your squad server's log files, and an RCON connection. There are three ways to achieve this:
 
-- Mount the log files into the container, and access RCON remotely, over a VLAN or an intranet. This is theoretically
-  the lowest latency, and relatively secure.
-- Access the log files over SFTP (this works with PSG-hosted servers), and access RCON remotely through an exposed
-  port. Log events arrive with higher latency, and remote RCON access is insecure, because RCON is not encrypted.
+- Install SLM where it's possible to mount the log files into the container, and access RCON over a VLAN or the local
+  network. This gives the lowest latency, and is relatively secure. It often costs some control over where SLM runs,
+  depending on your org's game server host.
+- Access the log files over SFTP, and access RCON remotely through an exposed port. Logs arrive with higher latency,
+  and remote RCON access is insecure, because RCON is not encrypted.
 - **Recommended:** run the SLM server agent on the game host. It streams log data and proxies RCON over a secure
   websocket connection. Your squad server or hosting provider does not need to expose an additional port, and how and
-  where SLM is hosted stays under your control. See [server_agent.md](server_agent.md).
+  where SLM is hosted stays under your control. See [server_agent.md](guide/operations/server_agent.md).
 
 ### 3. Docker Compose
 
@@ -52,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main
 | `--version <v>`    | one release, e.g. `--version 2026.9.4`, and stays on it                     |
 
 To install into another directory, add it last: `bash -s -- --channel latest /opt/slm`. The choice is saved as
-`SLM_IMAGE_TAG` in `.env`, and can be changed later (see [Upgrading](#12-upgrading)).
+`SLM_IMAGE_TAG` in `.env`, and can be changed later (see [Upgrading](#13-upgrading)).
 
 This lays down the files for the deployment:
 
@@ -101,25 +108,6 @@ person must be a member of your org's discord server.
 
 Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
 sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
-
-The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
-that, switch on `Message Content Intent` on the `Bot` page. Without it SLM still starts, but the bot cannot read
-messages, and the `discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch that setting
-off. The bot only replies to people whose roles grant `history:query`, the permission the history page itself needs.
-
-The SLM bot only replies in channels where its role has these permissions:
-
-- View Channel
-- Send Messages
-- Read Message History
-- Attach Files
-
-Grant them in one of two ways:
-
-- **Every channel:** give the SLM bot's role these permissions in _Server Settings > Roles_. The bot can then reply
-  in every channel its role can see.
-- **Specific channels:** leave them off the role, and add them for the SLM bot's role in each channel's _Edit
-  Channel > Permissions_. The bot then replies only in those channels.
 
 ### 5. Secrets
 
@@ -206,7 +194,7 @@ openssl rand -base64 32
 
 The app refuses a key shorter than 16 characters. Keep the key wherever your backups are kept: a backup restored without
 its key comes up with every server disabled and every integration token unset (see
-[backups and restoring](backups.md#restoring)).
+[backups and restoring](guide/operations/backups.md#restoring)).
 
 To rotate the key, move the current value to `SETTINGS_ENCRYPTION_KEY_PREVIOUS`, put the new one in
 `SETTINGS_ENCRYPTION_KEY`, and start the app. That boot re-encrypts everything under the new key and logs each
@@ -228,8 +216,8 @@ optional. It is the restore point after a bad upgrade. Periodic backups are off 
 | `BACKUPS_DIR`                | `./data/backups` | where backups are written                                             |
 | `BACKUPS_RETAIN_COUNT`       | `10`             | how many backups to keep, locally and remotely. `0` keeps all of them |
 
-Backups can also be uploaded to an SFTP destination. See [backups and restoring](backups.md) for that, for what the
-filenames mean, and for putting one back with `restore.sh`.
+Backups can also be uploaded to an SFTP destination. See [backups and restoring](guide/operations/backups.md) for that, for the filename
+format, and for putting one back with `restore.sh`.
 
 ### 9. Telemetry
 
@@ -255,20 +243,18 @@ If docker is configured to start on boot, the app starts automatically after a r
 Stop everything with `docker compose down`. To stop only the app and leave grafana running, use `docker compose stop
 app`.
 
-Once the app is running, sign in with discord OAuth. Set up the integrations below, then move on to
-[configuring SLM](configuring.md).
+Once the app is running, sign in with discord OAuth. Set up the integrations and the discord bot's permissions below,
+then move on to [configuring SLM](guide/configuring/overview.md).
 
 ### 11. Integrations
 
 SLM authenticates to three outside services: BattleMetrics, Squad Browser and Steam. All three are optional. Their
 credentials are not environment variables. Once SLM is running, enter them under _Integrations_ on the settings page.
 
-A saved token is encrypted and never shown again. The field shows a placeholder, and typing in it replaces the token.
-Clearing the field removes it. Use the _Enabled_ switch to turn an integration off without deleting its token. Changes
-take effect as soon as they are saved, without a restart.
+A saved token is encrypted at rest and not retrievable.
 
 Editing this section takes a `global-settings:write` grant covering `integrations`. The default managers role cannot
-edit it (see [configuring.md, Default roles](configuring.md#13-default-roles)).
+edit it (see [Default roles](guide/configuring/permissions.md#default-roles)).
 
 **BattleMetrics** lets users update player flags from in game and from the dashboard, and shows a player's flags, notes
 and profile beside the actions taken against them. Enter a personal access token with these permissions:
@@ -292,7 +278,29 @@ the Squad Browser or through Steam. Configure one of the two for the button to w
 If both are configured, SLM asks the Squad Browser first, and Steam covers the servers the Squad Browser does not list.
 With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.
 
-### 12. Upgrading
+### 12. Discord bot permissions
+
+The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
+that, switch on `Message Content Intent` on the `Bot` page of your discord app. Without it SLM still starts, but the
+bot cannot read messages, and the `discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch
+that setting off. The bot only replies to people whose roles grant `history:query`, the permission the history page
+itself needs.
+
+The SLM bot only replies in channels where its role has these permissions:
+
+- View Channel
+- Send Messages
+- Read Message History
+- Attach Files
+
+Grant them in one of two ways:
+
+- **Every channel:** give the SLM bot's role these permissions in _Server Settings > Roles_. The bot can then reply
+  in every channel its role can see.
+- **Specific channels:** leave them off the role, and add them for the SLM bot's role in each channel's _Edit
+  Channel > Permissions_. The bot then replies only in those channels.
+
+### 13. Upgrading
 
 ```sh
 docker compose pull && docker compose up -d
@@ -313,7 +321,7 @@ operators". A "Breaking" note describes a change the operator must make to upgra
 upgraded app starts, and everyone signed in to SLM can see what changed on its What's new page.
 
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
-up first (see [Backups](#8-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
+up first (see [Backups](#8-backups)), so a bad upgrade is recoverable: [backups and restoring](guide/operations/backups.md) covers
 putting the snapshot back and pinning the image it belongs to.
 
 An install that predates `.env.secrets` keeps working unchanged, because SLM reads the credentials from wherever it
@@ -336,3 +344,19 @@ still set, and no longer reads it.
 
 Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`. Stop the app first: a migration
 will not run against a database another process has open.
+
+### 14. Downgrading
+
+SLM can only be upgraded. An upgrade migrates the database, and an older build cannot read a database a newer one has
+migrated. An older build refuses to start on such a database, and its log names the build that last ran against it.
+
+The only supported way back is to restore the backup taken before the upgrade, and to pin the build that backup belongs
+to. [Rolling back a bad upgrade](guide/operations/backups.md#rolling-back-a-bad-upgrade) walks through both steps.
+
+Switching from `latest` to `stable` is a downgrade too, because `stable` is usually behind `latest`. Instead, pin the
+build currently running, then switch to `stable` once a stable release newer than that build is out:
+
+1. Find the running build on SLM's about page, and set `SLM_IMAGE_TAG` to its `commit-<short sha>` tag (see
+   [Pinning a version](guide/operations/backups.md#pinning-a-version)).
+2. Watch [CHANGELOG.md](../CHANGELOG.md) for the next release.
+3. Set `SLM_IMAGE_TAG=stable`, then run the upgrade commands above.
