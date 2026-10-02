@@ -133,7 +133,11 @@ async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupCon
 	// wants, not the one about to apply the migrations.
 	const name = DbBackup.fileName(backup.dbPath, 'pre-migration', DbMeta.readBuildStamp(driver)?.gitSha)
 	const destPath = path.join(backup.dir, name)
-	const { sizeBytes } = await DbBackup.writeBackup({ destPath, snapshot: (dest) => driver.backup(dest) })
+	// synchronous, but nothing else runs yet: the app migrates before it serves, and holds the database exclusively
+	const { sizeBytes } = await DbBackup.writeBackup({
+		destPath,
+		snapshot: async (dest) => driver.prepare('VACUUM INTO ?').run(dest),
+	})
 	log(`wrote pre-migration backup ${destPath} (${sizeBytes} bytes)`)
 	// pruned after the new one is on disk, so a failure here can never leave us with none
 	const pruned = DbBackup.pruneBackups({ ...backup, keep: name })
