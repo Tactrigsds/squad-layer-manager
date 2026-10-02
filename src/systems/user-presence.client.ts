@@ -107,6 +107,9 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		return undefined
 	})({
 		unloadOnLeave: true,
+		// without it, a frame preloaded on hover and never opened lives for the life of the page, and keeps alive the
+		// squadServer frame its input holds
+		staleTime: 30_000,
 		load(args) {
 			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
 			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)

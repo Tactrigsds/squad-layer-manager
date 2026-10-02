@@ -40,6 +40,12 @@ export class TaskScheduler {
 		return true
 	}
 
+	// cancel() for every task whose id matches
+	cancelWhere(matches: (id: string) => boolean) {
+		if (this.running && matches(this.running.task.id)) this.running.controller.abort()
+		this.pending = this.pending.filter((task) => !matches(task.id))
+	}
+
 	private pickNext() {
 		let best = -1
 		for (let i = 0; i < this.pending.length; i++) {

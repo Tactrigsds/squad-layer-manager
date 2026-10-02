@@ -329,6 +329,11 @@ export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): An
 // Emits every matching element in document order; the consumer picks. The same anchor can be mounted more than
 // once, laid-out and not: an inactive selectLayers dialog keeps a hidden, zero-size copy of the pool controls, and
 // a `{ all }` anchor deliberately tags a run of elements. The overlay filters to laid-out nodes at measure time.
+//
+// A selector is tracked only while something subscribes to it, and the observer disconnects once nothing does. The
+// observer re-queries every tracked selector on each mutation of the page, and a tracked selector holds the elements
+// it last matched, so a selector tracked past its tour would slow every later render and keep removed DOM alive. An
+// unsubscribed read queries the DOM directly.
 const domInputs = new Map<string, Rx.BehaviorSubject<Element[]>>()
 let domObserver: MutationObserver | null = null
 
@@ -373,7 +378,7 @@ function ensureDomObserver() {
 	})
 }
 
-export function domInput(selector: string): Rx.BehaviorSubject<Element[]> {
+function trackSelector(selector: string): Rx.BehaviorSubject<Element[]> {
 	let subj = domInputs.get(selector)
 	if (!subj) {
 		subj = new Rx.BehaviorSubject<Element[]>(queryAnchors(selector))
@@ -381,6 +386,26 @@ export function domInput(selector: string): Rx.BehaviorSubject<Element[]> {
 		ensureDomObserver()
 	}
 	return subj
+}
+
+function untrackSelector(selector: string, subj: Rx.BehaviorSubject<Element[]>) {
+	if (subj.observed || domInputs.get(selector) !== subj) return
+	domInputs.delete(selector)
+	if (domInputs.size > 0) return
+	domObserver?.disconnect()
+	domObserver = null
+}
+
+export function domInput(selector: string): Zus.ValueObservable<Element[]> {
+	const els$ = new Rx.Observable<Element[]>((subscriber) => {
+		const subj = trackSelector(selector)
+		const sub = subj.subscribe(subscriber)
+		return () => {
+			sub.unsubscribe()
+			untrackSelector(selector, subj)
+		}
+	})
+	return Object.assign(els$, { getValue: () => domInputs.get(selector)?.getValue() ?? queryAnchors(selector) })
 }
 
 // ============================== store ==============================
