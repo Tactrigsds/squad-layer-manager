@@ -32,6 +32,11 @@ function setOverflowAnchor(viewport: HTMLElement, value: 'auto' | 'none') {
  * shrank, or a reader arriving there, and either way they are tailing. Its event would be judged against any growth
  * that lands before it is dispatched, and read as leaving, so the pin claims it instead.
  *
+ * The browser clamps whenever layout runs, and layout can be forced between frames, as a click's hit test does. When
+ * rows drop off and the click then adds rows (Hide noise turned off), the clamp's event arrives after both with no
+ * resize observer in between, and reads the grown content as the reader leaving. So the hook also settles right after
+ * every change to the rows, which forces that layout itself while the clamp can still be told apart from growth.
+ *
  * The browser's scroll anchoring is on only while the reader is parked. There it keeps the rows they are reading
  * still as rows above resize or a capped buffer drops rows off the top. While tailing that same correction would
  * scroll them away from the bottom, so the pin does the work instead.
@@ -91,8 +96,13 @@ export function useTailingScroll() {
 		const resizeObserver = new ResizeObserver(settle)
 		resizeObserver.observe(content)
 		resizeObserver.observe(viewport)
+		const mutationObserver = new MutationObserver(settle)
+		mutationObserver.observe(content, { childList: true, characterData: true, subtree: true })
 		settle()
-		return () => resizeObserver.disconnect()
+		return () => {
+			resizeObserver.disconnect()
+			mutationObserver.disconnect()
+		}
 	}, [viewport, content, pin, setTailing])
 
 	React.useEffect(() => {
