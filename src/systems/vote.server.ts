@@ -284,7 +284,8 @@ export const startVote = Instr.spanOp(
 		ctx.vote.autostartVoteSub = null
 
 		ctx.vote.state = updatedVoteState
-		addReleaseTask(() => ctx.vote.update$.next(update))
+		// not a release task, so the dashboard does not wait on the rcon broadcast and the app event
+		ctx.vote.update$.next(update)
 		registerVoteDeadlineAndReminder$(ctx)
 		await broadcastVoteUpdate(
 			ctx,
@@ -418,15 +419,19 @@ export const abortVote = Instr.spanOp(
 		}
 		await broadcastVoteUpdate(ctx, newVoteState, ctx.tr.broadcast(V_Msgs.aborted()))
 		ctx.vote.state = null
-		addReleaseTask(() => ctx.vote.update$.next(update))
 		ctx.vote.voteEndTask?.unsubscribe()
 		ctx.vote.voteEndTask = null
-		await LayerQueue.dispatchOp(ctx, {
-			op: 'set-vote-result',
-			voteItemId: newVoteState.itemId,
-			result: newVoteState,
-			opId: SLL.createOpId(),
-		})
+		// not a release task, so the dashboard does not wait on the app event. Sent once the queue holds the result.
+		try {
+			await LayerQueue.dispatchOp(ctx, {
+				op: 'set-vote-result',
+				voteItemId: newVoteState.itemId,
+				result: newVoteState,
+				opId: SLL.createOpId(),
+			})
+		} finally {
+			ctx.vote.update$.next(update)
+		}
 
 		await SquadServer.emitAppEvent(
 			ctx,
@@ -615,12 +620,17 @@ export const endVote = Instr.spanOp(
 			state: null,
 			source: { type: 'system', event: opts.reason },
 		}
-		await LayerQueue.dispatchOp(ctx, {
-			op: 'set-vote-result',
-			opId: SLL.createOpId(),
-			result: endingVoteState,
-			voteItemId: endingVoteState.itemId,
-		})
+		// not a release task, so the dashboard does not wait on the rcon broadcasts. Sent once the queue holds the result.
+		try {
+			await LayerQueue.dispatchOp(ctx, {
+				op: 'set-vote-result',
+				opId: SLL.createOpId(),
+				result: endingVoteState,
+				voteItemId: endingVoteState.itemId,
+			})
+		} finally {
+			ctx.vote.update$.next(update)
+		}
 
 		const displayProps = listItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps
 		if (endingVoteState.code === 'ended:winner') {
@@ -653,7 +663,6 @@ export const endVote = Instr.spanOp(
 				turnoutPercentage: tally?.turnoutPercentage,
 			}),
 		)
-		addReleaseTask(() => ctx.vote.update$.next(update))
 		return { code: 'ok' as const, endingVoteState, tally }
 	},
 )

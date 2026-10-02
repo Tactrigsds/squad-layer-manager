@@ -27,8 +27,9 @@ export const Route = createFileRoute('/_app/history')({
 // A bare visit lands scoped to the default server and on the DEFAULT quick filter, since a cross-server
 // search over every event kind is rarely the question and the whole history is the expensive one. Only a
 // bare visit: a shared link, a saved query, or a search the user has already narrowed all carry their own
-// scope (or deliberately none), and are left alone.
-function useBareVisitDefaults(search: HQ.Search) {
+// scope (or deliberately none), and are left alone. Returns true while the redirect is pending, so the page does not
+// start the unscoped query it is about to replace.
+function useBareVisitDefaults(search: HQ.Search): boolean {
 	const navigate = useNavigate()
 	const defaultServer = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers.find((server) => server.defaultServer)?.id)
 	const bare = search.servers === undefined && JSON.stringify(search) === JSON.stringify(HQ.DEFAULT_QUERY)
@@ -36,12 +37,13 @@ function useBareVisitDefaults(search: HQ.Search) {
 		if (!bare || !defaultServer) return
 		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer] }, replace: true })
 	}, [bare, defaultServer, navigate])
+	return bare && !!defaultServer
 }
 
 function RouteComponent() {
 	const search = Route.useSearch()
 	const navigate = useNavigate()
-	useBareVisitDefaults(search)
+	const redirecting = useBareVisitDefaults(search)
 	// the page loads further results in place, so a url's cursor only means something to a text request
 	const { query: rest, sel } = HQ.splitSearch(search)
 	// Keyed by its json so a selection change leaves the query's identity, and so the frame's draft and the
@@ -52,6 +54,7 @@ function RouteComponent() {
 	const input = React.useMemo(() => ({ initial: query }), [query])
 	const frameKey = useFrameLifecycle(HistoryFrame.frame, { input })
 	useFrameTeardownOnUnmount(frameKey)
+	if (redirecting) return null
 	return (
 		<HistoryPage
 			stores={{ history: frameKey }}

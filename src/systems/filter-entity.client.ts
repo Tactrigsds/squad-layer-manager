@@ -43,14 +43,6 @@ export async function filterEditPrefetch(filterId?: string) {
 	}
 }
 
-export function filterIndexPrefetch() {
-	return {
-		onMouseEnter() {
-			void RPC.queryClient.prefetchQuery(getAllFilterRoleContributorsBase())
-		},
-	}
-}
-
 export const filterEntities = new Map<string, F.FilterEntity>()
 export const filterEntityChanged$ = new Rx.Subject<void>()
 
