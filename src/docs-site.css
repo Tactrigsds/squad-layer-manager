@@ -87,6 +87,28 @@
 		color: var(--text);
 		background: var(--panel-hi);
 	}
+	.docs-support-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 7px;
+		height: 32px;
+		padding: 0 12px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--text);
+		text-decoration: none;
+		border: 1px solid var(--line-soft);
+		border-radius: 3px;
+	}
+	.docs-support-btn:hover {
+		color: var(--text);
+		background: var(--panel-hi);
+	}
+	.docs-menu-panel .docs-support-btn {
+		align-self: flex-start;
+		height: 44px;
+	}
 	.docs-icon-btn::-webkit-details-marker {
 		display: none;
 	}

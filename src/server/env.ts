@@ -175,6 +175,11 @@ export const groups = {
 				description: "where the app points users who want to report a bug. Defaults to this project's own issue tracker.",
 				envExample: { include: 'omit', dev: { include: 'commented' } },
 			}),
+		PUBLIC_DOCS_URL: ZodUtils.NormedUrl.optional().meta({
+			description:
+				"the root of the documentation site the app links to. The app picks the folder for the version it runs from the site's versions.json, so the site has to be built the way this project's is. Defaults to this project's documentation.",
+			envExample: { include: 'omit', dev: { include: 'commented' } },
+		}),
 		PUBLIC_HELP_URL: z
 			.url()
 			.optional()

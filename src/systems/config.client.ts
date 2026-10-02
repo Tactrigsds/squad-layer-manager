@@ -1,5 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
+
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as DS from '@/models/docs-site.models'
 import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
@@ -25,6 +28,25 @@ export const Sel = {
 	// either integration can answer for a join link, and neither is asked until the button is clicked
 	joinLinkEnabled: (config: PublicConfigForClient | undefined) =>
 		(config?.integrations.squadBrowser || config?.integrations.steam) ?? false,
+}
+
+// The docs for the version this instance runs (DS.docsUrlFor). Only a release needs the site's version index, to tell
+// whether it is still the newest; GitHub Pages lets any origin read it, and caches it for ten minutes.
+export function useDocsUrl() {
+	const config = Zus.useStore(Store)
+	const isRelease = !!config && !config.version.includes('+')
+	const index = useQuery({
+		queryKey: ['docs-version-index', config?.docsRootUrl],
+		enabled: isRelease,
+		staleTime: 10 * 60_000,
+		retry: false,
+		queryFn: async ({ signal }) => {
+			const res = await fetch(`${config!.docsRootUrl}versions.json`, { signal })
+			if (!res.ok) return null
+			return (await res.json()) as DS.VersionIndex
+		},
+	})
+	return config && DS.docsUrlFor(config.docsRootUrl, config.version, index.data ?? null)
 }
 
 // just hope the config exists already (probably will)

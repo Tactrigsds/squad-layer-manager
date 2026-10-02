@@ -42,6 +42,7 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import * as Project from '@/models/project.models'
 import * as RPC from '@/orpc.client'
 import * as ChangelogClient from '@/systems/changelog.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -232,6 +233,12 @@ export default function NavBar() {
 					<Icons.Info />
 					{tr.text(APP_Msgs.about())}
 				</TSR.Link>
+			</DropdownMenuItem>
+			<DropdownMenuItem asChild>
+				<a href={Project.DONATION_URL} target="_blank" rel="noopener noreferrer">
+					<Icons.Heart />
+					{tr.text(APP_Msgs.supportSlm())}
+				</a>
 			</DropdownMenuItem>
 			{mobileSwitchItem && (
 				<>

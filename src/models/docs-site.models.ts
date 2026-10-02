@@ -245,6 +245,17 @@ export function latestRelease(sorted: string[]) {
 // the site root's versions.json, read by every page to list the versions and flag an outdated one
 export type VersionIndex = { latest: string | null; versions: string[] }
 
+// The docs an app build links to. A build past a release (`2026.9.4+2`) is main's code, the `:latest` image, so it
+// gets main's docs. A release, the `:stable` image, gets the site root while it is the newest release, since the root
+// follows the newest release, and its own folder once a newer one ships. A release the index does not list, or any
+// release while the index is unknown, gets the root too, rather than a folder that may not exist.
+export function docsUrlFor(root: string, appVersion: string, index: VersionIndex | null) {
+	if (appVersion.includes('+')) return `${root}${NEXT_VERSION}/`
+	const folder = `v${appVersion}`
+	if (index && index.latest !== folder && index.versions.includes(folder)) return `${root}${folder}/`
+	return root
+}
+
 export function assetHref(base: string, file: string) {
 	return `${base}assets/${file}`
 }

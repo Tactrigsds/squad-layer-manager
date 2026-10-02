@@ -22,6 +22,8 @@ export const debugAndHelpInfo = def('Debug & Help Info')
 
 export const repositoryHeading = def('Repository:')
 
+export const docsHeading = def('Documentation for this version:')
+
 export const reportIssuesHeading = def('Report issues here, including the information below:')
 
 export const helpHeading = def('Ask for help here:')
@@ -40,6 +42,14 @@ export const versionInfo = def((info: { appVersion?: string; layersVersion?: str
 )
 
 export const versionInfoCopied = def('Version information has been copied')
+
+// -------- donations --------
+
+export const supportSlm = def('Support SLM')
+
+export const donationPitch = def('SLM is free and open source. Donations fund its development.')
+
+export const donateOnKofi = def('Donate on Ko-fi')
 
 // -------- acknowledgements --------
 

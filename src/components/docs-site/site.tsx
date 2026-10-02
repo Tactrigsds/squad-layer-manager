@@ -9,6 +9,7 @@ import {
 	ChevronsUpDown,
 	Code,
 	Copy,
+	Heart,
 	Link as LinkIcon,
 	Menu,
 	Pencil,
@@ -18,6 +19,7 @@ import * as React from 'react'
 
 import LogoMark from '@/components/logo-mark'
 import * as DS from '@/models/docs-site.models'
+import * as Project from '@/models/project.models'
 
 export type SiteInfo = {
 	// the version folder the pages link into, e.g. /v2026.9.4/
@@ -97,6 +99,7 @@ function SiteHeader({ site, section, sidebar }: { site: SiteInfo; section: DS.Se
 				<div className="docs-menu-panel">
 					<SectionNav site={site} section={section} />
 					{sidebar}
+					<SupportLink className="sm:hidden" />
 				</div>
 			</details>
 			<a href={site.root} className="flex items-center gap-2.5 text-text no-underline">
@@ -113,11 +116,22 @@ function SiteHeader({ site, section, sidebar }: { site: SiteInfo; section: DS.Se
 					<SectionNav site={site} section={section} />
 				</div>
 				<VersionMenu site={site} />
+				<SupportLink className="max-sm:hidden" />
 				<a href={site.repoUrl} className="docs-icon-btn" aria-label="SLM on GitHub">
 					<GitHubMark className="size-5" />
 				</a>
 			</div>
 		</header>
+	)
+}
+
+// Shown in the header from 640px up, and in the navigation menu below that, where the header has no room for it.
+function SupportLink({ className }: { className: string }) {
+	return (
+		<a href={Project.DONATION_URL} className={`docs-support-btn ${className}`} aria-label="Support SLM on Ko-fi">
+			<Heart className="size-4 text-pri" aria-hidden="true" />
+			Support
+		</a>
 	)
 }
 

@@ -1,5 +1,5 @@
 import * as TSR from '@tanstack/react-router'
-import { Copy } from 'lucide-react'
+import { Coffee, Copy, Heart } from 'lucide-react'
 
 import LogoMark from '@/components/logo-mark'
 import ManagedServersCard from '@/components/managed-servers-card'
@@ -14,6 +14,7 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
 import * as MsgFmt from '@/messages/format'
+import * as Project from '@/models/project.models'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -38,6 +39,7 @@ export default function AboutPage() {
 	const config = Zus.useStore(ConfigClient.Store)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const user = UsersClient.useLoggedInUser()
+	const docsUrl = ConfigClient.useDocsUrl()
 	if (!config || !user) return null
 
 	const versionText = tr.text(
@@ -63,6 +65,24 @@ export default function AboutPage() {
 
 			<Card>
 				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<Heart className="size-4 text-primary" aria-hidden="true" />
+						{tr.text(APP_Msgs.supportSlm())}
+					</CardTitle>
+				</CardHeader>
+				<CardContent className="space-y-3 text-sm">
+					<p className="text-muted-foreground">{tr.text(APP_Msgs.donationPitch())}</p>
+					<Button asChild size="sm">
+						<a href={Project.DONATION_URL} target="_blank" rel="noopener noreferrer">
+							<Coffee className="text-primary" aria-hidden="true" />
+							{tr.text(APP_Msgs.donateOnKofi())}
+						</a>
+					</Button>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
 					<CardTitle>{tr.text(APP_Msgs.debugAndHelpInfo())}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4 text-sm">
@@ -80,6 +100,7 @@ export default function AboutPage() {
 							</TSR.Link>
 						</div>
 					</div>
+					{docsUrl && <LinkRow heading={tr.text(APP_Msgs.docsHeading())} url={docsUrl} />}
 					<LinkRow heading={tr.text(APP_Msgs.repositoryHeading())} url={config.repoUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.helpHeading())} url={config.helpUrl} />
 					<LinkRow heading={tr.text(APP_Msgs.reportIssuesHeading())} url={config.issuesUrl} />
