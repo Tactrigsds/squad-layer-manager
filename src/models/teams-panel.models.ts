@@ -43,7 +43,7 @@ export namespace Sel {
 			],
 			(players, playerStats, adminCamPlayerIds, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
 				const playerGroupings = settingsGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
-				const groupingIds = PG.getGroupingIds(playerGroupings)
+				const groupingIds = PG.groupingIdsWithParty(playerGroupings)
 				const activeGroupingId =
 					selectedGroupingId !== null && groupingIds.includes(selectedGroupingId) ? selectedGroupingId : (groupingIds[0] ?? null)
 

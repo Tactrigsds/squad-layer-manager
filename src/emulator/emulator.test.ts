@@ -4,6 +4,7 @@ import { matchLog } from '@/lib/log-parsing'
 import Rcon from '@/lib/rcon/core-rcon'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as DSTR from '@/models/destruction.models'
+import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
@@ -87,17 +88,15 @@ describe('rcon frontend via the app client', () => {
 		)
 	})
 
-	it('parses ListPlayers with the app regex, including leading-space names', async () => {
-		emu.world.connectPlayer(makePlayer({ name: ' grey275', role: 'PLA_Recruit' }))
+	it('parses ListPlayers with the app parser, including leading-space names, parties and vehicles', async () => {
+		emu.world.connectPlayer(makePlayer({ name: ' grey275', role: 'PLA_Recruit', partyId: '#0', vehicle: 'minsk400 (Driver)' }))
 		const res = await rcon.execute('ListPlayers')
 		expect(res.code).toBe('ok')
-		const lines = (res as { data: string }).data.split('\n')
-		// the exact regex fetchPlayers uses (squad-rcon.server.ts)
-		const rx =
-			/^ID: (?<playerID>\d+) \| Online IDs:([^|]+)\| Name: (?<name>.+) \| Team ID: (?<teamId>\d|N\/A) \| Squad ID: (?<squadId>\d+|N\/A) \| Is Leader: (?<isLeader>True|False) \| Role: (?<role>.+)$/
-		const parsed = lines.map((l) => l.match(rx)).filter((m) => m !== null)
-		expect(parsed).toHaveLength(1)
-		const ids = SM.PlayerIds.parse({ username: parsed[0]!.groups!.name, idsStr: parsed[0]![2] })
+		const parsed = SR.parseListPlayers((res as { data: string }).data)
+		expect(parsed.unmatched).toEqual([])
+		expect(parsed.rows).toHaveLength(1)
+		expect(parsed.rows[0]).toMatchObject({ role: 'PLA_Recruit', partyId: '#0', vehicle: 'minsk400 (Driver)' })
+		const ids = SM.PlayerIds.parse({ username: parsed.rows[0].name, idsStr: parsed.rows[0].idsStr })
 		expect(ids.username).toBe('grey275')
 		expect(ids.eos).toMatch(/^0002[0-9a-f]{28}$/)
 		expect(ids.steam).toMatch(/^7656119\d{10}$/)

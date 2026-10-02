@@ -1,5 +1,5 @@
 import { def, t, type TString } from '@/models/messages.models'
-import type * as PG from '@/models/player-groupings.models'
+import * as PG from '@/models/player-groupings.models'
 
 // How a grouping rule sources its match, named the way each system is named in the settings page rather than by
 // the discriminant.
@@ -95,3 +95,14 @@ export const trackNoFlag = def('select a flag')
 
 // the bucket for players no rule matched
 export const ungrouped = def('Other')
+
+// a grouping mode as the pickers name it: configured ones by their own name
+export const groupingName = def('{party, select, yes {Party} other {{groupingId}}}', (groupingId: string) => ({
+	groupingId,
+	party: groupingId === PG.PARTY_GROUPING_ID ? 'yes' : 'no',
+}))
+
+// the bucket for players outside every group of the given grouping mode
+export const ungroupedIn = def('{party, select, yes {No party} other {Other}}', (groupingId: string | null) => ({
+	party: groupingId === PG.PARTY_GROUPING_ID ? 'yes' : 'no',
+}))

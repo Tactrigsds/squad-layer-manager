@@ -120,6 +120,8 @@ export function makePlayer(opts: Partial<EmuPlayer> & { name: string }, salt?: s
 		squadId: opts.squadId ?? null,
 		isLeader: opts.isLeader ?? false,
 		role: opts.role ?? 'USA_Rifleman_01',
+		partyId: opts.partyId ?? null,
+		vehicle: opts.vehicle ?? null,
 		controllerId: opts.controllerId ?? `BP_PlayerController_C_${nextControllerId++}`,
 		ip: opts.ip ?? `198.51.100.${((nextIpOctet++ - 1) % 254) + 1}`,
 		port: opts.port ?? 50000 + Math.floor(Math.random() * 10000),

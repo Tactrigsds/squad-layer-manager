@@ -16,7 +16,7 @@ export const Store = Zus.createStore<BM.StoreState>(() => ({
 }))
 
 export namespace Sel {
-	// resolves the active grouping: the selected one if still configured, else the first configured
+	// resolves the active grouping: the selected one if still on offer, else the first on offer
 	export const activeGroupingId = (groupingIds: string[]) => (state: BM.StoreState) =>
 		state.selectedGroupingId !== null && groupingIds.includes(state.selectedGroupingId)
 			? state.selectedGroupingId
@@ -103,19 +103,17 @@ export function useGroupColorResolver(): (playerId: string, player: PG.PlayerFac
 	const bmData = usePlayerBmData()
 	const orgFlags = useOrgFlags()
 	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
-	const playerGroupings = config?.playerGroupings
-	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
+	const playerGroupings = config?.playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
+	const groupingIds = PG.groupingIdsWithParty(playerGroupings)
 	const activeGroupingId = Zus.useStore(Store, Sel.activeGroupingId(groupingIds))
 
 	return React.useCallback(
 		(playerId, player) => {
-			if (!playerGroupings || activeGroupingId === null || !player) return null
-			const grouping = playerGroupings[activeGroupingId]
-			if (!grouping) return null
+			if (activeGroupingId === null || !player) return null
 			const flagIds = bmData[playerId]?.flagIds
 			const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
-			const group = PG.resolveGroup(grouping, PG.playerFacts(player, flags))
-			return group === undefined ? null : PG.getGroupColor(grouping, group, orgFlags)
+			const group = PG.groupOf(playerGroupings, activeGroupingId, PG.playerFacts(player, flags))
+			return group === undefined ? null : PG.groupColorOf(playerGroupings, activeGroupingId, group, orgFlags)
 		},
 		[bmData, orgFlags, playerGroupings, activeGroupingId],
 	)
@@ -136,16 +134,16 @@ export function usePlayerGroupings(playerId: string, player: PG.PlayerFactsSourc
 	const playerGroupings = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerGroupings)
 
 	return React.useMemo(() => {
-		if (!playerGroupings || !player) return []
+		if (!player) return []
+		const configured = playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 		const flagIds = bmData[playerId]?.flagIds
 		const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
 		const facts = PG.playerFacts(player, flags)
 		const groupings: PlayerGrouping[] = []
-		for (const groupingId of PG.getGroupingIds(playerGroupings)) {
-			const grouping = playerGroupings[groupingId]
-			const group = PG.resolveGroup(grouping, facts)
+		for (const groupingId of PG.groupingIdsWithParty(configured)) {
+			const group = PG.groupOf(configured, groupingId, facts)
 			if (group === undefined) continue
-			groupings.push({ groupingId, group, color: PG.getGroupColor(grouping, group, orgFlags) })
+			groupings.push({ groupingId, group, color: PG.groupColorOf(configured, groupingId, group, orgFlags) })
 		}
 		return groupings
 	}, [playerId, player, bmData, orgFlags, playerGroupings])

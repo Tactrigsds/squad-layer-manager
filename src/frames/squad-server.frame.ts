@@ -400,6 +400,16 @@ export namespace Actions {
 		)
 	}
 
+	export function selectParty(stores: KeyProp, partyId: string, teamId?: SM.TeamId) {
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
+		selectPlayers(
+			stores,
+			players
+				.filter((p) => p.partyId === partyId && (teamId == null || p.teamId === teamId))
+				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
+		)
+	}
+
 	// teamId (raw): when given, only that team's players flip selected <-> unselected and the rest of
 	// the selection is preserved; without it every on-team player flips and stale entries are dropped
 	export function invertSelection(stores: KeyProp, teamId?: SM.TeamId) {

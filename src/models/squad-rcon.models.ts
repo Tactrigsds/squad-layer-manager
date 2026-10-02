@@ -42,6 +42,8 @@ export type ListPlayersRow = {
 	squadId: number | null
 	isLeader: boolean
 	role: string
+	partyId: string | null
+	vehicle: string | null
 }
 
 const LIST_PLAYERS_KEYS_AFTER_NAME = ['Team ID', 'Squad ID', 'Is Leader', 'Role'] as const
@@ -90,6 +92,8 @@ function parseActivePlayerLine(line: string): ListPlayersRow | null {
 	const squadId = fields.get('Squad ID')
 	const isLeader = fields.get('Is Leader')
 	const role = fields.get('Role')
+	const partyId = fields.get('Party ID')
+	const vehicle = fields.get('Vehicle')
 	if (teamId === undefined || !/^(\d|N\/A)$/.test(teamId)) return null
 	if (squadId === undefined || !/^(\d+|N\/A)$/.test(squadId)) return null
 	if (isLeader !== 'True' && isLeader !== 'False') return null
@@ -103,5 +107,7 @@ function parseActivePlayerLine(line: string): ListPlayersRow | null {
 		squadId: squadId === 'N/A' ? null : +squadId,
 		isLeader: isLeader === 'True',
 		role,
+		partyId: partyId === undefined || partyId === 'N/A' ? null : partyId,
+		vehicle: vehicle === undefined || vehicle === 'N/A' ? null : vehicle,
 	}
 }

@@ -79,7 +79,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 								className="fd-pill"
 								data-state={groupings.active === groupingId ? 'on' : 'off'}
 							>
-								{groupingId}
+								{tr.text(PG_Msgs.groupingName(groupingId))}
 							</button>
 						))}
 					</span>
@@ -166,7 +166,7 @@ function TeamBreakdown(props: {
 			: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
 					const originalIndex = keptIndices[datum.seriesIndex]
 					let group = chartSeries[datum.seriesIndex].label
-					if (group === tr.text(PG_Msgs.ungrouped())) group = TeamsPanelPrt.FILTER_NONE
+					if (group === breakdown.ungroupedLabel) group = TeamsPanelPrt.FILTER_NONE
 					if (modifiers.shift) {
 						const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
 						SquadServerFrame.Actions.selectPlayerIds(

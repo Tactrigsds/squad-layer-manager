@@ -17,7 +17,7 @@ function adminRule(adminGroup: string, group: string): PG.GroupRule {
 
 // matches nothing unless the test says otherwise, so each case names only the facts it is about
 function facts(over: Partial<PG.PlayerFacts> = {}): PG.PlayerFacts {
-	return { flags: [], adminGroups: [], isAdmin: false, username: '', tag: undefined, discordRoles: [], ...over }
+	return { flags: [], adminGroups: [], isAdmin: false, username: '', tag: undefined, discordRoles: [], partyId: null, ...over }
 }
 
 // a player carrying the given flags and no admin-list membership
@@ -269,5 +269,26 @@ describe('PlayerGroupingsSchema', () => {
 		expect(PG.PlayerGroupingsSchema.safeParse({ admin: { rules: [rule('f-hq', 'HQ')], groups } }).success).toBe(true)
 		// the old shape stored a bare string that meant either variant; it must not parse as one of them by accident
 		expect(PG.PlayerGroupingsSchema.safeParse({ admin: { rules: [], groups: { HQ: { color: '#fff' } } } }).success).toBe(false)
+	})
+})
+
+describe('the party grouping', () => {
+	const configured = { admin: { rules: [adminRule('Whitelist', 'Members')], groups: {} } }
+
+	it('comes after the configured groupings and groups players by party', () => {
+		expect(PG.groupingIdsWithParty(configured)).toEqual(['admin', PG.PARTY_GROUPING_ID])
+		expect(PG.groupOf(configured, PG.PARTY_GROUPING_ID, facts({ partyId: '#4', adminGroups: ['Whitelist'] }))).toBe('#4')
+		expect(PG.groupOf(configured, PG.PARTY_GROUPING_ID, facts())).toBeUndefined()
+		expect(PG.groupOf(configured, 'admin', facts({ partyId: '#4', adminGroups: ['Whitelist'] }))).toBe('Members')
+	})
+
+	it('lists the parties present, by number', () => {
+		expect(PG.groupNamesOf(configured, PG.PARTY_GROUPING_ID, ['#10', '#2', '#10', '#0'])).toEqual(['#0', '#2', '#10'])
+	})
+
+	it('colors a party by its own number', () => {
+		const color = PG.groupColorOf(configured, PG.PARTY_GROUPING_ID, '#3', undefined)
+		expect(PG.groupColorOf(configured, PG.PARTY_GROUPING_ID, '#3', undefined)).toBe(color)
+		expect(PG.groupColorOf(configured, PG.PARTY_GROUPING_ID, '#4', undefined)).not.toBe(color)
 	})
 })

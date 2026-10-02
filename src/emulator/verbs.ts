@@ -192,6 +192,16 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			world.possessAdminCam(player)
 			return `${name} entered admin camera`
 		}
+		case 'party': {
+			const { name, partyId } = input as SB.SandboxVerbInput<'party'>
+			requirePlayer(host, name).partyId = partyId
+			return partyId ? `${name} is now in party ${partyId}` : `${name} left their party`
+		}
+		case 'vehicle': {
+			const { name, vehicle } = input as SB.SandboxVerbInput<'vehicle'>
+			requirePlayer(host, name).vehicle = vehicle
+			return vehicle ? `${name} is now in ${vehicle}` : `${name} is now on foot`
+		}
 		case 'kill': {
 			const { victim, attacker } = input as SB.SandboxVerbInput<'kill'>
 			world.killPlayer(requirePlayer(host, victim), requirePlayer(host, attacker))

@@ -38,6 +38,7 @@ import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as MsgFmt from '@/messages/format'
 import * as MH_Msgs from '@/messages/match-history.messages'
+import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
@@ -478,6 +479,10 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							</dd>
 						</div>
 						<div>
+							<dt>{tr.text(SM_Msgs.partyColumn())}</dt>
+							<dd className="font-mono">{matchPlayer.partyId ?? '-'}</dd>
+						</div>
+						<div>
 							<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
 							<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
 								{matchPlayer.stats?.teamkills ?? 0}
@@ -487,6 +492,12 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							<div>
 								<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
 								<dd>{matchPlayer.role ?? '-'}</dd>
+							</div>
+						)}
+						{showSpoilers && (
+							<div>
+								<dt>{tr.text(SM_Msgs.vehicleColumn())}</dt>
+								<dd>{matchPlayer.vehicle ?? '-'}</dd>
 							</div>
 						)}
 						{showSpoilers && (
@@ -1031,9 +1042,9 @@ function PlayerTags(props: {
 							<span
 								key={grouping.groupingId}
 								className={cn(TAG_CLS, 'bg-[#414144] text-text')}
-								title={tr.text(SM_Msgs.groupingTagHint(grouping.groupingId, grouping.group))}
+								title={tr.text(SM_Msgs.groupingTagHint(tr.text(PG_Msgs.groupingName(grouping.groupingId)), grouping.group))}
 							>
-								<span className="text-text-3">{grouping.groupingId}</span>
+								<span className="text-text-3">{tr.text(PG_Msgs.groupingName(grouping.groupingId))}</span>
 								<span style={{ color: grouping.color }}>{grouping.group}</span>
 							</span>
 						))}

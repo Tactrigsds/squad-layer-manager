@@ -7,6 +7,7 @@ import * as Str from '@/lib/string-utils'
 import * as Zus from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import * as MH from '@/models/match-history.models'
+import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import type * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -19,7 +20,7 @@ export type SquadFilterTarget = MH.NormedTeamId | 'combined'
 export type SortingTarget = 'teams' | 'combined'
 
 export const FILTER_ALL = '__all__'
-// sentinel filter value matching players with no group ("Other") or no squad ("Unassigned")
+// sentinel filter value matching players with no group ("Other"), no squad ("Unassigned") or no party
 export const FILTER_NONE = '__none__'
 
 export const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
@@ -33,9 +34,10 @@ export type TeamsPanel = {
 	showSelected: boolean
 	adminsOnly: boolean
 	showSpoilers: boolean
-	// role and group are deliberately shared across the tables so a filter set on one applies to both
+	// role, group and party are deliberately shared across the tables so a filter set on one applies to both
 	roleFilter: string | null
 	groupFilter: string | null
+	partyFilter: string | null
 	squadFilters: Record<SquadFilterTarget, string | null>
 	sorting: Record<SortingTarget, SortingState>
 	// the phone list shows one side or both; a tap on its team button cycles through the three
@@ -68,6 +70,7 @@ export function initTeamsPanel(args: Args) {
 		showSpoilers: false,
 		roleFilter: null,
 		groupFilter: null,
+		partyFilter: null,
 		squadFilters: { A: null, B: null, combined: null },
 		sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
 		phoneTeam: 'both',
@@ -155,6 +158,7 @@ function applyFilters<T extends TeamsPanelModels.EnrichedPlayer>(
 	query: string,
 	role: string | null,
 	group: string | null,
+	party: string | null,
 	squad: string | null,
 	adminsOnly: boolean,
 	matchesSquadFilter: (player: T, squadFilter: string) => boolean,
@@ -166,6 +170,7 @@ function applyFilters<T extends TeamsPanelModels.EnrichedPlayer>(
 	}
 	if (role !== null) result = result.filter((p) => p.role === role)
 	if (group !== null) result = result.filter((p) => (group === FILTER_NONE ? p.group == null : p.group === group))
+	if (party !== null) result = result.filter((p) => (party === FILTER_NONE ? p.partyId == null : p.partyId === party))
 	if (squad !== null) result = result.filter((p) => matchesSquadFilter(p, squad))
 	if (adminsOnly) result = result.filter((p) => p.isAdmin)
 	return result
@@ -211,6 +216,9 @@ export namespace Sel {
 	export function groupFilter(store: Store) {
 		return store.teamsPanel.groupFilter
 	}
+	export function partyFilter(store: Store) {
+		return store.teamsPanel.partyFilter
+	}
 	export function squadFilter(target: SquadFilterTarget) {
 		return (store: Store) => store.teamsPanel.squadFilters[target]
 	}
@@ -226,9 +234,14 @@ export namespace Sel {
 		}
 	}
 
-	// the three column-header filter values as one stable object, so a table reads them in a single subscription
+	// the column-header filter values as one stable object, so a table reads them in a single subscription
 	export const columnFilters = RSel.memoizeFactory((target: SquadFilterTarget) =>
-		RSel.createSelector([roleFilter, groupFilter, squadFilter(target)], (role, group, squad) => ({ role, group, squad })),
+		RSel.createSelector([roleFilter, groupFilter, partyFilter, squadFilter(target)], (role, group, party, squad) => ({
+			role,
+			group,
+			party,
+			squad,
+		})),
 	)
 
 	// what the panel header reads, likewise as one subscription
@@ -237,7 +250,7 @@ export namespace Sel {
 		(showSelected, adminsOnly, showSpoilers, roleFilter) => ({ showSelected, adminsOnly, showSpoilers, roleFilter }),
 	)
 
-	// filter options are drawn from both teams so the shared role/group filters offer every value
+	// filter options are drawn from both teams so the shared role/group/party filters offer every value
 	export const availableRoles = RSel.createSelector([(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)], (players) =>
 		[...new Set(players.map((p) => p.role).filter((r): r is string => r != null))].sort(),
 	)
@@ -245,7 +258,15 @@ export namespace Sel {
 		[...new Set(players.map((p) => p.group).filter((g): g is string => g != null))].sort(),
 	)
 
-	export const filterOptions = RSel.createSelector([availableRoles, availableGroups], (roles, groups) => ({ roles, groups }))
+	export const availableParties = RSel.createSelector([(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)], (players) =>
+		[...new Set(players.map((p) => p.partyId).filter((id): id is string => id != null))].sort(PG.comparePartyIds),
+	)
+
+	export const filterOptions = RSel.createSelector([availableRoles, availableGroups, availableParties], (roles, groups, parties) => ({
+		roles,
+		groups,
+		parties,
+	}))
 
 	// squad creator eos ids resolved to display names, for the squad group-header rows. Both variants share one map:
 	// a squad's creator is always on its own team, so the extra entries are never looked up.
@@ -303,11 +324,12 @@ export namespace Sel {
 				(...[store]: Inputs) => store.teamsPanel.searchQuery,
 				(...[store]: Inputs) => store.teamsPanel.roleFilter,
 				(...[store]: Inputs) => store.teamsPanel.groupFilter,
+				(...[store]: Inputs) => store.teamsPanel.partyFilter,
 				(...[store]: Inputs) => store.teamsPanel.squadFilters[teamId],
 				(...[store]: Inputs) => store.teamsPanel.adminsOnly,
 			],
-			(players, query, role, group, squad, adminsOnly) =>
-				applyFilters(players, query, role, group, squad, adminsOnly, matchesTeamSquadFilter),
+			(players, query, role, group, party, squad, adminsOnly) =>
+				applyFilters(players, query, role, group, party, squad, adminsOnly, matchesTeamSquadFilter),
 		),
 	)
 
@@ -328,16 +350,18 @@ export namespace Sel {
 			(...[store]: CombinedInputs) => store.teamsPanel.searchQuery,
 			(...[store]: CombinedInputs) => store.teamsPanel.roleFilter,
 			(...[store]: CombinedInputs) => store.teamsPanel.groupFilter,
+			(...[store]: CombinedInputs) => store.teamsPanel.partyFilter,
 			(...[store]: CombinedInputs) => store.teamsPanel.squadFilters.combined,
 			(...[store]: CombinedInputs) => store.teamsPanel.adminsOnly,
 			(...[store]: CombinedInputs) => store.teamsPanel.phoneTeam,
 		],
-		(players, query, role, group, squad, adminsOnly, phoneTeam) =>
+		(players, query, role, group, party, squad, adminsOnly, phoneTeam) =>
 			applyFilters(
 				phoneTeam === 'both' ? players : players.filter((p) => p.normedTeam === phoneTeam),
 				query,
 				role,
 				group,
+				party,
 				squad,
 				adminsOnly,
 				matchesCombinedSquadFilter,
@@ -386,6 +410,10 @@ export namespace Actions {
 		slice(stores).setState({ groupFilter })
 	}
 
+	export function setPartyFilter(stores: KeyProp, partyFilter: string | null) {
+		slice(stores).setState({ partyFilter })
+	}
+
 	export function setSquadFilter(stores: KeyProp, target: SquadFilterTarget, value: string | null) {
 		slice(stores).setState((s) => ({ squadFilters: { ...s.squadFilters, [target]: value } }))
 	}
@@ -421,6 +449,7 @@ export namespace Actions {
 	export function clearColumnFilter(stores: KeyProp, target: SquadFilterTarget, columnId: string) {
 		if (columnId === 'role') setRoleFilter(stores, null)
 		if (columnId === 'group') setGroupFilter(stores, null)
+		if (columnId === 'party') setPartyFilter(stores, null)
 		if (columnId === 'squad') setSquadFilter(stores, target, null)
 	}
 
@@ -432,6 +461,7 @@ export namespace Actions {
 			adminsOnly: false,
 			roleFilter: null,
 			groupFilter: null,
+			partyFilter: null,
 			squadFilters: { A: null, B: null, combined: null },
 			sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
 		})

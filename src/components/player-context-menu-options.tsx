@@ -405,6 +405,7 @@ function FramedPlayerMenuItems({
 			teamId: player.teamId,
 			username: player.ids.username,
 			role: player.role,
+			partyId: player.partyId ?? null,
 			squadName: squad?.squadName ?? null,
 			isCommander: player.isLeader && squad?.squadName === 'Command Squad',
 			isLeader: player.isLeader,
@@ -765,6 +766,19 @@ function FramedPlayerMenuItems({
 				>
 					{tr.text(SM_Msgs.selectGroup(group))}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.groupCell)}</ContextMenuShortcut>
+				</Item>
+			),
+			playerInfo?.partyId != null && (
+				<Item
+					key="party"
+					onClick={() => {
+						if (playerInfo?.partyId == null) return
+						TSWClient.Actions.ensureViewingTeams(serverId)
+						SquadServerFrame.Actions.selectParty(stores, playerInfo.partyId, teamId)
+					}}
+				>
+					{tr.text(SM_Msgs.selectParty(playerInfo.partyId))}
+					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.partyCell)}</ContextMenuShortcut>
 				</Item>
 			),
 			playerInfo?.isLeader && (

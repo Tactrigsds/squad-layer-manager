@@ -138,6 +138,7 @@ export type PlayerFacts = {
 	tag: string | undefined
 	// role ids on the linked discord account; empty when the player has linked none
 	discordRoles: string[]
+	partyId: string | null
 }
 
 // The roster fields a rule can match on. Structural rather than SM.Player so a RecentPlayer satisfies it too: a
@@ -147,6 +148,7 @@ export type PlayerFactsSource = {
 	isAdmin: boolean
 	adminGroups?: string[]
 	discordRoles?: string[]
+	partyId?: string | null
 }
 
 // Facts come from two places and neither knows about the other: the server stamps what it resolved for the roster
@@ -159,6 +161,7 @@ export function playerFacts(player: PlayerFactsSource, flags: BM.PlayerFlag[]): 
 		username: player.ids.username,
 		tag: SM.PlayerIds.getTag(player.ids),
 		discordRoles: player.discordRoles ?? [],
+		partyId: player.partyId ?? null,
 	}
 }
 
@@ -303,12 +306,61 @@ export function resolvePlayerGroups(
 ): Map<SM.PlayerId, string> {
 	const groups: Map<SM.PlayerId, string> = new Map()
 	if (!groupingId) return groups
-	const grouping = groupings[groupingId]
-	if (!grouping) return groups
-
 	for (const [playerId, facts] of players) {
-		const group = resolveGroup(grouping, facts)
+		const group = groupOf(groupings, groupingId, facts)
 		if (group !== undefined) groups.set(playerId, group)
 	}
 	return groups
+}
+
+// ---- the party grouping ----
+//
+// Buckets players by the in-game party they queued with. It is built in rather than configured: its groups are whatever
+// party ids the roster holds right now, which no rule list can name ahead of time. The functions below take any
+// grouping id, configured or this one, so a caller never branches on which kind is active.
+
+// Reserved: a configured grouping by this name is shadowed by the built-in one.
+export const PARTY_GROUPING_ID = '__party__'
+
+// the grouping modes on offer: every configured grouping, then the party grouping
+export function groupingIdsWithParty(groupings: PlayerGroupings): string[] {
+	return [...getGroupingIds(groupings).filter((id) => id !== PARTY_GROUPING_ID), PARTY_GROUPING_ID]
+}
+
+export function groupOf(groupings: PlayerGroupings, groupingId: string, facts: PlayerFacts): string | undefined {
+	if (groupingId === PARTY_GROUPING_ID) return facts.partyId ?? undefined
+	const grouping = groupings[groupingId]
+	return grouping ? resolveGroup(grouping, facts) : undefined
+}
+
+// The groups to lay out, in order. A configured grouping lists every group its rules can assign; the party grouping
+// lists the parties among `assigned`, the groups the roster at hand was resolved to.
+export function groupNamesOf(groupings: PlayerGroupings, groupingId: string, assigned: Iterable<string>): string[] {
+	if (groupingId === PARTY_GROUPING_ID) return [...new Set(assigned)].sort(comparePartyIds)
+	const grouping = groupings[groupingId]
+	return grouping ? getGroupNames(grouping) : []
+}
+
+export function groupColorOf(groupings: PlayerGroupings, groupingId: string, group: string, orgFlags: BM.PlayerFlag[] | undefined): string {
+	if (groupingId === PARTY_GROUPING_ID) return partyColor(group)
+	const grouping = groupings[groupingId]
+	return grouping ? getGroupColor(grouping, group, orgFlags) : DEFAULT_GROUP_COLOR
+}
+
+// Party ids read "#0", "#12": by number where both have one, so #2 sorts before #10, and as text otherwise.
+export function comparePartyIds(a: string, b: string): number {
+	const numA = /^#(\d+)$/.exec(a)
+	const numB = /^#(\d+)$/.exec(b)
+	if (numA && numB) return Number(numA[1]) - Number(numB[1])
+	return a.localeCompare(b)
+}
+
+const PARTY_COLORS = ['#4e9bf5', '#e8a33d', '#4cc38a', '#e5649b', '#a07ef0', '#43c6c9', '#d9d24a', '#f07a54', '#8fb35a', '#c48a6a']
+
+// Keyed on the party number, so a party keeps its color as other parties form and break up around it.
+function partyColor(partyId: string): string {
+	const num = /^#(\d+)$/.exec(partyId)
+	let index = num ? Number(num[1]) : 0
+	if (!num) for (const ch of partyId) index = (index * 31 + ch.charCodeAt(0)) >>> 0
+	return PARTY_COLORS[index % PARTY_COLORS.length]
 }

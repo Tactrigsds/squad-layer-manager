@@ -17,6 +17,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebounced } from '@/hooks/use-debounce'
+import { useTruncatedCellReveal } from '@/hooks/use-truncated-cell-reveal'
 import * as Browser from '@/lib/browser'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
@@ -294,7 +295,14 @@ function PhoneTeamsToolbar(props: {
 	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const { showSelected, adminsOnly, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
-	const active = [showSelected, adminsOnly, roleFilter !== null, filters.group !== null, filters.squad !== null].filter(Boolean).length
+	const active = [
+		showSelected,
+		adminsOnly,
+		roleFilter !== null,
+		filters.group !== null,
+		filters.party !== null,
+		filters.squad !== null,
+	].filter(Boolean).length
 	const order: [MH.NormedTeamId, MH.NormedTeamId] = [props.leftTeam, props.rightTeam]
 	const step = phoneTeam === 'both' ? 0 : phoneTeam === order[0] ? 1 : 2
 	// the input only exists while the search is open; closing it drops the query with it
@@ -389,6 +397,7 @@ type PhoneSort = { id: string; desc: boolean }
 const PHONE_SORTS: { key: string; sort: PhoneSort; label: () => string; spoiler?: boolean }[] = [
 	{ key: 'squad', sort: { id: 'squad', desc: false }, label: () => tr.text(SM_Msgs.sortSquad()) },
 	{ key: 'name', sort: { id: 'name', desc: false }, label: () => tr.text(SM_Msgs.sortName()) },
+	{ key: 'party', sort: { id: 'party', desc: false }, label: () => tr.text(SM_Msgs.sortParty()) },
 	{ key: 'tks', sort: { id: 'tks', desc: true }, label: () => tr.text(SM_Msgs.sortTeamKills()) },
 	{ key: 'stats', sort: { id: 'stats', desc: true }, label: () => tr.text(SM_Msgs.sortKills()), spoiler: true },
 ]
@@ -407,7 +416,7 @@ function PhoneSortSheet(props: {
 	const { showSelected, adminsOnly, showSpoilers } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
-	const { roles, groups } = Zus.useStore(
+	const { roles, groups, parties } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -415,6 +424,7 @@ function PhoneSortSheet(props: {
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.filterOptions,
 	)
+	const groupingModes = useGroupingModes()
 	const squadsWithTeam = Zus.useStore(
 		squadServer,
 		currentMatch$,
@@ -474,12 +484,20 @@ function PhoneSortSheet(props: {
 				<ColumnFilterSelect
 					value={filters.group}
 					onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStores, v)}
-					options={[...groups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: tr.text(PG_Msgs.ungrouped()) }]}
+					options={[
+						...groups.map((g) => ({ value: g, label: g })),
+						{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungroupedIn(groupingModes.active)) },
+					]}
 				/>
 				<ColumnFilterSelect
 					value={filters.role}
 					onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStores, v)}
 					options={roles.map((r) => ({ value: r, label: r }))}
+				/>
+				<ColumnFilterSelect
+					value={filters.party}
+					onChange={(v) => TeamsPanelPrt.Actions.setPartyFilter(panelStores, v)}
+					options={[...parties.map((id) => ({ value: id, label: id })), { value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) }]}
 				/>
 				<ColumnFilterSelect
 					value={filters.squad}
@@ -525,20 +543,16 @@ function PhoneSortSheet(props: {
 
 // the admin-list grouping picker, as the header's ControlPanel renders it
 function GroupingSelect() {
-	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
-	const playerGroupings = config?.playerGroupings
-	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
-	if (groupingIds.length === 0) return null
+	const modes = useGroupingModes()
 	return (
-		<Select value={activeGroupingId ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedGroupingId(value || null)}>
+		<Select value={modes.active ?? ''} onValueChange={(value) => BattlemetricsClient.Actions.setSelectedGroupingId(value || null)}>
 			<SelectTrigger className="fd-btn w-auto bg-ctl font-normal">
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				{groupingIds.map((id) => (
+				{modes.ids.map((id) => (
 					<SelectItem key={id} value={id}>
-						{id}
+						{tr.text(PG_Msgs.groupingName(id))}
 					</SelectItem>
 				))}
 			</SelectContent>
@@ -702,10 +716,7 @@ function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Norm
 }
 
 function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
-	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
-	const playerGroupings = config?.playerGroupings
-	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const groupingModes = useGroupingModes()
 	const switchRequestCount = Zus.useStore(stores.squadServer!, SRQClient.Sel.requestCount)
 	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
 	const now = useNow(1000)
@@ -756,20 +767,20 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 					</Button>
 				)}
 			/>
-			{groupingIds.length > 0 && (
+			{groupingModes.ids.length > 0 && (
 				<span data-tour="teams-grouping" className="flex items-center gap-1">
 					<span className="text-text-3">{tr.text(SM_Msgs.groupingLabel())}</span>
 					<Select
-						value={activeGroupingId ?? ''}
+						value={groupingModes.active ?? ''}
 						onValueChange={(value) => BattlemetricsClient.Actions.setSelectedGroupingId(value || null)}
 					>
 						<SelectTrigger className="fd-btn fd-btn-sm w-auto min-w-[88px] bg-ctl font-normal">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							{groupingIds.map((id) => (
+							{groupingModes.ids.map((id) => (
 								<SelectItem key={id} value={id}>
-									{id}
+									{tr.text(PG_Msgs.groupingName(id))}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -831,7 +842,7 @@ function SwitchRequestIcon({
 	)
 }
 
-// shift+click anywhere in the squad/group cell selects the squad/group members
+// shift+click anywhere in the squad/role/group/party cell selects the players sharing it
 function shiftClickCellProps(
 	columnId: string,
 	player: TeamsPanelModels.EnrichedPlayer,
@@ -862,6 +873,18 @@ function shiftClickCellProps(
 			},
 		}
 	}
+	if (columnId === 'party' && player.partyId != null) {
+		const partyId = player.partyId
+		return {
+			title: tr.text(SM_Msgs.partyCellHint()),
+			onClickCapture: (e) => {
+				if (!e.shiftKey) return
+				e.preventDefault()
+				e.stopPropagation()
+				SquadServerFrame.Actions.selectParty(stores, partyId, e.ctrlKey ? undefined : (player.teamId ?? undefined))
+			},
+		}
+	}
 	if (columnId === 'group' && player.group) {
 		const group = player.group
 		return {
@@ -881,11 +904,14 @@ function shiftClickCellProps(
 type BasePlayerTableMeta = {
 	matchId: number
 	groupColorByName: Map<string, string>
-	filters: { role: string | null; group: string | null; squad: string | null }
+	// the grouping mode the group column shows, which names its no-group option
+	groupingId: string | null
+	filters: { role: string | null; group: string | null; party: string | null; squad: string | null }
 	// which of the panel's per-table squad filters this table's header writes
 	squadFilterTarget: TeamsPanelPrt.SquadFilterTarget
 	availableRoles: string[]
 	availableGroups: string[]
+	availableParties: string[]
 	stores: SquadServerFrame.KeyProp
 	statsSort: StatsSortState
 	// SLM was restarted mid-match, so combat stats are incomplete -- surfaced as a disclaimer on the stats header
@@ -923,7 +949,7 @@ type SquadGroupInfo = {
 	totalSize: number
 }
 
-const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
+const FILTERED_COLUMN_IDS = ['role', 'group', 'party', 'squad']
 
 // middle-click on a header resets that column's sort and filter
 function headerResetProps(
@@ -1176,7 +1202,7 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 			return (
-				<span className="flex min-w-0 items-center gap-1" title={row.original.ids.username}>
+				<span className="flex min-w-0 items-center gap-1">
 					<PlayerDisplay
 						stores={meta.stores}
 						player={row.original}
@@ -1210,6 +1236,8 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
 	return helper.accessor((row) => row.group ?? '', {
 		id: 'group',
+		// party ids sort by number; any other group name falls through to plain text order
+		sortingFn: (a, b) => PG.comparePartyIds(a.original.group ?? '', b.original.group ?? ''),
 		header: ({ table }) => {
 			const meta = table.options.meta as BasePlayerTableMeta
 			const { filters, availableGroups } = meta
@@ -1223,7 +1251,7 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
 						options={[
 							...availableGroups.map((g) => ({ value: g, label: g })),
-							{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungrouped()) },
+							{ value: FILTER_NONE, label: tr.text(PG_Msgs.ungroupedIn(meta.groupingId)) },
 						]}
 						triggerClassName="max-w-24"
 					/>
@@ -1238,9 +1266,7 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 			return (
 				<span className="flex items-center gap-1 max-w-24">
 					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
-					<span className="truncate" title={group}>
-						{group}
-					</span>
+					<span className="truncate">{group}</span>
 				</span>
 			)
 		},
@@ -1265,6 +1291,46 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			)
 		},
 		enableSorting: false,
+	})
+}
+
+function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor((row) => row.partyId ?? '', {
+		id: 'party',
+		// players outside a party sort after every party, in either direction
+		sortingFn: (a, b) => {
+			const partyA = a.original.partyId
+			const partyB = b.original.partyId
+			if (partyA == null || partyB == null) return partyA == null ? (partyB == null ? 0 : 1) : -1
+			return PG.comparePartyIds(partyA, partyB)
+		},
+		header: ({ table }) => {
+			const meta = table.options.meta as BasePlayerTableMeta
+			return (
+				<span className="flex flex-col items-start">
+					<span>{tr.text(SM_Msgs.partyColumn())}</span>
+					<ColumnFilterSelect
+						value={meta.filters.party}
+						onChange={(v) => TeamsPanelPrt.Actions.setPartyFilter(panelStoresOf(meta), v)}
+						options={[
+							...meta.availableParties.map((id) => ({ value: id, label: id })),
+							{ value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) },
+						]}
+					/>
+				</span>
+			)
+		},
+		cell: ({ row }) => row.original.partyId && <span className="font-mono text-xs">{row.original.partyId}</span>,
+	})
+}
+
+// a spoiler, and verbatim until more samples pin down what the game puts in it (see SM.PlayerSchema)
+function vehicleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
+	return helper.accessor((row) => row.vehicle ?? '', {
+		id: 'vehicle',
+		header: () => tr.text(SM_Msgs.vehicleColumn()),
+		enableSorting: false,
+		cell: ({ row }) => row.original.vehicle && <span className="block truncate">{row.original.vehicle}</span>,
 	})
 }
 
@@ -1479,7 +1545,9 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 			{ value: FILTER_NONE, label: tr.text(SM_Msgs.unassignedSquad()) },
 		],
 	}),
+	partyColumn(playerColumnHelper),
 	roleColumn(playerColumnHelper),
+	vehicleColumn(playerColumnHelper),
 	tksColumn(playerColumnHelper),
 ]
 
@@ -1544,25 +1612,31 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 			{ value: FILTER_NONE, label: tr.text(SM_Msgs.unassignedSquad()) },
 		],
 	}),
+	partyColumn(combinedColumnHelper),
 	roleColumn(combinedColumnHelper),
+	vehicleColumn(combinedColumnHelper),
 	tksColumn(combinedColumnHelper),
 ]
 
-function useGroupColorByName(): Map<string, string> {
-	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
+// the grouping modes on offer and the one in effect
+function useGroupingModes(): { groupings: PG.PlayerGroupings; ids: string[]; active: string | null } {
+	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerGroupings)
+	const groupings = configured ?? PG.EMPTY_PLAYER_GROUPINGS
+	const ids = React.useMemo(() => PG.groupingIdsWithParty(groupings), [groupings])
+	const active = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(ids))
+	return { groupings, ids, active }
+}
+
+// colors for the groups the roster falls into under the active grouping mode
+function useGroupColorByName(groups: string[], modes: ReturnType<typeof useGroupingModes>): Map<string, string> {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const playerGroupings = config?.playerGroupings
-	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const { groupings, active } = modes
 	return React.useMemo(() => {
 		const result = new Map<string, string>()
-		const grouping = activeGroupingId ? playerGroupings?.[activeGroupingId] : undefined
-		if (!grouping) return result
-		for (const group of PG.getGroupNames(grouping)) {
-			result.set(group, PG.getGroupColor(grouping, group, orgFlags))
-		}
+		if (active === null) return result
+		for (const group of groups) result.set(group, PG.groupColorOf(groupings, active, group, orgFlags))
 		return result
-	}, [playerGroupings, activeGroupingId, orgFlags])
+	}, [groups, groupings, active, orgFlags])
 }
 
 // Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
@@ -1712,7 +1786,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(() => [...props.baseColumns, statsColumn<T>(statsMetric)], [props.baseColumns, statsMetric])
-	const columnVisibility = React.useMemo(() => ({ role: showSpoilers, stats: showSpoilers }), [showSpoilers])
+	const columnVisibility = React.useMemo(() => ({ role: showSpoilers, vehicle: showSpoilers, stats: showSpoilers }), [showSpoilers])
 
 	const table = useReactTable<T>({
 		data: props.data,
@@ -1750,6 +1824,9 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	React.useEffect(() => () => SquadServerFrame.Actions.clearVisiblePlayers(stores, visibleKey), [stores, visibleKey])
 	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
 	const tableRef = React.useRef<HTMLTableElement | null>(null)
+	const revealRef = React.useRef<HTMLDivElement | null>(null)
+	const revealZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	useTruncatedCellReveal(tableRef, revealRef)
 	FitCols.useFittedColumns(tableRef, props.columnFit, [
 		rows,
 		columnVisibility,
@@ -1772,7 +1849,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 		}
 		// the squad header row already names the faction while the sort keeps squads together
 		const flat = !(props.getSquadGroup && squadGroupsEnabled)
-		const spoilers = cells.some((c) => c.column.id === 'role' || c.column.id === 'stats')
+		const spoilers = cells.some((c) => c.column.id === 'role' || c.column.id === 'vehicle' || c.column.id === 'stats')
 		return (
 			<TableCell colSpan={cells.length} className="h-auto! px-2.5! pe-1! py-1.5 whitespace-normal">
 				<div className="flex items-center gap-1">
@@ -1783,12 +1860,14 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 							<span className="min-w-0 truncate">{cell('name')}</span>
 							{cell('group')}
 							<span className="flex-1" />
+							{cell('party')}
 							{cell('squad')}
 							{cell('tks')}
 						</div>
 						{spoilers && (
 							<div className="flex items-center gap-2 min-w-0 ps-7 text-xs text-text-2">
 								<span className="min-w-0 truncate">{cell('role')}</span>
+								<span className="min-w-0 truncate">{cell('vehicle')}</span>
 								<span className="flex-1" />
 								{cell('stats')}
 							</div>
@@ -1977,6 +2056,13 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 				</TableHeader>
 				<TableBody>{bodyRows}</TableBody>
 			</Table>
+			<div
+				ref={revealRef}
+				hidden
+				aria-hidden
+				style={{ zIndex: revealZIndex }}
+				className="pointer-events-none absolute flex w-max items-center gap-1 whitespace-nowrap text-xs shadow-[0_2px_8px_rgba(0,0,0,0.5)] [&_*]:max-w-none! [&_*]:overflow-visible! [&_*]:[text-overflow:clip]!"
+			/>
 			{phone && (
 				<MenuSheet
 					open={menuFor !== null}
@@ -2005,6 +2091,7 @@ const TEAM_TABLE_COLUMN_FIT: FitCols.Spec = {
 		{ id: 'name', minEm: 7 },
 		{ id: 'group', minEm: 5.5 },
 		{ id: 'role', minEm: 5 },
+		{ id: 'vehicle', minEm: 5 },
 	],
 }
 
@@ -2013,7 +2100,6 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 	const currentMatch$ = MatchHistoryClient.currentMatch$(squadServer.serverId)
 	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const matchId = match?.historyEntryId ?? 0
-	const groupColorByName = useGroupColorByName()
 
 	const displayedPlayers = Zus.useStore(
 		squadServer,
@@ -2031,7 +2117,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.playerNamesById,
 	)
-	const { roles, groups } = Zus.useStore(
+	const { roles, groups, parties } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -2039,6 +2125,8 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.filterOptions,
 	)
+	const groupingModes = useGroupingModes()
+	const groupColorByName = useGroupColorByName(groups, groupingModes)
 	const squads = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.squadsForTeam(props.teamId))
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
@@ -2058,10 +2146,12 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
 		squads,
 		groupColorByName,
+		groupingId: groupingModes.active,
 		filters,
 		squadFilterTarget: props.teamId,
 		availableRoles: roles,
 		availableGroups: groups,
+		availableParties: parties,
 		stores: props.stores,
 		statsMayBeInaccurate,
 	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
@@ -2088,7 +2178,6 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	const currentMatch$ = MatchHistoryClient.currentMatch$(squadServer.serverId)
 	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const matchId = match?.historyEntryId ?? 0
-	const groupColorByName = useGroupColorByName()
 
 	const displayedPlayers = Zus.useStore(
 		squadServer,
@@ -2116,7 +2205,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.playerNamesById,
 	)
-	const { roles, groups } = Zus.useStore(
+	const { roles, groups, parties } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -2124,6 +2213,8 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelPrt.Sel.filterOptions,
 	)
+	const groupingModes = useGroupingModes()
+	const groupColorByName = useGroupColorByName(groups, groupingModes)
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	const ordinal = match?.ordinal ?? 0
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
@@ -2173,10 +2264,12 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		matchId,
 		squadsWithTeam,
 		groupColorByName,
+		groupingId: groupingModes.active,
 		filters,
 		squadFilterTarget: 'combined',
 		availableRoles: roles,
 		availableGroups: groups,
+		availableParties: parties,
 		getFaction,
 		getTeamColor,
 		stores: props.stores,
