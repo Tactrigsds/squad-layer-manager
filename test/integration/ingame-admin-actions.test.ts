@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type EmuPlayer, makePlayer } from '@/emulator'
@@ -5,7 +6,7 @@ import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
-import { warnsTo as warnsFrom } from '../harness/inspect'
+import { savedGlobalSettings, warnsTo as warnsFrom } from '../harness/inspect'
 import { createOrpcClient } from '../harness/orpc-client'
 
 // Everything an in-game admin does through chat, and everything that stops them. One roster of admins
@@ -336,12 +337,15 @@ describe('role assignment via in-game admin status', () => {
 // What is wrong with the next layer is an admin's business: shownext carries the queue head's pool and repeat
 // warnings, but only for a reader who could act on them.
 describe('shownext warnings', () => {
+	// each line of the reply is its own AdminWarn, so the warning arrives after the first line does
 	it("reports the head layer's pool warning to an admin", async () => {
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
 
-		await app.waitFor(() => warnsTo(admin).length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
-		expect(warnsTo(admin).join('\n')).toContain('Gorodok is discouraged')
+		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('Gorodok is discouraged')), {
+			label: 'the pool warning in the reply to shownext',
+			timeoutMs: 20_000,
+		})
 	})
 
 	it('withholds it from a player who is not an admin', async () => {
@@ -350,6 +354,33 @@ describe('shownext warnings', () => {
 
 		await app.waitFor(() => warnsTo(bystander).length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
 		expect(warnsTo(bystander).join('\n')).not.toContain('Gorodok is discouraged')
+	})
+})
+
+describe('an admin list that cannot be read', () => {
+	it('keeps the admins from its last successful read', async () => {
+		const missingPath = `${app.adminsCfgPath}.missing`
+		const lists = savedGlobalSettings(app).adminLists
+		const def = lists[TEST_ADMIN_LIST]
+		const client = await createOrpcClient(app)
+		const res = await client.settings.global.updateSettings({
+			adminLists: { ...lists, [TEST_ADMIN_LIST]: { ...def, source: { ...def.source, source: missingPath } } },
+		})
+		expect(res.code).toBe('ok')
+
+		await app.waitFor(() => fs.readFileSync(app.logFile, 'utf8').includes(`Keeping the copy of admin list '${TEST_ADMIN_LIST}'`), {
+			label: 'the failed read of the admin list',
+			timeoutMs: 20_000,
+		})
+		// the roster marks admins from the lists as each poll reads them
+		await app.waitForRosterSync()
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
+		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('Gorodok is discouraged')), {
+			label: 'the pool warning in the reply to shownext',
+			timeoutMs: 20_000,
+		})
 	})
 })
 

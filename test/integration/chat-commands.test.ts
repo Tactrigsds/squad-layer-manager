@@ -67,9 +67,12 @@ describe('in-game admin commands', () => {
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
 
-		await app.waitFor(() => warnsToAdmin().length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
-		// the queue head is the seeded vote, so the preview names its choices
-		expect(warnsToAdmin().join('\n')).toMatch(/Gorodok/i)
+		// the queue head is the seeded vote, so the preview names its choices. They follow the reply's first line in an
+		// AdminWarn of their own.
+		await app.waitFor(() => warnsToAdmin().some((w) => /Gorodok/i.test(w)), {
+			label: 'the vote choices in the reply to shownext',
+			timeoutMs: 20_000,
+		})
 	})
 
 	it('starts a vote from admin chat, broadcasting the choices in game', async () => {
