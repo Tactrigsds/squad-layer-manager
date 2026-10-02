@@ -136,6 +136,7 @@ export default function NavBar() {
 		setExploreLayersOpen(true)
 	}
 	const siteMode = SiteMode.useSiteMode()
+	const docsUrl = ConfigClient.useDocsUrl()
 	// the desktop site on a phone: offer the way back to the phone layout
 	const showMobileSwitch = !isSmall && (siteMode === 'desktop' || SiteMode.isMobileDevice())
 
@@ -254,6 +255,14 @@ export default function NavBar() {
 					{tr.text(APP_Msgs.about())}
 				</TSR.Link>
 			</DropdownMenuItem>
+			{docsUrl && (
+				<DropdownMenuItem asChild>
+					<a href={docsUrl} target="_blank" rel="noopener noreferrer">
+						<Icons.BookOpen />
+						{tr.text(APP_Msgs.documentation())}
+					</a>
+				</DropdownMenuItem>
+			)}
 			<DropdownMenuItem asChild>
 				<a href={Project.DONATION_URL} target="_blank" rel="noopener noreferrer">
 					<Icons.Heart />

@@ -18,6 +18,8 @@ export const copiedToClipboard = def((what: string) => ({
 
 export const about = def('About')
 
+export const documentation = def('Documentation')
+
 export const debugAndHelpInfo = def('Debug & Help Info')
 
 export const repositoryHeading = def('Repository:')
