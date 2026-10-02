@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import * as AR from '@/app-routes.ts'
+import BmTokenDialog from '@/components/bm-token-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
 import LogoMark from '@/components/logo-mark'
 import NicknameDialog from '@/components/nickname-dialog'
@@ -40,6 +41,7 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as Project from '@/models/project.models'
@@ -86,7 +88,7 @@ export default function NavBar() {
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop && !isSmall
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'steam-link' | 'nickname' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'steam-link' | 'nickname' | 'bm-token' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -100,6 +102,10 @@ export default function NavBar() {
 
 	const onSteamLinkOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'steam-link' : null)
+	}
+
+	const onBmTokenOpenChange = (newState: boolean) => {
+		setDropdownState(newState ? 'bm-token' : null)
 	}
 
 	const { choice: localeChoice, setChoice: setLocaleChoice } = MessagesClient.useLocale()
@@ -213,6 +219,13 @@ export default function NavBar() {
 					{tr.text(APP_Msgs.linkedSteamAccounts())}
 				</DropdownMenuItem>
 			</LinkSteamAccountDialog>
+			<React.Suspense fallback={null}>
+				<BmTokenMenuItem
+					open={openState === 'bm-token'}
+					onOpenChange={onBmTokenOpenChange}
+					onLinkSteam={() => setDropdownState('steam-link')}
+				/>
+			</React.Suspense>
 			<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
 				<DropdownMenuItem onClick={() => setDropdownState('permissions')}>
 					<Icons.Shield />
@@ -516,6 +529,22 @@ function JoinServerButton(props: { serverId: string; asMenuItem?: boolean }) {
 
 // The switch is presentational: the menu item owns the toggle so it also responds to keyboard selection, and
 // preventing the default select keeps the menu open across flips.
+// only for a user who can write flags or notes, since those are the only requests the token is used for
+function BmTokenMenuItem(props: { open: boolean; onOpenChange: (open: boolean) => void; onLinkSteam: () => void }) {
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
+	const flagsDenied = RbacClient.useAccess('battlemetrics.updateFlags')
+	const notesDenied = RbacClient.useAccess('battlemetrics.addNote')
+	if (!bmEnabled || (flagsDenied && notesDenied)) return null
+	return (
+		<BmTokenDialog open={props.open} onOpenChange={props.onOpenChange} onLinkSteam={props.onLinkSteam}>
+			<DropdownMenuItem onClick={() => props.onOpenChange(true)}>
+				<Icons.KeyRound />
+				{tr.text(BM_Msgs.tokenMenuItem())}
+			</DropdownMenuItem>
+		</BmTokenDialog>
+	)
+}
+
 function NormalizeTeamsToggle() {
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	return (

@@ -38,6 +38,22 @@ against your organization's BattleMetrics request limit.
 To add a note, click the notebook button beside the player's flags, or right-click a player, a squad or a selection and
 choose _Add Note..._. In game, type `/note Kestrel mic spam in local`.
 
+### Your own BattleMetrics token
+
+SLM adds flags and notes with your organization's BattleMetrics token, so BattleMetrics records them as made by
+whoever owns that token. Save your own token to have BattleMetrics record them as yours.
+
+1. Create a personal access token on the [BattleMetrics developer page](https://www.battlemetrics.com/developers).
+   Give it the _player flags_ scopes to add and remove flags, and the _player notes_ scope to create notes.
+2. Open the user menu and choose _BattleMetrics Token_.
+3. Paste the token and click _Save_. SLM checks the token with BattleMetrics before saving it.
+4. Link your Steam account when SLM asks. In-game flag and note commands use your token only when SLM knows the Steam
+   account they come from.
+
+SLM stores the token encrypted and never shows it again. To replace the token, paste a new one. To stop using it,
+click _Remove_. If BattleMetrics rejects a saved token, SLM refuses the change and asks for a new token. The change is
+not made with the organization's token instead.
+
 ## Admin actions
 
 Right-click a player to warn, kick, time out, kill or swap them, to manage their BattleMetrics flags, or to add a note to

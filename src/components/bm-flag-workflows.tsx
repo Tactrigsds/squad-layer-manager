@@ -309,6 +309,10 @@ function useManageFlagsAction(playerId: string) {
 			toast.error(...tr.toast(BM_Msgs.reasonRequired(res.flags)))
 			return
 		}
+		if (res.code === 'err:personal-token-rejected') {
+			toast.error(...tr.toast(BM_Msgs.personalTokenRejected()))
+			return
+		}
 		if (res.code !== 'ok') {
 			toast.error(...tr.toast(BM_Msgs.updateFailed(res.code)))
 			return
@@ -366,6 +370,11 @@ function useAddFlagsAction(playerIds: string[], target: Tgt.Target) {
 		const res = await mutation.mutateAsync({ playerIds, add })
 		if (res.code === 'err:reason-required') {
 			toast.error(...tr.toast(BM_Msgs.reasonRequired(res.flags)))
+			return
+		}
+		if (res.code === 'err:personal-token-rejected') {
+			if (res.flaggedCount > 0) BattlemetricsClient.NotesActions.refreshLoaded(playerIds)
+			toast.error(...tr.toast(BM_Msgs.personalTokenRejected()))
 			return
 		}
 		if (res.code !== 'ok') {

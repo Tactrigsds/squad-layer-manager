@@ -448,6 +448,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const accounts = count > 1 ? `${count} Steam accounts` : 'their Steam account'
 			if (e.action === 'steam-linked') return `linked ${accounts}`
 			if (e.action === 'steam-unlinked') return `unlinked ${accounts}`
+			if (e.action === 'bm-token-set') return 'set their Battlemetrics token'
+			if (e.action === 'bm-token-removed') return 'removed their Battlemetrics token'
 			if (e.nickname === undefined) return 'updated their nickname'
 			return e.nickname === null ? 'cleared their nickname' : `set their nickname to "${e.nickname}"`
 		}

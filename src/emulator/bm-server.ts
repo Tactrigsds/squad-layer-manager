@@ -18,9 +18,10 @@ export type BmPlayer = {
 	hoursPlayed: number
 }
 
-export type BmRequest = { method: string; path: string; body: unknown }
+// `token` is the bearer token the request carried
+export type BmRequest = { method: string; path: string; body: unknown; token: string | null }
 
-// `userName` stands in for the BM user who wrote it: the token's owner for anything the app posted
+// `userName` stands in for the BM user who wrote it: the owner of the token the app posted it with
 export type BmNote = { id: string; bmPlayerId: string; note: string; shared: boolean; createdAt: string; userName: string }
 
 const TOKEN_OWNER = 'SLM Bot'
@@ -55,6 +56,10 @@ export class BmServer {
 	// a note is the only lasting trace a flag change leaves on a real profile, so the dev host prints them rather
 	// than leaving them buried in memory. tests read `notes` instead.
 	onNote?: (note: BmNote) => void
+	// personal access tokens, by the BM user each belongs to. A token not listed here is the org token.
+	personalTokens = new Map<string, string>()
+	// tokens BM answers with a 401, as it does a revoked or expired one
+	revokedTokens = new Set<string>()
 
 	#server: http.Server
 	#nextPlayerId = 1000
@@ -118,11 +123,16 @@ export class BmServer {
 		const body: unknown = raw ? JSON.parse(raw) : undefined
 		const url = req.url ?? ''
 		const method = req.method ?? 'GET'
-		this.requestLog.push({ method, path: url, body })
+		const token = req.headers.authorization?.replace(/^Bearer /, '') ?? null
+		this.requestLog.push({ method, path: url, body, token })
 
 		const send = (status: number, payload: unknown) => {
 			res.writeHead(status, { 'content-type': 'application/json' })
 			res.end(JSON.stringify(payload))
+		}
+
+		if (token !== null && this.revokedTokens.has(token)) {
+			return send(401, { errors: [{ status: '401', title: 'Unauthorized' }] })
 		}
 
 		// GET /player-flags -- the org's flag definitions
@@ -181,7 +191,7 @@ export class BmServer {
 				bmPlayerId: notes[1],
 				note: attrs?.note ?? '',
 				shared: attrs?.shared ?? false,
-				userName: TOKEN_OWNER,
+				userName: (token !== null && this.personalTokens.get(token)) || TOKEN_OWNER,
 			})
 			this.onNote?.(entry)
 			return send(201, { data: noteResource(entry) })

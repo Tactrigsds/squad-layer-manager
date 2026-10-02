@@ -40,6 +40,9 @@ export const PROCEDURE_ACCESS = {
 	'battlemetrics.addFlags': global('battlemetrics:write-flags'),
 	'battlemetrics.listPlayerNotes': PLAYER_LOOKUP,
 	'battlemetrics.addNote': global('battlemetrics:write-notes'),
+	'battlemetrics.getMyToken': Access.SELF,
+	'battlemetrics.setMyToken': Access.SELF,
+	'battlemetrics.removeMyToken': Access.SELF,
 
 	'squadServer.listAdminListGroups': GLOBAL_SETTINGS_READ,
 	'squadServer.watchLoadedServers': Access.FILTERED,

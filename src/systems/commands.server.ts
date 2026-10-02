@@ -1033,7 +1033,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return await h.error('not-in-battlemetrics', h.ctx.tr.text(CMD_Msgs.playerNotInBattlemetrics(targetIds.username)))
 		}
 
-		const res = await Battlemetrics.addPlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToUpdate.id])
+		const auth = await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
+		const res = await Battlemetrics.addPlayerFlags(h.ctx, auth, bmPlayerData.bmPlayerId, [flagToUpdate.id]).catch((err) => {
+			if (Battlemetrics.isPersonalTokenRejected(err)) return { code: 'token-rejected' as const }
+			throw err
+		})
+		if (res.code === 'token-rejected') return await h.error('bm-token-rejected', h.ctx.tr.text(CMD_Msgs.personalTokenRejected()))
 		if (res.code === 'err:no-flags') return { code: 'ok' }
 		if (res.code === 'player-already-has-flag') {
 			return await h.error(res.code, h.ctx.tr.text(CMD_Msgs.flagAlreadyAssigned(targetIds.username, flagToUpdate.name)))
@@ -1045,7 +1050,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 				reason,
 			})
-			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note)
+			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, auth, bmPlayerData.bmPlayerId, note)
 				.then(() => true)
 				.catch((err) => {
 					log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
@@ -1074,7 +1079,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return await h.error('not-found', h.ctx.tr.text(CMD_Msgs.playerLacksFlag(target.ids.username, flagToRemove.name)))
 		}
 
-		const [status] = await Battlemetrics.removePlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])
+		const auth = await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
+		const [status] = await Battlemetrics.removePlayerFlags(h.ctx, auth, bmPlayerData.bmPlayerId, [flagToRemove.id]).catch((err) => {
+			if (Battlemetrics.isPersonalTokenRejected(err)) return ['token-rejected' as const]
+			throw err
+		})
+		if (status === 'token-rejected') return await h.error('bm-token-rejected', h.ctx.tr.text(CMD_Msgs.personalTokenRejected()))
 		if (status === 'already-removed') {
 			return await h.error('already-removed', h.ctx.tr.text(CMD_Msgs.flagAlreadyRemoved(flagToRemove.name, target.ids.username)))
 		}
@@ -1084,7 +1094,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 			reason: args.reason?.trim(),
 		})
-		const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note)
+		const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, auth, bmPlayerData.bmPlayerId, note)
 			.then(() => true)
 			.catch((err) => {
 				log.warn({ err, targetIds: target.ids }, 'failed to post BM note after removing flag')
@@ -1098,11 +1108,17 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	addNote: async (h, args) => {
 		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
 		const target = args.player
-		const actor = { label: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`, appActor: ingameActor(h.sender) }
+		const actor = {
+			label: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
+			appActor: ingameActor(h.sender),
+			auth: await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam),
+		}
 		const res = await Battlemetrics.addNoteToPlayer(h.ctx, target.ids, args.note, actor).catch((err) => {
+			if (Battlemetrics.isPersonalTokenRejected(err)) return 'token-rejected' as const
 			log.warn({ err, targetIds: target.ids }, 'failed to add BM note')
 			return 'failed' as const
 		})
+		if (res === 'token-rejected') return await h.error('bm-token-rejected', h.ctx.tr.text(CMD_Msgs.personalTokenRejected()))
 		if (res === 'not-found') {
 			return await h.error('not-in-battlemetrics', h.ctx.tr.text(CMD_Msgs.playerNotInBattlemetrics(target.ids.username)))
 		}

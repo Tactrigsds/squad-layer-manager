@@ -35,6 +35,17 @@ export const addFailed = def((code: string) => ({
 	toast: [t('Failed to add flags'), { description: raw(code) }],
 }))
 
+export const personalTokenRejected = def(() => ({
+	toast: [
+		t('BattleMetrics rejected your personal token'),
+		{
+			description: t(
+				'The token may be revoked or expired, or it may lack a scope it needs. Replace it from BattleMetrics Token in the user menu.',
+			),
+		},
+	],
+}))
+
 // the note is a separate BattleMetrics call, so the flags can land while it does not; saying so is the difference
 // between "it worked" and "it worked, but check the profile"
 export const flagsUpdated = def((added: { name: string }[], removed: { name: string }[], noteAdded: boolean) => {
@@ -192,3 +203,57 @@ export const noteSourceSlm = def('SLM')
 export const noteSourceBm = def('BattleMetrics')
 
 export const unknownBmUser = def('Unknown user')
+
+// -------- personal token --------
+
+export const tokenMenuItem = def('BattleMetrics Token')
+
+export const tokenDialogTitle = def('BattleMetrics Token')
+
+export const tokenDialogBlurb = def(
+	'Save a BattleMetrics personal access token to add and remove flags and post notes as your own BattleMetrics account.',
+)
+
+export const tokenCreateLink = def('Create a token on BattleMetrics')
+
+export const tokenScopesHeading = def('Give the token these scopes:')
+
+export const tokenScopeFlags = def('Player flags: add and remove')
+
+export const tokenScopeNotes = def('Player notes: create')
+
+export const tokenSaved = def('Your flag and note changes use the token you saved on {date}.', (date: string) => ({ date }))
+
+export const tokenNotSaved = def("You have not saved a token yet, so your flag and note changes use your organization's token.")
+
+export const tokenFieldLabel = def('Personal access token')
+
+export const tokenFieldPlaceholder = def('Paste a token')
+
+export const tokenFieldReplacePlaceholder = def('Paste a new token to replace the saved one')
+
+export const tokenRejected = def(
+	'BattleMetrics rejected this token. Check that the whole token was copied and that it has the scopes listed above.',
+)
+
+export const tokenCheckFailed = def('SLM could not reach BattleMetrics to check the token. Try again.')
+
+export const tokenSave = def('Save')
+
+export const tokenRemove = def('Remove')
+
+export const tokenSavedToast = def(() => ({ toast: [t('BattleMetrics token saved')] }))
+
+export const tokenRemovedToast = def(() => ({ toast: [t('BattleMetrics token removed')] }))
+
+export const tokenRemoveFailed = def(() => ({ toast: [t('Failed to remove the BattleMetrics token')] }))
+
+export const tokenLinkSteamHeading = def('Link your Steam account')
+
+export const tokenLinkSteamBlurb = def(
+	'Flag and note changes you make on this website now use your token. In-game flag and note commands use it only when SLM knows the Steam account you send them from. Link that Steam account to use your token in game too.',
+)
+
+export const tokenLinkSteamAction = def('Link a Steam account')
+
+export const tokenLinkSteamLater = def('Not now')

@@ -656,6 +656,16 @@ export const changelogEntries = sqliteTable('changelogEntries', {
 })
 
 // A user's place in the changelog. No row is the same as having seen everything up to the first time they asked.
+// a user's own battlemetrics personal access token, sealed (see secret-box.server.ts). The flag and note writes the
+// user makes go through it, so battlemetrics records them as the user's rather than the org token owner's.
+export const battlemetricsUserTokens = sqliteTable('battlemetricsUserTokens', {
+	userId: bigintText('userId')
+		.primaryKey()
+		.references(() => users.discordId, { onDelete: 'cascade' }),
+	token: text('token').notNull(),
+	updatedAt: timestamp('updatedAt').notNull(),
+})
+
 export const changelogUserState = sqliteTable('changelogUserState', {
 	userId: bigintText('userId')
 		.primaryKey()

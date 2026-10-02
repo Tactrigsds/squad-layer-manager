@@ -202,6 +202,8 @@ export namespace Battlemetrics {
 	export const REQUESTS_PER_SECOND = 'slm.battlemetrics.requests_per_second'
 	export const REQUESTS_PER_MINUTE = 'slm.battlemetrics.requests_per_minute'
 	export const QUEUE_SIZE = 'slm.battlemetrics.queue_size'
+	// 'org' or 'personal': whose token a request went out under
+	export const AUTH = 'slm.battlemetrics.auth'
 }
 
 export namespace SpanLink {
