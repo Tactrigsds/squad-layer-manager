@@ -219,7 +219,9 @@ function scheduleMaintenanceReboot() {
 // mid-snapshot otherwise leaves a truncated file that looks whole.
 export async function backupTo(destPath: string) {
 	const w = maintenance.worker
-	if (!w) throw new Error('the db maintenance worker is not running')
+	// while the worker is down, sqlite's online backup on the main connection, which copies 100 pages per turn of the
+	// event loop and carries the free pages along
+	if (!w) return void (await driver.backup(destPath))
 	const seq = maintenance.nextSeq++
 	// held open while a snapshot is owed, which the unref'd worker would not otherwise do
 	w.ref()
