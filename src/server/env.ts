@@ -141,6 +141,16 @@ export const groups = {
 				envExample: { include: 'omit', dev: { include: 'commented' } },
 			}),
 
+		RCON_POLL_INTERVAL_SCALE: z.coerce
+			.number()
+			.positive()
+			.default(1)
+			.meta({
+				description:
+					'multiplies the intervals at which SLM polls each game server over RCON: the current and next layer every 5s, server info every 10s and the roster every 5s. A cached read of one of these is refetched once it is older than its interval. The integration tests set it below 1 so that changes on the emulated server reach the app sooner.',
+				envExample: { include: 'omit' },
+			}),
+
 		SECRETS_FILE: z
 			.string()
 			.min(1)

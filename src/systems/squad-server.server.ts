@@ -817,10 +817,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	}
 	ingestByServer.set(server, ingest)
 
-	const squadRcon = SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
-		cacheTTL: settings.rconCacheTTL,
-		onFatalError: onResourceFatalError,
-	})
+	const squadRcon = SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, { onFatalError: onResourceFatalError })
 
 	cleanup.push(
 		() => server.postRollEventsSub,

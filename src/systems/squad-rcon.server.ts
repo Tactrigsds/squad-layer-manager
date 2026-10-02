@@ -12,6 +12,7 @@ import type * as SETTINGS from '@/models/settings.models'
 import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
+import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
@@ -21,23 +22,31 @@ const module = initModule('squad-rcon')
 let log!: CS.Logger
 let reportedUnmatchedListPlayers = false
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+
+// each is both how often the resource is polled and how stale a read of it may be before it refetches
+const LAYERS_STATUS_TTL_MS = 5_000
+const SERVER_INFO_TTL_MS = 10_000
+const TEAMS_TTL_MS = 5_000
+let pollIntervalScale = 1
+
 export function setup() {
 	log = module.getLogger()
+	pollIntervalScale = envBuilder().RCON_POLL_INTERVAL_SCALE
 }
 
 export function initSquadRcon(
 	ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
-	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
+	opts: { onFatalError?: (err: unknown) => void },
 ): SR.Ctx.Payload {
 	const rcon = ctx.rcon
-	const cacheTTL = opts.cacheTTL
 	const layersStatus: SR.Ctx.Payload['layersStatus'] = new AsyncResource<SM.LayerStatusRes, SR.Ctx.Rcon & CS.AbortSignal>(
 		`serverStatus`,
 		(ctx) => fetchLayerStatus(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.layersStatus,
+			defaultTTL: LAYERS_STATUS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
@@ -52,7 +61,7 @@ export function initSquadRcon(
 		(ctx) => fetchServerInfo(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.serverInfo,
+			defaultTTL: SERVER_INFO_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
@@ -67,7 +76,7 @@ export function initSquadRcon(
 		(ctx) => fetchTeams(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.teams,
+			defaultTTL: TEAMS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',

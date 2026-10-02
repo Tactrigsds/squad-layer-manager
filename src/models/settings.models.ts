@@ -1527,39 +1527,6 @@ export const PublicServerSettingsSchema = z.object({
 		})
 		.prefault({})
 		.meta(SDoc.of({ label: t('Switch Requests') })),
-
-	rconCacheTTL: z
-		.object({
-			layersStatus: ZodUtils.HumanTime.prefault('5s').meta(
-				SDoc.of({
-					label: t('Layer Status'),
-					description: t('How stale the cached current/next layer may be before a read refetches it over RCON.'),
-				}),
-			),
-			serverInfo: ZodUtils.HumanTime.prefault('10s').meta(
-				SDoc.of({
-					label: t('Server Info'),
-					description: t('How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.'),
-				}),
-			),
-			teams: ZodUtils.HumanTime.prefault('5s').meta(
-				SDoc.of({
-					label: t('Teams'),
-					description: t(
-						'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
-					),
-				}),
-			),
-		})
-		.prefault({})
-		.meta(
-			SDoc.of({
-				label: t('RCON Cache TTL'),
-				description: t(
-					'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
-				),
-			}),
-		),
 })
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
