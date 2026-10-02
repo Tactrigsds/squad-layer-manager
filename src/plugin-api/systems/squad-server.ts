@@ -23,8 +23,16 @@ export async function endMatch(ctx: PluginsSys.ServerCtx<any>) {
 
 /** Kicks players, attributed to the calling plugin, under one PLAYER_KICKED app event. `reason` is shown to them. */
 export async function kickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.PlayerId[], reason?: string) {
+	await tryKickPlayers(ctx, targets, reason)
+}
+
+/**
+ * `kickPlayers`, returning the players that are gone from the server afterwards. The server refuses to kick some
+ * players, such as Squad's developers, and the PLAYER_KICKED app event lists only the players it kicked.
+ */
+export async function tryKickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.PlayerId[], reason?: string) {
 	const applied = reason === undefined ? undefined : AAR.applyCustomReason(reason, {})
-	await SquadServer.kickPlayersAction(ctx, targets, { type: 'plugin', pluginId: ctx.plugin.id }, applied)
+	return await SquadServer.kickPlayersAction(ctx, targets, { type: 'plugin', pluginId: ctx.plugin.id }, applied)
 }
 
 /**

@@ -112,10 +112,14 @@ async function evaluate(ctx: Ctx, tracker: Afk.Tracker) {
 		.slice(0, after.needed)
 	if (targets.length === 0) return
 
-	const now = Date.now()
-	for (let i = 0; i < targets.length; i++) tracker.recentKicks.push(now)
 	ctx.log.info('kicking %d AFK players, %d needed', targets.length, after.needed)
-	await SquadServer.kickPlayers(ctx, targets, cfg.kickReason)
+	const kicked = new Set(await SquadServer.tryKickPlayers(ctx, targets, cfg.kickReason))
+	const now = Date.now()
+	for (const id of targets) {
+		if (kicked.has(id)) tracker.recentKicks.push(now)
+		else tracker.unkickable.add(id)
+	}
+	if (kicked.size < targets.length) ctx.log.info('%d AFK players could not be kicked, ignoring them', targets.length - kicked.size)
 }
 
 async function warnPeriodically(ctx: Ctx, tracker: Afk.Tracker, cfg: Config, afk: Afk.Afk[]) {
