@@ -7,7 +7,10 @@ SLM helps admins moderate and balance the players on their servers, from the das
 The teams panel lists both teams by squad. A _grouping mode_ sorts players into coloured groups by
 [BattleMetrics](integrations_and_hosting.md#battlemetrics) flag, Discord role, a pattern on their name, or their group
 in a standard Squad admin list. Use one to compare how your regulars, your admins or your flagged players split across
-the teams.
+the teams. The _Party_ grouping mode groups players by the in-game party they queued with.
+
+The _Party_ column shows each player's party. Filter or sort the table by party, or shift+click a party to select its
+members on that team.
 
 ![group counts per team](configuring_screenshots/teams_breakdown.png)
 
