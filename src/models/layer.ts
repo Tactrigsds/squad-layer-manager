@@ -1,4 +1,5 @@
 import * as Obj from '@/lib/object-utils'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as z from '@/lib/zod'
 import * as LC from '@/models/layer-columns'
@@ -734,17 +735,31 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 	}
 }
 
+// What is wrong with one part of a pasted line. `suggestion` is the closest name the catalog has, for a typo.
+export type RawLayerProblem =
+	| { code: 'unknown-layer'; value: string; suggestion: string | null }
+	| { code: 'unknown-faction'; team: 1 | 2; value: string; suggestion: string | null }
+	| { code: 'unknown-unit'; team: 1 | 2; value: string; suggestion: string | null }
+	| { code: 'missing-faction'; team: 1 | 2 }
+	| { code: 'unavailable-faction'; team: 1 | 2; faction: string; unit: string | null }
+	| { code: 'mirror-matchup'; faction: string }
+
 // One pasted line, and what is wrong with it. The line number is 1-based over the pasted text with blank lines
 // counted, so it addresses what the user is looking at rather than the parsed subset.
+// 'err:unparsable' is a line with a layer, faction or unit the catalog does not have, or a faction left out.
+// 'err:unknown-layer' is a line whose parts are all in the catalog but do not combine into a playable layer. Its
+// problems are empty when only the layer database can say why. Both still carry the raw layer, for a caller that
+// queues it anyway.
 export type RawLayerLine = { lineNumber: number; text: string } & (
 	| { code: 'ok'; layer: UnvalidatedLayer }
-	| { code: 'err:unparsable' }
-	| { code: 'err:unknown-layer'; layer: UnvalidatedLayer }
+	| { code: 'err:unparsable'; layer: UnvalidatedLayer | null; problems: RawLayerProblem[] }
+	| { code: 'err:unknown-layer'; layer: UnvalidatedLayer; problems: RawLayerProblem[] }
 	| { code: 'err:mod-not-installed'; layer: UnvalidatedLayer; collection: string }
 )
 
 // Parses pasted layer text a line at a time, reporting each line's own outcome rather than dropping what fails.
-// `installedMods` is the server's collections; omit it where there is no server to answer for.
+// `installedMods` is the server's collections; omit it where there is no server to answer for. The collection is
+// checked first, because the server refuses a layer from a missing mod whether or not it is known.
 export function parseRawLayerLines(
 	text: string,
 	opts?: { installedMods?: readonly string[] },
@@ -757,11 +772,7 @@ export function parseRawLayerLines(
 		const lineNumber = index + 1
 		const layer = parseRawLayerText(trimmed, components)
 		if (!layer) {
-			lines.push({ code: 'err:unparsable', lineNumber, text: trimmed })
-			return
-		}
-		if (!isKnownLayer(layer, components)) {
-			lines.push({ code: 'err:unknown-layer', lineNumber, text: trimmed, layer })
+			lines.push({ code: 'err:unparsable', lineNumber, text: trimmed, layer: null, problems: [] })
 			return
 		}
 		const collection = layer.Collection ?? getDefaultCollection(components)
@@ -769,9 +780,80 @@ export function parseRawLayerLines(
 			lines.push({ code: 'err:mod-not-installed', lineNumber, text: trimmed, layer, collection })
 			return
 		}
+		if (!isKnownLayer(layer, components)) {
+			const problems = diagnoseRawLayer(layer, components)
+			const unparsable = problems.some((p) => p.code !== 'unavailable-faction' && p.code !== 'mirror-matchup')
+			lines.push({ code: unparsable ? 'err:unparsable' : 'err:unknown-layer', lineNumber, text: trimmed, layer, problems })
+			return
+		}
+		// the layer database leaves these out; flagged here so the line names its reason
+		if (layer.Faction_1 === layer.Faction_2 && layer.Gamemode !== 'Training') {
+			const problems: RawLayerProblem[] = [{ code: 'mirror-matchup', faction: layer.Faction_1 }]
+			lines.push({ code: 'err:unknown-layer', lineNumber, text: trimmed, layer, problems })
+			return
+		}
 		lines.push({ code: 'ok', lineNumber, text: trimmed, layer })
 	})
 	return lines
+}
+
+function diagnoseRawLayer(layer: UnvalidatedLayer, components: typeof StaticLayerComponents): RawLayerProblem[] {
+	const problems: RawLayerProblem[] = []
+	const config = layer.Layer ? getLayerConfig(layer.Layer, components) : undefined
+	if (!config) {
+		const value = layer.Layer ?? ''
+		problems.push({ code: 'unknown-layer', value, suggestion: suggestName(value, layerNames(components)) })
+	}
+	const avail = config ? (components.layerFactionAvailability[config.Layer] ?? []) : []
+	for (const team of [1, 2] as const) {
+		const faction = team === 1 ? layer.Faction_1 : layer.Faction_2
+		const unit = team === 1 ? layer.Unit_1 : layer.Unit_2
+		if (!faction) {
+			if (config) problems.push({ code: 'missing-faction', team })
+			continue
+		}
+		const teamAvail = avail.filter((entry) => entry.allowedTeams.includes(team))
+		if (!LC.enumIncludes(components.factions, faction)) {
+			const candidates = config ? Array.from(new Set(teamAvail.map((entry) => entry.Faction))) : components.factions
+			problems.push({
+				code: 'unknown-faction',
+				team,
+				value: faction,
+				suggestion: suggestName(faction, candidates),
+			})
+			continue
+		}
+		if (unit !== undefined && !LC.enumIncludes(components.units, unit)) {
+			const factionUnits = teamAvail.filter((entry) => entry.Faction === faction).map((entry) => entry.Unit)
+			const candidates = factionUnits.length > 0 ? factionUnits : components.units
+			problems.push({
+				code: 'unknown-unit',
+				team,
+				value: unit,
+				suggestion: suggestName(unit, candidates),
+			})
+			continue
+		}
+		if (config && !teamAvail.some((entry) => entry.Faction === faction && (unit === undefined || entry.Unit === unit))) {
+			problems.push({ code: 'unavailable-faction', team, faction, unit: unit ?? null })
+		}
+	}
+	return problems
+}
+
+const layerNamesCache = new WeakMap<typeof StaticLayerComponents, string[]>()
+function layerNames(components: typeof StaticLayerComponents) {
+	let names = layerNamesCache.get(components)
+	if (!names) {
+		names = components.mapLayers.map((config) => config.Layer)
+		layerNamesCache.set(components, names)
+	}
+	return names
+}
+
+function suggestName(typed: string, candidates: readonly string[]) {
+	if (typed === '') return null
+	return Str.nearestWithinEdits(typed, candidates, Math.max(1, Math.floor(typed.length / 4)))
 }
 
 export const LAYER_STRING_PROPERTIES = ['Map', 'Gamemode', 'LayerVersion', 'Collection'] as const satisfies (keyof KnownLayer)[]

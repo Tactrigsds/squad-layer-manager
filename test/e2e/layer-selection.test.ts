@@ -364,7 +364,7 @@ test.describe('installed mods', () => {
 })
 
 test.describe('pasting a rotation', () => {
-	test('reports the unusable lines inline, keeps the text, and adds nothing until they are gone', async ({ page }) => {
+	test('reports each unusable line with its reason, keeps the text, and adds raw layers only with validation off', async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(DB.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 		await page.getByRole('button', { name: 'Start Editing' }).click()
@@ -372,27 +372,56 @@ test.describe('pasting a rotation', () => {
 		const dialog = page.getByRole('dialog', { name: 'Paste Rotation' })
 
 		const textarea = dialog.getByRole('textbox')
-		const pasted = 'Narva_RAAS_v1 RGF USMC\nnot a layer at all\nSU_Sanxian_Invasion_v2 SU_ADF SU_BAF'
+		const validate = dialog.getByRole('checkbox', { name: 'Validate layers' })
+		await expect(validate).toHaveAttribute('aria-checked', 'true')
+
+		const typo = 'Narva_RAAS_v1 RFG USMC'
+		const pasted = [
+			'Narva_RAAS_v1 RGF USMC',
+			typo,
+			// every part is real, but USMC fields no air assault unit on Narva
+			'Narva_RAAS_v1 RGF USMC+AirAssault',
+			// a faction against itself parses to a known id that the layer database leaves out
+			'Narva_RAAS_v1 RGF RGF',
+			'SU_Sanxian_Invasion_v2 SU_ADF SU_BAF',
+		].join('\n')
 		await textarea.fill(pasted)
 
 		const errors = dialog.getByRole('alert')
-		await expect(errors).toContainText('2 lines cannot be added')
-		await expect(errors).toContainText('Line 2')
-		await expect(errors).toContainText('no such layer')
-		await expect(errors).toContainText('Line 3')
-		await expect(errors).toContainText('SuperMod is not installed on this server')
+		const errorLine = (n: number) => errors.getByRole('listitem').filter({ hasText: `Line ${n}` })
+		await expect(errors).toContainText('4 lines cannot be added')
+		await expect(errorLine(2)).toContainText('unknown faction RFG for team 1 (did you mean RGF?)')
+		await expect(errorLine(3)).toContainText('USMC+AirAssault is not available to team 2 on this layer')
+		await expect(errorLine(4)).toContainText('RGF cannot play against itself')
+		await expect(errorLine(5)).toContainText('SuperMod is not installed on this server')
 
 		// the one good line is counted, but nothing is added while a bad one is left, and the text stays put
 		await expect(dialog.getByRole('button', { name: 'Add 1 Layer' })).toBeDisabled()
 		await expect(textarea).toHaveValue(pasted)
 
-		// dropping the two bad lines is all it takes
+		// without validation only the missing mod still blocks, because the server refuses it either way
+		await validate.click()
+		await expect(errors).toContainText('1 line cannot be added')
+		await expect(errorLine(5)).toContainText('SuperMod is not installed on this server')
+		await expect(dialog.getByRole('button', { name: 'Add 4 Layers' })).toBeDisabled()
+
+		await validate.click()
+		await expect(errors).toContainText('4 lines cannot be added')
+
+		// dropping the bad lines is all it takes
 		await textarea.fill('Narva_RAAS_v1 RGF USMC')
 		await expect(errors).toHaveCount(0)
 		await expect(dialog.getByRole('button', { name: 'Add 1 Layer' })).toBeEnabled()
 
-		await dialog.getByRole('button', { name: 'Cancel' }).click()
+		// a typo goes into the queue as written once validation is off
+		await textarea.fill(typo)
+		await expect(errorLine(1)).toContainText('unknown faction RFG for team 1')
+		await validate.click()
+		await expect(errors).toHaveCount(0)
+		await dialog.getByRole('button', { name: 'Add 1 Layer' }).click()
 		await expect(dialog).toHaveCount(0)
+		await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible()
+		await expect(DB.queueSection(page).getByRole('listitem').first()).toContainText('RFG')
 	})
 })
 

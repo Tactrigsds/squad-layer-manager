@@ -81,8 +81,9 @@ function similarity(typed: string, candidate: string): { best: number; whole: nu
 // "mod" for "moderation" at 0.3 -- anything stricter answers it with nothing at all.
 const MIN_SIMILARITY = 0.25
 
-// The items whose text is closest to what was typed, best first. Every "did you mean" in the app ranks with this, so
-// a suggestion and the list it is drawn from can never disagree about what counts as close.
+// The items whose text is closest to what was typed, best first. Every "did you mean" for a name the user types to
+// search for ranks with this, so a suggestion and the list it is drawn from can never disagree about what counts as
+// close. Mistyped identifiers use `nearestWithinEdits` instead.
 export function nearestBy<T>(typed: string, items: readonly T[], text: (item: T) => string, limit: number): T[] {
 	return items
 		.map((item) => ({ item, score: similarity(typed, text(item)) }))
@@ -94,6 +95,50 @@ export function nearestBy<T>(typed: string, items: readonly T[], text: (item: T)
 
 export function nearest(typed: string, candidates: readonly string[], limit: number): string[] {
 	return nearestBy(typed, candidates, (candidate) => candidate, limit)
+}
+
+// The one candidate a mistyped identifier most likely meant: the fewest case-insensitive edits away, within
+// `maxEdits`, earliest on a tie. A swap of two adjacent characters counts as one edit. For catalogs of identifiers
+// (layer, faction and unit names) too large to rank with `nearest` on every keystroke: it abandons a candidate as soon
+// as it cannot come within `maxEdits`.
+export function nearestWithinEdits(typed: string, candidates: readonly string[], maxEdits: number): string | null {
+	const target = typed.toLowerCase()
+	let best: string | null = null
+	let bestEdits = maxEdits + 1
+	for (const candidate of candidates) {
+		const edits = boundedEditDistance(target, candidate.toLowerCase(), bestEdits - 1)
+		if (edits < bestEdits) {
+			best = candidate
+			bestEdits = edits
+			if (edits === 0) break
+		}
+	}
+	return best
+}
+
+let editRows = [new Int32Array(64), new Int32Array(64), new Int32Array(64)]
+
+// Optimal string alignment distance, or max + 1 once every path through the current row already exceeds max
+function boundedEditDistance(a: string, b: string, max: number): number {
+	if (max < 0 || Math.abs(a.length - b.length) > max) return max + 1
+	if (editRows[0].length <= b.length) editRows = [0, 1, 2].map(() => new Int32Array(b.length * 2))
+	let [prevPrev, prev, curr] = editRows
+	for (let j = 0; j <= b.length; j++) prev[j] = j
+	for (let i = 1; i <= a.length; i++) {
+		curr[0] = i
+		let rowMin = i
+		const ac = a.charCodeAt(i - 1)
+		for (let j = 1; j <= b.length; j++) {
+			const bc = b.charCodeAt(j - 1)
+			let value = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ac === bc ? 0 : 1))
+			if (i > 1 && j > 1 && ac === b.charCodeAt(j - 2) && a.charCodeAt(i - 2) === bc) value = Math.min(value, prevPrev[j - 2] + 1)
+			curr[j] = value
+			if (value < rowMin) rowMin = value
+		}
+		if (rowMin > max) return max + 1
+		;[prevPrev, prev, curr] = [prev, curr, prevPrev]
+	}
+	return Math.min(prev[b.length], max + 1)
 }
 
 export function simpleUniqueStringMatch(names: string[], target: string) {
