@@ -2,15 +2,14 @@ import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import * as React from 'react'
 
+import { CopyableCommand } from '@/components/copyable-command'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import * as SettingsNav from '@/lib/settings-nav'
-import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as APP_Msgs from '@/messages/app.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
@@ -64,26 +63,6 @@ const SHORTCUT_SECTION_IDS: ReadonlySet<string> = new Set([PINNED_SECTION_ID, QU
 const CHAT_GROUP_BADGES: Record<CMD.ChatGroup, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
 	admin: { icon: Icons.Shield, className: 'border-admin/60 text-admin' },
 	public: { icon: Icons.Globe, className: 'border-foreground/40 text-foreground' },
-}
-
-export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string; chatCommand: 'ChatToAdmin' | 'ChatToAll' }) {
-	const copy = async () => {
-		const consoleCommand = `${chatCommand} ${cmdString}`
-		try {
-			await navigator.clipboard.writeText(consoleCommand)
-			toast(...tr.toast(APP_Msgs.copiedToClipboard(consoleCommand)))
-		} catch {
-			toast.error(...tr.toast(CMD_Msgs.copyFailed()))
-		}
-	}
-	return (
-		<div className="flex items-center gap-1">
-			<code className="px-2 py-1 bg-muted rounded text-sm font-mono ltr-isolate">{cmdString}</code>
-			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={tr.text(CMD_Msgs.copyCommand(cmdString))}>
-				<Icons.Copy className="h-3 w-3" />
-			</Button>
-		</div>
-	)
 }
 
 function PinButton({ cmdId, pinned }: { cmdId: string; pinned: boolean }) {

@@ -7,6 +7,7 @@ import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import fastify from 'fastify'
+import * as Crypto from 'node:crypto'
 import * as fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { WebSocket } from 'ws'
@@ -242,13 +243,25 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 	// One generated module per specifier a packaged plugin can import, each re-exporting from the app's
 	// own instance. Not files on disk: the names come from the generated table for slm/* and from the
 	// live namespace for a shared package.
+	// A page with a packaged plugin fetches a dozen of these on every load. The url carries no version, so the
+	// browser must revalidate its copy, and the etag lets the answer be a bodyless 304.
+	const shims = new Map<string, { source: string; etag: string }>()
 	instance.get(AR.route('/plugin-api/*'), async (req, res) => {
 		const specifier = SHIM.routeToSpecifier((req.params as { '*': string })['*'])
-		const names = specifier ? (PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)) : undefined
-		if (!specifier || !names || names.length === 0) return res.code(404).send()
+		if (!specifier) return res.code(404).send()
+		let shim = shims.get(specifier)
+		if (!shim) {
+			const names = PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)
+			if (names.length === 0) return res.code(404).send()
+			const source = SHIM.shimSource(specifier, names)
+			shim = { source, etag: `"${Crypto.createHash('sha256').update(source).digest('base64url')}"` }
+			shims.set(specifier, shim)
+		}
 		res.header('Content-Type', 'text/javascript; charset=utf-8')
 		res.header('Cache-Control', 'no-cache')
-		return res.send(SHIM.shimSource(specifier, names))
+		res.header('ETag', shim.etag)
+		if (req.headers['if-none-match'] === shim.etag) return res.code(304).send()
+		return res.send(shim.source)
 	})
 
 	// A packaged plugin's manifest module and client bundle. Only the files plugin.json names are

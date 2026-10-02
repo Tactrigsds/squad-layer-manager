@@ -41,7 +41,7 @@ import * as UsersClient from '@/systems/users.client'
 
 import { FilterCheckbox, PoolFilterCheckbox } from './applied-filters-panel.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
-import { CopyableCommand } from './commands-page.tsx'
+import { CopyableCommand } from './copyable-command.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'

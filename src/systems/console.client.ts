@@ -57,6 +57,9 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as VoteClient from '@/systems/vote.client'
 
+// Exposing a namespace keeps all of its exports in the bundle, and these modules load with every page, so the models,
+// lib and package namespaces would add ~120KB of otherwise unused code to every page load. A production build
+// exposes only the systems.
 const namespaces = {
 	// systems
 	AppRoutesClient,
@@ -80,48 +83,52 @@ const namespaces = {
 	UPClient,
 	UsersClient,
 	VoteClient,
-
-	// models
-	BM,
-	CHAT,
-	CMD,
-	CS,
-	CB,
-	EFB,
-	FB,
-	F,
-	LC,
-	LL,
-	LQY,
-	L,
-	MH,
-	SE,
-	SS,
-	SETTINGS,
-	SLL,
-	SM,
-	TSW,
-	UP,
-	USR,
-	V,
-
-	// lib
-	Arr,
-	DH,
-	ItemMut,
-	MapUtils,
-	Obj,
-	ODSM,
-	RSel,
-	SetUtils,
-	Zus,
-
-	// misc
-	Im,
-	Rx,
-	z,
 	RPC,
 	frameManager,
+
+	...(import.meta.env.DEV
+		? {
+				// models
+				BM,
+				CHAT,
+				CMD,
+				CS,
+				CB,
+				EFB,
+				FB,
+				F,
+				LC,
+				LL,
+				LQY,
+				L,
+				MH,
+				SE,
+				SS,
+				SETTINGS,
+				SLL,
+				SM,
+				TSW,
+				UP,
+				USR,
+				V,
+
+				// lib
+				Arr,
+				DH,
+				ItemMut,
+				MapUtils,
+				Obj,
+				ODSM,
+				RSel,
+				SetUtils,
+				Zus,
+
+				// packages
+				Im,
+				Rx,
+				z,
+			}
+		: {}),
 }
 
 const w = window as any
