@@ -17,6 +17,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebounced } from '@/hooks/use-debounce'
+import { useTruncatedCellReveal } from '@/hooks/use-truncated-cell-reveal'
 import * as Browser from '@/lib/browser'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
@@ -1201,7 +1202,7 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const meta = table.options.meta as BasePlayerTableMeta
 			// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 			return (
-				<span className="flex min-w-0 items-center gap-1" title={row.original.ids.username}>
+				<span className="flex min-w-0 items-center gap-1">
 					<PlayerDisplay
 						stores={meta.stores}
 						player={row.original}
@@ -1265,9 +1266,7 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 			return (
 				<span className="flex items-center gap-1 max-w-24">
 					{color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
-					<span className="truncate" title={group}>
-						{group}
-					</span>
+					<span className="truncate">{group}</span>
 				</span>
 			)
 		},
@@ -1331,12 +1330,7 @@ function vehicleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: Column
 		id: 'vehicle',
 		header: () => tr.text(SM_Msgs.vehicleColumn()),
 		enableSorting: false,
-		cell: ({ row }) =>
-			row.original.vehicle && (
-				<span className="block truncate" title={row.original.vehicle}>
-					{row.original.vehicle}
-				</span>
-			),
+		cell: ({ row }) => row.original.vehicle && <span className="block truncate">{row.original.vehicle}</span>,
 	})
 }
 
@@ -1830,6 +1824,9 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	React.useEffect(() => () => SquadServerFrame.Actions.clearVisiblePlayers(stores, visibleKey), [stores, visibleKey])
 	const headersRef = React.useRef<HTMLTableSectionElement | null>(null)
 	const tableRef = React.useRef<HTMLTableElement | null>(null)
+	const revealRef = React.useRef<HTMLDivElement | null>(null)
+	const revealZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	useTruncatedCellReveal(tableRef, revealRef)
 	FitCols.useFittedColumns(tableRef, props.columnFit, [
 		rows,
 		columnVisibility,
@@ -2059,6 +2056,13 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 				</TableHeader>
 				<TableBody>{bodyRows}</TableBody>
 			</Table>
+			<div
+				ref={revealRef}
+				hidden
+				aria-hidden
+				style={{ zIndex: revealZIndex }}
+				className="pointer-events-none absolute flex w-max items-center gap-1 whitespace-nowrap text-xs shadow-[0_2px_8px_rgba(0,0,0,0.5)] [&_*]:max-w-none! [&_*]:overflow-visible! [&_*]:[text-overflow:clip]!"
+			/>
 			{phone && (
 				<MenuSheet
 					open={menuFor !== null}
