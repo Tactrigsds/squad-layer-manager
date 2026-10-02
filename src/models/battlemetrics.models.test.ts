@@ -36,6 +36,16 @@ describe('parseNote', () => {
 			text: 'Note by someone via SLM but not really',
 		})
 	})
+
+	test('reads a note written in the BM editor as plain text', () => {
+		expect(parse("<p>Took a Logi &amp; left.</p><p>Then <strong>DC'd</strong><br>twice</p><ul><li>one</li><li>two</li></ul>").text).toBe(
+			"Took a Logi & left.\nThen DC'd\ntwice\n- one\n- two",
+		)
+	})
+
+	test('leaves angle brackets and entities in a plain text note alone', () => {
+		expect(parse('ping <200 &amp; still lagging >:(').text).toBe('ping <200 &amp; still lagging >:(')
+	})
 })
 
 describe('isPublicNote', () => {

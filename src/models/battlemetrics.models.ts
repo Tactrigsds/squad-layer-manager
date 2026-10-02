@@ -286,7 +286,8 @@ const ADMIN_NOTE = new RegExp(String.raw`^Note by ${SLM_ACTOR} via SLM:\n([\s\S]
 // recovers who wrote a note from the signature SLM puts on it (see playerNote, flagChangeNote)
 export function parseNote(raw: { id: string; note: string; createdAt: string }, bmUserName: string | null): PlayerNote {
 	const base = { id: raw.id, createdAt: Date.parse(raw.createdAt) }
-	const flag = FLAG_NOTE.exec(raw.note)
+	const text = noteHtmlToText(raw.note)
+	const flag = FLAG_NOTE.exec(text)
 	if (flag) {
 		return {
 			...base,
@@ -295,9 +296,34 @@ export function parseNote(raw: { id: string; note: string; createdAt: string }, 
 			text: flag[4]?.trim() ?? '',
 		}
 	}
-	const note = ADMIN_NOTE.exec(raw.note)
+	const note = ADMIN_NOTE.exec(text)
 	if (note) return { ...base, author: { kind: 'slm', name: note[1] }, text: note[2].trim() }
-	return { ...base, author: { kind: 'bm', name: bmUserName }, text: raw.note.trim() }
+	return { ...base, author: { kind: 'bm', name: bmUserName }, text: text.trim() }
+}
+
+// Tags the BM note editor writes. Only these are stripped, so a plain text note that contains `<` keeps it.
+const NOTE_HTML_TAG = /<(\/?)(p|br|div|span|strong|b|em|i|u|s|strike|del|a|ul|ol|li|h[1-6]|blockquote|code|pre)\b[^>]*>/gi
+const NOTE_BLOCK_TAG = /^(?:p|div|li|h[1-6]|blockquote|pre)$/i
+const HTML_ENTITY = /&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos|nbsp));/gi
+const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
+
+// Notes written on BattleMetrics are HTML. Block boundaries become newlines, and the text is never rendered as HTML.
+function noteHtmlToText(note: string): string {
+	let sawTag = false
+	const stripped = note.replace(NOTE_HTML_TAG, (_, closing: string, tag: string) => {
+		sawTag = true
+		if (tag.toLowerCase() === 'br' || (closing && NOTE_BLOCK_TAG.test(tag))) return '\n'
+		if (!closing && tag.toLowerCase() === 'li') return '- '
+		return ''
+	})
+	if (!sawTag) return note
+	return stripped
+		.replace(HTML_ENTITY, (entity, dec?: string, hex?: string, named?: string) => {
+			if (named) return NAMED_ENTITIES[named.toLowerCase()]
+			const code = dec ? Number(dec) : Number.parseInt(hex!, 16)
+			return code <= 0x10ffff ? String.fromCodePoint(code) : entity
+		})
+		.replace(/\n{3,}/g, '\n\n')
 }
 
 // Only notes every SLM user may read: shared with the org, not limited to a clearance level and not expired. The

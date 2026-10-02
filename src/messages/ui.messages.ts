@@ -89,6 +89,8 @@ export const confirm = def('Confirm')
 
 export const search = def('Search...')
 
+export const showMore = def('Show more')
+
 export const showLess = def('Show less')
 
 export const expand = def('Expand')
