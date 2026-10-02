@@ -184,6 +184,9 @@ export function initLayerTable(args: Args) {
 	args.cleanup.push(
 		args.update$
 			.pipe(
+				// setting requestedQuery below emits update$ again before this emission is done; queued, that nested
+				// emission waits its turn, so the latest input is the one that reaches the throttle last
+				Rx.observeOn(Rx.queueScheduler),
 				Rx.Ext.traceTag('QUERY_LAYERS'),
 				Rx.map(([store]) => {
 					const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
