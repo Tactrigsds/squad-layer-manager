@@ -43,7 +43,7 @@ export const unnamedIngameAdmin = def('An in-game admin')
 // "a, b and c" -- the list a feed line names in prose rather than as a column. Intl knows each locale's own
 // conjunction and separators, which no ICU pattern could hold for a list of unknown length.
 export const joinNames = def((names: readonly string[]) => ({
-	text: ({ locale }) => raw(new Intl.ListFormat(locale, { type: 'conjunction' }).format(names)),
+	text: ({ locale }) => raw(I18n.listFormat(locale).format(names)),
 }))
 
 export const squadDisbanded = def(

@@ -168,9 +168,11 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 	}, [matchesByDate, currentPage, history])
 
 	const historyRef = React.useRef(history)
-	historyRef.current = history
 	const matchesByDateRef = React.useRef(matchesByDate)
-	matchesByDateRef.current = matchesByDate
+	React.useLayoutEffect(() => {
+		historyRef.current = history
+		matchesByDateRef.current = matchesByDate
+	})
 
 	React.useEffect(() => {
 		return Zus.resolveReadStore(props.stores.squadServer!).subscribe((state, prevState) => {
@@ -332,7 +334,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	const isViewingThisMatch =
 		selectedMatchOrdinalFromStore === null ? entry.isCurrentMatch : selectedMatchOrdinalFromStore === entry.ordinal
 
-	const dragProps = DndKit.useDraggable({
+	const { ref: dragRef, isDragging } = DndKit.useDraggable({
 		type: 'history-entry',
 		id: entry.historyEntryId,
 	})
@@ -576,8 +578,8 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					role="row"
 					data-tour="mh-row"
 					data-tour-current={entry.isCurrentMatch || undefined}
-					ref={dragProps.ref}
-					data-is-dragging={dragProps.isDragging}
+					ref={dragRef}
+					data-is-dragging={isDragging}
 					onMouseDown={handleMouseDown}
 					onMouseUp={handleMouseUp}
 					onMouseLeave={handleMouseLeave}

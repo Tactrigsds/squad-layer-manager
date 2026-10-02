@@ -490,7 +490,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	// 'default' (clone) not 'move': with 'move' dnd-kit drags the real element and animates it into its final
 	// slot over a 250ms drop animation, so the item visibly lags behind the mouse release. 'default' drags a
 	// throwaway clone and places the real item instantly. Matches vote items (below) and the filter editor.
-	const dragProps = DndKit.useDraggable(draggableItem, { feedback: 'default', disabled: !canEdit })
+	const {
+		ref: dragRef,
+		handleRef: dragHandleRef,
+		isDragging,
+	} = DndKit.useDraggable(draggableItem, { feedback: 'default', disabled: !canEdit })
 
 	const itemStores = { queue: props.stores.squadServer }
 
@@ -650,7 +654,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit} onNewTag={onNewTag} onAddNote={onAddNote}>
 				<li
-					ref={dragProps.ref}
+					ref={dragRef}
 					className={cn(
 						Typo.LayerText,
 						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
@@ -660,7 +664,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					)}
 					data-mutation={displayedMutation}
 					data-tour={isTourSeqRow ? 'queue-item' : undefined}
-					data-is-dragging={dragProps.isDragging}
+					data-is-dragging={isDragging}
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
 				>
@@ -669,7 +673,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</span>
 					<button
 						type="button"
-						ref={dragProps.handleRef}
+						ref={dragHandleRef}
 						data-tour={isTourRow ? 'queue-reorder' : undefined}
 						{...editButtonProps(
 							'flex size-4 pointer-coarse:size-(--ctl) max-phone:h-full! max-phone:w-full! max-phone:self-stretch touch-none select-none [-webkit-touch-callout:none] items-center justify-center text-text-3 hover:text-text data-[can-edit=true]:cursor-grab disabled:opacity-40 [&_svg]:size-3.5 pointer-coarse:[&_svg]:size-6',
@@ -835,7 +839,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const writeDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer.serverId }))
 	const canEdit = !isLocked && !writeDenied
 	const draggableItem = LL.layerItemToDragItem(item)
-	const dragProps = DndKit.useDraggable(draggableItem, { disabled: !canEdit })
+	const { ref: dragRef, handleRef: dragHandleRef, isDragging } = DndKit.useDraggable(draggableItem, { disabled: !canEdit })
 
 	const itemStores = { queue: props.stores.squadServer }
 
@@ -966,22 +970,22 @@ function VoteLayerListItem(props: LayerListItemProps) {
 			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
 			<ItemContextMenu stores={props.stores} itemId={props.itemId} disabled={!canEdit}>
 				<li
-					ref={dragProps.ref}
+					ref={dragRef}
 					className={cn(
 						'group/parent-item flex data-[is-dragging=false]:w-full min-w-10 min-h-5 items-center justify-between px-1 py-0 border-2 border-gray-400 rounded inset-2',
 						`data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-solid cursor-default`,
 					)}
 					data-mutation={displayedMutation}
-					data-is-dragging={dragProps.isDragging}
+					data-is-dragging={isDragging}
 				>
-					{dragProps.isDragging ? (
+					{isDragging ? (
 						<span className="mx-auto w-5">...</span>
 					) : (
 						<div className="h-full flex flex-col grow">
 							<div className="p-1 space-x-2 flex items-center justify-between w-full">
 								<span className="flex items-center space-x-1">
 									<Button
-										ref={dragProps.handleRef}
+										ref={dragHandleRef}
 										{...editButtonProps('touch-none data-[can-edit=true]:cursor-grab')}
 										{...dragHandleTouchProps}
 										variant="ghost"

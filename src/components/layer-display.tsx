@@ -19,7 +19,10 @@ import LayerContextMenuOptions from './layer-context-menu-options.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu.tsx'
 
-export default function LayerDisplay(props: {
+export default function LayerDisplay({
+	ref,
+	...props
+}: {
 	item: LQY.LayerItem
 	badges?: React.ReactNode[]
 	// rendered alongside the layer name, ahead of the badges, so tags read as part of the layer rather than as
@@ -73,7 +76,7 @@ export default function LayerDisplay(props: {
 		dropItemCursors.push({ type: 'item-relative', itemId: props.item.itemId as string, position: 'on' })
 	}
 
-	const dropOnAttrs = DndKit.useDroppable(LL.llItemCursorsToDropItem(dropItemCursors))
+	const { ref: dropRef, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(dropItemCursors))
 
 	if (props.badges) badges.push(...props.badges)
 
@@ -111,13 +114,13 @@ export default function LayerDisplay(props: {
 				// the queue item this sits inside has its own menu -- right-clicking the layer is about the layer
 				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
 			>
-				<div className={cn('flex flex-col gap-0.5', props.className)} ref={props.ref}>
+				<div className={cn('flex flex-col gap-0.5', props.className)} ref={ref}>
 					{props.stacked ? (
 						<>
 							<ShortLayerName
 								tourId={props.layerNameTourId}
-								ref={(props.droppable && dropOnAttrs.ref) || undefined}
-								className={cn('min-w-0 [&>*]:whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
+								ref={(props.droppable && dropRef) || undefined}
+								className={cn('min-w-0 [&>*]:whitespace-nowrap', isDropTarget && 'bg-secondary')}
 								layerId={props.item.layerId}
 								teamParity={teamParity}
 								backfillLayerId={props.backfillLayerId}
@@ -136,13 +139,13 @@ export default function LayerDisplay(props: {
 					) : (
 						<div className="flex space-x-2 items-center">
 							<span
-								data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
+								data-over={(props.droppable && isDropTarget) || undefined}
 								className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
 							>
 								<ShortLayerName
 									tourId={props.layerNameTourId}
-									ref={(props.droppable && dropOnAttrs.ref) || undefined}
-									className={cn('flex-nowrap shrink-0 whitespace-nowrap', dropOnAttrs.isDropTarget && 'bg-secondary')}
+									ref={(props.droppable && dropRef) || undefined}
+									className={cn('flex-nowrap shrink-0 whitespace-nowrap', isDropTarget && 'bg-secondary')}
 									layerId={props.item.layerId}
 									teamParity={teamParity}
 									backfillLayerId={props.backfillLayerId}

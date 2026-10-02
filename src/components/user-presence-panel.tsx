@@ -3,7 +3,7 @@ import React from 'react'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useNow } from '@/lib/react.ts'
+import { useDeadlineClock, useNow } from '@/lib/react.ts'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -279,10 +279,15 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 		return new Map<bigint, USR.User>(users.map((user) => [user.discordId, user]))
 	}, [usersRes.data])
 
+	// an away client stays listed for DISPLAYED_AWAY_PRESENCE_WINDOW after it was last seen
+	const awayExpiries: number[] = []
+	for (const presence of matchingClientPresence.values()) {
+		if (presence.away && presence.lastSeen) awayExpiries.push(presence.lastSeen + UP.DISPLAYED_AWAY_PRESENCE_WINDOW)
+	}
+	const clock = useDeadlineClock(awayExpiries)
+
 	// Sort clients based on presence priority
-	const now = useNow(1000)
 	const sortedClientPresence = React.useMemo(() => {
-		const oldestLastSeenToDisplay = now - UP.DISPLAYED_AWAY_PRESENCE_WINDOW
 		const clientList = Array.from(matchingClientPresence.entries())
 			.map(([clientId, presence]) => {
 				const user = userMap.get(presence.userId)
@@ -293,11 +298,11 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 				// Only show clients that are not away, or that have been seen in the last 5 minutes
 				if (!item.presence.away) return true
 				if (!item.presence.lastSeen) return false
-				return item.presence.lastSeen > oldestLastSeenToDisplay
+				return item.presence.lastSeen + UP.DISPLAYED_AWAY_PRESENCE_WINDOW > clock
 			})
 
 		return props.sourcePresenceFn ? clientList.sort(props.sourcePresenceFn) : clientList
-	}, [matchingClientPresence, userMap, now, props.sourcePresenceFn])
+	}, [matchingClientPresence, userMap, clock, props.sourcePresenceFn])
 
 	// publish the clients this panel is showing to the shared registry, and read back the count of each
 	// user's clients across ALL panels -- a user with more than one visible (even split across panels)
@@ -430,7 +435,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
+														<LastSeen time={presence.lastSeen} />
 													</span>
 												)}
 												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -489,7 +494,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
-																		{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
+																		<LastSeen time={presence.lastSeen} />
 																	</div>
 																)}
 																{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -545,7 +550,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													{tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(presence.lastSeen)))}
+													<LastSeen time={presence.lastSeen} />
 												</div>
 											)}
 											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -559,6 +564,12 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			)}
 		</div>
 	)
+}
+
+// ticks every second, but only while the tooltip holding it is open
+function LastSeen(props: { time: number }) {
+	const now = useNow(1000)
+	return tr.text(UP_Msgs.lastSeen(MsgFmt.formatRelativeTime(props.time, { now })))
 }
 
 function activityTextOf(described: UP.ActivityDescriptor | null) {

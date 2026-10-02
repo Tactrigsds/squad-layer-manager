@@ -158,6 +158,16 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 	return normalizeNode(parts.length === 1 ? (parts[0] as React.ReactNode) : (parts as React.ReactNode[]))
 }
 
+const listFormats = new Map<string, Intl.ListFormat>()
+
+// one per locale and options: constructing an Intl.ListFormat costs several times what formatting with one does
+export function listFormat(locale: string, type: Intl.ListFormatType = 'conjunction', style: Intl.ListFormatStyle = 'long') {
+	const cacheKey = `${locale}|${type}|${style}`
+	let format = listFormats.get(cacheKey)
+	if (!format) listFormats.set(cacheKey, (format = new Intl.ListFormat(locale, { type, style })))
+	return format
+}
+
 // A run of literal tokens -- command triggers, ids, filenames -- dropped into a sentence. Two things this gets
 // right that `join(', ')` does not: the separators and the final conjunction come from the locale, and each token
 // is wrapped in a `bdi`, which isolates its direction. Without that isolation an LTR token like `!shownext` in an
@@ -167,7 +177,7 @@ export function tokenList(
 	locale: string,
 	opts?: { type?: 'conjunction' | 'disjunction'; tag?: string },
 ): React.ReactNode {
-	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: 'short' }).formatToParts(tokens)
+	const parts = listFormat(locale, opts?.type, 'short').formatToParts(tokens)
 	return parts.map((part, index) =>
 		part.type === 'element'
 			? React.createElement('bdi', { key: index }, opts?.tag ? React.createElement(opts.tag, null, part.value) : part.value)
@@ -182,9 +192,7 @@ export function nodeList(
 	locale: string,
 	opts?: { type?: 'conjunction' | 'disjunction' | 'unit'; style?: 'long' | 'short' | 'narrow' },
 ): React.ReactNode {
-	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: opts?.style ?? 'long' }).formatToParts(
-		nodes.map((_, index) => String(index)),
-	)
+	const parts = listFormat(locale, opts?.type, opts?.style).formatToParts(nodes.map((_, index) => String(index)))
 	let next = 0
 	return parts.map((part, index) =>
 		React.createElement(React.Fragment, { key: index }, part.type === 'element' ? nodes[next++] : part.value),

@@ -121,3 +121,46 @@ export function useNow(intervalMs: number) {
 	const getSnapshot = React.useCallback(() => Math.floor(Date.now() / intervalMs) * intervalMs, [intervalMs])
 	return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
+
+// setTimeout fires immediately for any delay past a signed 32-bit int
+const MAX_TIMEOUT_MS = 2 ** 31 - 1
+
+/**
+ * A stand-in for the current time that moves only when one of `deadlines` passes, for UI whose only question about
+ * the time is whether a deadline is behind it. `deadline > clock` gives the same answer as `deadline > Date.now()`,
+ * and the caller re-renders once per deadline instead of on an interval.
+ */
+export function useDeadlineClock(deadlines: Iterable<number>): number {
+	const key = [...deadlines].sort((a, b) => a - b).join(',')
+	const clock = React.useMemo(() => {
+		const sorted = key === '' ? [] : key.split(',').map(Number)
+		const getSnapshot = () => {
+			const now = Date.now()
+			let passed = -Infinity
+			for (const deadline of sorted) {
+				if (deadline > now) break
+				passed = deadline
+			}
+			return passed
+		}
+		const subscribe = (onChange: () => void) => {
+			let timer: ReturnType<typeof setTimeout> | undefined
+			const arm = () => {
+				const now = Date.now()
+				const next = sorted.find((deadline) => deadline > now)
+				if (next === undefined) return
+				timer = setTimeout(
+					() => {
+						onChange()
+						arm()
+					},
+					Math.min(next - now, MAX_TIMEOUT_MS),
+				)
+			}
+			arm()
+			return () => clearTimeout(timer)
+		}
+		return { getSnapshot, subscribe }
+	}, [key])
+	return React.useSyncExternalStore(clock.subscribe, clock.getSnapshot, clock.getSnapshot)
+}
