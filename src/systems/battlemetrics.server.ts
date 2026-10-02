@@ -1,5 +1,7 @@
 import * as Otel from '@opentelemetry/api'
+import * as E from 'drizzle-orm'
 
+import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
 import * as Prom from '@/lib/promise-utils'
@@ -17,11 +19,13 @@ import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as SecretBox from '@/server/secret-box.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as Users from '@/systems/users.server'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
 const module = initModule('battlemetrics')
@@ -43,9 +47,11 @@ function orgId(): string | undefined {
 	return Settings.GLOBAL_SETTINGS.integrations.battlemetrics.orgId || undefined
 }
 
-export async function setup() {
+export async function setup(ctx: C.Db) {
 	log = module.getLogger()
 	ENV = getEnv()
+
+	await resealPersonalTokens(ctx).catch((err) => log.warn({ err }, 'Failed to re-encrypt personal BM tokens'))
 
 	try {
 		const stored = await PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
@@ -78,6 +84,92 @@ export async function setup() {
 		evictSub.unsubscribe()
 		await persistCache().catch((err) => log.warn({ err }, 'Failed to final-persist BM player cache on shutdown'))
 	})
+}
+
+// -------- personal tokens --------
+
+// The token a write goes out under. Reads always use the org token, since their results are cached and shared
+// between users. A personal token makes BM record the flag or note as written by its owner.
+export type Auth = { kind: 'org' } | { kind: 'personal'; userId: bigint; token: string }
+export const ORG_AUTH: Auth = { kind: 'org' }
+
+// BM answered a personal token with 401 or 403: revoked, expired, or missing a scope the write needs. Not retried
+// under the org token, which would record the write as somebody else's.
+export class PersonalTokenRejectedError extends Error {
+	constructor(readonly status: number) {
+		super(`BattleMetrics rejected the personal token: ${status}`)
+	}
+}
+
+export function isPersonalTokenRejected(err: unknown): err is PersonalTokenRejectedError {
+	return err instanceof PersonalTokenRejectedError
+}
+
+// A token sealed with a key this install no longer has is treated as unset, and left in the table so that
+// restoring the key brings it back.
+function openToken(userId: bigint, sealed: string): string | undefined {
+	try {
+		return SecretBox.open(sealed)
+	} catch (err) {
+		log.warn({ err, userId }, 'Could not decrypt a personal BM token; writing as the org token instead')
+		return undefined
+	}
+}
+
+export async function authForUser(ctx: C.Db, userId: bigint): Promise<Auth> {
+	const [row] = await ctx
+		.db({ redactParams: true })
+		.select({ token: Schema.battlemetricsUserTokens.token })
+		.from(Schema.battlemetricsUserTokens)
+		.where(E.eq(Schema.battlemetricsUserTokens.userId, userId))
+	const token = row && openToken(userId, row.token)
+	return token ? { kind: 'personal', userId, token } : ORG_AUTH
+}
+
+// the token of the SLM user who linked this steam account, for a command sent from in game
+export async function authForSteamId(ctx: C.Db, steamId: string | undefined): Promise<Auth> {
+	if (!steamId) return ORG_AUTH
+	const [row] = await ctx
+		.db({ redactParams: true })
+		.select({ userId: Schema.battlemetricsUserTokens.userId, token: Schema.battlemetricsUserTokens.token })
+		.from(Schema.linkedSteamAccounts)
+		.innerJoin(Schema.battlemetricsUserTokens, E.eq(Schema.battlemetricsUserTokens.userId, Schema.linkedSteamAccounts.discordId))
+		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, BigInt(steamId)))
+	const token = row && openToken(row.userId, row.token)
+	return token ? { kind: 'personal', userId: row.userId, token } : ORG_AUTH
+}
+
+// brings each stored token up to the current key and envelope version (see secret-box.server.ts)
+async function resealPersonalTokens(ctx: C.Db) {
+	const rows = await ctx
+		.db({ redactParams: true })
+		.select({ userId: Schema.battlemetricsUserTokens.userId, token: Schema.battlemetricsUserTokens.token })
+		.from(Schema.battlemetricsUserTokens)
+	let resealed = 0
+	for (const row of rows) {
+		if (!SecretBox.needsReseal(row.token)) continue
+		let token: string
+		try {
+			token = SecretBox.reseal(row.token)
+		} catch (err) {
+			log.warn({ err, userId: row.userId }, 'Could not decrypt a personal BM token; leaving it as stored')
+			continue
+		}
+		await ctx
+			.db({ redactParams: true })
+			.update(Schema.battlemetricsUserTokens)
+			.set({ token })
+			.where(E.eq(Schema.battlemetricsUserTokens.userId, row.userId))
+		resealed++
+	}
+	if (resealed > 0) log.info('Re-encrypted %d personal BM token(s) at rest', resealed)
+}
+
+// A cheap authenticated read, which BM refuses for a token that is revoked, expired or lacks the player flag scopes.
+// It can't tell whether the token may write flags and notes: only a write can, so a missing write scope shows up as
+// PersonalTokenRejectedError on the first one.
+async function checkPersonalToken(ctx: CS.Ctx & CS.AbortSignal, auth: Auth) {
+	await bmFetch(ctx, 'GET', `/player-flags?page[size]=1`, { auth })
 }
 
 // -------- cache --------
@@ -151,108 +243,126 @@ const RATE_LIMITS = {
 	backoffDefaultMs: 30_000,
 } as const
 
-const rateLimiter = {
-	timestamps: [] as number[],
-	queue: [] as Array<() => void>,
-	drainScheduled: false,
-	backoffUntil: 0,
+// BM limits each token separately, so the org token and every personal token get their own budget
+type RateLimiter = {
+	timestamps: number[]
+	queue: Array<() => void>
+	drainScheduled: boolean
+	backoffUntil: number
 }
 
-function pruneTimestamps(now: number) {
+function createRateLimiter(): RateLimiter {
+	return { timestamps: [], queue: [], drainScheduled: false, backoffUntil: 0 }
+}
+
+const orgRateLimiter = createRateLimiter()
+const personalRateLimiters = new Map<bigint, RateLimiter>()
+
+function rateLimiterFor(auth: Auth): RateLimiter {
+	if (auth.kind === 'org') return orgRateLimiter
+	let limiter = personalRateLimiters.get(auth.userId)
+	if (!limiter) {
+		limiter = createRateLimiter()
+		personalRateLimiters.set(auth.userId, limiter)
+	}
+	return limiter
+}
+
+function pruneTimestamps(limiter: RateLimiter, now: number) {
 	const cutoff = now - 60_000
-	while (rateLimiter.timestamps.length > 0 && rateLimiter.timestamps[0] <= cutoff) {
-		rateLimiter.timestamps.shift()
+	while (limiter.timestamps.length > 0 && limiter.timestamps[0] <= cutoff) {
+		limiter.timestamps.shift()
 	}
 }
 
-function countInWindow(now: number, windowMs: number): number {
+function countInWindow(limiter: RateLimiter, now: number, windowMs: number): number {
 	let count = 0
-	for (let i = rateLimiter.timestamps.length - 1; i >= 0; i--) {
-		if (rateLimiter.timestamps[i] > now - windowMs) count++
+	for (let i = limiter.timestamps.length - 1; i >= 0; i--) {
+		if (limiter.timestamps[i] > now - windowMs) count++
 		else break
 	}
 	return count
 }
 
-function canDispatch(now: number): boolean {
-	if (now < rateLimiter.backoffUntil) return false
-	return countInWindow(now, 1_000) < RATE_LIMITS.perSecond && countInWindow(now, 60_000) < RATE_LIMITS.perMinute
+function canDispatch(limiter: RateLimiter, now: number): boolean {
+	if (now < limiter.backoffUntil) return false
+	return countInWindow(limiter, now, 1_000) < RATE_LIMITS.perSecond && countInWindow(limiter, now, 60_000) < RATE_LIMITS.perMinute
 }
 
-function scheduleDrain() {
-	if (rateLimiter.drainScheduled || rateLimiter.queue.length === 0) return
-	rateLimiter.drainScheduled = true
+function scheduleDrain(limiter: RateLimiter) {
+	if (limiter.drainScheduled || limiter.queue.length === 0) return
+	limiter.drainScheduled = true
 
 	const now = Date.now()
-	pruneTimestamps(now)
+	pruneTimestamps(limiter, now)
 
 	let delayMs = 0
-	if (now < rateLimiter.backoffUntil) {
-		delayMs = rateLimiter.backoffUntil - now
+	if (now < limiter.backoffUntil) {
+		delayMs = limiter.backoffUntil - now
 	} else {
-		if (countInWindow(now, 1_000) >= RATE_LIMITS.perSecond) {
-			const oldest1s = rateLimiter.timestamps.find((t) => t > now - 1_000)!
+		if (countInWindow(limiter, now, 1_000) >= RATE_LIMITS.perSecond) {
+			const oldest1s = limiter.timestamps.find((t) => t > now - 1_000)!
 			delayMs = Math.max(delayMs, oldest1s + 1_000 - now)
 		}
-		if (countInWindow(now, 60_000) >= RATE_LIMITS.perMinute) {
-			const oldest60s = rateLimiter.timestamps[0]
+		if (countInWindow(limiter, now, 60_000) >= RATE_LIMITS.perMinute) {
+			const oldest60s = limiter.timestamps[0]
 			delayMs = Math.max(delayMs, oldest60s + 60_000 - now)
 		}
 	}
 
 	setTimeout(() => {
-		rateLimiter.drainScheduled = false
-		drainQueue()
+		limiter.drainScheduled = false
+		drainQueue(limiter)
 	}, delayMs + 1)
 }
 
-function drainQueue() {
+function drainQueue(limiter: RateLimiter) {
 	const now = Date.now()
-	pruneTimestamps(now)
-	while (rateLimiter.queue.length > 0 && canDispatch(now)) {
-		rateLimiter.timestamps.push(now)
-		const resolve = rateLimiter.queue.shift()!
+	pruneTimestamps(limiter, now)
+	while (limiter.queue.length > 0 && canDispatch(limiter, now)) {
+		limiter.timestamps.push(now)
+		const resolve = limiter.queue.shift()!
 		resolve()
 	}
-	scheduleDrain()
+	scheduleDrain(limiter)
 }
 
 const meter = Otel.metrics.getMeter('battlemetrics')
 
 meter
 	.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_SECOND, {
-		description: 'Number of BattleMetrics API requests in the last 1s window',
+		description: 'Number of BattleMetrics API requests made with the org token in the last 1s window',
 	})
 	.addCallback((result) => {
 		const now = Date.now()
-		pruneTimestamps(now)
-		result.observe(countInWindow(now, 1_000))
+		pruneTimestamps(orgRateLimiter, now)
+		result.observe(countInWindow(orgRateLimiter, now, 1_000))
 	})
 
 meter
 	.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_MINUTE, {
-		description: 'Number of BattleMetrics API requests in the last 60s window',
+		description: 'Number of BattleMetrics API requests made with the org token in the last 60s window',
 	})
 	.addCallback((result) => {
 		const now = Date.now()
-		pruneTimestamps(now)
-		result.observe(countInWindow(now, 60_000))
+		pruneTimestamps(orgRateLimiter, now)
+		result.observe(countInWindow(orgRateLimiter, now, 60_000))
 	})
 
 meter
 	.createObservableGauge(ATTRS.Battlemetrics.QUEUE_SIZE, {
-		description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
+		description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot on the org token',
 	})
 	.addCallback((result) => {
-		result.observe(rateLimiter.queue.length)
+		result.observe(orgRateLimiter.queue.length)
 	})
 
-function acquireRateSlot(signal?: AbortSignal): Promise<void> {
+function acquireRateSlot(limiter: RateLimiter, signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.reject(signal.reason)
 	const now = Date.now()
-	pruneTimestamps(now)
-	if (canDispatch(now)) {
-		rateLimiter.timestamps.push(now)
+	pruneTimestamps(limiter, now)
+	if (canDispatch(limiter, now)) {
+		limiter.timestamps.push(now)
 		return Promise.resolve()
 	}
 	return new Promise<void>((resolve, reject) => {
@@ -261,17 +371,17 @@ function acquireRateSlot(signal?: AbortSignal): Promise<void> {
 			resolve()
 		}
 		const onAbort = () => {
-			const idx = rateLimiter.queue.indexOf(entry)
-			if (idx !== -1) rateLimiter.queue.splice(idx, 1)
+			const idx = limiter.queue.indexOf(entry)
+			if (idx !== -1) limiter.queue.splice(idx, 1)
 			reject(signal!.reason)
 		}
 		signal?.addEventListener('abort', onAbort, { once: true })
-		rateLimiter.queue.push(entry)
-		scheduleDrain()
+		limiter.queue.push(entry)
+		scheduleDrain(limiter)
 	})
 }
 
-function triggerBackoff(res: Response) {
+function triggerBackoff(limiter: RateLimiter, res: Response) {
 	const retryAfter = res.headers.get('Retry-After')
 	let delayMs = RATE_LIMITS.backoffDefaultMs
 	if (retryAfter) {
@@ -280,9 +390,9 @@ function triggerBackoff(res: Response) {
 			delayMs = seconds * 1_000
 		}
 	}
-	rateLimiter.backoffUntil = Date.now() + delayMs
+	limiter.backoffUntil = Date.now() + delayMs
 	log.warn('BattleMetrics 429 — backing off for %dms', delayMs)
-	scheduleDrain()
+	scheduleDrain(limiter)
 }
 
 // -------- BM API --------
@@ -300,15 +410,22 @@ async function bmFetch<T = null>(
 	ctx: CS.Ctx & CS.AbortSignal,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	path: string,
-	init?: Omit<RequestInit, 'body' | 'method'> & { body?: unknown; responseSchema?: z.ZodType<T>; passthroughCodes?: number[] },
+	init?: Omit<RequestInit, 'body' | 'method'> & {
+		body?: unknown
+		responseSchema?: z.ZodType<T>
+		passthroughCodes?: number[]
+		auth?: Auth
+	},
 ): Promise<readonly [T, Response]> {
+	const auth = init?.auth ?? ORG_AUTH
+	const limiter = rateLimiterFor(auth)
 	return Instr.spanOp(
 		'bmFetch',
 		{
 			module,
 			kind: Otel.SpanKind.CLIENT,
 			levels: { error: 'error', event: 'trace' },
-			attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }),
+			attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path, [ATTRS.Battlemetrics.AUTH]: auth.kind }),
 		},
 		async (ctx: CS.Ctx & CS.AbortSignal) => {
 			// the callers below all return early instead; reaching here means one of them stopped doing so
@@ -316,7 +433,7 @@ async function bmFetch<T = null>(
 			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
-				Authorization: `Bearer ${Settings.GLOBAL_SETTINGS.integrations.battlemetrics.token}`,
+				Authorization: `Bearer ${auth.kind === 'personal' ? auth.token : Settings.GLOBAL_SETTINGS.integrations.battlemetrics.token}`,
 				Accept: 'application/json',
 				...(init?.headers as Record<string, string>),
 			}
@@ -329,7 +446,7 @@ async function bmFetch<T = null>(
 
 			let lastError!: Error
 			for (let attempt = 0; attempt < RETRY.maxAttempts; attempt++) {
-				await acquireRateSlot(ctx.signal)
+				await acquireRateSlot(limiter, ctx.signal)
 				const res = await fetch(url, { method, headers, body, signal: ctx.signal }).catch((error) => {
 					log.error(`${method} ${path}: ${error.message}`)
 					return error as Error
@@ -349,15 +466,19 @@ async function bmFetch<T = null>(
 				}
 
 				if (res.status === 429) {
-					triggerBackoff(res)
+					triggerBackoff(limiter, res)
 					lastError = new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
 					if (attempt < RETRY.maxAttempts - 1) {
-						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
+						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, limiter.backoffUntil - Date.now())
 						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
 						await Prom.sleep(delay, ctx.signal)
 						continue
 					}
 					throw lastError
+				}
+				if (auth.kind === 'personal' && (res.status === 401 || res.status === 403)) {
+					log.warn({ status: res.status, userId: auth.userId }, `${method} ${path}: personal token rejected`)
+					throw new PersonalTokenRejectedError(res.status)
 				}
 				if (init?.passthroughCodes?.includes(res.status)) {
 					return [null as any, res] as const
@@ -446,11 +567,12 @@ export const getOrgFlags = Instr.spanOp('getOrgFlags', { module }, async (ctx: C
 export const addPlayerFlags = Instr.spanOp(
 	'addPlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]) => {
+	async (ctx: CS.Ctx & CS.AbortSignal, auth: Auth, bmPlayerId: string, flagIds: string[]) => {
 		if (flagIds.length === 0) return { code: 'err:no-flags' as const }
 		const [_, res] = await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/flags`, {
 			body: { data: flagIds.map((id) => ({ type: 'playerFlag', id })) },
 			passthroughCodes: [409],
+			auth,
 		})
 		if (res.status === 409) return { code: 'player-already-has-flag' as const }
 		return { code: 'ok' as const }
@@ -460,8 +582,9 @@ export const addPlayerFlags = Instr.spanOp(
 export const addPlayerNote = Instr.spanOp(
 	'addPlayerNote',
 	{ module },
-	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, note: string) => {
+	async (ctx: CS.Ctx & CS.AbortSignal, auth: Auth, bmPlayerId: string, note: string) => {
 		const [, res] = await bmFetch(ctx, 'POST', `/players/${bmPlayerId}/relationships/notes`, {
+			auth,
 			body: {
 				data: {
 					type: 'playerNote',
@@ -538,16 +661,16 @@ export const getPlayerNotes = Instr.spanOp(
 )
 
 // posts an admin's note to one player's profile and records it. `actor` signs the note on BM; `appActor` is who the
-// audit log credits.
+// audit log credits; `auth` is whose token BM records the note under.
 export async function addNoteToPlayer(
 	ctx: CS.Ctx & CS.AbortSignal & C.Db,
 	playerIds: SM.PlayerIds.IdQuery<'eos'>,
 	text: string,
-	actor: { label: string; appActor: AppEvents.Actor },
+	actor: { label: string; appActor: AppEvents.Actor; auth: Auth },
 ): Promise<'ok' | 'not-found'> {
 	const bmData = await fetchSinglePlayerBmData(ctx, playerIds)
 	if (!bmData) return 'not-found'
-	await addPlayerNote(ctx, bmData.bmPlayerId, BM.playerNote({ actor: actor.label, text }))
+	await addPlayerNote(ctx, actor.auth, bmData.bmPlayerId, BM.playerNote({ actor: actor.label, text }))
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PlayerNoteAdded>({
@@ -566,12 +689,13 @@ export async function addNoteToPlayer(
 export const removePlayerFlags = Instr.spanOp(
 	'removePlayerFlags',
 	{ module },
-	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
+	async (ctx: CS.Ctx & CS.AbortSignal, auth: Auth, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
 		if (flagIds.length === 0) return []
 		return Promise.all(
 			flagIds.map(async (flagId) => {
 				const [, res] = await bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`, {
 					passthroughCodes: [400],
+					auth,
 				})
 				if (res.status === 400) {
 					const bodyText = await res.text()
@@ -795,6 +919,56 @@ export const router = {
 		return getOrgFlags(ctx)
 	}),
 
+	// whether the caller has a personal token saved. The token itself never leaves the server.
+	getMyToken: orpcBase.handler(async ({ context: ctx }) => {
+		const [row] = await ctx
+			.db({ redactParams: true })
+			.select({ updatedAt: Schema.battlemetricsUserTokens.updatedAt })
+			.from(Schema.battlemetricsUserTokens)
+			.where(E.eq(Schema.battlemetricsUserTokens.userId, ctx.user.discordId))
+		return { code: 'ok' as const, updatedAt: row?.updatedAt.getTime() ?? null }
+	}),
+
+	// checked against BM before it is saved, so a mistyped or revoked token is refused here rather than on the
+	// caller's first flag change
+	setMyToken: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ token: z.string().trim().min(1).max(4096) }))
+		.handler(async ({ input, context: ctx }) => {
+			if (!isEnabled()) return { code: 'err:disabled' as const }
+			const userId = ctx.user.discordId
+			try {
+				await checkPersonalToken(ctx, { kind: 'personal', userId, token: input.token })
+			} catch (err) {
+				if (isPersonalTokenRejected(err)) return { code: 'err:token-rejected' as const }
+				log.warn({ err }, 'failed to check personal BM token')
+				return { code: 'err:check-failed' as const }
+			}
+			const sealed = SecretBox.seal(input.token)
+			const updatedAt = new Date()
+			await ctx
+				.db({ redactParams: true })
+				.insert(Schema.battlemetricsUserTokens)
+				.values({ userId, token: sealed, updatedAt })
+				.onConflictDoUpdate({ target: Schema.battlemetricsUserTokens.userId, set: { token: sealed, updatedAt } })
+			// a backoff earned by the previous token says nothing about this one
+			personalRateLimiters.delete(userId)
+			await Users.recordUserAccount(ctx, userId, 'bm-token-set')
+			return { code: 'ok' as const, updatedAt: updatedAt.getTime() }
+		}),
+
+	removeMyToken: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: ctx }) => {
+		const userId = ctx.user.discordId
+		const removed = await ctx
+			.db()
+			.delete(Schema.battlemetricsUserTokens)
+			.where(E.eq(Schema.battlemetricsUserTokens.userId, userId))
+			.returning({ userId: Schema.battlemetricsUserTokens.userId })
+		personalRateLimiters.delete(userId)
+		if (removed.length > 0) await Users.recordUserAccount(ctx, userId, 'bm-token-removed')
+		return { code: 'ok' as const }
+	}),
+
 	// `fresh` skips the cached list, for an admin who asks to reload
 	listPlayerNotes: orpcBase
 		.input(z.object({ playerId: z.string(), fresh: z.boolean().prefault(false) }))
@@ -817,16 +991,19 @@ export const router = {
 		)
 		.handler(async ({ input, context: ctx }) => {
 			if (!isEnabled()) return { code: 'err:disabled' as const }
-			const actor = { label: actorLabel(ctx), appActor: { type: 'slm-user' as const, userId: ctx.user.discordId } }
+			const auth = await authForUser(ctx, ctx.user.discordId)
+			const actor = { label: actorLabel(ctx), appActor: { type: 'slm-user' as const, userId: ctx.user.discordId }, auth }
 			const results = await Promise.all(
 				input.playerIds.map((playerId) =>
 					addNoteToPlayer(ctx, SM.PlayerIds.queryFromPlayerId(playerId), input.note, actor).catch((err) => {
+						if (isPersonalTokenRejected(err)) return 'token-rejected' as const
 						log.warn({ err, playerId }, 'failed to add BM note')
 						return 'failed' as const
 					}),
 				),
 			)
 			const notedCount = results.filter((r) => r === 'ok').length
+			if (notedCount === 0 && results.includes('token-rejected')) return { code: 'err:personal-token-rejected' as const }
 			if (notedCount === 0) return { code: 'err:none-added' as const, playerCount: input.playerIds.length }
 			return { code: 'ok' as const, notedCount, playerCount: input.playerIds.length }
 		}),
@@ -862,23 +1039,31 @@ export const router = {
 			const toRemove = input.remove.filter((f) => current.flagIds.includes(f.id))
 			if (toAdd.length === 0 && toRemove.length === 0) return { code: 'err:no-changes' as const }
 
-			const addRes = await addPlayerFlags(
-				ctx,
-				current.bmPlayerId,
-				toAdd.map((f) => f.id),
-			)
-			if (addRes.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
-			await removePlayerFlags(
-				ctx,
-				current.bmPlayerId,
-				toRemove.map((f) => f.id),
-			)
+			const auth = await authForUser(ctx, ctx.user.discordId)
+			try {
+				const addRes = await addPlayerFlags(
+					ctx,
+					auth,
+					current.bmPlayerId,
+					toAdd.map((f) => f.id),
+				)
+				if (addRes.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
+				await removePlayerFlags(
+					ctx,
+					auth,
+					current.bmPlayerId,
+					toRemove.map((f) => f.id),
+				)
+			} catch (err) {
+				if (isPersonalTokenRejected(err)) return { code: 'err:personal-token-rejected' as const }
+				throw err
+			}
 
 			const added = resolveFlagChanges(toAdd, orgFlags)
 			const removed = resolveFlagChanges(toRemove, orgFlags)
 			const noteResults = await Promise.all([
-				postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx)),
-				postFlagChangeNotes(ctx, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
+				postFlagChangeNotes(ctx, auth, current.bmPlayerId, 'added', added, actorLabel(ctx)),
+				postFlagChangeNotes(ctx, auth, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
 			])
 
 			const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
@@ -908,6 +1093,7 @@ export const router = {
 				return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
 			}
 
+			const auth = await authForUser(ctx, ctx.user.discordId)
 			let flaggedCount = 0
 			let allNotesAdded = true
 			for (const playerId of input.playerIds) {
@@ -917,15 +1103,21 @@ export const router = {
 				const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
 				if (toAdd.length === 0) continue
 
+				// every player's write goes out under the same token, so a rejection would repeat for the rest
 				const addRes = await addPlayerFlags(
 					ctx,
+					auth,
 					current.bmPlayerId,
 					toAdd.map((f) => f.id),
-				)
+				).catch((err) => {
+					if (isPersonalTokenRejected(err)) return { code: 'token-rejected' as const }
+					throw err
+				})
+				if (addRes.code === 'token-rejected') return { code: 'err:personal-token-rejected' as const, flaggedCount }
 				if (addRes.code === 'player-already-has-flag') continue
 
 				const added = resolveFlagChanges(toAdd, orgFlags)
-				const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx))
+				const noteAdded = await postFlagChangeNotes(ctx, auth, current.bmPlayerId, 'added', added, actorLabel(ctx))
 				if (!noteAdded) allNotesAdded = false
 
 				await refreshPlayerFlags(ctx, playerId, playerIds)
@@ -959,6 +1151,7 @@ function actorLabel(ctx: USR.Ctx) {
 // surface `noteAdded` instead, which is false if any of the notes failed.
 async function postFlagChangeNotes(
 	ctx: CS.Ctx & CS.AbortSignal,
+	auth: Auth,
 	bmPlayerId: string,
 	action: 'added' | 'removed',
 	flags: ResolvedFlagChange[],
@@ -966,7 +1159,7 @@ async function postFlagChangeNotes(
 ) {
 	const results = await Promise.all(
 		flags.map((flag) =>
-			addPlayerNote(ctx, bmPlayerId, BM.flagChangeNote({ action, flagName: flag.name, actor, reason: flag.reason }))
+			addPlayerNote(ctx, auth, bmPlayerId, BM.flagChangeNote({ action, flagName: flag.name, actor, reason: flag.reason }))
 				.then(() => true)
 				.catch((err) => {
 					log.warn({ err, bmPlayerId, flag: flag.name }, 'failed to post BM note after flag change')

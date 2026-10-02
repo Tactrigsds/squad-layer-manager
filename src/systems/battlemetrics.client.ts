@@ -50,6 +50,28 @@ export function useRefreshPlayerBmData() {
 	return useMutation(RPC.orpc.battlemetrics.refreshPlayerBmData.mutationOptions())
 }
 
+export function useMyToken() {
+	return useQuery(RPC.orpc.battlemetrics.getMyToken.queryOptions())
+}
+
+function invalidateMyToken() {
+	void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.battlemetrics.getMyToken.key() })
+}
+
+export function useSetMyTokenMutation() {
+	return useMutation(
+		RPC.orpc.battlemetrics.setMyToken.mutationOptions({
+			onSuccess: (res) => {
+				if (res.code === 'ok') invalidateMyToken()
+			},
+		}),
+	)
+}
+
+export function useRemoveMyTokenMutation() {
+	return useMutation(RPC.orpc.battlemetrics.removeMyToken.mutationOptions({ onSuccess: invalidateMyToken }))
+}
+
 export function playerNotesQueryOptions(playerId: string) {
 	return RPC.orpc.battlemetrics.listPlayerNotes.queryOptions({ input: { playerId }, staleTime: Infinity })
 }

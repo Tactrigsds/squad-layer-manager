@@ -78,6 +78,10 @@ function useAddNoteAction(playerIds: string[], target: Tgt.Target) {
 		const note = noteRef.current.trim()
 		if (result !== 'confirm' || note.length === 0) return
 		const res = await mutation.mutateAsync({ playerIds, note })
+		if (res.code === 'err:personal-token-rejected') {
+			toast.error(...tr.toast(BM_Msgs.personalTokenRejected()))
+			return
+		}
 		if (res.code !== 'ok') {
 			toast.error(...tr.toast(BM_Msgs.noteFailed(res.code)))
 			return

@@ -304,7 +304,7 @@ export type FilterContributorChanged = z.infer<typeof FilterContributorChangedSc
 
 // a user acting on their own account
 export const UserAccountChangedSchema = event('USER_ACCOUNT_CHANGED', {
-	action: z.enum(['steam-linked', 'steam-unlinked', 'nickname-updated']),
+	action: z.enum(['steam-linked', 'steam-unlinked', 'nickname-updated', 'bm-token-set', 'bm-token-removed']),
 	// for steam-linked / steam-unlinked: the accounts this action linked or unlinked (as strings; a steam64 id
 	// doesn't survive a trip through JSON as a number)
 	steamIds: z.array(z.string()).optional(),

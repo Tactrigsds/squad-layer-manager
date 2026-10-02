@@ -77,6 +77,7 @@ import * as m0122 from './0122_changelog_notify_level'
 import * as m0123 from './0123_destroyed_target_index'
 import * as m0124 from './0124_trigger_rest_inferred'
 import * as m0125 from './0125_bm_write_notes_permission'
+import * as m0126 from './0126_battlemetrics_user_tokens'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -141,4 +142,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0123_destroyed_target_index', up: m0123.up },
 	{ name: '0124_trigger_rest_inferred', up: m0124.up },
 	{ name: '0125_bm_write_notes_permission', up: m0125.up },
+	{ name: '0126_battlemetrics_user_tokens', up: m0126.up },
 ]

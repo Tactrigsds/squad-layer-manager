@@ -139,7 +139,7 @@ await Instr.spanOp('main', { module }, async () => {
 	// after FilterEntity, whose filter table it reads when provisioning a session
 	FilterEdit.setup()
 	PersistedCache.setup()
-	await Battlemetrics.setup()
+	await Battlemetrics.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	SquadBrowser.setup()
 	Steam.setup()
 	Rbac.setup()

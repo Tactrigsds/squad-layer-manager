@@ -416,6 +416,10 @@ export const noteAdded = def("Added a note to {username}'s BM profile", (usernam
 
 export const noteFailed = def("Failed to add a note to {username}'s BM profile", (username?: string) => ({ username }))
 
+export const personalTokenRejected = def(
+	'BattleMetrics rejected your personal token. Replace it on the SLM website. It needs the player flags (add and remove) and player notes (create) scopes',
+)
+
 // -------- moderation --------
 // A reason is optional on every one of these, and the clause that names it belongs to the sentence rather than to
 // the caller, so each pattern carries both readings.

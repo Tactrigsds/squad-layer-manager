@@ -3,9 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 
-import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
-import { appEventTypes, latestMatch, savedQueue, warnsTo } from '../harness/inspect'
+import { appEventTypes, latestMatch, savedBmToken, savedQueue, warnsTo } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 
 // In-game admin commands: the emulator sends chat as a player, the app parses it, authorizes the
@@ -183,6 +183,84 @@ describe('battlemetrics notes', () => {
 		expect(await orpc.battlemetrics.addNote({ playerIds: [stranger.eos], note: 'hello' })).toEqual({
 			code: 'err:none-added',
 			playerCount: 1,
+		})
+	})
+
+	// The admin's web account is linked to their in-game steam account, so a token saved on the web also signs what
+	// they send from in game. Last in the block: it leaves notes on the target and ends with the token removed.
+	describe('with a personal token', () => {
+		const PERSONAL_TOKEN = 'personal-token-of-test-admin'
+		const REVOKED_TOKEN = 'revoked-personal-token'
+		const BM_USER = 'Test Admin on BM'
+		const notesOnTarget = () => app.bm.notes.filter((n) => n.bmPlayerId === app.bm.findByEos(target.eos)?.bmPlayerId)
+
+		beforeAll(() => {
+			app.bm.personalTokens.set(PERSONAL_TOKEN, BM_USER)
+			app.bm.revokedTokens.add(REVOKED_TOKEN)
+		})
+
+		it('refuses a token BattleMetrics rejects, and saves nothing', async () => {
+			expect(await orpc.battlemetrics.setMyToken({ token: REVOKED_TOKEN })).toEqual({ code: 'err:token-rejected' })
+			expect(savedBmToken(app, ADMIN_USER.discordId)).toBeUndefined()
+		})
+
+		it('saves an accepted token sealed', async () => {
+			const res = await orpc.battlemetrics.setMyToken({ token: `  ${PERSONAL_TOKEN}  ` })
+			expect(res.code).toBe('ok')
+			const stored = savedBmToken(app, ADMIN_USER.discordId)
+			expect(stored).toMatch(/^enc:v2:/)
+			expect(stored).not.toContain(PERSONAL_TOKEN)
+			expect((await orpc.battlemetrics.getMyToken()).updatedAt).not.toBeNull()
+		})
+
+		it('writes web notes and flags as the token owner, and reads with the org token', async () => {
+			const readsBefore = app.bm.requestLog.length
+			expect(await orpc.battlemetrics.addNote({ playerIds: [target.eos], note: 'written on the web' })).toMatchObject({ code: 'ok' })
+			expect(notesOnTarget().at(-1)).toMatchObject({ userName: BM_USER, note: expect.stringMatching(/written on the web$/) })
+
+			const seeder = app.bm.orgFlags[0]
+			expect(await orpc.battlemetrics.addFlags({ playerIds: [target.eos], add: [{ id: seeder.id }] })).toMatchObject({
+				code: 'ok',
+				flaggedCount: 1,
+			})
+			const requests = app.bm.requestLog.slice(readsBefore)
+			const writes = requests.filter((r) => r.method !== 'GET' && !r.path.startsWith('/players/quick-match'))
+			expect(writes.length).toBeGreaterThan(0)
+			expect(writes.every((r) => r.token === PERSONAL_TOKEN)).toBe(true)
+			expect(requests.filter((r) => r.method === 'GET').every((r) => r.token !== PERSONAL_TOKEN)).toBe(true)
+		})
+
+		it('writes an in-game note as the owner of the linked account', async () => {
+			app.emu.world.chat(admin, 'ChatAdmin', cmd('note note_target sent from in game'))
+			await app.waitFor(() => notesOnTarget().some((n) => n.note.endsWith('sent from in game')), {
+				label: 'the in-game note',
+				timeoutMs: 20_000,
+			})
+			expect(notesOnTarget().at(-1)?.userName).toBe(BM_USER)
+		})
+
+		it('reports a token revoked after it was saved, rather than writing as the org', async () => {
+			app.bm.revokedTokens.add(PERSONAL_TOKEN)
+			const before = notesOnTarget().length
+			expect(await orpc.battlemetrics.addNote({ playerIds: [target.eos], note: 'should not land' })).toEqual({
+				code: 'err:personal-token-rejected',
+			})
+			app.emu.world.chat(admin, 'ChatAdmin', cmd('note note_target should not land either'))
+			await app.waitFor(() => warnsToAdmin().some((w) => /rejected your personal token/.test(w)), {
+				label: 'the rejected-token reply',
+				timeoutMs: 20_000,
+			})
+			expect(notesOnTarget()).toHaveLength(before)
+			app.bm.revokedTokens.delete(PERSONAL_TOKEN)
+		})
+
+		it('writes as the org again once the token is removed', async () => {
+			expect(await orpc.battlemetrics.removeMyToken()).toEqual({ code: 'ok' })
+			expect(savedBmToken(app, ADMIN_USER.discordId)).toBeUndefined()
+			expect(await orpc.battlemetrics.addNote({ playerIds: [target.eos], note: 'back to the org' })).toMatchObject({ code: 'ok' })
+			expect(notesOnTarget().at(-1)?.userName).not.toBe(BM_USER)
+			const events = appEventTypes(app)
+			expect(events).toContain('USER_ACCOUNT_CHANGED')
 		})
 	})
 })

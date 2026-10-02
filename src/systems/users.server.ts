@@ -39,7 +39,7 @@ export function setup() {
 	Rbac.invalidation$.subscribe((e) => invalidateUsers$.next(e.scope === 'user' ? { discordId: e.discordId } : {}))
 }
 
-async function recordUserAccount(
+export async function recordUserAccount(
 	ctx: C.Db,
 	userId: bigint,
 	action: AppEvents.UserAccountChanged['action'],

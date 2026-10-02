@@ -204,6 +204,19 @@ export function indexedKillsFor(app: AppFixture, eosId: string, assocType: 'atta
 	}
 }
 
+// the stored column as written, so a test can see that it is sealed rather than the plaintext token
+export function savedBmToken(app: AppFixture, userId: bigint): string | undefined {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT token FROM battlemetricsUserTokens WHERE userId = ?`).get(userId.toString()) as
+			| { token: string }
+			| undefined
+		return row?.token
+	} finally {
+		db.close()
+	}
+}
+
 // every AdminWarn the app addressed to this player, in order. Warns name their target by eos or steam id.
 export function warnsTo(app: AppFixture, player: Pick<EmuPlayer, 'eos' | 'steam'>): string[] {
 	return app.emu.rcon.commandLog
