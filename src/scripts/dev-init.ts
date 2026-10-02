@@ -58,6 +58,21 @@ if (linkedWorktree) {
 	}
 }
 
+// Installs the pre-push hook, so a provisioned checkout runs the same checks as CI before every push. A hooks path
+// set for some other purpose is left alone, and so is a repository where `pnpm remove:hooks` recorded an opt-out.
+{
+	const git = (...gitArgs: string[]) => childProcess.spawnSync('git', gitArgs, { cwd: worktree, encoding: 'utf8' }).stdout.trim()
+	const hooksPath = git('config', '--get', 'core.hooksPath')
+	if (git('config', '--get', 'slm.hooksOptOut') === 'true') {
+		console.log('  pre-push hook: opted out (pnpm setup:hooks to install it)')
+	} else if (!hooksPath) {
+		git('config', 'core.hooksPath', '.githooks')
+		console.log('  pre-push hook: installed (pnpm remove:hooks to opt out)')
+	} else if (hooksPath !== '.githooks') {
+		console.log(`  pre-push hook: core.hooksPath is ${hooksPath}, leaving it alone`)
+	}
+}
+
 {
 	const ensureArgs = [path.join(worktree, 'scripts/worktree.mjs'), 'ensure-artifacts']
 	if (args.values.force) ensureArgs.push('--force')

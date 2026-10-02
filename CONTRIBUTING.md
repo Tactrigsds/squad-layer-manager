@@ -187,15 +187,18 @@ it up. That rules out a suffix, since a suffixed version is a semver prerelease 
 
 ## The pre-push hook
 
-The hook is optional and enabled per clone. It runs the test, formatting and linting checks before each push:
+The hook runs the test, formatting and linting checks before each push. `pnpm dev` installs it when it provisions a
+workspace. The hook is installed once per repository, so every worktree of a clone uses it. A `core.hooksPath` that is
+already set to another directory is left alone.
 
 ```sh
-pnpm setup:hooks    # git config core.hooksPath .githooks
-pnpm remove:hooks   # undo
+pnpm setup:hooks    # install it without provisioning a workspace
+pnpm remove:hooks   # uninstall it, and stop `pnpm dev` from installing it again
 ```
 
-Installing it is recommended. CI runs the same checks, and the hook catches failures before a push. It skips the
-e2e and integration tests because they take too long. CI runs those on every pull request and on pushes to main.
+CI runs the same checks, and the hook catches failures before a push. It skips the e2e and integration tests because
+they take too long. CI runs those on every pull request and on pushes to main. On a host with the untracked
+`flake.nix`, the hook builds the layer engine inside its dev shell.
 
 To skip it for a push:
 

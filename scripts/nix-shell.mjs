@@ -33,6 +33,15 @@ function flakeDir() {
 	return dir
 }
 
+// The command and args that run `command` inside the dev shell when there is one, and directly otherwise. For a
+// single step that needs the toolchain, where re-executing the whole script would be slower.
+export function inFlake(command, args) {
+	if (process.env.IN_NIX_SHELL) return [command, args]
+	const dir = flakeDir()
+	if (!dir) return [command, args]
+	return ['nix', ['develop', `path:${dir}`, '-c', command, ...args]]
+}
+
 // Never returns when it re-executes: the process exits with the shell's status.
 export function reexecInFlake(scriptUrl) {
 	if (process.env.IN_NIX_SHELL) return
