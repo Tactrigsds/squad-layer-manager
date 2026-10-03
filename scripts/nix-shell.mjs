@@ -1,12 +1,10 @@
 // Optional nix dev shell for scripts that launch Playwright's chromium or build the engine.
 //
-// When the primary checkout carries an untracked flake.nix (a NixOS host, see that file's header) and `nix` is on
-// PATH, reexecInFlake re-runs the calling script inside its dev shell, which supplies the rust toolchain and the
-// libraries the downloaded chromium links against. Otherwise it returns and the script runs directly. The flake is
-// copied beside the shared git dir first: `nix develop path:.` on a checkout would copy the entire tree into the
-// store, and dies on the sockets under data/.
+// On a linux host with `nix` on PATH, reexecInFlake re-runs the calling script inside the dev shell of nix/flake.nix,
+// which supplies the rust toolchain and the libraries the downloaded chromium links against. Otherwise it returns and
+// the script runs directly. The dev container has no nix and takes the direct path.
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,19 +16,8 @@ function onPath(command) {
 }
 
 function flakeDir() {
-	const commonDir = path.resolve(
-		repoRoot,
-		execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: repoRoot, encoding: 'utf8' }).trim(),
-	)
-	const primary = path.dirname(commonDir)
-	if (!fs.existsSync(path.join(primary, 'flake.nix')) || !onPath('nix')) return undefined
-	const dir = path.join(commonDir, 'slm-flake')
-	fs.mkdirSync(dir, { recursive: true })
-	for (const file of ['flake.nix', 'flake.lock']) {
-		const src = path.join(primary, file)
-		if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, file))
-	}
-	return dir
+	if (process.platform !== 'linux' || !onPath('nix')) return undefined
+	return path.join(repoRoot, 'nix')
 }
 
 // The command and args that run `command` inside the dev shell when there is one, and directly otherwise. For a

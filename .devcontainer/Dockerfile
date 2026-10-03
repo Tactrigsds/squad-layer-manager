@@ -1,46 +1,48 @@
-# Dev container image. Node is pinned to the same version the production Dockerfile and
-# .tool-versions use, so a native module that builds here builds there.
-FROM node:24.18.0-bookworm
+# Dev container image. The toolchain is nix/flake.nix's `devcontainer-tools`, built in a throwaway nix stage and copied
+# in as a plain store closure, so the image needs no nix at runtime and pins the same node as the flake. The build
+# context is nix/ (see devcontainer.json).
+FROM nixos/nix:2.35.2 AS tools
+COPY flake.nix flake.lock /flake/
+# docker build offers no user namespaces for nix's sandbox, and everything here is a cache substitution or a buildEnv
+# of symlinks anyway
+RUN nix --extra-experimental-features 'nix-command flakes' --option sandbox false --option filter-syscalls false \
+		build 'path:/flake#devcontainer-tools' --out-link /tools \
+	&& mkdir /closure \
+	&& cp -a $(nix-store --query --requisites /tools) /closure/
 
-# python3: node-gyp compiles the native deps (better-sqlite3, cpu-features, bufferutil, utf-8-validate)
-# and needs it; the base image already carries gcc/g++/make from buildpack-deps.
-# sqlite3, jq, vim: edit-global-settings.sh shells out to all three ($EDITOR defaults to vim), and
-# sqlite3 is how you go poke at data/main.sqlite3 by hand anyway.
-# less: git's pager.
-# ripgrep, fd, tree, bat, lsof: what a coding agent (or a human) reaches for -- search, file listing,
-# and finding out who is holding a port.
-# fish is available for anyone who wants it, but bash stays the default shell.
+# The devcontainers base image carries the `vscode` user with passwordless sudo, git and the usual shell tooling.
+FROM mcr.microsoft.com/devcontainers/base:2-bookworm
+COPY --from=tools /closure /nix/store
+RUN ln -s /nix/store/*-slm-devcontainer-tools /opt/slm-tools
+ENV PATH="/opt/slm-tools/bin:$PATH"
+
+# sqlite3, jq, vim: edit-global-settings.sh shells out to all three ($EDITOR defaults to vim), and sqlite3 is how you
+# go poke at data/main.sqlite3 by hand anyway.
+# ripgrep, fd, tree, bat, lsof: what a coding agent (or a human) reaches for -- search, file listing, and finding out
+# who is holding a port.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		python3 sqlite3 jq vim less \
+		sqlite3 jq vim \
 		ripgrep fd-find tree bat lsof \
-		fish \
-	&& rm -rf /var/lib/apt/lists/* \
-# debian ships these two under different names to avoid collisions; everything (and everyone)
-# expects them as `fd` and `bat`
 	&& ln -s "$(command -v fdfind)" /usr/local/bin/fd \
-	&& ln -s "$(command -v batcat)" /usr/local/bin/bat
+	&& ln -s "$(command -v batcat)" /usr/local/bin/bat \
+# The system libraries chromium needs. The browser itself is downloaded by post-create into the shared volume at
+# PLAYWRIGHT_BROWSERS_PATH, since its version has to follow the @playwright/test in package.json.
+	&& npx --yes playwright@1 install-deps chromium \
+	&& rm -rf /var/lib/apt/lists/* /root/.npm
 
+# corepack writes its shims beside the node binary by default, which is the read-only store. COREPACK_HOME is shared
+# so the pnpm that post-create fetches serves every user.
+ENV COREPACK_HOME="/pnpm/corepack"
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-# The store has to be pinned somewhere outside the workspace. pnpm's default is under $HOME, but it
-# only uses that when $HOME and the project are on the same filesystem -- and node_modules is a volume
-# here, so it isn't. Left alone, pnpm falls back to <project>/.pnpm-store, which is the bind mount:
-# the store would land in the host's repo.
+# The store has to be pinned somewhere outside the workspace. pnpm's default is under $HOME, but it only uses that when
+# $HOME and the project are on the same filesystem -- and node_modules is a volume here, so it isn't. Left alone,
+# pnpm falls back to <project>/.pnpm-store, which is the bind mount: the store would land in the host's repo.
 ENV NPM_CONFIG_STORE_DIR="/pnpm/store"
-# Corepack caches the package manager it downloads under $HOME, and this build runs as root while the
-# container runs as `node`. Left at the default, root's cache is primed and node's is empty, so corepack
-# re-fetches pnpm from the registry the first time you run any pnpm command -- turning `pnpm run
-# server:dev` into something that needs the network, and failing outright when it can't reach npmjs.
-# A shared COREPACK_HOME bakes pnpm into the image for every user.
-ENV COREPACK_HOME="/pnpm/corepack"
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
-	&& mkdir -p "$NPM_CONFIG_STORE_DIR" && chown -R node:node "$PNPM_HOME"
-
-# Browsers live outside the workspace so they survive the node_modules volume and image rebuilds, and
-# so `pnpm exec playwright install` in post-create is a no-op rather than a 400MB download. The version
-# must track @playwright/test in package.json: if it drifts, playwright wants a browser build that
-# isn't here and post-create fetches the right one into this directory instead.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx --yes playwright@1.61.1 install --with-deps chromium \
-	&& chown -R node:node /ms-playwright
+RUN corepack enable --install-directory /usr/local/bin \
+	&& mkdir -p "$COREPACK_HOME" "$NPM_CONFIG_STORE_DIR" "$PLAYWRIGHT_BROWSERS_PATH" \
+	&& chown -R vscode:vscode "$PNPM_HOME" "$PLAYWRIGHT_BROWSERS_PATH" \
+# debian's /etc/profile resets PATH, which drops the ENV above in every login shell
+	&& echo 'export PATH="/opt/slm-tools/bin:$PNPM_HOME:$PATH"' > /etc/profile.d/slm-tools.sh
