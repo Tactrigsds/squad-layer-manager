@@ -2,73 +2,60 @@
 	"name": "squad-layer-manager",
 	"build": {
 		"dockerfile": "Dockerfile",
-		// the image copies nothing from the repo (the workspace is bind-mounted, and the install happens
-		// in post-create), so the context is this directory rather than the repo root -- data/ alone is
-		// several GB to hand to the daemon for nothing
-		"context": "."
+		// the image takes only the flake from the repo (the workspace is bind-mounted, and the install happens in
+		// post-create), so the context is nix/ rather than the repo root -- data/ alone is several GB to hand to the
+		// daemon for nothing
+		"context": "../nix"
 	},
-	"remoteUser": "node",
+	"remoteUser": "vscode",
 
 	"features": {
-		// sudo for the node user (post-create needs it to take ownership of the volumes below), plus the
-		// usual shell niceties
-		"ghcr.io/devcontainers/features/common-utils:2": {
-			"username": "node",
-			"installZsh": false,
-			"upgradePackages": false
-		},
 		"ghcr.io/devcontainers/features/github-cli:1": {}
 	},
 
+	// The directory holding this checkout is mounted, not just the checkout, and at the same path as on the host.
+	// `pnpm worktree new` creates worktrees beside the main checkout, and a worktree finds the shared git dir through
+	// an absolute host path, so one container serves every worktree only when both are true.
+	"workspaceMount": "source=${localWorkspaceFolder}/..,target=${localWorkspaceFolder}/..,type=bind",
+	"workspaceFolder": "${localWorkspaceFolder}",
+
 	"mounts": [
-		// node_modules is a volume rather than part of the bind mount on purpose: the native deps
-		// (better-sqlite3, cpu-features, bufferutil) are compiled against the host's glibc, and a tree
-		// built on the host will not load in here. The container keeps its own install; the host keeps
-		// its own.
-		"source=slm-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
-		// so a rebuild installs from the store instead of re-downloading the world. The path is pinned by
-		// NPM_CONFIG_STORE_DIR in the Dockerfile; see the comment there for why it can't be the default.
-		"source=slm-pnpm-store,target=/pnpm/store,type=volume"
+		// node_modules is a volume rather than part of the bind mount on purpose: the native deps (better-sqlite3,
+		// cpu-features, bufferutil) are compiled against the container's glibc, and a tree built on the host will
+		// not load in here. The container keeps its own install; the host keeps its own. A worktree's node_modules
+		// is not covered by this, so it belongs to whichever side provisioned the worktree.
+		"source=slm-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/node_modules,type=volume",
+		// shared by every container: a rebuild installs from the store instead of re-downloading the world, and
+		// downloads each browser build once
+		"source=slm-pnpm-store,target=/pnpm/store,type=volume",
+		"source=slm-ms-playwright,target=/ms-playwright,type=volume"
 	],
 
-	// NOTE: these win over .env. The app reads process.env first and dotenv does not overwrite what is
-	// already set (see src/server/env.ts ensureEnvSetup), so anything set here cannot be overridden from
-	// .env -- only by the shell you launch the process in.
+	// NOTE: these win over .env. The app reads process.env first and dotenv does not overwrite what is already set
+	// (see src/server/env.ts ensureEnvSetup), so anything set here cannot be overridden from .env -- only by the shell
+	// you launch the process in.
 	"containerEnv": {
-		// the app defaults to 127.0.0.1, which is unreachable from the host once it's inside a container
-		"HOST": "0.0.0.0",
-		// the collector (`docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana`) runs on the host, not in here
-		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318",
-		// the repo's tools (oxfmt, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing
-		// puts them on PATH outside of `pnpm run`. The container has no global copy of any of them to fall
-		// back on the way a host does, so without this they are simply missing from every terminal in here.
+		"SLM_WORKTREE_ROOT": "${localWorkspaceFolder}/.."
+	},
+	"remoteEnv": {
+		// the repo's tools (oxfmt, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing puts them
+		// on PATH outside of `pnpm run`. `${containerEnv:...}` only resolves here, not in containerEnv.
 		"PATH": "${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
 	},
-	// makes host.docker.internal above resolve on Linux
-	"runArgs": ["--add-host=host.docker.internal:host-gateway"],
-
-	// published 1:1 (docker -p), so the host port is always the port in the label. appPort rather than
-	// forwardPorts because forwardPorts is an editor-level tunnel that only VS Code implements -- Zed
-	// drives the reference devcontainer CLI, which passes appPort to docker and ignores forwardPorts.
-	// The bind happens when the container starts, so the container will not come up if something on the
-	// host is already holding one of these (an app you left running outside the container, typically).
-	"appPort": ["5173:5173", "3000:3000", "8443:8443", "9229:9229"],
-	"portsAttributes": {
-		"5173": { "label": "client (vite)" },
-		"3000": { "label": "server (fastify)" },
-		"8443": { "label": "squad logs receiver" },
-		"9229": { "label": "node inspector" }
-	},
+	// Host networking, so every `pnpm dev` slot's ports (3100 and up, see src/dev/slots.ts) are reachable from the
+	// host's browser, along with vite, which listens on localhost only. The observability stack on the host is
+	// reachable at its usual localhost ports in turn. Linux only.
+	"runArgs": ["--network=host"],
 
 	"postCreateCommand": "bash .devcontainer/post-create.sh",
 
 	"customizations": {
-		// only the languages the repo actually contains that Zed does not handle out of the box. Everything
-		// else it needs (typescript, tailwind, the oxfmt formatter and the oxc lsp) is either built in or
-		// configured in .zed/settings.json, which rides along in the bind mount.
+		// only the languages the repo actually contains that Zed does not handle out of the box. Everything else it
+		// needs (typescript, tailwind, the oxfmt formatter and the oxc lsp) is either built in or configured in
+		// .zed/settings.json, which rides along in the bind mount.
 		// NOTE: these install into your local Zed too, not just the container's session.
 		"zed": {
-			"extensions": ["dockerfile", "sql", "html"]
+			"extensions": ["dockerfile", "sql", "html", "nix"]
 		},
 		"vscode": {
 			"extensions": ["oxc.oxc-vscode", "bradlc.vscode-tailwindcss", "ms-playwright.playwright", "vitest.explorer"],
@@ -77,8 +64,6 @@
 				"typescript.tsdk": "node_modules/typescript/lib",
 				"editor.defaultFormatter": "oxc.oxc-vscode",
 				"editor.formatOnSave": true,
-				// the container's login shell is bash and scripts here assume it; fish is installed if you
-				// want it, but it isn't the default
 				"terminal.integrated.defaultProfile.linux": "bash"
 			}
 		}

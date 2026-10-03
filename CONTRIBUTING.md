@@ -28,12 +28,67 @@ change. [CLAUDE.md](CLAUDE.md) states the rules that architecture.md explains.
 
 ## Prerequisites
 
-nodejs 24.18.0
-pnpm
+Set up one of these:
 
-## Dev Container
+- nodejs 24.18.0 and pnpm. Building the layer engine also needs rust with the `wasm32-unknown-unknown` target.
+- [nix](https://nixos.org) with flakes enabled. See [Nix](#nix).
+- Docker on linux, to run the dev container. See [Dev container](#dev-container).
 
-There is a devcontainer configured that reproduces a working environment on linux. Not yet tested on macos or wsl.
+## Nix
+
+[nix/flake.nix](nix/flake.nix) provides the toolchain the app builds and runs with: node 24.18.0, pnpm through
+corepack, rust, the C toolchain for native modules, the .NET SDK for the layer extractor, and the libraries
+Playwright's chromium needs.
+
+```sh
+nix develop path:./nix                # a shell with the toolchain
+nix develop path:./nix -c pnpm dev    # one command inside it
+```
+
+Keep the `path:` prefix. Without it, nix copies every tracked file in the repository into the store whenever one
+changes.
+
+On linux, `pnpm test:e2e`, `pnpm probe` and the pre-push hook run inside this shell when `nix` is installed.
+
+The flake pins node through its `nixpkgs-node` input. Update that input together with `.tool-versions` and the
+production `Dockerfile`.
+
+## Dev container
+
+The dev container provides the same toolchain without nix on the host. It runs on linux only, because it shares the
+host's network.
+
+Open the main checkout in an editor that supports dev containers, such as VS Code or Zed, or start the container with
+the [dev container CLI](https://github.com/devcontainers/cli):
+
+```sh
+npx @devcontainers/cli up --workspace-folder .
+npx @devcontainers/cli exec --workspace-folder . bash
+```
+
+The first start installs dependencies, downloads chromium and builds the layer engine.
+
+`pnpm dev` runs inside the container as it does on the host. The container shares the host's network, so the URL
+that `pnpm dev` prints opens in a browser on the host, and no ports need forwarding.
+
+### Worktrees in the dev container
+
+One container serves the main checkout and every worktree of it. The container mounts the directory that holds the
+main checkout at the same path as on the host. A worktree that `pnpm worktree new` creates on either side appears on
+the other.
+
+Run each worktree from one side only. `pnpm worktree new` installs `node_modules` for the side that runs it, and
+native modules built on the host do not load in the container, or the reverse. The main checkout is the exception:
+the container keeps a separate `node_modules` for the main checkout in a volume.
+
+Every other directory beside the main checkout is visible inside the container too.
+
+Inside the container, `pnpm worktree new` creates worktrees beside the main checkout. On the host it creates them in
+`~/projects/slm`. If the main checkout is kept elsewhere, set `SLM_WORKTREE_ROOT` on the host to the directory that
+holds the main checkout, so both sides use the same location.
+
+In VS Code, open a worktree in the running container with _File > Open Folder_. _Reopen in Container_ from a
+worktree's own window starts a second container for that worktree.
 
 ## Setup
 
@@ -81,8 +136,8 @@ that checkout's isolated database. `pnpm dev --emu-only` runs only the emulator 
 Both the integration and e2e suites spawn a real app instance (child process, ephemeral db and ports) against
 an emulated squad server. They need no external services, but they are much slower than the unit tests.
 
-`test:e2e` rebuilds the engine only when `layer-engine/` has changed since the last build. Nix is optional:
-if the primary checkout has an untracked `flake.nix` and `nix` is installed, `test:e2e` runs inside its dev shell.
+`test:e2e` rebuilds the engine only when `layer-engine/` has changed since the last build. On linux with `nix`
+installed, `test:e2e` runs inside the [nix](#nix) dev shell.
 
 `test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
 needs a client build to read. See [Browser support](docs/developers/architecture.md#browser-support) for what each covers
@@ -204,8 +259,8 @@ pnpm remove:hooks   # uninstall it, and stop `pnpm dev` from installing it again
 ```
 
 CI runs the same checks, and the hook catches failures before a push. It skips the e2e and integration tests because
-they take too long. CI runs those on every pull request and on pushes to main. On a host with the untracked
-`flake.nix`, the hook builds the layer engine inside its dev shell.
+they take too long. CI runs those on every pull request and on pushes to main. On linux with `nix` installed, the
+hook builds the layer engine inside the [nix](#nix) dev shell.
 
 To skip it for a push:
 
