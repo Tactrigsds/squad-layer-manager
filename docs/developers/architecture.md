@@ -684,12 +684,16 @@ better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because mo
 columns rather than being normalized. Those columns are **superjson**, not plain JSON, transformed by a pair that
 walks the drizzle table config, which is what lets bigints (Discord snowflakes) and Dates round-trip.
 
-**Checkpoints and backup snapshots run on a worker thread** (`src/server/db-maintenance.worker.ts`) with its own
-connection. On the main connection, sqlite checkpoints inside whichever COMMIT pushes the WAL past
+**Checkpoints, backup snapshots and vacuuming run on a worker thread** (`src/server/db-maintenance.worker.ts`) with
+its own connection. On the main connection, sqlite checkpoints inside whichever COMMIT pushes the WAL past
 `wal_autocheckpoint`, which stalls the event loop for the length of a write-back and an fsync. The main connection
 still checkpoints once the WAL reaches 10,000 pages, as a backstop, and at sqlite's default of 1,000 while the worker is
-down. A snapshot is `VACUUM INTO`, so a backup leaves out the free pages the live file keeps. Writes stay on the main
-connection: a write from any other connection makes the main connection wait for its lock, synchronously.
+down. A snapshot is `VACUUM INTO`, so a backup leaves out the free pages. Writes stay on the main connection: a write
+from any other connection makes the main connection wait for its lock, synchronously. The one exception is vacuuming.
+The database runs with `auto_vacuum=INCREMENTAL`, and once more than 10 MB of pages are free the worker hands them back
+to the filesystem 128 pages at a time, which holds the write lock for a couple of milliseconds per step. A database
+created before this was switched over by one full `VACUUM`, which `applyPendingMigrations` runs under its exclusive
+lock (`src/server/migrate.ts`).
 
 **Transactions serialize globally.** better-sqlite3 is one synchronous connection, so `runTransaction` serializes
 logical transactions behind a promise-chain lock. It is re-entrant: an inner transaction joins the outer one, and an

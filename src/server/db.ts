@@ -67,6 +67,9 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 
 	fs.mkdirSync(path.dirname(ENV.DB_PATH), { recursive: true })
 	driver = new DatabaseConstructor(ENV.DB_PATH)
+	// only takes on a file with no pages yet, which is a fresh install; an existing database is switched by migrate.ts.
+	// Before WAL, which writes the first page.
+	driver.pragma('auto_vacuum = INCREMENTAL')
 	driver.pragma('journal_mode = WAL')
 	driver.pragma('synchronous = NORMAL')
 	driver.pragma('busy_timeout = 5000')
@@ -144,6 +147,8 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 const BACKSTOP_AUTOCHECKPOINT_PAGES = 10_000
 const DEFAULT_AUTOCHECKPOINT_PAGES = 1000
 const CHECKPOINT_INTERVAL_MS = 250
+// 10MB of 4KB pages: below this, free pages wait to be reused by the next writes rather than handed back
+const VACUUM_START_PAGES = 2_560
 const MAINTENANCE_REBOOT_DELAYS = [1_000, 5_000, 30_000]
 
 const maintenance = {
@@ -163,7 +168,11 @@ function bootMaintenanceWorker() {
 	let w: Worker
 	try {
 		w = new Worker(url, {
-			workerData: { dbPath: ENV.DB_PATH, checkpointIntervalMs: CHECKPOINT_INTERVAL_MS } satisfies MaintenanceWorker.WorkerData,
+			workerData: {
+				dbPath: ENV.DB_PATH,
+				checkpointIntervalMs: CHECKPOINT_INTERVAL_MS,
+				vacuumStartPages: VACUUM_START_PAGES,
+			} satisfies MaintenanceWorker.WorkerData,
 			execArgv: isTs ? ['--import', 'tsx'] : undefined,
 		})
 	} catch (err) {

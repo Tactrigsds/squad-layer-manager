@@ -19,6 +19,8 @@ const SQL_DIR = path.resolve(process.cwd(), 'drizzle-sqlite')
 
 fs.mkdirSync(path.dirname(ENV.DB_PATH), { recursive: true })
 const driver = new DatabaseConstructor(ENV.DB_PATH)
+// only takes on a file with no pages yet; before WAL, which writes the first page (see db.ts)
+driver.pragma('auto_vacuum = INCREMENTAL')
 driver.pragma('journal_mode = WAL')
 // Short timeout on purpose: if the db is in use, that almost certainly means the app is running, and we want to fail
 // fast with a clear message rather than block (and rather than contend for the lock and risk stalling live app writes).

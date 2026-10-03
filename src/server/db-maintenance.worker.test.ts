@@ -9,6 +9,7 @@ import type * as MaintenanceWorker from './db-maintenance.worker.ts'
 
 // The worker runs beside a connection that keeps writing. A snapshot must complete while that connection holds a write
 // transaction open, and hold only what was committed. A checkpoint must move that connection's writes into the file.
+// Free pages past the threshold must be handed back until none are left.
 
 let dir: string
 let dbPath: string
@@ -19,11 +20,13 @@ beforeEach(async () => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-db-maintenance-test-'))
 	dbPath = path.join(dir, 'db.sqlite3')
 	driver = new DatabaseConstructor(dbPath)
+	// set before the first table, so it takes effect without a VACUUM
+	driver.pragma('auto_vacuum = INCREMENTAL')
 	driver.pragma('journal_mode = WAL')
 	driver.pragma('wal_autocheckpoint = 0')
 	driver.exec('CREATE TABLE t (x INTEGER)')
 	worker = new Worker(new URL('./db-maintenance.worker.ts', import.meta.url), {
-		workerData: { dbPath, checkpointIntervalMs: 20 } satisfies MaintenanceWorker.WorkerData,
+		workerData: { dbPath, checkpointIntervalMs: 20, vacuumStartPages: 100 } satisfies MaintenanceWorker.WorkerData,
 		execArgv: ['--import', 'tsx'],
 	})
 	await new Promise((resolve) => worker.once('message', resolve))
@@ -71,4 +74,18 @@ test('checkpoints the writes of another connection', async () => {
 		)
 		.run()
 	await expect.poll(() => fs.statSync(dbPath).size - before, { timeout: 2000 }).toBeGreaterThan(1_000_000)
+})
+
+test('hands free pages back once more than the threshold are free, until none are', async () => {
+	const fill = driver.prepare(
+		'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000) INSERT INTO t SELECT randomblob(1000) FROM n',
+	)
+	fill.run()
+	const pages = () => driver.pragma('page_count', { simple: true }) as number
+	const free = () => driver.pragma('freelist_count', { simple: true }) as number
+	const filled = pages()
+	driver.prepare('DELETE FROM t').run()
+	expect(free()).toBeGreaterThan(100)
+	await expect.poll(free, { timeout: 5000 }).toBe(0)
+	expect(pages()).toBeLessThan(filled / 2)
 })
