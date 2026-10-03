@@ -221,6 +221,11 @@ function ensureTeamsShown(): boolean {
 	return false
 }
 
+// The breakdown steps point at the Charts panel's Teams chart, which the reader may have switched away from.
+function ensureTeamsChartShown() {
+	if (ClientOnlySettings.Sel.chartsTab(ClientOnlySettings.Store.getState()) !== 'teams') ClientOnlySettings.Actions.setChartsTab('teams')
+}
+
 // A step pointing at a player's row needs the row on screen, and the reader may have collapsed its squad, searched
 // for someone else or narrowed the table to their selection since. Only acts when the row is hidden.
 function revealPlayer(run: Tour.RunStores, name: string) {
@@ -589,8 +594,14 @@ export function buildSteps(plan: GroupingPlan) {
 		...(plan.ids.length > 0
 			? [{ id: 'grouping-modes', anchor: 'teams-grouping', interact: 'free' as const, msg: M.groupingModes, prepare: ensureTeamsShown }]
 			: []),
-		{ id: 'breakdown', anchor: 'teams-breakdown', msg: M.breakdown },
-		{ id: 'breakdown-hover', anchor: 'teams-breakdown-chart', interact: 'anchor-only', msg: M.breakdownHover },
+		{ id: 'breakdown', anchor: 'teams-breakdown', msg: M.breakdown, prepare: ensureTeamsChartShown },
+		{
+			id: 'breakdown-hover',
+			anchor: 'teams-breakdown-chart',
+			interact: 'anchor-only',
+			msg: M.breakdownHover,
+			prepare: ensureTeamsChartShown,
+		},
 		...(groupStepsPossible
 			? [
 					{
@@ -598,6 +609,7 @@ export function buildSteps(plan: GroupingPlan) {
 						anchor: 'teams-breakdown-chart',
 						interact: 'anchor-only' as const,
 						msg: { title: M.breakdownFilter.title, body: () => M.breakdownFilter.body(plan.group!) },
+						prepare: ensureTeamsChartShown,
 					},
 					{
 						id: 'breakdown-select',
@@ -605,6 +617,7 @@ export function buildSteps(plan: GroupingPlan) {
 						spotlight: { css: '[data-tour="teams-breakdown"], [data-tour="teams-panel"]', all: true },
 						interact: 'free' as const,
 						msg: M.breakdownSelect,
+						prepare: ensureTeamsChartShown,
 						advanceFromPrevious: {
 							type: 'state' as const,
 							inputs: (run: Tour.RunStores) => [run.squadServer],
@@ -615,7 +628,15 @@ export function buildSteps(plan: GroupingPlan) {
 				]
 			: []),
 		...(groupStepsPossible && plan.unmatched
-			? [{ id: 'breakdown-unmatched', anchor: 'breakdown-unmatched', spotlight: 'teams-breakdown', msg: M.breakdownUnmatched }]
+			? [
+					{
+						id: 'breakdown-unmatched',
+						anchor: 'breakdown-unmatched',
+						spotlight: 'teams-breakdown',
+						msg: M.breakdownUnmatched,
+						prepare: ensureTeamsChartShown,
+					},
+				]
 			: []),
 		{ id: 'breakdown-history', anchor: { all: 'match-history' }, msg: M.breakdownHistory },
 

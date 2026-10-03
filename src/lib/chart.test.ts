@@ -55,3 +55,38 @@ describe('project', () => {
 		expect(Chart.project(1, 0, 200)).toBe(0)
 	})
 })
+
+describe('valueAt', () => {
+	const points = [
+		{ x: 0, y: 0 },
+		{ x: 10, y: 1 },
+		{ x: 10, y: 2 },
+		{ x: 25, y: 3 },
+	]
+
+	it('holds each value until the next point', () => {
+		expect(Chart.valueAt(points, 0)).toBe(0)
+		expect(Chart.valueAt(points, 9.9)).toBe(0)
+		expect(Chart.valueAt(points, 24)).toBe(2)
+		expect(Chart.valueAt(points, 1000)).toBe(3)
+	})
+
+	it('takes the last of several points at the same x', () => {
+		expect(Chart.valueAt(points, 10)).toBe(2)
+	})
+
+	it('has no value before the first point', () => {
+		expect(Chart.valueAt(points, -1)).toBeUndefined()
+		expect(Chart.valueAt([], 5)).toBeUndefined()
+	})
+})
+
+describe('signedAxis', () => {
+	it('mirrors its ticks around zero', () => {
+		const axis = Chart.signedAxis(7)
+		expect(axis.min).toBe(-axis.max)
+		expect(axis.max).toBeGreaterThanOrEqual(7)
+		expect(axis.ticks).toContain(0)
+		expect(axis.ticks.map((tick) => 0 - tick).sort((a, b) => a - b)).toEqual(axis.ticks)
+	})
+})

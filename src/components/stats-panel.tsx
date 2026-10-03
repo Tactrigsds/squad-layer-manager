@@ -2,14 +2,19 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { LineChart } from '@/components/charts/line-chart'
+import { useMeasuredWidth } from '@/components/charts/measure'
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import HistoricalMatchBanner from '@/components/historical-match-banner'
+import { TabBar } from '@/components/tab-bar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import type * as Chart from '@/lib/chart'
+import * as Chart from '@/lib/chart'
+import * as DH from '@/lib/display-helpers'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
@@ -18,6 +23,7 @@ import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
+import * as MH from '@/models/match-history.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -26,28 +32,150 @@ import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
-// The Teams Breakdown panel. `wide` is the two-column dashboard's form: the legend rides in the title bar and the two
-// teams face each other as mirrored bars. Narrow stacks them, for a side column or a phone.
+import { useOpenChartWindow } from './charts-window.helpers'
+
+void import('@/components/charts-window')
+
+// The Charts panel: one chart at a time behind folder tabs. `wide` is the two-column dashboard's form, where the two
+// teams of the breakdown face each other as mirrored bars. Narrow stacks them, for a side column or a phone.
+//
+// A chart holds its space while its data loads, so the panel does not change height when the data arrives.
 const trTooltip = tr.withTags({ label: (chunks) => <span className="font-semibold">{chunks}</span> })
 
+// the scoreline chart's height in the panel; in a window it fills the window instead
+const SCORELINE_CHART_HEIGHT = 150
+
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wide?: boolean; className?: string }) {
+	const tab = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.chartsTab)
+	const idPrefix = React.useId()
+	const tabId = (value: ClientOnlySettings.ChartsTab) => `${idPrefix}-tab-${value}`
+	const panelId = (value: ClientOnlySettings.ChartsTab) => `${idPrefix}-panel-${value}`
+
+	return (
+		<section data-tour="teams-breakdown" aria-labelledby={`${idPrefix}-title`} className={cn('flex flex-col w-full', props.className)}>
+			<TabBar
+				tabs={ClientOnlySettings.CHARTS_TABS.map((value) => ({ value, label: tr.text(MH_Msgs.chartsTab(value)) }))}
+				value={tab}
+				onChange={ClientOnlySettings.Actions.setChartsTab}
+				tabId={tabId}
+				panelId={panelId}
+				tourId={(value) => `charts-tab-${value}`}
+				leading={
+					<h3 id={`${idPrefix}-title`} className="fd-cond font-bold flex items-center gap-1.5 min-w-0">
+						<Icons.BarChart2 className="h-3.5 w-3.5 shrink-0" />
+						<span className="truncate">{tr.text(MH_Msgs.chartsTitle())}</span>
+					</h3>
+				}
+			/>
+			<div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)} className="fd-tabbody flex flex-col min-w-0">
+				<ChartBody stores={props.stores} tab={tab} wide={props.wide} />
+			</div>
+		</section>
+	)
+}
+
+/**
+ * One chart with its controls and the historical match banner. The panel and the chart's window both render it.
+ * `inWindow` lets the chart fill the space it is given instead of holding the panel's fixed height.
+ */
+export function ChartBody(props: {
+	stores: SquadServerFrame.KeyProp
+	tab: ClientOnlySettings.ChartsTab
+	wide?: boolean
+	inWindow?: boolean
+}) {
+	const squadServer = props.stores.squadServer!
+	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(squadServer.serverId, selectedMatchOrdinal))
+	const historicalEvents = historicalEventsQuery.data?.events ?? null
+
+	let chart: React.ReactNode
+	switch (props.tab) {
+		case 'teams':
+			chart = <TeamsChart stores={props.stores} historicalEvents={historicalEvents} wide={props.wide} inWindow={props.inWindow} />
+			break
+		case 'scoreline':
+			chart = <ScorelineChart stores={props.stores} historicalEvents={historicalEvents} inWindow={props.inWindow} />
+			break
+		default:
+			assertNever(props.tab)
+	}
+	return (
+		<div className={cn('flex flex-col min-w-0', props.inWindow && 'flex-1 min-h-0')}>
+			<HistoricalMatchBanner stores={props.stores} returnToLive className="shrink-0" />
+			{chart}
+		</div>
+	)
+}
+
+// The row above a chart: its own controls first, then its legend, then help and the pop-out button. Each group
+// wraps as a unit when the row runs out of room. `legendBelow` gives the legend a row of its own under the rest, for
+// the narrow form, so it does not push the buttons onto a row of their own.
+function ChartToolbar(props: {
+	stores: SquadServerFrame.KeyProp
+	tab: ClientOnlySettings.ChartsTab
+	inWindow?: boolean
+	controls?: React.ReactNode
+	legend?: React.ReactNode
+	legendBelow?: boolean
+	help: React.ReactNode
+}) {
+	const openWindow = useOpenChartWindow({ stores: props.stores, tab: props.tab })
+	return (
+		<div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pt-1.5 min-w-0">
+			{props.controls}
+			{props.legend && (
+				<div className={cn('flex min-w-0 items-center', props.legendBelow ? 'order-last basis-full' : 'grow basis-48')}>
+					{props.legend}
+				</div>
+			)}
+			<span className="flex items-center gap-0.5 ms-auto">
+				{props.help}
+				{!props.inWindow && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								type="button"
+								data-tour={`chart-pop-out-${props.tab}`}
+								className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm"
+								aria-label={tr.text(MH_Msgs.openChartInWindow())}
+								onClick={(e) => openWindow(e.currentTarget)}
+							>
+								<Icons.PictureInPicture2 />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>{tr.text(MH_Msgs.openChartInWindow())}</TooltipContent>
+					</Tooltip>
+				)}
+			</span>
+		</div>
+	)
+}
+
+function HelpButton(props: { children: React.ReactNode }) {
+	return (
+		<Tooltip help>
+			<TooltipTrigger asChild>
+				<button type="button" className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm" aria-label={tr.text(SM_Msgs.help())}>
+					<Icons.CircleHelp />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-xs space-y-1.5">{props.children}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// ---- Teams ----
+
+function TeamsChart(props: {
+	stores: SquadServerFrame.KeyProp
+	historicalEvents: CHAT.EventEnriched[] | null
+	wide?: boolean
+	inWindow?: boolean
+}) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
 	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
-
-	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
-	const historicalEvents = historicalEventsQuery.data?.events ?? null
-
-	const hasData = Zus.useStore_Susp(
-		squadServer,
-		MatchHistoryClient.currentMatch$(serverId),
-		MatchHistoryClient.recentMatches$(serverId),
-		ClientOnlySettings.Store,
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		StatsModels.Sel.hasData(historicalEvents),
-	)
 	const groupings = Zus.useStore_Susp(
 		squadServer,
 		MatchHistoryClient.currentMatch$(serverId),
@@ -58,69 +186,74 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.groupings,
 	)
-	const [legendSlot, setLegendSlot] = React.useState<HTMLElement | null>(null)
-
-	return (
-		<Card data-tour="teams-breakdown" className={cn('w-full', props.className)}>
-			<CardHeader className="flex-wrap gap-y-0.5 whitespace-nowrap">
-				<CardTitle className="flex items-center gap-1.5 shrink-0">
-					<Icons.BarChart2 className="h-3.5 w-3.5" />
-					{tr.text(MH_Msgs.teamBreakdowns())}
-				</CardTitle>
-				{props.wide && <span ref={setLegendSlot} className="flex items-center min-w-0" />}
-				<span className="flex-1" />
-				{hasData && groupings.ids.length > 1 && (
-					<span className="flex gap-0.5">
-						{groupings.ids.map((groupingId) => (
-							<button
-								type="button"
-								key={groupingId}
-								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
-								className="fd-pill"
-								data-state={groupings.active === groupingId ? 'on' : 'off'}
-							>
-								{tr.text(PG_Msgs.groupingName(groupingId))}
-							</button>
-						))}
-					</span>
-				)}
-				<BreakdownHelp interactive={selectedMatchOrdinal === null} />
-			</CardHeader>
-			<CardContent data-tour="teams-breakdown-chart" className="px-2.5 py-1.5">
-				{!hasData ? (
-					<div className="text-text-3 text-sm text-center py-3">{tr.text(MH_Msgs.noChartData())}</div>
-				) : (
-					<>
-						{!props.wide && <div ref={setLegendSlot} className="flex items-center mb-1" />}
-						<TeamBreakdown stores={props.stores} historicalEvents={historicalEvents} wide={!!props.wide} legendPortal={legendSlot} />
-					</>
-				)}
-			</CardContent>
-		</Card>
+	const hasData = Zus.useStore_Susp(
+		squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettings.Store,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		StatsModels.Sel.hasData(props.historicalEvents),
 	)
-}
+	const [legendSlot, setLegendSlot] = React.useState<HTMLElement | null>(null)
+	// a window picks its layout from its own width; the panel is told by the dashboard
+	const [body, setBody] = React.useState<HTMLDivElement | null>(null)
+	const bodyWidth = useMeasuredWidth(props.inWindow ? body : null)
+	const wide = props.inWindow ? bodyWidth >= 520 : !!props.wide
+	const interactive = selectedMatchOrdinal === null
 
-// what the chart is and what clicking it does, out of the way of the segment tooltips that would otherwise repeat
-// it on every hover. The click hints only apply while the chart is interactive, i.e. showing the live roster.
-function BreakdownHelp(props: { interactive: boolean }) {
-	return (
-		<Tooltip help>
-			<TooltipTrigger asChild>
-				<button type="button" className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm" aria-label={tr.text(SM_Msgs.help())}>
-					<Icons.CircleHelp />
+	const controls = hasData && groupings.ids.length > 1 && (
+		<span className="flex flex-wrap gap-0.5">
+			{groupings.ids.map((groupingId) => (
+				<button
+					type="button"
+					key={groupingId}
+					onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
+					className="fd-pill"
+					data-state={groupings.active === groupingId ? 'on' : 'off'}
+				>
+					{tr.text(PG_Msgs.groupingName(groupingId))}
 				</button>
-			</TooltipTrigger>
-			<TooltipContent className="max-w-xs space-y-1.5">
-				<p>{tr.text(props.interactive ? MH_Msgs.breakdownDescription() : MH_Msgs.breakdownDescriptionHistorical())}</p>
-				{props.interactive && (
-					<ul className="text-text-2">
-						<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
-						<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
-						<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
-					</ul>
+			))}
+		</span>
+	)
+
+	return (
+		<>
+			<ChartToolbar
+				stores={props.stores}
+				tab="teams"
+				inWindow={props.inWindow}
+				controls={controls}
+				legend={<span ref={setLegendSlot} className="flex items-center min-w-0" />}
+				legendBelow={!wide}
+				help={
+					<HelpButton>
+						<p>{tr.text(interactive ? MH_Msgs.breakdownDescription() : MH_Msgs.breakdownDescriptionHistorical())}</p>
+						{interactive && (
+							<ul className="text-text-2">
+								<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
+								<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
+								<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
+							</ul>
+						)}
+					</HelpButton>
+				}
+			/>
+			<div
+				ref={setBody}
+				data-tour="teams-breakdown-chart"
+				className="px-2.5 pt-1 pb-1.5"
+				style={{ minHeight: Chart.stackedBarsHeight(2, wide) + 10 }}
+			>
+				{hasData ? (
+					<TeamBreakdown stores={props.stores} historicalEvents={props.historicalEvents} wide={wide} legendPortal={legendSlot} />
+				) : (
+					<div className="text-text-3 text-sm text-center py-3">{tr.text(MH_Msgs.noChartData())}</div>
 				)}
-			</TooltipContent>
-		</Tooltip>
+			</div>
+		</>
 	)
 }
 
@@ -257,4 +390,202 @@ function TeamBreakdown(props: {
 			legendExtra={unmatchedGroupsButton}
 		/>
 	)
+}
+
+// ---- Scoreline ----
+
+function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEvents: CHAT.EventEnriched[] | null; inWindow?: boolean }) {
+	const squadServer = props.stores.squadServer!
+	const serverId = squadServer.serverId
+	const currentMatch$ = MatchHistoryClient.currentMatch$(serverId)
+	const recentMatches$ = MatchHistoryClient.recentMatches$(serverId)
+	const scoreline = Zus.useStore_Susp(
+		squadServer,
+		currentMatch$,
+		recentMatches$,
+		ClientOnlySettings.Store,
+		StatsModels.Sel.scoreline(props.historicalEvents),
+	)
+	const teams = Zus.useStore_Susp(squadServer, currentMatch$, recentMatches$, ClientOnlySettings.Store, StatsModels.Sel.teams)
+	const metric = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.scorelineMetric)
+
+	const controls = (
+		<span role="group" aria-label={tr.text(MH_Msgs.scoreline())} className="flex flex-wrap gap-0.5">
+			{ClientOnlySettings.SCORELINE_METRICS.map((value) => (
+				<button
+					type="button"
+					key={value}
+					onClick={() => ClientOnlySettings.Actions.setScorelineMetric(value)}
+					className="fd-pill"
+					data-state={metric === value ? 'on' : 'off'}
+				>
+					{tr.text(MH_Msgs.scorelineMetric(value))}
+				</button>
+			))}
+		</span>
+	)
+
+	return (
+		<div className={cn('flex flex-col min-w-0', props.inWindow && 'flex-1 min-h-0')}>
+			<ChartToolbar
+				stores={props.stores}
+				tab="scoreline"
+				inWindow={props.inWindow}
+				controls={controls}
+				help={
+					<HelpButton>
+						<p>{tr.text(MH_Msgs.scorelineDescription())}</p>
+					</HelpButton>
+				}
+			/>
+			<ScorelineTable scoreline={scoreline} teams={teams} />
+			<div
+				className={cn('px-1.5 pb-1.5', props.inWindow ? 'flex-1 min-h-[120px]' : 'shrink-0')}
+				style={props.inWindow ? undefined : { height: SCORELINE_CHART_HEIGHT }}
+			>
+				{scoreline && MH.hasCombat(scoreline.stats) ? (
+					<LineChart
+						series={scoreline.chart.series}
+						xMax={scoreline.chart.xMax}
+						xTicks={minuteTicks}
+						formatX={formatElapsed}
+						signed={scoreline.chart.signed ? { above: teams[0].color, below: teams[1].color } : undefined}
+						ariaLabel={tr.text(MH_Msgs.scorelineMetric(metric))}
+						renderTooltip={(x, values) => (
+							<ScorelineTooltip
+								x={x}
+								values={values}
+								series={scoreline.chart.series}
+								teams={teams}
+								signed={scoreline.chart.signed}
+							/>
+						)}
+					/>
+				) : (
+					<div className="h-full flex items-center justify-center text-text-3 text-sm">
+						{scoreline ? tr.text(MH_Msgs.noCombatYet()) : <span className="fd-spin size-5!" />}
+					</div>
+				)}
+			</div>
+		</div>
+	)
+}
+
+// Each team's totals: one row per team, one column per figure, so the table keeps its height at any width.
+function ScorelineTable(props: { scoreline: StatsModels.Scoreline | null; teams: [StatsModels.TeamDisplay, StatsModels.TeamDisplay] }) {
+	const { scoreline } = props
+	const rows = props.teams.map((team, i) => {
+		const stats = scoreline ? (i === 0 ? scoreline.stats.team1 : scoreline.stats.team2) : null
+		return { key: `team${i + 1}`, team, stats, tickets: scoreline?.tickets?.[i] ?? null, won: scoreline?.winner === i + 1 }
+	})
+	const cell = 'px-1.5 py-0.5 text-end tabular-nums font-mono whitespace-nowrap'
+	const head = 'px-1.5 py-0.5 text-end font-medium text-text-3 whitespace-nowrap'
+	return (
+		// contained, or the table's own width would still widen whatever sizes to its content around the panel
+		<div className="px-2.5 pt-1 overflow-x-auto [contain:inline-size]">
+			<table className="w-full max-w-xl text-xs">
+				<thead>
+					<tr>
+						<th />
+						<th scope="col" className={head}>
+							{tr.text(MH_Msgs.tickets())}
+						</th>
+						<th scope="col" className={head}>
+							{tr.text(MH_Msgs.killsDealt())}
+						</th>
+						<th scope="col" className={head}>
+							{tr.text(MH_Msgs.deathsSuffered())}
+						</th>
+						<th scope="col" className={head}>
+							{tr.text(MH_Msgs.kdRatio())}
+						</th>
+						<th scope="col" className={head}>
+							{tr.text(MH_Msgs.woundsDealt())}
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr key={row.key}>
+							<th scope="row" className="text-start font-semibold py-0.5 pe-1.5">
+								<span className="flex items-center gap-1.5 min-w-0 max-w-40">
+									<span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: row.team.color }} />
+									<span className="truncate" title={row.team.label}>
+										{row.team.label}
+									</span>
+								</span>
+							</th>
+							<td className={cell}>
+								{row.tickets !== null ? (
+									<span className="inline-flex items-center gap-1 justify-end">
+										{row.won && <b className="text-ok">{tr.text(MH_Msgs.resultMark(true))}</b>}
+										{row.tickets}
+									</span>
+								) : (
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<span className="text-text-3 cursor-default">-</span>
+										</TooltipTrigger>
+										<TooltipContent>{tr.text(MH_Msgs.ticketsPending())}</TooltipContent>
+									</Tooltip>
+								)}
+							</td>
+							<td className={cell}>{row.stats?.kills ?? '-'}</td>
+							<td className={cell}>{row.stats?.deaths ?? '-'}</td>
+							<td className={cell}>{row.stats ? DH.formatRatio(row.stats.kills, row.stats.deaths) : '-'}</td>
+							<td className={cell}>{row.stats?.wounds ?? '-'}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	)
+}
+
+function ScorelineTooltip(props: {
+	x: number
+	values: (number | undefined)[]
+	series: Chart.LineSeries[]
+	teams: [StatsModels.TeamDisplay, StatsModels.TeamDisplay]
+	signed: boolean
+}) {
+	const time = <span className="font-semibold">{tr.text(MH_Msgs.matchTime(formatElapsed(props.x)))}</span>
+	if (props.signed) {
+		const lead = props.values[0] ?? 0
+		const ahead = lead >= 0 ? props.teams[0] : props.teams[1]
+		return (
+			<div className="flex flex-col gap-1">
+				{time}
+				<span className="flex items-center gap-1.5">
+					<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ahead.color }} />
+					<span>{trTooltip.richText(UI_Msgs.labelValue(ahead.label, `+${Math.abs(lead)}`))}</span>
+				</span>
+			</div>
+		)
+	}
+	return (
+		<div className="flex flex-col gap-1">
+			{time}
+			{props.series.map((series, i) => (
+				<span key={series.key} className="flex items-center gap-1.5">
+					<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
+					<span>{trTooltip.richText(UI_Msgs.labelValue(series.label, props.values[i] ?? 0))}</span>
+				</span>
+			))}
+		</div>
+	)
+}
+
+const MINUTE = 60_000
+
+// whole-minute ticks that stay inside the match
+function minuteTicks(xMax: number, targetTicks: number) {
+	return Chart.axis(xMax / MINUTE, targetTicks, { integer: true })
+		.ticks.filter((minutes) => minutes * MINUTE <= xMax)
+		.map((minutes) => minutes * MINUTE)
+}
+
+function formatElapsed(ms: number) {
+	const totalSeconds = Math.floor(ms / 1000)
+	return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
 }

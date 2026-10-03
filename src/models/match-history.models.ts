@@ -155,7 +155,7 @@ export function addCombatEvent(stats: MatchCombatStats, event: CHAT.EventEnriche
 
 // the team index (0 or 1) a combat event's death and its kill or wound count towards, -1 for neither; null when the
 // event counts for nothing at all
-function combatCredit(event: CHAT.EventEnriched): { deathTo: number; creditTo: number } | null {
+export function combatCredit(event: CHAT.EventEnriched): { deathTo: number; creditTo: number } | null {
 	if (event.type !== 'PLAYER_DIED' && event.type !== 'PLAYER_WOUNDED') return null
 	// unknown team ids fall outside 0..1 and so count towards neither side
 	const victimIdx = (event.victim.teamId ?? 0) - 1

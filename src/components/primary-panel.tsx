@@ -19,6 +19,7 @@ import { MatchHistoryPanelContent } from './match-history-panel'
 import { PluginSlot } from './plugin-slot.tsx'
 import StatsPanel from './stats-panel.tsx'
 import { StickyGroup } from './sticky-group.tsx'
+import { TabBar } from './tab-bar.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
@@ -27,48 +28,6 @@ type PanelTab = 'queue' | 'teams'
 // stable ids so a section's title and its body can point at each other (aria-controls / aria-labelledby)
 const titleId = (value: string) => `primary-panel-tab-${value}`
 const bodyId = (value: string) => (value === 'teams' ? SquadServerClient.TEAMS_PANEL_ELEMENT_ID : `primary-panel-panel-${value}`)
-
-function TabBar<T extends string>({
-	tabs,
-	value,
-	onChange,
-	className,
-	trailing,
-	ref,
-}: {
-	tabs: { value: T; label: React.ReactNode; count?: number }[]
-	value: T | null
-	onChange: (value: T) => void
-	className?: string
-	trailing?: React.ReactNode
-	ref?: React.RefObject<HTMLDivElement | null>
-}) {
-	return (
-		<div ref={ref} role="tablist" className={cn('fd-tabs shrink-0', className)}>
-			{tabs.map((tab) => (
-				<button
-					key={tab.value}
-					type="button"
-					role="tab"
-					data-tour={`primary-tab-${tab.value}`}
-					id={titleId(tab.value)}
-					aria-selected={value === tab.value}
-					aria-controls={bodyId(tab.value)}
-					data-state={value === tab.value ? 'active' : 'inactive'}
-					// only the active tab is in the tab order; arrow keys are the expected way to move between
-					// tabs, and roving tabindex is what tells assistive tech that
-					tabIndex={value === tab.value ? 0 : -1}
-					className="fd-tab min-w-0"
-					onClick={() => onChange(tab.value)}
-				>
-					{tab.label}
-					{tab.count !== undefined && <span className="fd-tab-cnt">{tab.count}</span>}
-				</button>
-			))}
-			{trailing && <span className="ms-auto flex min-w-0 items-end gap-2 pb-1">{trailing}</span>}
-		</div>
-	)
-}
 
 function QueuePresence(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer.serverId
@@ -314,6 +273,9 @@ function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; stacked?: boo
 					]}
 					value={tab}
 					onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
+					tabId={titleId}
+					panelId={bodyId}
+					tourId={(value) => `primary-tab-${value}`}
 					trailing={
 						<>
 							<QueuePresence stores={props.stores} />

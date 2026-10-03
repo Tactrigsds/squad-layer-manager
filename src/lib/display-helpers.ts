@@ -270,3 +270,9 @@ export function getTeamColor(teamId: SM.TeamId, parity: number, normalize: boole
 	const normedId = MH.getNormedTeamId(teamId, parity)
 	return TEAM_COLORS[`team${normedId}`]
 }
+
+// a ratio to two places, or a dash when there is nothing to divide by
+export function formatRatio(numerator: number, denominator: number) {
+	if (denominator === 0) return numerator > 0 ? '\u221e' : '-'
+	return (numerator / denominator).toFixed(2)
+}

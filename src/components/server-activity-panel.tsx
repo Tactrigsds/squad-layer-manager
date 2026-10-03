@@ -4,6 +4,7 @@ import React from 'react'
 
 import EventFilterSelect from '@/components/event-filter-select'
 import { FeedList } from '@/components/feed/feed-list'
+import HistoricalMatchBanner from '@/components/historical-match-banner'
 import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
 import { SubtreeFindBar } from '@/components/subtree-find-bar'
@@ -18,7 +19,6 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
-import * as MsgFmt from '@/messages/format'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -29,7 +29,6 @@ import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 import { ServerUnreachable } from './server-offline-display.tsx'
-import ShortLayerName from './short-layer-name.tsx'
 
 function ServerChatEvents(props: {
 	className?: string
@@ -40,13 +39,6 @@ function ServerChatEvents(props: {
 	stores: SquadServerFrame.KeyProp
 }) {
 	const selectedMatchOrdinal = Zus.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
-	const serverId = props.stores.squadServer!.serverId
-	const displayMatch = Zus.useStore_Susp(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(serverId),
-		MatchHistoryClient.recentMatches$(serverId),
-		ChatPrt.Sel.displayMatch,
-	)
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const synced = props.synced
@@ -82,11 +74,7 @@ function ServerChatEvents(props: {
 					<span className="fd-spin size-6!" />
 				</div>
 			)}
-			{selectedMatchOrdinal !== null && displayMatch && (
-				<div className="flex-shrink-0 text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] text-center">
-					<HistoricalMatchBanner match={displayMatch} />
-				</div>
-			)}
+			<HistoricalMatchBanner stores={props.stores} className="flex-shrink-0" />
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pe-3 min-h-0 w-full">
@@ -393,11 +381,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				<div className="flex-1 min-h-0">
 					{selectedMatchOrdinal !== null && historicalView === 'teams' ? (
 						<div className="min-w-[350px] h-full flex flex-col">
-							{displayMatch && (
-								<div className="text-text-2 text-xs py-1 bg-[rgba(91,141,239,0.12)] text-center">
-									<HistoricalMatchBanner match={displayMatch} />
-								</div>
-							)}
+							<HistoricalMatchBanner stores={stores} />
 							{historicalEventsQuery.isLoading ? (
 								<div className="flex-1 flex items-center justify-center">
 									<span className="fd-spin size-6!" />
@@ -422,14 +406,5 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} />}
 			</CardContent>
 		</Card>
-	)
-}
-
-function HistoricalMatchBanner(props: { match: Pick<MH.MatchDetails, 'layerId' | 'ordinal' | 'startTime'> }) {
-	return tr.richText(
-		CHAT_Msgs.viewingHistoricalMatch(
-			<ShortLayerName layerId={props.match.layerId} teamParity={props.match.ordinal % 2} />,
-			props.match.startTime ? MsgFmt.formatDate(props.match.startTime, 'dateTime24') : undefined,
-		),
 	)
 }

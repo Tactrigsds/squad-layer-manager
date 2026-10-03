@@ -32,8 +32,8 @@ SLM then colour-codes the usernames of grouped players wherever they appear:
 
 ![color_coded_usernames](../../images/configuring/color_coded_usernames.png)
 
-Choose which grouping mode to show in the players panel and the activity charts. The stats panel breaks the
-population down by the chosen mode:
+Choose which grouping mode to show in the players panel and the _Charts_ panel. The _Breakdown_ chart breaks the population
+down by the chosen mode:
 
 ![teams_breakdown](../../images/configuring/teams_breakdown.png)
 

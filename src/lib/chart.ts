@@ -83,3 +83,44 @@ const AVG_GLYPH_RATIO = 0.58
 export function estimateNumeralsWidth(text: string, fontSize: number) {
 	return text.length * fontSize * AVG_GLYPH_RATIO
 }
+
+// A step series: each point is where the value changes, and it holds until the next point. Points are in x order.
+export type Point = { x: number; y: number }
+export type LineSeries = Series & { points: readonly Point[] }
+
+// The value a step series holds at `x`, or undefined before its first point.
+export function valueAt(points: readonly Point[], x: number): number | undefined {
+	let lo = 0
+	let hi = points.length - 1
+	let found = -1
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1
+		if (points[mid].x <= x) {
+			found = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return found === -1 ? undefined : points[found].y
+}
+
+// An axis centred on zero, covering [-maxAbs, maxAbs], for values that change sign.
+export function signedAxis(maxAbs: number, targetTicksPerSide = 2): { min: number; max: number; ticks: number[] } {
+	const half = axis(maxAbs, targetTicksPerSide, { integer: true })
+	const negatives = half.ticks
+		.filter((tick) => tick > 0)
+		.map((tick) => -tick)
+		.reverse()
+	return { min: -half.max, max: half.max, ticks: [...negatives, ...half.ticks] }
+}
+
+// How StackedBarChart lays out its rows, so a caller can hold the chart's space before it has data to draw.
+export const STACKED_BARS = { ROW_LABEL_HEIGHT: 16, ROW_GAP: 10, AXIS_HEIGHT: 16, BAR_HEIGHT: 18 }
+
+// The height of StackedBarChart's bars and axis, not counting a legend drawn inline.
+export function stackedBarsHeight(rowCount: number, sideBySide: boolean, barHeight: number = STACKED_BARS.BAR_HEIGHT) {
+	const rowHeight = STACKED_BARS.ROW_LABEL_HEIGHT + barHeight
+	if (sideBySide && rowCount === 2) return rowHeight + STACKED_BARS.AXIS_HEIGHT
+	return rowCount * rowHeight + Math.max(0, rowCount - 1) * STACKED_BARS.ROW_GAP + STACKED_BARS.AXIS_HEIGHT
+}

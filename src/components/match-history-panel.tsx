@@ -714,7 +714,7 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 					className="inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5"
 				>
 					{favoursStart && <Icons.ChevronLeft className="rtl:-scale-x-100" />}
-					{formatRatio(favoured.stats.kills, favoured.stats.deaths)}
+					{DH.formatRatio(favoured.stats.kills, favoured.stats.deaths)}
 					{!favoursStart && <Icons.ChevronRight className="rtl:-scale-x-100" />}
 				</span>
 			</TooltipTrigger>
@@ -749,8 +749,8 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 }
 
 const SCORELINE_ROWS = [
-	{ key: 'kd', label: MH_Msgs.kdRatio, value: (stats: MH.TeamCombatStats) => formatRatio(stats.kills, stats.deaths) },
-	{ key: 'wd', label: MH_Msgs.woundRatio, value: (stats: MH.TeamCombatStats) => formatRatio(stats.wounds, stats.deaths) },
+	{ key: 'kd', label: MH_Msgs.kdRatio, value: (stats: MH.TeamCombatStats) => DH.formatRatio(stats.kills, stats.deaths) },
+	{ key: 'wd', label: MH_Msgs.woundRatio, value: (stats: MH.TeamCombatStats) => DH.formatRatio(stats.wounds, stats.deaths) },
 	{ key: 'kills', label: MH_Msgs.killsDealt, value: (stats: MH.TeamCombatStats) => stats.kills },
 	{ key: 'wounds', label: MH_Msgs.woundsDealt, value: (stats: MH.TeamCombatStats) => stats.wounds },
 	{ key: 'deaths', label: MH_Msgs.deathsSuffered, value: (stats: MH.TeamCombatStats) => stats.deaths },
@@ -758,11 +758,6 @@ const SCORELINE_ROWS = [
 
 function kdOf(stats: MH.TeamCombatStats) {
 	return stats.deaths === 0 ? (stats.kills > 0 ? Infinity : 0) : stats.kills / stats.deaths
-}
-
-function formatRatio(numerator: number, denominator: number) {
-	if (denominator === 0) return numerator > 0 ? '\u221e' : '-'
-	return (numerator / denominator).toFixed(2)
 }
 
 const TINT_DISPLAY = {

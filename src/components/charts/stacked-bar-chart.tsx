@@ -5,10 +5,10 @@ import { TrackingTooltip } from '@/components/ui/tooltip'
 import * as Chart from '@/lib/chart'
 import { cn } from '@/lib/utils'
 
+import { useMeasuredWidth } from './measure'
+
 const LABEL_SIZE = 11
-const ROW_LABEL_HEIGHT = 16
-const ROW_GAP = 10
-const AXIS_HEIGHT = 16
+const { ROW_LABEL_HEIGHT, ROW_GAP, AXIS_HEIGHT } = Chart.STACKED_BARS
 const DIM_OPACITY = 0.35
 const SEGMENT_GAP = 1
 
@@ -42,7 +42,7 @@ export function StackedBarChart(props: {
 	// rendered at the end of the legend row, e.g. the chart's help affordance
 	legendTrailing?: React.ReactNode
 }) {
-	const barHeight = props.barHeight ?? 18
+	const barHeight = props.barHeight ?? Chart.STACKED_BARS.BAR_HEIGHT
 	const [container, setContainer] = React.useState<HTMLDivElement | null>(null)
 	const width = useMeasuredWidth(container)
 	const [hovered, setHovered] = React.useState<Chart.Datum | null>(null)
@@ -184,7 +184,7 @@ export function StackedBarChart(props: {
 
 	let body: React.ReactNode = null
 	if (width > 0 && props.sideBySide && props.rows.length === 2) {
-		const height = rowHeight + AXIS_HEIGHT
+		const height = Chart.stackedBarsHeight(2, true, barHeight)
 		body = (
 			<div className="grid grid-cols-2 gap-4" onPointerLeave={() => setHovered(null)}>
 				{props.rows.map((row, rowIndex) => {
@@ -199,7 +199,7 @@ export function StackedBarChart(props: {
 			</div>
 		)
 	} else if (width > 0) {
-		const height = props.rows.length * rowHeight + Math.max(0, props.rows.length - 1) * ROW_GAP + AXIS_HEIGHT
+		const height = Chart.stackedBarsHeight(props.rows.length, false, barHeight)
 		body = (
 			<svg width={width} height={height} role="img" aria-label={props.ariaLabel} onPointerLeave={() => setHovered(null)}>
 				{renderAxis(false, height, width)}
@@ -215,36 +215,4 @@ export function StackedBarChart(props: {
 			<TrackingTooltip content={tooltip} />
 		</div>
 	)
-}
-
-// React reads the snapshot on every render and again after each commit, so it is cached: reading clientWidth there
-// would force a layout mid-render every time the chart's data changes. The observer refreshes it after layouts the
-// browser runs anyway.
-const measuredWidths = new WeakMap<HTMLElement, number>()
-
-function useMeasuredWidth(el: HTMLElement | null) {
-	const subscribe = React.useCallback(
-		(onResize: () => void) => {
-			if (!el) return () => {}
-			const observer = new ResizeObserver(() => {
-				const width = el.clientWidth
-				if (measuredWidths.get(el) === width) return
-				measuredWidths.set(el, width)
-				onResize()
-			})
-			observer.observe(el)
-			return () => observer.disconnect()
-		},
-		[el],
-	)
-	const getSnapshot = React.useCallback(() => {
-		if (!el) return 0
-		let width = measuredWidths.get(el)
-		if (width === undefined) {
-			width = el.clientWidth
-			measuredWidths.set(el, width)
-		}
-		return width
-	}, [el])
-	return React.useSyncExternalStore(subscribe, getSnapshot, () => 0)
 }

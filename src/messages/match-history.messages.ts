@@ -55,6 +55,42 @@ export const scoreline = def('Scoreline')
 
 export const teamBreakdowns = def('Teams Breakdown')
 
+// the panel that holds the teams breakdown and the scoreline, one per tab
+export const chartsTitle = def('Charts')
+
+// not "Teams", which would read as the queue and teams panel's own tab beside it
+export const chartsTab = def('{tab, select, teams {Breakdown} scoreline {Scoreline} other {{tab}}}', (tab: 'teams' | 'scoreline') => ({
+	tab,
+}))
+
+export const chartWindowTitle = def(
+	'{tab, select, teams {Teams Breakdown} scoreline {Scoreline} other {{tab}}}',
+	(tab: 'teams' | 'scoreline') => ({ tab }),
+)
+
+export const openChartInWindow = def('Open in a window')
+
+export const scorelineMetric = def(
+	'{metric, select, kills {Kills} deaths {Deaths} lead {Kill lead} other {{metric}}}',
+	(metric: 'kills' | 'deaths' | 'lead') => ({ metric }),
+)
+
+export const scorelineDescription = def(
+	"Each team's kills, deaths and wounds in this match, and the chosen one over time. Kill lead is how far one team's kills are ahead of the other's, shaded in the leading team's colour. Teamkills and suicides count as deaths but not as kills.",
+)
+
+export const tickets = def('Tickets')
+
+export const winner = def('Won')
+
+// in the tickets slot until the round is over
+export const ticketsPending = def('Squad reports tickets when the round ends.')
+
+export const noCombatYet = def('No kills yet')
+
+// the elapsed time a tooltip on the scoreline chart is for
+export const matchTime = def('{time} into the match', (time: string) => ({ time }))
+
 // the breakdown's own help, behind the "?" beside its heading rather than on every segment's tooltip
 
 export const breakdownDescription = def(
