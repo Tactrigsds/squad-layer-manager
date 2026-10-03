@@ -201,8 +201,7 @@ To rotate the key, move the current value to `SETTINGS_ENCRYPTION_KEY_PREVIOUS`,
 server it did it for. Remove `SETTINGS_ENCRYPTION_KEY_PREVIOUS` afterwards.
 
 If the key is lost, re-enter the RCON and SFTP passwords, agent tokens and integration tokens on the settings page. SLM
-disables a server whose secrets it cannot decrypt until they are re-entered, and treats an integration token it cannot
-decrypt as unset.
+disables a server whose secrets it cannot decrypt until they are re-entered.
 
 ### 8. Backups
 
@@ -221,7 +220,7 @@ format, and for putting one back with `restore.sh`.
 
 ### 9. Telemetry
 
-Detailed logs and telemetry are available via grafana at `http://localhost:3001`. Grafana can also be exposed to the
+Detailed logs and telemetry are available via grafana at `http://localhost:3001`. A few dashboards are set up for convenience. Grafana can also be exposed to the
 internet. Change the default admin password before doing so. Three dashboards come preconfigured for monitoring SLM.
 Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
 [VictoriaMetrics](https://victoriametrics.com/) store per signal. [observability/README.md](../observability/README.md)
@@ -251,7 +250,7 @@ then move on to [configuring SLM](guide/configuring/overview.md).
 SLM authenticates to three outside services: BattleMetrics, Squad Browser and Steam. All three are optional. Their
 credentials are not environment variables. Once SLM is running, enter them under _Integrations_ on the settings page.
 
-A saved token is encrypted at rest and not retrievable.
+A saved token is encrypted at rest and not retrievable from the UI.
 
 Editing this section takes a `global-settings:write` grant covering `integrations`. The default managers role cannot
 edit it (see [Default roles](guide/configuring/permissions.md#default-roles)).
@@ -281,7 +280,7 @@ With neither, the button is hidden. The button never appears for a sandbox serve
 ### 12. Discord bot permissions
 
 The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
-that, switch on `Message Content Intent` on the `Bot` page of your discord app. Without it SLM still starts, but the
+that, switch on `Message Content Intent` on the `Bot` page of your discord app. Without it, the
 bot cannot read messages, and the `discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch
 that setting off. The bot only replies to people whose roles grant `history:query`, the permission the history page
 itself needs.
@@ -295,8 +294,7 @@ The SLM bot only replies in channels where its role has these permissions:
 
 Grant them in one of two ways:
 
-- **Every channel:** give the SLM bot's role these permissions in _Server Settings > Roles_. The bot can then reply
-  in every channel its role can see.
+- **Grant the bot a Role:** give the SLM bot a role with these permissions in _Server Settings > Roles_.
 - **Specific channels:** leave them off the role, and add them for the SLM bot's role in each channel's _Edit
   Channel > Permissions_. The bot then replies only in those channels.
 

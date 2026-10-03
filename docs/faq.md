@@ -7,7 +7,7 @@ written most of the newer features, and they've resulted in a massive increase i
 
 ## Is SLM open to contributions?
 
-Yes. I reject LLM-written contributions from anyone who cannot answer for the code they submit, which in practice means
+Yes, and I'm generally available to answer questions/help out. However, I reject LLM-written contributions from anyone who cannot answer for the code they submit, which in practice means
 anyone who I judge cannot fluently read TypeScript (and rust where applicable). See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## I'm not a developer. How can I get a feature added?
