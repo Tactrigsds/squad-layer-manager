@@ -337,10 +337,11 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		return res.status(200).send({ status: 'ok' })
 	})
 
-	const authedCtxCreatedAt = new Map<FastifyRequest['id'], number>()
-	const authedCtxMap = new Map<FastifyRequest['id'], C.FastifyRequestFull & C.AuthedUser>()
+	// Keyed on the request object, so an entry lives exactly as long as its request. A websocket upgrade never
+	// completes an http response, so a hook that removes the entry on response would miss every /orpc connection.
+	const authedCtxs = new WeakMap<FastifyRequest, C.FastifyRequestFull & C.AuthedUser>()
 	function getAuthedCtx(req: FastifyRequest) {
-		const ctx = authedCtxMap.get(req.id)
+		const ctx = authedCtxs.get(req)
 		if (!ctx) {
 			throw new Error('No authed context found')
 		}
@@ -354,8 +355,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const servesPage = baseCtx.route?.def.handle === 'page' && !wantsHistoryRaw(req, baseCtx.route)
 		switch (authRes.code) {
 			case 'ok':
-				authedCtxMap.set(req.id, authRes.ctx)
-				authedCtxCreatedAt.set(req.id, Date.now())
+				authedCtxs.set(req, authRes.ctx)
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
@@ -385,14 +385,6 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const statusCode = res.statusCode
 		if (statusCode >= 400) {
 			req.log.warn('Response %d for %s %s', statusCode, req.method, req.url)
-		}
-		authedCtxMap.delete(req.id)
-		authedCtxCreatedAt.delete(req.id)
-		for (const [reqId, createdAt] of Object.entries(authedCtxCreatedAt)) {
-			if (Date.now() - createdAt > 10_000) {
-				authedCtxMap.delete(reqId)
-				authedCtxCreatedAt.delete(reqId)
-			}
 		}
 	})
 
