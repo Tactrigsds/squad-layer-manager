@@ -65,7 +65,7 @@ const waitHistogram = meter.createHistogram(ATTRS.SwitchRequest.WAIT, {
 	},
 })
 
-// how hard the roster is polled while requests are waiting; the default cadence (rconCacheTTL.teams) applies otherwise
+// how hard the roster is polled while requests are waiting; the default cadence (TEAMS_TTL_MS in squad-rcon.server.ts) applies otherwise
 const ACTIVE_POLL_TTL_MS = 1_000
 // a fired switch that hasn't shown up in the roster after this long is re-fired
 const RETRY_DELAY_MS = 10_000

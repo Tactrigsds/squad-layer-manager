@@ -14,6 +14,7 @@ const TYPE = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 } as cons
 const SOH_SEQUENCE = Buffer.from([0, 1, 0, 0, 0, 0, 0])
 // observed data packets cap out around 4KiB; the exact split point doesn't matter to clients
 const MAX_CHUNK = 4000
+const MAX_RETAINED_COMMANDS = 10_000
 
 export type ReceivedCommand = { time: number; body: string }
 
@@ -176,6 +177,9 @@ export class RconServer {
 
 		const cmd: ReceivedCommand = { time: Date.now(), body }
 		this.commandLog.push(cmd)
+		// a sandbox emulator answers the app's polls for the life of the app, so the history is capped. Halving
+		// amortises the copy.
+		if (this.commandLog.length > MAX_RETAINED_COMMANDS) this.commandLog.splice(0, MAX_RETAINED_COMMANDS / 2)
 		const waiters = this.#commandWaiters.filter((w) => w.pred(cmd))
 		this.#commandWaiters = this.#commandWaiters.filter((w) => !w.pred(cmd))
 		for (const w of waiters) w.resolve(cmd)

@@ -132,28 +132,36 @@ function deCasteljau(hull: Point[], t: number): Point {
 /** Non-zero winding scanline fill: exact horizontal spans, SUB_ROWS samples down. */
 function rasterize(polygons: Point[][], size: number): Float32Array {
 	const coverage = new Float32Array(size * size)
-	const edges: { x0: number; y0: number; x1: number; y1: number }[] = []
+	const edges: { x0: number; y0: number; x1: number; y1: number; lo: number; hi: number; winding: number }[] = []
+	const pushEdge = (x0: number, y0: number, x1: number, y1: number) =>
+		edges.push({ x0, y0, x1, y1, lo: Math.min(y0, y1), hi: Math.max(y0, y1), winding: y1 > y0 ? 1 : -1 })
 	for (const polygon of polygons) {
 		for (let i = 1; i < polygon.length; i++) {
-			if (polygon[i - 1].y !== polygon[i].y) {
-				edges.push({ x0: polygon[i - 1].x, y0: polygon[i - 1].y, x1: polygon[i].x, y1: polygon[i].y })
-			}
+			if (polygon[i - 1].y !== polygon[i].y) pushEdge(polygon[i - 1].x, polygon[i - 1].y, polygon[i].x, polygon[i].y)
 		}
-		const [first, last] = [polygon[0], polygon[polygon.length - 1]]
-		if (first.y !== last.y) edges.push({ x0: last.x, y0: last.y, x1: first.x, y1: first.y })
+		const first = polygon[0]
+		const last = polygon[polygon.length - 1]
+		if (first.y !== last.y) pushEdge(last.x, last.y, first.x, first.y)
 	}
 	if (edges.length === 0) return coverage
 
+	// Each row tests only the edges spanning it, kept in their original order so crossings tie-break exactly as a
+	// scan of every edge would.
 	const weight = 1 / SUB_ROWS
+	const rowEdges: typeof edges = []
 	const crossings: { x: number; winding: number }[] = []
 	for (let row = 0; row < size; row++) {
+		rowEdges.length = 0
+		for (const e of edges) {
+			if (e.lo < row + 1 && e.hi > row) rowEdges.push(e)
+		}
+		if (rowEdges.length < 2) continue
 		for (let sub = 0; sub < SUB_ROWS; sub++) {
 			const y = row + (sub + 0.5) / SUB_ROWS
 			crossings.length = 0
-			for (const e of edges) {
-				const [lo, hi] = e.y0 < e.y1 ? [e.y0, e.y1] : [e.y1, e.y0]
-				if (y < lo || y >= hi) continue
-				crossings.push({ x: e.x0 + ((y - e.y0) * (e.x1 - e.x0)) / (e.y1 - e.y0), winding: e.y1 > e.y0 ? 1 : -1 })
+			for (const e of rowEdges) {
+				if (y < e.lo || y >= e.hi) continue
+				crossings.push({ x: e.x0 + ((y - e.y0) * (e.x1 - e.x0)) / (e.y1 - e.y0), winding: e.winding })
 			}
 			if (crossings.length < 2) continue
 			crossings.sort((a, b) => a.x - b.x)

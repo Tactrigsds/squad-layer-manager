@@ -194,6 +194,10 @@ export type ItemState = {
 }
 
 export namespace Sel {
+	// per-item selectors kept across every queue a page shows. Each item ever added would otherwise keep its selectors
+	// for the life of the page
+	const QUEUE_ITEM_SELECTORS_MAX = 1000
+
 	export function layerList(store: Store) {
 		return store.queue.layerList
 	}
@@ -247,21 +251,24 @@ export namespace Sel {
 	// list. O(1) lookup into itemIndex, deep-checked for render stability. Consumers destructure what they need.
 	// mutation state is kept out of here (see itemState) so structural-only consumers don't re-render on mutation
 	// changes.
-	export const itemEntry = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([itemIndex], (index): ItemEntry | undefined => index.get(itemId)),
+	export const itemEntry = RSel.memoizeFactoryLru(
+		(itemId: string) => RSel.createDeepSelector([itemIndex], (index): ItemEntry | undefined => index.get(itemId)),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 
-	export const itemState = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([itemIndex, mutations], (index, mutations): ItemState => {
-			const entry = index.get(itemId)
-			if (!entry) throw new Error(`Item not found: ${itemId}`)
-			return {
-				index: entry.index,
-				item: entry.item,
-				mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.layerId),
-				isLocallyLast: entry.isLocallyLast,
-			}
-		}),
+	export const itemState = RSel.memoizeFactoryLru(
+		(itemId: string) =>
+			RSel.createDeepSelector([itemIndex, mutations], (index, mutations): ItemState => {
+				const entry = index.get(itemId)
+				if (!entry) throw new Error(`Item not found: ${itemId}`)
+				return {
+					index: entry.index,
+					item: entry.item,
+					mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.layerId),
+					isLocallyLast: entry.isLocallyLast,
+				}
+			}),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 	export type ItemDisplay = ItemState & {
 		parentItem: LL.VoteItem | undefined
@@ -270,12 +277,14 @@ export namespace Sel {
 
 	// everything a queue row renders about itself: structural position, the vote item it belongs to, and the
 	// mutation it displays as
-	export const itemDisplay = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([itemEntry(itemId), itemState(itemId)], (entry, state): ItemDisplay => ({
-			...state,
-			parentItem: entry?.parentItem,
-			displayedMutation: ItemMut.getDisplayedMutation(state.mutationState),
-		})),
+	export const itemDisplay = RSel.memoizeFactoryLru(
+		(itemId: string) =>
+			RSel.createDeepSelector([itemEntry(itemId), itemState(itemId)], (entry, state): ItemDisplay => ({
+				...state,
+				parentItem: entry?.parentItem,
+				displayedMutation: ItemMut.getDisplayedMutation(state.mutationState),
+			})),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 
 	// whether a vote on this item could be started right now, given who may vote and what else is going on.
@@ -286,12 +295,14 @@ export namespace Sel {
 	)
 
 	// the parts of a vote item its config popover edits
-	export const voteItemConfig = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([itemEntry(itemId)], (entry) => {
-			const item = entry?.item
-			if (!item || !LL.isVoteItem(item)) return undefined
-			return { voteConfig: item.voteConfig, choices: item.choices.map((choice) => choice.layerId) }
-		}),
+	export const voteItemConfig = RSel.memoizeFactoryLru(
+		(itemId: string) =>
+			RSel.createDeepSelector([itemEntry(itemId)], (entry) => {
+				const item = entry?.item
+				if (!item || !LL.isVoteItem(item)) return undefined
+				return { voteConfig: item.voteConfig, choices: item.choices.map((choice) => choice.layerId) }
+			}),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 
 	export function mutations(store: Store) {
@@ -312,19 +323,24 @@ export namespace Sel {
 	export function savedBackburner(store: Store) {
 		return store.queue.savedBackburner
 	}
-	export const backburnerItem = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find((item) => item.itemId === itemId)),
+	export const backburnerItem = RSel.memoizeFactoryLru(
+		(itemId: string) =>
+			RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find((item) => item.itemId === itemId)),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 	const backburnerMutations = RSel.createDeepSelector([backburner, savedBackburner], (draft, saved): ItemMut.Mutations =>
 		BB.diffMutations(draft, saved),
 	)
-	export const backburnerItemMutation = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([backburnerMutations], (mutations): ItemMut.ItemMutationState =>
-			ItemMut.toItemMutationState(mutations, itemId),
-		),
+	export const backburnerItemMutation = RSel.memoizeFactoryLru(
+		(itemId: string) =>
+			RSel.createDeepSelector([backburnerMutations], (mutations): ItemMut.ItemMutationState =>
+				ItemMut.toItemMutationState(mutations, itemId),
+			),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
-	export const backburnerItemDisplayedMutation = RSel.memoizeFactory((itemId: string) =>
-		RSel.createSelector([backburnerItemMutation(itemId)], ItemMut.getDisplayedMutation),
+	export const backburnerItemDisplayedMutation = RSel.memoizeFactoryLru(
+		(itemId: string) => RSel.createSelector([backburnerItemMutation(itemId)], ItemMut.getDisplayedMutation),
+		QUEUE_ITEM_SELECTORS_MAX,
 	)
 }
 

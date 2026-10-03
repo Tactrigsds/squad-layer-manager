@@ -31,5 +31,24 @@ export const createDeepSelector = createSelectorCreator({
 })
 
 // memoizes a selector factory per parameter. note: cache entries for primitive params are
-// held strongly for the life of the app -- fine for ids, don't key on unbounded user input
+// held strongly for the life of the app -- fine for ids from a small set, don't key on layer ids, queue item ids or
+// user input
 export const memoizeFactory = weakMapMemoize
+
+// memoizeFactory for a single parameter drawn from an unbounded set, keeping the `maxEntries` most recently used
+// selectors. `maxEntries` must sit well above the number of selectors subscribed at once: an evicted selector that is
+// still in use is rebuilt on its next call, and its subscriber recomputes from scratch.
+export function memoizeFactoryLru<K, S>(factory: (key: K) => S, maxEntries: number): (key: K) => S {
+	const cache = new Map<K, S>()
+	return (key) => {
+		let selector = cache.get(key)
+		if (selector !== undefined) {
+			cache.delete(key)
+		} else {
+			selector = factory(key)
+			if (cache.size >= maxEntries) cache.delete(cache.keys().next().value!)
+		}
+		cache.set(key, selector)
+		return selector
+	}
+}

@@ -65,13 +65,18 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	loader: async ({ params, preload }) => {
 		// the popover reads this query itself, so the result is not returned. Still awaited: letting it land
 		// after first paint measurably worsened the filter editor's add-strip teardown race.
-		await RPC.queryClient.prefetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
-		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		const filterEntity = filterEntities.get(params.filterId)
-		if (!filterEntity) return null
-		const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(filterEntity.owner))
-		if (ownerRes.code !== 'ok') return null
-		const colConfig = await ConfigClient.fetchEffectiveColConfig()
+		const [, loaded, colConfig] = await Promise.all([
+			RPC.queryClient.prefetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId)),
+			Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$()).then(async (filterEntities) => {
+				const entity = filterEntities.get(params.filterId)
+				if (!entity) return null
+				const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(entity.owner))
+				return ownerRes.code === 'ok' ? { entity, owner: ownerRes.user } : null
+			}),
+			ConfigClient.fetchEffectiveColConfig(),
+		])
+		if (!loaded) return null
+		const filterEntity = loaded.entity
 		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter, colConfig })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
 		activeFrameKeys.set(params.filterId, [...(activeFrameKeys.get(params.filterId) ?? []), frameKey])
@@ -90,7 +95,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 			frameKey,
 			// kept so the component can revive the frame when cached loaderData outlives it (see useLiveFrameKey)
 			frameInput,
-			owner: ownerRes.user,
+			owner: loaded.owner,
 		}
 	},
 

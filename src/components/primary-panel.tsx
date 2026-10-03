@@ -92,50 +92,60 @@ function QueueBody(props: { stores: SquadServerFrame.KeyProp }) {
 }
 
 // The queue with a heading of its own, for every layout that shows it beside the teams rather than behind a tab.
-function QueueCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => void; ref?: React.RefObject<HTMLDivElement | null> }) {
-	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
+function QueueCard({
+	stores,
+	onTouch,
+	ref,
+}: {
+	stores: SquadServerFrame.KeyProp
+	onTouch?: () => void
+	ref?: React.RefObject<HTMLDivElement | null>
+}) {
+	const queueLength = Zus.useStore(stores.squadServer, (s) => s.queue.layerList.length)
 	return (
-		<Card
-			ref={props.ref}
-			role="region"
-			aria-labelledby={titleId('queue')}
-			onPointerDownCapture={props.onTouch}
-			onFocusCapture={props.onTouch}
-		>
+		<Card ref={ref} role="region" aria-labelledby={titleId('queue')} onPointerDownCapture={onTouch} onFocusCapture={onTouch}>
 			<CardHeader>
 				<CardTitle id={titleId('queue')} data-tour="queue-editors">
 					{tr.text(APP_Msgs.queueTab(queueLength))}
 				</CardTitle>
 				<span className="ms-auto flex min-w-0 items-center gap-2">
-					<QueuePresence stores={props.stores} />
+					<QueuePresence stores={stores} />
 				</span>
 			</CardHeader>
-			<QueueBody stores={props.stores} />
+			<QueueBody stores={stores} />
 		</Card>
 	)
 }
 
-function TeamsCard(props: { stores: SquadServerFrame.KeyProp; onTouch?: () => void; ref?: React.RefObject<HTMLDivElement | null> }) {
-	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
+function TeamsCard({
+	stores,
+	onTouch,
+	ref,
+}: {
+	stores: SquadServerFrame.KeyProp
+	onTouch?: () => void
+	ref?: React.RefObject<HTMLDivElement | null>
+}) {
+	const playerCount = Zus.useStore(stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
 	const titleRef = React.useRef<HTMLDivElement>(null)
 	return (
 		<Card
-			ref={props.ref}
+			ref={ref}
 			id={bodyId('teams')}
 			role="region"
 			aria-labelledby={titleId('teams')}
-			onPointerDownCapture={props.onTouch}
-			onFocusCapture={props.onTouch}
+			onPointerDownCapture={onTouch}
+			onFocusCapture={onTouch}
 		>
 			{/* the title stays on screen while the tables scroll under it; the teams panel's own header stacks below */}
 			<StickyGroup stickyRef={titleRef}>
 				<CardHeader ref={titleRef}>
 					<CardTitle id={titleId('teams')}>{tr.text(APP_Msgs.teamsTab(playerCount))}</CardTitle>
 					<span className="ms-auto flex min-w-0 items-center gap-2">
-						<TeamsPresence stores={props.stores} />
+						<TeamsPresence stores={stores} />
 					</span>
 				</CardHeader>
-				<TeamsPanel stores={props.stores} />
+				<TeamsPanel stores={stores} />
 			</StickyGroup>
 		</Card>
 	)
@@ -213,8 +223,12 @@ function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; stacked?: boo
 
 	// what the column can show at once is what decides between the two layouts, so the budget is the
 	// scroller's visible height rather than the panel's own, which is as tall as its content
-	const fit = useStackWhenItFits({ enabled: props.stacked === 'when-it-fits', getBudgetEl: findScroller })
-	const stacked = props.stacked === 'when-it-fits' ? fit.stacked : (props.stacked ?? false)
+	const {
+		stacked: fitStacked,
+		firstRef: queueCardRef,
+		secondRef: teamsCardRef,
+	} = useStackWhenItFits({ enabled: props.stacked === 'when-it-fits', getBudgetEl: findScroller })
+	const stacked = props.stacked === 'when-it-fits' ? fitStacked : (props.stacked ?? false)
 	React.useEffect(() => {
 		SquadServerClient.PrimaryPanelActions.setStacked(stacked)
 	}, [stacked])
@@ -252,8 +266,8 @@ function QueueTeamsTabs(props: { stores: SquadServerFrame.KeyProp; stacked?: boo
 			SquadServerClient.PrimaryPanelActions.touchStackedSection(section)
 		return (
 			<div ref={rootRef} className="flex flex-col gap-2.5">
-				<QueueCard stores={props.stores} ref={fit.firstRef} onTouch={touch('VIEWING_QUEUE')} />
-				<TeamsCard stores={props.stores} ref={fit.secondRef} onTouch={touch('VIEWING_TEAMS')} />
+				<QueueCard stores={props.stores} ref={queueCardRef} onTouch={touch('VIEWING_QUEUE')} />
+				<TeamsCard stores={props.stores} ref={teamsCardRef} onTouch={touch('VIEWING_TEAMS')} />
 			</div>
 		)
 	}

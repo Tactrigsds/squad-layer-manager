@@ -338,17 +338,18 @@ const LOG_FILE_POLL_INTERVAL = 250
 // with the same again for slack. A test that needs the app to have *seen* something has to wait this out.
 export const LOG_INGEST_SETTLE_MS = (LOG_FILE_POLL_INTERVAL + LOG_FILE_POLL_INTERVAL * 1.5) * 2
 
-// Durations that would make a test sit and wait. Every one is a setting, and settings are the only
-// lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
-// of these through the globalSettings / serverSettings hooks.
+// Durations that would make a test sit and wait. Every one is a setting or an env var, which are the
+// only levers we have: the app runs in its own process, so its timers can't be faked. Tests override
+// any of these through the globalSettings / serverSettings hooks or the env option.
 function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
 	// up with rcon/poll events, so a short one keeps tests responsive
 	settings.logFilePollInterval = LOG_FILE_POLL_INTERVAL
 }
 
-// The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
-// (which wants two polls) and dominates this suite's wall time.
+// Scales the app's RCON poll intervals down to 1s for the layer status and roster and 2s for server info.
+// The roster interval sets the floor on waitForRosterSync (which wants two polls) and dominates this suite's
+// wall time.
 //
 // What these can be is a function of how loaded the box is, because the failure mode is core-rcon's 2s
 // response timeout: poll faster than a busy machine can drain RCON and commands queue until responses
@@ -356,10 +357,9 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 // once each app stopped booting through tsx and stopped seeding a sandbox server alongside the one under
 // test. 500ms measured clean here too (36s), and is deliberately not taken: CI runs this in a container
 // on fewer cores than the machine it was measured on, and a flaky integration suite is not worth 5s.
+const RCON_POLL_INTERVAL_SCALE = 0.2
+
 function applyTestServerTimings(settings: SETTINGS.ServerSettings) {
-	settings.rconCacheTTL.layersStatus = 1_000
-	settings.rconCacheTTL.serverInfo = 2_000
-	settings.rconCacheTTL.teams = 1_000
 	settings.vote.voteDuration = 8_000
 	settings.vote.finalVoteReminder = 2_000
 	settings.vote.voteReminderInterval = 3_000
@@ -647,6 +647,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		...(process.env as Record<string, string>),
 		NODE_ENV: 'test',
 		...otelEnv,
+		RCON_POLL_INTERVAL_SCALE: String(RCON_POLL_INTERVAL_SCALE),
 		DB_PATH: dbPath,
 		DB_AUTOMIGRATE: 'false',
 		// per-fixture, so an installed package cannot leak into the checkout's data directory or another run

@@ -21,7 +21,6 @@ import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
-import type * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -52,7 +51,7 @@ function ServerChatEvents(props: {
 	// the loading overlay covers the scroll affordance, not the other way round
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
-	const find = useSubtreeFind()
+	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 
 	// "Selected Only" has nothing to match against until the teams panel has a selection, so the feed is
 	// reduced to the pinned match markers. say why rather than looking broken
@@ -62,8 +61,8 @@ function ServerChatEvents(props: {
 	)
 
 	return (
-		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
-			<SubtreeFindBar stores={find.stores} className="absolute inset-e-3 top-1" />
+		<div ref={findScopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
+			<SubtreeFindBar stores={findStores} className="absolute inset-e-3 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
 				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
 					<span className="fd-spin size-6!" />
@@ -195,54 +194,21 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 
 	// Event filtering logic
 	const liveFilter = React.useMemo(() => CHAT.createBufferFilter(), [])
-	const prevHistoricalState = React.useRef<{
-		selectedMatchOrdinal: number
-		filteredEvents: CHAT.EventEnriched[]
-		eventFilterState: CHAT.SecondaryFilterState
-		selectedOnly: boolean
-		selectedPlayerIds: ReadonlySet<SM.PlayerId>
-		eventsVersion: any
-	} | null>(null)
 
 	const eventFilterState = Zus.useStore(stores.squadServer!, (s) => s.chat.secondaryFilterState)
 	const selectedOnly = Zus.useStore(stores.squadServer!, ChatPrt.Sel.selectedOnly)
 	const selectedPlayerIds = Zus.useStore(stores.squadServer!, SquadServerFrame.Sel.settledSelectedPlayerIds)
+	// the selection only enters the filter when selectedOnly is set, so selection churn doesn't refilter otherwise
+	const filterSelection = selectedOnly ? selectedPlayerIds : undefined
 
-	const filteredEvents = React.useMemo(() => {
-		// If viewing a historical match, use the historical query data
-		if (selectedMatchOrdinal !== null) {
-			if (!historicalEventsQuery.data?.events) return null
-
-			// Cache check for historical events. the selection only enters the filter when selectedOnly is set, so
-			// selection churn doesn't invalidate the cache otherwise
-			if (
-				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal &&
-				prevHistoricalState.current?.eventFilterState === eventFilterState &&
-				prevHistoricalState.current?.selectedOnly === selectedOnly &&
-				prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data &&
-				(!selectedOnly || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
-			) {
-				return prevHistoricalState.current.filteredEvents
-			}
-
-			const filtered = historicalEventsQuery.data.events.filter((event: CHAT.EventEnriched) =>
-				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly }),
-			)
-
-			prevHistoricalState.current = {
-				selectedMatchOrdinal,
-				filteredEvents: filtered,
-				eventFilterState,
-				selectedOnly,
-				selectedPlayerIds,
-				eventsVersion: historicalEventsQuery.data,
-			}
-			return filtered
-		}
-
-		// Otherwise use live event buffer - handled by separate selector below
-		return null
-	}, [selectedMatchOrdinal, historicalEventsQuery.data, eventFilterState, selectedOnly, selectedPlayerIds])
+	const historicalEvents = selectedMatchOrdinal !== null ? historicalEventsQuery.data?.events : undefined
+	const filteredEvents = React.useMemo(
+		() =>
+			historicalEvents?.filter((event) =>
+				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds: filterSelection, selectedOnly }),
+			) ?? null,
+		[historicalEvents, eventFilterState, selectedOnly, filterSelection],
+	)
 
 	const liveMatchId = displayMatch?.historyEntryId
 	const liveFilteredEvents = Zus.useStore(

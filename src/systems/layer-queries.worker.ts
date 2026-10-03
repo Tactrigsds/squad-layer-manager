@@ -13,7 +13,7 @@ import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import * as LoggerClient from '@/systems/logger.client'
 
-export type ToWorker = (RequestInner & Sequenced & Prioritized) | CancelRequest
+export type ToWorker = (RequestInner & Sequenced & Prioritized) | CancelRequest | DisconnectRequest
 
 export type FromWorker = ((ResponseInner | { type: 'worker-error'; error: string }) & Sequenced) | SignalLoadingLayersStarted | WorkerLog
 
@@ -97,6 +97,11 @@ export type CancelRequest = {
 	type: 'cancel'
 } & Sequenced
 
+// sent by a tab as it unloads: the shared worker drops its port and every request it still has queued
+export type DisconnectRequest = {
+	type: 'disconnect'
+}
+
 export type SignalLoadingLayersStarted = {
 	type: 'layer-download-started'
 }
@@ -143,11 +148,13 @@ function isBarrier(type: RequestInner['type']) {
 	return type === 'init' || type === 'filter-update' || type === 'generation-update'
 }
 
-let nextPortId = 0
-function makeMessageHandler(reply: (msg: FromWorker) => void) {
-	const portId = nextPortId++
+function makeMessageHandler(portId: number, reply: (msg: FromWorker) => void, release: () => void) {
 	return (e: MessageEvent<ToWorker>) => {
 		const msg = e.data
+		if (msg.type === 'disconnect') {
+			release()
+			return
+		}
 		const taskId = `${portId}:${msg.seqId}`
 		if (msg.type === 'cancel') {
 			scheduler.cancel(taskId)
@@ -269,15 +276,31 @@ let downloadsInFlight = 0
 
 // the same entry runs as a shared worker, or as a dedicated worker where SharedWorker is unavailable
 if (isShared) {
+	let nextPortId = 0
 	;(self as unknown as { onconnect: (e: MessageEvent) => void }).onconnect = (e) => {
 		const port = e.ports[0]
+		const portId = nextPortId++
 		ports.add(port)
+		// The worker outlives the tabs that connect to it, so a closed tab's port would otherwise be broadcast to for as
+		// long as any tab stays open, and its queued queries would still run. Chromium fires `close` on the port. In every
+		// browser the tab also sends `disconnect` as it unloads.
+		const release = () => {
+			if (!ports.delete(port)) return
+			port.close()
+			const prefix = `${portId}:`
+			scheduler.cancelWhere((id) => id.startsWith(prefix))
+		}
+		port.addEventListener('close', release)
 		// assigning onmessage starts the port implicitly
-		port.onmessage = makeMessageHandler((msg) => port.postMessage(msg))
+		port.onmessage = makeMessageHandler(portId, (msg) => port.postMessage(msg), release)
 		if (downloadsInFlight > 0) port.postMessage({ type: 'layer-download-started' } satisfies SignalLoadingLayersStarted)
 	}
 } else {
-	onmessage = makeMessageHandler((msg) => postMessage(msg))
+	onmessage = makeMessageHandler(
+		0,
+		(msg) => postMessage(msg),
+		() => {},
+	)
 }
 
 // Both downloads start when the worker loads rather than when the first init arrives, which waits on the page's

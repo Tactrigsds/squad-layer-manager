@@ -22,6 +22,8 @@ export type EmulatorOptions = WorldOptions & {
 	tickRateIntervalMs?: number
 }
 
+const MAX_RETAINED_LOG_LINES = 10_000
+
 // One emulated squad server: a World plus its protocol frontends. Logs are written to a file
 // (attachLogFile) that the app reads directly (the `local` source) or that the real server agent
 // (server-agent/agent) tails and ships to the app. Either way the lines are the same.
@@ -45,6 +47,8 @@ export class Emulator {
 				chatPacket: (body) => this.rcon.broadcastChatPacket(body),
 				logLine: (line) => {
 					this.logLines.push(line)
+					// a sandbox emulator runs for the life of the app, so the history is capped. Halving amortises the copy.
+					if (this.logLines.length > MAX_RETAINED_LOG_LINES) this.logLines.splice(0, MAX_RETAINED_LOG_LINES / 2)
 					for (const sub of this.#logSubscribers) sub(line)
 				},
 				layerChangeRequested: (layer) => {

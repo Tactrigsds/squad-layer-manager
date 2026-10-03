@@ -14,7 +14,7 @@ import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as FitCols from '@/lib/fitted-columns'
 import * as MapUtils from '@/lib/map-utils'
-import { useNow } from '@/lib/react.ts'
+import { useDeadlineClock } from '@/lib/react.ts'
 import * as RSel from '@/lib/reselect'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
@@ -722,12 +722,9 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const groupingModes = useGroupingModes()
 	const switchRequestCount = Zus.useStore(stores.squadServer!, SRQClient.Sel.requestCount)
 	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
-	const now = useNow(1000)
-	const timedOutCount = new Set(
-		TimeoutsClient.useActiveTimeouts()
-			.filter((t) => !t.cancelled && t.expiresAt.getTime() > now)
-			.map((t) => t.playerId),
-	).size
+	const timeouts = TimeoutsClient.useActiveTimeouts().filter((t) => !t.cancelled)
+	const clock = useDeadlineClock(timeouts.map((t) => t.expiresAt.getTime()))
+	const timedOutCount = new Set(timeouts.filter((t) => t.expiresAt.getTime() > clock).map((t) => t.playerId)).size
 
 	return (
 		<div className="ms-auto flex items-center gap-1 whitespace-nowrap">

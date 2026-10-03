@@ -394,7 +394,15 @@ export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; drop
 					serverKeys,
 					(path, i) => `rbac.roles.${roleId}.serverSettingsGrants[${gi}].paths[${i}] ("${path}")`,
 				)
-				return paths === grant.paths ? grantRaw : { ...grant, paths }
+				if (paths === grant.paths) return grantRaw
+				// a write grant with no paths covers every non-sensitive setting, so one whose every path went stale
+				// keeps only the view access it gave rather than widening to all of them
+				const isWrite = grant.access === undefined || grant.access === 'write'
+				if (isWrite && Array.isArray(paths) && paths.length === 0) {
+					dropped.push(`rbac.roles.${roleId}.serverSettingsGrants[${gi}] (write narrowed to read)`)
+					return { ...grant, access: 'read', paths }
+				}
+				return { ...grant, paths }
 			})
 			if (nextGrants.some((g, i) => g !== (serverGrants as unknown[])[i])) serverGrants = nextGrants
 		}
@@ -1527,39 +1535,6 @@ export const PublicServerSettingsSchema = z.object({
 		})
 		.prefault({})
 		.meta(SDoc.of({ label: t('Switch Requests') })),
-
-	rconCacheTTL: z
-		.object({
-			layersStatus: ZodUtils.HumanTime.prefault('5s').meta(
-				SDoc.of({
-					label: t('Layer Status'),
-					description: t('How stale the cached current/next layer may be before a read refetches it over RCON.'),
-				}),
-			),
-			serverInfo: ZodUtils.HumanTime.prefault('10s').meta(
-				SDoc.of({
-					label: t('Server Info'),
-					description: t('How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.'),
-				}),
-			),
-			teams: ZodUtils.HumanTime.prefault('5s').meta(
-				SDoc.of({
-					label: t('Teams'),
-					description: t(
-						'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
-					),
-				}),
-			),
-		})
-		.prefault({})
-		.meta(
-			SDoc.of({
-				label: t('RCON Cache TTL'),
-				description: t(
-					'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
-				),
-			}),
-		),
 })
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>

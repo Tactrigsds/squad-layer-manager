@@ -130,6 +130,8 @@ export async function writeBackup(opts: { destPath: string; snapshot: (destPath:
 	const snapshotPath = `${opts.destPath}.snapshot.tmp`
 	const tmpPath = `${opts.destPath}.tmp`
 	let snapshotBytes: number
+	// VACUUM INTO refuses a destination that exists, which a crash mid-snapshot leaves behind
+	fs.rmSync(snapshotPath, { force: true })
 	try {
 		await opts.snapshot(snapshotPath)
 		snapshotBytes = fs.statSync(snapshotPath).size

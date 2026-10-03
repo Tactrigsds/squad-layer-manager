@@ -450,6 +450,7 @@ export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 }
 
 async function reconcile(infos: PLG.RuntimeInfo[]) {
+	prefetchPackaged(infos)
 	for (const info of infos) {
 		if (info.manifestEntry && !requestedManifests.has(info.manifestEntry)) {
 			requestedManifests.add(info.manifestEntry)
@@ -476,6 +477,38 @@ async function reconcile(infos: PLG.RuntimeInfo[]) {
 			bumpVersion()
 		}
 	}
+}
+
+// reconcile evaluates bundles one at a time, in order, and each waits on the api registry. Preloading every bundle and
+// stylesheet reconcile will need downloads them together with the registry rather than one after another. A preload
+// only fetches, so nothing evaluates before the registry is published.
+const prefetched = new Set<string>()
+function prefetchPackaged(infos: PLG.RuntimeInfo[]) {
+	let anyBundle = false
+	for (const info of infos) {
+		if (info.manifestEntry && !requestedManifests.has(info.manifestEntry)) {
+			prefetch(info.manifestEntry, 'modulepreload')
+			anyBundle = true
+		}
+		if (info.status !== 'active' || !info.hasClient || evaluatedFrom.has(info.id)) continue
+		if (info.clientEntry) {
+			prefetch(info.clientEntry, 'modulepreload')
+			anyBundle = true
+		}
+		if (info.clientStyles) prefetch(info.clientStyles, 'preload')
+	}
+	// a failure is retried and reported by the load that awaits the registry
+	if (anyBundle) ensureApiRegistry().catch(() => {})
+}
+
+function prefetch(href: string, rel: 'modulepreload' | 'preload') {
+	if (prefetched.has(href)) return
+	prefetched.add(href)
+	const link = document.createElement('link')
+	link.rel = rel
+	if (rel === 'preload') link.as = 'style'
+	link.href = href
+	document.head.append(link)
 }
 
 // A packaged bundle's `slm/*` and react shims read the registry as they evaluate, so it is published before the

@@ -166,6 +166,37 @@ describe('applyPendingMigrations', () => {
 		await apply()
 		expect(driver.pragma('foreign_keys', { simple: true })).toBe(1)
 	})
+
+	test('a fresh database starts out incremental', async () => {
+		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
+		// the way the test harness creates one: a plain connection, before anything turns on WAL
+		const fresh = new DatabaseConstructor(path.join(dir, 'fresh.sqlite3'))
+		await Migrate.runMigrations(fresh, { sqlDir, tsMigrations: [] })
+		expect(fresh.pragma('auto_vacuum', { simple: true })).toBe(2)
+		fresh.close()
+	})
+
+	test('switches a database with nothing pending to incremental vacuuming, keeping its rows and dropping its free pages', async () => {
+		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY, blob BLOB)')
+		await Migrate.runMigrations(driver, { sqlDir, tsMigrations: [] })
+		driver.pragma('auto_vacuum = NONE')
+		driver.exec('VACUUM')
+		driver
+			.prepare(
+				'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 500) INSERT INTO first (blob) SELECT randomblob(1000) FROM n',
+			)
+			.run()
+		driver.prepare('DELETE FROM first WHERE id > 10').run()
+		expect(driver.pragma('freelist_count', { simple: true })).toBeGreaterThan(0)
+
+		const { applied } = await apply()
+		expect(applied).toEqual([])
+		expect(driver.pragma('auto_vacuum', { simple: true })).toBe(2)
+		expect(driver.pragma('freelist_count', { simple: true })).toBe(0)
+		expect(driver.prepare('SELECT count(*) FROM first').pluck().get()).toBe(10)
+		// a database that is already incremental takes no lock and does nothing
+		expect((await apply()).applied).toEqual([])
+	})
 })
 
 describe('getUnknownAppliedMigrations', () => {

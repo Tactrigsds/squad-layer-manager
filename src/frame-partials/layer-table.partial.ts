@@ -305,6 +305,10 @@ export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, column
 }
 
 export namespace Sel {
+	// per-row selectors kept across every table a page shows. Each layer ever rendered in a table would otherwise keep
+	// its selector for the life of the page
+	const ROW_SELECTORS_MAX = 2000
+
 	export function editingSingleValue(store: Store) {
 		return store.layerTable.maxSelected === 1 && store.layerTable.minSelected === 1
 	}
@@ -328,32 +332,34 @@ export namespace Sel {
 	)
 	const selectedIds = RSel.createSelector([(...[store]: PoolArgs) => store.layerTable.selected], (selected) => new Set(selected))
 
-	export const rowSelectionStatus = RSel.memoizeFactory((rowId: L.LayerId) =>
-		RSel.createDeepSelector(
-			[
-				(...args: PoolArgs) => pageRowsById(...args).get(rowId),
-				(...args: PoolArgs) => selectedIds(...args).has(rowId),
-				(...[store]: PoolArgs) => store.layerTable.selected.length,
-				(...[store]: PoolArgs) => store.layerTable.minSelected,
-				canForceSelect,
-			],
-			(row, isSelected, selectedCount, minSelected, canForceSelect) => {
-				if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false, blockedByMods: false }
+	export const rowSelectionStatus = RSel.memoizeFactoryLru(
+		(rowId: L.LayerId) =>
+			RSel.createDeepSelector(
+				[
+					(...args: PoolArgs) => pageRowsById(...args).get(rowId),
+					(...args: PoolArgs) => selectedIds(...args).has(rowId),
+					(...[store]: PoolArgs) => store.layerTable.selected.length,
+					(...[store]: PoolArgs) => store.layerTable.minSelected,
+					canForceSelect,
+				],
+				(row, isSelected, selectedCount, minSelected, canForceSelect) => {
+					if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false, blockedByMods: false }
 
-				// no permission lifts this one: the server has no mod that could load the layer
-				const blockedByMods = row.isUnsupported
-				const blockedByPool = row.isOutOfPool && !canForceSelect
-				if (blockedByMods || blockedByPool) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
+					// no permission lifts this one: the server has no mod that could load the layer
+					const blockedByMods = row.isUnsupported
+					const blockedByPool = row.isOutOfPool && !canForceSelect
+					if (blockedByMods || blockedByPool) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
 
-				// Check if unchecking would violate minSelected
-				if (isSelected) {
-					const wouldBeUnderMin = (minSelected ?? 0) > selectedCount - 1
-					if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
-				}
+					// Check if unchecking would violate minSelected
+					if (isSelected) {
+						const wouldBeUnderMin = (minSelected ?? 0) > selectedCount - 1
+						if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
+					}
 
-				return { isUnselectable: false, isSelected, blockedByPool, blockedByMods }
-			},
-		),
+					return { isUnselectable: false, isSelected, blockedByPool, blockedByMods }
+				},
+			),
+		ROW_SELECTORS_MAX,
 	)
 
 	export const selectAllStatus = RSel.createDeepSelector(

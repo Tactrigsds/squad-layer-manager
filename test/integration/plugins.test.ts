@@ -205,8 +205,16 @@ describe('plugin host', () => {
 		expect(world.players.has(developer.eos)).toBe(true)
 		expect(warnsTo(app, developer).filter((w) => w.includes('FINAL'))).toHaveLength(1)
 		for (const p of squadded) expect(world.players.has(p.eos)).toBe(true)
-		const kicks = readRows<{ id: string; actorPluginId: string | null }>(
-			`SELECT id, actorPluginId FROM appEvents WHERE type = 'PLAYER_KICKED'`,
+		// the emulator drops a player as soon as AdminKick arrives, but the app event is written only once SLM has read the
+		// roster back and confirmed the kick
+		const kicks = await app.waitFor(
+			() => {
+				const rows = readRows<{ id: string; actorPluginId: string | null }>(
+					`SELECT id, actorPluginId FROM appEvents WHERE type = 'PLAYER_KICKED'`,
+				)
+				return rows.length > 0 ? rows : undefined
+			},
+			{ label: 'the PLAYER_KICKED app event' },
 		)
 		expect(kicks.map((k) => k.actorPluginId)).toEqual(['afk-kicker'])
 		const kicked = readRows<{ value: string }>(

@@ -71,7 +71,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.9',
+	apiVersion: '^0.10',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -781,9 +781,9 @@ halfway through a queue edit.
 `src/plugin-api/api-report.md` records what that version contains. Your manifest declares the range it needs as a
 caret range: `^0.2`, or `^1.2`.
 
-The surface is at 0.2.0, and semver's 0.x rule applies: below 1.0 the minor carries breaking changes and additions
-move the patch. So `^0.2` accepts any 0.2.x build and refuses 0.3.0. Once the surface reaches 1.0, `^1.2` will
-accept 1.2 and later 1.x.
+The surface is below 1.0, so semver's 0.x rule applies: the minor carries breaking changes and additions move the
+patch. So `^0.2` accepts any 0.2.x build and refuses 0.3.0. Once the surface reaches 1.0, `^1.2` will accept 1.2 and
+later 1.x. The report's `api-version` line gives the current version.
 
 A plugin whose range this build does not satisfy is refused at activation, with the mismatch shown in settings. It
 is never a boot failure.
@@ -803,5 +803,10 @@ in `errored` with the reason shown in settings. SLM keeps running.
 
 **Uninstalling leaves your data.** The plugin's row and its tables survive so that reinstalling restores an
 admin's settings. Admins delete leftovers explicitly from the settings page.
+
+**Game server reads come from a cache.** `getTeams`, `getServerInfo`, `getLayerStatus` and `getPlayer` in
+`slm/systems/squad-rcon` answer from what SLM last polled, so calling them often adds no RCON traffic. To act on a
+change, subscribe to `teams$`, `serverInfo$` or `layerStatus$` rather than polling on a timer. `getCurrentLayer` and
+`getNextLayer` send an RCON command on every call.
 
 **Test against a dev instance, not a live server.** See [dev_instances.md](dev_instances.md).

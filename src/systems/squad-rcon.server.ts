@@ -12,6 +12,7 @@ import type * as SETTINGS from '@/models/settings.models'
 import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
+import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
@@ -21,23 +22,31 @@ const module = initModule('squad-rcon')
 let log!: CS.Logger
 let reportedUnmatchedListPlayers = false
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+
+// each is both how often the resource is polled and how stale a read of it may be before it refetches
+const LAYERS_STATUS_TTL_MS = 5_000
+const SERVER_INFO_TTL_MS = 10_000
+const TEAMS_TTL_MS = 5_000
+let pollIntervalScale = 1
+
 export function setup() {
 	log = module.getLogger()
+	pollIntervalScale = envBuilder().RCON_POLL_INTERVAL_SCALE
 }
 
 export function initSquadRcon(
 	ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
-	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
+	opts: { onFatalError?: (err: unknown) => void },
 ): SR.Ctx.Payload {
 	const rcon = ctx.rcon
-	const cacheTTL = opts.cacheTTL
 	const layersStatus: SR.Ctx.Payload['layersStatus'] = new AsyncResource<SM.LayerStatusRes, SR.Ctx.Rcon & CS.AbortSignal>(
 		`serverStatus`,
-		(ctx) => getLayerStatus(ctx),
+		(ctx) => fetchLayerStatus(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.layersStatus,
+			defaultTTL: LAYERS_STATUS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
@@ -49,10 +58,10 @@ export function initSquadRcon(
 
 	const serverInfo: SR.Ctx.Payload['serverInfo'] = new AsyncResource<SM.ServerInfoRes, SR.Ctx.Rcon & CS.AbortSignal>(
 		`serverInfo`,
-		(ctx) => getServerInfo(ctx),
+		(ctx) => fetchServerInfo(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.serverInfo,
+			defaultTTL: SERVER_INFO_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
@@ -67,7 +76,7 @@ export function initSquadRcon(
 		(ctx) => fetchTeams(ctx),
 		module,
 		{
-			defaultTTL: cacheTTL.teams,
+			defaultTTL: TEAMS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
@@ -330,7 +339,7 @@ export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: stri
 }
 
 export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerIds.Ref, opts?: { ttl?: number }) {
-	const playersRes = await ctx.squadRcon.teams.get(ctx, opts)
+	const playersRes = await getTeams(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
 	const player = SM.PlayerIds.find(players, (p) => p.ids, query)
@@ -404,7 +413,7 @@ export const warnAllAdmins = Instr.spanOp(
 	},
 )
 
-export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.ServerInfoRes> {
+async function fetchServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.ServerInfoRes> {
 	const rawDataRes = await ctx.rcon.execute(`ShowServerInfo`, { signal: ctx.signal })
 	if (rawDataRes.code !== 'ok') return rawDataRes
 	const data = JSON.parse(rawDataRes.data)
@@ -431,16 +440,50 @@ export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<
 	}
 }
 
-/**
- * The current roster, both teams and their squads. Served from the polled resource rather than a fresh
- * rcon call, so asking often is cheap; `polledAt` says how old the answer is.
- */
-export async function getTeams(ctx: SR.Ctx & CS.AbortSignal): Promise<SM.TeamsRes> {
-	return await ctx.squadRcon.teams.get(ctx)
+// -------- the polled state: the roster, server info and layer status --------
+//
+// Each is a cached resource that SLM polls while anything observes it. A read is answered from the cache unless the
+// cached answer is older than its `ttl`, and an observer is pushed every new answer. `ttl` is in ms and defaults to the
+// resource's poll interval. It cannot go below MIN_TTL_MS: an observer's ttl becomes the poll interval for everyone,
+// and a read with a tiny ttl is an rcon round trip per call.
+
+export const MIN_TTL_MS = 1_000
+
+function ttlAtLeastMin(opts?: { ttl?: number }) {
+	return opts?.ttl === undefined ? undefined : { ttl: Math.max(opts.ttl, MIN_TTL_MS) }
 }
 
-/** Current and next layer in one call. Prefer it over getCurrentLayer + getNextLayer, which costs two round trips. */
-export const getLayerStatus = Instr.spanOp(
+/** The current roster, both teams and their squads. `polledAt` says how old the answer is. */
+export async function getTeams(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Promise<SM.TeamsRes> {
+	return await ctx.squadRcon.teams.get(ctx, ttlAtLeastMin(opts))
+}
+
+/** Every new roster, starting with the current one. */
+export function teams$(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Rx.Observable<SM.TeamsRes> {
+	return ctx.squadRcon.teams.observe(ctx, ttlAtLeastMin(opts))
+}
+
+/** Player and queue counts. */
+export async function getServerInfo(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Promise<SM.ServerInfoRes> {
+	return await ctx.squadRcon.serverInfo.get(ctx, ttlAtLeastMin(opts))
+}
+
+/** Every new answer of getServerInfo, starting with the current one. */
+export function serverInfo$(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Rx.Observable<SM.ServerInfoRes> {
+	return ctx.squadRcon.serverInfo.observe(ctx, ttlAtLeastMin(opts))
+}
+
+/** Current and next layer. Prefer it over getCurrentLayer + getNextLayer, which cost two rcon round trips per call. */
+export async function getLayerStatus(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Promise<SM.LayerStatusRes> {
+	return await ctx.squadRcon.layersStatus.get(ctx, ttlAtLeastMin(opts))
+}
+
+/** Every new answer of getLayerStatus, starting with the current one. */
+export function layerStatus$(ctx: SR.Ctx & CS.AbortSignal, opts?: { ttl?: number }): Rx.Observable<SM.LayerStatusRes> {
+	return ctx.squadRcon.layersStatus.observe(ctx, ttlAtLeastMin(opts))
+}
+
+const fetchLayerStatus = Instr.spanOp(
 	'getLayerStatus',
 	{ module },
 	async (ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {

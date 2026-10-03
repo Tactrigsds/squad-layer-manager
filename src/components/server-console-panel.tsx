@@ -62,7 +62,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	const denied = Zus.useStore(stores.serverConsole, (s) => s.denied)
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
-	const find = useSubtreeFind()
+	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 
 	// each channel is its own tail, so switching to one starts at its end
 	React.useEffect(() => {
@@ -116,8 +116,8 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					<Icons.Eraser className="h-3.5 w-3.5" />
 				</Button>
 			</div>
-			<div ref={find.scopeRef} className="relative min-h-0 grow bg-muted/30">
-				<SubtreeFindBar stores={find.stores} className="absolute inset-e-3 top-2" />
+			<div ref={findScopeRef} className="relative min-h-0 grow bg-muted/30">
+				<SubtreeFindBar stores={findStores} className="absolute inset-e-3 top-2" />
 				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
 					<div ref={contentRef} className="p-1.5">
 						{events.length === 0 ? (

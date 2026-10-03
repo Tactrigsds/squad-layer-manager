@@ -3,6 +3,7 @@ import * as TSWPrt from '@/frame-partials/teamswaps.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
+import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -89,39 +90,51 @@ export namespace Sel {
 		mutation: ItemMut.ItemMutationState
 	}
 
+	type SwapsInputs = Store & ChatPrt.Store
+	// deep-checked, so a roster change that leaves every swapped player as they were keeps the same map
+	const swapsWithMutationsForTeam = RSel.memoizeFactory((team: MH.NormedTeamId) =>
+		RSel.createDeepSelector(
+			[
+				(store: SwapsInputs) => localState(store).editedSwaps,
+				(store: SwapsInputs) => localState(store).savedSwaps,
+				(store: SwapsInputs) => ChatPrt.Sel.players(store),
+			],
+			(swaps, savedSwaps, players): Map<SM.PlayerId, EnrichedTeamswapWithMutation> => {
+				const mutations = ItemMut.initMutations<SM.PlayerId>()
+				const allPlayerIds = new Set<SM.PlayerId>()
+
+				for (const [playerId, swap_] of swaps.entries()) {
+					if (swap_.toTeam !== team) continue
+					allPlayerIds.add(playerId)
+					if (!savedSwaps.has(playerId)) {
+						ItemMut.tryApplyMutation('added', playerId, mutations)
+					}
+				}
+				for (const [playerId, swap_] of savedSwaps.entries()) {
+					if (swap_.toTeam !== team) continue
+					allPlayerIds.add(playerId)
+					if (!swaps.has(playerId)) {
+						ItemMut.tryApplyMutation('removed', playerId, mutations)
+					}
+				}
+
+				const result = new Map<SM.PlayerId, EnrichedTeamswapWithMutation>()
+				for (const playerId of allPlayerIds) {
+					const swap_ = swaps.get(playerId) ?? savedSwaps.get(playerId)!
+					const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
+					if (!player) continue
+					result.set(playerId, { ...swap_, player, mutation: ItemMut.toItemMutationState(mutations, playerId) })
+				}
+				return result
+			},
+		),
+	)
+
 	export function swapsToTeamEnrichedWithMutations(
-		store: Store & ChatPrt.Store,
+		store: SwapsInputs,
 		team: MH.NormedTeamId,
 	): Map<SM.PlayerId, EnrichedTeamswapWithMutation> {
-		const { editedSwaps: swaps, savedSwaps } = localState(store)
-		const players = ChatPrt.Sel.players(store)
-
-		const mutations = ItemMut.initMutations<SM.PlayerId>()
-		const allPlayerIds = new Set<SM.PlayerId>()
-
-		for (const [playerId, swap_] of swaps.entries()) {
-			if (swap_.toTeam !== team) continue
-			allPlayerIds.add(playerId)
-			if (!savedSwaps.has(playerId)) {
-				ItemMut.tryApplyMutation('added', playerId, mutations)
-			}
-		}
-		for (const [playerId, swap_] of savedSwaps.entries()) {
-			if (swap_.toTeam !== team) continue
-			allPlayerIds.add(playerId)
-			if (!swaps.has(playerId)) {
-				ItemMut.tryApplyMutation('removed', playerId, mutations)
-			}
-		}
-
-		const result = new Map<SM.PlayerId, EnrichedTeamswapWithMutation>()
-		for (const playerId of allPlayerIds) {
-			const swap_ = swaps.get(playerId) ?? savedSwaps.get(playerId)!
-			const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
-			if (!player) continue
-			result.set(playerId, { ...swap_, player, mutation: ItemMut.toItemMutationState(mutations, playerId) })
-		}
-		return result
+		return swapsWithMutationsForTeam(team)(store)
 	}
 }
 

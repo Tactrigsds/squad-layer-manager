@@ -1,3 +1,4 @@
+import { FixedSizeMap } from '@/lib/lru-map'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import type * as BM from '@/models/battlemetrics.models'
@@ -7,8 +8,9 @@ import * as SM from '@/models/squad.models'
 
 // Compiled once per distinct pattern rather than per player per render: a rule is evaluated against every player on
 // the roster, and the pattern only changes when settings do. Patterns that don't compile cache as null and never match,
-// so a bad one costs nothing beyond the first attempt.
-const compiledPatterns = new Map<string, RegExp | null>()
+// so a bad one costs nothing beyond the first attempt. Capped because settings validation compiles every pattern an
+// admin types, one keystroke at a time.
+const compiledPatterns = new FixedSizeMap<string, RegExp | null>(256)
 
 export function compilePattern(pattern: string): RegExp | null {
 	if (compiledPatterns.has(pattern)) return compiledPatterns.get(pattern)!

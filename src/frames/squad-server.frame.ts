@@ -179,20 +179,13 @@ export namespace Sel {
 
 	// mirrors the server's admin-target rule so the warn boxes can default their "notify admins" toggle to match
 	export function allTargetsAreAdmins(targets: Iterable<SM.PlayerId>) {
-		return (s: State) => {
-			const players = ChatPrt.Sel.players(s)
-			let any = false
-			for (const target of targets) {
-				any = true
-				if (!SM.PlayerIds.find(players, (p) => p.ids, target)?.isAdmin) return false
-			}
-			return any
-		}
+		return (s: State) => targetsAreAdmins(targets, ChatPrt.Sel.chatState(s).players)
 	}
 
-	export function selectionIsAllAdmins(s: State) {
-		return allTargetsAreAdmins(selectedPlayerIds(s))(s)
-	}
+	export const selectionIsAllAdmins = RSel.createSelector(
+		[selectedPlayerIds, (s: State) => ChatPrt.Sel.chatState(s).players],
+		targetsAreAdmins,
+	)
 
 	// The warnings this edit session is answerable for: repeat-rule violations and pool-filter warnings on items it
 	// touched, plus repeat violations its deletions and moves created between items it did not (see
@@ -238,6 +231,15 @@ const SELECTION_SETTLE_MS = 200
 
 function toSelectedIds(selection: Record<SM.PlayerId, boolean>): Set<SM.PlayerId> {
 	return new Set(Object.keys(selection).filter((id) => selection[id]))
+}
+
+function targetsAreAdmins(targets: Iterable<SM.PlayerId>, roster: ReadonlyMap<SM.PlayerId, SM.Player>): boolean {
+	let any = false
+	for (const target of targets) {
+		any = true
+		if (!roster.get(target)?.isAdmin) return false
+	}
+	return any
 }
 
 function sameSelection(a: Set<SM.PlayerId>, b: Set<SM.PlayerId>): boolean {

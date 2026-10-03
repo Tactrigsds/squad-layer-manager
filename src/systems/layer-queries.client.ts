@@ -594,6 +594,10 @@ async function setup() {
 		// addEventListener does not start the port on its own
 		sharedWorker.port.start()
 		worker = sharedWorker.port
+		// a page kept in the back/forward cache can come back, and still needs its port
+		window.addEventListener('pagehide', (event) => {
+			if (!event.persisted) sharedWorker.port.postMessage({ type: 'disconnect' } satisfies WorkerTypes.ToWorker)
+		})
 	} else {
 		worker = new LQWorker({ name: 'layer-queries-worker' })
 	}

@@ -19,9 +19,15 @@ export async function loadDurationFormat() {
 	DurationFormat ??= (await import('@formatjs/intl-durationformat')).DurationFormat
 }
 
+const durationFormats = new Map<string, FormatjsDuration.DurationFormat>()
+
+// one per locale and style: constructing a DurationFormat costs more than formatting with one
 function durationFormat(locale: string, style: 'long' | 'narrow') {
 	if (!DurationFormat) throw new Error('Intl.DurationFormat is unavailable and loadDurationFormat() has not run')
-	return new DurationFormat(locale, { style })
+	const cacheKey = `${locale}|${style}`
+	let format = durationFormats.get(cacheKey)
+	if (!format) durationFormats.set(cacheKey, (format = new DurationFormat(locale, { style })))
+	return format
 }
 
 // date-fns only measures the duration here; naming its parts is Intl's, which is what makes "1 minute, 30 seconds"
@@ -126,7 +132,7 @@ export function formatNumber(value: number, locale?: string) {
 
 // A human-readable list, "a, b and c", joined the way the reader's language joins one
 export function formatList(items: readonly string[], options?: { locale?: string; type?: 'conjunction' | 'disjunction' | 'unit' }) {
-	return new Intl.ListFormat(options?.locale ?? I18n.getAmbientLocale(), { type: options?.type ?? 'conjunction' }).format(items)
+	return I18n.listFormat(options?.locale ?? I18n.getAmbientLocale(), options?.type).format(items)
 }
 
 export function voteChoicesLines(choices: L.LayerId[], locale: string, you?: 1 | 2, displayProps?: DH.LayerDisplayProp[]) {

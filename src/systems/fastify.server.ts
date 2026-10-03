@@ -7,6 +7,7 @@ import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import fastify from 'fastify'
+import * as Crypto from 'node:crypto'
 import * as fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { WebSocket } from 'ws'
@@ -242,13 +243,25 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 	// One generated module per specifier a packaged plugin can import, each re-exporting from the app's
 	// own instance. Not files on disk: the names come from the generated table for slm/* and from the
 	// live namespace for a shared package.
+	// A page with a packaged plugin fetches a dozen of these on every load. The url carries no version, so the
+	// browser must revalidate its copy, and the etag lets the answer be a bodyless 304.
+	const shims = new Map<string, { source: string; etag: string }>()
 	instance.get(AR.route('/plugin-api/*'), async (req, res) => {
 		const specifier = SHIM.routeToSpecifier((req.params as { '*': string })['*'])
-		const names = specifier ? (PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)) : undefined
-		if (!specifier || !names || names.length === 0) return res.code(404).send()
+		if (!specifier) return res.code(404).send()
+		let shim = shims.get(specifier)
+		if (!shim) {
+			const names = PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)
+			if (names.length === 0) return res.code(404).send()
+			const source = SHIM.shimSource(specifier, names)
+			shim = { source, etag: `"${Crypto.createHash('sha256').update(source).digest('base64url')}"` }
+			shims.set(specifier, shim)
+		}
 		res.header('Content-Type', 'text/javascript; charset=utf-8')
 		res.header('Cache-Control', 'no-cache')
-		return res.send(SHIM.shimSource(specifier, names))
+		res.header('ETag', shim.etag)
+		if (req.headers['if-none-match'] === shim.etag) return res.code(304).send()
+		return res.send(shim.source)
 	})
 
 	// A packaged plugin's manifest module and client bundle. Only the files plugin.json names are
@@ -324,10 +337,11 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		return res.status(200).send({ status: 'ok' })
 	})
 
-	const authedCtxCreatedAt = new Map<FastifyRequest['id'], number>()
-	const authedCtxMap = new Map<FastifyRequest['id'], C.FastifyRequestFull & C.AuthedUser>()
+	// Keyed on the request object, so an entry lives exactly as long as its request. A websocket upgrade never
+	// completes an http response, so a hook that removes the entry on response would miss every /orpc connection.
+	const authedCtxs = new WeakMap<FastifyRequest, C.FastifyRequestFull & C.AuthedUser>()
 	function getAuthedCtx(req: FastifyRequest) {
-		const ctx = authedCtxMap.get(req.id)
+		const ctx = authedCtxs.get(req)
 		if (!ctx) {
 			throw new Error('No authed context found')
 		}
@@ -341,8 +355,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const servesPage = baseCtx.route?.def.handle === 'page' && !wantsHistoryRaw(req, baseCtx.route)
 		switch (authRes.code) {
 			case 'ok':
-				authedCtxMap.set(req.id, authRes.ctx)
-				authedCtxCreatedAt.set(req.id, Date.now())
+				authedCtxs.set(req, authRes.ctx)
 				break
 			case 'unauthorized:no-cookie':
 			case 'unauthorized:no-session':
@@ -372,14 +385,6 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const statusCode = res.statusCode
 		if (statusCode >= 400) {
 			req.log.warn('Response %d for %s %s', statusCode, req.method, req.url)
-		}
-		authedCtxMap.delete(req.id)
-		authedCtxCreatedAt.delete(req.id)
-		for (const [reqId, createdAt] of Object.entries(authedCtxCreatedAt)) {
-			if (Date.now() - createdAt > 10_000) {
-				authedCtxMap.delete(reqId)
-				authedCtxCreatedAt.delete(reqId)
-			}
 		}
 	})
 

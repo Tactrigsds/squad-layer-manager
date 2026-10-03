@@ -310,6 +310,27 @@ async function loadServerSettings(
 	if (opts.seedDraft && get().draft === undefined) set({ draft: settings })
 }
 
+// After a save, the saved value becomes the baseline at once, so the save ends without waiting for the reload. The
+// reload then replaces it with the server-normalized value, and re-seeds the draft only if no edits landed meanwhile.
+async function refreshBaseline(
+	s: Zus.StoreApi<SettingsEditor>,
+	stateAtSave: SettingsEditor,
+	savedValue: unknown,
+	reload: () => Promise<void>,
+) {
+	try {
+		s.setState({ saved: editSchema(stateAtSave).encode(savedValue) })
+	} catch {
+		// unencodable: the baseline waits for the reload instead
+	}
+	await reload()
+	const cur = s.getState()
+	if (cur.draft === stateAtSave.draft && cur.saved !== undefined) {
+		s.setState({ draft: cur.saved })
+		cur.reset$.next()
+	}
+}
+
 async function loadPluginSettings(
 	get: () => SettingsEditor,
 	set: (p: Partial<SettingsEditor>) => void,
@@ -549,19 +570,15 @@ export namespace Actions {
 						return false
 					}
 					toast(...tr.toast(SETTINGS_Msgs.serverSettingsSaved()))
-					// refresh the baseline with the server-normalized value; only re-seed the draft if no edits landed mid-save
-					const draftAtSave = state.draft
-					await loadServerSettings(
-						() => s.getState(),
-						(p) => s.setState(p),
-						state.serverId!,
-						{ seedDraft: false },
-					)
-					const cur = s.getState()
-					if (cur.draft === draftAtSave && cur.saved !== undefined) {
-						s.setState({ draft: cur.saved })
-						cur.reset$.next()
-					}
+					const serverId = state.serverId!
+					refreshBaseline(s, state, value, () =>
+						loadServerSettings(
+							() => s.getState(),
+							(p) => s.setState(p),
+							serverId,
+							{ seedDraft: false },
+						),
+					).catch(console.error)
 					return true
 				}
 				case 'plugin': {
@@ -583,18 +600,15 @@ export namespace Actions {
 					}
 					const name = PluginsClient.Store.getState().plugins.find((p) => p.id === state.pluginId)?.name ?? state.pluginId!
 					toast(tr.text(PLUGINS_Msgs.configSaved(name)))
-					const draftAtSave = state.draft
-					await loadPluginSettings(
-						() => s.getState(),
-						(p) => s.setState(p),
-						state.pluginId!,
-						{ seedDraft: false },
-					)
-					const cur = s.getState()
-					if (cur.draft === draftAtSave && cur.saved !== undefined) {
-						s.setState({ draft: cur.saved })
-						cur.reset$.next()
-					}
+					const pluginId = state.pluginId!
+					refreshBaseline(s, state, value, () =>
+						loadPluginSettings(
+							() => s.getState(),
+							(p) => s.setState(p),
+							pluginId,
+							{ seedDraft: false },
+						),
+					).catch(console.error)
 					return true
 				}
 				case 'new-server': {

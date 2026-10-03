@@ -41,7 +41,7 @@ import * as UsersClient from '@/systems/users.client'
 
 import { FilterCheckbox, PoolFilterCheckbox } from './applied-filters-panel.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
-import { CopyableCommand } from './commands-page.tsx'
+import { CopyableCommand } from './copyable-command.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
@@ -79,7 +79,7 @@ export default function BackburnerPanel(props: StoresProp) {
 	// seeded from it, and on commit the picked layer is added to the queue at `index` while the request is consumed
 	const [queueDrop, setQueueDrop] = React.useState<QueueDrop | null>(null)
 	const dragging = DndKit.useDragging()
-	const panelDrop = DndKit.useDroppable(PANEL_DROP_ITEM, { disabled: dragging?.type !== 'layer-item' || !canRequest })
+	const { ref: panelDropRef } = DndKit.useDroppable(PANEL_DROP_ITEM, { disabled: dragging?.type !== 'layer-item' || !canRequest })
 
 	const satisfiable = useBackburnerSatisfiability(items)
 	const combinableWith = useCombinability(items)
@@ -184,7 +184,7 @@ export default function BackburnerPanel(props: StoresProp) {
 	const showDropHint = dragging?.type === 'layer-item' && canRequest
 
 	return (
-		<div ref={panelDrop.ref} className={cn('mx-2 mt-1 border-t border-line pt-1.5', showDropHint && 'ring-2 ring-inset ring-pri/50')}>
+		<div ref={panelDropRef} className={cn('mx-2 mt-1 border-t border-line pt-1.5', showDropHint && 'ring-2 ring-inset ring-pri/50')}>
 			<div className="flex flex-wrap items-center gap-2 min-h-(--ctl)">
 				<span className="fd-cond font-bold text-base flex items-center gap-1.5">
 					{tr.text(BB_Msgs.heading(items.length))}
@@ -417,7 +417,11 @@ function BackburnerRow(
 	const loggedInUserId = UsersClient.loggedInUserId
 	const dragging = DndKit.useDragging()
 
-	const dragProps = DndKit.useDraggable({ type: 'backburner-item', id: props.itemId }, { feedback: 'default' })
+	const {
+		ref: dragRef,
+		handleRef: dragHandleRef,
+		isDragging,
+	} = DndKit.useDraggable({ type: 'backburner-item', id: props.itemId }, { feedback: 'default' })
 	const { ref: dropRef, isDropTarget } = DndKit.useDroppable(
 		{
 			type: 'relative-to-drag-item',
@@ -437,10 +441,10 @@ function BackburnerRow(
 	return (
 		<li
 			ref={(el) => {
-				dragProps.ref(el)
+				dragRef(el)
 				dropRef(el)
 			}}
-			data-is-dragging={dragProps.isDragging}
+			data-is-dragging={isDragging}
 			data-mutation={displayedMutation}
 			className={cn(
 				'flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50',
@@ -450,7 +454,7 @@ function BackburnerRow(
 		>
 			<button
 				type="button"
-				ref={dragProps.handleRef}
+				ref={dragHandleRef}
 				className={cn('flex size-4 items-center justify-center cursor-grab text-text-3 hover:text-text', !canEdit && 'invisible')}
 				disabled={!canEdit}
 			>

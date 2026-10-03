@@ -3,7 +3,7 @@ import * as react from 'react'
 import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 
-import * as zod from '@/lib/zod'
+import { z } from '@/lib/zod'
 import * as SHIM from '@/models/plugin-api-shim'
 import * as componentsComboBox from '@/plugin-api/components/combo-box'
 import * as componentsIcons from '@/plugin-api/components/icons'
@@ -69,6 +69,8 @@ export function setup() {
 		react,
 		'react/jsx-runtime': reactJsxRuntime,
 		rxjs,
-		zod,
+		// the same keys as `import * as zod`. That namespace would be built in the entry chunk and pull every zod
+		// locale into the initial load. `z` is built in this lazily loaded chunk instead.
+		zod: { ...z, z, default: z },
 	}
 }

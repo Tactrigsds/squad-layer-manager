@@ -51,7 +51,6 @@ export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 
 export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 	'updatesToSquadServerDisabled',
-	'rconCacheTTL',
 	'queue.lowQueueWarningThreshold',
 	'queue.adminQueueReminderInterval',
 	'vote.voteReminderInterval',
@@ -79,7 +78,6 @@ export const LOCAL_YAML_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'chat',
 	// server
 	'queue',
-	'rconCacheTTL',
 	'adminLists',
 	'updatesToSquadServerDisabled',
 ])

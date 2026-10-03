@@ -43,6 +43,10 @@ export async function runMigrations(
 ): Promise<{ applied: string[] }> {
 	const log = opts.log ?? (() => {})
 
+	// a fresh database starts out incremental, and never needs switchToIncrementalVacuum. The pragma only takes on a file
+	// with no pages yet, so a caller that turned on WAL first (which writes the first page) gets the switch instead.
+	driver.pragma('auto_vacuum = INCREMENTAL')
+
 	// A migration that rebuilds a table drops the original, and enforcement turns every inbound FK's cascade into
 	// data loss on rows that were never meant to be touched (an `on delete set null` owner column silently nulling).
 	// Both drizzle-kit's generated rebuilds and our hand-written ones depend on this being off. better-sqlite3 turns
@@ -120,12 +124,35 @@ export async function applyPendingMigrations(
 	// business demanding exclusive access: every boot goes through here, and one that overlaps the outgoing process's
 	// shutdown would otherwise refuse to start over migrations it was never going to apply. Re-checked under the lock,
 	// which is the check that counts.
-	if (getPendingMigrations(driver, opts).length === 0) return { applied: [] }
+	if (getPendingMigrations(driver, opts).length === 0 && !needsIncrementalVacuum(driver)) return { applied: [] }
 	return await withDbLockedExclusively(driver, async () => {
-		if (getPendingMigrations(driver, opts).length === 0) return { applied: [] }
-		if (opts.backup) await takePreMigrationBackup(driver, opts.backup, log)
-		return await runMigrations(driver, opts)
+		let applied: string[] = []
+		if (getPendingMigrations(driver, opts).length > 0) {
+			if (opts.backup) await takePreMigrationBackup(driver, opts.backup, log)
+			;({ applied } = await runMigrations(driver, opts))
+		}
+		if (needsIncrementalVacuum(driver)) switchToIncrementalVacuum(driver, log)
+		return { applied }
 	})
+}
+
+const AUTO_VACUUM_INCREMENTAL = 2
+
+function needsIncrementalVacuum(driver: MigrationDriver) {
+	return driver.pragma('auto_vacuum', { simple: true }) !== AUTO_VACUUM_INCREMENTAL
+}
+
+// The app hands free pages back to the filesystem in small steps (see db-maintenance.worker.ts), which needs
+// auto_vacuum=INCREMENTAL. A database with tables can only change its auto_vacuum mode through a full VACUUM, which
+// rewrites the file, so it runs here, once, under the same exclusive lock as migrations. A 2.5GB production copy that
+// was 75% free pages took 2.9s and came out at 545MB.
+function switchToIncrementalVacuum(driver: MigrationDriver, log: (msg: string) => void) {
+	const started = performance.now()
+	driver.pragma('auto_vacuum = INCREMENTAL')
+	driver.exec('VACUUM')
+	// the whole database went through the wal, so drop it now rather than at the next checkpoint
+	driver.pragma('wal_checkpoint(TRUNCATE)')
+	log(`switched the database to incremental vacuuming in ${Math.round(performance.now() - started)}ms`)
 }
 
 async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupConfig, log: (msg: string) => void) {
@@ -133,7 +160,11 @@ async function takePreMigrationBackup(driver: MigrationDriver, backup: BackupCon
 	// wants, not the one about to apply the migrations.
 	const name = DbBackup.fileName(backup.dbPath, 'pre-migration', DbMeta.readBuildStamp(driver)?.gitSha)
 	const destPath = path.join(backup.dir, name)
-	const { sizeBytes } = await DbBackup.writeBackup({ destPath, snapshot: (dest) => driver.backup(dest) })
+	// synchronous, but nothing else runs yet: the app migrates before it serves, and holds the database exclusively
+	const { sizeBytes } = await DbBackup.writeBackup({
+		destPath,
+		snapshot: async (dest) => driver.prepare('VACUUM INTO ?').run(dest),
+	})
 	log(`wrote pre-migration backup ${destPath} (${sizeBytes} bytes)`)
 	// pruned after the new one is on disk, so a failure here can never leave us with none
 	const pruned = DbBackup.pruneBackups({ ...backup, keep: name })

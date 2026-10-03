@@ -154,9 +154,14 @@ export default function NavBar() {
 	]
 	// the tab switcher already covers "Server" in single-column mode
 	const visibleLinks = pageLinks.filter((link) => !(showDashboardTabs && link.key === 'server'))
-	const priorityPlus = usePriorityPlus(visibleLinks.length, !isSmall)
-	const inlineLinks = visibleLinks.slice(0, priorityPlus.fitCount)
-	const foldedLinks = visibleLinks.slice(priorityPlus.fitCount)
+	const {
+		fitCount,
+		boxRef: linksBoxRef,
+		measureRef: linksMeasureRef,
+		trailingRef: linksTrailingRef,
+	} = usePriorityPlus(visibleLinks.length, !isSmall)
+	const inlineLinks = visibleLinks.slice(0, fitCount)
+	const foldedLinks = visibleLinks.slice(fitCount)
 
 	const pageMenuItems = (links: PageLink[]) =>
 		links.map((link) => (
@@ -407,8 +412,8 @@ export default function NavBar() {
 					setActive={SquadServerClient.DashboardTabActions.setSide}
 				/>
 			)}
-			<div ref={priorityPlus.boxRef} className="relative flex min-w-0 flex-1 items-center gap-3 overflow-x-clip">
-				<div ref={priorityPlus.measureRef} aria-hidden className="invisible absolute inset-s-0 top-0 flex w-max">
+			<div ref={linksBoxRef} className="relative flex min-w-0 flex-1 items-center gap-3 overflow-x-clip">
+				<div ref={linksMeasureRef} aria-hidden className="invisible absolute inset-s-0 top-0 flex w-max">
 					{visibleLinks.map((link) => (
 						<span key={link.key} className="fd-nav-link fd-nav-link-on">
 							{link.label}
@@ -446,7 +451,7 @@ export default function NavBar() {
 					</DropdownMenu>
 				)}
 				<Button
-					ref={priorityPlus.trailingRef}
+					ref={linksTrailingRef}
 					size={isMedium ? 'sm' : 'icon-sm'}
 					className="shrink-0"
 					title={isMedium ? undefined : tr.text(APP_Msgs.exploreLayers())}

@@ -3,14 +3,17 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
+import { Worker } from 'node:worker_threads'
 import { highlight } from 'sql-highlight'
 
 import { assertNever } from '@/lib/type-guards'
 import { tsMigrations } from '@/migrations/registry'
 import type * as CS from '@/models/context-shared'
 import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 import type * as C from './context.ts'
+import type * as MaintenanceWorker from './db-maintenance.worker.ts'
 import * as DbMeta from './db-meta.ts'
 import * as Env from './env.ts'
 import * as Migrate from './migrate.ts'
@@ -64,12 +67,17 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 
 	fs.mkdirSync(path.dirname(ENV.DB_PATH), { recursive: true })
 	driver = new DatabaseConstructor(ENV.DB_PATH)
+	// only takes on a file with no pages yet, which is a fresh install; an existing database is switched by migrate.ts.
+	// Before WAL, which writes the first page.
+	driver.pragma('auto_vacuum = INCREMENTAL')
 	driver.pragma('journal_mode = WAL')
 	driver.pragma('synchronous = NORMAL')
 	driver.pragma('busy_timeout = 5000')
 	// a checkpoint resets the wal but leaves the file at its high-water mark, so one long burst of writes
 	// (a compaction pass, a migration) would otherwise hold that much disk for the life of the process
 	driver.pragma(`journal_size_limit = ${64 * 1024 * 1024}`)
+	// No ANALYZE or `PRAGMA optimize`. With sqlite_stat1 the planner walks serverEventIndex's time index for a rare
+	// type filter, which took one history page from 0.1ms to 44ms on a production copy.
 
 	// Schema-vs-code guard, run while foreign_keys is still at its default (OFF) — same as the
 	// standalone `pnpm db:migrate`, since drizzle-kit's table-rebuild migrations require FK
@@ -107,6 +115,14 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	// Set after migrations so table-rebuild migrations run with enforcement off (see above).
 	driver.pragma('foreign_keys = ON')
 
+	// after migrations, which hold the database exclusively and so would lock the worker's connection out
+	bootMaintenanceWorker()
+	CleanupSys.register(async () => {
+		maintenance.shuttingDown = true
+		if (maintenance.rebootTimer) clearTimeout(maintenance.rebootTimer)
+		await maintenance.worker?.terminate()
+	})
+
 	db = drizzle(driver, {
 		logger: {
 			logQuery: (query: string, params: unknown[]) => {
@@ -124,14 +140,108 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 	})
 }
 
-// sqlite's online backup API (the same thing the shell's `.backup` runs): copies the database page by page from the
-// live connection, giving a consistent snapshot without taking the db offline. Writes made through this connection
-// while it runs are applied to the copy too, so the snapshot can't tear. better-sqlite3 transfers in 100-page chunks
-// with a setImmediate between them, so this doesn't block the event loop despite the driver being synchronous.
-// The destination is written by sqlite itself, so callers should hand it a temp path and rename into place -- a crash
-// mid-backup otherwise leaves a truncated file that looks whole.
+// -------- the maintenance worker (see db-maintenance.worker.ts) --------
+
+// The main connection checkpoints for itself only once the WAL reaches this many pages, as a backstop for a
+// maintenance worker that has fallen behind. While no worker is running it checkpoints at sqlite's default instead.
+const BACKSTOP_AUTOCHECKPOINT_PAGES = 10_000
+const DEFAULT_AUTOCHECKPOINT_PAGES = 1000
+const CHECKPOINT_INTERVAL_MS = 250
+// 10MB of 4KB pages: below this, free pages wait to be reused by the next writes rather than handed back
+const VACUUM_START_PAGES = 2_560
+const MAINTENANCE_REBOOT_DELAYS = [1_000, 5_000, 30_000]
+
+const maintenance = {
+	worker: undefined as Worker | undefined,
+	nextSeq: 1,
+	pending: new Map<number, { resolve: () => void; reject: (err: unknown) => void }>(),
+	rebootAttempts: 0,
+	rebootTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+	shuttingDown: false,
+}
+
+function bootMaintenanceWorker() {
+	// under tsx this module's url is the .ts source and the worker needs the loader passed along; from the prod bundle
+	// both are built .js chunks side by side in dist-server/
+	const isTs = import.meta.url.endsWith('.ts')
+	const url = new URL(isTs ? './db-maintenance.worker.ts' : './db-maintenance.worker.js', import.meta.url)
+	let w: Worker
+	try {
+		w = new Worker(url, {
+			workerData: {
+				dbPath: ENV.DB_PATH,
+				checkpointIntervalMs: CHECKPOINT_INTERVAL_MS,
+				vacuumStartPages: VACUUM_START_PAGES,
+			} satisfies MaintenanceWorker.WorkerData,
+			execArgv: isTs ? ['--import', 'tsx'] : undefined,
+		})
+	} catch (err) {
+		log.error(err, 'db maintenance worker failed to boot; checkpoints run on the main connection until it does')
+		scheduleMaintenanceReboot()
+		return
+	}
+	const onDown = (err: unknown) => {
+		if (maintenance.worker !== w) return
+		maintenance.worker = undefined
+		driver.pragma(`wal_autocheckpoint = ${DEFAULT_AUTOCHECKPOINT_PAGES}`)
+		for (const p of maintenance.pending.values()) p.reject(err)
+		maintenance.pending.clear()
+		scheduleMaintenanceReboot()
+	}
+	w.on('message', (msg: MaintenanceWorker.Response) => {
+		if ('ready' in msg) {
+			maintenance.rebootAttempts = 0
+			driver.pragma(`wal_autocheckpoint = ${BACKSTOP_AUTOCHECKPOINT_PAGES}`)
+			return
+		}
+		const p = maintenance.pending.get(msg.seq)
+		if (!p) return
+		maintenance.pending.delete(msg.seq)
+		if (msg.err) p.reject(Object.assign(new Error(msg.err.message), { stack: msg.err.stack }))
+		else p.resolve()
+	})
+	w.on('error', (err) => {
+		if (!maintenance.shuttingDown)
+			log.error(err, 'db maintenance worker failed; checkpoints run on the main connection until it restarts')
+		onDown(err)
+	})
+	w.on('exit', () => onDown(new Error('db maintenance worker exited')))
+	// the worker must never hold the process open
+	w.unref()
+	maintenance.worker = w
+}
+
+function scheduleMaintenanceReboot() {
+	if (maintenance.shuttingDown || maintenance.worker || maintenance.rebootTimer) return
+	const delay = MAINTENANCE_REBOOT_DELAYS[Math.min(maintenance.rebootAttempts, MAINTENANCE_REBOOT_DELAYS.length - 1)]
+	maintenance.rebootAttempts++
+	maintenance.rebootTimer = setTimeout(() => {
+		maintenance.rebootTimer = undefined
+		bootMaintenanceWorker()
+	}, delay)
+	maintenance.rebootTimer.unref()
+}
+
+// Writes a consistent, compacted copy of the database to destPath with VACUUM INTO, on the maintenance worker's
+// connection. Writes on the main connection carry on while it runs and are not in the copy. The destination must not
+// exist, and is written by sqlite itself, so callers should hand it a temp path and rename into place: a crash
+// mid-snapshot otherwise leaves a truncated file that looks whole.
 export async function backupTo(destPath: string) {
-	return await driver.backup(destPath)
+	const w = maintenance.worker
+	// while the worker is down, sqlite's online backup on the main connection, which copies 100 pages per turn of the
+	// event loop and carries the free pages along
+	if (!w) return void (await driver.backup(destPath))
+	const seq = maintenance.nextSeq++
+	// held open while a snapshot is owed, which the unref'd worker would not otherwise do
+	w.ref()
+	try {
+		await new Promise<void>((resolve, reject) => {
+			maintenance.pending.set(seq, { resolve, reject })
+			w.postMessage({ seq, snapshotTo: destPath } satisfies MaintenanceWorker.Request)
+		})
+	} finally {
+		if (maintenance.pending.size === 0) w.unref()
+	}
 }
 
 // the build that owns this database, stamped on boot (see db-meta.ts). null only if setup() hasn't run or the db

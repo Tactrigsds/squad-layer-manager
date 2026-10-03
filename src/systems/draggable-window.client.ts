@@ -115,6 +115,8 @@ interface DraggableWindowOutletContextValue {
 export const DraggableWindowOutletContext = React.createContext<DraggableWindowOutletContextValue | null>(null)
 const DEFAULT_OUTLET_KEY = 'default'
 
+const WINDOW_LOADER_STALE_MS = 30_000
+
 function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 	return {
 		name: def.type,
@@ -123,6 +125,9 @@ function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 			return win ? { windowId: win.id, props: win.props, type: win.type, outletKey: win.outletKey } : undefined
 		},
 		unloadOnLeave: false,
+		// opening or hovering a window leaves an entry keyed by its props. Without a stale time, inactive entries
+		// accumulate per player, squad and layer for the life of the page, along with any frame keys their props carry
+		staleTime: WINDOW_LOADER_STALE_MS,
 		...(def.load
 			? {
 					load: ({ key, state }: { key: WindowLoaderKey; state: DraggableWindowStoreState }) => def.load!({ props: key.props, state }),

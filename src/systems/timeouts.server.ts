@@ -165,10 +165,11 @@ export async function kickWithTimeout(
 			reasonTemplate: opts.reason?.template ?? null,
 			reasonVars: opts.reason?.vars ?? null,
 		})
+	// ahead of the kick and the admin notice, so watchers list the timeout without waiting on rcon
+	update$.next()
 	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)))
 	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
-	update$.next()
 	return { code: 'ok', timeoutId }
 }
 
@@ -185,6 +186,7 @@ export async function cancelTimeout(
 		.where(E.and(E.eq(Schema.timeouts.id, opts.timeoutId), activeWhere()))
 	if (!timeout) return { code: 'err:not-found', msg: 'No active timeout found' }
 	await ctx.db().update(Schema.timeouts).set({ cancelled: true }).where(E.eq(Schema.timeouts.id, opts.timeoutId))
+	update$.next()
 	const appEvent = AppEvents.create<AppEvents.TimeoutCancelled>({
 		type: 'TIMEOUT_CANCELLED',
 		actor: opts.actor,
@@ -196,7 +198,6 @@ export async function cancelTimeout(
 	})
 	if (opts.serverCtx) await SquadServer.emitAppEvent(opts.serverCtx, appEvent)
 	else await AppEventsSys.persistAppEvent(ctx, appEvent)
-	update$.next()
 	return { code: 'ok' }
 }
 
