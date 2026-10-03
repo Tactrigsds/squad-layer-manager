@@ -35,6 +35,7 @@
 		"__dev-instance:comment__": "`pnpm dev` provisions and runs an isolated development workspace. `worktree new` is an optional checkout creator. See docs/developers/dev_instances.md",
 		"worktree": "node scripts/worktree.mjs",
 		"dev": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts",
+		"dev:open": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts --open",
 		"emuctl": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emuctl.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm run run-script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",

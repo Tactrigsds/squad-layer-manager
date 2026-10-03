@@ -35,7 +35,8 @@ in them.
 
 `http://localhost:<client port>/?login=<user>`. The vite dev server proxies every api route, the websocket and each
 page request to the app, so nothing needs the app's own port. `pnpm dev --url` prints the URL without starting the
-app. `pnpm dev --wait` blocks until a running `pnpm dev` answers, then prints it.
+app. `pnpm dev --wait` blocks until a running `pnpm dev` answers, then prints it. `pnpm dev:open` opens the URL in
+`$BROWSER`, or the system default browser when `$BROWSER` is unset, and fails if `pnpm dev` is not running.
 
 `pnpm probe <path>` opens that URL in headless chromium, signed in, and prints page errors. `--shot <file>` takes a
 screenshot (`--target <selector>` for one element), `--click` and `--fill <selector>=<value>` drive the page, and

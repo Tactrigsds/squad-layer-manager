@@ -15,6 +15,7 @@ const args = parseArgs({
 		'reset-data': { type: 'boolean', default: false },
 		url: { type: 'boolean', default: false },
 		wait: { type: 'boolean', default: false },
+		open: { type: 'boolean', default: false },
 		help: { type: 'boolean', short: 'h', default: false },
 		admins: { type: 'string' },
 		players: { type: 'string' },
@@ -27,11 +28,22 @@ if (args.values.help) {
 
   --url          provision if needed, then print only the workspace URL
   --wait         block until a running \`pnpm dev\` answers, then print the workspace URL
+  --open         open the workspace URL in your default browser, or $BROWSER, if \`pnpm dev\` is running
   --reset-data   replace this workspace's isolated database before starting
   --emu-only     run only the emulator and its REPL
   --no-emu       do not start an emulator with the app
   --players N    players to add when using --emu-only
   --admins IDS   comma-separated Steam IDs to add when using --emu-only`)
+	process.exit(0)
+}
+
+if (args.values.open) {
+	const existing = Slots.getSlot()
+	if (!existing || !(await instanceAnswers(existing))) {
+		console.error('the dev instance is not running; start `pnpm dev` first')
+		process.exit(1)
+	}
+	await openInBrowser(Slots.instanceUrl(existing))
 	process.exit(0)
 }
 
@@ -157,21 +169,46 @@ if (args.values['emu-only']) {
 }
 
 // Both ports, since the client proxies to the app. vite listens on ::1 only, hence localhost over 127.0.0.1.
+async function instanceAnswers(slot: Slots.Slot) {
+	const answered = await Promise.all(
+		[slot.ports.app, slot.ports.client].map((port) =>
+			fetch(`http://localhost:${port}/`, { redirect: 'manual', signal: AbortSignal.timeout(2_000) }).then(
+				(res) => res.status < 500,
+				() => false,
+			),
+		),
+	)
+	return answered.every(Boolean)
+}
+
 async function waitForInstance(slot: Slots.Slot) {
 	const deadline = Date.now() + 180_000
-	const ports = [slot.ports.app, slot.ports.client]
 	while (Date.now() < deadline) {
-		const answered = await Promise.all(
-			ports.map((port) =>
-				fetch(`http://localhost:${port}/`, { redirect: 'manual', signal: AbortSignal.timeout(2_000) }).then(
-					(res) => res.status < 500,
-					() => false,
-				),
-			),
-		)
-		if (answered.every(Boolean)) return
+		if (await instanceAnswers(slot)) return
 		await new Promise((resolve) => setTimeout(resolve, 500))
 	}
-	console.error(`the instance did not answer on ports ${ports.join(', ')} within 180s; check the \`pnpm dev\` output`)
+	console.error(`the instance did not answer on ports ${slot.ports.app}, ${slot.ports.client} within 180s; check the \`pnpm dev\` output`)
 	process.exit(1)
+}
+
+function openInBrowser(url: string) {
+	const [command, ...commandArgs] = process.env.BROWSER
+		? [process.env.BROWSER]
+		: process.platform === 'darwin'
+			? ['open']
+			: process.platform === 'win32'
+				? ['cmd', '/c', 'start', '""']
+				: ['xdg-open']
+	return new Promise<void>((resolve) => {
+		const proc = childProcess.spawn(command, [...commandArgs, url], { detached: true, stdio: 'ignore' })
+		proc.on('spawn', () => {
+			proc.unref()
+			console.log(url)
+			resolve()
+		})
+		proc.on('error', (err) => {
+			console.error(`could not run ${command} to open ${url}: ${err.message}`)
+			process.exit(1)
+		})
+	})
 }
