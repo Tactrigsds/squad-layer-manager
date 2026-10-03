@@ -140,8 +140,7 @@ its key comes up with every server disabled and every integration token unset (s
 <code>SETTINGS_ENCRYPTION_KEY</code>, and start the app. That boot re-encrypts everything under the new key and logs each
 server it did it for. Remove <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code> afterwards.</p>
 <p>If the key is lost, re-enter the RCON and SFTP passwords, agent tokens and integration tokens on the settings page. SLM
-disables a server whose secrets it cannot decrypt until they are re-entered, and treats an integration token it cannot
-decrypt as unset.</p>
+disables a server whose secrets it cannot decrypt until they are re-entered.</p>
 <h3 id="8-backups" class="docs-heading">8. Backups<a href="#8-backups" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#8-backups" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>The database is snapshotted into <code>BACKUPS_DIR</code> before every migration, whether the app applies them at boot
 (<code>DB_AUTOMIGRATE</code>, the default) or they are run by hand. Nothing is applied if the snapshot fails. This snapshot is not
@@ -150,7 +149,7 @@ optional. It is the restore point after a bad upgrade. Periodic backups are off 
 <p>Backups can also be uploaded to an SFTP destination. See <a href="/squad-layer-manager/next/backups/">backups and restoring</a> for that, for the filename
 format, and for putting one back with <code>restore.sh</code>.</p>
 <h3 id="9-telemetry" class="docs-heading">9. Telemetry<a href="#9-telemetry" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#9-telemetry" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
-<p>Detailed logs and telemetry are available via grafana at <code>http://localhost:3001</code>. Grafana can also be exposed to the
+<p>Detailed logs and telemetry are available via grafana at <code>http://localhost:3001</code>. A few dashboards are set up for convenience. Grafana can also be exposed to the
 internet. Change the default admin password before doing so. Three dashboards come preconfigured for monitoring SLM.
 Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
 <a href="https://victoriametrics.com/">VictoriaMetrics</a> store per signal. <a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/observability/README.md">observability/README.md</a>
@@ -167,7 +166,7 @@ then move on to <a href="/squad-layer-manager/next/configuring/">configuring SLM
 <h3 id="11-integrations" class="docs-heading">11. Integrations<a href="#11-integrations" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#11-integrations" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>SLM authenticates to three outside services: BattleMetrics, Squad Browser and Steam. All three are optional. Their
 credentials are not environment variables. Once SLM is running, enter them under <em>Integrations</em> on the settings page.</p>
-<p>A saved token is encrypted at rest and not retrievable.</p>
+<p>A saved token is encrypted at rest and not retrievable from the UI.</p>
 <p>Editing this section takes a <code>global-settings:write</code> grant covering <code>integrations</code>. The default managers role cannot
 edit it (see <a href="/squad-layer-manager/next/permissions/#default-roles">Default roles</a>).</p>
 <p><strong>BattleMetrics</strong> lets users update player flags from in game and from the dashboard, and shows a player&#x27;s flags, notes
@@ -192,7 +191,7 @@ only for players whose steam profile makes game details public. Enter a web api 
 With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.</p>
 <h3 id="12-discord-bot-permissions" class="docs-heading">12. Discord bot permissions<a href="#12-discord-bot-permissions" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#12-discord-bot-permissions" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
-that, switch on <code>Message Content Intent</code> on the <code>Bot</code> page of your discord app. Without it SLM still starts, but the
+that, switch on <code>Message Content Intent</code> on the <code>Bot</code> page of your discord app. Without it, the
 bot cannot read messages, and the <code>discord.expandHistoryLinks</code> setting shows a warning. To turn the replies off, switch
 that setting off. The bot only replies to people whose roles grant <code>history:query</code>, the permission the history page
 itself needs.</p>
@@ -205,8 +204,7 @@ itself needs.</p>
 </ul>
 <p>Grant them in one of two ways:</p>
 <ul>
-<li><strong>Every channel:</strong> give the SLM bot&#x27;s role these permissions in <em>Server Settings &gt; Roles</em>. The bot can then reply
-in every channel its role can see.</li>
+<li><strong>Grant the bot a Role:</strong> give the SLM bot a role with these permissions in <em>Server Settings &gt; Roles</em>.</li>
 <li><strong>Specific channels:</strong> leave them off the role, and add them for the SLM bot&#x27;s role in each channel&#x27;s <em>Edit
 Channel &gt; Permissions</em>. The bot then replies only in those channels.</li>
 </ul>
