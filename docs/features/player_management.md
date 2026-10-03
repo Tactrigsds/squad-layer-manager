@@ -13,6 +13,13 @@ the in-game party they queued with.
 The _Party_ column shows each player's party. Filter or sort the table by party, or shift+click a party to select its
 members on that team.
 
+The _Charts_ panel displays charts of the live match. When a match is opened from the match history, the panel
+displays that match instead, under a banner naming it. The _Breakdown_ chart counts each team's players by group of the
+chosen grouping mode. Click a segment to filter the teams panel to that group. The _Scoreline_ chart lists each team's
+tickets, kills, deaths and wounds, and plots kills, deaths or the kill lead across the match. The kill lead is how far
+one team's kills are ahead of the other's, shaded in the leading team's colour. Use the button beside a chart's help icon to open the chart in a window of its
+own.
+
 ![group counts per team](../images/configuring/teams_breakdown.png)
 
 ![the teams panel](../images/features/teams_panel.png)

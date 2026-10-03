@@ -2,6 +2,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as Chart from '@/lib/chart'
 import * as DH from '@/lib/display-helpers'
 import * as RSel from '@/lib/reselect'
+import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as PG_Msgs from '@/messages/player-groupings.messages'
@@ -12,12 +13,134 @@ import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as TA from '@/models/team-attribution.models'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import type { ClientOnlySettingsStore } from '@/systems/client-only-settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 
 export type TeamDisplay = { label: string; color: string }
 
 export type BreakdownMember = { id: SM.PlayerId; name: string }
+
+/**
+ * When each team's kills and deaths landed over a match, in ms since the epoch, in the order they happened. Index 0
+ * is team 1. Counted by the same rule as the stored scoreline (MH.combatCredit), so the chart and Match History agree.
+ */
+export type ScorelineTimeline = {
+	kills: readonly [readonly number[], readonly number[]]
+	deaths: readonly [readonly number[], readonly number[]]
+	wounds: readonly [number, number]
+}
+
+type MutableTimeline = { kills: [number[], number[]]; deaths: [number[], number[]]; wounds: [number, number] }
+
+const EMPTY_TIMELINE: ScorelineTimeline = { kills: [[], []], deaths: [[], []], wounds: [0, 0] }
+
+function copyTimeline(timeline: ScorelineTimeline): MutableTimeline {
+	return {
+		kills: [[...timeline.kills[0]], [...timeline.kills[1]]],
+		deaths: [[...timeline.deaths[0]], [...timeline.deaths[1]]],
+		wounds: [timeline.wounds[0], timeline.wounds[1]],
+	}
+}
+
+function addCombat(timeline: MutableTimeline, event: CHAT.EventEnriched, credit: { deathTo: number; creditTo: number }) {
+	if (credit.deathTo !== -1) timeline.deaths[credit.deathTo].push(event.time)
+	if (credit.creditTo === -1) return
+	if (event.type === 'PLAYER_DIED') timeline.kills[credit.creditTo].push(event.time)
+	else timeline.wounds[credit.creditTo]++
+}
+
+const historicalTimelines = new WeakMap<readonly CHAT.EventEnriched[], ScorelineTimeline>()
+
+// A replayed match's timeline, built once per fetched event list.
+function historicalTimeline(events: readonly CHAT.EventEnriched[]): ScorelineTimeline {
+	let timeline = historicalTimelines.get(events)
+	if (!timeline) {
+		const built = copyTimeline(EMPTY_TIMELINE)
+		for (const event of events) {
+			const credit = MH.combatCredit(event)
+			if (credit) addCombat(built, event, credit)
+		}
+		timeline = built
+		historicalTimelines.set(events, timeline)
+	}
+	return timeline
+}
+
+/**
+ * The live match's timeline, scanning only the buffer entries appended since the previous call, like
+ * CHAT.createBufferFilter. The result keeps its identity until a combat event arrives, and is copied rather than
+ * appended to when one does, so a chart holding the previous one never sees it change.
+ */
+function createTimelineTracker() {
+	let buffer: CHAT.EventEnriched[] | null = null
+	let epoch = -1
+	let scanned = 0
+	let trackedMatchId = -1
+	let result = EMPTY_TIMELINE
+	return (state: CHAT.ChatState, matchId: number): ScorelineTimeline => {
+		if (state.eventBuffer !== buffer || state.bufferEpoch !== epoch || state.eventBuffer.length < scanned || matchId !== trackedMatchId) {
+			buffer = state.eventBuffer
+			epoch = state.bufferEpoch
+			trackedMatchId = matchId
+			scanned = 0
+			result = EMPTY_TIMELINE
+		}
+		const entries = state.eventBuffer
+		let next: MutableTimeline | null = null
+		for (; scanned < entries.length; scanned++) {
+			const event = entries[scanned]
+			if (event.matchId !== matchId) continue
+			const credit = MH.combatCredit(event)
+			if (!credit) continue
+			next ??= copyTimeline(result)
+			addCombat(next, event, credit)
+		}
+		if (next) result = next
+		return result
+	}
+}
+
+// one tracker per buffer: a reset swaps the buffer, which retires its tracker with it
+const liveTrackers = new WeakMap<CHAT.EventEnriched[], ReturnType<typeof createTimelineTracker>>()
+
+function liveTimeline(state: CHAT.ChatState, matchId: number): ScorelineTimeline {
+	let track = liveTrackers.get(state.eventBuffer)
+	if (!track) {
+		track = createTimelineTracker()
+		liveTrackers.set(state.eventBuffer, track)
+	}
+	return track(state, matchId)
+}
+
+// A count over time, starting from zero at x = 0. x is ms since `start`.
+function cumulative(times: readonly number[], start: number): Chart.Point[] {
+	const points: Chart.Point[] = [{ x: 0, y: 0 }]
+	for (let i = 0; i < times.length; i++) points.push({ x: Math.max(0, times[i] - start), y: i + 1 })
+	return points
+}
+
+// team 1's kills minus team 2's, over time
+function killLead(kills: ScorelineTimeline['kills'], start: number): Chart.Point[] {
+	const [a, b] = kills
+	const points: Chart.Point[] = [{ x: 0, y: 0 }]
+	let i = 0
+	let j = 0
+	while (i < a.length || j < b.length) {
+		const takeA = j >= b.length || (i < a.length && a[i] <= b[j])
+		const time = takeA ? a[i++] : b[j++]
+		points.push({ x: Math.max(0, time - start), y: i - j })
+	}
+	return points
+}
+
+export type Scoreline = {
+	stats: MH.MatchCombatStats
+	// each team's tickets once the round has ended with a result
+	tickets: [number, number] | null
+	winner: SM.TeamId | null
+	chart: { series: Chart.LineSeries[]; xMax: number; signed: boolean }
+}
 
 export type Breakdown = {
 	series: Chart.Series[]
@@ -173,6 +296,77 @@ export namespace Sel {
 					members,
 					ungroupedLabel: ungrouped,
 				}
+			},
+		),
+	)
+
+	// The live match's timeline, or the replayed one once its events have loaded. Null until there is one to show.
+	const timeline = RSel.memoizeFactory(
+		(historicalEvents: CHAT.EventEnriched[] | null) =>
+			(...[store, currentMatch]: TeamInputs): ScorelineTimeline | null => {
+				if (ChatPrt.Sel.selectedMatchOrdinal(store) !== null) return historicalEvents ? historicalTimeline(historicalEvents) : null
+				const matchId = currentMatch?.historyEntryId
+				return matchId === undefined ? null : liveTimeline(store.chat.chatState, matchId)
+			},
+	)
+
+	// The displayed match's scoreline: the totals, the tickets once the round is over, and the chosen metric over time.
+	export const scoreline = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
+		RSel.createSelector(
+			[
+				timeline(historicalEvents),
+				displayMatch,
+				teams,
+				(...[, , , clientSettings]: TeamInputs) => ClientOnlySettings.Sel.scorelineMetric(clientSettings),
+			],
+			(timeline, match, teamDisplays, metric): Scoreline | null => {
+				if (!timeline || !match) return null
+				const stats: MH.MatchCombatStats = {
+					team1: { kills: timeline.kills[0].length, wounds: timeline.wounds[0], deaths: timeline.deaths[0].length },
+					team2: { kills: timeline.kills[1].length, wounds: timeline.wounds[1], deaths: timeline.deaths[1].length },
+				}
+
+				let tickets: [number, number] | null = null
+				let winner: SM.TeamId | null = null
+				if (match.status === 'post-game' && (match.outcome.type === 'team1' || match.outcome.type === 'team2')) {
+					tickets = [match.outcome.team1Tickets, match.outcome.team2Tickets]
+					winner = match.outcome.type === 'team1' ? 1 : 2
+				}
+
+				let firstEvent = Infinity
+				let lastEvent = -Infinity
+				for (const times of [...timeline.kills, ...timeline.deaths]) {
+					if (times.length === 0) continue
+					firstEvent = Math.min(firstEvent, times[0])
+					lastEvent = Math.max(lastEvent, times[times.length - 1])
+				}
+				const start = match.startTime?.getTime() ?? (Number.isFinite(firstEvent) ? firstEvent : 0)
+				const end = match.status === 'post-game' && match.endTime instanceof Date ? match.endTime.getTime() : lastEvent
+				const xMax = Math.max(end - start, lastEvent - start, 60_000)
+
+				let series: Chart.LineSeries[]
+				switch (metric) {
+					case 'kills':
+					case 'deaths': {
+						const times = metric === 'kills' ? timeline.kills : timeline.deaths
+						series = teamDisplays.map((team, i) => ({
+							key: `team${i + 1}`,
+							label: team.label,
+							color: team.color,
+							points: cumulative(times[i], start),
+						}))
+						break
+					}
+					case 'lead':
+						series = [
+							{ key: 'lead', label: teamDisplays[0].label, color: teamDisplays[0].color, points: killLead(timeline.kills, start) },
+						]
+						break
+					default:
+						assertNever(metric)
+				}
+
+				return { stats, tickets, winner, chart: { series, xMax, signed: metric === 'lead' } }
 			},
 		),
 	)

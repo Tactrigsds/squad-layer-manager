@@ -122,7 +122,7 @@ export namespace MatchHistory {
 		title: def('Viewing a past match'),
 		body: def(
 			rt(
-				`<p><em>Server Activity</em> now shows that match's log instead of the live one, and the <em>Teams Breakdown</em> shows who played in it.</p>
+				`<p><em>Server Activity</em> now shows that match's log instead of the live one, and the <em>Charts</em> panel shows who played in it.</p>
 <p>Switch between the log and a list of the match's teams at the top of the panel.</p>`,
 			),
 		),
@@ -184,7 +184,7 @@ export const breakdown = {
 	title: def('Teams Breakdown'),
 	body: def(
 		rt(
-			`<p>The <em>Teams Breakdown</em> counts everyone on the server by team, split into the groups of the chosen grouping mode.</p>
+			`<p>The <em>Breakdown</em> chart in the <em>Charts</em> panel counts everyone on the server by team, split into the groups of the chosen grouping mode.</p>
 <p>It follows the grouping mode picked in the teams header.</p>`,
 		),
 	),
