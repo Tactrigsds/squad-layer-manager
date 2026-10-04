@@ -9,6 +9,7 @@ import {
 	HeadlessDialogHeader,
 	HeadlessDialogTitle,
 } from '@/components/ui/headless-dialog'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
@@ -25,6 +26,7 @@ import LayerTable from './layer-table.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 
 const RAIL_WIDTH_PX = 318
+const MIN_DIALOG_WIDTH_PX = 1090
 
 type LayerPickerLayoutProps = {
 	frameKey: SelectLayersFrame.Key
@@ -52,6 +54,7 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 		frameKey,
 		(s) => Object.values(s.filterMenu.menuItems).filter((c) => F.editableCompHasValue(c)).length,
 	)
+	const fullTableWidth = Zus.useStore(frameKey, LayerTablePrt.Sel.fullTableWidth)
 	const [filtersOpen, setFiltersOpen] = React.useState(false)
 	// built apart from the rail, so a new footer re-renders only the footer and not every filter menu item
 	const filterMenu = <LayerFilterMenu stores={{ filterMenu: frameKey }} />
@@ -70,7 +73,14 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 	return (
 		<HeadlessDialogContent
 			data-tour={`${props.tourPrefix}-dialog`}
-			className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] w-[1090px] max-w-[95vw]')}
+			className={cn('gap-0 p-0 overflow-hidden', !phone && 'max-h-[95vh] max-w-[95vw]')}
+			// wide enough for every visible column, so the table only compacts when the viewport can't fit the dialog. The
+			// 7.5 spacing units are the body's p-2.5 on both sides and its gap-2.5, the 2px the dialog's border
+			style={
+				phone
+					? undefined
+					: { width: `max(${MIN_DIALOG_WIDTH_PX}px, calc(${fullTableWidth + RAIL_WIDTH_PX + 2}px + var(--spacing) * 7.5))` }
+			}
 			showCloseButton={false}
 		>
 			<HeadlessDialogHeader className="m-0 flex-nowrap items-center pe-2 gap-2">

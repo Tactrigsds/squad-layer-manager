@@ -393,8 +393,13 @@ export namespace Sel {
 	export function shouldAutoCompact(store: Store) {
 		const table = store.layerTable
 		if (table.availableWidth === null) return false
-		return table.availableWidth < getFullTableWidth(table.colConfig, table.columnVisibility)
+		return table.availableWidth < fullTableWidth(store)
 	}
+
+	export const fullTableWidth = RSel.createSelector(
+		[(store: Store) => store.layerTable.colConfig, (store: Store) => store.layerTable.columnVisibility],
+		getFullTableWidth,
+	)
 
 	// compact mode hides all but COMPACT_VISIBLE_COLUMNS without touching the stored visibility prefs
 	export const columnVisibility = RSel.memoizeFactory((compact: boolean) =>
