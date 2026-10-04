@@ -395,10 +395,9 @@ loop](writing_plugins.md#the-dev-loop) explains why.
 **A class built at runtime is not compiled.** `pnpm plugin:pack` finds classes by reading your source, so
 `` `text-${tint}` `` produces nothing. Write each full class name out, as in a lookup table keyed by tint.
 
-**Only `slm/*` and the host's packages resolve.** Those are `react`, `rxjs`, `zod` and `drizzle-orm`. An import of any
-other package by name, such as `lucide-react`, fails to resolve when the client loads. The failure stops your whole
-client half. The server half keeps running, and the plugin still reads as healthy. `pnpm plugin:pack` refuses to build
-such a bundle. Vendor anything else by importing it through a relative path.
+**Every package you import ships in `client.mjs`, except SLM's own.** `react`, `react-dom`, `rxjs` and `zod` resolve
+to SLM's copies. Anything else, such as `lucide-react`, is bundled, and each page that runs your plugin downloads
+it. [Dependencies](writing_plugins.md#dependencies) describes how to install a package.
 
 **Never import your server entry as a value.** `import type { router } from './server.ts'` is erased. A plain
 import pulls your server code, and everything it imports, into the browser bundle.

@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as SHIM from '@/models/plugin-api-shim'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { LAYERS, queue, role } from '../harness/arrange'
@@ -251,7 +252,13 @@ describe('packaged plugins', () => {
 
 		const client_ = await get((await pluginInfo())!.clientEntry!)
 		expect(client_.status).toBe(200)
-		expect(await client_.text()).toContain('definePluginClient')
+		const clientSource = await client_.text()
+		expect(clientSource).toContain('definePluginClient')
+		// its dependencies are bundled, so every import left is one the host answers
+		const imports = [...clientSource.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1])
+		expect(imports).toContain('react')
+		const shared: readonly string[] = SHIM.SHARED_PACKAGES
+		expect(imports.filter((s) => s !== './plugin.mjs' && !s.startsWith('slm/') && !shared.includes(s))).toEqual([])
 
 		// the stylesheet carries the utilities the client's sources use, which the app's own does not
 		const styles = await get((await pluginInfo())!.clientStyles!)

@@ -40,9 +40,14 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
  * has never been through `plugin:pack` or the shim registry, which is most of what running it proves.
  */
 export async function discoverSourcePlugins(): Promise<BuiltinPlugin[]> {
+	// A plugin repo can install its own copy of a shared package, and the manifests below must still get the host's.
+	// Imported here rather than at the top, where it would join main.ts's first import and reorder the registry's cycle.
+	const ApiRegistry = await import('@/systems/plugin-api-registry.server')
+	ApiRegistry.setup()
 	const known = new Set(BUILTIN_PLUGINS.map((p) => p.manifest.id))
 	const out: BuiltinPlugin[] = []
 	for (const dir of sourceDirs(import.meta.dirname)) {
+		assertEsmPackage(dir)
 		const entry = path.join(dir, 'plugin.ts')
 		const manifest = ((await import(pathToFileURL(entry).href)) as { default?: PLG.Manifest }).default
 		if (!manifest || known.has(manifest.id)) continue
@@ -77,4 +82,16 @@ function sourceDirs(root: string): string[] {
 			)
 	}
 	return out
+}
+
+// Node reads a .ts file's module format from the nearest package.json, so a plugin repo's own package.json without
+// `"type": "module"` turns its source into CommonJS under tsx, where import.meta and top-level await break
+function assertEsmPackage(dir: string) {
+	for (let d = dir; d !== import.meta.dirname; d = path.dirname(d)) {
+		const file = path.join(d, 'package.json')
+		if (!fs.existsSync(file)) continue
+		const pkg = JSON.parse(fs.readFileSync(file, 'utf8')) as { type?: string }
+		if (pkg.type !== 'module') throw new Error(`${file} must set "type": "module", or the plugin in ${dir} loads as CommonJS`)
+		return
+	}
 }

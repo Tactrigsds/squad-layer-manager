@@ -1,9 +1,11 @@
 import { compile, optimize } from '@tailwindcss/node'
 import { Scanner } from '@tailwindcss/oxide'
 import * as fs from 'node:fs'
+import { isBuiltin } from 'node:module'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { rolldown } from 'rolldown'
+import * as semver from 'semver'
 
 import * as SHIM from '@/models/plugin-api-shim'
 import * as PLG from '@/models/plugins.models'
@@ -28,10 +30,11 @@ if (!srcArg) {
 const srcDir = path.resolve(srcArg)
 const outDir = path.resolve(outArg ?? path.join(srcDir, 'dist'))
 
+// plugin.mjs is loaded by both the server and the browser, so it is built for neither
 const ENTRIES = [
-	{ source: 'plugin.ts', out: 'plugin.mjs', required: true },
-	{ source: 'server.ts', out: 'server.mjs', required: true },
-	{ source: 'client.tsx', out: 'client.mjs', required: false },
+	{ source: 'plugin.ts', out: 'plugin.mjs', platform: 'neutral', required: true },
+	{ source: 'server.ts', out: 'server.mjs', platform: 'node', required: true },
+	{ source: 'client.tsx', out: 'client.mjs', platform: 'browser', required: false },
 ] as const
 
 // the manifest module is plain typescript reachable through our own tsconfig paths, so its fields
@@ -43,27 +46,40 @@ if (!manifest?.id) throw new Error(`${srcDir}/plugin.ts must default-export the 
 fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })
 
-const external = [/^slm\//, ...SHIM.SHARED_PACKAGES]
+const SHARED = new Set<string>(SHIM.SHARED_PACKAGES)
+const hostVersions = new Map(
+	SHIM.SHARED_PACKAGE_NAMES.map((name) => [name, readPackageJson(path.join(repoRoot, 'node_modules', name)).version]),
+)
 
-// Anything left external has to be resolvable at load time: `slm/*` and the shared packages through the
-// host's import map, and ./plugin.mjs from the package itself. A bare specifier that is neither resolves
-// nowhere, and the failure is silent -- the module never runs, so nothing registers and nothing logs.
-function servedByHost(specifier: string): boolean {
-	if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/')) return true
-	if (specifier.startsWith('slm/')) return true
-	return (SHIM.SHARED_PACKAGES as readonly string[]).includes(specifier)
-}
+// Dependencies are bundled. Only `slm/*` and the shared packages stay external, and the host answers those at
+// load time. rolldown leaves an import it cannot resolve external too, and nothing at load time can answer
+// that one, so it fails the pack instead.
 const built: string[] = []
+const peerWarnings = new Set<string>()
 for (const entry of ENTRIES) {
 	const input = path.join(srcDir, entry.source)
 	if (!fs.existsSync(input)) {
 		if (entry.required) throw new Error(`missing ${entry.source} in ${srcDir}`)
 		continue
 	}
+	const commonJs: string[] = []
 	const bundle = await rolldown({
 		input,
-		external,
-		platform: 'neutral',
+		external: (id) => id.startsWith('slm/') || SHARED.has(id),
+		platform: entry.platform,
+		// the ESM build of a package without an `exports` map is named by `module`. Neutral reads no main fields at all.
+		resolve: { mainFields: entry.platform === 'browser' ? ['browser', 'module', 'main'] : ['module', 'main'] },
+		onLog(level, log, handler) {
+			if (log.code === 'UNRESOLVED_IMPORT') {
+				const specifier = log.exporter ?? /'([^']+)'/.exec(log.message)?.[1] ?? ''
+				const hint = isBuiltin(specifier)
+					? `${entry.source} runs in the browser, which has no Node builtins.`
+					: `Add ${specifier} to the plugin's package.json and install it.`
+				handler('error', { ...log, message: `${log.message.trimEnd()}\n${hint}` })
+				return
+			}
+			handler(level, log)
+		},
 		plugins: [
 			{
 				// the manifest is its own bundle, so server.mjs and client.mjs point at it rather than
@@ -74,24 +90,87 @@ for (const entry of ENTRIES) {
 					return null
 				},
 			},
+			{
+				// a subpath the host does not serve would be bundled as a second copy of a package that must have one
+				name: 'slm-shared-subpaths',
+				resolveId(source: string, importer: string | undefined) {
+					if (SHARED.has(source) || !SHIM.SHARED_PACKAGE_NAMES.includes(SHIM.packageName(source))) return null
+					const served = SHIM.SHARED_PACKAGES.filter((s) => SHIM.packageName(s) === SHIM.packageName(source))
+					throw new Error(
+						`${importer ? path.relative(srcDir, importer) : entry.source} imports ${source}. The host provides ${SHIM.packageName(source)} only as ` +
+							`${served.join(', ')}, and a bundled copy would be a second instance of it.`,
+					)
+				},
+			},
+			{
+				name: 'slm-esm-only',
+				moduleParsed(info: { id: string; inputFormat: string }) {
+					if (info.inputFormat === 'cjs') commonJs.push(info.id)
+				},
+			},
 		],
 	})
 	const { output } = await bundle.write({ file: path.join(outDir, entry.out), format: 'esm', codeSplitting: false })
 	await bundle.close()
+	// CommonJS needs runtime interop: a require() of an external is left as a call the browser cannot make
+	if (commonJs.length > 0) {
+		const packages = new Set(
+			commonJs.map((id) => {
+				const dir = owningPackageDir(id)
+				if (!dir) return path.relative(srcDir, id)
+				const pkg = readPackageJson(dir)
+				return `${pkg.name}@${pkg.version}`
+			}),
+		)
+		throw new Error(
+			`${entry.source} bundles CommonJS modules from ${[...packages].join(', ')}. Plugins can only bundle ES modules. ` +
+				`Use an ESM build of the package, or another package.`,
+		)
+	}
 	for (const chunk of output) {
 		if (chunk.type !== 'chunk') continue
-		const unresolvable = chunk.imports.filter((spec) => !servedByHost(spec))
-		if (unresolvable.length > 0) {
-			throw new Error(
-				`${entry.out} imports ${unresolvable.join(', ')}, which the host does not serve. ` +
-					`Bare specifiers are left external, and the browser's import map only answers slm/* and ` +
-					`${SHIM.SHARED_PACKAGES.join(', ')} -- so the bundle would load and then fail to resolve, ` +
-					`taking the plugin's whole client half down silently. Import it through an slm/* entry, or ` +
-					`vendor it into the plugin.`,
-			)
-		}
+		for (const warning of peerMismatches(chunk.moduleIds)) peerWarnings.add(warning)
 	}
 	built.push(entry.out)
+}
+for (const warning of peerWarnings) console.warn(`warning: ${warning}`)
+
+// A bundled dependency runs against the host's copy of each shared package, whatever version it was installed with
+function peerMismatches(moduleIds: string[]): string[] {
+	const out: string[] = []
+	const seen = new Set<string>()
+	for (const id of moduleIds) {
+		const pkgDir = owningPackageDir(id)
+		if (!pkgDir || seen.has(pkgDir)) continue
+		seen.add(pkgDir)
+		const pkg = readPackageJson(pkgDir)
+		for (const [peer, range] of Object.entries(pkg.peerDependencies ?? {})) {
+			if (!SHIM.SHARED_PACKAGE_NAMES.includes(peer)) continue
+			const hostVersion = hostVersions.get(peer)!
+			if (!semver.satisfies(hostVersion, range, { includePrerelease: true })) {
+				out.push(`${pkg.name}@${pkg.version} expects ${peer} ${range}, and SLM provides ${hostVersion}`)
+			}
+		}
+	}
+	return out
+}
+
+// The nearest directory above a module that holds a named package.json. Bundlers' dist folders often carry
+// a package.json of their own with only a `type` field.
+function owningPackageDir(moduleId: string): string | null {
+	if (!path.isAbsolute(moduleId) || !moduleId.includes(`${path.sep}node_modules${path.sep}`)) return null
+	let dir = path.dirname(moduleId)
+	while (dir !== path.dirname(dir)) {
+		const file = path.join(dir, 'package.json')
+		if (fs.existsSync(file) && readPackageJson(dir).name) return dir
+		dir = path.dirname(dir)
+	}
+	return null
+}
+
+type PackageJson = { name?: string; version: string; peerDependencies?: Record<string, string> }
+function readPackageJson(dir: string): PackageJson {
+	return JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as PackageJson
 }
 
 // The client's stylesheet: the Tailwind utilities its sources use, plus its own client.css if it has

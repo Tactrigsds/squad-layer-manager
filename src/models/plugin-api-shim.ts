@@ -19,9 +19,18 @@ export const SHARED_PACKAGES = [
 	'drizzle-orm/sqlite-core',
 	'react',
 	'react/jsx-runtime',
+	'react-dom',
 	'@orpc/server',
 	'@orpc/client',
 ] as const
+
+export function packageName(specifier: string): string {
+	const parts = specifier.split('/')
+	return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
+}
+
+// A plugin's dependencies may import any of these, and every such import has to reach the host's copy
+export const SHARED_PACKAGE_NAMES: readonly string[] = [...new Set(SHARED_PACKAGES.map(packageName))]
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 

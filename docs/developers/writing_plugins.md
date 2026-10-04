@@ -23,6 +23,7 @@ plugin is only safe to install if running it as a fork of SLM would be.
 - [Permissions](#permissions)
 - [Pickers](#pickers)
 - [What a plugin can reach](#what-a-plugin-can-reach)
+- [Dependencies](#dependencies)
 - [Logging and telemetry](#logging-and-telemetry)
 - [Packing and publishing](#packing-and-publishing)
 - [Repo layouts](#repo-layouts)
@@ -576,17 +577,67 @@ absent.
 | `slm/lib/templating`                                       | rendering the {{var}} templates admins write |
 | `slm/lib/display-helpers`                                  | naming a layer in text                       |
 
-Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
-them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,
-or zod schemas fail their `instanceof` checks and React hooks break.
-
-Those four and `slm/*` are the only things a plugin may import by name. Anything else is left as a bare specifier the
-host cannot answer. A client bundle that carries one loads and then fails to resolve it. That takes your plugin's
-entire browser half down, panels and all, while its server half keeps running and the plugin still reads as
-healthy. `pnpm plugin:pack` refuses to emit such a bundle. To use another package, vendor it: import it
-by a relative path from your own source so it ends up inside your bundle.
+Five packages also come from SLM: `rxjs`, `zod`, `drizzle-orm`, `react` and `react-dom`. [Dependencies](#dependencies)
+describes them, and how to use any other package.
 
 `slm/lib/rxjs-ext` holds our additions to rxjs and nothing else. rxjs itself is your own import.
+
+## Dependencies
+
+A plugin can use packages from npm. `pnpm plugin:pack` bundles every package your plugin imports, so an installed
+plugin needs no `node_modules`.
+
+Five packages are the exception: `rxjs`, `zod`, `drizzle-orm`, `react` and `react-dom`. SLM provides them, and your
+imports of them resolve to SLM's copies at load time. There has to be exactly one of each in the process, or zod
+schemas fail their `instanceof` checks and React hooks break. Do not install them. Their types come from SLM's own
+`node_modules`, and a second copy's types conflict with SLM's when `pnpm run check` runs.
+
+SLM provides two subpaths of these packages: `react/jsx-runtime` and `drizzle-orm/sqlite-core`. `pnpm plugin:pack`
+refuses any other subpath, such as `rxjs/operators`, whether your code imports it or a dependency does. Bundling one
+would put a second copy of its package in the process.
+
+### Installing a package
+
+Declare dependencies in a `package.json` at the root of your repo. One file serves every plugin in the repo, because
+Node and the bundler search each directory above the importing file for packages.
+
+```json
+{
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"date-fns": "^4.1.0"
+	}
+}
+```
+
+`"type": "module"` is required. Without it, Node loads your `.ts` files as CommonJS, and `pnpm dev` refuses to load
+the plugin. Leave out `name` and `version`: `plugin.ts` declares those.
+
+Add a `pnpm-workspace.yaml` beside `package.json`:
+
+```yaml
+packages:
+   - .
+autoInstallPeers: false
+```
+
+That file makes your repo a pnpm workspace of its own, so `pnpm install` in your repo leaves SLM's lockfile alone.
+`autoInstallPeers: false` stops pnpm from installing a copy of `react` or `zod` for a dependency that asks for one.
+The dependency resolves `react` and `zod` to SLM's copies instead.
+
+Run `pnpm install` in your repo after cloning it, and again after each change to `package.json`.
+
+### What can be bundled
+
+- **ES modules only.** `pnpm plugin:pack` refuses a bundle that contains a CommonJS module, and names the package it
+  came from. Where a package ships both formats, the packer picks the ES build.
+- **No Node builtins in the browser.** `client.tsx` and `plugin.ts` are loaded in the browser, so the packer refuses
+  an import of `node:fs` or any other builtin from either of them, or from a package they import. `server.ts` can
+  import builtins.
+- **Peer ranges are checked.** A dependency runs against SLM's copy of `react`, `zod` and the rest, whatever version
+  it asks for. `pnpm plugin:pack` warns when SLM's version is outside a dependency's peer range. Test that
+  dependency before you publish.
 
 ## Logging and telemetry
 
