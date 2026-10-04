@@ -15,7 +15,8 @@ agent reconnects on its own.</p>
 <p>Set the server&#x27;s connection mode to <em>server agent</em>. See
 <a href="/squad-layer-manager/next/servers/#connecting-the-server">Connecting the server</a> for where to find that setting.</p>
 <p>Then choose or generate a secret token. The agent sends it to authenticate, so anyone who has it can connect as this
-server&#x27;s agent. Keep it with your other secrets.</p>
+server&#x27;s agent. Keep it with your other secrets. SLM refuses an agent while the server still has the default token,
+<code>dev</code>.</p>
 <p>The agent needs three things from the server&#x27;s connection settings:</p>
 <ul>
 <li>the <em>url</em> SLM is served on. This is the app&#x27;s <code>ORIGIN</code>, with the path <code>/server-agent</code>. Use <code>wss://</code> if SLM is

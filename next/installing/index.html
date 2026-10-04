@@ -152,9 +152,12 @@ optional. It is the restore point after a bad upgrade. Periodic backups are off 
 <p>Backups can also be uploaded to an SFTP destination. See <a href="/squad-layer-manager/next/backups/">backups and restoring</a> for that, for the filename
 format, and for putting one back with <code>restore.sh</code>.</p>
 <h3 id="9-telemetry" class="docs-heading">9. Telemetry<a href="#9-telemetry" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#9-telemetry" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
-<p>Detailed logs and telemetry are available via grafana at <code>http://localhost:3001</code>. A few dashboards are set up for convenience. Grafana can also be exposed to the
-internet. Change the default admin password before doing so. Three dashboards come preconfigured for monitoring SLM.
-Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
+<p>Detailed logs and telemetry are available via grafana at <code>http://localhost:3001</code>. Three dashboards come preconfigured
+for monitoring SLM. Grafana accepts connections from the machine SLM runs on only, since its logs and traces record
+every player and user SLM sees. Sign in as <code>admin</code> with the password <code>admin</code>, and Grafana asks for a new password.</p>
+<p>To open Grafana from another machine, forward the port over SSH with <code>ssh -L 3001:localhost:3001 &lt;your server&gt;</code>
+and open <code>http://localhost:3001</code> there.</p>
+<p>Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
 <a href="https://victoriametrics.com/">VictoriaMetrics</a> store per signal. <a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/observability/README.md">observability/README.md</a>
 covers how the pieces fit together and the retention windows.</p>
 <p>To run without telemetry, set <code>OTEL_ENABLED=false</code> and comment out or delete the <code>victoria-metrics</code>, <code>victoria-logs</code>,
