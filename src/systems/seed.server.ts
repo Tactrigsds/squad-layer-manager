@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/models/filter-builders'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 import * as PG from '@/models/player-groupings.models'
 import * as Project from '@/models/project.models'
 import * as SB from '@/models/sandbox.models'
@@ -17,11 +17,6 @@ import { initModule } from '@/server/logger'
 
 const module = initModule('seed')
 let log!: ReturnType<typeof module.getLogger>
-
-// The filters ship without an administrator to own them, so they are owned by SLM itself. A discord snowflake
-// is far larger than this, so it can never collide with a real user.
-const SEED_USER: typeof Schema.users.$inferInsert = { discordId: 1n }
-const SEED_ACCOUNT: typeof Schema.discordAccounts.$inferInsert = { discordId: SEED_USER.discordId, username: 'SLM', updatedAt: new Date(0) }
 
 type SeededFilter = Omit<F.FilterEntity, 'owner'>
 
@@ -205,11 +200,9 @@ export async function setup(ctx: C.Db) {
 	const configured = await ctx.db().select({ id: Schema.globalSettings.id }).from(Schema.globalSettings).limit(1)
 	if (configured.length > 0) return
 
-	await ctx.db().insert(Schema.discordAccounts).values(SEED_ACCOUNT).onConflictDoNothing()
-	await ctx.db().insert(Schema.users).values(SEED_USER).onConflictDoNothing()
 	await ctx
 		.db()
 		.insert(Schema.filters)
-		.values(SEEDED_FILTERS.map((filter) => ({ ...filter, owner: SEED_USER.discordId })))
+		.values(SEEDED_FILTERS.map((filter) => F.toRow({ ...filter, owner: F.SYSTEM_OWNER })))
 	log.info('Seeded %d filters for a fresh install', SEEDED_FILTERS.length)
 }

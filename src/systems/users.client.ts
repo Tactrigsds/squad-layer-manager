@@ -4,6 +4,7 @@ import * as Obj from '@/lib/object-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'
+import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -136,7 +137,9 @@ export function setup() {
 	FilterEntityClient.filterMutation$.subscribe(async (s) => {
 		const loggedInUser = await fetchLoggedInUser()
 		if (!loggedInUser) return
-		if (s.value.owner !== loggedInUser.discordId) return
+		// the filter-owner role moves with ownership, so both the previous and the new owner's perms change
+		const owners = [s.value.owner, s.prev?.owner].map((owner) => owner && F.ownerUserId(owner))
+		if (!owners.includes(loggedInUser.discordId)) return
 		invalidateLoggedInUser()
 	})
 }

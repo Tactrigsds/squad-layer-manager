@@ -14,7 +14,7 @@ function filter(id: string, node: F.FilterNode): F.FilterEntity {
 		name: id,
 		description: null,
 		filter: node,
-		owner: 1n,
+		owner: { type: 'system' },
 		alertMessage: null,
 		emoji: null,
 		invertedAlertMessage: null,

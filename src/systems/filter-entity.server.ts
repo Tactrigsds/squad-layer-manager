@@ -30,7 +30,7 @@ const module = initModule('filter-entity')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export const filterMutation$ = new IsolatedSubject<[C.Db & CS.Otel, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
+export const filterMutation$ = new IsolatedSubject<[C.Db & CS.Otel, F.FilterEntityMutation]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, {
@@ -61,17 +61,15 @@ async function recordFilterChange(
 	)
 }
 
-// The mutation stream is keyed by user, and a filter's owner is a person even when a plugin did the writing,
-// so a non-user actor is attributed to the owner. putRuntimeFilters already does this.
-function mutationUserId(actor: AppEvents.Actor, filter: F.FilterEntity) {
-	return actor.type === 'slm-user' ? actor.userId : filter.owner
-}
-
 // managing who can contribute to a filter is an ownership concern, so it's restricted to the filter owner (or
 // anyone with blanket write access), rather than any contributor who merely has filters:write for the filter.
 async function denyUnlessFilterOwner(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, filterId: F.FilterEntityId) {
-	const [filter] = await ctx.db().select({ owner: Schema.filters.owner }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
-	if (filter && filter.owner === ctx.user.discordId) return null
+	const [filter] = await ctx
+		.db()
+		.select({ ownerUserId: Schema.filters.ownerUserId })
+		.from(Schema.filters)
+		.where(E.eq(Schema.filters.id, filterId))
+	if (filter && filter.ownerUserId === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))
 }
 
@@ -98,18 +96,18 @@ async function recordFilterContributor(
 	)
 }
 
-// Filters the runtime owns rather than a person: the tutorial stands its own up alongside its scoped server,
+// Filters SLM owns rather than a person: the tutorial stands its own up alongside its scoped server,
 // because no particular filter is guaranteed to exist in an install and a pool config naming one that does not
 // fails every layer-status query for that server. Deliberately not the oRPC handlers above -- those enforce RBAC
 // and the reference index for a human editing the filter index, neither of which applies to a row the runtime
 // creates and deletes within one run. Both emit on filterMutation$ so open clients see the change.
 export async function putRuntimeFilters(ctx: C.Db, filters: F.FilterEntity[]) {
 	if (filters.length === 0) return
-	await ctx.db().insert(Schema.filters).values(filters)
+	await ctx.db().insert(Schema.filters).values(filters.map(F.toRow))
 	for (const filter of filters) {
 		filterMutation$.next([
 			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-			{ type: 'add', key: filter.id, userId: filter.owner, value: filter },
+			{ type: 'add', key: filter.id, actor: { type: 'system' }, value: filter },
 		])
 	}
 }
@@ -131,17 +129,17 @@ export async function deleteRuntimeFilters(ctx: C.Db, ids: F.FilterEntityId[]) {
 			),
 		)
 	for (const row of rows) {
-		const filter = F.FilterEntitySchema.parse(row)
+		const filter = F.fromRow(row)
 		filterMutation$.next([
 			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-			{ type: 'delete', key: filter.id, userId: filter.owner, value: filter },
+			{ type: 'delete', key: filter.id, actor: { type: 'system' }, value: filter },
 		])
 	}
 	return rows.length
 }
 
 async function selectFilters(ctx: C.Db) {
-	return (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
+	return (await ctx.db().select().from(Schema.filters)).map(F.fromRow)
 }
 
 // Recomputed rather than maintained incrementally: it is read when a filter page is opened or something changes,
@@ -197,7 +195,7 @@ export async function updateFilter(
 				message: 'Unable to update filter',
 			})
 		}
-		const filter = F.FilterEntitySchema.parse(rawFilter)
+		const filter = F.fromRow(rawFilter)
 		return { code: 'ok' as const, filter: { ...filter, ...update }, prevFilter: filter }
 	})
 	// res carries the whole filter entity (AST included); flattening that into attributes wrote a key
@@ -210,7 +208,7 @@ export async function updateFilter(
 				type: 'update',
 				key: id,
 				value: res.filter,
-				userId: mutationUserId(actor, res.filter),
+				actor,
 			},
 		])
 		// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
@@ -228,16 +226,14 @@ export async function createFilter(ctx: C.Db & CS.AbortSignal, filter: F.FilterE
 	// a filter can name one that doesn't exist yet, so creating that filter is a way to close a loop
 	const cycle = FR.findCycle([...(await selectFilters(ctx)), filter], filter.id)
 	if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
-	const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(filter))
+	const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(F.toRow(filter)))
 	// the driver error behind it names a sqlite constraint, which is nothing a caller can act on
 	if (res.code !== 'ok') return { code: res.code }
-	filterMutation$.next([
-		CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-		{ type: 'add', key: filter.id, value: filter, userId: mutationUserId(actor, filter) },
-	])
+	filterMutation$.next([CS.storeLinkToActiveSpan(ctx, 'event.emitter'), { type: 'add', key: filter.id, value: filter, actor }])
 	await recordFilterChange(ctx, actor, 'created', filter.id, { filterName: filter.name })
-	// the owner gained this filter's filter-owner inferred role, so their cached perms are stale
-	Rbac.invalidateUser(filter.owner)
+	// a user owner gained this filter's filter-owner inferred role, so their cached perms are stale
+	const ownerUserId = F.ownerUserId(filter.owner)
+	if (ownerUserId !== null) Rbac.invalidateUser(ownerUserId)
 	return { code: 'ok' as const }
 }
 
@@ -254,7 +250,7 @@ export async function deleteFilter(ctx: C.Db & CS.AbortSignal, idToDelete: F.Fil
 		if (!rawFilter) {
 			return { code: 'err:filter-not-found' as const }
 		}
-		const filter = F.FilterEntitySchema.parse(rawFilter)
+		const filter = F.fromRow(rawFilter)
 		// captured before the delete so the affected inferred-role holders can be invalidated after commit
 		const userContributors = await ctx
 			.db()
@@ -282,13 +278,11 @@ export async function deleteFilter(ctx: C.Db & CS.AbortSignal, idToDelete: F.Fil
 	// owner + user contributors lose their inferred roles; a role contributor affects every holder of that role
 	if (res.hasRoleContributors) Rbac.invalidateAll()
 	else {
-		Rbac.invalidateUser(res.filter.owner)
+		const ownerUserId = F.ownerUserId(res.filter.owner)
+		if (ownerUserId !== null) Rbac.invalidateUser(ownerUserId)
 		for (const userId of res.userContributorIds) Rbac.invalidateUser(userId)
 	}
-	filterMutation$.next([
-		CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-		{ type: 'delete', key: idToDelete, value: res.filter, userId: mutationUserId(actor, res.filter) },
-	])
+	filterMutation$.next([CS.storeLinkToActiveSpan(ctx, 'event.emitter'), { type: 'delete', key: idToDelete, value: res.filter, actor }])
 	await recordFilterChange(ctx, actor, 'deleted', idToDelete, { filterName: res.filter.name })
 	return { code: 'ok' as const }
 }
@@ -414,7 +408,8 @@ export const filtersRouter = {
 		.meta({ type: 'mutation' })
 		.input(F.NewFilterEntitySchema)
 		.handler(async ({ input, context: ctx }) => {
-			return await createFilter(ctx, { ...input, owner: ctx.user.discordId }, { type: 'slm-user', userId: ctx.user.discordId })
+			const user = { type: 'slm-user' as const, userId: ctx.user.discordId }
+			return await createFilter(ctx, { ...input, owner: user }, user)
 		}),
 	updateFilter: orpcBase
 		.meta({ type: 'mutation' })
@@ -441,35 +436,42 @@ export const filtersRouter = {
 
 	changeFilterOwner: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ filterId: F.FilterEntityIdSchema, newOwner: USR.UserIdSchema }))
+		// a plugin takes ownership through the plugin API, never from here
+		.input(
+			z.object({
+				filterId: F.FilterEntityIdSchema,
+				newOwner: z.discriminatedUnion('type', [
+					z.object({ type: z.literal('slm-user'), userId: USR.UserIdSchema }),
+					z.object({ type: z.literal('system') }),
+				]),
+			}),
+		)
 		.handler(async ({ input, context: ctx }) => {
 			const res = await DB.runTransaction(ctx, async (ctx) => {
 				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, input.filterId))
 				if (!rawFilter) {
 					return { code: 'err:filter-not-found' as const }
 				}
-				const filter = F.FilterEntitySchema.parse(rawFilter)
-				if (filter.owner === input.newOwner) {
-					return {
-						code: 'err:user-already-owns-filter' as const,
-					}
+				const prevFilter = F.fromRow(rawFilter)
+				if (F.ownersEqual(prevFilter.owner, input.newOwner)) {
+					return { code: 'err:already-owns-filter' as const }
 				}
-				await ctx.db().update(Schema.filters).set({ owner: input.newOwner }).where(E.eq(Schema.filters.id, input.filterId))
-				return { code: 'ok' as const, filter }
+				await ctx.db().update(Schema.filters).set(F.ownerColumns(input.newOwner)).where(E.eq(Schema.filters.id, input.filterId))
+				return { code: 'ok' as const, prevFilter, filter: { ...prevFilter, owner: input.newOwner } }
 			})
 			if (res.code !== 'ok') return res
 			// filter-owner moved: the old owner loses the inferred role, the new owner gains it
-			Rbac.invalidateUser(res.filter.owner)
-			Rbac.invalidateUser(input.newOwner)
+			for (const owner of [res.prevFilter.owner, res.filter.owner]) {
+				const userId = F.ownerUserId(owner)
+				if (userId !== null) Rbac.invalidateUser(userId)
+			}
+			const actor = { type: 'slm-user' as const, userId: ctx.user.discordId }
 			filterMutation$.next([
 				CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-				{
-					type: 'update',
-					key: input.filterId,
-					value: res.filter,
-					userId: ctx.user.discordId,
-				},
+				{ type: 'update', key: input.filterId, value: res.filter, actor },
 			])
+			await recordFilterChange(ctx, actor, 'updated', input.filterId, { filterName: res.filter.name, changedFields: ['owner'] })
+			return { code: 'ok' as const }
 		}),
 }
 
@@ -484,7 +486,7 @@ export async function* watchFilters({
 	ctx: C.Db
 	signal?: AbortSignal
 }): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
-	const ids = [...new Set(Array.from(state.filters.values()).map((f) => f.owner))]
+	const ids = [...new Set(Array.from(state.filters.values()).flatMap((f) => F.ownerUserId(f.owner) ?? []))]
 
 	const dbUsers = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids))
 
@@ -501,9 +503,11 @@ export async function* watchFilters({
 // the users a mutation names, built once for every watcher rather than once per watcher
 const mutationWithParts$ = filterMutation$.pipe(
 	Rx.concatMap(async ([ctx, mutation]) => {
-		const dbUsers = await Users.selectUsers(ctx).where(
-			E.inArray(Schema.users.discordId, [...new Set([mutation.value.owner, mutation.userId])]),
-		)
+		const userIds = new Set<bigint>()
+		const ownerUserId = F.ownerUserId(mutation.value.owner)
+		if (ownerUserId !== null) userIds.add(ownerUserId)
+		if (mutation.actor.type === 'slm-user') userIds.add(mutation.actor.userId)
+		const dbUsers = userIds.size > 0 ? await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, [...userIds])) : []
 		return { code: 'mutation' as const, mutation, parts: { users: await Users.buildUsers(dbUsers) } }
 	}),
 	Rx.share(),
@@ -555,5 +559,5 @@ export type FilterEntityChange =
 	  }
 	| {
 			code: 'mutation'
-			mutation: USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>
+			mutation: F.FilterEntityMutation
 	  }

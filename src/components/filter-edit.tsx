@@ -53,7 +53,7 @@ import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel'
 
-export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; stores: EditFrame.KeyProp }) {
+export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | undefined; stores: EditFrame.KeyProp }) {
 	const stores = props.stores
 
 	const navigate = useNavigate()
@@ -114,11 +114,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 	const permitWriteAll = !RbacClient.usePermsCheck(RBAC.perm('filters:write-all'))?.code
 	const loggedInUserRole: 'owner' | 'contributor' | '_none' | 'write-all' = (() => {
 		if (!loggedInUser) return '_none'
-		if (props.entity.owner === loggedInUser.discordId) return 'owner'
+		if (F.ownerUserId(props.entity.owner) === loggedInUser.discordId) return 'owner'
 		return 'contributor'
 	})()
 
 	const permitEdit = !canEditRes?.code
+	const ownerName = FilterEntityClient.useOwnerName(props.entity.owner, props.owner)
 
 	const [filterValid, filterModified] = Zus.useStore(
 		stores.filterEditor,
@@ -197,7 +198,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; sto
 								)}
 								<h3 className={Typo.H3}>{meta.name}</h3>
 								<Icons.Dot />
-								<small className="font-light">{tr.text(F_Msgs.ownerLine(props.owner.displayName))}</small>
+								<small className="font-light">{tr.text(F_Msgs.ownerLine(ownerName ?? ''))}</small>
 								<Icons.Dot />
 								<Button
 									aria-label={tr.text(F_Msgs.editDetails())}

@@ -49,7 +49,8 @@ const os = Rpc.os<typeof manifest>()
 
 // Filter CRUD, driven from the test rather than run on activate: the plugin is stopped and started
 // several times over the journey, and a filter written at activation would collide with its own last run.
-const FilterInput = z.object({ id: z.string(), owner: z.string() })
+// without an owner, the plugin owns the filter
+const FilterInput = z.object({ id: z.string(), owner: z.string().optional() })
 
 export const router = {
 	stats: os
@@ -78,7 +79,7 @@ export const router = {
 				name: 'Hello pool',
 				description: null,
 				filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
-				owner: BigInt(input.owner),
+				owner: input.owner === undefined ? undefined : { type: 'slm-user', userId: BigInt(input.owner) },
 				alertMessage: null,
 				emoji: null,
 				invertedAlertMessage: null,

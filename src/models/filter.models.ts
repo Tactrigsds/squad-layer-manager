@@ -9,6 +9,7 @@ import { z } from '@/lib/zod'
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
 // another filter entity.
+import type * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import type * as Msgs from '@/models/messages.models'
 
@@ -696,12 +697,41 @@ export const DescriptionSchema = z.string().trim().min(3).max(2048)
 export const AlertMessageSchema = z.string().trim().min(3).max(280)
 export type FilterEntityId = z.infer<typeof FilterEntityIdSchema>
 
+// Who manages a filter and answers for it. The tags match the corresponding members of AppEvents.Actor, so an owner
+// can be labelled the way an actor is. A user owner holds the filter-owner role over it; a plugin or the system
+// holds none, so only contributors and holders of filters:write-all can edit such a filter.
+export const FilterOwnerSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('slm-user'), userId: z.bigint() }),
+	z.object({ type: z.literal('plugin'), pluginId: z.string() }),
+	z.object({ type: z.literal('system') }),
+])
+export type FilterOwner = z.infer<typeof FilterOwnerSchema>
+
+export const SYSTEM_OWNER: FilterOwner = { type: 'system' }
+
+export function ownerUserId(owner: FilterOwner): bigint | null {
+	return owner.type === 'slm-user' ? owner.userId : null
+}
+
+export function ownersEqual(a: FilterOwner, b: FilterOwner): boolean {
+	switch (a.type) {
+		case 'slm-user':
+			return b.type === 'slm-user' && a.userId === b.userId
+		case 'plugin':
+			return b.type === 'plugin' && a.pluginId === b.pluginId
+		case 'system':
+			return b.type === 'system'
+		default:
+			assertNever(a)
+	}
+}
+
 export const BaseFilterEntitySchema = z.object({
 	id: FilterEntityIdSchema,
 	name: z.string().trim().min(3).max(128),
 	description: DescriptionSchema.nullable(),
 	filter: FilterNodeSchema,
-	owner: z.bigint(),
+	owner: FilterOwnerSchema,
 
 	alertMessage: AlertMessageSchema.nullable(),
 	emoji: z.string().nullable(),
@@ -726,7 +756,7 @@ export const FilterEntitySchema = BaseFilterEntitySchema
 	// write path (see filter-references.models.ts, findCycle)
 	.refine((e) => !appliedFilterIds(e.filter).has(e.id), {
 		error: 'filter cannot be recursive',
-	}) satisfies z.ZodType<SchemaModels.Filter>
+	})
 
 export const UpdateFilterEntitySchema = BaseFilterEntitySchema.omit({
 	id: true,
@@ -738,6 +768,32 @@ export const NewFilterEntitySchema = BaseFilterEntitySchema.omit({
 
 export type FilterEntityUpdate = z.infer<typeof UpdateFilterEntitySchema>
 export type FilterEntity = z.infer<typeof FilterEntitySchema>
+
+export type FilterEntityMutation = {
+	type: 'add' | 'update' | 'delete'
+	key: FilterEntityId
+	value: FilterEntity
+	// who made the change, which is not necessarily the owner
+	actor: AppEvents.Actor
+}
+
+export function fromRow(row: SchemaModels.Filter): FilterEntity {
+	const owner: FilterOwner =
+		row.ownerUserId !== null
+			? { type: 'slm-user', userId: row.ownerUserId }
+			: row.ownerPluginId !== null
+				? { type: 'plugin', pluginId: row.ownerPluginId }
+				: SYSTEM_OWNER
+	return FilterEntitySchema.parse({ ...row, owner })
+}
+
+export function ownerColumns(owner: FilterOwner): Pick<SchemaModels.NewFilter, 'ownerUserId' | 'ownerPluginId'> {
+	return { ownerUserId: ownerUserId(owner), ownerPluginId: owner.type === 'plugin' ? owner.pluginId : null }
+}
+
+export function toRow({ owner, ...rest }: FilterEntity): SchemaModels.NewFilter {
+	return { ...rest, ...ownerColumns(owner) }
+}
 
 // -------- validation errors --------
 

@@ -9,7 +9,7 @@ import * as SLL from '@/models/shared-layer-list'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
-import { refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
+import { filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -91,6 +91,35 @@ describe('cyclical references', () => {
 	it('allows an update that only deepens the chain', async () => {
 		const res = await adminClient.filters.updateFilter(['raas-only', { filter: FB.and([FB.includedIn('pool-only')]) }])
 		expect(res.code).toBe('ok')
+	})
+})
+
+// The filter-owner role follows the owner column, and a filter SLM owns grants it to nobody.
+describe('changeFilterOwner', () => {
+	it('lets the new owner edit the filter, and nobody once SLM owns it', async () => {
+		expect(await dashboardOnlyClient.filters.updateFilter(['raas-harju', { name: 'Harju RAAS' }])).toMatchObject({
+			code: 'err:permission-denied',
+		})
+
+		expect(
+			await adminClient.filters.changeFilterOwner({
+				filterId: 'raas-harju',
+				newOwner: { type: 'slm-user', userId: DASHBOARD_ONLY.discordId },
+			}),
+		).toEqual({ code: 'ok' })
+		expect((await dashboardOnlyClient.filters.updateFilter(['raas-harju', { name: 'Harju RAAS' }])).code).toBe('ok')
+
+		expect(await adminClient.filters.changeFilterOwner({ filterId: 'raas-harju', newOwner: { type: 'system' } })).toEqual({ code: 'ok' })
+		expect(filterOwner(app, 'raas-harju')).toEqual({
+			ownerUserId: null,
+			ownerPluginId: null,
+		})
+		expect(await dashboardOnlyClient.filters.updateFilter(['raas-harju', { name: 'RAAS on Harju' }])).toMatchObject({
+			code: 'err:permission-denied',
+		})
+		expect(await adminClient.filters.changeFilterOwner({ filterId: 'raas-harju', newOwner: { type: 'system' } })).toEqual({
+			code: 'err:already-owns-filter',
+		})
 	})
 })
 

@@ -544,7 +544,7 @@ async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[],
 			filterId: Schema.filters.id,
 		})
 		.from(Schema.filters)
-		.where(discordUserId ? E.eq(Schema.filters.owner, discordUserId) : E.sql`false`)
+		.where(discordUserId ? E.eq(Schema.filters.ownerUserId, discordUserId) : E.sql`false`)
 	const userContributed = db
 		.select({
 			source: E.sql<Source>`'user-contributor'`.as('source'),
