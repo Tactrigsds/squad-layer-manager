@@ -3484,19 +3484,23 @@ function SelectField({
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	options: string[]
+	// a numeric enum's options are numbers, which the select holds as strings and hands back as the option itself
+	options: (string | number)[]
 	node: Node
 }) {
 	const value = useFieldValue(value$)
 	return (
-		<Select value={value ?? ''} onValueChange={onChange}>
+		<Select
+			value={value == null ? '' : String(value)}
+			onValueChange={(picked) => onChange(options.find((opt) => String(opt) === picked) ?? picked)}
+		>
 			<SelectTrigger className="w-full">
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
 				{options.map((opt) => (
-					<SelectItem key={opt} value={opt}>
-						{tr.text(SETTINGS_Msgs.settingOption(node, opt))}
+					<SelectItem key={String(opt)} value={String(opt)}>
+						{tr.text(SETTINGS_Msgs.settingOption(node, String(opt)))}
 					</SelectItem>
 				))}
 			</SelectContent>

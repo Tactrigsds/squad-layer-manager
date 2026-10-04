@@ -703,6 +703,18 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 	return undefined
 }
 
+// The server events in a feed, in the order they happened. The buffer collapses server events attributed to an SLM
+// action under that action's APP_EVENT entry, so those are pulled back out, and the sort restores chronology across
+// that unfolding (server event ids are monotonic).
+export function serverEventsInOrder(entries: readonly EventEnriched[]): EventEnriched[] {
+	const flat: EventEnriched[] = []
+	for (const entry of entries) {
+		if (entry.type === 'APP_EVENT') flat.push(...entry.collapsed)
+		else flat.push(entry)
+	}
+	return flat.sort((a, b) => a.time - b.time || (typeof a.id === 'number' && typeof b.id === 'number' ? a.id - b.id : 0))
+}
+
 const NO_ENTRIES: EventEnriched[] = []
 
 /**

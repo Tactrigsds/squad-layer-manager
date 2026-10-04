@@ -124,12 +124,14 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			// whatever does fit, down to the minimum
 			const fit = (preferred: number, min: number, available: number) =>
 				Math.max(min, Math.min(preferred, available - collisionPadding * 2))
-			if (definition.defaultWidth) {
-				content.style.width = `${fit(definition.defaultWidth, definition.minWidth ?? 240, window.innerWidth)}px`
-			}
-			if (definition.defaultHeight) {
-				content.style.height = `${fit(definition.defaultHeight, definition.minHeight ?? 160, window.innerHeight)}px`
-			}
+			const body = definition.initialSize?.(windowState.props)
+			// a body size leaves room for what surrounds the body: the window's border and its drag bar
+			const width = body ? body.width + content.offsetWidth - content.clientWidth : definition.defaultWidth
+			const height = body
+				? body.height + content.offsetHeight - content.clientHeight + (dragBarRef.current?.offsetHeight ?? 0)
+				: definition.defaultHeight
+			if (width) content.style.width = `${fit(width, definition.minWidth ?? 240, window.innerWidth)}px`
+			if (height) content.style.height = `${fit(height, definition.minHeight ?? 160, window.innerHeight)}px`
 		}
 
 		const pos = DW.solveInitialPosition({
@@ -152,8 +154,11 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		definition.resizable,
 		definition.defaultWidth,
 		definition.defaultHeight,
+		definition.initialSize,
+		windowState.props,
 		definition.minWidth,
 		definition.minHeight,
+		definition,
 	])
 
 	// Handle click outside

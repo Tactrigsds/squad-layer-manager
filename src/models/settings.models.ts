@@ -17,6 +17,7 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as LTag from '@/models/layer-tags.models'
 import { t } from '@/models/messages.models'
+import * as Activity from '@/models/player-activity.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SDoc from '@/models/schema-docs.models'
 import type * as SS from '@/models/server-state.models'
@@ -655,6 +656,14 @@ export const GlobalSettingsSchema = z
 				label: t('Team Attribution'),
 				description: t(
 					'How players of a finished match are attributed to a team for the historical team breakdown: each player counts for the team they spent the most time on. These thresholds carve marginal players out of the breakdown chart; carved-out players still appear in the historical teams view, flagged. Players who never joined a squad or never took part in a kill or wound are always carved out.',
+				),
+			}),
+		),
+		playerActivity: Activity.SettingsSchema.prefault(Activity.DEFAULT_SETTINGS).meta(
+			SDoc.of({
+				label: t('Player Activity'),
+				description: t(
+					'When a player counts as idle. A player in a squad or in a vehicle never does. The population chart and plugins such as the AFK kicker read this setting.',
 				),
 			}),
 		),

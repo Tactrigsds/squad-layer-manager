@@ -99,6 +99,7 @@ const DATE_FORMATS = {
 	clock: { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
 	dateFull: { dateStyle: 'full' },
 	weekdayMonthDay: { weekday: 'long', month: 'long', day: 'numeric' },
+	weekdayDay: { weekday: 'short', day: 'numeric' },
 	time: { timeStyle: 'short' },
 	timeSeconds: { timeStyle: 'medium' },
 } satisfies Record<string, Intl.DateTimeFormatOptions>

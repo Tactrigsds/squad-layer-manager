@@ -55,6 +55,11 @@ export interface WindowDefinition<TProps = any, TData = any> {
 	defaultWidth?: number
 	/** Initial height in px when resizable. When omitted the window sizes to its content. */
 	defaultHeight?: number
+	/**
+	 * Initial size in px of the window's body, below its drag bar, when resizable. Takes over from defaultWidth and
+	 * defaultHeight when it returns a size, for a window that should open at the size of what it was popped out of.
+	 */
+	initialSize?: (props: TProps) => { width: number; height: number } | undefined
 	/** What the window cannot outlive, read from its props as it opens. It closes just before any of them is disposed. */
 	dependsOn?: (props: TProps) => WindowDependency[]
 	/** Synchronous loader - called when window opens */

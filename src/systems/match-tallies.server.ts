@@ -11,18 +11,19 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
-import { mh, pendingCombatStatsCond } from '@/systems/combat-stats.shared'
-import type * as CombatStatsWorker from '@/systems/combat-stats.worker'
+import * as MatchPopulation from '@/systems/match-population.server'
+import { mh, mp, pendingTalliesCond } from '@/systems/match-tallies.shared'
+import type * as MatchTalliesWorker from '@/systems/match-tallies.worker'
 
-// The catch-up that gives every match a scoreline.
+// The catch-up that gives every match a scoreline and population samples.
 //
-// Tallying one costs a full feed replay, so it happens once per match ever and the six columns on matchHistory
-// hold the answer. The replay itself runs on a worker thread (combat-stats.worker.ts) because a server with
-// years of history has tens of thousands of matches to get through and that loop is also the rcon and websocket
-// loop. This side asks for a small batch at a time, writes what comes back, and waits: the pacing is here
-// because it is the thread that would suffer, and the writes are here because the app keeps one writer.
+// Tallying one costs a full feed replay, so it happens once per match ever: the six columns on matchHistory hold
+// the scoreline, and matchPopulation the samples. The replay itself runs on a worker thread (match-tallies.worker.ts)
+// because a server with years of history has tens of thousands of matches to get through and that loop is also the
+// rcon and websocket loop. This side asks for a small batch at a time, writes what comes back, and waits: the pacing
+// is here because it is the thread that would suffer, and the writes are here because the app keeps one writer.
 
-const module = initModule('combat-stats')
+const module = initModule('match-tallies')
 let log!: CS.Logger
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
@@ -33,7 +34,7 @@ let ENV!: ReturnType<typeof envBuilder>
 let worker: Worker | undefined
 let nextSeq = 1
 let shuttingDown = false
-const pending = new Map<number, { resolve: (res: CombatStatsWorker.EngineResponse) => void; reject: (err: unknown) => void }>()
+const pending = new Map<number, { resolve: (res: MatchTalliesWorker.EngineResponse) => void; reject: (err: unknown) => void }>()
 
 function failPending(err: unknown) {
 	for (const p of pending.values()) p.reject(err)
@@ -53,9 +54,9 @@ function ensureWorker(): Worker | undefined {
 		// under tsx this module's url is the .ts source and the worker needs the loader passed along; from the
 		// prod bundle both are built .js chunks side by side in dist-server/
 		const isTs = import.meta.url.endsWith('.ts')
-		const url = new URL(isTs ? './combat-stats.worker.ts' : './combat-stats.worker.js', import.meta.url)
+		const url = new URL(isTs ? './match-tallies.worker.ts' : './match-tallies.worker.js', import.meta.url)
 		const w = new Worker(url, { workerData: { dbPath: ENV.DB_PATH }, execArgv: isTs ? ['--import', 'tsx'] : undefined })
-		w.on('message', (msg: CombatStatsWorker.Response) => {
+		w.on('message', (msg: MatchTalliesWorker.Response) => {
 			const p = pending.get(msg.seq)
 			if (!p) return
 			pending.delete(msg.seq)
@@ -63,19 +64,19 @@ function ensureWorker(): Worker | undefined {
 			else p.resolve(msg.res!)
 		})
 		w.on('error', (err) => {
-			log.error(err, 'combat stats worker failed')
+			log.error(err, 'match tallies worker failed')
 			if (worker === w) worker = undefined
 			failPending(err)
 		})
 		w.on('exit', () => {
 			if (worker === w) worker = undefined
-			failPending(new Error('combat stats worker exited'))
+			failPending(new Error('match tallies worker exited'))
 		})
 		// the worker must never hold the process open
 		w.unref()
 		worker = w
 	} catch (err) {
-		log.error(err, 'combat stats worker failed to boot; scorelines are not being tallied')
+		log.error(err, 'match tallies worker failed to boot; scorelines and population are not being tallied')
 	}
 	return worker
 }
@@ -89,7 +90,7 @@ export function setup() {
 	})
 }
 
-async function dispatch(ctx: CS.AbortSignal, req: CombatStatsWorker.EngineRequest): Promise<CombatStatsWorker.EngineResponse | null> {
+async function dispatch(ctx: CS.AbortSignal, req: MatchTalliesWorker.EngineRequest): Promise<MatchTalliesWorker.EngineResponse | null> {
 	if (!ensureWorker()) return null
 	const seq = nextSeq++
 	// an aborted caller just stops waiting: the replay is synchronous and cannot be interrupted
@@ -103,7 +104,7 @@ async function dispatch(ctx: CS.AbortSignal, req: CombatStatsWorker.EngineReques
 		return await new Promise((resolve, reject) => {
 			pending.set(seq, { resolve, reject })
 			ctx.signal.addEventListener('abort', onAbort)
-			worker!.postMessage({ seq, req } satisfies CombatStatsWorker.Request)
+			worker!.postMessage({ seq, req } satisfies MatchTalliesWorker.Request)
 		})
 	} finally {
 		ctx.signal.removeEventListener('abort', onAbort)
@@ -126,13 +127,13 @@ const IDLE_PAUSE = 30_000
 const skipped = new Set<number>()
 
 /**
- * Tally and store every match on this server that has no scoreline, newest first, until there are none left,
- * then keep watching for the ones new matches leave behind.
+ * Tally and store every match on this server that has no scoreline or population samples, newest first, until
+ * there are none left, then keep watching for the ones new matches leave behind.
  *
  * Runs for the life of the managed server. Resumable by construction: the worklist is a db predicate, so a
  * restart mid-catch-up picks up exactly where it stopped.
  */
-export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () => CombatStatsWorker.EngineRequest['opts']) {
+export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () => MatchTalliesWorker.EngineRequest['opts']) {
 	// A match becomes tallyable when a later one starts, which is one of the things that moves the window, so an
 	// idle loop waits on the window rather than on the clock: the row a roll just left behind would otherwise sit
 	// blank for the whole idle pause. Latched, because an update that lands mid-round has to survive until the
@@ -154,8 +155,9 @@ export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () =
 				if (await hasPendingMatches(ctx)) {
 					const res = await dispatch(ctx, { serverId: ctx.serverId, opts: opts(), limit: BATCH, skip: [...skipped] })
 					for (const matchId of res?.failed ?? []) skipped.add(matchId)
-					for (const { matchId, stats } of res?.tallies ?? []) {
-						await storeCombatStats(ctx, matchId, stats)
+					for (const tally of res?.tallies ?? []) {
+						if (tally.stats) await storeCombatStats(ctx, tally.matchId, tally.stats)
+						if (tally.population) await MatchPopulation.store(ctx, tally.matchId, tally.population)
 						tallied++
 					}
 				}
@@ -163,7 +165,7 @@ export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () =
 				if (Prom.isAbortError(err)) return
 				// a round names no one match, so nothing can be skipped for it; a worker that is down reboots on
 				// its own and the next round finds the same work waiting
-				log.error(err, 'a combat stats round failed')
+				log.error(err, 'a match tallies round failed')
 			}
 			if (tallied === 0 && woken) continue
 			// the loser of the race is left pending, so the timer swallows the rejection an abort gives it and
@@ -183,7 +185,8 @@ async function hasPendingMatches(ctx: C.Db & CS.ServerId & CS.AbortSignal): Prom
 		.db()
 		.select({ id: mh.id })
 		.from(mh)
-		.where(pendingCombatStatsCond(ctx.serverId, [...skipped]))
+		.leftJoin(mp, E.eq(mp.matchId, mh.id))
+		.where(pendingTalliesCond(ctx.serverId, [...skipped]))
 		.limit(1)
 	return row !== undefined
 }

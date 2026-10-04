@@ -4,6 +4,7 @@ import React from 'react'
 
 import { LineChart } from '@/components/charts/line-chart'
 import { useMeasuredWidth } from '@/components/charts/measure'
+import { IdleSwatch, PopulationChart as PopulationChartSvg } from '@/components/charts/population-chart'
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import HistoricalMatchBanner from '@/components/historical-match-banner'
 import { TabBar } from '@/components/tab-bar'
@@ -17,6 +18,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as MsgFmt from '@/messages/format'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as PG_Msgs from '@/messages/player-groupings.messages'
@@ -24,6 +26,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
+import * as Pop from '@/models/population.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -32,7 +35,7 @@ import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
-import { useOpenChartWindow } from './charts-window.helpers'
+import { closeChartWindow, useChartPoppedOut, useOpenChartWindow } from './charts-window.helpers'
 
 void import('@/components/charts-window')
 
@@ -68,9 +71,25 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wi
 				}
 			/>
 			<div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)} className="fd-tabbody flex flex-col min-w-0">
-				<ChartBody stores={props.stores} tab={tab} wide={props.wide} />
+				<PanelChart stores={props.stores} tab={tab} wide={props.wide} />
 			</div>
 		</section>
+	)
+}
+
+// The chart in the panel, or while it is open in its window, a note saying so with a button that brings it back.
+function PanelChart(props: { stores: SquadServerFrame.KeyProp; tab: ClientOnlySettings.ChartsTab; wide?: boolean }) {
+	const serverId = props.stores.squadServer!.serverId
+	const poppedOut = useChartPoppedOut(serverId, props.tab)
+	if (!poppedOut) return <ChartBody stores={props.stores} tab={props.tab} wide={props.wide} />
+	return (
+		<div className="flex flex-col items-center justify-center gap-2 px-2.5 py-6 text-center">
+			<p className="text-sm text-text-3">{tr.text(MH_Msgs.chartPoppedOut())}</p>
+			<button type="button" className="fd-btn fd-btn-sm" onClick={() => closeChartWindow(serverId, props.tab)}>
+				<Icons.PanelTopClose />
+				{tr.text(MH_Msgs.returnChartToPanel())}
+			</button>
+		</div>
 	)
 }
 
@@ -97,6 +116,9 @@ export function ChartBody(props: {
 		case 'scoreline':
 			chart = <ScorelineChart stores={props.stores} historicalEvents={historicalEvents} inWindow={props.inWindow} />
 			break
+		case 'population':
+			chart = <PopulationChart stores={props.stores} historicalEvents={historicalEvents} inWindow={props.inWindow} />
+			break
 		default:
 			assertNever(props.tab)
 	}
@@ -120,7 +142,7 @@ function ChartToolbar(props: {
 	legendBelow?: boolean
 	help: React.ReactNode
 }) {
-	const openWindow = useOpenChartWindow({ stores: props.stores, tab: props.tab })
+	const openWindow = useOpenChartWindow()
 	return (
 		<div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pt-1.5 min-w-0">
 			{props.controls}
@@ -139,7 +161,14 @@ function ChartToolbar(props: {
 								data-tour={`chart-pop-out-${props.tab}`}
 								className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm"
 								aria-label={tr.text(MH_Msgs.openChartInWindow())}
-								onClick={(e) => openWindow(e.currentTarget)}
+								onClick={(e) => {
+									const panel = e.currentTarget.closest<HTMLElement>('[role="tabpanel"]')
+									const box = panel?.getBoundingClientRect()
+									const size = box ? { width: box.width, height: box.height } : undefined
+									// anchored below the panel rather than the button, so the window leaves the note that stands in for
+									// the chart, and its button, in view
+									openWindow({ stores: props.stores, tab: props.tab, size }, panel ?? e.currentTarget)
+								}}
 							>
 								<Icons.PictureInPicture2 />
 							</button>
@@ -574,6 +603,310 @@ function ScorelineTooltip(props: {
 			))}
 		</div>
 	)
+}
+
+// ---- Population ----
+
+// taller than the line charts, for the match names above the plot
+const POPULATION_CHART_HEIGHT = 190
+
+function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEvents: CHAT.EventEnriched[] | null; inWindow?: boolean }) {
+	const squadServer = props.stores.squadServer!
+	const serverId = squadServer.serverId
+	const range = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationRange)
+	const split = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationSplit)
+	const scale = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationScale)
+	const currentMatch$ = MatchHistoryClient.currentMatch$(serverId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
+	const rangeQuery = useQuery(MatchHistoryClient.populationQueryOptions(serverId, range === 'match' ? null : range, currentMatch?.ordinal))
+	const view = Zus.useStore_Susp(
+		squadServer,
+		currentMatch$,
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettings.Store,
+		SettingsClient.PublicSettingsStore,
+		SquadServerClient.serverInfo$(serverId),
+		StatsModels.Sel.population(props.historicalEvents, rangeQuery.data ?? null),
+	)
+	const hasPoints = !!view && view.runs.length > 0
+
+	const controls = (
+		<span className="flex flex-wrap gap-x-3 gap-y-0.5">
+			<span role="group" aria-label={tr.text(MH_Msgs.populationRangeLabel())} className="flex flex-wrap gap-0.5">
+				{ClientOnlySettings.POPULATION_RANGES.map((value) => (
+					<button
+						type="button"
+						key={value}
+						onClick={() => ClientOnlySettings.Actions.setPopulationRange(value)}
+						className="fd-pill"
+						data-state={range === value ? 'on' : 'off'}
+					>
+						{tr.text(MH_Msgs.populationRange(value))}
+					</button>
+				))}
+			</span>
+			<span role="group" aria-label={tr.text(MH_Msgs.populationSplitLabel())} className="flex flex-wrap gap-0.5">
+				{ClientOnlySettings.POPULATION_SPLITS.map((value) => (
+					<button
+						type="button"
+						key={value}
+						onClick={() => ClientOnlySettings.Actions.setPopulationSplit(value)}
+						className="fd-pill"
+						data-state={split === value ? 'on' : 'off'}
+					>
+						{tr.text(MH_Msgs.populationSplit(value))}
+					</button>
+				))}
+			</span>
+			{split !== 'stats' && (
+				<span role="group" aria-label={tr.text(MH_Msgs.populationScaleLabel())} className="flex flex-wrap gap-0.5">
+					{ClientOnlySettings.POPULATION_SCALES.map((value) => (
+						<button
+							type="button"
+							key={value}
+							onClick={() => ClientOnlySettings.Actions.setPopulationScale(value)}
+							className="fd-pill"
+							data-state={scale === value ? 'on' : 'off'}
+						>
+							{tr.text(MH_Msgs.populationScale(value))}
+						</button>
+					))}
+				</span>
+			)}
+		</span>
+	)
+
+	const swatch = (color: string) => <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+	let legendItems: { key: string; mark: React.ReactNode; label: string }[]
+	switch (split) {
+		case 'activity':
+			legendItems = [
+				{ key: 'active', mark: swatch(Pop.COLORS.active), label: tr.text(MH_Msgs.populationActive()) },
+				{ key: 'idle', mark: <IdleSwatch />, label: tr.text(MH_Msgs.populationIdle()) },
+			]
+			break
+		case 'teams':
+			legendItems = (view?.sideDisplays ?? []).map((side, i) => ({ key: `side${i}`, mark: swatch(side.color), label: side.label }))
+			break
+		case 'stats':
+			legendItems = []
+			break
+		default:
+			assertNever(split)
+	}
+	if (range !== 'match' && split !== 'stats') {
+		legendItems.push(
+			{
+				key: 'start',
+				mark: (
+					<svg width={10} height={10} aria-hidden="true" className="shrink-0 text-text-2">
+						<line x1={2} y1={0} x2={2} y2={10} stroke="currentColor" strokeWidth={1.5} />
+						<path d="M2 0 l5 2.5 l-5 2.5 Z" fill="currentColor" />
+					</svg>
+				),
+				label: tr.text(MH_Msgs.populationMatchStart()),
+			},
+			{
+				key: 'end',
+				mark: (
+					<svg width={6} height={10} aria-hidden="true" className="shrink-0 text-text-2">
+						<line x1={3} y1={0} x2={3} y2={10} stroke="currentColor" strokeWidth={1.5} strokeDasharray="2 2" />
+					</svg>
+				),
+				label: tr.text(MH_Msgs.populationRoundEnd()),
+			},
+		)
+	}
+	const legend = (
+		<ul className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-2 min-w-0">
+			{legendItems.map((item) => (
+				<li key={item.key} className="flex items-center gap-1.5 min-w-0">
+					{item.mark}
+					<span className="truncate">{item.label}</span>
+				</li>
+			))}
+		</ul>
+	)
+
+	const selectBand = (band: StatsModels.PopulationBand) =>
+		void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: squadServer }, band.ordinal === currentMatch?.ordinal ? null : band.ordinal)
+
+	return (
+		<div className={cn('flex flex-col min-w-0', props.inWindow && 'flex-1 min-h-0')}>
+			<ChartToolbar
+				stores={props.stores}
+				tab="population"
+				inWindow={props.inWindow}
+				controls={controls}
+				legend={legend}
+				help={
+					<HelpButton>
+						<p>{tr.text(MH_Msgs.populationDescription())}</p>
+						<p className="text-text-2">{tr.text(MH_Msgs.populationIdleRule(view?.idleMinutes ?? 10))}</p>
+						{range !== 'match' && <p className="text-text-2">{tr.text(MH_Msgs.populationRangeHint())}</p>}
+						{split === 'stats' && <p className="text-text-2">{tr.text(MH_Msgs.populationStatsHint())}</p>}
+					</HelpButton>
+				}
+			/>
+			<div
+				data-tour="population-chart"
+				className={cn('px-1.5 pt-1 pb-1.5', props.inWindow ? 'flex-1 min-h-[140px]' : 'shrink-0')}
+				style={props.inWindow ? undefined : { height: POPULATION_CHART_HEIGHT }}
+			>
+				{view && hasPoints && split === 'stats' ? (
+					<PopulationStats view={view} />
+				) : view && hasPoints ? (
+					<PopulationLines
+						view={view}
+						split={split === 'teams' ? 'teams' : 'activity'}
+						yMax={scale === 'max' ? view.cap : undefined}
+						showBandStarts={range !== 'match'}
+						onSelectBand={range === 'match' ? undefined : selectBand}
+					/>
+				) : (
+					<div className="h-full flex items-center justify-center text-text-3 text-sm">
+						{view ? (
+							tr.text(MH_Msgs.noPlayersYet())
+						) : rangeQuery.isError ? (
+							tr.text(APP_Msgs.somethingWentWrong())
+						) : (
+							<span className="fd-spin size-5!" />
+						)}
+					</div>
+				)}
+			</div>
+			{view && view.pending > 0 && (
+				<p className="px-2.5 pb-1.5 text-xs text-text-3">{tr.text(MH_Msgs.populationPending(view.pending))}</p>
+			)}
+		</div>
+	)
+}
+
+// when in the view a time falls, as the view's axis reads it: into the match, or on the clock
+function formatPopulationTime(view: StatsModels.PopulationView, time: number) {
+	if (view.range === 'match') return tr.text(MH_Msgs.matchTime(formatElapsed(time - view.start)))
+	return MsgFmt.formatDate(time, view.range === '6h' ? 'clock' : 'dateTime24')
+}
+
+// a figure to one decimal place, which is as fine as an average of whole players is worth reading
+function formatFigure(value: number) {
+	return MsgFmt.formatNumber(Math.round(value * 10) / 10)
+}
+
+function PopulationStats(props: { view: StatsModels.PopulationView }) {
+	const { stats, range } = props.view
+	const percent = (share: number) => tr.text(MH_Msgs.populationStatPercent(formatFigure(share * 100)))
+	const perHour = (value: number) => tr.text(MH_Msgs.populationStatPerHour(formatFigure(value)))
+	const at = (time: number) => tr.text(MH_Msgs.populationStatAt(formatPopulationTime(props.view, time)))
+	const entries: { key: StatKey; value: string | null; detail?: string }[] = [
+		{ key: 'peak', value: stats.peak && String(stats.peak.value), detail: stats.peak ? at(stats.peak.at) : undefined },
+		{ key: 'low', value: stats.low && String(stats.low.value), detail: stats.low ? at(stats.low.at) : undefined },
+		{ key: 'average', value: stats.average === null ? null : formatFigure(stats.average) },
+		{ key: 'median', value: stats.median === null ? null : formatFigure(stats.median) },
+		{
+			key: 'full',
+			value: stats.fullShare === null ? null : percent(stats.fullShare),
+			detail: tr.text(MH_Msgs.populationStatFullAt(props.view.cap)),
+		},
+		{
+			key: 'idle',
+			value: stats.idleShare === null ? null : percent(stats.idleShare),
+			detail: tr.text(MH_Msgs.populationStatIdleDetail()),
+		},
+		{
+			key: 'gap',
+			value: stats.gapAverage === null ? null : formatFigure(stats.gapAverage),
+			detail: stats.gapMax === null ? undefined : tr.text(MH_Msgs.populationStatGapDetail(stats.gapMax)),
+		},
+		{ key: 'joins', value: stats.joinsPerHour === null ? null : perHour(stats.joinsPerHour) },
+		{ key: 'leaves', value: stats.leavesPerHour === null ? null : perHour(stats.leavesPerHour) },
+		{
+			key: 'churn',
+			value: stats.churnPerHour === null ? null : percent(stats.churnPerHour),
+			detail: tr.text(MH_Msgs.populationStatChurnDetail()),
+		},
+	]
+	if (range !== 'match' && stats.matches !== null) entries.push({ key: 'matches', value: String(stats.matches) })
+	return (
+		<dl className="h-full overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] content-start gap-x-3 gap-y-2 px-1">
+			{entries.map((entry) => (
+				<div key={entry.key} className="flex flex-col min-w-0">
+					<dt className="text-xs text-text-3 truncate">{tr.text(MH_Msgs.populationStat(entry.key))}</dt>
+					<dd className="font-mono text-lg leading-tight">{entry.value ?? '-'}</dd>
+					{entry.detail && <dd className="text-xs text-text-3 break-words">{entry.detail}</dd>}
+				</div>
+			))}
+		</dl>
+	)
+}
+
+type StatKey = Parameters<typeof MH_Msgs.populationStat>[0]
+
+function PopulationLines(props: {
+	view: StatsModels.PopulationView
+	split: 'activity' | 'teams'
+	yMax?: number
+	showBandStarts: boolean
+	onSelectBand?: (band: StatsModels.PopulationBand) => void
+}) {
+	const { view } = props
+	const elapsed = view.range === 'match'
+	const formatX = elapsed
+		? (time: number) => formatElapsed(time - view.start)
+		: (time: number) => MsgFmt.formatDate(time, view.range === '7d' ? 'weekdayDay' : 'clock')
+	const xTicks = elapsed
+		? (start: number, end: number, target: number) => minuteTicks(end - start, target).map((offset) => start + offset)
+		: clockTicks
+
+	const renderTooltip = (i: number, band: StatsModels.PopulationBand | undefined) => {
+		const when = formatPopulationTime(view, view.start + (i + 0.5) * view.bucketMs)
+		const row = (label: string, value: number, color?: string, hatched?: boolean) => (
+			<span key={label} className="flex items-center justify-between gap-4 text-text-2">
+				<span className="flex items-center gap-1.5">
+					{hatched ? <IdleSwatch /> : color && <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
+					{label}
+				</span>
+				<span className="text-foreground font-mono">{Math.round(value)}</span>
+			</span>
+		)
+		return (
+			<div className="flex flex-col gap-0.5 min-w-40">
+				<span className="font-semibold">{band ? `${when} · ${band.label}` : when}</span>
+				{row(tr.text(MH_Msgs.populationPlayers()), view.total[i])}
+				{row(tr.text(MH_Msgs.populationActive()), view.active[i], Pop.COLORS.active)}
+				{row(tr.text(MH_Msgs.populationIdle()), view.idle[i], undefined, true)}
+				<span className="h-px bg-line-soft my-0.5" />
+				{view.sideDisplays.map((side, s) => row(side.label, view.sides[s][i], side.color))}
+			</div>
+		)
+	}
+
+	return (
+		<PopulationChartSvg
+			view={view}
+			split={props.split}
+			yMax={props.yMax}
+			formatX={formatX}
+			xTicks={xTicks}
+			showBandStarts={props.showBandStarts}
+			onSelectBand={props.onSelectBand}
+			renderTooltip={renderTooltip}
+			ariaLabel={tr.text(MH_Msgs.chartsTab('population'))}
+		/>
+	)
+}
+
+// clock steps the range axes pick from, the finest that keeps the ticks under the target
+const CLOCK_STEPS = [15, 30, 60, 120, 180, 360, 720, 1440, 2880].map((minutes) => minutes * 60_000)
+
+// ticks at round clock times, counted from the local midnight before `start`
+function clockTicks(start: number, end: number, targetTicks: number) {
+	const step = CLOCK_STEPS.find((candidate) => (end - start) / candidate <= targetTicks) ?? CLOCK_STEPS[CLOCK_STEPS.length - 1]
+	const midnight = new Date(start)
+	midnight.setHours(0, 0, 0, 0)
+	const ticks: number[] = []
+	for (let time = midnight.getTime(); time <= end; time += step) if (time >= start) ticks.push(time)
+	return ticks
 }
 
 const MINUTE = 60_000

@@ -7,8 +7,8 @@ import { Fields } from 'slm/plugin/fields'
 export default definePlugin({
 	id: 'afk-kicker',
 	name: 'AFK Kicker',
-	version: '1.0.1',
-	apiVersion: '^0.10',
+	version: '1.1.0',
+	apiVersion: '^0.10.1',
 	description: 'Kicks AFK players when people are waiting in the queue, longest AFK first.',
 	configSchema: z.object({
 		// empty means no servers: kicking players is not something to start doing because a plugin was installed
@@ -21,12 +21,12 @@ export default definePlugin({
 			'Outside the gamemodes below, how long a player can stay out of a squad before they count as AFK',
 		),
 		idleWindow: ZU.HumanTime.prefault('15m').describe(
-			'On the gamemodes below, how long since a player last did anything before they count as AFK',
+			'On the gamemodes below, how long a player can stay idle before they count as AFK. A player in a squad or in a vehicle is never idle.',
 		),
 		idleGamemodes: z
 			.array(z.string())
 			.prefault(['Seed', 'Training'])
-			.describe('Gamemodes where players count as AFK for inactivity rather than for being out of a squad'),
+			.describe('Gamemodes where players count as AFK for being idle rather than for being out of a squad'),
 		warnInterval: ZU.HumanTime.prefault('1m').describe('How often AFK players are warned while the server is full'),
 		warning: Fields.multilineText()
 			.prefault('You are AFK because {{reason}}. You will be kicked if players are waiting to join.')

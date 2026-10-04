@@ -52,6 +52,7 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'settings.admin.getRawSettings': S,
 	'matchHistory.watchMatchHistoryState': S,
 	'matchHistory.getMatchEvents': S,
+	'matchHistory.getPopulation': S,
 	'matchHistory.getPlayerDetails': S,
 	'matchHistory.getSquadDetails': S,
 	'filters.updateFilter': ['f1'],

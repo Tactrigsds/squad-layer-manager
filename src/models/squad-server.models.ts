@@ -7,6 +7,7 @@ import type * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import type * as PendingEvents from '@/models/pending-events.models'
+import type * as Activity from '@/models/player-activity.models'
 import type * as SE from '@/models/server-events.models'
 import * as SR from '@/models/squad-rcon.models'
 import type * as SM from '@/models/squad.models'
@@ -40,6 +41,8 @@ export namespace Ctx {
 		appEvent$: TracedSubject<AppEvents.AppEvent, CS.ServerId>
 
 		chatInterpolatedState: CHAT.InterpolableState
+		// when each player on the roster last did something, by player-activity.models.ts's rule
+		activity: Activity.Tracker
 
 		destroyed: boolean
 		cleanupId: number | null

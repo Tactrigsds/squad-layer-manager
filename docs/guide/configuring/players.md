@@ -1,6 +1,7 @@
 # Players
 
-These settings control how SLM sorts players into groups, and how admins flag players in BattleMetrics.
+These settings control how SLM sorts players into groups, when it counts a player as idle, and how admins flag players
+in BattleMetrics.
 
 ## Player grouping modes
 
@@ -32,10 +33,19 @@ SLM then colour-codes the usernames of grouped players wherever they appear:
 
 ![color_coded_usernames](../../images/configuring/color_coded_usernames.png)
 
-Choose which grouping mode to show in the players panel and the _Charts_ panel. The _Breakdown_ chart breaks the population
+Choose which grouping mode to show in the players panel and the _Charts_ panel. The _Teams Breakdown_ chart breaks the population
 down by the chosen mode:
 
 ![teams_breakdown](../../images/configuring/teams_breakdown.png)
+
+## Idle players
+
+SLM counts a player as idle when they are outside a squad, on foot, and have gone a set time without a kill, wound,
+death, chat message, or squad, team, role or vehicle change. A player who just connected counts as active. The
+_Population_ chart and plugins such as the AFK Kicker read this rule.
+
+Set the time under _Players & Balance_, in _Player Activity_. The time is one of 5, 10, 15, 20 or 30 minutes, and 10
+by default.
 
 ## Player flagging
 

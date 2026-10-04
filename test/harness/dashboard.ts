@@ -11,8 +11,11 @@ function section(page: Page, name: RegExp): Locator {
 	return page.getByRole('tabpanel', { name }).or(page.getByRole('region', { name }))
 }
 
+// the queue and teams panel's Teams tab and section, "Teams (n)", and not the Charts panel's Teams Breakdown tab
+const TEAMS_NAME = /^Teams(?! Breakdown)/
+
 export const queueSection = (page: Page) => section(page, /^Queue/)
-export const teamsSection = (page: Page) => section(page, /^Teams/)
+export const teamsSection = (page: Page) => section(page, TEAMS_NAME)
 
 // The label carrying a section's count: the tab in one layout, the section's own title in the other. Tests
 // wait on this to know the dashboard has the queue it expects, which is why it takes the full name.
@@ -21,13 +24,13 @@ function label(page: Page, name: RegExp | string): Locator {
 }
 
 export const queueLabel = (page: Page, name: RegExp | string = /^Queue/) => label(page, name)
-export const teamsLabel = (page: Page, name: RegExp | string = /^Teams/) => label(page, name)
+export const teamsLabel = (page: Page, name: RegExp | string = TEAMS_NAME) => label(page, name)
 
 // Brings the teams on screen: a click when there is a tab to click, nothing to do when both sections are
 // already shown. Waits for the section either way, so it is also the "the roster has arrived" signal.
 export async function showTeams(page: Page, opts?: { timeout?: number }) {
 	const timeout = opts?.timeout ?? DEFAULT_TIMEOUT_MS
-	const tab = page.getByRole('tab', { name: /^Teams/ })
+	const tab = page.getByRole('tab', { name: TEAMS_NAME })
 	await expect(teamsSection(page)).toBeAttached({ timeout })
 	if ((await tab.count()) > 0) await tab.click({ timeout })
 	await expect(teamsSection(page)).toBeVisible({ timeout })

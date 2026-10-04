@@ -13,12 +13,20 @@ the in-game party they queued with.
 The _Party_ column shows each player's party. Filter or sort the table by party, or shift+click a party to select its
 members on that team.
 
-The _Charts_ panel displays charts of the live match. When a match is opened from the match history, the panel
-displays that match instead, under a banner naming it. The _Breakdown_ chart counts each team's players by group of the
-chosen grouping mode. Click a segment to filter the teams panel to that group. The _Scoreline_ chart lists each team's
-tickets, kills, deaths and wounds, and plots kills, deaths or the kill lead across the match. The kill lead is how far
-one team's kills are ahead of the other's, shaded in the leading team's colour. Use the button beside a chart's help icon to open the chart in a window of its
-own.
+The _Charts_ panel displays charts of the live match. When a match is opened from the match history, the panel displays
+that match instead, under a banner naming it. The _Teams Breakdown_ chart counts each team's players by group of the chosen
+grouping mode. Click a segment to filter the teams panel to that group. The _Scoreline_ chart lists each team's tickets,
+kills, deaths and wounds, and plots kills, deaths or the kill lead across the match. The kill lead is how far one team's
+kills are ahead of the other's, shaded in the leading team's colour. The _Population_ chart plots how many players were
+on the server over time. Pick _This match_ for the match the panel displays, or _6h_, _24h_ or _7d_ for every match in
+that time. Pick _Activity_ to split the players into active and idle players (see [Idle
+players](../guide/configuring/players.md#idle-players)), or _Teams_ for a line per team. Pick _Stats_ for figures over
+the same time: the peak and lowest player count, the average and median, how long the server was full, the share of idle
+players, the gap between the teams, joins and leaves per hour, and the churn rate, the share of the players who leave
+each hour. Pick _Max pop_ to scale the chart to your server's player cap, or _Fitted_ to scale it to the players drawn.
+A solid line marks where a match started, and a dashed line where its round ended. Click a match on the chart to open it
+in the panel and in Server Activity. Use the button beside a chart's help icon to open the chart in a window of its own,
+at the size it has in the panel.
 
 ![group counts per team](../images/configuring/teams_breakdown.png)
 

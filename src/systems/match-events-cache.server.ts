@@ -31,7 +31,7 @@ export function initMatchEventsCacheContext(): MEC.Ctx.Payload {
 /**
  * Each match's raw feed straight off the db, keyed by match id.
  *
- * The uncached half of getFeedEventsForMatches, exported because the combat-stats and history workers replay
+ * The uncached half of getFeedEventsForMatches, exported because the match-tallies and history workers replay
  * matches on their own threads: one implementation decides what a match's feed is, whichever thread is asking.
  * Takes its logger off the ctx rather than the module's, since those threads never run this module's setup.
  */

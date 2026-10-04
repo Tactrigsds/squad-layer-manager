@@ -80,6 +80,7 @@ import * as m0125 from './0125_bm_write_notes_permission'
 import * as m0126 from './0126_battlemetrics_user_tokens'
 import * as m0127 from './0127_event_index_pruning'
 import * as m0128 from './0128_drop_rcon_cache_ttl'
+import * as m0129 from './0129_match_population'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -147,4 +148,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0126_battlemetrics_user_tokens', up: m0126.up },
 	{ name: '0127_event_index_pruning', up: m0127.up },
 	{ name: '0128_drop_rcon_cache_ttl', up: m0128.up },
+	{ name: '0129_match_population', up: m0129.up },
 ]
