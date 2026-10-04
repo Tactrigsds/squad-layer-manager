@@ -41,7 +41,8 @@ if (base) {
 			const [subject, message] = raw.split('\x1f')
 			return { subject, message }
 		})
-	const added = git('diff', '--name-only', '--diff-filter=A', range, '--', 'changes/')
+	// a fragment's id is its file name, so a renamed fragment is a new entry
+	const added = git('diff', '--name-only', '--no-renames', '--diff-filter=A', range, '--', 'changes/')
 		.split('\n')
 		.filter((file) => file.endsWith('.md') && path.basename(file) !== 'README.md')
 		.map((file) => path.basename(file, '.md'))

@@ -67,15 +67,15 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 				)
 				.subscribe(),
 		)
-	})
 
-	// asked after each roll: one line per trigger still active, named for the match about to be played
-	Reminders.register(ctx, async (sctx) => {
-		if (!PluginConfig.get(sctx).postRollReminder) return []
-		const current = await MatchHistory.getCurrentMatch(sctx)
-		if (!current) return []
-		const parity = MH.getTeamParityForOffset(current, 0)
-		return (await activeEvents(sctx)).map((event) => render(event, parity))
+		// asked after each roll: one line per trigger still active, named for the match about to be played
+		Reminders.register(sctx, async () => {
+			if (!PluginConfig.get(sctx).postRollReminder) return []
+			const current = await MatchHistory.getCurrentMatch(sctx)
+			if (!current) return []
+			const parity = MH.getTeamParityForOffset(current, 0)
+			return (await activeEvents(sctx)).map((event) => render(event, parity))
+		})
 	})
 }
 

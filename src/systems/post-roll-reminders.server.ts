@@ -1,6 +1,5 @@
 import type * as Cleanup from '@/lib/cleanup'
 import type * as CS from '@/models/context-shared'
-import type * as C from '@/server/context'
 
 // Reminders warned to admins after each roll. A provider is asked, when the announcements run, for
 // everything it wants said now, and the caller does the warning: nothing registered here reaches the
@@ -11,23 +10,35 @@ import type * as C from '@/server/context'
 // so it returns the messages that apply right now and nothing else. Returning several is normal, and
 // removes any need for one to outrank another.
 
-export type ProviderCtx = C.Db & CS.AbortSignal & C.ManagedServer
-export type Provider = (ctx: ProviderCtx) => Promise<string[]>
+export type Provider = () => Promise<string[]>
 
-const providers = new Set<Provider>()
+const providersByServer = new Map<string, Set<Provider>>()
 
-/** Registers a provider asked for messages after each roll. Unregistered through `cleanup`. */
-export function register(cleanup: Cleanup.Tasks, provide: Provider) {
+/** Registers a provider asked for messages after each roll on `ctx.serverId`. Unregistered through `ctx.cleanup`. */
+export function register(ctx: CS.ServerId & { cleanup: Cleanup.Tasks }, provide: Provider) {
+	const serverId = ctx.serverId
+	let providers = providersByServer.get(serverId)
+	if (!providers) {
+		providers = new Set()
+		providersByServer.set(serverId, providers)
+	}
 	providers.add(provide)
-	cleanup.push(() => providers.delete(provide))
+	ctx.cleanup.push(() => {
+		const providers = providersByServer.get(serverId)
+		if (!providers) return
+		providers.delete(provide)
+		if (providers.size === 0) providersByServer.delete(serverId)
+	})
 }
 
-/** Every provider's messages, in registration order. One that throws contributes nothing and does not stop the rest. */
-export async function collect(ctx: ProviderCtx, log: CS.Logger): Promise<string[]> {
+/** The server's providers' messages, in registration order. One that throws contributes nothing and does not stop the rest. */
+export async function collect(ctx: CS.ServerId, log: CS.Logger): Promise<string[]> {
+	const providers = providersByServer.get(ctx.serverId)
+	if (!providers) return []
 	const messages: string[] = []
 	for (const provide of providers) {
 		try {
-			messages.push(...(await provide(ctx)))
+			messages.push(...(await provide()))
 		} catch (err) {
 			log.error(err, 'post-roll reminder provider failed')
 		}
