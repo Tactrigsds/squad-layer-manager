@@ -281,6 +281,11 @@ const CLIENT_OPCODE = z.enum([
 ])
 type ClientOpcode = z.infer<typeof CLIENT_OPCODE>
 
+// the ops a client may send. The rest are applied by the server alone, and skip the checks a client op passes through
+export function isClientOp(op: Operation): op is Extract<Operation, { op: ClientOpcode }> {
+	return CLIENT_OPCODE.safeParse(op.op).success
+}
+
 export const OperationSchema = buildOperationSchema(LL.ItemSchema, opPropsBase, opPropsClient, opPropsEditWindow)
 export type Operation = z.infer<typeof OperationSchema>
 export type OpCode = Operation['op']

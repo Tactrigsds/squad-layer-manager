@@ -128,11 +128,15 @@ export type InstallResult =
 	| { code: 'err:disabled-in-demo' }
 	// installedFrom is null for a package placed by hand
 	| { code: 'err:id-taken'; pluginId: string; installedFrom: string | null }
+	| { code: 'err:id-overlaps'; pluginId: string; overlapsWith: string }
+
+// the plugin whose tables `id`'s would be confused with, as plugins.server knows them (see PLG.tablePrefixesOverlap)
+export type FindOverlap = (id: PLG.PluginId) => PLG.PluginId | undefined
 
 // Fetches a plugin.json and the bundles it names, then swaps the whole directory into place. The url
 // points at the manifest; everything else is resolved relative to it, so a package is one directory
 // on a static host.
-export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<InstallResult> {
+export async function installFromUrl(ctx: CS.AbortSignal, url: string, findOverlap: FindOverlap): Promise<InstallResult> {
 	// everyone who signs in to a demo is a super user, so an install there is code anyone can run on the host
 	if (DEMO) return { code: 'err:disabled-in-demo' }
 	try {
@@ -149,6 +153,8 @@ export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<
 		if (installedFrom !== undefined && installedFrom !== manifestUrl.href) {
 			return { code: 'err:id-taken', pluginId: manifest.id, installedFrom }
 		}
+		const overlapsWith = findOverlap(manifest.id)
+		if (overlapsWith !== undefined) return { code: 'err:id-overlaps', pluginId: manifest.id, overlapsWith }
 
 		const files = new Map<string, Buffer>([[PLG.PACKAGE_MANIFEST_FILE, manifestBytes]])
 		for (const rel of [manifest.manifest, manifest.server, manifest.client, manifest.styles]) {
@@ -173,9 +179,9 @@ export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<
 }
 
 // re-fetches a url-installed package from the source it recorded
-export async function refresh(ctx: CS.AbortSignal, pkg: Package): Promise<InstallResult> {
+export async function refresh(ctx: CS.AbortSignal, pkg: Package, findOverlap: FindOverlap): Promise<InstallResult> {
 	if (!pkg.install) return { code: 'err:install-failed', message: 'this plugin was placed by hand; there is nothing to refresh from' }
-	return await installFromUrl(ctx, pkg.install.sourceUrl)
+	return await installFromUrl(ctx, pkg.install.sourceUrl, findOverlap)
 }
 
 export async function remove(id: PLG.PluginId) {

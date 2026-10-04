@@ -29,6 +29,8 @@ let app: AppFixture
 let client: TestOrpcClient
 let origin: http.Server
 let manifestUrl: string
+// the url the plugin is installed from: the release url, carrying a token as a private release would
+let installUrl: string
 let cookie: string
 let pkgV1: string
 // the tag `/releases/latest/download/` resolves to; flipped to publish the upgrade
@@ -61,9 +63,15 @@ beforeAll(async () => {
 	childProcess.execFileSync('pnpm', ['plugin:pack', 'test/fixtures/plugin-hello', pkgV1], { cwd: REPO_ROOT, stdio: 'pipe' })
 	releases.set('v1.0.0', pkgV1)
 	releases.set('v1.1.0', packUpgrade(pkgV1))
+	// the same plugin under an id whose table prefix nests with hello's; only plugin.json is read before the refusal
+	const overlapping = fs.mkdtempSync(path.join(os.tmpdir(), 'slm-pkg-overlap-'))
+	const manifestJson = fs.readFileSync(path.join(pkgV1, 'plugin.json'), 'utf8')
+	if (!manifestJson.includes('"id": "hello"')) throw new Error('packed plugin.json no longer spells its id as "id": "hello"')
+	fs.writeFileSync(path.join(overlapping, 'plugin.json'), manifestJson.replace('"id": "hello"', '"id": "hello-x"'))
+	releases.set('overlapping', overlapping)
 
 	origin = http.createServer((req, res) => {
-		const url = req.url ?? ''
+		const url = (req.url ?? '').split('?')[0]
 		// a mirror that hands off to plain http on another host, which an install must not follow
 		if (url === '/insecure-mirror/plugin.json') {
 			res.writeHead(302, { location: 'http://plugins.example/plugin.json' }).end()
@@ -82,6 +90,7 @@ beforeAll(async () => {
 	})
 	await new Promise<void>((resolve) => origin.listen(0, '127.0.0.1', resolve))
 	manifestUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/releases/latest/download/plugin.json`
+	installUrl = `${manifestUrl}?token=release-token`
 
 	// an in-game admin who is also the seeded superuser, so the plugin's command has somebody allowed to run it
 	app = await createAppFixture({
@@ -156,11 +165,12 @@ describe('packaged plugins', () => {
 	// through the `latest` redirect, so this also covers the two things a release url needs: the redirect
 	// itself, and every other file resolving against the url that was pasted rather than where it landed
 	it('installs from a url into the plugins folder, stopped', async () => {
-		const res = await client.plugins.installFromUrl({ url: manifestUrl })
+		const res = await client.plugins.installFromUrl({ url: installUrl })
 		expect(res).toMatchObject({ code: 'ok', pluginId: 'hello' })
 
 		const info = await pluginInfo()
-		// the moving url is what gets recorded, which is what makes a later refresh an upgrade
+		// the moving url is what gets recorded, which is what makes a later refresh an upgrade. Every signed-in user can
+		// read the list, so it shows the url without the token.
 		expect(info).toMatchObject({ version: '1.0.0', status: 'inactive', enabled: false, source: 'url', sourceUrl: manifestUrl })
 		// the client bundle is served from SLM, not from the origin it came from
 		expect(info?.clientEntry).toMatch(/^\/plugin-assets\/hello\/client\.mjs\?v=/)
@@ -185,9 +195,19 @@ describe('packaged plugins', () => {
 		expect(await client.plugins.installFromUrl({ url: pinned })).toMatchObject({
 			code: 'err:id-taken',
 			pluginId: 'hello',
-			installedFrom: manifestUrl,
+			installedFrom: installUrl,
 		})
 		expect(await pluginInfo()).toMatchObject({ sourceUrl: manifestUrl })
+	})
+
+	// hello-x's tables would be prefixed p_hello_x_, which hello's own prefix p_hello_ matches
+	it('refuses a plugin whose id would share table names with an installed one', async () => {
+		const url = new URL('/releases/download/overlapping/plugin.json', manifestUrl).href
+		expect(await client.plugins.installFromUrl({ url })).toMatchObject({
+			code: 'err:id-overlaps',
+			pluginId: 'hello-x',
+			overlapsWith: 'hello',
+		})
 	})
 
 	it('starts, applies its migration and reaches core through the shimmed imports', async () => {
@@ -226,6 +246,8 @@ describe('packaged plugins', () => {
 		const orpcShim = await get('/plugin-api/pkg/@orpc/client')
 		expect(orpcShim.status).toBe(200)
 		expect(await orpcShim.text()).toContain('as createORPCClient')
+		// a name every object inherits is not a package
+		expect((await get('/plugin-api/pkg/constructor')).status).toBe(404)
 
 		const client_ = await get((await pluginInfo())!.clientEntry!)
 		expect(client_.status).toBe(200)
@@ -500,6 +522,38 @@ describe('packaged plugins', () => {
 			input: {},
 		})) as { code: string; data?: { code: string } }
 		expect(res.data).toMatchObject({ code: 'err:permission-denied' })
+	})
+
+	// The plugin's middleware checks its own access when a procedure is called, so a stream open when the caller loses
+	// access has to be called again to be refused. Revokes the outsider's grant, which nothing after this uses.
+	it("refuses an open stream once its caller loses the plugin's action", async () => {
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const received: { code: string; data?: { code?: string } }[] = []
+		const ac = new AbortController()
+		const collecting = (async () => {
+			const stream = await outsiderClient.plugins.rpcStream(
+				{ pluginId: 'hello', path: ['watchGreetingIfAllowed'], serverId: app.serverId, input: {} },
+				{ signal: ac.signal },
+			)
+			for await (const update of stream) received.push(update as (typeof received)[number])
+		})().catch(() => {})
+
+		try {
+			await app.waitFor(() => received.some((u) => u.data?.code === 'ok') || null, { label: 'the greeting' })
+
+			const current = await firstYield((signal) => client.settings.global.watchSettings(undefined, { signal }), {
+				label: 'the global settings',
+			})
+			if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+			const rbac = structuredClone(current.rbac)!
+			rbac.roles!['plugin-rpc-outsider'].pluginGrants = []
+			expect(await client.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'ok' })
+
+			await app.waitFor(() => received.some((u) => u.data?.code === 'err:permission-denied') || null, { label: 'the denial' })
+		} finally {
+			ac.abort()
+			await collecting
+		}
 	})
 
 	// A dev instance and the test harness both run with discord off, which is the case worth pinning: a

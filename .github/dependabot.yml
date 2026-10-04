@@ -1,0 +1,12 @@
+# The workflows pin every action to a commit, so a moved tag cannot change what runs with this repo's tokens. This keeps
+# those pins current, one grouped pull request a week.
+version: 2
+updates:
+   - package-ecosystem: github-actions
+     directory: /
+     schedule:
+        interval: weekly
+     groups:
+        actions:
+           patterns:
+              - '*'

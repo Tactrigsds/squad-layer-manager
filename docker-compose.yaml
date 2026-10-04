@@ -103,15 +103,13 @@ services:
    grafana:
       image: grafana/grafana:13.1.1
       environment:
-         - GF_AUTH_ANONYMOUS_ENABLED=true
-         - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-         - GF_SECURITY_ADMIN_PASSWORD=admin
          # Metrics and traces need no plugin: VictoriaMetrics serves the Prometheus API and VictoriaTraces
          # the Jaeger one, so those are Grafana's own datasources. Logs are the exception.
          - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
       ports:
-         # the grafana portal
-         - 3001:3000
+         # the grafana portal, on this machine only: it shows every log and trace SLM writes. See
+         # docs/installing.md#9-telemetry for reaching it from elsewhere.
+         - 127.0.0.1:3001:3000
       volumes:
          - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
          - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro

@@ -70,6 +70,14 @@ export const router = {
 		.meta({ access: RBAC.Access.req(({ serverId }) => perms!.greet(serverId)) })
 		.input(z.object({}))
 		.handler(async ({ context }) => ({ code: 'ok' as const, greeting: PluginConfig.get(context).greeting })),
+	// a stream behind the same action, which has to stop streaming to a caller who loses it
+	watchGreetingIfAllowed: os
+		.meta({ access: RBAC.Access.req(({ serverId }) => perms!.greet(serverId)) })
+		.input(z.object({}))
+		.handler(async function* ({ context, signal }) {
+			yield { code: 'ok' as const, greeting: PluginConfig.get(context).greeting }
+			await new Promise((resolve) => signal?.addEventListener('abort', resolve, { once: true }))
+		}),
 	makeFilter: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(FilterInput)

@@ -8,7 +8,9 @@ import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import type { RconTransport, RconTransportHandlers } from '@/lib/rcon/core-rcon'
 import * as CS from '@/models/context-shared'
+import * as SETTINGS from '@/models/settings.models'
 import * as DB from '@/server/db'
+import * as Env from '@/server/env'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as ServerConsole from '@/systems/server-console.server'
@@ -173,7 +175,11 @@ export function rconTransportFor(serverId: string): RconTransport {
 	}
 }
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+let ENV!: ReturnType<typeof envBuilder>
+
 export async function setup() {
+	ENV = envBuilder()
 	const log = baseLogger
 	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map((r) => r.id)
@@ -181,7 +187,11 @@ export async function setup() {
 	for (const id of ids) {
 		try {
 			const settings = await Settings.getServerSettings(dbCtx, id)
-			if (settings.connections.type === 'server-agent') usingAgent.push(id)
+			if (settings.connections.type !== 'server-agent') continue
+			usingAgent.push(id)
+			if (settings.connections.token === SETTINGS.DEV_AGENT_TOKEN && ENV.NODE_ENV !== 'development') {
+				log.warn('Server %s uses the default agent token, so its agent will be refused. Set a token of its own.', id)
+			}
 		} catch (err) {
 			log.error(err, `Server ${id} has invalid settings, excluding it from the server agent`)
 		}
@@ -242,6 +252,19 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 			`Rejected the agent at ${remote}: this server is configured for ${settings.connections.type}, not a server agent`,
 		)
 		close(ws, CLOSE_UNKNOWN_SERVER, 'server not configured for a server agent')
+		return
+	}
+
+	// anyone who knows the server's id would know this token too
+	if (settings.connections.token === SETTINGS.DEV_AGENT_TOKEN && ENV.NODE_ENV !== 'development') {
+		log.warn('Server agent %s: server %s still uses the default agent token', remote, serverId)
+		ServerConsole.recordSlm(
+			serverId,
+			'error',
+			`Rejected the agent at ${remote}: this server still uses the default agent token`,
+			"set a token of your own in this server's connection settings, and give the agent the same one",
+		)
+		close(ws, CLOSE_UNAUTHORIZED, 'default token')
 		return
 	}
 

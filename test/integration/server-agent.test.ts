@@ -6,6 +6,7 @@ import { makePlayer } from '@/emulator'
 import { type AppFixture, createAppFixture, SERVER_AGENT_TOKEN } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import { latestMatch } from '../harness/inspect'
+import { createOrpcClient } from '../harness/orpc-client'
 
 // The /server-agent transport. First the handshake, driven directly rather than through the rust agent: an
 // agent declares which data sources it can supply and the app accepts it only if that covers both the log
@@ -113,6 +114,21 @@ describe('server agent handshake', () => {
 		const result = await connectAccepted(handshake(), 'logs,rcon')
 
 		expect(result.accepted).toBe(true)
+	})
+
+	// anyone who knows a server's id would know the default token too. Last, since it changes the server's token.
+	it('refuses an agent while the server still has the default token, even one sending it', async () => {
+		const client = await createOrpcClient(app)
+		const raw = await client.settings.admin.getRawSettings({ serverId: app.serverId })
+		if (raw.code !== 'ok') throw new Error(`could not read the settings: ${raw.code}`)
+		const settings = structuredClone(raw.settings) as { connections: { token: string } }
+		settings.connections.token = 'dev'
+		expect(await client.settings.admin.updateRawSettings({ serverId: app.serverId, settings })).toMatchObject({ code: 'ok' })
+
+		const { ws, settled } = connect(handshake('0.3.0', 'dev'), 'logs,rcon')
+		const result = await settled
+		ws.close()
+		expect(result).toMatchObject({ code: CLOSE_UNAUTHORIZED, reason: 'default token' })
 	})
 })
 

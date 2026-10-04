@@ -1,7 +1,6 @@
 import { BUILTIN_PLUGINS, discoverSourcePlugins } from '$root/plugins/builtins.server.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
-import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as Catalogues from '@/messages/catalogues'
 import * as AppEvents from '@/models/app-events.models'
@@ -108,7 +107,6 @@ await Instr.spanOp('main', { module }, async () => {
 	await LayerData.setup()
 	// Initialize all module loggers
 	CoreRcon.setup()
-	FetchAdminLists.setup()
 	Commands.setup()
 	LayerQueries.setup()
 	LayerQueue.setup()

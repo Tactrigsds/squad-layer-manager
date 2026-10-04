@@ -39,7 +39,7 @@ jobs:
 
          - name: Login to GitHub Container Registry
            if: steps.tip.outputs.IS_CURRENT == 'true'
-           uses: docker/login-action@v3
+           uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
            with:
               registry: ghcr.io
               username: ${{ github.actor }}
@@ -47,13 +47,14 @@ jobs:
 
          - name: Tag image as latest
            if: steps.tip.outputs.IS_CURRENT == 'true'
+           env:
+              COMMIT_TAG: ${{ inputs.image-tag }}
            run: |
               OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-              COMMIT_TAG="${{ inputs.image-tag }}"
               LATEST_TAG="ghcr.io/$OWNER/squad-layer-manager:latest"
 
               # Tag the commit-tagged image as latest without pulling/pushing
-              docker buildx imagetools create --tag $LATEST_TAG $COMMIT_TAG
+              docker buildx imagetools create --tag "$LATEST_TAG" "$COMMIT_TAG"
 
    deploy:
       runs-on: ubuntu-latest
@@ -68,8 +69,9 @@ jobs:
            run: |
               set -e
 
-              # Export all secrets as environment variables
-              echo "$SECRETS_JSON" | jq -r 'to_entries[] | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
+              # Export all secrets as environment variables, each value shell-quoted so the source below reads
+              # it as text whatever characters it holds
+              echo "$SECRETS_JSON" | jq -r 'to_entries[] | "export \(.key)=\(.value | @sh)"' > /tmp/secrets.env
               source /tmp/secrets.env
               rm -f /tmp/secrets.env
 

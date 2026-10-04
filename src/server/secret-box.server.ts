@@ -124,7 +124,8 @@ function split(value: string): Parts {
 }
 
 function decrypt(key: Buffer, { iv, tag, ciphertext }: Parts): string {
-	const decipher = Crypto.createDecipheriv('aes-256-gcm', key, iv)
+	// pinned, so a truncated envelope is refused rather than checked against the shorter tag it carries
+	const decipher = Crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES })
 	decipher.setAuthTag(tag)
 	return decipher.update(ciphertext, undefined, 'utf8') + decipher.final('utf8')
 }

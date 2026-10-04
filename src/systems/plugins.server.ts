@@ -316,6 +316,12 @@ async function loadPackages(ctx: C.Db) {
 			// is the common case for a reload, and used to be reported as the builtin collision below.
 			if (loaded && !loaded.entry.pkg) throw new Error(`a builtin plugin already uses the id '${pkg.id}'`)
 			if (loaded) continue
+			const overlapping = tablePrefixOverlap(pkg.id)
+			if (overlapping) {
+				throw new Error(
+					`the id '${pkg.id}' shares a table prefix with the plugin '${overlapping}', so each could drop the other's tables`,
+				)
+			}
 			await ensureRuntime(ctx, await entryFromPackage(pkg))
 		} catch (err) {
 			log.error(err, 'plugin package %s failed to load', pkg.id)
@@ -327,6 +333,13 @@ async function loadPackages(ctx: C.Db) {
 			})
 		}
 	}
+}
+
+// A loaded plugin, or one whose settings and tables remain after an uninstall, whose table prefix nests with `id`'s
+export function tablePrefixOverlap(id: PLG.PluginId): PLG.PluginId | undefined {
+	const rows = DB.rawDriver().prepare(`SELECT id FROM plugins`).all() as { id: string }[]
+	const known = new Set([...plugins.keys(), ...rows.map((r) => r.id)])
+	return [...known].find((other) => PLG.tablePrefixesOverlap(id, other))
 }
 
 // Re-reads the plugins directory: picks up new directories, drops removed ones, and reloads a
@@ -820,7 +833,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		commandConfigs: rt.commandConfigs,
 		permissions: rt.status === 'active' ? [...rt.permissions.values()] : [],
 		source: rt.entry.source,
-		sourceUrl: rt.entry.sourceUrl,
+		sourceUrl: displayedSourceUrl(rt.entry.sourceUrl),
 		manifestEntry: rt.entry.manifestEntry,
 		clientEntry: rt.entry.clientEntry,
 		clientStyles: rt.entry.clientStyles,
@@ -839,12 +852,23 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		commandConfigs: {},
 		permissions: [],
 		source: pkg.source,
-		sourceUrl: pkg.sourceUrl,
+		sourceUrl: displayedSourceUrl(pkg.sourceUrl),
 		manifestEntry: null,
 		clientEntry: null,
 		clientStyles: null,
 	}))
 	return [...loaded, ...broken].toSorted((a, b) => (a.name < b.name ? -1 : 1))
+}
+
+// Every signed-in user can see the plugin list, and an install url can carry a token in its query or userinfo
+function displayedSourceUrl(url: string | null): string | null {
+	if (url === null) return null
+	try {
+		const parsed = new URL(url)
+		return parsed.origin + parsed.pathname
+	} catch {
+		return null
+	}
 }
 
 // Rows in the plugins table with no plugin behind them: an uninstall, a hand-deleted directory, or a
@@ -926,11 +950,20 @@ export function servableAsset(pluginId: string, rel: string): string | null {
 
 export const router = {
 	// public: every client needs to know which plugins are active to load their client entries
-	watchPlugins: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
-		yield* Rx.Ext.toAsyncGenerator(pluginsInfo$.pipe(Rx.Ext.withAbortSignal(signal!)))
+	// a plugin's error can name its install url, its config or a path on the host, so only a manager sees it
+	watchPlugins: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx, signal }) {
+		const canManage$ = Rbac.userInvalidation$(ctx.user.discordId).pipe(
+			Rx.startWith(null),
+			Rx.switchMap(async () => !(await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('plugins:manage')))),
+			Rx.distinctUntilChanged(),
+		)
+		const visible$ = Rx.combineLatest([pluginsInfo$, canManage$]).pipe(
+			Rx.map(([info, canManage]) => (canManage ? info : { ...info, plugins: info.plugins.map((p) => ({ ...p, error: null })) })),
+		)
+		yield* Rx.Ext.toAsyncGenerator(visible$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
-	getSettings: orpcBase.input(z.object({ pluginId: z.string() })).handler(async ({ context: ctx, input }) => {
+	getSettings: orpcBase.input(z.object({ pluginId: PLG.PluginIdSchema })).handler(async ({ context: ctx, input }) => {
 		const rt = plugins.get(input.pluginId)
 		if (!rt) return { code: 'err:unknown-plugin' as const }
 		return { code: 'ok' as const, config: rt.configInput, commands: rt.commandConfigs }
@@ -938,7 +971,7 @@ export const router = {
 
 	setEnabled: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string(), enabled: z.boolean() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema, enabled: z.boolean() }))
 		.handler(async ({ context: ctx, input }) => {
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
@@ -961,7 +994,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(
 			z.object({
-				pluginId: z.string(),
+				pluginId: PLG.PluginIdSchema,
 				config: z.record(z.string(), z.unknown()).optional(),
 				commands: CMD.PluginCommandConfigsSchema.optional(),
 			}),
@@ -997,26 +1030,31 @@ export const router = {
 	// managed server reappears, so a server coming back self-heals the stream.
 	rpcStream: orpcBase
 		.meta({ logLevel: 'trace' })
-		.input(z.object({ pluginId: z.string(), path: z.array(z.string()).min(1), serverId: z.string(), input: z.unknown() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema, path: z.array(z.string()).min(1), serverId: z.string(), input: z.unknown() }))
 		.handler(async function* ({ context, signal, input }) {
 			const rt = plugins.get(input.pluginId)
 			if (!rt?.router) {
 				yield { code: 'err:unknown-rpc' as const }
 				return
 			}
+			// The procedure's own access is checked by its middleware when it is called, so the call is made again whenever
+			// the caller's permissions change: one who lost access then receives the denial in place of the stream.
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (serverCtx) =>
-				Rx.defer(() => {
-					// Rx.from never returns an async iterable it is unsubscribed from, so the procedure's own signal is
-					// what ends a generator that is waiting on its next value
-					const call = new AbortController()
-					return Rx.from(
-						callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input, call.signal),
-					).pipe(
-						Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
-						Rx.map((data) => ({ code: 'ok' as const, data })),
-						Rx.finalize(() => call.abort()),
-					)
-				}),
+				Rbac.userInvalidation$(context.user.discordId).pipe(
+					Rx.startWith(null),
+					Rx.switchMap(() => {
+						// Rx.from never returns an async iterable it is unsubscribed from, so the procedure's own signal is
+						// what ends a generator that is waiting on its next value
+						const call = new AbortController()
+						return Rx.from(
+							callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input, call.signal),
+						).pipe(
+							Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
+							Rx.map((data) => ({ code: 'ok' as const, data })),
+							Rx.finalize(() => call.abort()),
+						)
+					}),
+				),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
@@ -1025,7 +1063,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ url: z.url() }))
 		.handler(async ({ context: ctx, input, signal }) => {
-			const res = await Pkgs.installFromUrl({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, input.url)
+			const res = await Pkgs.installFromUrl({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, input.url, tablePrefixOverlap)
 			if (res.code !== 'ok') return res
 			await reloadPackages(ctx)
 			return { code: 'ok' as const, pluginId: res.pkg.id }
@@ -1034,11 +1072,11 @@ export const router = {
 	// re-fetches a url-installed package from the source it recorded, and reloads it if the bundles moved
 	refresh: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema }))
 		.handler(async ({ context: ctx, input, signal }) => {
 			const pkg = Pkgs.scan().find((p) => p.id === input.pluginId)
 			if (!pkg) return { code: 'err:unknown-plugin' as const }
-			const res = await Pkgs.refresh({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, pkg)
+			const res = await Pkgs.refresh({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, pkg, tablePrefixOverlap)
 			if (res.code !== 'ok') return res
 			await reloadPackages(ctx)
 			return { code: 'ok' as const, pluginId: res.pkg.id }
@@ -1054,7 +1092,7 @@ export const router = {
 	// no longer present, so it can never race a running one.
 	purgeData: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema }))
 		.handler(async ({ context: ctx, input }) => {
 			const res = purgeLeftoverData(input.pluginId)
 			if (res.code !== 'ok') return res
@@ -1078,7 +1116,7 @@ export const router = {
 	// and its data. purgeData drops those once the plugin is gone.
 	uninstall: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema }))
 		.handler(async ({ context: ctx, input }) => {
 			const rt = plugins.get(input.pluginId)
 			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
@@ -1092,7 +1130,7 @@ export const router = {
 
 	rpcCall: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({ pluginId: z.string(), path: z.array(z.string()).min(1), serverId: z.string(), input: z.unknown() }))
+		.input(z.object({ pluginId: PLG.PluginIdSchema, path: z.array(z.string()).min(1), serverId: z.string(), input: z.unknown() }))
 		.handler(async ({ context, input }) => {
 			const rt = plugins.get(input.pluginId)
 			if (!rt?.router || rt.status !== 'active') return { code: 'err:unknown-rpc' as const }

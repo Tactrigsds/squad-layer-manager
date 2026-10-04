@@ -233,6 +233,9 @@ export const COOKIE_KEY = z.enum([
 export const COOKIE_DEFAULTS = { path: '/', httpOnly: true, sameSite: 'lax' } as const
 export type CookieKey = z.infer<typeof COOKIE_KEY>
 
+// the close code of a websocket whose session ended (logout, expiry, or losing site access) while it was open
+export const SESSION_ENDED_CLOSE_CODE = 4001
+
 export type Cookies = Record<CookieKey, string | undefined>
 
 export function parseCookies(raw: string) {
