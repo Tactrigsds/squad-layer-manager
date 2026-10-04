@@ -37,6 +37,15 @@ on the same side within 3. Narrow a rule to named values, such as Skorpo alone o
 <p>SLM marks each layer that breaks a repeat rule. Hover over the marker <img src="/squad-layer-manager/next/assets/docs/images/icons/repeat.svg" alt="repeat rule icon" loading="lazy" decoding="async"/> to see which rule the layer breaks. The repeated value is underlined in pink, on both the marked layer and
 the earlier layer it repeats.</p>
 <p><img src="/squad-layer-manager/next/assets/docs/images/features/repeat_hover.png" alt="a repeated map, underlined on both layers, with the rule it breaks" loading="lazy" decoding="async" width="1268" height="213"/></p>
+<p>While editing the queue, click <em>Fix Repeats</em> (the wand icon) to clear repeat warnings automatically. SLM reorders the
+queue and swaps teams to clear as many warnings as possible, with as few changes as possible. Moving a layer one place
+and swapping a layer&#x27;s teams each count as one change. SLM never swaps the teams of:</p>
+<ul>
+<li>an Invasion, Destruction or Insurgency layer</li>
+<li>a layer whose swapped matchup falls outside the pool</li>
+<li>a layer with a tag that has <em>Prevent swaps</em> turned on</li>
+</ul>
+<p>A layer that another admin is editing stays where it is. The changes stay in the draft until the queue is saved.</p>
 <h2 id="layer-details-and-scores" class="docs-heading">Layer details and scores<a href="#layer-details-and-scores" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/features/layer_selection.md#layer-details-and-scores" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>Each layer shows a balance score and an asymmetry score, and compares its two teams on anti-infantry, armor, logistics
 and transportation. The scores are heuristics for how fair a matchup is likely to be. They come from a scoring system
