@@ -10,7 +10,6 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebounced } from '@/hooks/use-debounce'
 import { useTruncatedCellReveal } from '@/hooks/use-truncated-cell-reveal'
 import * as Browser from '@/lib/browser'
-import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as FitCols from '@/lib/fitted-columns'
 import * as MapUtils from '@/lib/map-utils'
@@ -95,11 +94,11 @@ const SEARCH_DEBOUNCE_MS = 150
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const searchRef = React.useRef<HTMLInputElement>(null)
-	const isDesktop = useIsDesktopSize()
 	const phone = Browser.useIsSmallViewport()
 	const [sheetOpen, setSheetOpen] = React.useState(false)
 	const squadServer = props.stores.squadServer!
 	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: squadServer }
+	const splitTables = Zus.useStore(squadServer, TeamsPanelPrt.Sel.splitTables) && !phone
 	const currentMatch = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	// the panel's state is keyed by normed team id, so a team keeps its filters and sorting when the displayed
@@ -169,7 +168,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 									if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
 								}}
 							/>
-							<CollapseSquadsButton sortingTarget={isDesktop ? 'teams' : 'combined'} stores={props.stores} />
+							<CollapseSquadsButton sortingTarget={splitTables ? 'teams' : 'combined'} stores={props.stores} />
 							<Button
 								data-tour="teams-reset"
 								size="icon"
@@ -240,7 +239,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				)}
 			</div>
 			<StickyGroup stickyRef={headerRef}>
-				{isDesktop ? (
+				{splitTables ? (
 					<div
 						data-tour="teams-tables"
 						className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-line [&>*+*]:shadow-[-1px_0_0_var(--line-soft)] rtl:[&>*+*]:shadow-[1px_0_0_var(--line-soft)]"
@@ -251,7 +250,9 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						))}
 					</div>
 				) : (
-					<CombinedPlayerTable stores={props.stores} />
+					<div data-tour="teams-tables" className="w-full">
+						<CombinedPlayerTable stores={props.stores} />
+					</div>
 				)}
 			</StickyGroup>
 			{phone && (
@@ -290,14 +291,7 @@ function PhoneTeamsToolbar({
 	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const { showSelected, adminsOnly, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
-	const active = [
-		showSelected,
-		adminsOnly,
-		roleFilter !== null,
-		filters.group !== null,
-		filters.party !== null,
-		filters.squad !== null,
-	].filter(Boolean).length
+	const active = [showSelected, adminsOnly, roleFilter !== null, filters.group !== null, filters.squad !== null].filter(Boolean).length
 	const order: [MH.NormedTeamId, MH.NormedTeamId] = [props.leftTeam, props.rightTeam]
 	const step = phoneTeam === 'both' ? 0 : phoneTeam === order[0] ? 1 : 2
 	// the input only exists while the search is open; closing it drops the query with it
@@ -392,7 +386,6 @@ type PhoneSort = { id: string; desc: boolean }
 const PHONE_SORTS: { key: string; sort: PhoneSort; label: () => string; spoiler?: boolean }[] = [
 	{ key: 'squad', sort: { id: 'squad', desc: false }, label: () => tr.text(SM_Msgs.sortSquad()) },
 	{ key: 'name', sort: { id: 'name', desc: false }, label: () => tr.text(SM_Msgs.sortName()) },
-	{ key: 'party', sort: { id: 'party', desc: false }, label: () => tr.text(SM_Msgs.sortParty()) },
 	{ key: 'tks', sort: { id: 'tks', desc: true }, label: () => tr.text(SM_Msgs.sortTeamKills()) },
 	{ key: 'stats', sort: { id: 'stats', desc: true }, label: () => tr.text(SM_Msgs.sortKills()), spoiler: true },
 ]
@@ -411,7 +404,7 @@ function PhoneSortSheet(props: {
 	const { showSelected, adminsOnly, showSpoilers } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
-	const { roles, groups, parties } = Zus.useStore(
+	const { roles, groups } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -492,13 +485,6 @@ function PhoneSortSheet(props: {
 					teamsPanel={panelStores.teamsPanel}
 					squadFilterTarget="combined"
 					options={roles.map((r) => ({ value: r, label: r }))}
-				/>
-				<ColumnFilterSelect
-					value={filters.party}
-					column="party"
-					teamsPanel={panelStores.teamsPanel}
-					squadFilterTarget="combined"
-					options={[...parties.map((id) => ({ value: id, label: id })), { value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) }]}
 				/>
 				<ColumnFilterSelect
 					value={filters.squad}
@@ -842,7 +828,7 @@ function SwitchRequestIcon({
 	)
 }
 
-// shift+click anywhere in the squad/role/group/party cell selects the players sharing it
+// shift+click anywhere in the squad/role/group cell selects the players sharing it
 function shiftClickCellProps(
 	columnId: string,
 	player: TeamsPanelModels.EnrichedPlayer,
@@ -873,18 +859,6 @@ function shiftClickCellProps(
 			},
 		}
 	}
-	if (columnId === 'party' && player.partyId != null) {
-		const partyId = player.partyId
-		return {
-			title: tr.text(SM_Msgs.partyCellHint()),
-			onClickCapture: (e) => {
-				if (!e.shiftKey) return
-				e.preventDefault()
-				e.stopPropagation()
-				SquadServerFrame.Actions.selectParty(stores, partyId, e.ctrlKey ? undefined : (player.teamId ?? undefined))
-			},
-		}
-	}
 	if (columnId === 'group' && player.group) {
 		const group = player.group
 		return {
@@ -912,12 +886,11 @@ type BaseRowMeta = {
 type BasePlayerTableMeta = BaseRowMeta & {
 	// the grouping mode the group column shows, which names its no-group option
 	groupingId: string | null
-	filters: { role: string | null; group: string | null; party: string | null; squad: string | null }
+	filters: { role: string | null; group: string | null; squad: string | null }
 	// which of the panel's per-table squad filters this table's header writes
 	squadFilterTarget: TeamsPanelPrt.SquadFilterTarget
 	availableRoles: string[]
 	availableGroups: string[]
-	availableParties: string[]
 	statsSort: StatsSortState
 	// SLM was restarted mid-match, so combat stats are incomplete -- surfaced as a disclaimer on the stats header
 	statsMayBeInaccurate: boolean
@@ -962,7 +935,7 @@ type SquadGroupInfo = {
 	totalSize: number
 }
 
-const FILTERED_COLUMN_IDS = ['role', 'group', 'party', 'squad']
+const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
 
 // middle-click on a header resets that column's sort and filter
 function headerResetProps(
@@ -1345,42 +1318,6 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 	return { def, cell: roleCell }
 }
 
-function partyCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
-	return player.partyId && <span className="font-mono text-xs">{player.partyId}</span>
-}
-
-function partyColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>): PlayerColumn<T, BaseRowMeta> {
-	const def = helper.accessor((row) => row.partyId ?? '', {
-		id: 'party',
-		// players outside a party sort after every party, in either direction
-		sortingFn: (a, b) => {
-			const partyA = a.original.partyId
-			const partyB = b.original.partyId
-			if (partyA == null || partyB == null) return partyA == null ? (partyB == null ? 0 : 1) : -1
-			return PG.comparePartyIds(partyA, partyB)
-		},
-		header: ({ table }) => {
-			const meta = table.options.meta as BasePlayerTableMeta
-			return (
-				<span className="flex flex-col items-start">
-					<span>{tr.text(SM_Msgs.partyColumn())}</span>
-					<ColumnFilterSelect
-						value={meta.filters.party}
-						column="party"
-						teamsPanel={meta.stores.squadServer!}
-						squadFilterTarget={meta.squadFilterTarget}
-						options={[
-							...meta.availableParties.map((id) => ({ value: id, label: id })),
-							{ value: FILTER_NONE, label: tr.text(SM_Msgs.noParty()) },
-						]}
-					/>
-				</span>
-			)
-		},
-	})
-	return { def, cell: partyCell }
-}
-
 function vehicleCell({ player }: RowCellProps<TeamsPanelModels.EnrichedPlayer, BaseRowMeta>) {
 	return player.vehicle && <span className="block truncate">{player.vehicle}</span>
 }
@@ -1615,7 +1552,6 @@ const teamPlayerColumns = playerColumns<TeamsPanelModels.EnrichedPlayer, TeamRow
 			{ value: FILTER_NONE, label: tr.text(SM_Msgs.unassignedSquad()) },
 		],
 	}),
-	partyColumn(playerColumnHelper),
 	roleColumn(playerColumnHelper),
 	vehicleColumn(playerColumnHelper),
 	tksColumn(playerColumnHelper),
@@ -1680,7 +1616,6 @@ const combinedPlayerColumns = playerColumns<CombinedPlayer, CombinedRowMeta>([
 			{ value: FILTER_NONE, label: tr.text(SM_Msgs.unassignedSquad()) },
 		],
 	}),
-	partyColumn(combinedColumnHelper),
 	roleColumn(combinedColumnHelper),
 	vehicleColumn(combinedColumnHelper),
 	tksColumn(combinedColumnHelper),
@@ -2221,7 +2156,6 @@ function PlayerRowView<T extends TeamsPanelModels.EnrichedPlayer, M extends Base
 								<span className="min-w-0 truncate">{phoneCell('name')}</span>
 								{phoneCell('group')}
 								<span className="flex-1" />
-								{phoneCell('party')}
 								{phoneCell('squad')}
 								{phoneCell('tks')}
 							</div>
@@ -2295,14 +2229,12 @@ function SquadRowMenuOptions(props: { squad: SM.UniqueSquad; stores: SquadServer
 	return <SquadContextMenuOptions squad={live ?? props.squad} stores={props.stores} />
 }
 
-const TEAM_TABLE_COLUMN_FIT: FitCols.Spec = {
-	shrinkable: [
-		{ id: 'name', minEm: 7 },
-		{ id: 'group', minEm: 5.5 },
-		{ id: 'role', minEm: 5 },
-		{ id: 'vehicle', minEm: 5 },
-	],
-}
+const SHRINKABLE_PLAYER_COLUMNS: FitCols.Spec['shrinkable'] = [
+	{ id: 'name', minEm: 7 },
+	{ id: 'group', minEm: 5.5 },
+	{ id: 'role', minEm: 5 },
+	{ id: 'vehicle', minEm: 5 },
+]
 
 function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; stores: SquadServerFrame.KeyProp }) {
 	const squadServer = props.stores.squadServer!
@@ -2319,7 +2251,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		TeamsPanelPrt.Sel.displayedTeamPlayers(props.teamId),
 	)
 	const creatorNames = Zus.useStore(squadServer, TeamsPanelPrt.Sel.playerNamesById)
-	const { roles, groups, parties } = Zus.useStore(
+	const { roles, groups } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -2333,6 +2265,16 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters(props.teamId))
+	const columnFit = React.useMemo(
+		(): FitCols.Spec => ({
+			shrinkable: SHRINKABLE_PLAYER_COLUMNS,
+			onFit: (m, available) => {
+				const minWidth = FitCols.minimumWidth(SHRINKABLE_PLAYER_COLUMNS, m)
+				TeamsPanelPrt.Actions.reportTeamTableFit({ teamsPanel: squadServer }, props.teamId, minWidth, available)
+			},
+		}),
+		[squadServer, props.teamId],
+	)
 
 	const getSquadGroup = (player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
 		const key = TeamsPanelPrt.squadGroupKey(props.teamId, player.squadId)
@@ -2352,7 +2294,6 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		squadFilterTarget: props.teamId,
 		availableRoles: roles,
 		availableGroups: groups,
-		availableParties: parties,
 		statsMayBeInaccurate,
 	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
 
@@ -2368,7 +2309,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 			)}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
-			columnFit={TEAM_TABLE_COLUMN_FIT}
+			columnFit={columnFit}
 			className={props.className}
 		/>
 	)
@@ -2399,7 +2340,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		TeamsPanelPrt.Sel.squadsWithTeam,
 	)
 	const creatorNames = Zus.useStore(squadServer, TeamsPanelPrt.Sel.playerNamesById)
-	const { roles, groups, parties } = Zus.useStore(
+	const { roles, groups } = Zus.useStore(
 		squadServer,
 		currentMatch$,
 		BattlemetricsClient.playerBmData$,
@@ -2414,6 +2355,21 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
+	const phone = Browser.useIsSmallViewport()
+	// the phone layout renders no header row to measure
+	const columnFit = React.useMemo(
+		(): FitCols.Spec | undefined =>
+			phone
+				? undefined
+				: {
+						shrinkable: SHRINKABLE_PLAYER_COLUMNS,
+						onFit: (m, available) => {
+							const minWidth = FitCols.minimumWidth(SHRINKABLE_PLAYER_COLUMNS, m, 'faction')
+							TeamsPanelPrt.Actions.reportCombinedTableFit({ teamsPanel: squadServer }, minWidth, available, m.emPx)
+						},
+					},
+		[phone, squadServer],
+	)
 
 	const layerId = match?.layerId
 	const layer = React.useMemo(() => {
@@ -2462,7 +2418,6 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		squadFilterTarget: 'combined',
 		availableRoles: roles,
 		availableGroups: groups,
-		availableParties: parties,
 		statsMayBeInaccurate,
 	} satisfies Omit<CombinedTableMeta, 'statsSort'>
 
@@ -2476,6 +2431,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 			label={tr.text(SM_Msgs.combinedTableLabel())}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
+			columnFit={columnFit}
 			className={props.className}
 		/>
 	)

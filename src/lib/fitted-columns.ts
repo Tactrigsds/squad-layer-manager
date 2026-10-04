@@ -15,17 +15,21 @@
  * arithmetic against the cached measurement. A table hidden when its turn comes is skipped, and measured once
  * revealing it resizes its container. Widths are written straight to the `<col>` elements, so none of this re-renders
  * React.
+ *
+ * `onFit` receives the measurement and the available width after every allocation, so a caller can see how cramped
+ * the table is (see `minimumWidth`) without measuring again.
  */
 import * as React from 'react'
 
 export type Spec = {
 	// in priority order. The first is the fill column.
 	shrinkable: { id: string; minEm: number }[]
+	onFit?: (m: Measurement, available: number) => void
 }
 
 const MIN_SQUEEZED_EM = 2
 
-type Measurement = { natural: Map<string, number>; emPx: number }
+export type Measurement = { natural: Map<string, number>; emPx: number }
 
 type MeasurePass = {
 	table: HTMLTableElement
@@ -71,6 +75,17 @@ function availableWidth(table: HTMLTableElement) {
 	return Math.min(table.getBoundingClientRect().width, table.parentElement!.getBoundingClientRect().width)
 }
 
+// the narrowest the table gets without squeezing a shrinkable column below its minimum, leaving out the `omit` columns
+export function minimumWidth(shrinkable: Spec['shrinkable'], m: Measurement, omit?: string) {
+	let total = 0
+	for (const [id, natural] of m.natural) {
+		if (id === omit) continue
+		const shrink = shrinkable.find((s) => s.id === id)
+		total += shrink ? Math.min(natural, shrink.minEm * m.emPx) : natural
+	}
+	return total
+}
+
 function allocate(table: HTMLTableElement, spec: Spec, m: Measurement, available: number) {
 	const cols = table.querySelectorAll<HTMLTableColElement>('col[data-col-id]')
 	const shrinkIds = new Set(spec.shrinkable.map((s) => s.id))
@@ -107,6 +122,7 @@ function allocate(table: HTMLTableElement, spec: Spec, m: Measurement, available
 		const col = table.querySelector<HTMLTableColElement>(`col[data-col-id="${c.id}"]`)!
 		col.style.width = c.id === fillId ? '' : `${Math.floor(c.w)}px`
 	}
+	spec.onFit?.(m, available)
 }
 
 type MeasureJob = { spec: Spec; measurement: React.RefObject<Measurement | null> }

@@ -409,8 +409,6 @@ export const roleColumn = def('Role')
 // the in-game party a player queued with
 export const partyColumn = def('Party')
 
-export const noParty = def('No party')
-
 export const vehicleColumn = def('Vehicle')
 
 export const squadColumn = def('Squad')
@@ -537,8 +535,6 @@ export const filterLabel = def('Filter')
 export const sortSquad = def('Squad')
 
 export const sortName = def('Name')
-
-export const sortParty = def('Party')
 
 export const sortTeamKills = def('Team kills')
 
@@ -672,8 +668,6 @@ export const squadCellHint = def('Shift+click: select all members of this squad'
 export const roleCellHint = def('Shift+click: select teammates with this role. Shift+Ctrl+click: both teams')
 
 export const groupCellHint = def('Shift+click: select teammates in this group. Shift+Ctrl+click: both teams')
-
-export const partyCellHint = def('Shift+click: select teammates in this party. Shift+Ctrl+click: both teams')
 
 // the marker beside a squad leader's name
 export const squadLeaderMarker = def('(SL)')
