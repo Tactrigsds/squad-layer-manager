@@ -8,7 +8,7 @@ export default definePlugin({
 	id: 'afk-kicker',
 	name: 'AFK Kicker',
 	version: '1.1.0',
-	apiVersion: '^0.11',
+	apiVersion: '^0.12',
 	description: 'Kicks AFK players when people are waiting in the queue, longest AFK first.',
 	configSchema: z.object({
 		// empty means no servers: kicking players is not something to start doing because a plugin was installed
