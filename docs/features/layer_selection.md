@@ -55,6 +55,16 @@ the earlier layer it repeats.
 
 ![a repeated map, underlined on both layers, with the rule it breaks](../images/features/repeat_hover.png)
 
+While editing the queue, click _Fix Repeats_ (the wand icon) to clear repeat warnings automatically. SLM reorders the
+queue and swaps teams to clear as many warnings as possible, with as few changes as possible. Moving a layer one place
+and swapping a layer's teams each count as one change. SLM never swaps the teams of:
+
+- an Invasion, Destruction or Insurgency layer
+- a layer whose swapped matchup falls outside the pool
+- a layer with a tag that has _Prevent swaps_ turned on
+
+A layer that another admin is editing stays where it is. The changes stay in the draft until the queue is saved.
+
 ## Layer details and scores
 
 Each layer shows a balance score and an asymmetry score, and compares its two teams on anti-infantry, armor, logistics

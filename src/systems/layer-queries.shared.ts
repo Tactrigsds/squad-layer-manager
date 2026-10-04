@@ -912,6 +912,152 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	return { code: 'ok' as const, statuses }
 }
 
+// The search can only track this many queue items. See layer-engine/src/solve.rs.
+const MAX_SOLVABLE_QUEUE_LENGTH = 128
+
+// Reorders the queue and swaps teams to break as few warning repeat rules as possible, preferring the arrangement
+// closest to the queue as it is. The engine runs the search. This side encodes what each rule compares, mirroring
+// getRepeatRuleMatchDescriptors for the comparison and getLayerItemStatuses for which items are exempt from warnings.
+export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; input: LQY.SolveRepeatViolationsInput }) {
+	const list = input.list ?? LQY.initLayerItemsState()
+	const items = list.layerItems
+	const rules = (input.constraints ?? []).flatMap((c) => (c.type === 'do-not-repeat' && c.warn && c.rule.within > 0 ? [c.rule] : []))
+
+	let queueStart = items.findIndex((item) => item.type !== 'match-history-entry')
+	if (queueStart === -1) queueStart = items.length
+	const queueItems = items.slice(queueStart)
+	if (queueItems.length > MAX_SOLVABLE_QUEUE_LENGTH) return { code: 'err:queue-too-long' as const }
+	let historyStart = 0
+	for (let i = queueStart - 1; i >= 0; i--) {
+		if (LQY.isLookbackTerminatingLayerItem(items[i])) {
+			historyStart = i + 1
+			break
+		}
+	}
+
+	const parse = layerParser()
+	const interned = new Map<string, number>()
+	const intern = (rule: LQY.RepeatRule, value: string | number | null | undefined) => {
+		if (value === null || value === undefined || value === '') return LE.NO_RULE_VALUE
+		const str = String(value)
+		if (LQY.valueFilteredByTargetValues(rule, str)) return LE.NO_RULE_VALUE
+		return MapUtils.defaultInsGet(interned, str, interned.size)
+	}
+	const layers: [number, number][][] = []
+	const layerIndexes = new Map<L.LayerId, number>()
+	const layerIndex = (layerId: L.LayerId) => {
+		let index = layerIndexes.get(layerId)
+		if (index !== undefined) return index
+		const layer = parse(layerId)
+		layers.push(
+			rules.map((rule): [number, number] => {
+				switch (rule.field) {
+					case 'Map':
+					case 'Gamemode':
+					case 'Layer':
+					case 'Size': {
+						const value = intern(rule, layer[rule.field])
+						return [value, value]
+					}
+					case 'Faction':
+					case 'Unit':
+					case 'Alliance':
+						return [
+							intern(rule, layer[LQY.teamNormalizedRepeatRuleProp(rule.field, 0, 'A')]),
+							intern(rule, layer[LQY.teamNormalizedRepeatRuleProp(rule.field, 0, 'B')]),
+						]
+					case 'UnitMatchup': {
+						const value = intern(rule, unitMatchupOf(layer, rule))
+						return [value, value]
+					}
+					default:
+						assertNever(rule.field)
+				}
+			}),
+		)
+		index = layers.length - 1
+		layerIndexes.set(layerId, index)
+		return index
+	}
+
+	// An asymmetric mode gives each team slot a role, attacking or defending, so swapping its factions changes the layer
+	// rather than mirroring it. Otherwise the swapped layer has to exist, and to be in the pool: the server refuses a swap
+	// out of it without queue:force-write.
+	const pool = buildQueryConstraints(ctx, { constraints: input.poolConstraints ?? [] })
+	if (pool.code !== 'ok') return pool
+	const swapOf = new Map<L.LayerId, L.LayerId>()
+	const lookups: L.KnownLayer[] = []
+	for (const id of new Set(LQY.getAllLayerIds(queueItems))) {
+		const layer = parse(id)
+		if (!L.isKnownLayer(layer)) continue
+		lookups.push(layer)
+		if (L.ASYMM_GAMEMODES.includes(layer.Gamemode)) continue
+		const swapped = L.swapFactions(layer)
+		if (!swapped) continue
+		swapOf.set(id, swapped.id)
+		lookups.push(swapped)
+	}
+	const lookup = ctx.engine.query<LE.MatchesResponse>({
+		kind: 'matches',
+		filters: [pool.where],
+		ids: lookups.map((layer) => LC.packId(layer)),
+	})
+	const present = new Set(lookups.filter((_, i) => lookup.exists[i]).map((layer) => layer.id))
+	const inPool = new Set(lookups.filter((_, i) => lookup.exists[i] && lookup.matches[0][i]).map((layer) => layer.id))
+	const canSwap = (id: L.LayerId) => {
+		const swappedId = swapOf.get(id)
+		return swappedId !== undefined && inPool.has(swappedId)
+	}
+	const skipWarningsForTags = input.skipWarningsForTags ?? []
+	const noSwapTags = input.noSwapTags ?? []
+	const pinned = new Set<LQY.ItemId>(input.pinnedItemIds ?? [])
+
+	const res = ctx.engine.query<LE.SolveRepeatsResponse>({
+		kind: 'solveRepeats',
+		rules: rules.map((rule) => ({
+			within: rule.within,
+			team: LQY.isTeamSpecificRepeatRuleField(rule.field),
+			crossTeam: !!rule.crossTeam,
+		})),
+		layers,
+		history: items.slice(historyStart, queueStart).map((item) => layerIndex(item.layerId)),
+		queue: queueItems.map((item) => {
+			const choices = LQY.coalesceLayerItems(item)
+			const targets: number[] = []
+			for (const choice of choices) {
+				if (!present.has(choice.layerId)) continue
+				if (L.isSeedingOrTrainingLayer(parse(choice.layerId))) continue
+				if (LQY.getTags(choice)?.some((tag) => skipWarningsForTags.includes(tag))) continue
+				targets.push(layerIndex(choice.layerId))
+			}
+			return {
+				source: layerIndex(item.layerId),
+				targets,
+				// LL.swapFactions swaps a vote all-or-nothing
+				swappable:
+					canSwap(item.layerId) &&
+					choices.every((choice) => canSwap(choice.layerId) && !LQY.getTags(choice)?.some((tag) => noSwapTags.includes(tag))),
+				pinned: pinned.has(item.itemId),
+			}
+		}),
+		firstParity: MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, historyStart),
+		swapCost: input.swapCost ?? 1,
+		moveCost: input.moveCost ?? 1,
+		maxNodes: input.maxNodes,
+	})
+
+	return {
+		code: 'ok' as const,
+		status: res.status,
+		order: res.order.map((i) => queueItems[i].itemId),
+		swapped: queueItems.filter((_, i) => res.swapped[i]).map((item) => item.itemId),
+		violations: res.violations,
+		baselineViolations: res.baselineViolations,
+		swaps: res.swaps,
+		moves: res.moves,
+	}
+}
+
 export async function getLayerInfo({ ctx, input }: { ctx: LE.Ctx; input: { layerId: L.LayerId } }) {
 	if (!L.isKnownLayer(input.layerId)) return null
 	const names = layerColumns(ctx)
@@ -1103,6 +1249,7 @@ export const queries = {
 	getLayerInfo,
 	genVote,
 	checkBackburnerTemplates,
+	solveRepeatViolations,
 }
 
 // FNV-1a. Collisions are acceptable for cache keys, and it behaves the same on both hosts.

@@ -1677,6 +1677,7 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 					<TableHead className="w-[12rem]">{tr.text(LTag_Msgs.labelColumn())}</TableHead>
 					<TableHead>{tr.text(LTag_Msgs.descriptionColumn())}</TableHead>
 					<TableHead className="w-[9rem]">{tr.text(LTag_Msgs.colorColumn())}</TableHead>
+					<TableHead title={tr.text(LTag_Msgs.preventSwapsHint())}>{tr.text(LTag_Msgs.preventSwapsColumn())}</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
@@ -1754,6 +1755,15 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 						onBlur={(e) => setFields({ color: e.target.value.trim() })}
 					/>
 				</div>
+			</TableCell>
+			<TableCell className="align-top">
+				<Checkbox
+					className="mt-2"
+					aria-label={tr.text(LTag_Msgs.preventSwapsColumn())}
+					title={tr.text(LTag_Msgs.preventSwapsHint())}
+					defaultChecked={!!row?.preventSwaps}
+					onCheckedChange={(checked) => setFields({ preventSwaps: checked || undefined })}
+				/>
 			</TableCell>
 			<TableCell className="align-top">
 				<Button

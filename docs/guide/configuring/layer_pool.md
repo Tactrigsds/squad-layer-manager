@@ -129,6 +129,9 @@ Individual layers in the layer queue can be tagged. Layers with certain tags can
 ![skip_warnings_for_tag](../../images/configuring/skip_warnings_for_tag.png)
 ![fogless_friday](../../images/configuring/fogless_friday.png)
 
+A tag with _Prevent swaps_ turned on stops _Fix Repeats_ from swapping the teams of a layer carrying it. See
+[Repeat rules](../../features/layer_selection.md#repeat-rules).
+
 ## Layer table columns
 
 The layer table can show more about each layer than it does by default, and each column it shows is another way to

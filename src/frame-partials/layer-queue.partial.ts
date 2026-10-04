@@ -348,8 +348,8 @@ export namespace Sel {
 const SESSION_CLOSING_OPS = new Set<SLL.OpCode>(['save', 'reset-to-saved', 'backburner-save', 'backburner-reset'])
 
 export namespace Actions {
-	// try to call this such that react will batch the rerenders
-	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation) {
+	// try to call this such that react will batch the rerenders. Resolves to whether the server accepted the op.
+	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation): Promise<boolean> {
 		const slice = Zus.toPartialStore(stores.queue, 'queue')
 		const userId = UsersClient.loggedInUserId!
 		const localState = slice.getState().rbSession.localState
@@ -386,7 +386,7 @@ export namespace Actions {
 			// op is a no-op against local state (stale edit window, pending generation, invalid result);
 			// drop it without sending
 			console.debug('layer queue op rejected:', (outgoing.error.data as SLL.Rejection).code)
-			return
+			return false
 		}
 		slice.setState({ rbSession: outgoing.session })
 
@@ -405,12 +405,13 @@ export namespace Actions {
 			rollbackOp(slice, op.opId)
 			console.error('layer queue op dispatch failed:', error)
 			toast.error(...tr.toast(LL_Msgs.opFailed()))
-			return
+			return false
 		}
-		if (res.code === 'ok') return
+		if (res.code === 'ok') return true
 		rollbackOp(slice, op.opId)
 		if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
 		else toast.error('msg' in res ? res.msg : res.code)
+		return false
 	}
 
 	// a refused op stays applied to the local state until we replay the timeline without it. leaving it pending

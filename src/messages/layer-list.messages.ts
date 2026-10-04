@@ -284,6 +284,38 @@ export const unsupportedModsBlurb = def(
 
 export const clearQueue = def('Clear Queue')
 
+export const fixRepeats = def('Fix Repeats')
+
+export const fixRepeatsHint = def('Reorder the queue and swap teams to clear repeat warnings, with as few changes as possible.')
+
+export const noRepeatsToFix = def(() => ({
+	toast: [t('The queue has no repeat warnings to fix')],
+}))
+
+export const repeatsUnfixable = def(() => ({
+	toast: [t('Neither reordering nor swapping teams clears a repeat warning in this queue')],
+}))
+
+export const repeatsFixed = def((before: number, after: number, edits: number, layers: number) => ({
+	toast: [
+		t('Repeat warnings reduced from {before} to {after}', { before, after }),
+		{
+			description: t('{edits, plural, one {# edit} other {# edits}} to {layers, plural, one {# layer} other {# layers}}', {
+				edits,
+				layers,
+			}),
+		},
+	],
+}))
+
+export const fixRepeatsFailed = def(() => ({
+	toast: [t('Failed to fix repeats')],
+}))
+
+export const queueChangedDuringFix = def(() => ({
+	toast: [t('The queue changed during the search for a fix. Try again.')],
+}))
+
 export const addLayers = def('Add Layers')
 
 export const genVote = def('Gen Vote')

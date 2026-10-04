@@ -5,6 +5,7 @@ import React from 'react'
 import { ColorPicker } from '@/components/color-picker'
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
 	DropdownMenu,
@@ -252,6 +253,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 	const [label, setLabel] = React.useState(existing?.label ?? '')
 	const [color, setColor] = React.useState(() => existing?.color ?? LTag.suggestColor(configured))
 	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
+	const preventSwapsRef = React.useRef(!!existing?.preventSwaps)
 	const hexRef = React.useRef<HTMLInputElement>(null)
 
 	const setColorFromPicker = (next: string) => {
@@ -286,6 +288,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 			label: trimmed,
 			description: descriptionRef.current?.value.trim() ?? '',
 			color,
+			preventSwaps: preventSwapsRef.current || undefined,
 		})
 	}
 
@@ -346,6 +349,18 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 								{trimmed || tr.text(LTag_Msgs.previewLabel())}
 							</span>
 						</div>
+					</div>
+				</div>
+				<div className="flex items-start space-x-2">
+					<Checkbox
+						id="layer-tag-prevent-swaps"
+						className="mt-0.5"
+						defaultChecked={preventSwapsRef.current}
+						onCheckedChange={(checked) => (preventSwapsRef.current = checked)}
+					/>
+					<div className="space-y-0.5">
+						<Label htmlFor="layer-tag-prevent-swaps">{tr.text(LTag_Msgs.preventSwapsColumn())}</Label>
+						<p className="text-xs text-muted-foreground">{tr.text(LTag_Msgs.preventSwapsHint())}</p>
 					</div>
 				</div>
 			</div>

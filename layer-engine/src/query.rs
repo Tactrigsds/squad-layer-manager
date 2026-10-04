@@ -6,6 +6,7 @@
 
 use crate::gen::{self, GenSpec, StepSpec};
 use crate::ir::{self, eval, eval_with, Hits, Ir};
+use crate::solve::{self, SolveSpec};
 use crate::store::{BlockCursor, ColData, Store};
 use crate::IntSet;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,8 @@ pub enum Request {
     Ranges { columns: Vec<usize> },
     /// how many layers fall in each group of a pick step, over the rows that pass the filter
     GroupCounts { r#where: Option<Ir>, step: StepSpec },
+    /// reorder and team-swap a queue to clear repeat-rule violations. Doesn't read the table.
+    SolveRepeats(SolveSpec),
 }
 
 #[derive(Serialize)]
@@ -409,6 +412,10 @@ pub fn handle(store: &Store, request: Request, cache: &mut FilterCache) -> Resul
             let mut out: Vec<GroupCount> = counts.into_iter().map(|(key, count)| GroupCount { key, count }).collect();
             out.sort_unstable_by_key(|g| g.key);
             serde_json::to_string(&out).map_err(|e| e.to_string())
+        }
+        Request::SolveRepeats(spec) => {
+            let res = solve::solve(&spec)?;
+            serde_json::to_string(&res).map_err(|e| e.to_string())
         }
     }
 }

@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
+import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
@@ -281,6 +282,29 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds })
 	}
 
+	const fixingRepeats = Zus.useStore(props.stores.squadServer!, (s) => s.fixingRepeats)
+	const fixRepeatsButton = (
+		<Tooltip help>
+			<TooltipTrigger asChild>
+				<Button
+					data-tour="queue-fix-repeats"
+					aria-label={tr.text(LL_Msgs.fixRepeats())}
+					disabled={!isEditing || fixingRepeats}
+					className={idleHidden}
+					variant="ghost"
+					size="icon-sm"
+					onClick={() => void SquadServerFrame.Actions.fixRepeats(props.stores)}
+				>
+					{fixingRepeats ? <Spinner /> : <Icons.WandSparkles />}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p className="font-medium">{tr.text(LL_Msgs.fixRepeats())}</p>
+				<p>{tr.text(LL_Msgs.fixRepeatsHint())}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+
 	const clearButton = (
 		<Tooltip help>
 			<TooltipTrigger asChild>
@@ -478,6 +502,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<div className="flex items-center gap-1.5">
 					<QueueHeaderBadges stores={props.stores} />
 					{clearButton}
+					{fixRepeatsButton}
 					{resetButton}
 					{stateControls}
 					{settingsButton}
@@ -490,6 +515,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		<div className="flex flex-col gap-1 grow">
 			<div className="flex flex-wrap items-center gap-1 justify-end group" data-status={status}>
 				{clearButton}
+				{fixRepeatsButton}
 				{addLayersButton}
 				{genVoteButton}
 				{pasteRotationButton}

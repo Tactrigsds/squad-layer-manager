@@ -21,6 +21,10 @@ export const descriptionColumn = def('Description')
 
 export const colorColumn = def('Color')
 
+export const preventSwapsColumn = def('Prevent swaps')
+
+export const preventSwapsHint = def('Fixing repeats keeps the teams of a layer with this tag as they are, and only moves the layer.')
+
 export const descriptionPlaceholder = def('Shown when hovering the tag')
 
 export const pickColor = def('Pick color')
