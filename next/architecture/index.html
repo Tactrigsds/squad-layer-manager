@@ -531,10 +531,10 @@ by everything else), a server entry whose <code>activate(ctx)</code> runs when t
 migrations. They import the core exclusively through the <code>slm/*</code> alias, which resolves to the curated entry files in
 <code>src/plugin-api/</code>. Each entry names its exports explicitly, so nothing joins the contract by accident. Lifecycle and
 host-wiring functions (<code>setLayerData</code>, <code>registerQueryClient</code>, row conversion, <code>persistAppEvent</code>) are reachable in core
-and absent here. A few entries add plugin-shaped adapters instead (<code>slm/plugin/*</code>, <code>AppEvents.emit</code>,
-<code>PostRollReminders.register</code>). Third-party packages stay out: <code>slm/lib/rxjs-ext</code> exposes our rxjs additions and nothing
-else, and a plugin imports <code>rxjs</code> itself, which carries its own semver. One tsconfig path covers tsc, tsx and the
-rolldown server bundle. Vite and vitest carry a hand-written alias.</p>
+and absent here. A few entries add plugin-shaped adapters instead (<code>slm/plugin/*</code>, <code>AppEvents.emit</code>). Third-party
+packages stay out: <code>slm/lib/rxjs-ext</code> exposes our rxjs additions and nothing else, and a plugin imports <code>rxjs</code> itself,
+which carries its own semver. One tsconfig path covers tsc, tsx and the rolldown server bundle. Vite and vitest carry
+a hand-written alias.</p>
 <p><strong>The plugin way is the core way.</strong> A plugin receives a real ctx (<code>P.Ctx</code>: log, db, signal, cleanup, plus <code>ctx.plugin</code> for
 identity) and uses the same idioms core systems do: <code>durableSub</code> pipelines, <code>Cleanup.Tasks</code>, watch streams.
 <code>Servers.setup(ctx, cb)</code> runs <code>cb</code> once per managed server, now and future, with a cleanup scoped to the (plugin,
