@@ -273,6 +273,10 @@ export async function checkBackburnerTemplates(input: LQY.BaseQueryInput & { tem
 	return await sendWorkerRequest('checkBackburnerTemplates', input)
 }
 
+export async function solveRepeatViolations(input: LQY.SolveRepeatViolationsInput) {
+	return await sendWorkerRequest('solveRepeatViolations', input)
+}
+
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
@@ -495,6 +499,7 @@ const QUERY_PRIORITIES: Record<RequestType, number> = {
 	getLayerInfo: 2,
 	queryLayers: 3,
 	genVote: 3,
+	solveRepeatViolations: 3,
 	checkBackburnerTemplates: 4,
 }
 

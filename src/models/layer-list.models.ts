@@ -779,6 +779,38 @@ export function changeGeneratedLayerAttributionInPlace(layerList: List, mutation
 	}
 }
 
+// The moves that rearrange `current` into `target`, two orderings of the same top-level item ids, applied in sequence.
+// The items on a longest run already in target order stay put, so this is the fewest single moves.
+export function movesToOrder(current: ItemId[], target: ItemId[]): { itemId: ItemId; cursor: Cursor }[] {
+	const currentIndex = new Map(current.map((itemId, i) => [itemId, i]))
+	const positions = target.map((itemId) => currentIndex.get(itemId)!)
+
+	// patience sorting: tails[l] is the target index ending the best increasing run of length l + 1
+	const tails: number[] = []
+	const prev: number[] = new Array(target.length).fill(-1)
+	for (let k = 0; k < positions.length; k++) {
+		let lo = 0
+		let hi = tails.length
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1
+			if (positions[tails[mid]] < positions[k]) lo = mid + 1
+			else hi = mid
+		}
+		if (lo > 0) prev[k] = tails[lo - 1]
+		tails[lo] = k
+	}
+	const kept = new Set<number>()
+	for (let k = tails.at(-1) ?? -1; k !== -1; k = prev[k]) kept.add(k)
+
+	const moves: { itemId: ItemId; cursor: Cursor }[] = []
+	for (let k = 0; k < target.length; k++) {
+		if (kept.has(k)) continue
+		const cursor: Cursor = k === 0 ? { type: 'start' } : { type: 'item-relative', itemId: target[k - 1], position: 'after' }
+		moves.push({ itemId: target[k], cursor })
+	}
+	return moves
+}
+
 // all-or-nothing: a vote item whose choices don't all have a mirror matchup is left exactly as it was
 export function swapFactions(list: List, id: ItemId, newSource?: Source): boolean {
 	const res = findItemById(list, id)

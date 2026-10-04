@@ -40,6 +40,15 @@ export const TagSchema = z.object({
 		.prefault('')
 		.meta(SDoc.of({ label: t('Description') })),
 	color: ColorSchema.meta(SDoc.of({ label: t('Color') })),
+	preventSwaps: z
+		.boolean()
+		.optional()
+		.meta(
+			SDoc.of({
+				label: t('Prevent swaps'),
+				description: t('Fixing repeats keeps the teams of a layer with this tag as they are, and only moves the layer.'),
+			}),
+		),
 })
 export type Tag = z.infer<typeof TagSchema>
 

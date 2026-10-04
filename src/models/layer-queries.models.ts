@@ -269,6 +269,19 @@ export type SearchIdsInput = {
 
 export type LayerItemStatusesInput = BaseQueryInput & { skipWarningsForTags?: LTag.TagId[] }
 
+export type SolveRepeatViolationsInput = LayerItemStatusesInput & {
+	// keep their position and teams, such as the item already set as the next layer on the server
+	pinnedItemIds?: LL.ItemId[]
+	// an item carrying any of these keeps its teams
+	noSwapTags?: LTag.TagId[]
+	// an item is only swapped when the swapped layer passes these
+	poolConstraints?: Constraint[]
+	// an edit costs swapCost per swapped item, plus moveCost per pair of items whose order is reversed
+	swapCost?: number
+	moveCost?: number
+	maxNodes?: number
+}
+
 export type LayerItemStatuses = {
 	present: Set<L.LayerId>
 

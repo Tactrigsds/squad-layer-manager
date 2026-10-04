@@ -10,6 +10,7 @@
 pub mod gen;
 pub mod ir;
 pub mod query;
+pub mod solve;
 pub mod store;
 
 use query::{FilterCache, Request};

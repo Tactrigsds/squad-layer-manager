@@ -51,6 +51,32 @@ export type Request =
 	| { kind: 'info'; id: number; columns: number[] }
 	| { kind: 'ranges'; columns: number[] }
 	| { kind: 'groupCounts'; where: Ir | null; step: StepSpec }
+	| ({ kind: 'solveRepeats' } & SolveRepeatsSpec)
+
+// layer-engine/src/solve.rs describes the search. Rule values are interned to integers by the host, NO_RULE_VALUE where
+// a rule has nothing to compare.
+export const NO_RULE_VALUE = -1
+export type SolveRepeatsSpec = {
+	rules: { within: number; team: boolean; crossTeam: boolean }[]
+	// per layer, per rule: the values in team slots 1 and 2. A rule that is not per-team reads slot 1 only.
+	layers: [number, number][][]
+	history: number[]
+	queue: { source: number; targets: number[]; swappable: boolean; pinned: boolean }[]
+	firstParity: number
+	swapCost: number
+	moveCost: number
+	maxNodes?: number
+}
+export type SolveRepeatsResponse = {
+	status: 'optimal' | 'budgetExhausted'
+	order: number[]
+	swapped: boolean[]
+	violations: number
+	baselineViolations: number
+	swaps: number
+	moves: number
+	nodes: number
+}
 
 export type SelectResponse = { totalCount: number; rows: (number | null)[][]; indicators: boolean[][] }
 export type MatchesResponse = { exists: boolean[]; matches: boolean[][] }

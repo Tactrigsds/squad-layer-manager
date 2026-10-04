@@ -9,7 +9,10 @@ import * as ODSM from '@/lib/odsm'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
+import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -20,9 +23,11 @@ import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as SwitchRequestsClient from '@/systems/switch-requests.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as VoteClient from '@/systems/vote.client'
 
 import { frameManager } from './frame-manager'
@@ -46,6 +51,9 @@ export type State = ChatPrt.Store &
 		// find the ones the current edit session is answerable for. Refreshed on demand at save time rather than watched:
 		// a second standing status query starves the one the indicators read (see refreshSavedQueueWarnings).
 		savedQueueWarnings: LQY.QueueWarning[] | null
+
+		// a Fix Repeats run is searching or applying its edits
+		fixingRepeats: boolean
 
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
@@ -89,6 +97,7 @@ export const frame = frameManager.createFrame<Types>({
 			layerItemStatuses: null,
 			layerItemStatusesFor: null,
 			savedQueueWarnings: null,
+			fixingRepeats: false,
 			playerSelection: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
@@ -271,6 +280,65 @@ function visiblePlayerSet(stores: KeyProp): Set<SM.PlayerId> | null {
 export namespace Actions {
 	function store(stores: KeyProp) {
 		return Zus.resolveStore<State>(stores.squadServer!)
+	}
+
+	// Rearranges the draft queue to clear repeat warnings. The queue has no batch op, so the edits go out one at a time
+	// and stop at the first one the server refuses.
+	export async function fixRepeats(stores: KeyProp) {
+		const s = store(stores)
+		if (s.getState().fixingRepeats) return
+		s.setState({ fixingRepeats: true })
+		try {
+			const state = s.getState()
+			const settings = state.settings.saved
+			const list = state.layerItemsState
+			const layerTags = SettingsClient.PublicSettingsStore.getState()?.layerTags ?? []
+			const presence = UPClient.Store.getState()
+			const res = await LayerQueriesClient.solveRepeatViolations({
+				list,
+				constraints: SETTINGS.getSettingsConstraints(settings),
+				skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
+				noSwapTags: layerTags.filter((tag) => tag.preventSwaps).map((tag) => tag.id),
+				poolConstraints: SETTINGS.getPoolMembershipConstraints(settings),
+				// another editor is working on these
+				pinnedItemIds: state.queue.layerList
+					.map((item) => item.itemId)
+					.filter((itemId) => UPClient.Sel.isSllItemLocked(itemId)(presence)),
+			})
+			if (res?.code !== 'ok') {
+				toast.error(...tr.toast(LL_Msgs.fixRepeatsFailed()))
+				return
+			}
+			if (res.baselineViolations === 0) {
+				toast(...tr.toast(LL_Msgs.noRepeatsToFix()))
+				return
+			}
+			if (res.violations === res.baselineViolations) {
+				toast(...tr.toast(LL_Msgs.repeatsUnfixable()))
+				return
+			}
+			if (s.getState().layerItemsState !== list) {
+				toast.error(...tr.toast(LL_Msgs.queueChangedDuringFix()))
+				return
+			}
+
+			const queue = { queue: stores.squadServer! }
+			const current = s.getState().queue.layerList.map((item) => item.itemId)
+			const moves = LL.movesToOrder(current, res.order as LL.ItemId[])
+			for (const itemId of res.swapped) {
+				if (!(await LayerQueuePrt.Actions.dispatch(queue, { op: 'swap-factions', itemId: itemId as LL.ItemId }))) return
+			}
+			for (const move of moves) {
+				const op = { op: 'move' as const, itemId: move.itemId, cursor: move.cursor, newFirstItemId: LL.createItemId() }
+				if (!(await LayerQueuePrt.Actions.dispatch(queue, op))) return
+			}
+			const affected = new Set([...res.swapped, ...moves.map((move) => move.itemId)])
+			toast.success(
+				...tr.toast(LL_Msgs.repeatsFixed(res.baselineViolations, res.violations, res.swapped.length + moves.length, affected.size)),
+			)
+		} finally {
+			s.setState({ fixingRepeats: false })
+		}
 	}
 
 	export function setSelection(
