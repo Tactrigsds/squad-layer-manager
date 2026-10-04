@@ -123,6 +123,16 @@ function LeftoverRow({ entry }: { entry: PLG.LeftoverData }) {
 	)
 }
 
+function failureDescription(res: { code: string; message?: string; pluginId?: string; installedFrom?: string | null }) {
+	if (res.code === 'err:disabled-in-demo') return tr.text(PLUGINS_Msgs.installDisabledInDemo())
+	if (res.code === 'err:id-taken') {
+		return res.installedFrom
+			? tr.text(PLUGINS_Msgs.installIdTaken(res.pluginId!, res.installedFrom))
+			: tr.text(PLUGINS_Msgs.installIdTakenByFolder(res.pluginId!))
+	}
+	return res.message
+}
+
 function InstallPanel() {
 	const urlRef = React.useRef<HTMLInputElement>(null)
 	const [busy, setBusy] = React.useState(false)
@@ -132,7 +142,7 @@ function InstallPanel() {
 		try {
 			const res = await action()
 			if (res.code === 'ok') toast.success(ok)
-			else toast.error(tr.text(PLUGINS_Msgs.installFailed()), { description: res.message })
+			else toast.error(tr.text(PLUGINS_Msgs.installFailed()), { description: failureDescription(res) })
 		} catch {
 			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
 		} finally {
@@ -214,7 +224,7 @@ function PluginRow({
 		setToggling(true)
 		try {
 			const res = await action()
-			if (res.code !== 'ok') toast.error(tr.text(PLUGINS_Msgs.actionFailed()), { description: res.message })
+			if (res.code !== 'ok') toast.error(tr.text(PLUGINS_Msgs.actionFailed()), { description: failureDescription(res) })
 			else if (ok) toast.success(ok)
 		} catch {
 			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))

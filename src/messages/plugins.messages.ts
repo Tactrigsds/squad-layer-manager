@@ -42,6 +42,20 @@ export const installed = def('{name} installed', (name: string) => ({ name }))
 
 export const installFailed = def('Install failed')
 
+export const installIdTaken = def(
+	'The plugin {id} is already installed from {source}. Uninstall that plugin first to replace it with this one.',
+	(id: string, source: string) => ({ id, source }),
+)
+
+export const installIdTakenByFolder = def(
+	'The plugin {id} is already installed from the plugins folder. Uninstall that plugin first to replace it with this one.',
+	(id: string) => ({ id }),
+)
+
+export const installDisabledInDemo = def(
+	'Plugins cannot be installed on a demo. Anyone who reaches a demo signs in as an admin, so installing a plugin there would let anyone run code on the server.',
+)
+
 export const refresh = def('Refresh')
 
 export const refreshed = def('{name} re-fetched from its source', (name: string) => ({ name }))

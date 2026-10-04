@@ -28,7 +28,7 @@ TODO Some screenshots here, also a video
 Spin up a demo instance with no authentication:
 
 ```sh
-docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
+docker run --rm -p 127.0.0.1:3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
 ```
 
 ## Documentation

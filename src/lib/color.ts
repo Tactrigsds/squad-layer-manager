@@ -1,5 +1,8 @@
 export type Rgb = { r: number; g: number; b: number }
 
+// one argument of rgb()/hsl(): a number, optionally a percentage or a hue in degrees
+const NUMERIC_PART = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(%|deg)?$/
+
 /** Parses the CSS colour syntaxes a user can type into a setting: hex, rgb()/rgba(), hsl()/hsla(), and names. */
 export function parse(input: string): Rgb | null {
 	const value = input.trim().toLowerCase()
@@ -9,7 +12,7 @@ export function parse(input: string): Rgb | null {
 	const fn = /^(rgba?|hsla?)\(([^)]*)\)$/.exec(value)
 	if (!fn) return null
 	const parts = fn[2].split(/[\s,/]+/).filter((p) => p !== '')
-	if (parts.length < 3) return null
+	if (parts.length < 3 || parts.length > 4 || !parts.every((p) => NUMERIC_PART.test(p))) return null
 	if (fn[1].startsWith('rgb')) {
 		const [r, g, b] = parts.map((p) => channel(p, 255))
 		return r === null || g === null || b === null ? null : { r, g, b }

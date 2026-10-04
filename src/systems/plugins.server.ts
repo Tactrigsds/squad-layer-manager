@@ -1083,6 +1083,8 @@ export const router = {
 			const rt = plugins.get(input.pluginId)
 			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
 			if (!rt && !brokenPackages.has(input.pluginId)) return { code: 'err:unknown-plugin' as const }
+			// the row outlives the package, and an enabled row would start whatever is next installed under this id
+			await ctx.db().update(Schema.plugins).set({ enabled: false }).where(eq(Schema.plugins.id, input.pluginId))
 			await Pkgs.remove(input.pluginId)
 			await reloadPackages(ctx)
 			return { code: 'ok' as const }

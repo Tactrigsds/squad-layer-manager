@@ -615,6 +615,8 @@ const globalRouter = {
 			const changePaths = changes.map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths(changePaths))
 			if (denyRes) return denyRes
+			const escalationRes = await Rbac.tryDenyRoleSettingsEscalation(ctx, GLOBAL_SETTINGS, parseRes.data)
+			if (escalationRes) return escalationRes
 			GLOBAL_SETTINGS = parseRes.data
 
 			// make sure the admin list is invalidated if any of the admin list-affecting fields are changed
@@ -860,7 +862,11 @@ const adminRouter = {
 			// plaintext (sealing again is deferred to updateServerSettings)
 			const priorSettings = priorParseRes?.success ? openConnections(priorParseRes.data) : undefined
 
-			const changePaths = diffSettings(priorSettings!, rawSettings).map((c) => [c.path])
+			// a broken prior has nothing to diff against, so every top-level key sent counts as written, connections included
+			const sentKeys = rawSettings && typeof rawSettings === 'object' ? Object.keys(rawSettings) : []
+			const changePaths = priorSettings
+				? diffSettings(priorSettings, rawSettings).map((c) => [c.path])
+				: (sentKeys.length > 0 ? sentKeys : ['']).map((key) => [key])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(serverId, changePaths))
 			if (denyRes) return denyRes
 

@@ -17,7 +17,16 @@ describe('parse', () => {
 		expect(Color.parse(input)).toEqual(expected)
 	})
 
-	test.each(['', 'not-a-colour', '#12345', '#gg0000', 'rgb(1, 2)', 'url(evil)'])('rejects %s', (input) => {
+	test.each([
+		'',
+		'not-a-colour',
+		'#12345',
+		'#gg0000',
+		'rgb(1, 2)',
+		'url(evil)',
+		'rgb(1 2 3"/><script>fetch`/x`</script><path d="x)',
+		'rgb(1 2 3 4 5)',
+	])('rejects %s', (input) => {
 		expect(Color.parse(input)).toBeNull()
 	})
 })

@@ -235,6 +235,8 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			res.header('ETag', logo.etag)
 			// the accent follows a setting an admin can change at any time, so the cache always revalidates
 			res.header('Cache-Control', 'no-cache')
+			// an svg opened as a document runs any script in it on our origin; the mark only needs its inline style
+			if (logo.contentType === 'image/svg+xml') res.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
 			if (req.headers['if-none-match'] === logo.etag) return res.code(304).send()
 			return res.type(logo.contentType).send(logo.body)
 		})
@@ -411,7 +413,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		},
 	})
 	instance.register(async function (instance) {
-		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
+		instance.get(AR.route('/orpc'), { websocket: true, preValidation: refuseCrossOriginUpgrade }, async (connection, req) => {
 			// carries the connection-level signal; orpc middleware narrows it per-call
 			const ctx = createOrpcSessionBase(getAuthedCtx(req), connection)
 			void ORPCServer.orpcHandler.upgrade(connection, { context: ctx })
@@ -557,6 +559,33 @@ export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, 
 	WsSessionSys.registerClient(wsCtx)
 	return wsCtx
 }
+
+// A browser can attach the session cookie to a websocket handshake another site's page opened, and the socket carries
+// every procedure the user can call. Browsers always send Origin on a handshake, so one with no Origin is not a browser
+// and carries no ambient cookie.
+async function refuseCrossOriginUpgrade(req: FastifyRequest, reply: FastifyReply) {
+	const origin = req.headers.origin
+	if (origin === undefined) return
+	if (isAllowedOrigin(origin, req.headers.host)) return
+	log.warn('refused a websocket upgrade from origin %s', origin)
+	return reply.code(403).send()
+}
+
+function isAllowedOrigin(origin: string, host: string | undefined): boolean {
+	let parsed: URL
+	try {
+		parsed = new URL(origin)
+	} catch {
+		return false
+	}
+	if (parsed.origin === new URL(ENV.ORIGIN).origin) return true
+	// vite's proxy rewrites Host to the app's own port, so a dev page opened at 127.0.0.1 rather than ORIGIN's
+	// localhost would match neither check
+	if (ENV.NODE_ENV === 'development' && LOOPBACK_HOSTNAMES.has(parsed.hostname)) return true
+	return host !== undefined && parsed.host === host
+}
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 function historySearchOf(req: FastifyRequest): HQ.Search {
 	return HQ.parseSearchParams(new URL(req.url, 'http://localhost').searchParams)

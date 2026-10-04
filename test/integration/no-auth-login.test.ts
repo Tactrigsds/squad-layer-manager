@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { createOrpcClient } from '../harness/orpc-client'
 
 // The login portal that stands in for discord oauth when authentication is off (DEMO, or a dev instance's
 // QUERY_PARAM_AUTH_BYPASS). A name typed into it is the whole identity, so posting one has to create the user
@@ -60,5 +61,12 @@ describe('no-auth login portal', () => {
 		})
 		expect(res.status).toBe(400)
 		expect(await res.text()).toContain('/login/no-auth')
+	})
+
+	it('refuses to install a plugin from a url, though every user holds plugins:manage', async () => {
+		const client = await createOrpcClient(app)
+		// nothing listens on the discard port, so an install that got as far as fetching would fail differently
+		const res = await client.plugins.installFromUrl({ url: 'http://127.0.0.1:9/plugin.json' })
+		expect(res.code).toBe('err:disabled-in-demo')
 	})
 })

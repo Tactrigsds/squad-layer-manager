@@ -7,7 +7,7 @@ import type * as SC from '@/models/server-console.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 
-import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { ADMIN_USER, type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
 import { filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
@@ -20,11 +20,14 @@ import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/or
 
 const DASHBOARD_ONLY: TestUser = { discordId: 900000000000000051n, username: 'test-dashboard-only' }
 const CONSOLE_READER: TestUser = { discordId: 900000000000000052n, username: 'test-console-reader' }
+// may edit the roles and the admin lists, while holding no more than the dashboard
+const ROLE_EDITOR: TestUser = { discordId: 900000000000000053n, username: 'test-role-editor' }
 
 let app: AppFixture
 let adminClient: TestOrpcClient
 let dashboardOnlyClient: TestOrpcClient
 let consoleReaderClient: TestOrpcClient
+let roleEditorClient: TestOrpcClient
 
 beforeAll(async () => {
 	app = await createAppFixture({
@@ -37,7 +40,7 @@ beforeAll(async () => {
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'pool-only', mode: 'include' }
 		},
-		users: [DASHBOARD_ONLY, CONSOLE_READER],
+		users: [DASHBOARD_ONLY, CONSOLE_READER, ROLE_EDITOR],
 		unreachableServer: true,
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
@@ -45,11 +48,18 @@ beforeAll(async () => {
 			settings.rbac.roles['console-reader'] = role(['site:authorized', 'squad-server:view', 'squad-server:view-console'], {
 				users: [CONSOLE_READER],
 			})
+			settings.rbac.roles['role-editor'] = {
+				...role(['site:authorized', 'squad-server:view'], { users: [ROLE_EDITOR] }),
+				globalSettingsGrants: ['rbac', 'adminLists'],
+			}
+			// whoever the test admin list names may install plugins, which the role editor may not
+			settings.rbac.roles['list-plugin-managers'] = role(['plugins:manage'], { ingameAdminLists: [TEST_ADMIN_LIST] })
 		},
 	})
 	adminClient = await createOrpcClient(app)
 	dashboardOnlyClient = await createOrpcClient(app, DASHBOARD_ONLY)
 	consoleReaderClient = await createOrpcClient(app, CONSOLE_READER)
+	roleEditorClient = await createOrpcClient(app, ROLE_EDITOR)
 }, 120_000)
 
 afterAll(async () => {
@@ -359,6 +369,48 @@ describe('integration credentials', () => {
 		})
 		expect(on.code).toBe('ok')
 	}, 30_000)
+})
+
+// A grant over the roles or the admin lists is not a grant of everything: a save may grant nobody a permission its
+// author lacks. Each refused save is checked against the stored settings, so a refusal that still wrote fails here.
+describe('role settings escalation', () => {
+	async function editorSettings() {
+		const current = await firstYield((signal) => roleEditorClient.settings.global.watchSettings(undefined, { signal }), {
+			label: 'the global settings, as the role editor',
+		})
+		if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+		return current
+	}
+
+	it('refuses adding a permission its author lacks to their own role', async () => {
+		const rbac = structuredClone((await editorSettings()).rbac)!
+		rbac.roles!['role-editor'].permissions!.push('plugins:manage')
+		expect(await roleEditorClient.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'err:permission-denied' })
+		expect(savedGlobalSettings(app).rbac.roles['role-editor'].permissions).not.toContain('plugins:manage')
+	})
+
+	it('refuses assigning its author a role that holds more than they do', async () => {
+		const rbac = structuredClone((await editorSettings()).rbac)!
+		rbac.roles!['list-plugin-managers'].assignments!.discordUserIds!.push(String(ROLE_EDITOR.discordId))
+		expect(await roleEditorClient.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'err:permission-denied' })
+		expect(savedGlobalSettings(app).rbac.roles['list-plugin-managers'].assignments.discordUserIds).toEqual([])
+	})
+
+	it('refuses repointing an admin list that assigns a role holding more than its author does', async () => {
+		const adminLists = structuredClone((await editorSettings()).adminLists)!
+		adminLists[TEST_ADMIN_LIST]!.source = { type: 'remote', source: 'https://admins.example/Admins.cfg' }
+		expect(await roleEditorClient.settings.global.updateSettings({ adminLists })).toMatchObject({ code: 'err:permission-denied' })
+		expect(savedGlobalSettings(app).adminLists[TEST_ADMIN_LIST].source.type).toBe('local')
+	})
+
+	it('accepts an assignment to a role holding nothing its author lacks, and its removal', async () => {
+		const rbac = structuredClone((await editorSettings()).rbac)!
+		const assigned = rbac.roles!['dashboard-only'].assignments!.discordUserIds!
+		assigned.push(String(ROLE_EDITOR.discordId))
+		expect(await roleEditorClient.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'ok' })
+		assigned.pop()
+		expect(await roleEditorClient.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'ok' })
+	})
 })
 
 // A stream is checked for as long as it is open, not only when it is opened: losing access mid-stream replaces what it

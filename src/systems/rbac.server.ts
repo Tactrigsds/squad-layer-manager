@@ -3,7 +3,7 @@ import { unionAll } from 'drizzle-orm/sqlite-core'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { objKeys } from '@/lib/object-utils'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
@@ -60,19 +60,25 @@ let sourceSubs: { unsubscribe(): void }[] = []
 
 type RoleConfig = NonNullable<SETTINGS.RbacSettings['roles'][string]>
 
-let userDefinedRoles: RBAC.Role[] = []
-let userDefinedPermissionExpressions: Record<string, RBAC.RolePermissionExpression[]> = {}
-let roleAssignments: RBAC.RoleAssignment[] = []
-// role -> max kick-timeout duration in ms (roles[role].maxTimeout; HumanTime decodes to ms)
-let roleMaxTimeouts: Record<string, number> = {}
-// role -> max concurrent layer requests (roles[role].maxLayerRequests)
-let roleMaxLayerRequests: Record<string, number> = {}
-// restricted settings grants (roles[role].globalSettingsGrants / .serverSettingsGrants)
-let roleGlobalSettingsGrants: Record<string, RoleConfig['globalSettingsGrants']> = {}
-let roleServerSettingsGrants: Record<string, RoleConfig['serverSettingsGrants']> = {}
-// per-server grants of the server-scoped permissions (roles[role].serverGrants)
-let roleServerGrants: Record<string, RoleConfig['serverGrants']> = {}
-let rolePluginGrants: Record<string, RoleConfig['pluginGrants']> = {}
+// What an rbac config says about its roles, indexed for permsFromRoles and assignment resolution. Built from the live
+// config, or from a proposed one to see what a save would grant. Maps rather than objects, since role ids come from
+// settings and an object's lookup falls through to its prototype.
+type RoleIndex = {
+	roles: RBAC.Role[]
+	assignments: RBAC.RoleAssignment[]
+	permissionExpressions: Map<string, RBAC.RolePermissionExpression[]>
+	// role -> max kick-timeout duration in ms (roles[role].maxTimeout; HumanTime decodes to ms)
+	maxTimeouts: Map<string, number>
+	// role -> max concurrent layer requests (roles[role].maxLayerRequests)
+	maxLayerRequests: Map<string, number>
+	// restricted settings grants (roles[role].globalSettingsGrants / .serverSettingsGrants)
+	globalSettingsGrants: Map<string, RoleConfig['globalSettingsGrants']>
+	serverSettingsGrants: Map<string, RoleConfig['serverSettingsGrants']>
+	// per-server grants of the server-scoped permissions (roles[role].serverGrants)
+	serverGrants: Map<string, RoleConfig['serverGrants']>
+	pluginGrants: Map<string, RoleConfig['pluginGrants']>
+}
+let roleIndex!: RoleIndex
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
@@ -112,7 +118,7 @@ export function wireInvalidationSources() {
 
 function isDiscordRoleReferenced(roleId: bigint) {
 	if (superRoleIds.has(roleId)) return true
-	return roleAssignments.some((a) => a.type === 'discord-role' && a.discordRoleId === roleId)
+	return roleIndex.assignments.some((a) => a.type === 'discord-role' && a.discordRoleId === roleId)
 }
 
 // Every notification re-runs each affected client's guarded stream checks and refetches its users and perms, and
@@ -179,45 +185,51 @@ export function invalidateUser(discordId: bigint) {
 
 // called by settings.server whenever global settings are (re)loaded so role/permission changes take effect without a restart
 export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
-	userDefinedPermissionExpressions = {}
-	userDefinedRoles = []
-	roleMaxTimeouts = {}
-	roleMaxLayerRequests = {}
-	roleGlobalSettingsGrants = {}
-	roleServerSettingsGrants = {}
-	roleServerGrants = {}
-	rolePluginGrants = {}
-	roleAssignments = []
+	roleIndex = buildRoleIndex(rbac)
+	// TODO add preflight checks to make sure the remote references in role assignments are valid
+}
 
-	for (const roleType of objKeys(rbac.roles)) {
+function buildRoleIndex(rbac: SETTINGS.RbacSettings): RoleIndex {
+	const index: RoleIndex = {
+		roles: [],
+		assignments: [],
+		permissionExpressions: new Map(),
+		maxTimeouts: new Map(),
+		maxLayerRequests: new Map(),
+		globalSettingsGrants: new Map(),
+		serverSettingsGrants: new Map(),
+		serverGrants: new Map(),
+		pluginGrants: new Map(),
+	}
+	for (const roleType of Obj.objKeys(rbac.roles)) {
 		const cfg = rbac.roles[roleType]
-		userDefinedRoles.push(RBAC.userDefinedRole(roleType))
-		userDefinedPermissionExpressions[roleType] = cfg.permissions
-		if (cfg.maxTimeout !== undefined) roleMaxTimeouts[roleType] = cfg.maxTimeout
-		if (cfg.maxLayerRequests !== undefined) roleMaxLayerRequests[roleType] = cfg.maxLayerRequests
-		if (cfg.globalSettingsGrants.length > 0) roleGlobalSettingsGrants[roleType] = cfg.globalSettingsGrants
-		if (cfg.serverSettingsGrants.length > 0) roleServerSettingsGrants[roleType] = cfg.serverSettingsGrants
-		if (cfg.serverGrants.length > 0) roleServerGrants[roleType] = cfg.serverGrants
-		if (cfg.pluginGrants.length > 0) rolePluginGrants[roleType] = cfg.pluginGrants
+		const role = RBAC.userDefinedRole(roleType)
+		index.roles.push(role)
+		index.permissionExpressions.set(roleType, cfg.permissions)
+		if (cfg.maxTimeout !== undefined) index.maxTimeouts.set(roleType, cfg.maxTimeout)
+		if (cfg.maxLayerRequests !== undefined) index.maxLayerRequests.set(roleType, cfg.maxLayerRequests)
+		if (cfg.globalSettingsGrants.length > 0) index.globalSettingsGrants.set(roleType, cfg.globalSettingsGrants)
+		if (cfg.serverSettingsGrants.length > 0) index.serverSettingsGrants.set(roleType, cfg.serverSettingsGrants)
+		if (cfg.serverGrants.length > 0) index.serverGrants.set(roleType, cfg.serverGrants)
+		if (cfg.pluginGrants.length > 0) index.pluginGrants.set(roleType, cfg.pluginGrants)
 
 		for (const discordRoleId of cfg.assignments.discordRoleIds) {
-			roleAssignments.push({ type: 'discord-role', role: RBAC.userDefinedRole(roleType), discordRoleId: BigInt(discordRoleId) })
+			index.assignments.push({ type: 'discord-role', role, discordRoleId: BigInt(discordRoleId) })
 		}
 		for (const userId of cfg.assignments.discordUserIds) {
-			roleAssignments.push({ type: 'discord-user', role: RBAC.userDefinedRole(roleType), discordUserId: BigInt(userId) })
+			index.assignments.push({ type: 'discord-user', role, discordUserId: BigInt(userId) })
 		}
 		if (cfg.assignments.everyMember) {
-			roleAssignments.push({ type: 'discord-server-member', role: RBAC.userDefinedRole(roleType) })
+			index.assignments.push({ type: 'discord-server-member', role })
 		}
 		for (const { listId, groupId } of cfg.assignments.adminListGroups) {
-			roleAssignments.push({ type: 'admin-list-group', listId, groupId, role: RBAC.userDefinedRole(roleType) })
+			index.assignments.push({ type: 'admin-list-group', listId, groupId, role })
 		}
 		for (const listId of cfg.assignments.ingameAdminLists) {
-			roleAssignments.push({ type: 'ingame-admin', listId, role: RBAC.userDefinedRole(roleType) })
+			index.assignments.push({ type: 'ingame-admin', listId, role })
 		}
 	}
-
-	// TODO add preflight checks to make sure the remote references in role assignments are valid
+	return index
 }
 
 // superUsers/superRoles from the deploy-time config always receive every permission -- the anti-lockout bootstrap
@@ -385,13 +397,65 @@ export async function tryDenySteamLinkEscalation(
 	return { code: 'err:permission-denied', checkType: 'all', failures }
 }
 
+type RoleAffectingSettings = Pick<SETTINGS.GlobalSettings, 'rbac' | 'adminLists'>
+
+// An edit to the roles or the admin lists must not grant anyone a permission its author does not hold, or a grant over
+// those settings would be a grant of everything. A role that is new, or whose assignments or assigning admin lists
+// changed, can reach new people, so its author must hold all it grants. Any other changed role needs only what it
+// adds. Dropping a negation grants what it negated to everyone holding the role.
+export async function tryDenyRoleSettingsEscalation(
+	ctx: C.Db & USR.Ctx.Id & CS.AbortSignal,
+	prev: RoleAffectingSettings,
+	next: RoleAffectingSettings,
+): Promise<RBAC.PermissionDeniedResponse | undefined> {
+	const listIds = new Set([...Object.keys(prev.adminLists), ...Object.keys(next.adminLists)])
+	const changedLists = new Set([...listIds].filter((id) => !Obj.deepEqual(prev.adminLists[id], next.adminLists[id])))
+	const readsChangedList = (cfg: RoleConfig) =>
+		cfg.assignments.ingameAdminLists.some((id) => changedLists.has(id)) ||
+		cfg.assignments.adminListGroups.some((g) => changedLists.has(g.listId))
+
+	const prevIndex = buildRoleIndex(prev.rbac)
+	const nextIndex = buildRoleIndex(next.rbac)
+	const required: RBAC.Permission[] = []
+	for (const roleType of new Set([...Object.keys(prev.rbac.roles), ...Object.keys(next.rbac.roles)])) {
+		const before = Object.hasOwn(prev.rbac.roles, roleType) ? prev.rbac.roles[roleType] : undefined
+		const after = Object.hasOwn(next.rbac.roles, roleType) ? next.rbac.roles[roleType] : undefined
+		const role = RBAC.userDefinedRole(roleType)
+		if (before && after && Obj.deepEqual(before, after) && !readsChangedList(after)) continue
+
+		for (const expr of before?.permissions ?? []) {
+			const negated = RBAC.parseNegatingPermissionType(expr)
+			if (negated && !after?.permissions.includes(expr)) {
+				required.push(...RBAC.fromTracedPermissions([RBAC.tracedPerm(negated, [role], {}, RBAC.unrestrictedRoleGrantArgs(negated))]))
+			}
+		}
+		if (!after) continue
+
+		const granted = RBAC.fromTracedPermissions(permsFromRoles([role], nextIndex))
+		if (!before || !Obj.deepEqual(before.assignments, after.assignments) || readsChangedList(after)) {
+			required.push(...granted)
+		} else {
+			const had = RBAC.fromTracedPermissions(permsFromRoles([role], prevIndex))
+			required.push(...granted.filter((perm) => !RBAC.permSubsumedBy(perm, had, scopedServerIds)))
+		}
+	}
+	if (required.length === 0) return
+
+	const actorPerms = await getUserPermissions(ctx)
+	const failures = required
+		.filter((perm) => !RBAC.permSubsumedBy(perm, actorPerms, scopedServerIds))
+		.map((perm) => RBAC.describePermit(perm))
+	if (failures.length === 0) return
+	return { code: 'err:permission-denied', checkType: 'all', failures: [...new Set(failures)] }
+}
+
 // Resolved against a named set of lists rather than "the admin list". The two callers ask different questions: a
 // player is on one server, so only that server's lists may speak for them -- that is what keeps a sandbox's admins
 // out of production. A web user is on no server, so every configured list is consulted, and where the resulting role
 // applies is decided by that role's own server-scoped grants.
 async function resolveAdminListAssignments(ctx: C.Db & CS.AbortSignal, allIds: SM.PlayerIds.IdQuery<'steam'>[], lists: SM.AdminLists) {
 	const roles: RBAC.Role[] = []
-	for (const assignment of roleAssignments) {
+	for (const assignment of roleIndex.assignments) {
 		if (assignment.type === 'admin-list-group') {
 			const list = lists.get(assignment.listId)
 			if (!list) continue
@@ -419,7 +483,7 @@ async function resolveAdminListAssignments(ctx: C.Db & CS.AbortSignal, allIds: S
 async function resolveDiscordAssignments(ctx: CS.Ctx, userId: bigint) {
 	const roles: RBAC.Role[] = []
 	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
-	for (const assignment of roleAssignments) {
+	for (const assignment of roleIndex.assignments) {
 		if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
 			RBAC.Role.push(roles, assignment.role)
 		}
@@ -588,12 +652,12 @@ async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[],
 
 // the permissions a set of roles grants purely from their rbac settings config. Negations only apply within the given
 // set, which is what lets a single role be evaluated in isolation (see getSimulatableRoles).
-function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
+function permsFromRoles(roles: RBAC.Role[], index: RoleIndex = roleIndex): RBAC.TracedPermission[] {
 	const perms: RBAC.TracedPermission[] = []
 	const allNegatingPerms: Set<RBAC.RoleGrantablePermissionType> = new Set()
 
 	for (const role of roles) {
-		for (const permExpr of userDefinedPermissionExpressions[role.type] ?? []) {
+		for (const permExpr of index.permissionExpressions.get(role.type) ?? []) {
 			const perm = RBAC.parseNegatingPermissionType(permExpr)
 			if (!perm) continue
 			allNegatingPerms.add(perm)
@@ -618,48 +682,47 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 			}
 			continue
 		}
-		if ((userDefinedPermissionExpressions[role.type] ?? []).includes('*')) {
+		if ((index.permissionExpressions.get(role.type) ?? []).includes('*')) {
 			for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
 				perms.push(
 					RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
 				)
 			}
 		}
-		for (const permExpr of userDefinedPermissionExpressions[role.type] ?? []) {
+		for (const permExpr of index.permissionExpressions.get(role.type) ?? []) {
 			if (!RBAC.isRoleGrantablePermissionType(permExpr)) continue
 			RBAC.addTracedPerms(
 				perms,
 				RBAC.tracedPerm(permExpr, [role], { negated: allNegatingPerms.has(permExpr) }, RBAC.unrestrictedRoleGrantArgs(permExpr)),
 			)
 		}
-		if (roleMaxTimeouts[role.type] !== undefined) {
+		const maxTimeout = index.maxTimeouts.get(role.type)
+		if (maxTimeout !== undefined) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { serverId: null, maxDurationMs: roleMaxTimeouts[role.type] }),
+				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { serverId: null, maxDurationMs: maxTimeout }),
 			)
 		}
-		if (roleMaxLayerRequests[role.type] !== undefined) {
-			RBAC.addTracedPerms(
-				perms,
-				RBAC.tracedPerm('queue:request-layers', [role], {}, { serverId: null, maxQueued: roleMaxLayerRequests[role.type] }),
-			)
+		const maxLayerRequests = index.maxLayerRequests.get(role.type)
+		if (maxLayerRequests !== undefined) {
+			RBAC.addTracedPerms(perms, RBAC.tracedPerm('queue:request-layers', [role], {}, { serverId: null, maxQueued: maxLayerRequests }))
 		}
 		// restricted settings grants; a matching negation in any role's expressions wins over these too
-		const globalPaths = roleGlobalSettingsGrants[role.type]
+		const globalPaths = index.globalSettingsGrants.get(role.type)
 		if (globalPaths && globalPaths.length > 0) {
 			RBAC.addTracedPerms(
 				perms,
 				RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
 			)
 		}
-		for (const grant of roleServerGrants[role.type] ?? []) {
+		for (const grant of index.serverGrants.get(role.type) ?? []) {
 			for (const serverId of grant.serverIds) {
 				RBAC.addTracedPerms(perms, RBAC.tracedPerm(grant.permission, [role], { negated: isNegated(grant.permission) }, { serverId }))
 			}
 		}
 		// no negation: `!plugin:action` would deny every plugin's every action, which nobody means. To remove one,
 		// drop the grant -- the same rule the comparator-scoped grants follow.
-		for (const grant of rolePluginGrants[role.type] ?? []) {
+		for (const grant of index.pluginGrants.get(role.type) ?? []) {
 			const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
 			for (const serverId of serverIds) {
 				RBAC.addTracedPerms(
@@ -668,7 +731,7 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 				)
 			}
 		}
-		for (const grant of roleServerSettingsGrants[role.type] ?? []) {
+		for (const grant of index.serverSettingsGrants.get(role.type) ?? []) {
 			const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
 			for (const serverId of serverIds) {
 				if (grant.access === 'read') {
@@ -764,7 +827,7 @@ export async function getMaxLayerRequestsForPlayer(
 
 export const orpcRouter = {
 	getUserDefinedRoles: orpcBase.handler(() => {
-		return userDefinedRoles
+		return roleIndex.roles
 	}),
 
 	// the caller's own roles. Not derivable from their permissions' traces: a role granting nothing appears in no trace,
@@ -783,7 +846,7 @@ export const orpcRouter = {
 		const heldRoles = new Set(rbac.roles.map((r) => r.type))
 
 		const simulatable: { role: RBAC.Role; perms: RBAC.TracedPermission[] }[] = []
-		for (const role of userDefinedRoles) {
+		for (const role of roleIndex.roles) {
 			if (heldRoles.has(role.type)) continue
 			const perms = permsFromRoles([role])
 			// a role granting nothing (or only negations) is vacuously subsumed, and simulating it is still meaningful:

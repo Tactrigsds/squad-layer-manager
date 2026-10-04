@@ -53,15 +53,19 @@ export function artifact(ctx: CS.Log, kind: Kind): Artifact {
 	return cached.artifacts[kind]
 }
 
-/** The instance's topBarColor, or null when it is unset or unrenderable. */
+/**
+ * The instance's topBarColor as hex, or null when it is unset or unrenderable. The configured string is never returned
+ * as-is: Color.parse accepts trailing text it ignores, and the result is interpolated into svg and html.
+ */
 export function accent(ctx: CS.Log): string | null {
 	const configured = Settings.GLOBAL_SETTINGS.topBarColor
 	if (configured === null) return null
-	if (Color.parse(configured) === null) {
+	const parsed = Color.parse(configured)
+	if (parsed === null) {
 		ctx.log.warn('topBarColor %s is not a colour the logo can be rendered with; serving the mark without an accent', configured)
 		return null
 	}
-	return configured
+	return Color.toHex(parsed)
 }
 
 function build(accent: string | null): Record<Kind, Artifact> {

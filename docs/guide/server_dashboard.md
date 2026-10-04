@@ -33,7 +33,7 @@ The _Commands_ page in the nav bar lists every in-game command your install has,
 Run a demo instance with no authentication:
 
 ```sh
-docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
+docker run --rm -p 127.0.0.1:3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
 ```
 
 ## Setting SLM up

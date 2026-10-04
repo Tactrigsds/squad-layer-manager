@@ -79,7 +79,7 @@ export const groups = {
 			.default(false)
 			.meta({
 				description:
-					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Everything it holds is disposable, and it refuses to boot alongside anything that is not.',
+					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Plugins cannot be installed from a url. Everything it holds is disposable, and it refuses to boot alongside anything that is not.',
 				envExample: { include: 'commented' },
 			}),
 	},

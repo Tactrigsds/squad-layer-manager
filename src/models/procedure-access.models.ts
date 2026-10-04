@@ -107,7 +107,9 @@ export const PROCEDURE_ACCESS = {
 	'settings.admin.deleteServer': global('admin:delete-servers'),
 	'settings.admin.setDefaultServer': global('admin:manage-servers'),
 	'settings.admin.getRawSettings': Access.req((i: ServerInput) => Req.perm('server-settings:read', { serverId: i.serverId })),
-	'settings.admin.updateRawSettings': Access.inHandler('the paths it writes are the diff against the stored settings'),
+	'settings.admin.updateRawSettings': Access.inHandler('the paths it writes are the diff against the stored settings', (i: ServerInput) =>
+		Req.perm('server-settings:read', { serverId: i.serverId }),
+	),
 
 	'layerQueries.getLayerInfo': Access.PUBLIC,
 
