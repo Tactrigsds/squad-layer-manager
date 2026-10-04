@@ -105,8 +105,8 @@ import manifest from './plugin.ts'
 
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	// once per managed server, now and for any that appear later
-	Servers.setup(ctx, (sctx, cleanup) => {
-		cleanup.push(
+	Servers.setup(ctx, (sctx) => {
+		sctx.cleanup.push(
 			sctx.matchHistory.finalized$
 				.pipe(
 					Instr.durableSub('count-matches', { module: sctx.module }, async () => {
@@ -116,10 +116,10 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 				)
 				.subscribe(),
 		)
-	})
 
-	// asked after each roll for the lines this plugin wants warned to admins
-	Reminders.register(ctx, async (sctx) => [PluginConfig.get(sctx).greeting])
+		// asked after each roll on this server for the lines this plugin wants warned to admins
+		Reminders.register(sctx, async () => [PluginConfig.get(sctx).greeting])
+	})
 }
 ```
 
@@ -134,11 +134,11 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 | `ctx.plugin`  | your id and manifest                                |
 | `ctx.module`  | your telemetry scope, for `spanOp` and `durableSub` |
 
-`Servers.setup(ctx, cb)` calls `cb` once per managed server. Its `cleanup` is scoped to that plugin and server
-pair, so it runs when the server goes down or the plugin stops, whichever comes first. `sctx` is the per-server
-ctx, and it is what the `slm/systems/*` functions take.
+`Servers.setup(ctx, cb)` calls `cb` once per managed server with `sctx`, the per-server ctx. The `slm/systems/*`
+functions take `sctx`. `sctx.cleanup` is scoped to that plugin and server pair, so it runs when the server goes down
+or the plugin stops, whichever comes first.
 
-Everything a plugin starts has to be tied to one of those: `ctx.cleanup`, the per-server `cleanup`, or `ctx.signal`.
+Everything a plugin starts has to be tied to one of those: `ctx.cleanup`, `sctx.cleanup`, or `ctx.signal`.
 Work started at module scope keeps running after the plugin stops. Keep state inside `activate()`.
 
 Use `durableSub` for a long-lived subscription rather than a bare `.subscribe()`. It logs each error and resubscribes,

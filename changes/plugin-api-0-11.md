@@ -14,3 +14,4 @@ The built-in plugins are already updated. For a plugin of your own, set `apiVers
 - `tryKickPlayers` in `slm/systems/squad-server` kicks players like `kickPlayers` and returns the players the game server kicked.
 - `slm/lib/rxjs-ext` adds `bufferBurst`.
 - `slm/systems/player-activity` reads SLM's rule for when a player counts as idle.
+- `register` in `slm/systems/post-roll-reminders` takes the per-server ctx and must be called from `Servers.setup`. The provider takes no arguments. A provider registered for one server is asked only after rolls on that server.

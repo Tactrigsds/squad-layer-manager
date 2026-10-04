@@ -736,10 +736,10 @@ by everything else), a server entry whose `activate(ctx)` runs when the plugin s
 migrations. They import the core exclusively through the `slm/*` alias, which resolves to the curated entry files in
 `src/plugin-api/`. Each entry names its exports explicitly, so nothing joins the contract by accident. Lifecycle and
 host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion, `persistAppEvent`) are reachable in core
-and absent here. A few entries add plugin-shaped adapters instead (`slm/plugin/*`, `AppEvents.emit`,
-`PostRollReminders.register`). Third-party packages stay out: `slm/lib/rxjs-ext` exposes our rxjs additions and nothing
-else, and a plugin imports `rxjs` itself, which carries its own semver. One tsconfig path covers tsc, tsx and the
-rolldown server bundle. Vite and vitest carry a hand-written alias.
+and absent here. A few entries add plugin-shaped adapters instead (`slm/plugin/*`, `AppEvents.emit`). Third-party
+packages stay out: `slm/lib/rxjs-ext` exposes our rxjs additions and nothing else, and a plugin imports `rxjs` itself,
+which carries its own semver. One tsconfig path covers tsc, tsx and the rolldown server bundle. Vite and vitest carry
+a hand-written alias.
 
 **The plugin way is the core way.** A plugin receives a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin` for
 identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
