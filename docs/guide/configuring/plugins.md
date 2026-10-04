@@ -19,15 +19,21 @@ SLM ships with these plugins. They are installed but stopped by default.
 
 ## Installing a plugin
 
-1. Get the url of the plugin's `plugin.json` from its author.
+1. Get the url of the plugin's `plugin.json` from its author. The url must start with `https://`.
 2. Paste it under _Install a plugin_ and click _Install_.
 3. Start the plugin with its toggle.
 
 SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author's site goes down. To
-upgrade the plugin, click _Refresh_ to download it again.
+upgrade the plugin, click _Refresh_ to download it again from the same url.
+
+SLM refuses to install a plugin whose id is already installed from another url or from the plugins folder. To switch a
+plugin to another url, uninstall it first.
 
 A plugin can also be installed by copying its folder into `data/plugins` and clicking _Rescan folder_. The folder must
 be named after the plugin's id. A plugin installed this way has no url, so upgrade it by replacing the folder.
+
+Plugins cannot be installed or refreshed from a url on a demo instance, because anyone who reaches a demo signs in as an
+admin.
 
 ## Running and configuring a plugin
 
@@ -47,5 +53,6 @@ themselves, so nobody loses an edit in progress.
 
 ## Uninstalling a plugin
 
-Use _Uninstall_ to remove the plugin. SLM keeps the plugin's settings and data, so reinstalling it restores them. To
-remove those as well, use _Delete data_ under _Leftover data_. That cannot be undone.
+Use _Uninstall_ to remove the plugin. SLM keeps the plugin's settings and data, so reinstalling it restores them. A
+reinstalled plugin stays stopped until it is started with its toggle. To remove the settings and data as well, use
+_Delete data_ under _Leftover data_. That cannot be undone.

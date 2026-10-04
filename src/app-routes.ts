@@ -228,7 +228,9 @@ export const COOKIE_KEY = z.enum([
 	// stores the session id for the user. the client always expects this cookie to be present.
 	'session-id',
 ])
-export const COOKIE_DEFAULTS = { path: '/', httpOnly: true }
+// lax keeps cookies off cross-site subresource requests and websocket handshakes, while a link followed from another
+// site still arrives signed in
+export const COOKIE_DEFAULTS = { path: '/', httpOnly: true, sameSite: 'lax' } as const
 export type CookieKey = z.infer<typeof COOKIE_KEY>
 
 export type Cookies = Record<CookieKey, string | undefined>

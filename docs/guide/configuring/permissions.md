@@ -80,6 +80,10 @@ Settings access works the same way:
 - `server-settings:write-sensitive` is a separate permission. It is the only way to view or edit a server's RCON and
   SFTP connection details.
 
+A user who may edit the permissions config or the admin lists can only grant permissions they hold themselves. SLM
+refuses a save that adds a permission to a role, assigns a role to someone, or changes an admin list that assigns a
+role, when the user saving it lacks a permission the change would grant.
+
 ## Assigning roles
 
 A role can be assigned to a user or to a player:

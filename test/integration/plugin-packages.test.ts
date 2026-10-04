@@ -64,6 +64,11 @@ beforeAll(async () => {
 
 	origin = http.createServer((req, res) => {
 		const url = req.url ?? ''
+		// a mirror that hands off to plain http on another host, which an install must not follow
+		if (url === '/insecure-mirror/plugin.json') {
+			res.writeHead(302, { location: 'http://plugins.example/plugin.json' }).end()
+			return
+		}
 		const latest = /^\/releases\/latest\/download\/(.+)$/.exec(url)
 		if (latest) {
 			res.writeHead(302, { location: `/releases/download/${latestTag}/${latest[1]}` }).end()
@@ -160,6 +165,29 @@ describe('packaged plugins', () => {
 		// the client bundle is served from SLM, not from the origin it came from
 		expect(info?.clientEntry).toMatch(/^\/plugin-assets\/hello\/client\.mjs\?v=/)
 		expect(info?.clientStyles).toMatch(/^\/plugin-assets\/hello\/client\.css\?v=/)
+	})
+
+	it('refuses plain http to another host, at the start or after a redirect', async () => {
+		expect(await client.plugins.installFromUrl({ url: 'http://plugins.example/plugin.json' })).toMatchObject({
+			code: 'err:install-failed',
+			message: expect.stringContaining('https'),
+		})
+		const mirror = new URL('/insecure-mirror/plugin.json', manifestUrl).href
+		expect(await client.plugins.installFromUrl({ url: mirror })).toMatchObject({
+			code: 'err:install-failed',
+			message: expect.stringContaining('https'),
+		})
+	})
+
+	// the same release, by its pinned tag rather than `latest`: a different source for an id already installed
+	it('refuses to replace an installed plugin with one from another source', async () => {
+		const pinned = new URL('/releases/download/v1.0.0/plugin.json', manifestUrl).href
+		expect(await client.plugins.installFromUrl({ url: pinned })).toMatchObject({
+			code: 'err:id-taken',
+			pluginId: 'hello',
+			installedFrom: manifestUrl,
+		})
+		expect(await pluginInfo()).toMatchObject({ sourceUrl: manifestUrl })
 	})
 
 	it('starts, applies its migration and reaches core through the shimmed imports', async () => {
@@ -539,7 +567,8 @@ describe('packaged plugins', () => {
 		expect(await client.plugins.uninstall({ pluginId: 'hello' })).toMatchObject({ code: 'ok' })
 		expect(await pluginInfo()).toBeUndefined()
 
-		expect(readRows(`SELECT 1 FROM plugins WHERE id = 'hello'`)).toHaveLength(1)
+		// kept, but switched off, so whatever is next installed under this id does not start on its own
+		expect(readRows(`SELECT enabled FROM plugins WHERE id = 'hello'`)).toEqual([{ enabled: 0 }])
 		expect(readRows(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'p_hello_greetings'`)).toHaveLength(1)
 		expect(await leftoverData()).toMatchObject({ pluginId: 'hello', migrations: 1, tables: [{ name: 'p_hello_greetings' }] })
 	})

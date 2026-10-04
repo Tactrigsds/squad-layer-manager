@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
 import { makePlayer } from '@/emulator'
@@ -214,6 +215,8 @@ describe('the icon renditions', () => {
 	it('revalidates rather than pinning a stale accent, and answers a matching etag with 304', async () => {
 		const first = await fetchIcon('/favicon.svg')
 		expect(first.headers.get('cache-control')).toBe('no-cache')
+		// opened as a document, the svg must not be able to run script on the app's origin
+		expect(first.headers.get('content-security-policy')).toContain("default-src 'none'")
 		const etag = first.headers.get('etag')!
 		await first.arrayBuffer()
 
@@ -325,6 +328,39 @@ describe('GET /history as text', () => {
 		const anonymous = await fetch(`${base}/history?${search}&contentType=text%2Fplain`, { redirect: 'manual' })
 		expect(anonymous.status).toBe(401)
 		expect(anonymous.headers.get('content-type')).toMatch(/^text\/plain/)
+	})
+})
+
+// A browser attaches the session cookie to a websocket handshake from any page, so the upgrade itself has to refuse
+// pages from another origin, and the cookie has to stay off cross-site requests.
+describe('the /orpc websocket upgrade', () => {
+	function handshake(origin: string): Promise<number> {
+		const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/orpc`, { headers: { cookie, origin } })
+		return new Promise((resolve, reject) => {
+			ws.once('open', () => {
+				ws.terminate()
+				resolve(101)
+			})
+			ws.once('unexpected-response', (_req, res) => {
+				ws.terminate()
+				resolve(res.statusCode ?? 0)
+			})
+			ws.once('error', reject)
+		})
+	}
+
+	it('refuses a handshake from another origin', async () => {
+		expect(await handshake('https://attacker.example')).toBe(403)
+	})
+
+	it("accepts a handshake from the app's own origin", async () => {
+		expect(await handshake(base)).toBe(101)
+	})
+
+	it('marks the session cookie SameSite=Lax', async () => {
+		const login = await fetch(`${base}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
+		const session = login.headers.getSetCookie().find((c) => c.startsWith('session-id='))
+		expect(session).toMatch(/SameSite=Lax/i)
 	})
 })
 

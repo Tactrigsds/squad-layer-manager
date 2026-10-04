@@ -1746,12 +1746,18 @@ export const SettingMutationSchema = z.object({
 
 export type SettingMutation = z.infer<typeof SettingMutationSchema>
 
+// Keys that reach an object's prototype rather than a setting. A path walked through one of these writes to
+// Object.prototype for the whole process.
+const PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
 export function checkPublicSettingsPath(path: SettingsPath) {
+	if (path.some((key) => typeof key === 'string' && PROTOTYPE_KEYS.has(key))) return false
 	const defaultSettings = EXAMPLE_PUBLIC_SETTINGS
 	let current = defaultSettings as any
 	// we can't validate the last key because it could be undefined
 	for (let key of path.slice(0, -1)) {
 		if (typeof key === 'number') key = 0
+		if (!Object.hasOwn(current, key)) return false
 		current = (current as any)[key]
 		if (!current) return false
 	}
@@ -1776,11 +1782,14 @@ export function applySettingMutation<T extends PublicServerSettings>(
 ) {
 	const path = Array.isArray(pathOrMutation) ? pathOrMutation : pathOrMutation.path
 	const resolvedValue = Array.isArray(pathOrMutation) ? value : pathOrMutation.value
+	if (path.some((key) => typeof key === 'string' && PROTOTYPE_KEYS.has(key))) {
+		throw new Error(`settings path ${path.join('.')} reaches a prototype`)
+	}
 
 	let current = settings as any
 	for (let i = 0; i < path.length - 1; i++) {
 		const key = path[i]
-		if (!current[key]) current[key] = {}
+		if (!Object.hasOwn(current, key) || !current[key]) current[key] = {}
 		current = current[key]
 	}
 	const key = path[path.length - 1]

@@ -16,9 +16,10 @@ import { initModule } from '@/server/logger'
 // local copy, and refresh is an explicit re-fetch of a recorded source. Nothing is fetched at boot.
 
 const module = initModule('plugin-packages')
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.plugins })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.plugins, ...Env.groups.demo })
 let log!: CS.Logger
 let PLUGINS_DIR!: string
+let DEMO!: boolean
 
 // generous for a bundle, small enough that a wrong url cannot fill the disk
 const MAX_FILE_BYTES = 16 * 1024 * 1024
@@ -44,7 +45,9 @@ export type Package = {
 
 export function setup() {
 	log = module.getLogger()
-	PLUGINS_DIR = envBuilder().PLUGINS_DIR
+	const env = envBuilder()
+	PLUGINS_DIR = env.PLUGINS_DIR
+	DEMO = env.DEMO
 	fs.mkdirSync(PLUGINS_DIR, { recursive: true })
 }
 
@@ -119,20 +122,32 @@ function resolveWithin(dir: string, rel: string): string {
 
 // ---- installing ----
 
-export type InstallResult = { code: 'ok'; pkg: Package } | { code: 'err:install-failed'; message: string }
+export type InstallResult =
+	| { code: 'ok'; pkg: Package }
+	| { code: 'err:install-failed'; message: string }
+	| { code: 'err:disabled-in-demo' }
+	// installedFrom is null for a package placed by hand
+	| { code: 'err:id-taken'; pluginId: string; installedFrom: string | null }
 
 // Fetches a plugin.json and the bundles it names, then swaps the whole directory into place. The url
 // points at the manifest; everything else is resolved relative to it, so a package is one directory
 // on a static host.
 export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<InstallResult> {
+	// everyone who signs in to a demo is a super user, so an install there is code anyone can run on the host
+	if (DEMO) return { code: 'err:disabled-in-demo' }
 	try {
 		const manifestUrl = new URL(url)
-		if (manifestUrl.protocol !== 'http:' && manifestUrl.protocol !== 'https:') throw new Error('only http(s) urls can be installed')
+		assertFetchable(manifestUrl)
 
 		const manifestBytes = await fetchFile(ctx, manifestUrl)
 		const manifest = PLG.PackageManifestSchema.parse(JSON.parse(manifestBytes.toString('utf8')))
 		if (!PLG.satisfiesApiVersion(manifest.apiVersion)) {
 			throw new Error(`plugin requires slm api ${manifest.apiVersion}, this build provides ${PLG.formatApiVersion()}`)
+		}
+		// replacing a package from another source would hand the new code the old one's enabled row, config and tables
+		const installedFrom = installedSource(manifest.id)
+		if (installedFrom !== undefined && installedFrom !== manifestUrl.href) {
+			return { code: 'err:id-taken', pluginId: manifest.id, installedFrom }
 		}
 
 		const files = new Map<string, Buffer>([[PLG.PACKAGE_MANIFEST_FILE, manifestBytes]])
@@ -185,10 +200,61 @@ async function swapIn(id: PLG.PluginId, files: Map<string, Buffer>) {
 	await fsp.rename(staging, target)
 }
 
+// The source url of the package installed under `id`: undefined when there is none, null when it was placed by hand.
+// A directory that no longer reads as a package counts as placed by hand.
+function installedSource(id: PLG.PluginId): string | null | undefined {
+	const dir = path.join(PLUGINS_DIR, id)
+	if (!fs.existsSync(dir)) return undefined
+	try {
+		return readPackage(dir).install?.sourceUrl ?? null
+	} catch {
+		return null
+	}
+}
+
+// What a plugin is fetched over decides who can swap its code in transit, so plain http is refused except to this
+// machine, where a plugin author serves their own build.
+function assertFetchable(url: URL) {
+	if (url.protocol === 'https:') return
+	if (url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname)) return
+	throw new Error(`plugins can only be fetched over https, not ${url.href}`)
+}
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
+const MAX_REDIRECTS = 5
+
+// Follows redirects by hand so that every hop is held to assertFetchable, and reads the body incrementally so an
+// oversized one is abandoned at the limit rather than buffered whole first.
 async function fetchFile(ctx: CS.AbortSignal, url: URL): Promise<Buffer> {
-	const res = await fetch(url, { signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]), redirect: 'follow' })
-	if (!res.ok) throw new Error(`GET ${url.href} returned ${res.status}`)
-	const bytes = Buffer.from(await res.arrayBuffer())
-	if (bytes.byteLength > MAX_FILE_BYTES) throw new Error(`${url.href} is larger than ${MAX_FILE_BYTES} bytes`)
-	return bytes
+	const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
+	let current = url
+	for (let hop = 0; ; hop++) {
+		assertFetchable(current)
+		const res = await fetch(current, { signal, redirect: 'manual' })
+		const location = res.headers.get('location')
+		if (res.status >= 300 && res.status < 400 && location !== null) {
+			await res.body?.cancel()
+			if (hop === MAX_REDIRECTS) throw new Error(`GET ${url.href} redirected more than ${MAX_REDIRECTS} times`)
+			current = new URL(location, current)
+			continue
+		}
+		if (!res.ok) throw new Error(`GET ${current.href} returned ${res.status}`)
+		return await readCapped(res, current)
+	}
+}
+
+async function readCapped(res: Response, url: URL): Promise<Buffer> {
+	const tooLarge = () => new Error(`${url.href} is larger than ${MAX_FILE_BYTES} bytes`)
+	if (Number(res.headers.get('content-length') ?? 0) > MAX_FILE_BYTES) {
+		await res.body?.cancel()
+		throw tooLarge()
+	}
+	const chunks: Uint8Array[] = []
+	let total = 0
+	for await (const chunk of res.body ?? []) {
+		total += chunk.byteLength
+		if (total > MAX_FILE_BYTES) throw tooLarge()
+		chunks.push(chunk)
+	}
+	return Buffer.concat(chunks)
 }

@@ -294,3 +294,24 @@ describe('trimStaleSettingsGrants', () => {
 		expect(trimmedGrants(grants)).toBe(grants)
 	})
 })
+
+describe('setting mutation paths', () => {
+	test.each([
+		[['__proto__', 'polluted']],
+		[['queue', '__proto__', 'polluted']],
+		[['constructor', 'prototype', 'polluted']],
+		[['queue', 'toString', 'polluted']],
+	])('rejects a path that walks off the settings into a prototype: %j', (path) => {
+		expect(SETTINGS.SettingMutationSchema.safeParse({ path, value: 'yes' }).success).toBe(false)
+	})
+
+	test('refuses to apply a path through __proto__, leaving Object.prototype alone', () => {
+		const settings = SETTINGS.PublicServerSettingsSchema.parse({})
+		expect(() => SETTINGS.applySettingMutation(settings, ['queue', '__proto__', 'polluted'], 'yes')).toThrow()
+		expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+	})
+
+	test('still accepts a path to a real setting', () => {
+		expect(SETTINGS.SettingMutationSchema.safeParse({ path: ['queue', 'mainPool', 'poolFilter'], value: null }).success).toBe(true)
+	})
+})

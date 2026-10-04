@@ -5,12 +5,16 @@
 To see SLM before installing it for real, run a demo instance:
 
 ```sh
-docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
+docker run --rm -p 127.0.0.1:3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
 ```
 
 Open http://localhost:3000 and sign in with any username from the form on the front page. The demo starts with example
 data and needs no Discord server. Everything in it is thrown away when the container stops. The demo encrypts its
 settings with a key published in this repository, so enter no real credential into it.
+
+Anyone who can open the demo signs in as an admin. The demo started by the command above accepts connections from this
+machine only.
+Do not publish the port to a network you do not control.
 
 ## Installation Procedure
 

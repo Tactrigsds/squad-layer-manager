@@ -24,7 +24,7 @@ export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 const module = initModule('sessions')
 let log!: CS.Logger
 
-const buildEnv = Env.getEnvBuilder({ ...Env.groups.general })
+const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer })
 
 let ENV!: ReturnType<typeof buildEnv>
 
@@ -298,11 +298,15 @@ export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, ex
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...AR.COOKIE_DEFAULTS, ...expireArg })
+	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...sessionCookieDefaults(), ...expireArg })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {
-	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...AR.COOKIE_DEFAULTS, maxAge: 0 })
+	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...sessionCookieDefaults(), maxAge: 0 })
+}
+
+function sessionCookieDefaults() {
+	return { ...AR.COOKIE_DEFAULTS, secure: ENV.ORIGIN.startsWith('https:') }
 }
 
 export const getUser = Instr.spanOp(

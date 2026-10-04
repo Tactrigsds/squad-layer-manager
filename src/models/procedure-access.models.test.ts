@@ -50,6 +50,7 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'settings.server.updateSettings': { ...S, ops: [{ path: ['queue', 'mainPool'] }, { path: ['connections', 'rcon', 'host'] }] },
 	'settings.admin.createServer': { id: 's2' },
 	'settings.admin.getRawSettings': S,
+	'settings.admin.updateRawSettings': S,
 	'matchHistory.watchMatchHistoryState': S,
 	'matchHistory.getMatchEvents': S,
 	'matchHistory.getPopulation': S,
