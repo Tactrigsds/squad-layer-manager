@@ -52,6 +52,11 @@ export const installIdTakenByFolder = def(
 	(id: string) => ({ id }),
 )
 
+export const installIdOverlaps = def(
+	'The plugin {id} cannot be installed beside {other}: their ids are too alike for SLM to keep their data apart. Uninstall {other} and delete its data first.',
+	(id: string, other: string) => ({ id, other }),
+)
+
 export const installDisabledInDemo = def(
 	'Plugins cannot be installed on a demo. Anyone who reaches a demo signs in as an admin, so installing a plugin there would let anyone run code on the server.',
 )

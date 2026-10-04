@@ -62,6 +62,15 @@ describe('static assets', () => {
 		expect(res.headers.get('cache-control')).toBe('public, max-age=0')
 	})
 
+	it('refuses to be framed by another page, signed in or not', async () => {
+		const signedIn = await get('/')
+		const landing = await fetch(`${base}/`, { redirect: 'manual' })
+		for (const res of [signedIn, landing]) {
+			expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+			expect(res.headers.get('x-frame-options')).toBe('DENY')
+		}
+	})
+
 	it('serves the precompressed sibling that is on disk, under the original content type', async () => {
 		const asset = hashedEntryAsset()
 		for (const [encoding, ext] of [
@@ -362,6 +371,24 @@ describe('the /orpc websocket upgrade', () => {
 		const session = login.headers.getSetCookie().find((c) => c.startsWith('session-id='))
 		expect(session).toMatch(/SameSite=Lax/i)
 	})
+
+	// a copy of the database or a backup must not hold anything that signs someone in
+	it('stores the session under a hash of the cookie, never the cookie itself', async () => {
+		const login = await fetch(`${base}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
+		const token = login.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)!
+			.slice('session-id='.length)
+		const db = app.readDb()
+		try {
+			const ids = (db.prepare(`SELECT session FROM sessions`).all() as { session: string }[]).map((r) => r.session)
+			expect(ids).not.toContain(token)
+			expect(ids).toContain(crypto.createHash('sha256').update(token).digest('hex'))
+		} finally {
+			db.close()
+		}
+	})
 })
 
 describe('POST /logout', () => {
@@ -387,5 +414,23 @@ describe('POST /logout', () => {
 		expect(res.headers.get('location')).toBe('/')
 		// the session cookie is cleared
 		expect(res.headers.getSetCookie().some((c) => c.startsWith('session-id=;') || /Max-Age=0/.test(c))).toBe(true)
+	})
+
+	// a socket is authorized once, at its upgrade, so logging out has to close the ones the session already holds
+	it('closes the websockets the session holds', async () => {
+		const login = await fetch(`${base}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
+		const sessionCookie = login.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)!
+		const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/orpc`, { headers: { cookie: sessionCookie } })
+		await new Promise<void>((resolve, reject) => {
+			ws.once('open', () => resolve())
+			ws.once('error', reject)
+		})
+		const closed = new Promise<number>((resolve) => ws.once('close', (code) => resolve(code)))
+
+		await fetch(`${base}/logout`, { method: 'POST', headers: { cookie: sessionCookie }, redirect: 'manual' })
+		expect(await closed).toBe(4001)
 	})
 })

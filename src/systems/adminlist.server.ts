@@ -13,6 +13,7 @@ import { withSftp } from '@/lib/sftp-file-store.ts'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import * as SM from '@/models/squad.models.ts'
+import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -20,6 +21,19 @@ import * as Settings from '@/systems/settings.server'
 
 const module = initModule('fetch-admin-lists')
 let log!: CS.Logger
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+let ENV!: ReturnType<typeof envBuilder>
+
+// A relative path resolves against the project root. The real path is checked, so a symlink cannot lead out.
+function localListPath(source: string): string {
+	const dir = fs.realpathSync(path.resolve(ENV.LOCAL_ADMIN_LISTS_DIR))
+	const resolved = path.resolve(Paths.PROJECT_ROOT, source)
+	const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved
+	if (real !== dir && !real.startsWith(dir + path.sep)) {
+		throw new Error(`${resolved} is outside ${dir}, the only directory a local admin list may be read from (LOCAL_ADMIN_LISTS_DIR)`)
+	}
+	return real
+}
 
 export type AdminListStatus =
 	| {
@@ -225,6 +239,7 @@ function openableUrl(listId: SM.AdminListId): string | null {
 
 export function setup() {
 	log = module.getLogger()
+	ENV = envBuilder()
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
 	CleanupSys.register(() => {
 		for (const resource of resources.values()) resource.dispose()
@@ -344,7 +359,7 @@ const fetchAdminList = Instr.spanOp(
 						break
 					}
 					case 'local': {
-						const listPath = path.resolve(Paths.PROJECT_ROOT, source.source)
+						const listPath = localListPath(source.source)
 						if (!fs.existsSync(listPath)) {
 							throw new Error(`Could not find Admin List at ${listPath}`)
 						}

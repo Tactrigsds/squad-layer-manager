@@ -51,6 +51,12 @@ describe('secret-box', () => {
 		expect(() => SecretBox.open(tampered)).toThrow()
 	})
 
+	it('rejects an envelope whose auth tag was cut short', () => {
+		const data = Buffer.from(SecretBox.seal('').slice('enc:v2:'.length), 'base64')
+		const truncated = 'enc:v2:' + data.subarray(0, 12 + 8).toString('base64')
+		expect(() => SecretBox.open(truncated)).toThrow()
+	})
+
 	it('reports whether a value is sealed', () => {
 		expect(SecretBox.isSealed(SecretBox.seal('a'))).toBe(true)
 		expect(SecretBox.isSealed('a')).toBe(false)

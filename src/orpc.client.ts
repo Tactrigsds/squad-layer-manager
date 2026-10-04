@@ -238,7 +238,7 @@ closed$
 		Rx.concatMap(async (event: any) => {
 			disconnectTime = Date.now()
 			console.error(`WebSocket connection closed: ${event.code}, ${event.reason?.reason}`)
-			if (websocket.retryCount > 5) {
+			if (event.code === AR.SESSION_ENDED_CLOSE_CODE || websocket.retryCount > 5) {
 				const res = await fetch(AR.link('/check-auth'))
 				if (res.status === 401) {
 					window.location.href = AR.link('/')

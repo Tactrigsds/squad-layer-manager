@@ -107,8 +107,12 @@ ARG GIT_BRANCH="unknown"
 ENV PUBLIC_GIT_SHA=${GIT_SHA}
 ENV PUBLIC_GIT_BRANCH=${GIT_BRANCH}
 
-# Run the server using the compiled output
-CMD ["pnpm", "run", "server:prod"]
+RUN mkdir -p /app/data && chown node:node /app/data
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# `node --run` rather than pnpm: corepack's copy of pnpm was cached for root during the build, and SLM runs as node
+CMD ["node", "--run", "server:prod"]
 
 # Test stage - the production image, plus the machinery to drive it.
 #
@@ -121,6 +125,9 @@ FROM runtime AS test
 # before the install: the runtime stage sets NODE_ENV=production, and pnpm skips devDependencies when
 # it sees that -- which is every tool the tests are made of
 ENV NODE_ENV=test
+
+# the tests run as root: they install a browser and write into /app
+ENTRYPOINT []
 
 # the tests import app source (models, the emulator) and are TypeScript, so the source tree and the
 # dev dependencies come back

@@ -664,6 +664,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		// per-fixture, so `control()` reaches this app and not another run's
 		CONTROL_SOCKET: controlSocketPath,
+		// where the fixture writes its Admins.cfg
+		LOCAL_ADMIN_LISTS_DIR: tmpDir,
 		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
 		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',
 		SUPER_USERS: users

@@ -21,7 +21,8 @@ Set the server's connection mode to _server agent_. See
 [Connecting the server](../configuring/servers.md#connecting-the-server) for where to find that setting.
 
 Then choose or generate a secret token. The agent sends it to authenticate, so anyone who has it can connect as this
-server's agent. Keep it with your other secrets.
+server's agent. Keep it with your other secrets. SLM refuses an agent while the server still has the default token,
+`dev`.
 
 The agent needs three things from the server's connection settings:
 

@@ -2211,6 +2211,7 @@
 	"The players on the server are listed under <em>Teams</em>. Click the tab to open it.": "The players on the server are listed under <em>Teams</em>. Click the tab to open it.",
 	"The plugin declares this trigger, but {owner} already owns it, so it does nothing. Set a different one here.": "The plugin declares this trigger, but {owner} already owns it, so it does nothing. Set a different one here.",
 	"The plugin that declares the action": "The plugin that declares the action",
+	"The plugin {id} cannot be installed beside {other}: their ids are too alike for SLM to keep their data apart. Uninstall {other} and delete its data first.": "The plugin {id} cannot be installed beside {other}: their ids are too alike for SLM to keep their data apart. Uninstall {other} and delete its data first.",
 	"The plugin {id} is already installed from the plugins folder. Uninstall that plugin first to replace it with this one.": "The plugin {id} is already installed from the plugins folder. Uninstall that plugin first to replace it with this one.",
 	"The plugin {id} is already installed from {source}. Uninstall that plugin first to replace it with this one.": "The plugin {id} is already installed from {source}. Uninstall that plugin first to replace it with this one.",
 	"The pool does not constrain the query: all layers are shown (Ctrl+Click to invert)": "The pool does not constrain the query: all layers are shown (Ctrl+Click to invert)",

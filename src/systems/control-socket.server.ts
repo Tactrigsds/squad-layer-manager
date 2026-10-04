@@ -20,8 +20,8 @@ import * as Plugins from '@/systems/plugins.server'
  *   docker exec slm-app-prod pnpm plugins:reload --expect seed-roller
  *
  * A socket rather than a port or a signal: it answers, so a deploy can fail on a plugin that did not come
- * back up, which neither of the others can tell it. The file is root-owned and 0600, so reaching it means
- * already being root in the container -- which is why the commands here take no identity and check none.
+ * back up, which neither of the others can tell it. The file is 0600, so reaching it means being root in the
+ * container or the user SLM itself runs as -- which is why the commands here take no identity and check none.
  *
  * Deployment also warns the app's users before restarting it:
  *

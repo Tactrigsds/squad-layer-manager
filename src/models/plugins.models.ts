@@ -228,6 +228,13 @@ export function tablePrefix(pluginId: PluginId): string {
 	return `p_${pluginId.replaceAll('-', '_')}_`
 }
 
+// `a` and `a-b` are prefixed `p_a_` and `p_a_b_`, so a prefix match for one plugin's tables would also take the other's
+export function tablePrefixesOverlap(a: PluginId, b: PluginId): boolean {
+	if (a === b) return false
+	const [pa, pb] = [tablePrefix(a), tablePrefix(b)]
+	return pa.startsWith(pb) || pb.startsWith(pa)
+}
+
 // same contract as a core TsMigration (see src/server/migrate.ts): raw driver, runner owns the
 // transaction, frozen in time. Applied at activation rather than at boot, keyed per plugin.
 export type PluginMigration = {

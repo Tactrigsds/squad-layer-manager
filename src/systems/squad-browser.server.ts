@@ -36,8 +36,9 @@ export type JoinLinkRes =
 // just the origin. Without this the request is a route-level 404 rather than a not-indexed one.
 const JOIN_LINK_PATH = '/api/pub/join-link'
 
-// joinUrl comes back as a steam:// protocol url rather than an https one
-const JoinLinkSchema = z.object({ joinUrl: z.url() })
+// joinUrl comes back as a steam:// protocol url rather than an https one. The browser navigates to it, so any other
+// scheme, javascript: above all, is refused.
+const JoinLinkSchema = z.object({ joinUrl: z.url({ protocol: /^steam$/ }) })
 
 // The api rate-limits this to 50 requests an hour per server and serves the same link for ~90s anyway, so
 // holding one for that long buys nothing staler and caps us at 40 an hour however many admins click. A miss

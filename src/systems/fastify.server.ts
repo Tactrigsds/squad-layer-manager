@@ -49,10 +49,13 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 
+// frame-ancestors keeps another site from framing SLM to trick a signed-in admin into clicking its controls
 const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'credentialless',
 	'Cross-Origin-Opener-Policy': 'same-origin',
 	'Cross-Origin-Resource-Policy': 'cross-origin',
+	'Content-Security-Policy': "frame-ancestors 'none'",
+	'X-Frame-Options': 'DENY',
 }
 
 // Everything vite emits into dist/assets carries a content hash, so a given url's bytes never change and the response
@@ -220,8 +223,8 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 	instance.post(AR.route('/logout'), async function (req, res) {
 		// authed:false: only the session cookie is needed, so a signed-in-but-unauthorized user can still sign out
 		const ctx = buildHttpRequestContext(req, res)
-		const sessionId = ctx.cookies['session-id']
-		if (sessionId) await Sessions.logout({ ...ctx, sessionId, res })
+		const token = ctx.cookies['session-id']
+		if (token) await Sessions.logout({ ...ctx, sessionId: Sessions.sessionIdOf(token), res })
 		else Sessions.clearInvalidSession(ctx)
 		return res.redirect(AR.route('/'), 302)
 	})
@@ -236,7 +239,8 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			// the accent follows a setting an admin can change at any time, so the cache always revalidates
 			res.header('Cache-Control', 'no-cache')
 			// an svg opened as a document runs any script in it on our origin; the mark only needs its inline style
-			if (logo.contentType === 'image/svg+xml') res.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+			if (logo.contentType === 'image/svg+xml')
+				res.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
 			if (req.headers['if-none-match'] === logo.etag) return res.code(304).send()
 			return res.type(logo.contentType).send(logo.body)
 		})
@@ -253,7 +257,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		if (!specifier) return res.code(404).send()
 		let shim = shims.get(specifier)
 		if (!shim) {
-			const names = PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)
+			const names = Object.hasOwn(PLUGIN_API_EXPORTS, specifier) ? PLUGIN_API_EXPORTS[specifier] : ApiRegistry.exportNames(specifier)
 			if (names.length === 0) return res.code(404).send()
 			const source = SHIM.shimSource(specifier, names)
 			shim = { source, etag: `"${Crypto.createHash('sha256').update(source).digest('base64url')}"` }

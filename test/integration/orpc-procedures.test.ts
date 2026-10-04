@@ -1,4 +1,7 @@
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { WebSocket } from 'ws'
 
 import { makePlayer } from '@/emulator'
 import * as FB from '@/models/filter-builders'
@@ -10,7 +13,7 @@ import * as SLL from '@/models/shared-layer-list'
 import { ADMIN_USER, type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
 import { filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
-import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
+import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
 // disables entries, but nothing stops a caller from asking anyway -- these assert the handlers themselves
@@ -22,6 +25,8 @@ const DASHBOARD_ONLY: TestUser = { discordId: 900000000000000051n, username: 'te
 const CONSOLE_READER: TestUser = { discordId: 900000000000000052n, username: 'test-console-reader' }
 // may edit the roles and the admin lists, while holding no more than the dashboard
 const ROLE_EDITOR: TestUser = { discordId: 900000000000000053n, username: 'test-role-editor' }
+// loses site access mid-session, so nothing else in the file may sign in as them
+const EVICTED: TestUser = { discordId: 900000000000000054n, username: 'test-evicted' }
 
 let app: AppFixture
 let adminClient: TestOrpcClient
@@ -40,7 +45,7 @@ beforeAll(async () => {
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'pool-only', mode: 'include' }
 		},
-		users: [DASHBOARD_ONLY, CONSOLE_READER, ROLE_EDITOR],
+		users: [DASHBOARD_ONLY, CONSOLE_READER, ROLE_EDITOR, EVICTED],
 		unreachableServer: true,
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
@@ -52,6 +57,7 @@ beforeAll(async () => {
 				...role(['site:authorized', 'squad-server:view'], { users: [ROLE_EDITOR] }),
 				globalSettingsGrants: ['rbac', 'adminLists'],
 			}
+			settings.rbac.roles['evicted'] = role(['site:authorized'], { users: [EVICTED] })
 			// whoever the test admin list names may install plugins, which the role editor may not
 			settings.rbac.roles['list-plugin-managers'] = role(['plugins:manage'], { ingameAdminLists: [TEST_ADMIN_LIST] })
 		},
@@ -303,6 +309,26 @@ describe('installedMods', () => {
 	}, 60_000)
 })
 
+// The server applies some ops itself, writing straight to the saved queue. Sent over rpc, one would skip the edit
+// window and the checks an add passes, such as the installed-mods check refused above.
+describe('server-only queue ops', () => {
+	it('refuses one sent by a client, leaving the saved queue alone', async () => {
+		const item = queueItem(LAYERS.supermodSanxianInvasion)
+		const res = await adminClient.layerQueue.dispatchOp({
+			serverId: app.serverId,
+			op: {
+				op: 'unshift-first-saved-layer',
+				opId: SLL.createOpId(),
+				layerId: item.layerId,
+				itemSource: item.source,
+				itemId: item.itemId,
+			},
+		})
+		expect(res.code).toBe('err:invalid-op')
+		expect(savedQueue(app).some((saved) => saved.layerId === LAYERS.supermodSanxianInvasion)).toBe(false)
+	})
+})
+
 // The integration tokens live in the global settings, sealed in the column, and never leave the server once saved: the
 // editor gets a placeholder, and sending the placeholder back is not a change. The fixture seeds the battlemetrics token
 // as plaintext, so the app's own boot is what sealed it.
@@ -453,4 +479,50 @@ describe('revoking access from an open stream', () => {
 		}
 		expect(received.at(-1)).toMatchObject({ code: 'err:permission-denied', failures: [`squad-server:view on ${app.serverId}`] })
 	}, 60_000)
+})
+
+// A socket is authorized once, at its upgrade. Losing site access has to close the ones a user already holds, rather
+// than leave them answering every procedure the user's remaining permissions allow.
+describe('losing site access', () => {
+	it("closes the user's open websockets", async () => {
+		const cookie = await sessionCookie(app, EVICTED)
+		const ws = new WebSocket(`${app.appUrl.replace(/^http/, 'ws')}/orpc`, { headers: { cookie } })
+		await new Promise<void>((resolve, reject) => {
+			ws.once('open', () => resolve())
+			ws.once('error', reject)
+		})
+		const closed = new Promise<number>((resolve) => ws.once('close', (code) => resolve(code)))
+
+		const current = await firstYield((signal) => adminClient.settings.global.watchSettings(undefined, { signal }), {
+			label: 'the global settings',
+		})
+		if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+		const rbac = structuredClone(current.rbac)!
+		rbac.roles!['evicted'].permissions = []
+		expect(await adminClient.settings.global.updateSettings({ rbac })).toMatchObject({ code: 'ok' })
+
+		expect(await closed).toBe(4001)
+	})
+})
+
+// Anyone who can edit the admin lists can point a local source at a file, so a file outside LOCAL_ADMIN_LISTS_DIR (the
+// fixture's own directory) is refused rather than read. Restores the source afterwards.
+describe('local admin list sources', () => {
+	it('refuses a file outside the allowed directory', async () => {
+		const current = await firstYield((signal) => adminClient.settings.global.watchSettings(undefined, { signal }), {
+			label: 'the global settings',
+		})
+		if ('code' in current) throw new Error(`could not read the settings: ${current.code}`)
+		const original = structuredClone(current.adminLists)!
+		const outside = structuredClone(original)
+		outside[TEST_ADMIN_LIST]!.source = { type: 'local', source: '/etc/hostname' }
+		expect(await adminClient.settings.global.updateSettings({ adminLists: outside })).toMatchObject({ code: 'ok' })
+		try {
+			await app.waitFor(() => fs.readFileSync(path.join(app.tmpDir, 'app.log'), 'utf8').includes('LOCAL_ADMIN_LISTS_DIR') || null, {
+				label: 'the refusal in the app log',
+			})
+		} finally {
+			expect(await adminClient.settings.global.updateSettings({ adminLists: original })).toMatchObject({ code: 'ok' })
+		}
+	})
 })

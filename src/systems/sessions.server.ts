@@ -7,6 +7,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
 import { createId } from '@/lib/id'
 import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as RBAC from '@/rbac.models'
@@ -18,6 +19,7 @@ import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Users from '@/systems/users.server'
+import * as WsSessionSys from '@/systems/ws-session.server'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 
@@ -120,6 +122,11 @@ export async function setup() {
 	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	await loadValidSessionsIntoCache(ctx)
 
+	const sweepSub = Rx.merge(Rx.interval(SOCKET_SWEEP_INTERVAL), Rbac.invalidation$)
+		.pipe(Instr.durableSub('close-ended-sockets', { module, root: true, taskScheduling: 'exhaust' }, () => closeEndedSockets(ctx)))
+		.subscribe()
+	CleanupSys.register(() => sweepSub.unsubscribe())
+
 	// --------  cleanup old sessions  --------
 	while (!ctx.signal.aborted) {
 		try {
@@ -145,6 +152,28 @@ export async function setup() {
 			span.setStatus({ code: Otel.SpanStatusCode.OK })
 			span.end()
 		})
+	}
+}
+
+// A socket is authorized once, at its upgrade, and keeps that ctx for its lifetime. These close the sockets whose
+// session has since ended, by logout or expiry, or whose user has lost site access.
+const SOCKET_SWEEP_INTERVAL = 60_000
+async function closeEndedSockets(ctx: C.Db & CS.AbortSignal) {
+	const now = new Date()
+	const siteAccess = new Map<bigint, Promise<boolean>>()
+	for (const socket of [...WsSessionSys.wsSessions.values()]) {
+		const session = sessionCache.get(socket.sessionId)
+		let ended = !session || now > session.expiresAt
+		if (!ended) {
+			const discordId = socket.user.discordId
+			let allowed = siteAccess.get(discordId)
+			if (!allowed) {
+				allowed = Rbac.tryDenyPermissionsForUser({ ...ctx, user: { discordId } }, RBAC.perm('site:authorized')).then((d) => !d)
+				siteAccess.set(discordId, allowed)
+			}
+			ended = !(await allowed)
+		}
+		if (ended) await WsSessionSys.forceDisconnect({ wsSessionId: socket.wsClientId })
 	}
 }
 
@@ -188,13 +217,14 @@ export const validateAndUpdate = Instr.spanOp(
 				message: 'No cookie provided',
 			})
 		}
-		const sessionId = ctx.cookies['session-id']
-		if (!sessionId) {
+		const token = ctx.cookies['session-id']
+		if (!token) {
 			return await errorOrBypass({
 				code: 'unauthorized:no-session' as const,
 				message: 'No session provided',
 			})
 		}
+		const sessionId = sessionIdOf(token)
 
 		// Check cache first
 		const cachedSession = sessionCache.get(sessionId)
@@ -255,8 +285,15 @@ export async function logInWithoutAuth(ctx: C.Db & C.FastifyRequest & C.FastifyR
 	return await logInUser(ctx, { username, id: noAuthUserId(username) })
 }
 
+// A session is stored under the sha256 of the token its cookie carries, so a copy of the database or a backup holds no
+// usable login. The digest is the session's id everywhere past the cookie.
+export function sessionIdOf(token: string): string {
+	return Crypto.createHash('sha256').update(token).digest('hex')
+}
+
 export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, discordUser: { username: string; id: bigint }) {
-	const sessionId = createId(64)
+	const token = createId(64)
+	const sessionId = sessionIdOf(token)
 	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
 	// resolved before the transaction: it fetches the discord member over the network, and the tx lock is global
@@ -281,12 +318,13 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 			user: builtUser,
 		})
 	})
-	await setSessionCookie(ctx, sessionId)
+	await setSessionCookie(ctx, token)
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
 export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
+	await WsSessionSys.forceDisconnect({ authSessionId: ctx.sessionId })
 	Instr.setSpanStatus(Otel.SpanStatusCode.OK)
 	// not awaited: clearInvalidSession returns the FastifyReply (for chaining), and a reply is a thenable that only
 	// settles once the response is sent. Awaiting it here deadlocks POST /logout -- the handler blocks waiting for a
@@ -294,11 +332,11 @@ export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId
 	clearInvalidSession(ctx)
 })
 
-export async function setSessionCookie(ctx: C.HttpRequest, sessionId: string, expiresAt?: number) {
+export async function setSessionCookie(ctx: C.HttpRequest, token: string, expiresAt?: number) {
 	let expireArg: { maxAge?: number; expiresAt?: number }
 	if (expiresAt !== undefined) expireArg = { expiresAt }
 	else expireArg = { maxAge: SESSION_MAX_AGE }
-	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], sessionId, { ...sessionCookieDefaults(), ...expireArg })
+	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], token, { ...sessionCookieDefaults(), ...expireArg })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {

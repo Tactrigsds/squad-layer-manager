@@ -224,8 +224,13 @@ format, and for putting one back with `restore.sh`.
 
 ### 9. Telemetry
 
-Detailed logs and telemetry are available via grafana at `http://localhost:3001`. A few dashboards are set up for convenience. Grafana can also be exposed to the
-internet. Change the default admin password before doing so. Three dashboards come preconfigured for monitoring SLM.
+Detailed logs and telemetry are available via grafana at `http://localhost:3001`. Three dashboards come preconfigured
+for monitoring SLM. Grafana accepts connections from the machine SLM runs on only, since its logs and traces record
+every player and user SLM sees. Sign in as `admin` with the password `admin`, and Grafana asks for a new password.
+
+To open Grafana from another machine, forward the port over SSH with `ssh -L 3001:localhost:3001 <your server>`
+and open `http://localhost:3001` there.
+
 Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
 [VictoriaMetrics](https://victoriametrics.com/) store per signal. [observability/README.md](../observability/README.md)
 covers how the pieces fit together and the retention windows.

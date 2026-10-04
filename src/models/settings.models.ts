@@ -1229,6 +1229,9 @@ export const SandboxConnectionSchema = z.object({
 //                  loopback RCON socket, so every layer below this one behaves as it does against a real
 //                  server. Nothing here is reachable from the network and nothing outbound is real; see
 //                  src/systems/sandbox.server.ts.
+// the agent token a server-agent connection gets when none is set; refused outside development
+export const DEV_AGENT_TOKEN = 'dev'
+
 export const ServerConnectionSchema = z
 	.discriminatedUnion('type', [
 		z.object({
@@ -1248,7 +1251,7 @@ export const ServerConnectionSchema = z
 			type: z.literal('server-agent').meta(SDoc.of({ label: t('Type') })),
 			token: z
 				.string()
-				.default('dev')
+				.default(DEV_AGENT_TOKEN)
 				.meta(SDoc.of({ label: t('Agent Token'), secret: true })),
 		}),
 		SandboxConnectionSchema,
@@ -1817,7 +1820,8 @@ export function getPublicSettings(settings: ServerSettings): PublicServerSetting
 
 export const SECRET_SETTING_MASK = '••••••••'
 
-// the dotted paths of every secret field, across every branch of every union
+// the dotted paths of every secret field, across every branch of every union. A record key or an array index is
+// written as `*`.
 export const SECRET_SETTING_PATHS: ReadonlySet<string> = new Set([
 	...collectSecretPaths(GlobalSettingsSchema),
 	...collectSecretPaths(ServerSettingsSchema),
@@ -1832,21 +1836,49 @@ const SECRET_SETTING_PREFIXES: ReadonlySet<string> = new Set(
 )
 
 export function isSecretSettingPath(path: string): boolean {
-	return SECRET_SETTING_PATHS.has(path)
+	const pattern = secretPattern(path)
+	return pattern !== undefined && SECRET_SETTING_PATHS.has(pattern)
+}
+
+const joinPath = (path: string, key: string) => (path ? `${path}.${key}` : key)
+const reachesSecret = (pattern: string) => SECRET_SETTING_PATHS.has(pattern) || SECRET_SETTING_PREFIXES.has(pattern)
+
+// The secret-path pattern a child key continues `pattern` with: the key itself where a secret path names it, else
+// `*` where a record or array holds secrets. Undefined when no secret is under the child.
+function childSecretPattern(pattern: string, key: string): string | undefined {
+	const named = joinPath(pattern, key)
+	if (reachesSecret(named)) return named
+	const any = joinPath(pattern, '*')
+	return reachesSecret(any) ? any : undefined
+}
+
+function secretPattern(path: string): string | undefined {
+	let pattern: string | undefined = ''
+	for (const key of path === '' ? [] : path.split('.')) {
+		pattern = childSecretPattern(pattern, key)
+		if (pattern === undefined) return undefined
+	}
+	return pattern
 }
 
 // `value` as it sits at `path` ('' for a whole document), with `fn` applied to every secret string under it.
 // Copy-on-write: what fn leaves alone is returned by reference, a whole document included.
 export function mapSecretSettingValues<T>(path: string, value: T, fn: (value: string, path: string) => string): T {
-	if (SECRET_SETTING_PATHS.has(path)) return (typeof value === 'string' ? fn(value, path) : value) as T
-	if (path !== '' && !SECRET_SETTING_PREFIXES.has(path)) return value
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return value
-	let out: Record<string, unknown> | undefined
+	const pattern = secretPattern(path)
+	return pattern === undefined ? value : mapSecretsAt(path, pattern, value, fn)
+}
+
+function mapSecretsAt<T>(path: string, pattern: string, value: T, fn: (value: string, path: string) => string): T {
+	if (SECRET_SETTING_PATHS.has(pattern)) return (typeof value === 'string' ? fn(value, path) : value) as T
+	if (!value || typeof value !== 'object') return value
+	let out: Record<string, unknown> | unknown[] | undefined
 	for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-		const mapped = mapSecretSettingValues(path ? `${path}.${key}` : key, child, fn)
+		const childPattern = childSecretPattern(pattern, key)
+		if (childPattern === undefined) continue
+		const mapped = mapSecretsAt(joinPath(path, key), childPattern, child, fn)
 		if (mapped === child) continue
-		if (!out) out = { ...(value as Record<string, unknown>) }
-		out[key] = mapped
+		if (!out) out = Array.isArray(value) ? [...value] : { ...(value as Record<string, unknown>) }
+		;(out as Record<string, unknown>)[key] = mapped
 	}
 	return (out ?? value) as T
 }
@@ -1892,8 +1924,7 @@ export function transformConnectionSecrets(settings: ServerSettings, fn: (value:
 	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
 }
 
-// walks the schema's static structure: objects, unions, arrays, records and the wrappers between them. A
-// secret inside a record or array is reported at its element position, which the masking walk matches by index.
+// walks the schema's static structure: objects, unions, arrays, records and the wrappers between them
 function collectSecretPaths(root: z.ZodType): Set<string> {
 	const out = new Set<string>()
 	const seen = new Set<unknown>()
@@ -1925,10 +1956,10 @@ function collectSecretPaths(root: z.ZodType): Set<string> {
 				visit(def.out, path)
 				break
 			case 'array':
-				visit(def.element, path)
+				visit(def.element, at('*'))
 				break
 			case 'record':
-				visit(def.valueType, path)
+				visit(def.valueType, at('*'))
 				break
 			case 'lazy':
 				visit(def.getter(), path)

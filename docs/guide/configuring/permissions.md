@@ -12,7 +12,8 @@ their roles allows, minus every permission any of their roles denies.
 The admin list settings are under _Permissions & Roles_.
 
 An _admin list_ is the standard `Admins.cfg` format, which SLM reads as-is. Point it at a file mounted into the
-container, or at a copy hosted over SFTP or HTTP(S).
+container, or at a copy hosted over SFTP or HTTP(S). A local file must be inside SLM's data directory, `data/`. Set
+`LOCAL_ADMIN_LISTS_DIR` to read local files from a different directory instead.
 
 By default, SLM treats a player with the `canseeadminchat` role as an admin. If your list uses a different role,
 change this setting:

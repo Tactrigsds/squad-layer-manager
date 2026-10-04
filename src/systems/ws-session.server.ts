@@ -1,5 +1,6 @@
 import { metrics } from '@opentelemetry/api'
 
+import * as AR from '@/app-routes'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
@@ -155,12 +156,8 @@ export async function forceDisconnect(ids: { userId?: bigint; wsSessionId?: stri
 		sessions = Array.from(wsSessions.values()).filter((ctx) => ctx.user.discordId === ids.userId)
 	}
 
-	if (!sessions) {
-		log.warn(ids, 'forceDisconnect: no sessions found')
-	} else {
-		for (const session of sessions) {
-			log.debug({ ...ids, wsClientId: session.wsClientId }, 'Disconnecting session')
-			session.ws.close()
-		}
+	for (const session of sessions ?? []) {
+		log.info({ ...ids, wsClientId: session.wsClientId }, 'Disconnecting %s: their session ended', session.user.username)
+		session.ws.close(AR.SESSION_ENDED_CLOSE_CODE)
 	}
 }

@@ -123,8 +123,15 @@ function LeftoverRow({ entry }: { entry: PLG.LeftoverData }) {
 	)
 }
 
-function failureDescription(res: { code: string; message?: string; pluginId?: string; installedFrom?: string | null }) {
+function failureDescription(res: {
+	code: string
+	message?: string
+	pluginId?: string
+	installedFrom?: string | null
+	overlapsWith?: string
+}) {
 	if (res.code === 'err:disabled-in-demo') return tr.text(PLUGINS_Msgs.installDisabledInDemo())
+	if (res.code === 'err:id-overlaps') return tr.text(PLUGINS_Msgs.installIdOverlaps(res.pluginId!, res.overlapsWith!))
 	if (res.code === 'err:id-taken') {
 		return res.installedFrom
 			? tr.text(PLUGINS_Msgs.installIdTaken(res.pluginId!, res.installedFrom))

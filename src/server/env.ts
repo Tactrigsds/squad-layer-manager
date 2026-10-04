@@ -85,6 +85,15 @@ export const groups = {
 	},
 
 	general: {
+		LOCAL_ADMIN_LISTS_DIR: z
+			.string()
+			.min(1)
+			.prefault(Paths.DATA)
+			.meta({
+				description:
+					"the directory a 'Local file' admin list source must be in. Anyone who can edit the admin lists can point one at a file, so files outside this directory are refused.",
+				envExample: { include: 'commented' },
+			}),
 		NODE_ENV: z.enum(['development', 'production', 'test']).meta({
 			description: '`pnpm server:dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
 			envExample: { include: 'omit', dev: { include: 'set', value: 'development' } },
@@ -287,7 +296,7 @@ export const groups = {
 			.meta({
 				description:
 					'unix socket for operating the running app from inside its container (see systems/control-socket.server.ts): ' +
-					'reloading plugins a deployment just copied in, or announcing a restart. Root-owned and 0600. Empty disables it.',
+					'reloading plugins a deployment just copied in, or announcing a restart. Mode 0600, so only the user SLM runs as and root can reach it. Empty disables it.',
 			}),
 		PLUGINS_DIR: z.string().min(1).prefault(path.join(Paths.DATA, 'plugins')).meta({
 			description:

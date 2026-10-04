@@ -1016,13 +1016,7 @@ export const router = {
 				}
 			}
 
-			if (
-				op.op === 'backburner-write-saved' ||
-				op.op === 'discard-abandoned-request-edits' ||
-				op.op === 'discard-abandoned-queue-edits'
-			) {
-				return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
-			}
+			if (!SLL.isClientOp(op)) return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
 
 			if (SLL.isBackburnerOp(op)) {
 				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)

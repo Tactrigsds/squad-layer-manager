@@ -106,7 +106,7 @@ export function setup() {
 		resolve(specifier, context, nextResolve) {
 			// an unregistered slm/* is still ours to answer: the shim's "not available here" beats a
 			// resolution error at naming what went wrong. Anything else falls through to node.
-			if (specifier.startsWith('slm/') || specifier in entries) {
+			if (specifier.startsWith('slm/') || Object.hasOwn(entries, specifier)) {
 				return { url: SHIM.SHIM_SCHEME + specifier, shortCircuit: true }
 			}
 			return nextResolve(specifier, context)
@@ -120,6 +120,5 @@ export function setup() {
 }
 
 export function exportNames(specifier: string): readonly string[] {
-	const ns = entries[specifier]
-	return ns ? Object.keys(ns) : []
+	return Object.hasOwn(entries, specifier) ? Object.keys(entries[specifier]) : []
 }

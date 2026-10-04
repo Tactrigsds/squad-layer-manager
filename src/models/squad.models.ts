@@ -700,7 +700,7 @@ export const AdminListSourceSchema = z
 				.prefault(22)
 				.meta(SDoc.of({ label: t('Port') })),
 			username: z.string().meta(SDoc.of({ label: t('Username') })),
-			password: z.string().meta(SDoc.of({ label: t('Password') })),
+			password: z.string().meta(SDoc.of({ label: t('Password'), secret: true })),
 			filePath: z.string().meta(SDoc.of({ label: t('File Path') })),
 		}),
 	])

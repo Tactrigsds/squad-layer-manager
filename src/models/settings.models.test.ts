@@ -186,8 +186,9 @@ describe('secret settings', () => {
 		},
 	}
 
-	test('the marker covers the connection secrets and the integration tokens, and nothing else', () => {
+	test('the marker covers the connection secrets, the integration tokens and the admin-list sftp password, and nothing else', () => {
 		expect([...SETTINGS.SECRET_SETTING_PATHS].sort()).toEqual([
+			'adminLists.*.source.password',
 			'connections.rcon.password',
 			'connections.sftp.password',
 			'connections.token',
@@ -263,6 +264,21 @@ describe('secret settings', () => {
 				squadBrowser: { enabled: true, token: '' },
 			},
 		})
+	})
+
+	test('finds a secret under a record by its key, from the whole document or from a change path', () => {
+		const sftpList = { source: { type: 'sftp', host: 'h', port: 22, username: 'u', password: 'list-pw', filePath: '/a' } }
+		const remoteList = { source: { type: 'remote', source: 'https://example.com/admins.cfg' } }
+		const masked = SETTINGS.maskSecretSettingValue('', { adminLists: { Main: sftpList, Remote: remoteList } })
+		expect(masked.adminLists.Main.source.password).toBe(SETTINGS.SECRET_SETTING_MASK)
+		expect(masked.adminLists.Remote).toBe(remoteList)
+
+		expect(SETTINGS.isSecretSettingPath('adminLists.Main.source.password')).toBe(true)
+		expect(SETTINGS.isSecretSettingPath('adminLists.Main.source.host')).toBe(false)
+		expect(SETTINGS.maskSecretSettingValue('adminLists.Main', sftpList).source.password).toBe(SETTINGS.SECRET_SETTING_MASK)
+
+		const restored = SETTINGS.restoreMaskedSecrets({ adminLists: { Main: masked.adminLists.Main } }, { adminLists: { Main: sftpList } })
+		expect(restored.adminLists.Main.source.password).toBe('list-pw')
 	})
 
 	test('an integration is on when switched on with a token', () => {
