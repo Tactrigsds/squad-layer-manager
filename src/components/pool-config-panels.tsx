@@ -377,11 +377,21 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 	)
 }
 
-function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; label: string; description: string }) {
+function BooleanSettingRow({
+	api,
+	label,
+	description,
+	tourId,
+}: {
+	api: PoolConfigApi
+	label: string
+	description: string
+	tourId?: string
+}) {
 	const id = React.useId()
 	const checked = usePoolValue(api, []) === true
 	return (
-		<div className="flex items-start gap-2.5">
+		<div data-tour={tourId} className="flex items-start gap-2.5">
 			<PermissionDeniedTooltip denied={api.writeDenied}>
 				<Checkbox
 					id={id}
@@ -403,7 +413,7 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 
 export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettingKey, PoolConfigApi> }) {
 	return (
-		<div className="space-y-3">
+		<div data-tour="pool-next-layer" className="space-y-3">
 			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.nextLayer())}</h4>
 			<div className="space-y-4">
 				{SETTINGS.NEXT_LAYER_SETTING_KEYS.map((key) => (
@@ -412,6 +422,7 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 						api={apis[key]}
 						label={tr.text(SETTINGS_Msgs.nextLayerLabels[key])}
 						description={SETTINGS.PublicServerSettingsSchema.shape[key].description ?? ''}
+						tourId={`next-layer-${key}`}
 					/>
 				))}
 			</div>

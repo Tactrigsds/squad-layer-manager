@@ -100,6 +100,7 @@ export type TourTag =
 	| 'dice'
 	| 'gear'
 	| 'sword'
+	| 'server'
 	| 'repeat'
 	| 'play'
 	| 'addFilter'
@@ -157,6 +158,7 @@ const tourTr = tr.withTags({
 	dice: icon(Icons.Dices),
 	gear: icon(Icons.Settings),
 	sword: icon(Icons.Sword),
+	server: icon(Icons.Server),
 	repeat: icon(Icons.Repeat, 'text-repeat-violation'),
 	play: icon(Icons.Play, 'text-ok'),
 	addFilter: icon(Icons.Edit),
