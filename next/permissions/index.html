@@ -55,6 +55,9 @@ never reaches the connection details.</li>
 <li><code>server-settings:write-sensitive</code> is a separate permission. It is the only way to view or edit a server&#x27;s RCON and
 SFTP connection details.</li>
 </ul>
+<p>A user who may edit the permissions config or the admin lists can only grant permissions they hold themselves. SLM
+refuses a save that adds a permission to a role, assigns a role to someone, or changes an admin list that assigns a
+role, when the user saving it lacks a permission the change would grant.</p>
 <h2 id="assigning-roles" class="docs-heading">Assigning roles<a href="#assigning-roles" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/permissions.md#assigning-roles" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>A role can be assigned to a user or to a player:</p>
 <ul>
