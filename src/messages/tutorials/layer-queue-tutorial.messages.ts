@@ -514,6 +514,31 @@ export namespace PoolSettings {
 			),
 		),
 	}
+
+	export const viewNextLayer = {
+		title: def('Open the next layer settings'),
+		body: def(rt('Open <em>Next Layer</em> to see what SLM does when the next layer is set from outside SLM:')),
+	}
+
+	export const overrideAdminSetNextLayer = {
+		title: def('Next layer set outside SLM'),
+		body: def(
+			rt(
+				`<p>An in-game admin can still run <code>AdminSetNextLayer</code>, and another RCON tool can too. SLM reacts to that change in one of two ways.</p>
+<p>With <em>Override the next layer when it is set outside SLM</em> off, the default, SLM adopts the change. It puts the new layer at the front of the queue, marked with <server></server>, and the rest of the queue plays after it.</p>
+<p>With the setting on, SLM sets the next layer straight back to the layer at the front of the queue. Admins then have to change the next layer through SLM.</p>`,
+			),
+		),
+	}
+
+	export const warnOnNextLayerChange = {
+		title: def('Warn on next layer changes'),
+		body: def(
+			rt(
+				'<em>Warn admins when the next layer changes</em> sends every in-game admin the new next layer each time it changes. SLM does not announce a change it overrides.',
+			),
+		),
+	}
 }
 
 // the text of the note the notes stage seeds onto the queue head

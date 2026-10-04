@@ -275,6 +275,10 @@ function simShowRepeatRules() {
 	setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'repeatRules')
 }
 
+function simShowNextLayer() {
+	setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'nextLayer')
+}
+
 // Close every window a step may have opened and clear stale handle state. Presence-driven dialogs are deliberately
 // NOT closed here: the checkpoint's end-all-editing clears the whole activity subtree server-side, and a client op
 // would race it -- toEditingQueueIdleOrNone also ASSERTS an editing session, so losing that race leaves the reader
@@ -964,6 +968,28 @@ export async function buildSteps() {
 			spotlight: 'pool-repeat-rules',
 			msg: M.PoolSettings.ruleOptions,
 			premise: domPresent('pool-repeat-rules'),
+		},
+		{
+			id: 'view-next-layer',
+			anchor: 'pool-config-tabs',
+			interact: 'anchor-only',
+			msg: M.PoolSettings.viewNextLayer,
+			premise: domPresent('pool-config-body'),
+		},
+		{
+			id: 'override-admin-set-next-layer',
+			anchor: 'next-layer-overrideAdminSetNextLayer',
+			spotlight: 'pool-next-layer',
+			msg: M.PoolSettings.overrideAdminSetNextLayer,
+			premise: domPresent('pool-next-layer'),
+			advanceFromPrevious: { type: 'state', ...domPresent('pool-next-layer'), simulate: simShowNextLayer },
+		},
+		{
+			id: 'warn-on-next-layer-change',
+			anchor: 'next-layer-warnOnNextLayerChange',
+			spotlight: 'pool-next-layer',
+			msg: M.PoolSettings.warnOnNextLayerChange,
+			premise: domPresent('pool-next-layer'),
 		},
 	])
 }
