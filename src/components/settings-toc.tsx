@@ -614,8 +614,8 @@ export default function SettingsToc({
 
 	return (
 		<div ref={containerRef} className="flex flex-col h-full min-h-0">
-			{/* search stays fixed above the independently-scrolling tree */}
-			<div className="shrink-0 bg-background pb-2">
+			{/* search stays fixed above the independently-scrolling tree; the padding keeps its focus outline clear of the aside's overflow clip */}
+			<div className="shrink-0 bg-background ps-[2px] pt-[2px] pb-2">
 				<div className="relative">
 					<Icons.Search className="absolute inset-s-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 					<Input
