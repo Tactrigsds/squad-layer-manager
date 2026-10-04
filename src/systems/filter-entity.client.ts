@@ -4,6 +4,8 @@ import * as MapUtils from '@/lib/map-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
+import * as Zus from '@/lib/zustand'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import type * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -12,7 +14,9 @@ import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import type { FilterEntityChange } from '@/systems/filter-entity.server'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
+import * as PluginsClient from '@/systems/plugins.client'
 
 export const getFilterContributorsBase = (filterId: string) =>
 	RPC.orpc.filters.getFilterContributors.queryOptions({
@@ -48,7 +52,8 @@ export const filterEntityChanged$ = new Rx.Subject<void>()
 
 const [initialized$, setInitialized] = ReactRx.createSignal<true>()
 
-export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
+// `prev` is the entity as it was before the mutation, if this client had it
+export const filterMutation$ = new Rx.Observable<F.FilterEntityMutation & { prev: F.FilterEntity | undefined }>((s) => {
 	const promise = RPC.observe('filters.watchFilters', () => RPC.orpc.filters.watchFilters.call()).subscribe(
 		(_output) => {
 			const output = PartsSys.stripParts(_output) as FilterEntityChange
@@ -62,6 +67,7 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 					break
 				}
 				case 'mutation': {
+					const prev = filterEntities.get(output.mutation.key)
 					switch (output.mutation.type) {
 						case 'update':
 						case 'add':
@@ -73,7 +79,7 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 						default:
 							assertNever(output.mutation.type)
 					}
-					s.next(output.mutation)
+					s.next({ ...output.mutation, prev })
 					break
 				}
 				default:
@@ -94,6 +100,23 @@ export const [useFilterReferences, filterReferences$] = ReactRx.bindWithDefault(
 	RPC.observe('filters.watchFilterReferences', () => RPC.orpc.filters.watchFilterReferences.call()),
 	new Map<F.FilterEntityId, FR.Reference[]>() as FR.Index,
 )
+
+// A user owner's name comes from `user`, which the caller resolves: only it knows whether the user is already in hand.
+export function useOwnerName(owner: F.FilterOwner, user: USR.User | undefined): string | undefined {
+	const pluginName = Zus.useStore(PluginsClient.Store, (s) =>
+		owner.type === 'plugin' ? s.plugins.find((p) => p.id === owner.pluginId)?.name : undefined,
+	)
+	switch (owner.type) {
+		case 'slm-user':
+			return user?.displayName
+		case 'plugin':
+			return pluginName ?? owner.pluginId
+		case 'system':
+			return tr.text(AppEvents_Msgs.systemActor())
+		default:
+			assertNever(owner)
+	}
+}
 
 export function setup() {
 	filterMutation$.subscribe()

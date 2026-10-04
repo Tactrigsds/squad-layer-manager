@@ -10,7 +10,7 @@ import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as FR from '@/models/filter-references.models'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import type * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
@@ -32,8 +32,10 @@ interface FilterEntityCardProps {
 
 function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	const rolesRes = useQuery(FilterEntityClient.getAllFilterRoleContributorsBase())
+	const ownerUserId = F.ownerUserId(entity.owner)
+	const user = ownerUserId !== null ? PartsSys.findUser(ownerUserId) : undefined
+	const ownerName = FilterEntityClient.useOwnerName(entity.owner, user)
 	if (!cfg) return null
-	const user = PartsSys.findUser(entity.owner)
 	const roles = rolesRes.data?.filter((role) => role.filterId === entity.id)
 
 	return (
@@ -68,6 +70,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 									<span>{user.displayName}</span>
 								</Badge>
 							)}
+							{entity.owner.type !== 'slm-user' && <Badge variant="secondary">{ownerName}</Badge>}
 						</div>
 						{roles && roles.length > 0 && (
 							<div className="flex items-center gap-2">

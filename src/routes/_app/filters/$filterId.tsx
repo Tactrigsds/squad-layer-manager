@@ -7,14 +7,17 @@ import { frameManager } from '@/frames/frame-manager'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as F_Msgs from '@/messages/filter.messages'
+import type * as AppEvents from '@/models/app-events.models'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -70,8 +73,10 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 			Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$()).then(async (filterEntities) => {
 				const entity = filterEntities.get(params.filterId)
 				if (!entity) return null
-				const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(entity.owner))
-				return ownerRes.code === 'ok' ? { entity, owner: ownerRes.user } : null
+				const ownerUserId = F.ownerUserId(entity.owner)
+				if (ownerUserId === null) return { entity, owner: undefined }
+				const ownerRes = await RPC.queryClient.fetchQuery(UsersClient.userQueryOptions(ownerUserId))
+				return { entity, owner: ownerRes.code === 'ok' ? ownerRes.user : undefined }
 			}),
 			ConfigClient.fetchEffectiveColConfig(),
 		])
@@ -141,13 +146,13 @@ function RouteComponent() {
 					case 'add':
 						break
 					case 'update': {
-						if (mutation.userId === loggedInUser?.discordId) return
-						toast(...tr.toast(F_Msgs.updatedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId))))
+						if (mutation.actor.type === 'slm-user' && mutation.actor.userId === loggedInUser?.discordId) return
+						toast(...tr.toast(F_Msgs.updatedBy(mutation.value.name, await fetchEditorName(mutation.actor))))
 						break
 					}
 					case 'delete': {
-						if (mutation.userId === loggedInUser?.discordId) return
-						toast(...tr.toast(F_Msgs.deletedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId))))
+						if (mutation.actor.type === 'slm-user' && mutation.actor.userId === loggedInUser?.discordId) return
+						toast(...tr.toast(F_Msgs.deletedBy(mutation.value.name, await fetchEditorName(mutation.actor))))
 						void rootRouter.navigate({ to: '/filters' })
 						break
 					}
@@ -170,4 +175,19 @@ function RouteComponent() {
 			stores={{ filterEditor: frameKey }}
 		/>
 	)
+}
+
+async function fetchEditorName(actor: AppEvents.Actor): Promise<string> {
+	switch (actor.type) {
+		case 'slm-user':
+			return await UsersClient.fetchDisplayName(actor.userId)
+		case 'plugin':
+			return PluginsClient.Store.getState().plugins.find((p) => p.id === actor.pluginId)?.name ?? actor.pluginId
+		case 'system':
+			return tr.text(AppEvents_Msgs.systemActor())
+		case 'ingame-user':
+			return tr.text(AppEvents_Msgs.unnamedActors['ingame-user'])
+		default:
+			assertNever(actor)
+	}
 }

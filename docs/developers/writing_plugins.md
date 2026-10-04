@@ -71,7 +71,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.10',
+	apiVersion: '^0.11',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -207,7 +207,6 @@ await Filters.create(ctx, {
 	id: 'no-seed',
 	name: 'Not a seed layer',
 	filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
-	owner: 123456789012345678n,
 	description: null,
 	alertMessage: null,
 	emoji: null,
@@ -222,15 +221,22 @@ await Filters.remove(ctx, 'no-seed')
 Filters.changes(ctx).subscribe((c) => ...) // every write, yours included
 ```
 
-`owner` is a discord user id. A filter belongs to a person even when a plugin wrote it, so name the admin who is
-answerable for it. They get the filter-owner role over it and can edit it by hand afterwards.
+A filter that `create` makes is owned by your plugin, and the filter index names your plugin as its owner. Admins with
+`filters:write-all` can edit the filter by hand and add contributors, who can then edit it too.
+
+To make an admin the owner instead, pass `owner: { type: 'slm-user', userId: 123456789012345678n }` with their discord
+user id. That admin gets the filter-owner role over the filter and can edit it and manage its contributors.
+
+Every filter's `owner` is one of `{ type: 'slm-user', userId }`, `{ type: 'plugin', pluginId }` or
+`{ type: 'system' }`. A system-owned filter is one SLM itself created, such as a fresh install's starting pool.
 
 Your writes are ordinary writes. Open editors update, the reference index rebuilds, and the audit log records a
 `FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `ctx.db()` skips all
 of that and leaves every open page stale until a restart.
 
-Nothing marks a filter as yours. A plugin can write any filter, including one an admin made, and an admin can edit or
-delete one a plugin made. Prefix your ids to make them recognisable.
+Owning a filter does not lock it. A plugin can write any filter, including one an admin made, and an admin with access
+can edit or delete one a plugin owns. Find your plugin's filters with
+`Filters.list().filter((f) => f.owner.type === 'plugin' && f.owner.pluginId === ctx.plugin.id)`.
 
 Deactivating your plugin leaves its filters behind. This is deliberate. A server pool naming a filter that
 disappeared fails every layer status query for that server. Clean up explicitly if that is wrong for yours, and

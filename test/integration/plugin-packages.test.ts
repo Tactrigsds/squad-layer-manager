@@ -217,17 +217,19 @@ describe('packaged plugins', () => {
 	// appears: it is that the write went through the host's own path. The FILTER_CHANGED rows are what
 	// prove it, since only that path writes them, and they name the plugin rather than a person.
 	it('creates, updates and deletes filters, recorded against the plugin', async () => {
-		const owner = String(ADMIN_USER.discordId)
-		const filterRow = () => readRows<{ name: string; owner: string; filter: string }>(`SELECT * FROM filters WHERE id = 'hello-pool'`)[0]
+		const filterRow = () =>
+			readRows<{ name: string; ownerUserId: string | null; ownerPluginId: string | null; filter: string }>(
+				`SELECT * FROM filters WHERE id = 'hello-pool'`,
+			)[0]
 
-		expect(await call('makeFilter', { id: 'hello-pool', owner })).toMatchObject({ code: 'ok' })
-		expect(filterRow()).toMatchObject({ name: 'Hello pool', owner })
+		expect(await call('makeFilter', { id: 'hello-pool' })).toMatchObject({ code: 'ok' })
+		expect(filterRow()).toMatchObject({ name: 'Hello pool', ownerUserId: null, ownerPluginId: 'hello' })
 		// FB.and built a real tree through the shim, not a string the plugin happened to send
 		expect(JSON.parse(filterRow().filter)).toMatchObject({ type: 'and', children: [{ type: 'eq' }, { type: 'in', neg: true }] })
 		// the in-memory index the whole server reads from, which only the mutation stream keeps current
 		expect(await call('filterIds', {})).toContain('hello-pool')
 
-		expect(await call('makeFilter', { id: 'hello-pool', owner })).toMatchObject({ code: 'err:already-exists' })
+		expect(await call('makeFilter', { id: 'hello-pool' })).toMatchObject({ code: 'err:already-exists' })
 
 		expect(await call('renameFilter', { id: 'hello-pool', name: 'Hello pool v2' })).toMatchObject({ code: 'ok' })
 		expect(filterRow().name).toBe('Hello pool v2')
@@ -247,6 +249,11 @@ describe('packaged plugins', () => {
 	// with "the pool matched no layers". A Fields.filterId field is a reference like a pool config is.
 	it('refuses to delete a filter a running plugin has configured', async () => {
 		await call('makeFilter', { id: 'hello-configured', owner: String(ADMIN_USER.discordId) })
+		// a plugin can hand ownership to an admin instead of keeping it
+		expect(Inspect.filterOwner(app, 'hello-configured')).toEqual({
+			ownerUserId: String(ADMIN_USER.discordId),
+			ownerPluginId: null,
+		})
 		await client.plugins.updateSettings({ pluginId: 'hello', config: { greeting: 'hello', pool: 'hello-configured' } })
 
 		const refused = await app.waitFor(

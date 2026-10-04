@@ -56,15 +56,6 @@ export function toMiniUser(user: MiniUser): MiniUser {
 
 export type UserPart = { users: User[] }
 
-// represents a user's edit or deletion of an entity. Carries the actor's id, not their name: consumers resolve
-// the display name so it reflects the user's current nickname rather than whatever it was at mutation time.
-export type UserEntityMutation<K extends string | number, V> = {
-	userId: UserId
-	key: K
-	value: V
-	type: 'add' | 'update' | 'delete'
-}
-
 // What the no-auth login portal posts. There is no identity provider behind it, so the name typed into the
 // form is the whole identity; it is bounded and kept to printable characters only because it is displayed
 // everywhere a discord username would be.

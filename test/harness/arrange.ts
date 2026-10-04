@@ -77,7 +77,7 @@ export function filter(
 		id,
 		name,
 		filter: node,
-		owner: ADMIN_USER.discordId,
+		owner: { type: 'slm-user', userId: ADMIN_USER.discordId },
 		description: opts?.description ?? null,
 		alertMessage: opts?.alertMessage ?? null,
 		emoji: opts?.emoji ?? null,

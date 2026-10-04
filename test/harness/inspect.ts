@@ -26,6 +26,18 @@ export function savedQueue(
 	}
 }
 
+// both owner columns, as stored: neither set means SLM owns the filter
+export function filterOwner(app: AppFixture, filterId: string): { ownerUserId: string | null; ownerPluginId: string | null } | undefined {
+	const db = app.readDb()
+	try {
+		return db.prepare(`SELECT ownerUserId, ownerPluginId FROM filters WHERE id = ?`).get(filterId) as
+			| { ownerUserId: string | null; ownerPluginId: string | null }
+			| undefined
+	} finally {
+		db.close()
+	}
+}
+
 export function savedBackburner(app: AppFixture): { itemId: string; filter: Parameters<typeof BB.describeTemplate>[1] }[] {
 	const db = app.readDb()
 	try {

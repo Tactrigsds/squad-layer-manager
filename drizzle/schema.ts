@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { blob, customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
+import { blob, check, customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 
 import * as ZodUtils from '@/lib/zod-utils'
@@ -453,19 +453,27 @@ export const squadEventAssociations = sqliteTable(
 	}),
 )
 
-export const filters = sqliteTable('filters', {
-	id: text('id').primaryKey().notNull(),
-	name: text('name').notNull(),
-	description: text('description'),
-	filter: json('filter').notNull(),
-	owner: bigintText('owner').references(() => users.discordId, { onDelete: 'set null' }),
-	alertMessage: text('alertMessage'),
-	// either a unicode emoji or a custom emoji (prefix discord_)
-	emoji: text('emoji'),
-	invertedAlertMessage: text('invertedAlertMessage'),
-	// either a unicode emoji or a custom emoji (prefix discord_)
-	invertedEmoji: text('invertedEmoji'),
-})
+// A filter is owned by at most one of a user or a plugin. With neither, SLM itself owns it (see F.FilterOwner).
+export const filters = sqliteTable(
+	'filters',
+	{
+		id: text('id').primaryKey().notNull(),
+		name: text('name').notNull(),
+		description: text('description'),
+		filter: json('filter').notNull(),
+		ownerUserId: bigintText('ownerUserId').references(() => users.discordId, { onDelete: 'set null' }),
+		ownerPluginId: text('ownerPluginId').references(() => plugins.id, { onDelete: 'set null' }),
+		alertMessage: text('alertMessage'),
+		// either a unicode emoji or a custom emoji (prefix discord_)
+		emoji: text('emoji'),
+		invertedAlertMessage: text('invertedAlertMessage'),
+		// either a unicode emoji or a custom emoji (prefix discord_)
+		invertedEmoji: text('invertedEmoji'),
+	},
+	(table) => ({
+		singleOwner: check('filtersSingleOwner', sql`${table.ownerUserId} IS NULL OR ${table.ownerPluginId} IS NULL`),
+	}),
+)
 
 export const filterUserContributors = sqliteTable(
 	'filterUserContributors',

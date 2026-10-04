@@ -119,6 +119,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'FilterEntityIdSchema',
 		'FilterEntitySchema',
 		'FilterNodeSchema',
+		'FilterOwnerSchema',
 		'MATCHUP_TYPES',
 		'NewFilterEntitySchema',
 		'RootFilterNodeSchema',

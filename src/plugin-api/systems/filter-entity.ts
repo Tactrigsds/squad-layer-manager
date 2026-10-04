@@ -9,13 +9,13 @@ import type * as PluginsSys from '@/systems/plugins.server'
  * lands the way an admin's does: open editors update, the reference index rebuilds, and FILTER_CHANGED
  * records it against the plugin rather than a person.
  *
- * A filter belongs to a user, and a plugin is not one, so `create` asks for an owner: name the admin
- * who is answerable for the filter. They get the filter-owner role over it and can edit it by hand.
+ * A filter `create` makes is owned by the calling plugin, unless it names an admin as the owner. Only
+ * admins with filters:write-all, and the filter's contributors, can edit a plugin's filter by hand.
  *
- * A plugin can write any filter, not only ones it created. Nothing marks a filter as a plugin's, and
- * deactivating a plugin leaves its filters in place -- a pool config naming one that vanished fails
- * every layer-status query for that server. Clean up in the plugin's own deactivate if that is wrong
- * for yours.
+ * Owning a filter does not lock it: a plugin can write any filter, and an admin can edit one a plugin
+ * owns. Deactivating a plugin leaves its filters in place -- a pool config naming one that vanished
+ * fails every layer-status query for that server. Clean up in the plugin's own deactivate if that is
+ * wrong for yours.
  */
 
 /** Every filter, newest state. Live objects: read them, do not mutate them. */
@@ -27,8 +27,15 @@ export function get(id: F.FilterEntityId): F.FilterEntity | undefined {
 	return FilterEntity.state.filters.get(id)
 }
 
-export async function create(ctx: PluginsSys.Ctx<any>, filter: F.FilterEntity) {
-	return await FilterEntity.createFilter(ctx, F.FilterEntitySchema.parse(filter), actorFor(ctx))
+/** Without `owner`, the calling plugin owns the filter. */
+export type NewFilter = Omit<F.FilterEntity, 'owner'> & { owner?: { type: 'slm-user'; userId: bigint } }
+
+export async function create(ctx: PluginsSys.Ctx<any>, filter: NewFilter) {
+	// rebuilt rather than passed through, so a plugin cannot hand the filter to SLM or to another plugin
+	const owner: F.FilterOwner = filter.owner
+		? { type: 'slm-user', userId: filter.owner.userId }
+		: { type: 'plugin', pluginId: ctx.plugin.id }
+	return await FilterEntity.createFilter(ctx, F.FilterEntitySchema.parse({ ...filter, owner }), actorFor(ctx))
 }
 
 export async function update(

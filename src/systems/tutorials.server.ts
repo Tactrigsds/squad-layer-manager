@@ -9,7 +9,7 @@ import { z } from '@/lib/zod'
 import * as CMD from '@/models/command.models'
 import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
@@ -664,7 +664,7 @@ function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, next
 // queue row loses its indicators and is badged as a layer that does not exist. Rather than depend on what a given
 // install happens to have, a run creates the two filters it narrates and deletes them again afterwards.
 //
-// Ids carry the owner, so concurrent runs never share a row and one run's teardown cannot delete a filter another
+// Ids carry the id of the user running the tutorial, so concurrent runs never share a row and one run's teardown cannot delete a filter another
 // run's server still points at. TUTORIAL_FILTER_PREFIX covers every run's, which is what boot sweeps.
 const TUTORIAL_FILTER_PREFIX = 'tutorial-'
 
@@ -709,7 +709,7 @@ function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
 			name: TUT.TUTORIAL_FILTERS.pool.name,
 			description: 'The layers this tutorial server plays: everything an unmodded Squad server can run.',
 			filter: FB.eq('Collection', 'OWI'),
-			owner,
+			owner: F.SYSTEM_OWNER,
 			emoji: TUT.TUTORIAL_FILTERS.pool.emoji,
 			alertMessage: 'In the tutorial pool',
 			invertedEmoji: TUT.TUTORIAL_FILTERS.pool.invertedEmoji,
@@ -720,7 +720,7 @@ function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
 			name: TUT.TUTORIAL_FILTERS.large.name,
 			description: 'Layers built for a full server. Worth knowing about before setting one on a quiet night.',
 			filter: FB.eq('Size', 'Large'),
-			owner,
+			owner: F.SYSTEM_OWNER,
 			emoji: TUT.TUTORIAL_FILTERS.large.emoji,
 			alertMessage: 'A large layer',
 			invertedEmoji: null,
