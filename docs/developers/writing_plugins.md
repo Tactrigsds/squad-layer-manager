@@ -551,6 +551,7 @@ absent.
 | `slm/server/logger`                                        | `childModule`                                |
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
 | `slm/systems/squad-server`                                 | the live event stream, ending a match, kicks |
+| `slm/systems/player-activity`                              | who SLM counts as idle, and since when       |
 | `slm/systems/discord`                                      | posting to a channel                         |
 | `slm/systems/layer-queue`                                  | queue reads and edits                        |
 | `slm/systems/match-history`                                | match reads                                  |

@@ -36,6 +36,7 @@ import * as systemsFilterEntity from '@/plugin-api/systems/filter-entity'
 import * as systemsLayerQueries from '@/plugin-api/systems/layer-queries'
 import * as systemsLayerQueue from '@/plugin-api/systems/layer-queue'
 import * as systemsMatchHistory from '@/plugin-api/systems/match-history'
+import * as systemsPlayerActivity from '@/plugin-api/systems/player-activity'
 import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-reminders'
 import * as systemsRbac from '@/plugin-api/systems/rbac'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
@@ -85,6 +86,7 @@ export function setup() {
 		'slm/systems/match-history': systemsMatchHistory,
 		'slm/systems/post-roll-reminders': systemsPostRollReminders,
 		'slm/systems/rbac': systemsRbac,
+		'slm/systems/player-activity': systemsPlayerActivity,
 		'slm/systems/squad-rcon': systemsSquadRcon,
 		'slm/systems/squad-server': systemsSquadServer,
 		'@orpc/server': orpcServer,

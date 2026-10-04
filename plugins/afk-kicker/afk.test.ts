@@ -48,33 +48,32 @@ describe('kicksNeeded', () => {
 })
 
 describe('afkPlayers', () => {
-	it('counts a newly seen player as active', () => {
+	it('takes the idle rule from SLM, skipping unkickable players', () => {
 		const t = Afk.init()
-		const r = roster(player('a', 1))
-		Afk.observe(t, r, 0)
-		expect(Afk.afkPlayers(t, r, IDLE, 14 * MIN)).toEqual([])
-		expect(Afk.afkPlayers(t, r, IDLE, 15 * MIN).map((a) => a.reason)).toEqual(['idle'])
+		const r = roster(player('a', 1), player('b', null))
+		t.unkickable.add('b')
+		const idle = [
+			{ id: 'a', player: player('a', 1), lastActive: 2 * MIN },
+			{ id: 'b', player: player('b', null), lastActive: 0 },
+		]
+		expect(Afk.afkPlayers(t, r, IDLE, 20 * MIN, idle)).toEqual([{ id: 'a', player: idle[0].player, since: 2 * MIN, reason: 'idle' }])
 	})
 
-	it('judges only by squad on a squad gamemode, and only by activity on an idle one', () => {
+	it('judges only by squad on a squad gamemode', () => {
 		const t = Afk.init()
 		const r = roster(player('squadded', 1), player('squadless', null))
 		Afk.observe(t, r, 0)
-		Afk.note(t, { type: 'CHAT_MESSAGE', player: 'squadless' } as SE.Event, 59 * MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 60 * MIN).map((a) => a.id)).toEqual(['squadless'])
-		expect(Afk.afkPlayers(t, r, IDLE, 60 * MIN).map((a) => a.id)).toEqual(['squadded'])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 60 * MIN, []).map((a) => a.id)).toEqual(['squadless'])
 	})
 
-	it('restarts every clock at a new game', () => {
+	it('restarts the squadless clock at a new game', () => {
 		const t = Afk.init()
 		const r = roster(player('a', null))
 		Afk.observe(t, r, 0)
-		Afk.note(t, { type: 'NEW_GAME' } as SE.Event, 14 * MIN)
+		Afk.note(t, { type: 'NEW_GAME' } as SE.Event)
 		Afk.observe(t, r, 14 * MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 18 * MIN)).toEqual([])
-		expect(Afk.afkPlayers(t, r, IDLE, 28 * MIN)).toEqual([])
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 19 * MIN).map((a) => a.reason)).toEqual(['squadless'])
-		expect(Afk.afkPlayers(t, r, IDLE, 29 * MIN).map((a) => a.reason)).toEqual(['idle'])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 18 * MIN, [])).toEqual([])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 19 * MIN, []).map((a) => a.reason)).toEqual(['squadless'])
 	})
 
 	it('orders longest AFK first', () => {
@@ -82,7 +81,7 @@ describe('afkPlayers', () => {
 		Afk.observe(t, roster(player('early', null)), 0)
 		const r = roster(player('late', null), player('early', null))
 		Afk.observe(t, r, 2 * MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN).map((a) => a.id)).toEqual(['early', 'late'])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN, []).map((a) => a.id)).toEqual(['early', 'late'])
 	})
 
 	it('skips an unkickable player across games until they leave', () => {
@@ -90,11 +89,11 @@ describe('afkPlayers', () => {
 		const r = roster(player('dev', null), player('a', null))
 		Afk.observe(t, r, 0)
 		t.unkickable.add('dev')
-		Afk.note(t, { type: 'NEW_GAME' } as SE.Event, MIN)
+		Afk.note(t, { type: 'NEW_GAME' } as SE.Event)
 		Afk.observe(t, r, MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN).map((a) => a.id)).toEqual(['a'])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 10 * MIN, []).map((a) => a.id)).toEqual(['a'])
 		Afk.observe(t, roster(player('a', null)), 10 * MIN)
 		Afk.observe(t, r, 10 * MIN)
-		expect(Afk.afkPlayers(t, r, SQUADLESS, 20 * MIN).map((a) => a.id)).toEqual(['a', 'dev'])
+		expect(Afk.afkPlayers(t, r, SQUADLESS, 20 * MIN, []).map((a) => a.id)).toEqual(['a', 'dev'])
 	})
 })

@@ -40,8 +40,8 @@ export default defineConfig({
 		// the history query engine's worker thread; a sibling of the main chunk so history.server.ts can
 		// resolve it relative to import.meta.url in both dev and prod
 		'history-query.worker': 'src/systems/history-query.worker.ts',
-		// the scoreline catch-up's worker thread, a sibling for the same reason
-		'combat-stats.worker': 'src/systems/combat-stats.worker.ts',
+		// the scoreline and population catch-up's worker thread, a sibling for the same reason
+		'match-tallies.worker': 'src/systems/match-tallies.worker.ts',
 		// WAL checkpoints and backup snapshots, off the main connection; a sibling for the same reason
 		'db-maintenance.worker': 'src/server/db-maintenance.worker.ts',
 		// Schema (.sql) + data (.ts) migration runner. Bundled so the statically-imported

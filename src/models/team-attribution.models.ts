@@ -1,5 +1,5 @@
 import { z } from '@/lib/zod'
-import type * as CHAT from '@/models/chat.models'
+import * as CHAT from '@/models/chat.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
 import * as SM from '@/models/squad.models'
@@ -80,18 +80,6 @@ type Tracked = {
 	lastSquadByTeam: [number | null, number | null]
 }
 
-// The events that move attribution state. The feed buffer collapses server events attributed to an SLM action
-// under that action's APP_EVENT entry, so those have to be pulled back out; the sort restores chronology across
-// that unfolding (server event ids are monotonic).
-function relevantEvents(events: readonly CHAT.EventEnriched[]): CHAT.EventEnriched[] {
-	const flat: CHAT.EventEnriched[] = []
-	for (const event of events) {
-		if (event.type === 'APP_EVENT') flat.push(...event.collapsed)
-		else flat.push(event)
-	}
-	return flat.sort((a, b) => a.time - b.time || (typeof a.id === 'number' && typeof b.id === 'number' ? a.id - b.id : 0))
-}
-
 export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], settings: Settings): MatchAttribution {
 	const tracked = new Map<SM.PlayerId, Tracked>()
 	const squads = new Map<number, SM.RecentSquad>()
@@ -158,7 +146,7 @@ export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], se
 		}
 	}
 
-	for (const event of relevantEvents(events)) {
+	for (const event of CHAT.serverEventsInOrder(events)) {
 		if (event.time > endTime) endTime = event.time
 		switch (event.type) {
 			case 'RESET': {

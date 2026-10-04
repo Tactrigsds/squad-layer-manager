@@ -221,6 +221,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	],
 	'slm/systems/layer-queue': ['dispatchOp', 'editSaved', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
 	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],
+	'slm/systems/player-activity': ['idlePlayers', 'idleThresholdMs', 'isIdle', 'lastActive'],
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
 	'slm/systems/squad-rcon': [

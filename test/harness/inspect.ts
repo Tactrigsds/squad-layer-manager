@@ -1,8 +1,10 @@
+import zlib from 'node:zlib'
 import superjson from 'superjson'
 
 import type { EmuPlayer } from '@/emulator'
 import type * as BB from '@/models/backburner.models'
 import * as MH from '@/models/match-history.models'
+import type * as Pop from '@/models/population.models'
 import type * as USR from '@/models/users.models'
 
 import type { AppFixture } from './app-fixture'
@@ -78,6 +80,17 @@ export function matchCombatStats(app: AppFixture, matchId: number): MH.MatchComb
 			.prepare(`SELECT team1Kills, team1Wounds, team1Deaths, team2Kills, team2Wounds, team2Deaths FROM matchHistory WHERE id = ?`)
 			.get(matchId) as MH.CombatStatsColumns | undefined
 		return row && MH.combatStatsFromColumns(row)
+	} finally {
+		db.close()
+	}
+}
+
+// A finished match's stored population samples, or undefined until the backfill has sampled it
+export function matchPopulation(app: AppFixture, matchId: number): Pop.Samples | undefined {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT samples FROM matchPopulation WHERE matchId = ?`).get(matchId) as { samples: Buffer } | undefined
+		return row && (JSON.parse(zlib.zstdDecompressSync(row.samples).toString('utf8')) as Pop.Samples)
 	} finally {
 		db.close()
 	}

@@ -512,6 +512,7 @@ export type PublicSettings = {
 	servers: PublicServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	teamAttribution: SETTINGS.GlobalSettings['teamAttribution']
+	playerActivity: SETTINGS.GlobalSettings['playerActivity']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
 	// every client rendering the queue needs these to resolve the tag ids stored on layer items
 	layerTags: SETTINGS.GlobalSettings['layerTags']
@@ -534,6 +535,7 @@ function buildPublicSettings(): PublicSettings {
 		servers: listServerEntries().map(({ ownerDiscordId: _ownerDiscordId, ...entry }) => entry),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		teamAttribution: GLOBAL_SETTINGS.teamAttribution,
+		playerActivity: GLOBAL_SETTINGS.playerActivity,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
 		layerTags: GLOBAL_SETTINGS.layerTags,
 		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,

@@ -8,6 +8,7 @@ import * as PluginConfig from 'slm/plugin/config'
 import * as Servers from 'slm/plugin/servers'
 import * as Instr from 'slm/server/instrumentation'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as PlayerActivity from 'slm/systems/player-activity'
 import * as SquadRcon from 'slm/systems/squad-rcon'
 import * as SquadServer from 'slm/systems/squad-server'
 
@@ -35,8 +36,8 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		sctx.cleanup.push(
 			SquadServer.events$(sctx)
 				.pipe(
-					Instr.durableSub('note-activity', { module: sctx.module }, async (event) => {
-						Afk.note(tracker, event, Date.now())
+					Instr.durableSub('note-new-game', { module: sctx.module }, async (event) => {
+						Afk.note(tracker, event)
 					}),
 				)
 				.subscribe(),
@@ -77,7 +78,8 @@ async function read(ctx: Ctx, tracker: Afk.Tracker, cfg: Config): Promise<Readin
 		gamemode && cfg.idleGamemodes.includes(gamemode)
 			? { kind: 'idle', window: cfg.idleWindow }
 			: { kind: 'squadless', window: cfg.squadlessWindow }
-	return { afk: Afk.afkPlayers(tracker, teams.players, rule, now), needed }
+	const idle = rule.kind === 'idle' ? PlayerActivity.idlePlayers(ctx, rule.window, now) : []
+	return { afk: Afk.afkPlayers(tracker, teams.players, rule, now, idle), needed }
 }
 
 async function evaluate(ctx: Ctx, tracker: Afk.Tracker) {

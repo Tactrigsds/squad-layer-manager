@@ -344,6 +344,18 @@ export const archivedMatches = sqliteTable(
 	}),
 )
 
+// A finished match's population samples (see population.models.ts), so a chart spanning days of matches never
+// replays them. Derived from the match's events, so it can always be rebuilt: the backfill recomputes a row whose
+// `version` is not the sampler's current one.
+export const matchPopulation = sqliteTable('matchPopulation', {
+	matchId: integer('matchId')
+		.primaryKey()
+		.references(() => matchHistory.id, { onDelete: 'cascade' }),
+	version: integer('version').notNull(),
+	// zstd-compressed JSON of Pop.Samples
+	samples: blob('samples', { mode: 'buffer' }).notNull(),
+})
+
 /**
  * Virtual tables, declared for reference only. Namespaced so a reader can tell at the use site that these are
  * not ordinary tables, because three things about them are different:

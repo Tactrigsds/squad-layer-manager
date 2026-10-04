@@ -118,6 +118,7 @@ export const PROCEDURE_ACCESS = {
 
 	'matchHistory.watchMatchHistoryState': VIEW_SERVER,
 	'matchHistory.getMatchEvents': VIEW_SERVER,
+	'matchHistory.getPopulation': VIEW_SERVER,
 	'matchHistory.getPlayerDetails': VIEW_SERVER,
 	'matchHistory.getSquadDetails': VIEW_SERVER,
 

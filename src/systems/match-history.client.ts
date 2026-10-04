@@ -3,6 +3,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
+import * as Pop from '@/models/population.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'
 
@@ -71,5 +72,30 @@ export function matchEventsQueryOptions(serverId: string, ordinal: number | null
 		},
 		enabled: ordinal !== null,
 		staleTime: Infinity,
+	}
+}
+
+// how often a range refetches, so matches the backfill finishes and the live match's end show up. Faster while the
+// backfill still owes matches in the range.
+const POPULATION_REFRESH_MS = 60_000
+const POPULATION_FILLING_REFRESH_MS = 10_000
+
+/**
+ * The server's stored matches in a population range. Keyed on the current match too, so the match that just ended
+ * moves from the live feed to the server's data as soon as there is a newer one.
+ */
+export function populationQueryOptions(serverId: string, range: Pop.Range | null, currentOrdinal: number | undefined) {
+	return {
+		queryKey: [...RPC.orpc.matchHistory.getPopulation.key(), serverId, range, currentOrdinal],
+		queryFn: async () => {
+			if (range === null) return null
+			return RPC.selectLoaded(await RPC.orpc.matchHistory.getPopulation.call({ serverId, range })) ?? null
+		},
+		enabled: range !== null,
+		// across a roll, not across a change of range, whose buckets would not fit the chart it switched to
+		placeholderData: (previous: Pop.RangeData | null | undefined) =>
+			range !== null && previous?.buckets.bucketMs === Pop.BUCKET_MS[range] ? previous : undefined,
+		refetchInterval: (query: { state: { data: Pop.RangeData | null | undefined } }) =>
+			(query.state.data?.pending ?? 0) > 0 ? POPULATION_FILLING_REFRESH_MS : POPULATION_REFRESH_MS,
 	}
 }

@@ -13,7 +13,6 @@ import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Changelog from '@/systems/changelog.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
-import * as CombatStats from '@/systems/combat-stats.server'
 import * as Commands from '@/systems/commands.server'
 import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
@@ -32,6 +31,7 @@ import * as LogoSys from '@/systems/logo.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as MatchLayers from '@/systems/match-layers.server'
+import * as MatchTallies from '@/systems/match-tallies.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
@@ -130,7 +130,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Backups.setup()
 	EventArchive.setup()
 	History.setup()
-	CombatStats.setup()
+	MatchTallies.setup()
 	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off

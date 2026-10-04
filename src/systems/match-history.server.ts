@@ -19,6 +19,7 @@ import * as L from '@/models/layer'
 import type * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
+import * as Pop from '@/models/population.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -28,8 +29,9 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
-import * as CombatStats from '@/systems/combat-stats.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
+import * as MatchPopulation from '@/systems/match-population.server'
+import * as MatchTallies from '@/systems/match-tallies.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
@@ -176,10 +178,10 @@ export const initState = Instr.spanOp(
 				if (!Prom.isAbortError(err)) log.error(err, 'priming the match events cache failed')
 			}),
 		)
-		// Runs for the life of the server, off the mutex and off this thread: every match without a scoreline
-		// gets one, oldest history included, at a pace that leaves the rcon loop alone.
+		// Runs for the life of the server, off the mutex and off this thread: every match without a scoreline or
+		// population samples gets them, oldest history included, at a pace that leaves the rcon loop alone.
 		addReleaseTask(() =>
-			CombatStats.runCatchUp(ctx, () => Settings.GLOBAL_SETTINGS.chat).catch((err) => log.error(err, 'combat stats catch-up failed')),
+			MatchTallies.runCatchUp(ctx, () => Settings.GLOBAL_SETTINGS.chat).catch((err) => log.error(err, 'match tallies catch-up failed')),
 		)
 	},
 )
@@ -378,6 +380,16 @@ export const matchHistoryRouter = {
 	// The current match is deliberately excluded: the client already has its events live via the chat feed. Pagination
 	// counts player-specific events (NEW_GAME/RESET have no player association so they don't count toward pageSize), but
 	// is aligned to match boundaries so pages never overlap. `cursor` is an exclusive upper-bound matchId.
+	getPopulation: orpcBase
+		.input(z.object({ serverId: z.string(), range: z.enum(Pop.RANGES) }))
+		.handler(async ({ input, context: _ctx }) => {
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const cap = ctx.server.serverInfo$.value?.maxPlayerCount || Pop.DEFAULT_MAX_PLAYERS
+			return await MatchPopulation.getRange(ctx, input.range, Date.now(), cap)
+		}),
+
 	getSquadDetails: orpcBase
 		.input(
 			z.object({

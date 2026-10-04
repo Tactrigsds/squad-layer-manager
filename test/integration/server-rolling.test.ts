@@ -8,7 +8,7 @@ import type * as SE from '@/models/server-events.models'
 import * as VEH from '@/models/vehicles.models'
 
 import { LAYERS } from '../harness/arrange'
-import { matchCombatStats, matchOrdinal } from '../harness/inspect'
+import { matchCombatStats, matchOrdinal, matchPopulation } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 import { createRollingFixture, type RollingFixture } from '../harness/rolling'
 
@@ -104,6 +104,29 @@ describe('server rolling: the roster across the roll', () => {
 		})
 		expect(stats.team1).toEqual({ kills: 2, wounds: 1, deaths: 1 })
 		expect(stats.team2).toEqual({ kills: 1, wounds: 0, deaths: 2 })
+
+		// the same replay stores the match's population, which the chart's day and week ranges read back
+		const samples = await app.waitFor(() => matchPopulation(app, oldMatch.id), {
+			label: 'the finished match’s population samples reaching their table',
+		})
+		const totals = samples.flatMap((run) => run.total)
+		expect(Math.max(...totals)).toBeGreaterThanOrEqual(2)
+		for (const run of samples) {
+			for (let i = 0; i < run.total.length; i++) expect(run.team1[i] + run.team2[i]).toBeLessThanOrEqual(run.total[i])
+		}
+
+		const ordinal = matchOrdinal(app, oldMatch.id)
+		const range = await app.waitFor(
+			async () => {
+				const res = await client.matchHistory.getPopulation({ serverId: app.serverId, range: '6h' })
+				return 'buckets' in res && res.pending === 0 ? res : undefined
+			},
+			{ label: 'every finished match in the range counted' },
+		)
+		expect(range.bands.map((band) => band.ordinal)).toContain(ordinal)
+		expect(
+			Math.max(...range.buckets.total.map((sum, i) => (range.buckets.n[i] > 0 ? sum / range.buckets.n[i] : 0))),
+		).toBeGreaterThanOrEqual(2)
 	})
 })
 

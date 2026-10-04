@@ -38,6 +38,7 @@ import * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
+import * as Activity from '@/models/player-activity.models'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import type * as SETTINGS from '@/models/settings.models'
@@ -810,6 +811,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		eventState: eventState,
 
 		chatInterpolatedState: CHAT.getInitialInterpolatedState(),
+		activity: Activity.init(),
 		emittedEvents: [],
 		emittedAppEvents: [],
 		destroyed: false,
@@ -885,6 +887,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	server.event$.subscribe(([, event]) => {
 		try {
 			CHAT.interpolateEvent(server.chatInterpolatedState, event)
+			Activity.note(server.activity, event)
 		} catch (error) {
 			log.error(error, 'Error handling event: %s %d', event.type, event.id)
 		}

@@ -24,7 +24,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
-	{ slug: 'players', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
+	{ slug: 'players', keys: ['playerGroupings', 'playerActivity', 'playerFlagsRequiringNote'] },
 	{ slug: 'layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',

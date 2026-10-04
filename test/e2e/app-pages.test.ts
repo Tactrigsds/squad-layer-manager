@@ -49,6 +49,40 @@ test.describe('server dashboard', () => {
 		await expect(DB.teamsSection(page).getByText('e2e_joiner')).toBeVisible()
 	})
 
+	test('the population chart counts the roster, and pops out at the size it has in the panel', async ({ page }) => {
+		const charts = page.getByRole('region', { name: 'Charts' })
+		await charts.getByRole('tab', { name: 'Population' }).click()
+		const chart = charts.getByRole('img', { name: 'Population' })
+		await expect(chart).toBeVisible({ timeout: 20_000 })
+
+		await chart.hover()
+		await expect(page.getByText('Players', { exact: true })).toBeVisible()
+
+		// the same range as figures, then back to the chart for the pop-out below
+		const split = charts.getByRole('group', { name: 'Split' })
+		await split.getByRole('button', { name: 'Stats' }).click()
+		const peak = charts.getByRole('term').filter({ hasText: /^Peak$/ })
+		await expect(peak).toBeVisible()
+		await expect(peak.locator('xpath=following-sibling::dd[1]')).toHaveText(/^\d+$/)
+		await split.getByRole('button', { name: 'Activity' }).click()
+		await expect(chart).toBeVisible()
+
+		const panel = (await charts.getByRole('tabpanel').boundingBox())!
+		await charts.getByRole('button', { name: 'Open in a window' }).click()
+		const popped = page.locator('[data-tour="chart-window-population"]')
+		await expect(popped.getByRole('img', { name: 'Population' })).toBeVisible()
+		const box = (await popped.boundingBox())!
+		const dragBar = (await popped.locator('> *').first().boundingBox())!
+		expect(box.width).toBeCloseTo(panel.width, 0)
+		expect(box.height - dragBar.height).toBeCloseTo(panel.height, 0)
+
+		// the panel stands a note in for the chart while the window holds it, and its button brings the chart back
+		await expect(charts.getByRole('img', { name: 'Population' })).toHaveCount(0)
+		await charts.getByRole('button', { name: 'Return to panel' }).click()
+		await expect(popped).toHaveCount(0)
+		await expect(charts.getByRole('img', { name: 'Population' })).toBeVisible()
+	})
+
 	test('the activity feed records what the emulated server did', async ({ page }) => {
 		const feed = page.getByRole('region', { name: 'Server Activity' })
 		await expect(feed).toBeVisible()
