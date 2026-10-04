@@ -4,14 +4,15 @@ SLM helps admins moderate and balance the players on their servers, from the das
 
 ## Teams and balance
 
-The teams panel lists both teams by squad. A _grouping mode_ sorts players into coloured groups by
+The teams panel lists both teams by squad, each in its own table. When the panel is too narrow for two tables side by
+side, it lists both teams in one table. A _grouping mode_ sorts players into coloured groups by
 [BattleMetrics](integrations_and_hosting.md#battlemetrics) flag, Discord role, a pattern on their name, or their group
 in a standard Squad admin list. A player's username takes their group's colour wherever it is shown. Most servers want
 two grouping modes: one for balance and one for admin purposes. The built-in _Party_ grouping mode groups players by
 the in-game party they queued with.
 
-The _Party_ column shows each player's party. Filter or sort the table by party, or shift+click a party to select its
-members on that team.
+With the _Party_ grouping mode picked, the _Group_ column shows each player's party. Filter or sort the table by party
+from that column, or shift+click a party to select its members on that team.
 
 The _Charts_ panel displays charts of the live match. When a match is opened from the match history, the panel displays
 that match instead, under a banner naming it. The _Teams Breakdown_ chart counts each team's players by group of the chosen

@@ -282,6 +282,29 @@ test.describe('teams panel', () => {
 		await expect(playerRow(teamB, BRAVO_ONE)).toBeVisible()
 		await expect(playerRow(teamB, BRAVO_TWO)).toBeVisible()
 	})
+
+	// the panel picks its layout from the measured columns, so the spoiler columns in a narrow window push the teams
+	// into one table, and a wide window splits them again
+	test('the team tables merge into one when they no longer fit side by side', async ({ page }) => {
+		const restore = page.viewportSize()!
+		const combined = page.getByRole('table', { name: 'All players' })
+		const showSpoilers = page.getByRole('switch', { name: 'Show Spoilers' })
+
+		await page.setViewportSize({ width: 1100, height: 900 })
+		await showSpoilers.click()
+		await expect(combined).toBeVisible()
+		await expect(teamTable(page, 'A')).toBeHidden()
+		await expect(playerRow(combined, ALPHA_LEAD)).toBeVisible()
+		await expect(playerRow(combined, BRAVO_ONE)).toBeVisible()
+
+		await page.setViewportSize({ width: 1900, height: 900 })
+		await expect(playerRow(teamTable(page, 'A'), ALPHA_LEAD)).toBeVisible()
+		await expect(playerRow(teamTable(page, 'B'), BRAVO_ONE)).toBeVisible()
+		await expect(combined).toBeHidden()
+
+		await showSpoilers.click()
+		await page.setViewportSize(restore)
+	})
 })
 
 test.describe('nav bar', () => {
