@@ -1,0 +1,66 @@
+name: SLM Quality Checks
+
+# Runs every check the pre-push hook (.githooks/pre-push.js) runs, except the changelog (changelog.yml) and the
+# engine build (the Dockerfile). The hook is opt-out and skippable, so this workflow is the gate.
+
+# On pushes to main this runs as a called job of the Docker CI workflow, so that publishing can depend on it.
+
+on:
+   workflow_call:
+   pull_request:
+   workflow_dispatch:
+
+permissions:
+   contents: read
+
+concurrency:
+   group: quality-checks-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+   quality-checks:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+         # api:report:check enforces the API_VERSION bump against origin/main's report, and silently skips that
+         # when the ref is missing, as it is in the default shallow checkout
+         - name: Fetch main
+           run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+
+         - name: Setup Node.js
+           uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+           with:
+              node-version: '24'
+
+         - name: Install pnpm
+           uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+           with:
+              version: 10.22.0
+
+         - name: Install dependencies
+           run: pnpm install --frozen-lockfile
+
+         - name: Run type checking
+           run: pnpm run check
+
+         - name: Run format checking
+           run: pnpm run format:check
+
+         - name: Run linting
+           run: pnpm run lint
+
+         - name: Check the message catalogue is up to date
+           run: pnpm run i18n:lint
+
+         - name: Check the plugin API report is up to date
+           run: pnpm run api:report:check
+
+         - name: Check the docs for dead links
+           run: pnpm run docs:lint
+
+         - name: Build the docs site
+           run: pnpm run docs:build
+
+         - name: Run tests
+           run: pnpm run test

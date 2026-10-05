@@ -819,8 +819,8 @@ where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B norma
 reachable through the slm/* entries, with values carrying their resolved signatures. `pnpm api:report` regenerates it
 and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines are breaking, added lines
 additive). The diff is judged against origin/main's copy, so a branch bumps once. Which component each moves follows
-semver, so at today's 0.1.0 that is the minor and the patch. The pre-push hook runs `pnpm api:report:check`, which fails
-on a stale report. The report records exports and signatures, not the internal structure of named types. Reshaping a
+semver, so at today's 0.1.0 that is the minor and the patch. CI and the pre-push hook run `pnpm api:report:check`,
+which fails on a stale report or a missing bump. The report records exports and signatures, not the internal structure of named types. Reshaping a
 model type without renaming it is review's to catch, and the report diff is what flags the PR as touching the plugin API
 at all.
 
