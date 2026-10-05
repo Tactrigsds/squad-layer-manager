@@ -163,12 +163,10 @@ A checkout with no `.env` anywhere gets one written from `.env.example.dev`, nam
 `.env.example.dev` carries the public development encryption key, and a dev instance is blocked from everything that
 needs any other credential.
 
-The gitignored build artifacts a fresh checkout lacks (`assets/layer-engine.wasm`, `layer-db.json`) are copied from the
-primary checkout by whatever creates the worktree, provisioning included, so the engine is in place before anything
-reaches a dev instance. They are copied rather than linked so a worktree working on `layer-engine/` can rebuild over its
-own copy. Run `pnpm build:engine` after changing `layer-engine/`. A checkout with nothing to copy them from, the primary
-checkout itself included, has the engine built for it instead.
+A fresh checkout lacks two gitignored files that a dev instance needs. `layer-db.json` is copied from the primary
+checkout. `assets/layer-engine.wasm` is built from the checkout's own `layer-engine/` whenever a worktree is created or
+provisioned, so it always matches the branch. Cargo skips the build when nothing changed, and a cold build takes about
+20 seconds. Run `pnpm build:engine` after changing `layer-engine/` while a dev instance is running.
 
-The list of them is kept in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because
-it runs from a `WorktreeCreate` hook against a worktree with no node_modules yet. Only provisioning asks it to build a
-missing engine, since a hook that spends minutes in cargo reads as a hung one.
+Both steps are kept in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because it
+runs from a `WorktreeCreate` hook against a worktree with no node_modules yet.
