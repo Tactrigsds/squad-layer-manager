@@ -40,7 +40,7 @@ function listWorktrees(cwd) {
 	let current = null
 	for (const line of git(['worktree', 'list', '--porcelain'], cwd).split('\n')) {
 		if (line.startsWith('worktree ')) {
-			current = { path: line.slice(9), locked: false, branch: null }
+			current = { path: line.slice(9), locked: false, branch: /** @type {string | null} */ (null) }
 			entries.push(current)
 		} else if (line.startsWith('branch ') && current) {
 			current.branch = line.slice(7).replace(/^refs\/heads\//, '')
@@ -288,12 +288,75 @@ function dispatch() {
 			break
 		}
 
+		// Removes worktrees whose work has landed: no uncommitted or untracked changes, HEAD merged into origin's
+		// default branch, and nothing running in them. Removing one also frees its dev slot and database. A worktree
+		// with no commits of its own may be a session that has only just started, so it is kept unless --empty is
+		// passed. Reports by default; --apply removes.
+		case 'prune': {
+			const apply = rest.includes('--apply')
+			const includeEmpty = rest.includes('--empty')
+			const root = mainCheckout(cwd)
+			const here = path.resolve(git(['rev-parse', '--show-toplevel'], cwd))
+			tryGit(['fetch', '--quiet', 'origin'], root)
+			const base = baseRef(root)
+			// commits a worktree branched from without adding any of its own
+			const baseLine = new Set(git(['rev-list', '--first-parent', base], root).split('\n'))
+			let removable = 0
+			for (const entry of listWorktrees(cwd)) {
+				const wt = path.resolve(entry.path)
+				if (wt === path.resolve(root) || wt === here) continue
+				const label = `${entry.path}${entry.branch ? ` [${entry.branch}]` : ''}`
+				const skip = (reason) => console.log(`keep  ${label}\n      ${reason}`)
+				if (!fs.existsSync(wt)) {
+					skip('directory is missing; `git worktree prune` clears it')
+					continue
+				}
+				if (entry.locked) {
+					skip('locked; `git worktree unlock` it to let prune consider it')
+					continue
+				}
+				const head = tryGit(['rev-parse', 'HEAD'], wt)
+				if (!head) {
+					skip('HEAD does not resolve')
+					continue
+				}
+				if (tryGit(['status', '--porcelain'], wt) !== '') {
+					skip('uncommitted or untracked changes')
+					continue
+				}
+				if (tryGit(['merge-base', '--is-ancestor', head, base], wt) === null) {
+					skip(`has commits not in ${base}`)
+					continue
+				}
+				if (baseLine.has(head) && !includeEmpty) {
+					skip('no commits of its own; pass --empty to include it')
+					continue
+				}
+				const running = processesUnder(entry.path)
+				if (running > 0) {
+					skip(`${running} process(es) still running in it; stop them (pnpm dev) and re-run`)
+					continue
+				}
+				removable++
+				if (!apply) {
+					console.log(`would remove ${label}`)
+					continue
+				}
+				removeWorktree(entry.path, root)
+				console.log(`removed ${label}`)
+			}
+			if (!apply) console.log(removable > 0 ? `\n${removable} to remove. re-run with --apply.` : '\nnothing to remove.')
+			break
+		}
+
 		default:
 			console.log(`worktrees live in ${WORKTREE_ROOT} (override with SLM_WORKTREE_ROOT)
 
   pnpm worktree new <name>      create one, install dependencies and provision it
   pnpm worktree ls              every worktree of this repo
   pnpm worktree migrate         relocate worktrees still under .claude/worktrees (--apply to do it)
+  pnpm worktree prune           remove worktrees whose work has merged (--apply to do it, --empty to include
+                                ones with no commits of their own)
   pnpm worktree root            print the worktree root`)
 			process.exit(command ? 1 : 0)
 	}
