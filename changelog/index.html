@@ -1,3 +1,464 @@
 <!doctype html><html lang="en" data-base="/squad-layer-manager/next/" data-root="/squad-layer-manager/" data-version="next"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Changelog - SLM Docs</title><meta name="description" content="Changelog, from the Squad Layer Manager documentation."/><link rel="icon" href="/squad-layer-manager/favicon.svg" type="image/svg+xml"/><link rel="preload" href="/squad-layer-manager/static/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/static/fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/static/fonts/roboto-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/static/fonts/roboto-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="stylesheet" href="/squad-layer-manager/static/docs.533d406f51.css"/><script type="module" src="/squad-layer-manager/static/docs.ea54b55412.js"></script></head><body><a href="#content" class="docs-skip">Skip to content</a><header class="docs-header"><details class="docs-menu lg:hidden"><summary aria-label="Open navigation" class="docs-icon-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu size-5" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></summary><div class="docs-menu-panel"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/next/layer-selection/">Features</a><a href="/squad-layer-manager/next/installing/">Setup guide</a><a href="/squad-layer-manager/next/contributing/">Developers</a><a href="/squad-layer-manager/next/faq/">FAQ</a><a href="/squad-layer-manager/changelog/" aria-current="page">Changelog</a></nav><div class="flex flex-wrap items-center gap-3 sm:hidden"><details class="docs-version " data-version-menu=""><summary aria-label="Documentation version: Unreleased">Unreleased<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><a href="https://ko-fi.com/grey275" class="docs-support-btn " aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a></div></div></details><a href="/squad-layer-manager/" class="flex items-center gap-2.5 text-text no-underline"><svg viewBox="0 0 100 100" class="shrink-0 size-7" aria-hidden="true"><path d="M16.67 0L83.33 0C92.54 0 100 7.46 100 16.67L100 83.33C100 92.54 92.54 100 83.33 100L16.67 100C7.46 100 0 92.54 0 83.33L0 16.67C0 7.46 7.46 0 16.67 0Z" class="fill-foreground"></path><path d="M-22.31 22.49L-22.31 22.49Q-22.31 21.71-22.46 21.09Q-22.60 20.47-23.02 19.94Q-23.44 19.40-24.28 18.85Q-25.12 18.31-26.49 17.72L-26.49 17.72Q-28.17 17.03-29.75 16.20Q-31.34 15.37-32.60 14.27Q-33.86 13.16-34.61 11.66Q-35.37 10.16-35.37 8.15L-35.37 8.15Q-35.37 6.19-34.63 4.61Q-33.90 3.02-32.58 1.90Q-31.25 0.78-29.45 0.18Q-27.64-0.42-25.48-0.42L-25.48-0.42Q-22.56-0.42-20.38 0.77Q-18.19 1.95-16.98 4.08Q-15.76 6.21-15.76 9.05L-15.76 9.05L-22.39 9.05Q-22.39 7.81-22.73 6.88Q-23.06 5.94-23.77 5.41Q-24.47 4.87-25.61 4.87L-25.61 4.87Q-26.65 4.87-27.35 5.31Q-28.04 5.75-28.38 6.51Q-28.71 7.26-28.71 8.19L-28.71 8.19Q-28.71 8.92-28.37 9.49Q-28.02 10.06-27.42 10.54Q-26.82 11.02-25.99 11.46Q-25.16 11.90-24.20 12.30L-24.20 12.30Q-22.14 13.12-20.53 14.09Q-18.93 15.05-17.85 16.26Q-16.77 17.47-16.21 18.99Q-15.65 20.51-15.65 22.44L-15.65 22.44Q-15.65 24.42-16.32 26Q-17 27.59-18.25 28.70Q-19.50 29.81-21.28 30.40Q-23.06 30.99-25.27 30.99L-25.27 30.99Q-27.35 30.99-29.28 30.39Q-31.21 29.79-32.71 28.55Q-34.21 27.32-35.10 25.38Q-35.98 23.45-35.98 20.79L-35.98 20.79L-29.30 20.79Q-29.30 22.15-29.06 23.11Q-28.82 24.06-28.30 24.63Q-27.79 25.20-27.02 25.46Q-26.26 25.72-25.19 25.72L-25.19 25.72Q-24.09 25.72-23.46 25.28Q-22.83 24.84-22.57 24.11Q-22.31 23.39-22.31 22.49ZM-7.73 25.17L5.06 25.17L5.06 30.57L-7.73 30.57L-7.73 25.17ZM-12.20 0L-5.52 0L-5.52 30.57L-12.20 30.57L-12.20 0ZM19.62 30.57L10.82 0L16.43 0L21.97 21.04L27.49 0L32.76 0L24.30 30.57L19.62 30.57ZM7.95 30.57L7.95 0L13.55 0L14.50 21.73L14.50 30.57L7.95 30.57ZM29.43 21.73L30.37 0L35.98 0L35.98 30.57L29.43 30.57L29.43 21.73Z" transform="translate(50 34.72)" class="fill-background"></path></svg><span class="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span></a><details class="docs-version max-sm:hidden" data-version-menu=""><summary aria-label="Documentation version: Unreleased">Unreleased<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><button type="button" class="docs-search-btn" data-search-open=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="docs-search-label">Search the docs</span><kbd class="docs-kbd max-sm:hidden">/</kbd></button><div class="ms-auto flex items-center gap-5"><div class="max-lg:hidden"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/next/layer-selection/">Features</a><a href="/squad-layer-manager/next/installing/">Setup guide</a><a href="/squad-layer-manager/next/contributing/">Developers</a><a href="/squad-layer-manager/next/faq/">FAQ</a><a href="/squad-layer-manager/changelog/" aria-current="page">Changelog</a></nav></div><div class="flex items-center gap-1"><a href="https://ko-fi.com/grey275" class="docs-support-btn me-1 max-sm:hidden" aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a><a href="https://discord.gg/Th7g2nhpR" class="docs-icon-btn" aria-label="SLM on Discord"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager" class="docs-icon-btn" aria-label="SLM on GitHub"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"></path></svg></a></div></div></header><div class="docs-shell"><main id="content" class="docs-main"><p class="docs-version-banner" data-version-banner="" hidden="" role="note"></p><article class="docs-article" data-pagefind-body=""><div class="docs-label docs-crumbs" data-pagefind-ignore=""><span data-pagefind-filter="section">Changelog</span><span aria-hidden="true">/</span><span>Releases</span></div><div class="docs-prose"><h1 id="changelog" class="docs-heading">Changelog</h1>
 <p>Generated by <code>pnpm release</code> from <code>changelog/</code>. Do not edit by hand: add a fragment to <code>changes/</code> instead (see
-CONTRIBUTING.md).</p></div></article><footer class="docs-page-footer"><div class="docs-source"><code>CHANGELOG.md</code><div class="ms-auto flex flex-wrap gap-x-5 gap-y-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changelog/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changelog/</a></div></div></footer></main><aside aria-label="On this page" class="docs-toc max-xl:hidden"><div class="mt-5 flex flex-col gap-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changelog/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changelog/</a></div></aside></div><dialog id="docs-search" class="docs-search" aria-label="Search the docs"><form class="docs-search-field" method="dialog"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-[18px] shrink-0 text-text-2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><label for="docs-search-input" class="sr-only">Search</label><input id="docs-search-input" type="search" placeholder="Search the docs" autoComplete="off" spellCheck="false" role="combobox" aria-expanded="false" aria-controls="docs-search-results"/><kbd class="docs-kbd">esc</kbd></form><ul id="docs-search-results" class="docs-search-results" role="listbox" aria-label="Results"></ul><p class="docs-search-status" aria-live="polite"></p><div class="docs-search-keys" aria-hidden="true"><span><kbd class="docs-kbd">↑</kbd> <kbd class="docs-kbd">↓</kbd> move</span><span><kbd class="docs-kbd">↵</kbd> open</span></div></dialog></body></html>
+CONTRIBUTING.md).</p>
+<h2 id="2026101-2026-10-05" class="docs-heading"><a href="https://github.com/Tactrigsds/squad-layer-manager/releases/tag/v2026.10.1">2026.10.1</a> (2026-10-05)<a href="#2026101-2026-10-05" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md#2026101-2026-10-05" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
+<h3 id="for-users" class="docs-heading">For users<a href="#for-users" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md#for-users" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
+<ul>
+<li>
+<p><strong>Added:</strong> A new AFK Kicker plugin kicks AFK players when people are waiting in the queue.</p>
+<p>A player is AFK after five minutes out of a squad. On seeding and training layers, it is fifteen minutes without doing
+anything instead. It warns AFK players while the server is full, and gives each one a final warning five seconds before the
+kick. A player the game server refuses to kick is left alone until they leave the server. It does nothing between matches, and everyone starts fresh when a new match begins. It is off until you pick the servers it runs on.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Admins can save their own BattleMetrics token, so flags and notes they add show up on BattleMetrics as theirs.</p>
+<p>Open the user menu and choose <strong>BattleMetrics Token</strong>. The dialog links to the BattleMetrics developer page and lists
+the scopes the token needs. Link your Steam account as well, so the flag and note commands you send in game use your
+token too. Without a token, SLM adds flags and notes with your organization&#x27;s token, as before.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Admins can add notes to a player&#x27;s BattleMetrics profile and read the notes already there.</p>
+<ul>
+<li>In the player details window, click the notebook button next to the flag editor to add a note. Click <strong>Load notes</strong>
+to list the player&#x27;s notes, newest first, with who wrote each one.</li>
+<li>Right-click a player, a squad or a selection and pick <strong>Add Note...</strong> to add the same note to each of them.</li>
+<li>In admin chat, type <code>!note &lt;player&gt; &lt;text&gt;</code> to add a note.</li>
+</ul>
+<p>SLM posts each note to BattleMetrics signed with the name of the admin who wrote it. SLM fetches a player&#x27;s notes only
+when <strong>Load notes</strong> is clicked, because each fetch counts against your organization&#x27;s BattleMetrics request limit.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The Teams Breakdown is now the <em>Breakdown</em> chart in the new <em>Charts</em> panel, beside a new <em>Scoreline</em> chart.</p>
+<p>The <em>Scoreline</em> chart lists each team&#x27;s tickets, kills, deaths, K/D and wounds, and plots kills, deaths or the kill lead
+across the match. Use the button beside a chart&#x27;s help icon to open the chart in a window of its own. When a match is
+opened from the match history, a banner above the chart names that match, and <em>Return to Live</em> goes back to the live
+one.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The layer picker has a search box above the results. Type maps, gamemodes, factions, units or filter names, the way <code>/reqlayer</code> reads a request.</p>
+<p>The constraint form now opens from the <em>Advanced</em> button beside the search box, and edits the same search. The picker remembers whether <em>Advanced</em> was left open. Submit and the queue options sit along the bottom of the picker.</p>
+</li>
+<li>
+<p><strong>Added:</strong> New player groups and layer tags now start with a color that is easy to tell apart from the ones already in use. Every color picker also offers a row of preset colors.</p>
+</li>
+<li>
+<p><strong>Added:</strong> <em>Fix Repeats</em> in the queue editor reorders the queue and swaps teams to clear repeat warnings.</p>
+<p>It makes as few changes as possible. A tag with <em>Prevent swaps</em> turned on keeps the teams of every layer carrying it.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The teams panel shows the in-game party each player queued with, and the vehicle and seat they are in.</p>
+<p>Party is a grouping mode. Pick Party under Grouping mode to show each player&#x27;s party in the Group column, color players by party and split the team breakdown chart by party. Players outside a party fall under No party. Filter and sort by party from the Group column. Shift+click a party cell to select that party&#x27;s members on the same team, or Shift+Ctrl+click to select them on both teams. The player context menu offers the same selection.</p>
+<p>The Vehicle column is a spoiler, shown with Show Spoilers. The player details window shows both the party and the vehicle.</p>
+</li>
+<li>
+<p><strong>Added:</strong> A new <em>Population</em> chart in the <em>Charts</em> panel plots how many players were on the server, split into active and idle players or by team.</p>
+<p>The chart covers the match the panel displays, or every match in the last 6 hours, day or week. A player in a squad or
+in a vehicle is never idle. Anyone else is idle after a set time without doing anything, 10 minutes by default. Click a
+match on the chart to open it. The chart scales to the server&#x27;s player cap, or to the players drawn. Pick <em>Stats</em> for
+the peak, lowest, average and median player count, the time spent full, the share of idle players, the gap between
+the teams, joins and leaves per hour, and the churn rate over the same time. A chart&#x27;s own window now opens at the size the chart has in the panel, and the panel shows a
+note with a <em>Return to panel</em> button while the chart is out.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The activity feed shows vehicles and deployables being destroyed, with who destroyed them and who was aboard, and FOB radios coming under attack.</p>
+<p>Destroyed vehicles and deployables appear in the Killfeed filter. Attacks on FOB radios appear in the Default filter: once when an attack starts, and once when the radio is taken down to its minimum health.</p>
+<p>History can search them by the vehicle, the vehicle or deployable type, or the exact blueprint.</p>
+<p>None of these are recorded on training layers such as Jensen&#x27;s Range. The server setting &quot;Skip Destroyed Vehicles on Training
+Layers&quot; turns that off.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The activity feed and history have a Vehicles &amp; Deployables filter: vehicles and deployables destroyed, and FOB radios under attack.</p>
+<p>The Default filter also shows a vehicle or deployable destroyed by its own side, as it does a teamkill.</p>
+</li>
+<li>
+<p><strong>Added:</strong> A What&#x27;s new page lists every release and what changed in it. Open it from your account menu.</p>
+<p>A dot on your avatar marks changes you haven&#x27;t seen yet. &quot;Notify me of&quot; on the page picks which ones: headline
+changes (the default), every change, or nothing. Operator notes only count once you turn them on.</p>
+</li>
+<li>
+<p><strong>Added:</strong> You can queue the four Yehorivka world partitioning layers: AAS, Invasion, RAAS and Skirmish, each <code>v1_WP</code>.</p>
+<p>They show as version <code>V1WP</code>, so a version filter can pick them out or leave them out. Their balance scores are those of the matching <code>v1</code> layer. Vehicle filters and layer details also follow the game&#x27;s latest vehicle changes, which give every faction&#x27;s Skirmish units more logistics and transport vehicles.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The server dashboard stays responsive on a full server. Kills, chat and BattleMetrics updates no longer redraw every player row, and the dashboard no longer freezes for a moment every few minutes.</p>
+<p>SLM opens faster. The first visit downloads about a third less, and pages other than the dashboard are downloaded the first time they are opened. The layer table sorts and filters faster, and a tab left open for days uses less memory.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> A filter can be owned by a plugin or by SLM itself, as well as by an admin. The filter index and the filter&#x27;s page name the owner.</p>
+<p>A filter that a plugin creates is owned by that plugin. A fresh install&#x27;s starting filters are owned by SLM, and so is a filter whose admin owner was removed from SLM. Admins with permission to edit every filter, and the filter&#x27;s contributors, can edit a filter that a plugin or SLM owns.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The Default filter only shows a FOB radio under attack when its own side is attacking it, as it does for vehicles and deployables.</p>
+<p>Every radio attack shows in the Killfeed and Vehicles &amp; Deployables filters.</p>
+<p>A radio or deployable is also recognised as its side&#x27;s when the other side&#x27;s faction name starts the same way, such as PLA against PLAAGF.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Event searches on the history page load faster, most of all a search for one player&#x27;s events or for a weapon.</p>
+<p>The history page shows &quot;10,000+ results&quot; for an event search with more than 10,000 results, instead of an exact count.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> When you post a link to a history selection in Discord, SLM now replies with the events as a text file. The reply says how many events and lines it holds and when they happened, in your own time zone.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The layer indicator tooltip lists one line per issue. Each filter line starts with &quot;In&quot; or &quot;Not in&quot;, so an alert for a filter the layer misses no longer reads as a match.</p>
+<p>Repeat lines show how many matches ago the value was played and the gap the rule asks for.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The filter editor, the settings page, the history page and the Add Layers dialog respond faster. A large filter opens without freezing the page, and typing in the filter editor, a role&#x27;s settings or a history search no longer lags.</p>
+<p>Number fields in the filter editor and text fields in the history search are saved a quarter of a second after the last keystroke. A search always uses the latest text.</p>
+<p>The layer picker for a &quot;Layer id in&quot; filter starts with an empty filter menu each time it opens. The picker keeps the layers already selected.</p>
+<p>BattleMetrics details for a player open at once, even while SLM is refreshing BattleMetrics data in the background. For a player who is offline, the details shown can be up to a few hours old until the refresh finishes.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> SLM now checks every line pasted into <em>Paste Rotation</em> before adding any layer.</p>
+<p>Each line that fails the check is listed with the layer, faction or unit SLM does not recognise, and the closest name
+it does recognise. A faction or unit its layer cannot be played with is named too. Nothing is added until every listed
+line is fixed or removed. Turn off <em>Validate layers</em> to add such lines anyway, as raw layers.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> On a phone, the layer picker is split into Filters, Results and Summary tabs, and opens on Results.</p>
+<ul>
+<li>Search for layers by typing maps, gamemodes, factions, units or filter names into the box above the results, the way <code>/reqlayer</code> reads a request. Advanced search edits the same search as a full form, vehicles included.</li>
+<li>Each filter on the Filters tab has an Off, Match or Exclude control.</li>
+<li>Results can be sorted by any visible column, or put in a random order and rerolled with the dice button.</li>
+<li>The indicators beside each result open in a sheet. Each filter listed there has a button that opens the filter.</li>
+<li>The Summary tab lists the selected layers above how they are added to the queue, and holds the Submit button.</li>
+<li>Pickers open as a sheet along the bottom of the screen, with room for the on-screen keyboard.</li>
+</ul>
+</li>
+<li>
+<p><strong>Changed:</strong> Signing out now ends the session in every tab that has it open, and a user who loses access to SLM is sent back to the sign-in page within a minute. Before, an open tab kept working until it was reloaded.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Trigger templates take the remaining words with <code>{{rest}}</code> instead of a numbered <code>{{rest2}}</code>, <code>{{rest3}}</code> and so on.</p>
+<p><code>{{rest}}</code> takes every typed word after the highest-numbered <code>{{argN}}</code>. Saved triggers are rewritten to use it on
+upgrade. A trigger that used a numbered rest to repeat words an <code>{{argN}}</code> already took no longer repeats them.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The server dashboard no longer reloads over and over with &quot;The layer pool was updated&quot; after an upgrade, when SLM is served through a CDN such as Cloudflare.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The server dashboard on a phone now fits the screen, and a long press opens the menu of a match or a layer.</p>
+<ul>
+<li>The Matches and Teams screens no longer scroll sideways or cut off on the right. Long squad names are shortened instead.</li>
+<li>On the Activity screen, the event filter is placed beside the chat channel picker, so the header takes one line.</li>
+<li>While a text field is focused, the top bar and the tab bar are hidden, which leaves more room above the on-screen keyboard.</li>
+<li>A long press on a match in match history opens its menu. Matches can no longer be dragged on a phone, since there is nowhere to drop them.</li>
+<li>A long press on a layer in the layer picker&#x27;s results opens its menu.</li>
+</ul>
+</li>
+<li>
+<p><strong>Fixed:</strong> The population chart&#x27;s 6 hour range now shows a long match that began before the range but ran into it.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Kicks that the game server refuses no longer appear in the event feed or on the history page. The game server refuses to kick some players, such as Squad&#x27;s developers.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> SLM reads the player list from servers running the October 2026 Squad update. Before this fix, SLM showed no players on an updated server and could not track teams or squads.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The teams panel shows all of its columns when the Teams tab is opened. Before, a wide window could show only the player names, with the other columns collapsed to nothing.</p>
+</li>
+</ul>
+&lt;details&gt;&lt;summary&gt;Smaller fixes and tweaks&lt;/summary&gt;
+<ul>
+<li>
+<p><strong>Added:</strong> Use the About page to open the documentation for the version of SLM your server runs.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Open the documentation for your version of SLM from the user menu.</p>
+</li>
+<li>
+<p><strong>Added:</strong> SLM accepts donations on Ko-fi. Open <strong>Support SLM</strong> in the avatar menu, or use the card on the About page.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The layer queue tutorial now covers the <em>Next Layer</em> settings. These settings decide what SLM does when an in-game admin or another RCON tool sets the next layer.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Press Ctrl+Alt+C to copy a link to the selected events. Ctrl+C still copies the events as text. A selection&#x27;s right-click menu lists both shortcuts.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Admin chat in the activity feed is highlighted in the admin color instead of gold, so it no longer looks like a broadcast.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Balance trigger alerts on the server dashboard now look like the dashboard&#x27;s other alerts, with the same icon and colour as the match history row they describe.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The Chat and Admin filters no longer show warns, in the server activity panel and on the history page.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The Commands page lists each plugin&#x27;s commands in their own section, titled after the plugin.</p>
+<p>Links saved to a plugin command before this change open the page, but no longer jump to the command.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The server dashboard redraws less on a busy server. New events in Server Activity no longer redraw its message box and controls, and the avatars of the admins viewing the queue and the teams no longer redraw every second.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Starting, ending or aborting a vote updates the queue sooner. A new timeout appears in the timeouts list sooner. On the settings page, saving a server&#x27;s or a plugin&#x27;s settings finishes sooner.</p>
+<p>The history page opens without first loading every server&#x27;s history, and an existing filter opens faster.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Player groupings are now called grouping modes, so they are easier to tell apart from the groups they sort players into.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Pages open faster. The app downloads 80KB less compressed code before it shows a page, and plugins that add to the web UI finish loading sooner.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> In the teams panel, hovering over a name, group, role or vehicle that is cut off shows it in full, over the cells beside it.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The Teams panel shows each team in its own table whenever both tables fit side by side, and lists both teams in one table when they do not. The panel&#x27;s width and the columns on show decide the layout, not the screen size.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> On narrower screens, the Teams panel&#x27;s toolbar wraps into tidy rows. The <em>Show Selected</em>, <em>Admins Only</em> and <em>Show Spoilers</em> switches stay together, and the actions move to their own row. The reset button is now next to the search box.</p>
+</li>
+<li>
+<p><strong>Removed:</strong> The layer and vote dialogs no longer show an Esc hint in their header. Esc still closes them.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The player details window no longer hides a BattleMetrics flag behind the overflow button when there is room to show it.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> On the commands page, jumping to a command or section from the table of contents lands on it every time. Before, only the first jump did.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The server console keeps following new output when Hide noise is turned off. Before, it could jump to the top of the output and stop following.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The dashboard&#x27;s scrollbar no longer covers the right edge of the queue and teams. It now shows whenever the column scrolls, not only on hover.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The Edit Layer dialog has the same layout as Add Layers, with constraints in a panel beside the table.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> When the queue sets the next layer, the activity feed shows the change inside the queue update that caused it. Before, it sometimes appeared as a separate entry with no cause.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> In the grouping mode settings, the color picker no longer closes while you drag it, rule types are no longer cut off, and choosing &quot;Add new group...&quot; puts the cursor in the name field.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The history page&#x27;s Player field shows the player&#x27;s name when you paste their Steam or Epic id. Removing a player from the field and running the query now drops them from it.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The layers table in the Add Layers dialog no longer cuts off its right-hand columns. The dialog widens to fit every visible column. On a screen too narrow for that, the table shows only its main columns, and it scrolls sideways if even those don&#x27;t fit.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Player names with non-Latin characters are no longer garbled now and then on servers whose log file SLM reads directly from disk.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Long labels wrap instead of being cut off or spilling out of buttons.</p>
+<p>Nav links that do not fit move into the More menu. History filter labels are shown in full, and command cards no
+longer cut off the command name.</p>
+<p>Some setting names are clearer. &quot;Instant Swap Lead&quot; is now &quot;Team Size Lead for Instant Switch&quot;, &quot;Post Match Delay
+Ms&quot; is &quot;Post-match Delay (ms)&quot;, and the local connection type is &quot;Local file&quot;.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> On the settings page, scrolling with the mouse over the empty space either side of the settings now moves at the same speed as scrolling over the settings.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The focus outline around the settings search box is no longer cut off at its top and left edges.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The player management tutorial works when started shortly after midnight. Its match history steps no longer lose their example matches.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Vote choice numbers in the queue, such as +2.1, stay on one line.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Windows such as player details open beside the name or button that opened them, instead of in the middle of the screen when they are tall. A window never opens partly off screen.</p>
+</li>
+</ul>
+&lt;/details&gt;
+<h3 id="for-operators" class="docs-heading">For operators<a href="#for-operators" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md#for-operators" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
+<ul>
+<li>
+<p><strong>Breaking:</strong> Two changes can need a step when upgrading:</p>
+<ul>
+<li><strong>A server agent</strong> is refused while its server still has the default token, <code>dev</code>. Set a token of your own in the
+server&#x27;s connection settings, and give the agent the same one.</li>
+<li><strong>A local admin list file</strong> must be inside the <code>data</code> directory. Move the file there, or set <code>LOCAL_ADMIN_LISTS_DIR</code>
+to the directory it is kept in.</li>
+</ul>
+</li>
+<li>
+<p><strong>Breaking:</strong> The plugin API is version 0.12. A packed plugin that declares <code>^0.8</code>, <code>^0.9</code>, <code>^0.10</code> or <code>^0.11</code> does not load until it is rebuilt against 0.12.</p>
+<p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.12</code> in its manifest and repack it with <code>pnpm plugin:pack</code>. Other changes since 0.10:</p>
+<ul>
+<li><code>getServerInfo</code> and <code>getLayerStatus</code> in <code>slm/systems/squad-rcon</code> answer from SLM&#x27;s cache, as <code>getTeams</code> does, instead of sending an RCON command on every call. A plugin that calls them often no longer adds RCON traffic.</li>
+<li><code>getTeams</code>, <code>getServerInfo</code>, <code>getLayerStatus</code> and <code>getPlayer</code> take an optional <code>{ ttl }</code> in milliseconds, for an answer fresher than the cache. A <code>ttl</code> below <code>MIN_TTL_MS</code> (1 second) is raised to it.</li>
+<li><code>teams$</code>, <code>serverInfo$</code> and <code>layerStatus$</code> push every new answer to a plugin, so a plugin no longer has to poll.</li>
+<li>The player objects that <code>getPlayer</code>, <code>getTeams</code> and <code>checkPlayer</code> work with can carry <code>partyId</code> and <code>vehicle</code>.</li>
+<li><code>tryKickPlayers</code> in <code>slm/systems/squad-server</code> kicks players like <code>kickPlayers</code> and returns the players the game server kicked.</li>
+<li><code>slm/lib/rxjs-ext</code> adds <code>bufferBurst</code>.</li>
+<li><code>slm/systems/player-activity</code> reads SLM&#x27;s rule for when a player counts as idle.</li>
+<li><code>register</code> in <code>slm/systems/post-roll-reminders</code> takes the per-server ctx and must be called from <code>Servers.setup</code>. The provider takes no arguments. A provider registered for one server is asked only after rolls on that server.</li>
+</ul>
+</li>
+<li>
+<p><strong>Breaking:</strong> A plugin that creates filters, or reads a filter&#x27;s owner, needs a code change for plugin API 0.12. A filter&#x27;s <code>owner</code> is now <code>{ type: &#x27;slm-user&#x27;, userId }</code>, <code>{ type: &#x27;plugin&#x27;, pluginId }</code> or <code>{ type: &#x27;system&#x27; }</code> instead of a discord user id.</p>
+<p><code>create</code> in <code>slm/systems/filter-entity</code> makes the calling plugin the filter&#x27;s owner. To keep an admin as the owner, pass <code>owner: { type: &#x27;slm-user&#x27;, userId }</code>.</p>
+<p>The upgrade hands SLM&#x27;s starting filters, and any filter whose owner was removed from SLM, to SLM itself. Filters an admin owns stay theirs.</p>
+</li>
+<li>
+<p><strong>Breaking:</strong> The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page. The encryption key can be rotated, must be at least 16 characters in production, and credentials can be mounted one file each.</p>
+<p><strong>Integrations on the settings page.</strong> <code>BM_PAT</code>, <code>BM_ORG_ID</code>, <code>BM_ENABLED</code>, <code>SQUADBROWSER_API_KEY</code>, <code>SQUADBROWSER_ENABLED</code>, <code>STEAM_API_KEY</code> and <code>STEAM_ENABLED</code> are now the <em>Integrations</em> section of the global settings. The first boot after upgrading carries the values over from the environment into the settings, after which the variables are ignored and the boot log says so each time one is still set. Remove them from <code>.env</code> and <code>.env.secrets</code> once that boot has happened. A token is stored encrypted and never shown again: the field shows a placeholder, and typing in it replaces the token. Editing the section takes a <code>global-settings:write</code> grant on <code>integrations</code>, which the default managers role does not hold. <code>BM_HOST</code>, <code>SQUADBROWSER_HOST</code> and <code>STEAM_HOST</code> stay in the environment.</p>
+<p><strong>Encryption key length.</strong> Production refuses a <code>SETTINGS_ENCRYPTION_KEY</code> shorter than 16 characters. If yours is, move it to <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code>, generate a new one with <code>openssl rand -base64 32</code> into <code>SETTINGS_ENCRYPTION_KEY</code>, and start the app. A key from <code>install.sh</code> or from that command is long enough already and needs nothing.</p>
+<p><strong>Key rotation.</strong> <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code> is the rotation path in general. On the next boot everything still encrypted with the old key is re-encrypted with the new one, after which the variable can be removed.</p>
+<p><strong>One file per credential.</strong> <code>SECRETS_DIR</code> reads credentials from a directory holding one file per variable, which is what docker and podman secrets, a kubernetes secret volume and systemd&#x27;s credentials directory mount. A file there wins over the same variable in <code>SECRETS_FILE</code>.</p>
+<p><strong>Restore.</strong> <code>restore.sh --inspect</code> now also reports whether a backup&#x27;s secrets decrypt with the key configured here, since a backup restored under a different key comes up with its servers disabled and its integration tokens unset.</p>
+</li>
+<li>
+<p><strong>Added:</strong> An announcement can count down to a time. Put <code>{countdown:2m}</code> in the message passed to <code>pnpm announce</code>, and the web banner counts down from 2 minutes. The in-game warn is sent once and shows &quot;2m&quot;.</p>
+</li>
+<li>
+<p><strong>Added:</strong> <code>install.sh</code> installs the newest release by default. Pass <code>--channel latest</code> to follow every change, or <code>--version 2026.9.4</code> to pin one release.</p>
+<p>The choice is saved as <code>SLM_IMAGE_TAG</code> in <code>.env</code>, and <code>docker-compose.yaml</code> reads the image tag from it. To switch
+channel or pin a build, change <code>SLM_IMAGE_TAG</code> and run <code>docker compose pull &amp;&amp; docker compose up -d</code>. The installer
+also fetches the files for the release it installs, so <code>docker-compose.yaml</code> and <code>.env.example</code> match the image.</p>
+<p>An existing install keeps following <code>:latest</code> and needs no change. To set its tag from <code>.env</code>, change the <code>image:</code>
+line of the <code>app</code> service in <code>docker-compose.yaml</code> to <code>ghcr.io/tactrigsds/squad-layer-manager:${SLM_IMAGE_TAG:-latest}</code>.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Plugins can depend on packages from npm. <code>pnpm plugin:pack</code> bundles them into the plugin.</p>
+<p>A plugin repo declares its dependencies in its own <code>package.json</code> and installs them with <code>pnpm install</code>. The packages
+SLM provides now include <code>react-dom</code>. <code>pnpm plugin:pack</code> refuses CommonJS packages, and warns when a dependency
+expects a version of <code>react</code>, <code>zod</code> or another provided package that SLM does not ship. The plugin guide&#x27;s
+<em>Dependencies</em> section describes the setup.</p>
+</li>
+<li>
+<p><strong>Added:</strong> SLM refuses to start on a database a newer build has migrated, instead of running against a schema it does not know.</p>
+<p>The log names the migrations the running build is missing and the image tag of the build that last ran against the
+database. To go back to an older build, restore a backup taken before the upgrade, as <em>Downgrading</em> in the install
+guide describes.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Releases are published as a <code>:stable</code> image tag, alongside a tag for each version. <code>:latest</code> still follows every change.</p>
+<p>Follow <code>:stable</code> for tested batches of changes that come with release notes. See the upgrading section of docs/installing.md.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The password of an SFTP admin list source is now treated as a credential. SLM encrypts the password in the database, and hides it on the settings page and in the audit log.</p>
+<p>The first start after upgrading encrypts a stored password in place. A version older than this one reads the encrypted
+value as the password, so downgrading needs the password entered again.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Backups are smaller and take less time. A backup copies only the data your database holds, without the free space a database file keeps after old data is deleted. On a 2.5 GB production database with 1.9 GB of free space, a backup shrank from 447 MB to 107 MB and took 14 seconds instead of 57.</p>
+<p>A database restored from one of these backups is compacted the same way, so its file is smaller than the one it was taken from.</p>
+<p>Recording game events no longer stalls SLM for 10 to 20 ms every few hundred events.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> A new permission, <code>battlemetrics:write-notes</code>, controls who can add BattleMetrics notes.</p>
+<p>The upgrade grants <code>battlemetrics:write-notes</code> to every role that has <code>battlemetrics:write-flags</code>, and denies it to
+every role that denies <code>battlemetrics:write-flags</code>. Remove <code>battlemetrics:write-notes</code> from a role to stop that role
+adding notes without affecting its flags.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The database file now shrinks on its own as old data is removed, instead of keeping the freed space for good.</p>
+<p>The first start after upgrading compacts the database once, before SLM begins serving. A 2.5 GB production database, three quarters of it free space, took 3 seconds and came out at 545 MB. Compacting needs free disk space about the size of the compacted database while it runs. With <code>DB_AUTOMIGRATE</code> off, <code>pnpm db:migrate</code> does the compacting instead.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Plugins cannot be installed or refreshed from a url on a demo instance. Anyone who reaches a demo signs in as an admin, so installing a plugin there would let anyone run code on the server.</p>
+<p>The demo command in the installation guide now accepts connections from the local machine only.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> SLM runs as the unprivileged <code>node</code> user inside its container. The first start after upgrading hands the <code>data</code> directory to that user, so no step is needed.</p>
+<p>Session ids are stored hashed, so a copy of the database or a backup no longer holds a usable sign-in. Nobody is signed
+out by the upgrade.</p>
+<p>Grafana now asks everyone to sign in, and accepts connections from the machine SLM runs on only. An existing install
+keeps its Grafana admin account and password. To open Grafana from another machine, forward port 3001 over SSH with
+<code>ssh -L 3001:localhost:3001 &lt;your server&gt;</code>, or put it behind a reverse proxy on the same machine.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> SLM starts answering requests sooner after a restart. With <em>Warn on SLM Start</em> turned on, a game server that SLM cannot reach no longer delays startup by about 15 seconds.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Replies to history links in Discord now always attach a file. Give the bot&#x27;s role Attach Files in every channel where it should reply. Without it, SLM does not reply there.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Use the new <em>Player Activity</em> setting under <em>Players &amp; Balance</em> to set how long a player can go without doing anything before SLM counts them as idle.</p>
+<p>The AFK Kicker follows SLM&#x27;s idle rule on its idle gamemodes, so it no longer kicks an inactive player who is in a squad
+or in a vehicle there. The kicker&#x27;s <code>idleWindow</code> setting still decides how long a player stays idle before the kicker
+acts. Plugins can read
+the same rule from <code>slm/systems/player-activity</code> (plugin API 0.12).</p>
+<p>After the upgrade, SLM counts the players of every past match in the background, newest first, for the chart&#x27;s day and
+week ranges. Until a match is counted, the chart notes how many in its range are still missing.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> Plugins can only be installed and refreshed over <code>https://</code>. SLM also refuses to install a plugin whose id is already installed from another url, and uninstalling a plugin now leaves it stopped if it is installed again.</p>
+<p>A plugin installed from an <code>http://</code> url can no longer be refreshed. Uninstall it and install it again from its
+<code>https://</code> url.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> SLM&#x27;s memory use no longer grows with uptime. Several in-memory buffers and open browser connections kept everything they had ever handled until a restart.</p>
+<p>The <code>RCON PACKET</code> and <code>emitted event</code> log lines are logged at <code>debug</code> instead of <code>info</code>, so production logs at the default level are much smaller.</p>
+<p>SLM looks up a Discord user who has left your guild at most once every 10 minutes, so the warning for that lookup appears far less often. Editing or reordering Discord roles no longer makes SLM recheck every signed-in user&#x27;s permissions.</p>
+<p>Background BattleMetrics refreshes use at most 45 of the 60 requests a minute that BattleMetrics allows, so requests made by admins are not held behind them.</p>
+<p>The upgrade drops six database indexes that no query reads and adds one for weapon filters on the history page. Expect the migration to take about half a second per million recorded events.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> SLM&#x27;s web interface sends every action over one connection to the server. SLM now refuses that connection when a page on another site opens it, since that page could otherwise act as whoever was signed in. The session cookie is now <code>SameSite=Lax</code>, and <code>Secure</code> when <code>ORIGIN</code> starts with <code>https://</code>.</p>
+<p>A deployment behind a reverse proxy needs <code>ORIGIN</code> set to the url that browsers open, or the proxy must pass the <code>Host</code>
+header through unchanged. Otherwise the web interface cannot connect.</p>
+</li>
+<li>
+<p><strong>Removed:</strong> The <em>RCON Cache TTL</em> server settings are removed. SLM polls each game server at the old defaults: the current and next layer every 5 seconds, server info every 10 seconds and the roster every 5 seconds.</p>
+<p>The upgrade deletes the stored values of these settings and any comments on them. A role&#x27;s server settings grant that named these settings alongside others keeps the others. A grant that named only these settings becomes a read grant on the same servers, so the role can still view the settings of those servers.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> An admin list whose source cannot be read no longer takes admin status away from everyone on it. SLM keeps the list from its last successful read and logs a warning each time a read fails.</p>
+<p>A remote source that answers with an HTTP error now counts as a failed read, not as an empty list. A list that has not been read successfully since SLM started still grants nothing.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A top bar colour written to carry markup could run script for anyone who opened SLM&#x27;s icon in their browser. SLM now draws the icon only from a colour it can read, and serves the icon so that it cannot run script.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A log line that SLM cannot parse no longer stops SLM reading the server&#x27;s log. Before, events stopped appearing until SLM was restarted.</p>
+<p>Busy moments no longer stall SLM. A burst of a thousand kills or chat messages, a warn to every player, or a map change held up the rest of SLM for up to a second. Each now holds SLM up for a few tens of milliseconds at most.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Several security fixes:</p>
+<ul>
+<li>SLM refuses to be shown inside a frame on another site, which could trick a signed-in admin into clicking its
+controls.</li>
+<li>A queue editor can no longer send the queue operations SLM reserves for itself, which skipped the edit window and the
+pool and installed-mods checks.</li>
+<li>The plugin list hides the query of an install url, where a token can be kept, and shows a plugin&#x27;s error only to
+users who can manage plugins.</li>
+<li>An open plugin stream stops for a user who loses the permission the plugin requires.</li>
+<li>SLM refuses to install a plugin whose id is too alike to an installed plugin&#x27;s for their database tables to be kept
+apart, such as <code>hello</code> beside <code>hello-x</code>.</li>
+<li>A server join link must open Steam.</li>
+</ul>
+</li>
+<li>
+<p><strong>Fixed:</strong> The server no longer keeps memory for every browser connection it has ever accepted. Each page load used to cost about 9 KB for the life of the process, so a browser stuck reloading grew the server by up to 50 MB an hour.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A user allowed to edit any one server setting could grant themselves every permission, including plugin installation. SLM now rejects the settings edits that made this possible. Upgrade promptly: the default managers role can edit server settings.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A user allowed to edit the permissions config or the admin lists could grant themselves any permission. SLM now refuses a save that would grant a permission the user saving it does not hold.</p>
+<p>The raw settings editor no longer lets a user without <code>server-settings:write-sensitive</code> replace a server&#x27;s connection
+details while that server&#x27;s stored settings are invalid.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A role&#x27;s server settings grant that is limited to certain settings no longer widens to every setting when an upgrade removes all of the settings it named. The grant now lets the role view those servers&#x27; settings and edit none of them.</p>
+</li>
+</ul>
+&lt;details&gt;&lt;summary&gt;Smaller fixes and tweaks&lt;/summary&gt;
+<ul>
+<li>
+<p><strong>Added:</strong> Plugin API 0.8.1: <code>kickPlayers</code> in <code>slm/systems/squad-server</code> kicks players on behalf of the plugin, and server info now reports reserved slots and the reserved queue.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Plugin API 0.8.2: a packed plugin ships a stylesheet, so its Tailwind classes work once installed, and <code>slm/components/ui</code> lends it SLM&#x27;s alerts, badges, buttons, cards and tooltips.</p>
+<p><code>pnpm plugin:pack</code> compiles the classes a plugin&#x27;s client uses into <code>client.css</code>, against SLM&#x27;s own theme, and SLM
+loads it with the client. A plain <code>client.css</code> beside <code>client.tsx</code> is compiled into the same file.</p>
+</li>
+<li>
+<p><strong>Added:</strong> The overview dashboard in Grafana shows player count and join queue length for each server.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Set <code>PUBLIC_DOCS_URL</code> to point the About page&#x27;s documentation link at your fork&#x27;s documentation site. Leave it unset to link to SLM&#x27;s own documentation. The site must be built with SLM&#x27;s docs build, which lays it out by version.</p>
+</li>
+</ul>
+&lt;/details&gt;</div></article><footer class="docs-page-footer"><div class="docs-source"><code>CHANGELOG.md</code><div class="ms-auto flex flex-wrap gap-x-5 gap-y-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changelog/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changelog/</a></div></div></footer></main><aside aria-label="On this page" class="docs-toc max-xl:hidden"><div class="flex items-center justify-between pb-1"><div class="docs-label">On this page</div><button type="button" class="docs-toc-toggle" data-toc-toggle="" aria-expanded="true" aria-label="Collapse subheadings" title="Collapse subheadings" hidden=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-down-up docs-toc-collapse size-4" aria-hidden="true"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down docs-toc-expand size-4" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg></button></div><a href="#2026101-2026-10-05" data-level="0">2026.10.1 (2026-10-05)</a><a href="#for-users" data-level="1">For users</a><a href="#for-operators" data-level="1">For operators</a><div class="mt-5 flex flex-col gap-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-4" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>View source</a><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changelog/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changelog/</a></div></aside></div><dialog id="docs-search" class="docs-search" aria-label="Search the docs"><form class="docs-search-field" method="dialog"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-[18px] shrink-0 text-text-2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><label for="docs-search-input" class="sr-only">Search</label><input id="docs-search-input" type="search" placeholder="Search the docs" autoComplete="off" spellCheck="false" role="combobox" aria-expanded="false" aria-controls="docs-search-results"/><kbd class="docs-kbd">esc</kbd></form><ul id="docs-search-results" class="docs-search-results" role="listbox" aria-label="Results"></ul><p class="docs-search-status" aria-live="polite"></p><div class="docs-search-keys" aria-hidden="true"><span><kbd class="docs-kbd">↑</kbd> <kbd class="docs-kbd">↓</kbd> move</span><span><kbd class="docs-kbd">↵</kbd> open</span></div></dialog></body></html>
