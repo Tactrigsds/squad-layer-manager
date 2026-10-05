@@ -3,9 +3,11 @@ import React from 'react'
 
 import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
+import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as BB from '@/models/backburner.models'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
@@ -105,6 +107,22 @@ export function getDefaultFilterMenuItemState(
 		}
 	}
 	return extraItems
+}
+
+// a backburner template's constraints as the menu's per-column comparisons. A field the menu already models as
+// an `in` keeps that shape; elsewhere a single value becomes `eq` and several (e.g. a merged request's
+// `Map in [Chora, Fallujah]`) an `in`. The team-column split is done upstream.
+export function menuItemsFromTemplate(
+	filter: F.FilterNode,
+	colConfig: LQY.EffectiveColumnAndTableConfig,
+): Record<string, F.EditableCompNode> {
+	const items = getDefaultFilterMenuItemState({}, colConfig)
+	for (const [field, values] of Obj.objEntries(BB.templateToMenuFieldValues(filter))) {
+		const item = items[field]
+		if (!item) continue
+		items[field] = item.type === 'in' || values.length > 1 ? EFB.inValues(field, values) : EFB.eq(field, values[0])
+	}
+	return alignTeamRowOperators(items)
 }
 
 // A matchup row shows one operator for both sides, and swapTeams moves values between them, so a row seeded with

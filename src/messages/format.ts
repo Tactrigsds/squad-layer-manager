@@ -131,6 +131,19 @@ export function formatNumber(value: number, locale?: string) {
 	return formatter.format(value)
 }
 
+const compactNumberFormats = new Map<string, Intl.NumberFormat>()
+
+// a count shortened for a badge: 62742 reads as "63K" in English
+export function formatNumberCompact(value: number, locale?: string) {
+	const resolved = locale ?? I18n.getAmbientLocale()
+	let formatter = compactNumberFormats.get(resolved)
+	if (!formatter) {
+		formatter = new Intl.NumberFormat(resolved, { notation: 'compact' })
+		compactNumberFormats.set(resolved, formatter)
+	}
+	return formatter.format(value)
+}
+
 // A human-readable list, "a, b and c", joined the way the reader's language joins one
 export function formatList(items: readonly string[], options?: { locale?: string; type?: 'conjunction' | 'disjunction' | 'unit' }) {
 	return I18n.listFormat(options?.locale ?? I18n.getAmbientLocale(), options?.type).format(items)

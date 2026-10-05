@@ -238,9 +238,71 @@ export const submit = def('Submit')
 // the picker's mode switch and its phone submit button
 export const voteMode = def('Vote')
 export const setLayerMode = def('Set Layer')
-export const submitCount = def('Submit · {count} layers', (count: number) => ({ count }))
+export const submitCount = def('{count, plural, one {Submit · # layer} other {Submit · # layers}}', (count: number) => ({ count }))
 
 export const addMultipleLayers = def('Add Multiple Layers')
+
+// -------- the picker on a phone --------
+
+// the tabs along the bottom of the picker
+export const phoneTabFilters = def('Filters')
+export const phoneTabResults = def('Results')
+export const phoneTabSummary = def('Summary')
+
+export const defaultFilters = def('Default filters')
+export const extraFilters = def('Extra filters')
+// the noun the extra filter picker counts its selection in: "Selected extra filters (2)"
+export const extraFilterNoun = def('extra filter')
+export const extraFiltersHint = def('Extra filters narrow this search without changing the default filters.')
+// a pinned filter is one the server configures, which the picker always lists
+export const pinnedFilter = def('Pinned')
+
+// the three ways a filter can apply, as a segmented control
+export const filterOff = def('Off')
+export const filterMatch = def('Match')
+export const filterExclude = def('Exclude')
+
+// the count is emphasised, which is part of the sentence; the readout styles `strong` itself
+export const filtersOnlyCount = def((count: string) => rt('<strong>{count}</strong> layers match these filters', { count }))
+export const searchNotCounted = def(
+	'Your search is not counted here. With it, {count, plural, one {# layer matches} other {# layers match}}.',
+	(count: number) => ({ count }),
+)
+
+export const searchLayers = def('Search layers')
+export const closeSearch = def('Close search')
+export const clearSearch = def('Clear search')
+export const advancedSearch = def('Advanced search')
+export const searchTips = def('Type maps, gamemodes, sizes, factions, alliances, units or filters.')
+export const dismissSearchTips = def('Dismiss search tips')
+export const recentSearches = def('Recent searches')
+export const clearRecentSearches = def('Clear')
+// leads the suggestions offered for a search word that matched nothing
+export const didYouMean = def('Did you mean')
+// the search box reads back a constraint it cannot write, such as a vehicle or a constraint set to !=
+export const unwrittenConstraints = def('Some of these constraints cannot be written as search text. Typing a new search clears them.')
+
+export const sortBy = def('Sort by')
+export const defaultOrder = def('Default order')
+export const randomOrder = def('Random')
+export const reroll = def('Reroll')
+export const sortAscending = def('Sort ascending')
+export const sortDescending = def('Sort descending')
+export const sortAscendingByMagnitude = def('Sort ascending by magnitude')
+export const sortDescendingByMagnitude = def('Sort descending by magnitude')
+
+export const clearSelection = def('Clear')
+export const continueWithLayers = def('{count, plural, one {Continue with # layer} other {Continue with # layers}}', (count: number) => ({
+	count,
+}))
+
+export const selectedLayers = def('Selected layers')
+export const noLayersSelected = def('No layers selected. Pick layers from the results to add them to the queue.')
+export const goToResults = def('Go to results')
+export const removeSelectedLayer = def('Remove {layer}', (layer: string) => ({ layer }))
+export const addAs = def('Add as')
+export const voteModeHint = def('Players vote between the selected layers. The vote is added to the queue as one item.')
+export const setLayerModeHint = def('Each selected layer is added to the queue as its own item.')
 
 export const showRawInput = def('Show Raw Input')
 

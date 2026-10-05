@@ -5,7 +5,7 @@ import React, { useCallback, useImperativeHandle, useRef, useState } from 'react
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
+import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
@@ -34,7 +34,9 @@ import {
 	searchKeywords,
 	selectableCount,
 } from './options.ts'
+import { useIsComboBoxSheet } from './sheet.ts'
 import { useGrowOnlyWidth } from './sizing.ts'
+import { ComboBoxSurface } from './surface.tsx'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -199,6 +201,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	const selectionInitiatedRef = useRef(false)
 
 	const [open, setOpen] = useState(!!props.autoOpen)
+	const sheet = useIsComboBoxSheet()
 	const _onSelect = props.onSelect
 	useImperativeHandle(
 		props.ref,
@@ -291,30 +294,37 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 					</Button>
 				)}
 			</PopoverTrigger>
-			<PopoverContent
-				align="start"
-				ref={popoverRef}
-				className={cn('relative p-0', POPOVER_SIZING_CLASSES)}
-				// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
-				// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
-				// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
-				// one owner, which is what useComboBoxDismissal already claims to be.
-				onEscapeKeyDown={(e) => e.preventDefault()}
-				onCloseAutoFocus={(e) => {
-					if (!props.preventCloseAutoFocus) return
-					// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
-					// default by focusing the trigger ourselves; on a selection we leave focus for the hand-off.
-					e.preventDefault()
-					if (!selectionInitiatedRef.current) btnRef.current?.focus()
+			<ComboBoxSurface
+				title={props.title}
+				onClose={() => {
+					setOpen(false)
+					props.onOpenChange?.(false)
+				}}
+				popoverProps={{
+					align: 'start',
+					ref: popoverRef,
+					className: cn('relative p-0', POPOVER_SIZING_CLASSES),
+					// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
+					// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
+					// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
+					// one owner, which is what useComboBoxDismissal already claims to be.
+					onEscapeKeyDown: (e) => e.preventDefault(),
+					onCloseAutoFocus: (e) => {
+						if (!props.preventCloseAutoFocus) return
+						// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
+						// default by focusing the trigger ourselves; on a selection we leave focus for the hand-off.
+						e.preventDefault()
+						if (!selectionInitiatedRef.current) btnRef.current?.focus()
+					},
 				}}
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
-				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="end" />}
+				{open && !sheet && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="end" />}
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}
-						className={cn('min-h-0', MenuSizing.MENU_MIN_WIDTH_CLASS, MenuSizing.MENU_MAX_WIDTH_CLASS)}
+						className={cn('min-h-0', sheet ? 'flex-1' : [MenuSizing.MENU_MIN_WIDTH_CLASS, MenuSizing.MENU_MAX_WIDTH_CLASS])}
 						onKeyDown={(e) => {
 							if (e.key !== 'Tab') return
 							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
@@ -323,7 +333,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							cycleGroup(tabbed, e.shiftKey ? -1 : 1)
 						}}
 					>
-						{!drillEntry && describedOptions.size > 0 && (
+						{!drillEntry && !sheet && describedOptions.size > 0 && (
 							<HighlightedDescriptionSync options={describedOptions} box={descriptionBoxRef} />
 						)}
 						<CommandInput
@@ -337,7 +347,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						) : (
 							<GroupingBar groupings={barEntries} onPick={pickGroup} onDrill={openDrill} />
 						)}
-						<CommandList className={cn('min-h-0', MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
+						<CommandList className={cn('min-h-0', sheet ? 'flex-1 max-h-none' : MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
 							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
 							{drillEntry && options !== LOADING && (
 								<GroupDrillIn
@@ -392,7 +402,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 													className={cn('me-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
 												/>
 												{/* one line per row: too long ellipsizes rather than wrapping the list into a wall of text */}
-												<span className="min-w-0 flex-1 truncate">
+												<span className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}>
 													<PrefixedLabel
 														prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
 														label={
@@ -408,6 +418,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 														}
 														render={prefixRenderer}
 													/>
+													{sheet && option.description && (
+														<span className="text-xs font-normal whitespace-normal text-text-2">{option.description}</span>
+													)}
 												</span>
 											</CommandItem>
 										))}
@@ -416,7 +429,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						</CommandList>
 					</Command>
 				)}
-			</PopoverContent>
+			</ComboBoxSurface>
 		</Popover>
 	)
 }

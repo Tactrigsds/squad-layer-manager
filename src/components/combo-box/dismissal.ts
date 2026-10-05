@@ -20,7 +20,11 @@ export function useComboBoxDismissal(open: boolean, close: () => void, consumeEs
 		if (!open) return
 		const onPointerDown = (event: PointerEvent) => {
 			const target = event.target
-			if (target instanceof Element && target.closest('[data-radix-popper-content-wrapper], [data-combobox-trigger]')) return
+			if (
+				target instanceof Element &&
+				target.closest('[data-radix-popper-content-wrapper], [data-combobox-trigger], [data-combobox-sheet]')
+			)
+				return
 			closeRef.current()
 		}
 		const onKeyDown = (event: KeyboardEvent) => {
