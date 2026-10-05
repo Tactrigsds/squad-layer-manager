@@ -21,8 +21,7 @@ the highest one in the winning directory is used unless `LAYERS_VERSION` pins a 
 directory that is searched ahead of both.
 
 To build your own pair, with different scoring, extra columns, or different layers and game versions, see
-`src/scripts/preprocess.ts` (`pnpm preprocess`). It writes both halves into `assets/layers`, or into
-`LAYERS_OUTPUT_DIR` if that is set.
+[Building custom layer data](../../developers/custom_layer_data.md).
 
 ## Layer sources and mods
 

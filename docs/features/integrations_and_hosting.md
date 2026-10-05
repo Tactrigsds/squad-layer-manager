@@ -1,18 +1,12 @@
 # Integrations and hosting
 
-Admins reach SLM in game as well as from the dashboard, and SLM connects to Discord, BattleMetrics and Steam. Roles
-decide what each admin may do, plugins extend SLM, and SLM is self-hosted.
+Admins reach SLM in game and from the dashboard, on a computer or a phone, and SLM connects to Discord, BattleMetrics
+and Steam. Roles decide what each admin may do, plugins extend SLM, and SLM is self-hosted.
 
 ## In-game commands
 
-Admins can access many SLM features in game through chat commands: votes, swaps, warns, kicks, timeouts, broadcasts,
-flags and layer requests. A _trigger_ is the word typed in chat to run a command. Add your own triggers for any command,
-including shortcuts with arguments filled in, such as `/to2h` for a two-hour timeout. See
-[command_triggers.md](../guide/configuring/command_triggers.md).
-
-The _Commands_ page in your install lists every command and how to use each one.
-
-![the commands page](../images/configuring/commands_page.png)
+Admins can access many SLM features in game through chat commands, and players can use the public ones. See
+[In-game commands](ingame_commands.md).
 
 ## Integrations
 
@@ -20,7 +14,7 @@ The _Commands_ page in your install lists every command and how to use each one.
 
 Users sign in with their Discord account. Grant SLM permissions to a Discord role, a Discord user or every member of
 your server. Use your server's emoji to mark layers in the queue. Post a link to a selection of events from the
-[activity feed or history page](player_management.md#activity-and-history) in Discord, and SLM replies with the events
+[activity feed or history page](server_monitoring.md#server-activity) in Discord, and SLM replies with the events
 attached as a text file.
 
 ### BattleMetrics

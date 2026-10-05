@@ -42,6 +42,20 @@ export const PAGES: Page[] = [
 		group: 'Features',
 	},
 	{
+		file: 'docs/features/server_monitoring.md',
+		slug: 'monitoring-and-history',
+		label: 'Monitoring and history',
+		section: 'features',
+		group: 'Features',
+	},
+	{
+		file: 'docs/features/ingame_commands.md',
+		slug: 'ingame-commands',
+		label: 'In-game commands',
+		section: 'features',
+		group: 'Features',
+	},
+	{
 		file: 'docs/features/integrations_and_hosting.md',
 		slug: 'integrations-and-hosting',
 		label: 'Integrations and hosting',
@@ -133,13 +147,6 @@ export const PAGES: Page[] = [
 		group: 'Contributing',
 	},
 	{
-		file: 'docs/developers/architecture.md',
-		slug: 'architecture',
-		label: 'Architecture',
-		section: 'developers',
-		group: 'Architecture',
-	},
-	{
 		file: 'docs/developers/writing_plugins.md',
 		slug: 'writing-plugins',
 		label: 'Writing a plugin',
@@ -153,7 +160,20 @@ export const PAGES: Page[] = [
 		section: 'developers',
 		group: 'Plugins',
 	},
-	{ file: 'docs/developers/brand.md', slug: 'brand', label: 'Brand', section: 'developers', group: 'Reference' },
+	{
+		file: 'docs/developers/architecture.md',
+		slug: 'architecture',
+		label: 'Architecture',
+		section: 'developers',
+		group: 'Reference',
+	},
+	{
+		file: 'docs/developers/custom_layer_data.md',
+		slug: 'custom-layer-data',
+		label: 'Building custom layer data',
+		section: 'developers',
+		group: 'Reference',
+	},
 	{ file: 'docs/faq.md', slug: 'faq', label: 'FAQ', section: 'faq', group: 'FAQ' },
 	{
 		file: 'CHANGELOG.md',

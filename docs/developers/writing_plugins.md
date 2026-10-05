@@ -2,7 +2,7 @@
 
 A plugin is an extension that runs in the SLM process. It can use everything core code uses: the database, match
 history, the layer queue, RCON, the settings page and the server dashboard. It ships as a folder of prebuilt bundles
-that an admin installs from a url.
+that an admin installs from a url, or a local directory.
 
 Plugins are trusted. There is no sandbox. A plugin runs in the SLM process with everything that process can do, so a
 plugin is only safe to install if running it as a fork of SLM would be.
@@ -110,6 +110,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		sctx.cleanup.push(
 			sctx.matchHistory.finalized$
 				.pipe(
+					// Instr.durableSub subscribes to the finalized$ rxjs observable (https://rxjs.dev/) in a way that includes some observability instrumentation, and automatic retries. See its definition for more.
 					Instr.durableSub('count-matches', { module: sctx.module }, async () => {
 						const history = await MatchHistory.getRecentMatches(sctx)
 						await AppEvents.emit(sctx, 'counted', { count: history.length }, `${history.length} matches on record`)
@@ -180,6 +181,7 @@ export const migrations: PluginMigration[] = [
 	{
 		name: '0001_init',
 		up: (db) => {
+			// we have to give the full DDL inline here because the table schema we defined above may change in the future, and migrations shouldn't be changed later
 			db.exec(`CREATE TABLE IF NOT EXISTS ${greetings} (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				serverId TEXT NOT NULL,
@@ -196,7 +198,7 @@ change what an applied migration did.
 
 ## Filters
 
-A filter is a predicate over layers: what a server's pool admits, what an indicator marks. `slm/systems/filter-entity`
+A filter is a predicate over layers. `slm/systems/filter-entity`
 reads and writes the same filters admins see in the filter index. `slm/models/filter-builders` builds a filter tree
 without assembling the nodes by hand.
 
@@ -248,8 +250,10 @@ what.
 
 ## Layer queries
 
-`slm/systems/layer-queries` asks the layer table the questions the web client asks it, against the same engine.
-Every call takes your per-server ctx and resolves what it needs itself, so there is no setup step.
+`slm/systems/layer-queries` searches SLM's list of every known layer given a set of constraints, checks queue items against constraints, and
+generates votes. The module runs the same query code and layer engine as the layer picker and queue warnings in the
+browser, so a plugin gets the same results an admin sees. Every call takes your per-server ctx and resolves what it
+needs itself, so there is no setup step.
 
 ```ts
 import * as CB from 'slm/models/constraint-builders'

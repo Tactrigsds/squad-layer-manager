@@ -72,9 +72,21 @@ const LANDING = {
 			linkLabel: 'Read about player management',
 			media: {
 				kind: 'shot',
-				file: 'docs/images/features/teams_panel.png',
-				alt: 'the teams panel',
-				crop: { x: 0, y: 0, width: 490 },
+				file: 'docs/images/features/player_selection_menu.png',
+				alt: 'the actions menu for three selected players',
+				crop: { x: 0, y: 154, width: 600 },
+			},
+		},
+		{
+			title: 'Server monitoring and history',
+			text: 'Follow the live match, chart team balance, scorelines and player population, and search every past event, player and match.',
+			page: 'docs/features/server_monitoring.md',
+			linkLabel: 'Read about monitoring and history',
+			media: {
+				kind: 'shot',
+				file: 'docs/images/features/population.png',
+				alt: 'the population chart',
+				crop: { x: 0, y: 0, width: 420 },
 			},
 		},
 		{
