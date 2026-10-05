@@ -63,7 +63,12 @@ const LANDING = {
 			text: 'Designed to work in place of the in-game voting system, SLM provides convenient and fine-grained control over what kinds of layers are played on the server.',
 			page: 'docs/features/layer_selection.md',
 			linkLabel: 'Read about layer selection',
-			media: { kind: 'shot', file: 'docs/images/features/layer_queue.png', alt: 'the layer queue' },
+			media: {
+				kind: 'shot',
+				file: 'docs/images/features/layer_queue_landing.png',
+				alt: 'the match history above the layer queue, open for editing',
+				crop: { x: 0, y: 0, width: 762 },
+			},
 		},
 		{
 			title: 'Player management',

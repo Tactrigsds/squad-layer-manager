@@ -41,7 +41,7 @@ Use _Simulate Permissions_ to preview the app with a different set of roles. See
 
 ## Plugins
 
-Plugins add commands, settings and behaviour to SLM. Install a plugin from the URL its author provides, then configure
+Plugins add commands, settings, behaviour, and UI to SLM. Install a plugin from the URL its author provides, then configure
 and start the plugin on the settings page. SLM ships with three:
 
 | Plugin           | What it does                                                              |
