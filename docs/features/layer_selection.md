@@ -29,6 +29,17 @@ items or as one vote.
 
 ![the Add Layers dialog, with three RAAS layers selected](../images/features/add_layers.png)
 
+On a phone, the dialog lists the layers as cards, with the filters and the selected layers on tabs of their own.
+
+![the queue on a phone](../images/features/phone_queue.png)
+![the Add Layers dialog on a phone](../images/features/phone_layer_picker.png)
+
+> [!TIP]
+> SLM can be installed as an app on a phone or a computer, and opens in its own window without the browser's address
+> bar. On Android, open the browser menu and choose _Add to home screen_ or _Install app_. On an iPhone or iPad, tap
+> _Share_ in Safari and choose _Add to Home Screen_. On a computer, click the install icon at the end of the address bar
+> in Chrome or Edge.
+
 ## Filters and the layer pool
 
 The base game offers about 730,000 layers, counting every map, gamemode, faction and unit combination, and this number
@@ -70,7 +81,7 @@ A layer that another admin is editing stays where it is. The changes stay in the
 Each layer shows a balance score and an asymmetry score, and compares its two teams on anti-infantry, armor, logistics
 and transportation. The scores are heuristics for how fair a matchup is likely to be. They come from a scoring system
 created by community member ZERO, and refined through feedback and iteration on the TacTrig server.
-Custom scoring can be built as well. See [layer_data.md](../guide/operations/layer_data.md).
+Custom scoring can be built as well. See [Building custom layer data](../developers/custom_layer_data.md).
 
 ![a layer's details: each team's unit, tickets and vehicles](../images/features/layer_details.png)
 ![a layer's scores: balance, asymmetry and each category compared](../images/features/layer_scores.png)
@@ -80,6 +91,8 @@ Custom scoring can be built as well. See [layer_data.md](../guide/operations/lay
 It's easy to create new votes on the fly with the _Gen Vote Dialog_.
 
 ![the Generate Vote dialog](../images/features/generate_vote.png)
+
+![the Generate Vote dialog on a phone](../images/features/phone_gen_vote.png)
 
 Start a vote from the dashboard or in game with `/startvote`, or let SLM start the vote partway into a match. Players
 vote by typing a choice's number in chat, and SLM broadcasts details of the vote to the server. Use an internal vote to
@@ -111,7 +124,8 @@ _Collection_ column records whether the layer is vanilla (`OWI`) or which mod it
 exclude a whole mod.
 
 In each server's settings, configure the mods that server has installed. A custom layer dataset can also be loaded in
-place of the built-in one, with other mods, your own scoring or extra columns. See [layer_data.md](../guide/operations/layer_data.md).
+place of the built-in one, with other mods, your own scoring or extra columns. See [layer_data.md](../guide/operations/layer_data.md) and
+[Building custom layer data](../developers/custom_layer_data.md).
 
 A layer the catalog does not know, such as one from a mod SLM does not cover, can still be queued. In the _Add Layers_
 dialog, click the _Show Raw Input_ icon ![text cursor input icon](../images/icons/text-cursor-input.svg) and type the
