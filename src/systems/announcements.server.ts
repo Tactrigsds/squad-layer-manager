@@ -1,6 +1,7 @@
 import { createId } from '@/lib/id'
 import * as Rx from '@/lib/rxjs'
 import * as ANN_Msgs from '@/messages/announcements.messages'
+import * as ANN from '@/models/announcements.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import type * as C from '@/server/context'
@@ -20,7 +21,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 const module = initModule('announcements')
 const orpcBase = getOrpcBase(module)
 
-export type Announcement = { id: string; message: string; sentAt: number; expiresAt: number }
+export type Announcement = { id: string; message: string; segments: ANN.Segment[]; sentAt: number; expiresAt: number }
 
 const announcement$ = new Rx.BehaviorSubject<Announcement | null>(null)
 let expiryTimer: ReturnType<typeof setTimeout> | undefined
@@ -34,7 +35,8 @@ function setCurrent(announcement: Announcement | null) {
 
 export async function announce(ctx: C.Db & CS.Log & CS.AbortSignal, message: string, durationMs: number) {
 	const sentAt = Date.now()
-	const announcement: Announcement = { id: createId(8), message, sentAt, expiresAt: sentAt + durationMs }
+	const segments = ANN.parseMessage(message, sentAt)
+	const announcement: Announcement = { id: createId(8), message, segments, sentAt, expiresAt: sentAt + durationMs }
 	setCurrent(announcement)
 
 	await AppEventsSys.persistAppEvent(
@@ -56,7 +58,7 @@ export async function announce(ctx: C.Db & CS.Log & CS.AbortSignal, message: str
 	await Promise.all(
 		[...SquadServer.globalState.managedServers].map(async ([serverId, managedServer]) => {
 			try {
-				await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, ANN_Msgs.ingameWarn(message))
+				await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, ANN_Msgs.ingameWarn(ANN.renderStatic(segments)))
 				warned.push(serverId)
 			} catch (err) {
 				ctx.log.warn(err, 'failed to warn admins on %s of an announcement', serverId)

@@ -7,6 +7,8 @@
 //   docker exec slm-app-prod pnpm announce "<message>" [--expires <duration, default 15m>]
 //   docker exec slm-app-prod pnpm announce:clear
 //
+// A `{countdown:2m}` token in an announcement counts down live in the web banner. The in-game warn shows "2m".
+//
 // --expect fails the command when the named plugin did not come back up, which is what lets a deploy
 // notice that the package it just copied in is broken.
 

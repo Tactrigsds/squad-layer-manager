@@ -25,7 +25,7 @@ import * as Plugins from '@/systems/plugins.server'
  *
  * Deployment also warns the app's users before restarting it:
  *
- *   docker exec slm-app-prod pnpm announce "SLM restarts in 2 minutes to update" --expires 5m
+ *   docker exec slm-app-prod pnpm announce "SLM restarts in {countdown:2m} to update" --expires 5m
  *
  * One request per connection: a JSON line in, a JSON line back, close.
  */
