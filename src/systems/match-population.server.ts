@@ -42,8 +42,10 @@ async function decode(matchId: number, blob: Buffer): Promise<Pop.Samples> {
 	return samples
 }
 
-// How far before a range a match may have started and still reach into it. Squad caps a round at a few hours.
+// How far before a range a match with no end time may have started and still reach into it.
 const MATCH_REACH_MS = 6 * 3_600_000
+// How long a match's samples can run past its end time, through its post-game.
+const POST_GAME_REACH_MS = 3_600_000
 
 /** Every finished match on the server in `range` up to `now`, bucketed, with their bands. `cap` counts as full. */
 export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: number, cap: number): Promise<Pop.RangeData> {
@@ -64,7 +66,14 @@ export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: n
 		})
 		.from(mh)
 		.leftJoin(mp, E.eq(mp.matchId, mh.id))
-		.where(E.and(E.eq(mh.serverId, ctx.serverId), E.sql`coalesce(${mh.startTime}, ${mh.createdAt}) >= ${start - MATCH_REACH_MS}`))
+		.where(
+			E.and(
+				E.eq(mh.serverId, ctx.serverId),
+				E.sql`case when ${mh.endTime} is null
+					then coalesce(${mh.startTime}, ${mh.createdAt}) >= ${start - MATCH_REACH_MS}
+					else ${mh.endTime} >= ${start - POST_GAME_REACH_MS} end`,
+			),
+		)
 		.orderBy(E.asc(mh.ordinal))
 
 	// the server's newest match is the current one, which the client draws from its live feed
