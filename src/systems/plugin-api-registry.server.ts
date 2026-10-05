@@ -4,6 +4,7 @@ import * as drizzle from 'drizzle-orm'
 import * as drizzleSqliteCore from 'drizzle-orm/sqlite-core'
 import { registerHooks } from 'node:module'
 import * as react from 'react'
+import * as reactDom from 'react-dom'
 import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 
@@ -99,6 +100,7 @@ export function setup() {
 		// their export names come from
 		react,
 		'react/jsx-runtime': reactJsxRuntime,
+		'react-dom': reactDom,
 	}
 	;(globalThis as Record<string, unknown>)[SHIM.API_GLOBAL] = entries
 

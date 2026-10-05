@@ -9,6 +9,7 @@ import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
 import * as AR from './src/app-routes.ts'
 import { BUILD_TARGET } from './src/browser-support.ts'
+import * as SHIM from './src/models/plugin-api-shim.ts'
 import { extractMessages } from './src/scripts/messages-build.ts'
 import * as Env from './src/server/env.ts'
 
@@ -175,6 +176,8 @@ export default defineConfig({
 			$root: path.resolve(import.meta.dirname),
 			slm: path.resolve(import.meta.dirname, 'src/plugin-api'),
 		},
+		// a plugin repo in plugins/ installs its own dependencies, and may install a copy of these with them
+		dedupe: [...SHIM.SHARED_PACKAGE_NAMES],
 	},
 	test: {
 		// layer data is loaded at runtime rather than bundled, so tests need it loaded up-front

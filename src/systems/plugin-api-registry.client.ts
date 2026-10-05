@@ -1,5 +1,6 @@
 import * as orpcClient from '@orpc/client'
 import * as react from 'react'
+import * as reactDom from 'react-dom'
 import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 
@@ -68,6 +69,7 @@ export function setup() {
 		'@orpc/client': orpcClient,
 		react,
 		'react/jsx-runtime': reactJsxRuntime,
+		'react-dom': reactDom,
 		rxjs,
 		// the same keys as `import * as zod`. That namespace would be built in the entry chunk and pull every zod
 		// locale into the initial load. `z` is built in this lazily loaded chunk instead.

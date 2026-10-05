@@ -764,12 +764,19 @@ there runs with nothing to register: `tsx watch` on the server, vite's own modul
 plugin's HMR comes from. Discovery is dev-only on both halves. The client discovers through a virtual module rather than
 a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
 
-**A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
-specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
-through a `module.registerHooks` resolver, in the browser through the import map in `index.html` and the
-`/plugin-api/*` route. That is what keeps one zod (or `configSchema instanceof z.ZodObject` fails) and one React
-(or hooks break) in play. The export names come from `models/plugin-api-exports.ts`, generated beside the API
-report, since the server serves the browser's shims but cannot import the client entries to enumerate them.
+**A package carries no copy of SLM.** Its bundles import `slm/*` and the shared packages in
+`models/plugin-api-shim.ts` (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
+to a generated shim module re-exporting its own instance: on the server through a `module.registerHooks` resolver, in
+the browser through the import map in `index.html` and the `/plugin-api/*` route. That is what keeps one zod (or
+`configSchema instanceof z.ZodObject` fails) and one React (or hooks break) in play. The export names come from
+`models/plugin-api-exports.ts`, generated beside the API report, since the server serves the browser's shims but
+cannot import the client entries to enumerate them.
+
+**Everything else a package imports is bundled, and only as ESM.** `plugin:pack` builds each entry for the platform
+that loads it, so npm dependencies resolve, and fails on an import nothing at load time could answer. It refuses
+CommonJS: a CommonJS module's `require()` of an external stays a runtime call, and the browser has no `require`. In
+dev, a plugin repo's own `node_modules` can hold a second copy of a shared package. Vite's `resolve.dedupe` and the
+server's resolve hook, installed before discovery imports any manifest, send those imports to the host's copy.
 
 **Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new module
 and the server loads a clean graph, with the old one still in memory but unreachable. A page that already evaluated the
