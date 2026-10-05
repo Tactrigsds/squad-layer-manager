@@ -48,7 +48,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 			{screen === 'queue' && <CurrentLayerStrip stores={props.stores} />}
 			<div className="flex flex-col flex-1 min-h-0 p-2 gap-2">
 				{visited.includes('matches') && (
-					<ScrollArea className="flex-1 min-h-0" style={show('matches')}>
+					<ScrollArea orientation="vertical" className="flex-1 min-h-0" style={show('matches')}>
 						<div className="flex flex-col gap-2">
 							<Card className="@container">
 								<MatchHistoryPanelContent stores={props.stores} />
@@ -105,7 +105,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 								className="min-w-0"
 							/>
 						</PresenceRow>
-						<ScrollArea className="flex-1 min-h-0">
+						<ScrollArea orientation="vertical" className="flex-1 min-h-0">
 							<TeamsPanel stores={props.stores} />
 						</ScrollArea>
 					</div>

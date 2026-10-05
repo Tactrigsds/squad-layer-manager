@@ -16,6 +16,7 @@ import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import * as Browser from '@/lib/browser'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
@@ -166,6 +167,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	const selectedMatchOrdinal = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const historicalView = Zus.useStore(stores.squadServer!, ChatPrt.Sel.historicalView)
 	const serverId = stores.squadServer!.serverId
+	const phone = Browser.useIsSmallViewport()
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	// Fetch historical events when viewing a past match
@@ -273,6 +275,19 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		}
 	}, [currentMatch, recentMatches, stores.squadServer])
 
+	const eventFilter = (
+		<span data-tour="activity-filter" className="inline-flex">
+			<EventFilterSelect
+				value={eventFilterState}
+				onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
+				selectedOnly={selectedOnly}
+				onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
+			/>
+		</span>
+	)
+	// a phone's header is one line, so the filter moves beside the channel picker while the chat box shows
+	const filterInChatBox = phone && selectedMatchOrdinal === null
+
 	return (
 		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an anonymous div
 		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
@@ -331,14 +346,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						))}
 					</ButtonGroup>
 				)}
-				<span data-tour="activity-filter" className="inline-flex">
-					<EventFilterSelect
-						value={eventFilterState}
-						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
-						selectedOnly={selectedOnly}
-						onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
-					/>
-				</span>
+				{!filterInChatBox && eventFilter}
 				<span className="flex-1" />
 				{/* live-only readouts, and the historical controls need their header room */}
 				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}
@@ -369,7 +377,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						/>
 					)}
 				</div>
-				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} />}
+				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} controls={filterInChatBox && eventFilter} />}
 			</CardContent>
 		</Card>
 	)

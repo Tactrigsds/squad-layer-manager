@@ -12,6 +12,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as PageAccess from '@/systems/page-access.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as TextEntryFocus from '@/systems/text-entry-focus.client'
 
 export const Route = createFileRoute('/_app')({
 	loader: async () => {
@@ -31,14 +32,17 @@ function RouteComponent() {
 	// with a mouse is a small or zoomed desktop window, which can't switch to the desktop site, so it gets the page as-is
 	const desktopOnly = isPhone && isTouch && !isOnServerDashboard && !isOnServers
 	const denied = PageAccess.useCurrentPageDenial()
+	const chromeHidden = TextEntryFocus.usePhoneChromeHidden()
 	return (
 		<div
 			className="data-on-dashboard:h-screen w-full flex flex-col data-on-dashboard:overflow-hidden data-phone:h-screen data-phone:overflow-hidden"
 			data-on-dashboard={orUndef(!!isOnServerDashboard)}
 			data-phone={orUndef(isPhone)}
 		>
-			<NavBar />
-			<AnnouncementBanner />
+			<div className={chromeHidden ? 'hidden' : 'contents'}>
+				<NavBar />
+				<AnnouncementBanner />
+			</div>
 			<div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhone ? '' : 'p-2.5')}>
 				{desktopOnly ? <DesktopOnly /> : denied ? <PermissionDeniedPanel denied={denied} /> : <Outlet />}
 			</div>

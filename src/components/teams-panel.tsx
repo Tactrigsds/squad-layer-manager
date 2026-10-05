@@ -1650,6 +1650,7 @@ function SquadGroupHeaderRowView(props: {
 	playerIds: string[]
 	colSpan: number
 	collapsed: boolean
+	phone: boolean
 	stores: SquadServerFrame.KeyProp
 }) {
 	const selectedCount = Zus.useStore(
@@ -1693,7 +1694,7 @@ function SquadGroupHeaderRowView(props: {
 	const labelContent = (
 		<>
 			{squad ? (
-				<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
+				<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} className="min-w-0" />
 			) : (
 				<span className="font-semibold">{tr.text(SM_Msgs.unassignedSquad())}</span>
 			)}
@@ -1705,8 +1706,15 @@ function SquadGroupHeaderRowView(props: {
 			)}
 		</>
 	)
-	// combined table: keep the faction in its own cell so it lines up under the faction column
-	return faction ? (
+	const factionLabel = faction && (
+		<span className="shrink-0 text-xs font-semibold" style={{ color: faction.color }}>
+			{faction.label}
+		</span>
+	)
+	// the label takes its width from the cell, so a long squad name truncates rather than widening the table.
+	// combined desktop table: keep the faction in its own cell so it lines up under the faction column. A phone row
+	// is one cell, so the faction goes inline.
+	return factionLabel && !props.phone ? (
 		<TableRow
 			className="cursor-pointer [&>td]:h-[calc(var(--row)-6px)] [&>td]:bg-white/5 hover:[&>td]:bg-white/8"
 			data-collapsed={props.collapsed || undefined}
@@ -1716,13 +1724,9 @@ function SquadGroupHeaderRowView(props: {
 			onClick={toggleCollapsed}
 		>
 			<TableCell>{checkbox}</TableCell>
-			<TableCell>
-				<span className="text-xs font-semibold" style={{ color: faction.color }}>
-					{faction.label}
-				</span>
-			</TableCell>
+			<TableCell>{factionLabel}</TableCell>
 			<TableCell colSpan={props.colSpan - 2}>
-				<div className="flex items-center gap-2 text-xs">
+				<div className="flex items-center gap-2 text-xs [contain:inline-size]">
 					{labelContent}
 					{chevron}
 				</div>
@@ -1738,8 +1742,9 @@ function SquadGroupHeaderRowView(props: {
 			onClick={toggleCollapsed}
 		>
 			<TableCell colSpan={props.colSpan}>
-				<div className="flex items-center gap-2 overflow-hidden text-xs">
+				<div className="flex items-center gap-2 overflow-hidden text-xs [contain:inline-size]">
 					{checkbox}
+					{factionLabel}
 					{labelContent}
 					{chevron}
 				</div>
@@ -1754,6 +1759,7 @@ const SquadGroupHeaderRow = React.memo(
 	(prev, next) =>
 		prev.colSpan === next.colSpan &&
 		prev.collapsed === next.collapsed &&
+		prev.phone === next.phone &&
 		prev.stores === next.stores &&
 		sameSquadGroup(prev.info, next.info) &&
 		samePlayerIds(prev.playerIds, next.playerIds),
@@ -2017,6 +2023,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends BaseRo
 					playerIds={rows.slice(i, j).map((r) => r.id)}
 					colSpan={colSpan}
 					collapsed={collapsed}
+					phone={phone}
 					stores={props.stores}
 				/>,
 			)

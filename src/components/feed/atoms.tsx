@@ -456,7 +456,7 @@ export function SquadDisplay(props: SquadDisplayProps & { ctx: RC.RenderCtx }) {
 		squad.uniqueId !== undefined ? (
 			<button
 				type="button"
-				className="hover:underline cursor-pointer font-bold"
+				className="min-w-0 truncate hover:underline cursor-pointer font-bold"
 				{...RC.windowAttrs({
 					windowId: WINDOW_ID.enum['squad-details'],
 					arg: { uniqueSquadId: squad.uniqueId },
@@ -469,7 +469,7 @@ export function SquadDisplay(props: SquadDisplayProps & { ctx: RC.RenderCtx }) {
 				{label}
 			</button>
 		) : (
-			<span className="font-bold" {...menuAttrs}>
+			<span className="min-w-0 truncate font-bold" {...menuAttrs}>
 				{label}
 			</span>
 		)

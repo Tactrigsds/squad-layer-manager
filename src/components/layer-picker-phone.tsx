@@ -17,6 +17,7 @@ import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as L from '@/models/layer'
 import { tr } from '@/systems/messages.client'
+import * as TextEntryFocus from '@/systems/text-entry-focus.client'
 
 import PhoneFiltersTab from './layer-picker-phone-filters.tsx'
 import PhoneResultsTab, { type ResultsView } from './layer-picker-phone-results.tsx'
@@ -24,8 +25,8 @@ import PhoneResultsTab, { type ResultsView } from './layer-picker-phone-results.
 type Tab = 'filters' | 'results' | 'summary'
 
 // The layer picker on a phone, as tabs along the bottom: Filters, Results, and Summary where the dialog submits.
-// It opens on Results. The tab bar steps aside while the search or Advanced search is open, since the on-screen
-// keyboard covers it.
+// It opens on Results. The tab bar steps aside while the search or Advanced search is open, and while any text field
+// has focus, since the on-screen keyboard covers it.
 export default function LayerPickerPhone(props: {
 	frameKey: SelectLayersFrame.Key
 	squadServer?: SquadServerFrame.Key
@@ -40,6 +41,7 @@ export default function LayerPickerPhone(props: {
 	const { frameKey } = props
 	const [tab, setTab] = React.useState<Tab>('results')
 	const [view, setView] = React.useState<ResultsView>('list')
+	const chromeHidden = TextEntryFocus.usePhoneChromeHidden()
 	const selectedCount = Zus.useStore(frameKey, (s) => s.layerTable.selected.length)
 	const total = Zus.useStore(frameKey, (s) => s.layerTable.pageData?.totalCount ?? null)
 	const activeFilterCount = Zus.useStore(
@@ -103,7 +105,7 @@ export default function LayerPickerPhone(props: {
 					<SummaryTab frameKey={frameKey} summary={props.summary} onShowResults={() => goTo('results')} />
 				)}
 			</div>
-			{(tab !== 'results' || view === 'list') && (
+			{(tab !== 'results' || view === 'list') && !chromeHidden && (
 				<nav
 					aria-label={props.title}
 					className="grid shrink-0 grid-flow-col auto-cols-fr min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content"

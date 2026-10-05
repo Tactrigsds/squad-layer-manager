@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTabl
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Browser from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -334,10 +335,16 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	const isViewingThisMatch =
 		selectedMatchOrdinalFromStore === null ? entry.isCurrentMatch : selectedMatchOrdinalFromStore === entry.ordinal
 
-	const { ref: dragRef, isDragging } = DndKit.useDraggable({
-		type: 'history-entry',
-		id: entry.historyEntryId,
-	})
+	// the phone layout shows one panel at a time, so there is no queue to drop a match on. A long press opens the
+	// context menu instead.
+	const phone = Browser.useIsSmallViewport()
+	const { ref: dragRef, isDragging } = DndKit.useDraggable(
+		{
+			type: 'history-entry',
+			id: entry.historyEntryId,
+		},
+		{ disabled: phone },
+	)
 
 	// Track mouse down/up to detect clicks vs drags
 	const mouseDownPosRef = React.useRef<{ x: number; y: number } | null>(null)
@@ -578,14 +585,15 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					role="row"
 					data-tour="mh-row"
 					data-tour-current={entry.isCurrentMatch || undefined}
-					ref={dragRef}
+					ref={phone ? undefined : dragRef}
 					data-is-dragging={isDragging}
 					onMouseDown={handleMouseDown}
 					onMouseUp={handleMouseUp}
 					onMouseLeave={handleMouseLeave}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap data-[is-dragging=true]:outline-solid group cursor-grab select-none',
+						'whitespace-nowrap data-[is-dragging=true]:outline-solid group select-none',
+						phone ? 'cursor-pointer [-webkit-touch-callout:none]' : 'cursor-grab',
 						bgColor,
 					)}
 				>
@@ -593,7 +601,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 						<TableCell colSpan={8} className="h-auto! whitespace-nowrap px-2 py-1.5">
 							{/* What the match was, then how it went. The gutter marks the whole match rather than its first
 								    line, so it sits beside both and centres against them. */}
-							<div className="flex items-stretch gap-2">
+							<div className="flex items-stretch gap-2 [contain:inline-size]">
 								{/* the two 11px glyphs of a live match being watched, which is the widest a marker gets. A fixed
 									    width rather than a spacing step, because the step moves with the density setting and the glyphs do not */}
 								<span className="w-[24px] shrink-0 flex justify-end items-center gap-0.5 text-text-3 font-mono text-xs">
