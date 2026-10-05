@@ -8,29 +8,25 @@ import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import { useDebounced } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as MsgFmt from '@/messages/format'
-import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
-import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
-import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models'
-import * as FilterEntityClient from '@/systems/filter-entity.client'
 import type * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalSheetButton } from './constraint-matches-indicator.tsx'
-import EmojiDisplay from './emoji-display.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
+import { RichSearchField, SearchErrors, SearchSuggestions } from './layer-search-parts.tsx'
+import { partColumnName, useSearchInput } from './layer-search.helpers.ts'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import { TablePagination } from './table-pagination'
 import { Input } from './ui/input.tsx'
@@ -114,87 +110,6 @@ function AdvancedButton(props: { onClick: () => void; keepFocus?: boolean }) {
 		>
 			<Icons.SlidersHorizontal />
 		</Button>
-	)
-}
-
-// The search read back while the box is not being edited: one chip per constraint, Advanced ones included
-function RichSearchField(props: { frameKey: SelectLayersFrame.Key; onOpen: () => void }) {
-	const parts = Zus.useStore(props.frameKey, LayerSearchPrt.Sel.parts)
-	return (
-		<div className="relative flex min-w-0 flex-1">
-			<button
-				type="button"
-				aria-label={tr.text(L_Msgs.searchLayers())}
-				onClick={props.onOpen}
-				className={cn(
-					'fd-inp flex h-auto min-h-(--ctl) w-full cursor-text flex-wrap items-center gap-1 py-1 ps-9 text-start',
-					parts.length > 0 ? 'pe-11' : 'pe-2',
-				)}
-			>
-				<Icons.Search className="pointer-events-none absolute inset-s-2.5 top-[calc(var(--ctl)/2)] size-4.5 -translate-y-1/2 text-text-3" />
-				{parts.length === 0 ? (
-					<span className="text-text-3">{tr.text(L_Msgs.searchLayers())}</span>
-				) : (
-					parts.map((part) => <SearchPartChip key={part.key} part={part} />)
-				)}
-			</button>
-			{parts.length > 0 && (
-				<Button
-					variant="ghost"
-					size="icon"
-					className="absolute inset-e-0 top-0"
-					aria-label={tr.text(L_Msgs.clearSearch())}
-					onClick={() => LayerSearchPrt.Actions.clear({ layerSearch: props.frameKey })}
-				>
-					<Icons.X />
-				</Button>
-			)}
-		</div>
-	)
-}
-
-const TEAM_FIELDS = new Map(
-	F.TEAM_COLUMNS.flatMap((column) => ([1, 2] as const).map((team) => [F.resolveTeamColumn(column, team), { column, team }] as const)),
-)
-
-// a team field names its dimension and its side ("Faction T1"), as the matchup's pickers do
-function partColumnName(field: string) {
-	const team = TEAM_FIELDS.get(field)
-	if (team) return tr.text(F_Msgs.teamColumnForTeam(tr.text(F_Msgs.teamColumnNames[team.column]), team.team))
-	const colDef = LC.getColumnDef(field)
-	return colDef ? tr.text(LC_Msgs.columnName(colDef)) : field
-}
-
-function SearchPartChip(props: { part: LayerSearchPrt.Sel.Part }) {
-	const { part } = props
-	switch (part.type) {
-		case 'item':
-			return (
-				<span className="fd-chip max-w-full gap-1 text-sm">
-					<span className="text-text-3">
-						{partColumnName(part.field)}
-						{part.op !== 'eq' && ` ${tr.text(F_Msgs.compOpLabels[part.op])}`}
-					</span>
-					<span className="truncate text-text">{part.values.join(', ')}</span>
-				</span>
-			)
-		case 'filter':
-			return <SearchFilterChip filterId={part.filterId} />
-		case 'error':
-			return <span className="fd-chip max-w-full bg-danger/25 text-sm text-text">{part.token}</span>
-		default:
-			return null
-	}
-}
-
-function SearchFilterChip(props: { filterId: F.FilterEntityId }) {
-	const filter = FilterEntityClient.useFilterEntities().get(props.filterId)
-	if (!filter) return null
-	return (
-		<span className="fd-chip max-w-full gap-1 text-sm">
-			{filter.emoji && <EmojiDisplay size={14} emoji={filter.emoji} showTooltip={false} />}
-			<span className="truncate text-text">{filter.name}</span>
-		</span>
 	)
 }
 
@@ -429,50 +344,9 @@ function Pagination(props: { frameKey: SelectLayersFrame.Key }) {
 	)
 }
 
-const EXAMPLE_SEARCHES = ['goro raas', 'usa rgf', 'large', 'narva aas', 'usmc pla']
-
 function SearchView(props: ViewProps) {
 	const { frameKey, setView } = props
-	const stores = { layerSearch: frameKey }
-	const inputRef = React.useRef<HTMLInputElement>(null)
-	// read once: the input is uncontrolled, and while the user types the store follows it rather than the reverse
-	const [initialText] = React.useState(() => LayerSearchPrt.Sel.text(Zus.getState(frameKey)))
-	const text = Zus.useStore(frameKey, LayerSearchPrt.Sel.text)
-	const errors = Zus.useStore(frameKey, LayerSearchPrt.Sel.errors)
-	const history = Zus.useStore(LayerSearchPrt.SearchHistoryStore, (s) => s.searches)
-	const tipsDismissed = Zus.useStore(LayerSearchPrt.SearchHistoryStore, (s) => s.tipsDismissed)
-	const onChange = React.useCallback((value: string) => LayerSearchPrt.Actions.setText({ layerSearch: frameKey }, value), [frameKey])
-	const setTextDebounced = useDebounced({ delay: 150, onChange })
-
-	// applies what is in the box now rather than waiting out the debounce, then records it
-	function finish() {
-		const value = inputRef.current?.value ?? ''
-		if (value !== LayerSearchPrt.Sel.text(Zus.getState(frameKey))) LayerSearchPrt.Actions.setText(stores, value)
-		LayerSearchPrt.Actions.commit(stores)
-	}
-	function setInput(value: string) {
-		if (inputRef.current) inputRef.current.value = value
-		LayerSearchPrt.Actions.setText(stores, value)
-	}
-
-	const examples = React.useMemo(
-		() =>
-			EXAMPLE_SEARCHES.filter(
-				(example) =>
-					BB.resolveSearchTokens({
-						tokens: example.split(' '),
-						components: L.StaticLayerComponents,
-						filterEntities: [],
-					}).errors.length === 0,
-			).slice(0, 4),
-		[],
-	)
-	const empty = text.trim().length === 0
-
-	// a tap anywhere but the input would move focus out of it, and losing focus is what closes this view
-	const keepFocus = (e: React.MouseEvent) => {
-		if (e.target !== inputRef.current) e.preventDefault()
-	}
+	const { inputRef, initialText, setTextDebounced, finish, setInput, keepFocus } = useSearchInput(frameKey)
 
 	return (
 		<>
@@ -522,59 +396,8 @@ function SearchView(props: ViewProps) {
 					/>
 				</div>
 				<div className="flex flex-col gap-2.5 p-3">
-					{errorKeys(errors).map(({ key, error }) => (
-						<SearchError
-							key={key}
-							error={error}
-							onPick={(suggestion) => setInput(replaceToken(inputRef.current?.value ?? text, error.token, suggestion))}
-						/>
-					))}
-					{empty && history.length > 0 && (
-						<section className="fd-panel flex flex-col">
-							<div className="flex items-center gap-2 ps-3 pe-1">
-								<h3 className="fd-lbl-k flex-1">{tr.text(L_Msgs.recentSearches())}</h3>
-								<Button variant="ghost" size="sm" onClick={() => LayerSearchPrt.Actions.clearHistory()}>
-									{tr.text(L_Msgs.clearRecentSearches())}
-								</Button>
-							</div>
-							<ul>
-								{history.map((search) => (
-									<li key={search}>
-										<button
-											type="button"
-											onClick={() => setInput(search)}
-											className="flex min-h-11 w-full items-center gap-2.5 border-t border-line px-3 text-start"
-										>
-											<Icons.History className="size-4.5 shrink-0 text-text-3" />
-											<span className="min-w-0 flex-1 truncate font-mono text-sm">{search}</span>
-										</button>
-									</li>
-								))}
-							</ul>
-						</section>
-					)}
-					{empty && history.length === 0 && !tipsDismissed && (
-						<div className="fd-panel flex items-start gap-1 py-2 ps-3 pe-1">
-							<div className="flex min-w-0 flex-1 flex-col gap-2">
-								<span className="text-sm text-text-2">{tr.text(L_Msgs.searchTips())}</span>
-								<div className="flex flex-wrap gap-1.5">
-									{examples.map((example) => (
-										<Button key={example} size="sm" className="font-mono" onClick={() => setInput(example)}>
-											{example}
-										</Button>
-									))}
-								</div>
-							</div>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label={tr.text(L_Msgs.dismissSearchTips())}
-								onClick={() => LayerSearchPrt.Actions.dismissTips()}
-							>
-								<Icons.X />
-							</Button>
-						</div>
-					)}
+					<SearchErrors frameKey={frameKey} inputRef={inputRef} setInput={setInput} />
+					<SearchSuggestions frameKey={frameKey} setInput={setInput} />
 					<ResultCount frameKey={frameKey} />
 					<LayerRows frameKey={frameKey} squadServer={props.squadServer} keepFocus />
 					<Pagination frameKey={frameKey} />
@@ -591,43 +414,6 @@ function SearchView(props: ViewProps) {
 				</div>
 			)}
 		</>
-	)
-}
-
-// a typed word can be wrong twice in one search, so each error is keyed by its word and which occurrence it is
-function errorKeys(errors: BB.TokenError[]) {
-	const seen = new Map<string, number>()
-	return errors.map((error) => {
-		const occurrence = (seen.get(error.token) ?? 0) + 1
-		seen.set(error.token, occurrence)
-		return { key: `${error.token}#${occurrence}`, error }
-	})
-}
-
-// swaps a search word for the suggestion that replaced it, written the way it would be typed
-function replaceToken(text: string, token: string, suggestion: string) {
-	const replacement = suggestion.replace(/\s+/g, '')
-	return text
-		.split(/(\s+)/)
-		.map((word) => (word === token ? replacement : word))
-		.join('')
-}
-
-function SearchError(props: { error: BB.TokenError; onPick: (suggestion: string) => void }) {
-	return (
-		<div role="alert" className="flex flex-col gap-2 rounded-sm border border-danger/60 bg-danger/15 px-3 py-2.5">
-			<span className="text-sm">{tr.text(props.error.msg)}</span>
-			{props.error.suggestions.length > 0 && (
-				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-xs text-text-2">{tr.text(L_Msgs.didYouMean())}</span>
-					{props.error.suggestions.map((suggestion) => (
-						<Button key={suggestion} size="sm" onClick={() => props.onPick(suggestion)}>
-							{suggestion}
-						</Button>
-					))}
-				</div>
-			)}
-		</div>
 	)
 }
 

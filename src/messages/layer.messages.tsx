@@ -273,6 +273,8 @@ export const searchLayers = def('Search layers')
 export const closeSearch = def('Close search')
 export const clearSearch = def('Clear search')
 export const advancedSearch = def('Advanced search')
+// the desktop picker's toggle that shows Advanced search beside the results
+export const advancedSearchToggle = def('Advanced')
 export const searchTips = def('Type maps, gamemodes, sizes, factions, alliances, units or filters.')
 export const dismissSearchTips = def('Dismiss search tips')
 export const recentSearches = def('Recent searches')

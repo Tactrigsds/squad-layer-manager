@@ -192,22 +192,27 @@ export namespace Actions {
 	export function commit(stores: KeyProp) {
 		const text = Sel.text(Zus.getState(stores.layerSearch)).trim()
 		if (!text) return
-		SearchHistoryStore.setState((state) => ({
+		SearchPrefsStore.setState((state) => ({
 			searches: [text, ...state.searches.filter((search) => search !== text)].slice(0, SEARCH_HISTORY_MAX),
 		}))
 	}
 
 	export function clearHistory() {
-		SearchHistoryStore.setState({ searches: [] })
+		SearchPrefsStore.setState({ searches: [] })
 	}
 
 	export function dismissTips() {
-		SearchHistoryStore.setState({ tipsDismissed: true })
+		SearchPrefsStore.setState({ tipsDismissed: true })
+	}
+
+	export function setAdvancedOpen(open: boolean) {
+		SearchPrefsStore.setState({ advancedOpen: open })
 	}
 }
 
 const SEARCH_HISTORY_KEY = 'layerSearchHistory:v1'
 const SEARCH_TIPS_DISMISSED_KEY = 'layerSearchTipsDismissed:v1'
+const ADVANCED_OPEN_KEY = 'layerSearchAdvancedOpen:v1'
 const SEARCH_HISTORY_MAX = 5
 
 function readSearchHistory(): string[] {
@@ -219,11 +224,20 @@ function readSearchHistory(): string[] {
 	}
 }
 
-// the user's recent searches, newest first and shared by every server, and whether they dismissed the search tips
-export const SearchHistoryStore = Zus.createStore<{ searches: string[]; tipsDismissed: boolean }>((_set, _get, store) => {
-	store.subscribe((state, prev) => {
-		if (state.searches !== prev.searches) localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(state.searches))
-		if (state.tipsDismissed !== prev.tipsDismissed) localStorage.setItem(SEARCH_TIPS_DISMISSED_KEY, String(state.tipsDismissed))
-	})
-	return { searches: readSearchHistory(), tipsDismissed: localStorage.getItem(SEARCH_TIPS_DISMISSED_KEY) === 'true' }
-})
+// The user's recent searches, newest first and shared by every server, whether they dismissed the search tips, and
+// whether the desktop picker shows Advanced search beside the results
+export const SearchPrefsStore = Zus.createStore<{ searches: string[]; tipsDismissed: boolean; advancedOpen: boolean }>(
+	(_set, _get, store) => {
+		store.subscribe((state, prev) => {
+			if (state.searches !== prev.searches) localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(state.searches))
+			if (state.tipsDismissed !== prev.tipsDismissed) localStorage.setItem(SEARCH_TIPS_DISMISSED_KEY, String(state.tipsDismissed))
+			if (state.advancedOpen !== prev.advancedOpen) localStorage.setItem(ADVANCED_OPEN_KEY, String(state.advancedOpen))
+		})
+		return {
+			searches: readSearchHistory(),
+			tipsDismissed: localStorage.getItem(SEARCH_TIPS_DISMISSED_KEY) === 'true',
+			// open until the user closes it, which keeps the layout people already know
+			advancedOpen: localStorage.getItem(ADVANCED_OPEN_KEY) !== 'false',
+		}
+	},
+)

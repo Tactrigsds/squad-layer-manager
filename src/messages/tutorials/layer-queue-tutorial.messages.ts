@@ -230,10 +230,10 @@ export namespace AddLayersSequence {
 	}
 
 	export const layerFilterMenu = {
-		title: def('The layer filter menu'),
+		title: def('Searching for layers'),
 		body: def((map: string, gamemode: string, faction: string) =>
 			rt(
-				`<p>This is where you search for a layer configuration with a particular map, gamemode, faction and so on.</p>
+				`<p>Use the search box to find layers by map, gamemode, faction and so on. <em>Advanced</em> beside it lays out every constraint as a form.</p>
 <p>Try searching for layers with a <em>Map</em> of <strong>{map}</strong>, a <em>Gamemode</em> of <strong>{gamemode}</strong>, and <strong>{faction}</strong> on either team.</p>`,
 				{ map, gamemode, faction },
 			),
@@ -296,7 +296,7 @@ export namespace AddLayersSequence {
 	export const addAnother = {
 		title: def('Add a second layer'),
 		body: def((map: string) =>
-			rt('Add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:', {
+			rt('Add one more. Change the map in your search to <strong>{map}</strong> and pick a layer from the results:', {
 				map,
 			}),
 		),
