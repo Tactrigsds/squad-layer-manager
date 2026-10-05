@@ -4,16 +4,9 @@ SLM is mostly learned inside the app, by using it. Start with the tutorials, the
 
 ## Tutorials
 
-The tutorials walk through the server dashboard, where admins run a live server: the layer queue, votes, players and
-team swaps. Open _Tutorials_ from the nav bar. SLM also offers them the first time a user opens a server's dashboard.
-
-| Tutorial          | Length | Covers                                                                              |
-| ----------------- | ------ | ----------------------------------------------------------------------------------- |
-| The layer queue   | 10 min | reading and editing the queue, picking layers, filters and repeat rules, generation |
-| Player management | 15 min | the activity log, match history, teams and groups, warns, kicks, timeouts and swaps |
-
-Each tutorial runs on a sandbox server, so no action taken in it reaches a real server. A tutorial can be left and
-resumed later, and replayed once finished. Follow them on a desktop, with a mouse and keyboard.
+The tutorials walk through the server dashboard on a sandbox server of their own. Open _Tutorials_ from the nav bar.
+SLM also offers them the first time a user opens a server's dashboard. [Learning SLM](../features/learning_slm.md)
+describes each tutorial and how to move through one.
 
 ## Practising on the sandbox server
 

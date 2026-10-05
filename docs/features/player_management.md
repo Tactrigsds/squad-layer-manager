@@ -48,10 +48,8 @@ However, it's possible to set up a personal access token so that SLM can act dir
 
 ## Permissions
 
-SLM decides what each admin may do through roles (role-based access control, or RBAC). A role allows or denies a set of
-permissions, on every server or on named ones. A denial overrides an allow from any other role. A role can also cap an
-action, such as the longest timeout its members may give. Assign roles to Discord users and roles, or to the players
-included in an admin list. See [Permissions and users](../guide/configuring/permissions.md) to set up roles.
+Roles decide which of these actions each admin may take, and can cap some of them, such as the longest timeout. See
+[Permissions and access control](permissions.md).
 
 ## Admin actions
 

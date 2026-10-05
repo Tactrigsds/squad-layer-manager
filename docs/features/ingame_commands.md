@@ -3,7 +3,7 @@
 Admins can use most of SLM from the game's chat: votes, swaps, warns, kicks, timeouts, broadcasts, flags, notes and
 layer requests. Players can use the public commands, such as `/switch` to ask to switch teams, `/admin` to call for an
 admin, and `/requestlayer` to request a layer. Each command runs with the permissions of the player who types it. See
-[Permissions](player_management.md#permissions).
+[Permissions and access control](permissions.md).
 
 Type `/help` in game to list the commands. Everything typed is case-insensitive, and player, squad and flag names match
 on any part of the name.

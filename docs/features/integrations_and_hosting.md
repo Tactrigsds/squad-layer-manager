@@ -1,12 +1,7 @@
 # Integrations and hosting
 
-Admins reach SLM in game and from the dashboard, on a computer or a phone, and SLM connects to Discord, BattleMetrics
-and Steam. Roles decide what each admin may do, plugins extend SLM, and SLM is self-hosted.
-
-## In-game commands
-
-Admins can access many SLM features in game through chat commands, and players can use the public ones. See
-[In-game commands](ingame_commands.md).
+SLM integrates with the tools a Squad community already uses, such as Discord and BattleMetrics, and is easy to
+host yourself.
 
 ## Integrations
 
@@ -27,17 +22,6 @@ balance.
 
 SLM looks up the link that joins your server, through the Squad Browser API or through Steam. The dashboard then shows a
 join button. Use it to open your server in Squad.
-
-## Permissions
-
-A role grants a set of permissions, scoped to every server or to named ones. Assign roles to Discord users and roles,
-to the admins of an admin list, or to the members of an admin list group. Roles can cap what their members may do,
-such as the longest timeout or how many layers they may request.
-
-![the admins role in the Permissions & Roles settings](../images/features/permissions.png)
-
-Use _Simulate Permissions_ to preview the app with a different set of roles. See
-[Permissions and users](../guide/configuring/permissions.md).
 
 ## Plugins
 
@@ -75,8 +59,3 @@ the connection state of each server. See [installing.md](../installing.md#9-tele
 - **Monitoring.** The compose file runs Grafana with dashboards for each server's player count and join queue.
 - **Mods.** SLM's layer catalog covers vanilla Squad and several popular mods. See
   [Mod support](layer_selection.md#mod-support).
-
-## Learning SLM
-
-Two guided tutorials teach the layer queue and player management on a sandbox server. Open _Tutorials_ from the nav
-bar. See [server_dashboard.md](../guide/server_dashboard.md).
