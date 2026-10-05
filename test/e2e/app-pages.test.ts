@@ -365,6 +365,24 @@ test.describe('nav bar', () => {
 	})
 })
 
+test.describe('announcement banner', () => {
+	test('counts down a countdown token, and goes away when cleared', async ({ page, app }) => {
+		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
+		const res = await app.control('announce', { message: 'SLM restarts in {countdown:2m} to update', expires: '5m' })
+		expect(res.code).toBe('ok')
+
+		const banner = page.getByRole('alert', { name: 'Announcement' })
+		try {
+			await expect(banner).toHaveText(/^SLM restarts in (2m|1m \d+s) to update$/)
+			const first = await banner.textContent()
+			await expect(banner).not.toHaveText(first!, { timeout: 5_000 })
+		} finally {
+			await app.control('clear-announcement')
+		}
+		await expect(banner).toBeHidden()
+	})
+})
+
 plainTest.describe('settings page', () => {
 	plainTest('the new managed server form renders', async ({ app, page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/settings'))
