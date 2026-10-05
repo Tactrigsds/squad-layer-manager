@@ -463,6 +463,9 @@ export const filterRowIn = def((name: React.ReactNode) => rt('In {name}', { name
 
 export const filterRowNotIn = def((name: React.ReactNode) => rt('Not in {name}', { name }))
 
+// names the button beside an indicator row that opens the filter's own page
+export const openFilter = def('Open the {name} filter', (name: string) => ({ name }))
+
 // Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
 // message positions them rather than formatting them.
 export const repeatDescriptor = def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) =>

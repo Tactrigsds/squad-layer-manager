@@ -34,6 +34,9 @@ type SelectLayersDialogProps = {
 	modeSwitchAdditions?: React.ReactNode
 	// rendered in the submit block above the mode switch and Submit, e.g. the tags to apply
 	footerBeforeSubmit?: React.ReactNode
+	// on a phone, where each of those gets a section of its own on the Summary tab, the headings of those sections
+	modeSwitchAdditionsLabel?: string
+	footerBeforeSubmitLabel?: string
 	cursor?: LL.Cursor
 }
 
@@ -46,6 +49,8 @@ type SelectLayersDialogContentProps = {
 	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
 	modeSwitchAdditions?: React.ReactNode
 	footerBeforeSubmit?: React.ReactNode
+	modeSwitchAdditionsLabel?: string
+	footerBeforeSubmitLabel?: string
 	cursor?: LL.Cursor
 	onClose: () => void
 }
@@ -133,17 +138,8 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		</Button>
 	)
 
-	const footer = phone ? (
-		<>
-			<div className="flex items-center gap-2 overflow-x-auto">
-				{props.footerBeforeSubmit}
-				<span className="flex-1" />
-				{props.modeSwitchAdditions}
-				{modeSwitch}
-			</div>
-			{submitButton}
-		</>
-	) : (
+	// Explore Layers has nothing to submit, and on a phone an empty footer would still take a bar under the results
+	const footer = (props.footerBeforeSubmit || props.modeSwitchAdditions || modeSwitch || submitButton) && (
 		<>
 			{props.footerBeforeSubmit && <div className="flex flex-wrap items-center gap-1 whitespace-nowrap">{props.footerBeforeSubmit}</div>}
 			<div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -154,6 +150,30 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		</>
 	)
 
+	const phoneSummary = submitButton
+		? {
+				content: (
+					<>
+						{modeSwitch && (
+							<SummarySection label={tr.text(L_Msgs.addAs())}>
+								{modeSwitch}
+								<p className="text-sm text-text-2">
+									{tr.text(selectMode === 'vote' ? L_Msgs.voteModeHint() : L_Msgs.setLayerModeHint())}
+								</p>
+							</SummarySection>
+						)}
+						{props.modeSwitchAdditions && (
+							<SummarySection label={props.modeSwitchAdditionsLabel}>{props.modeSwitchAdditions}</SummarySection>
+						)}
+						{props.footerBeforeSubmit && (
+							<SummarySection label={props.footerBeforeSubmitLabel}>{props.footerBeforeSubmit}</SummarySection>
+						)}
+					</>
+				),
+				submit: submitButton,
+			}
+		: undefined
+
 	return (
 		<LayerPickerLayout
 			frameKey={frameKey}
@@ -163,10 +183,20 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			tourPrefix="add"
 			canToggleColumns
 			footer={footer}
+			phoneSummary={phoneSummary}
 			onClose={props.onClose}
 		/>
 	)
 })
+
+function SummarySection(props: { label?: string; children: React.ReactNode }) {
+	return (
+		<section className="flex flex-col items-start gap-2 [&_.fd-grp]:w-full [&_.fd-grp>.fd-btn]:flex-1">
+			{props.label && <h3 className="fd-lbl-k">{props.label}</h3>}
+			{props.children}
+		</section>
+	)
+}
 
 const NO_LAYERS: L.LayerId[] = []
 
@@ -191,6 +221,8 @@ export default function SelectLayersDialog(props: SelectLayersDialogProps) {
 					stores={props.stores}
 					modeSwitchAdditions={props.modeSwitchAdditions}
 					footerBeforeSubmit={props.footerBeforeSubmit}
+					modeSwitchAdditionsLabel={props.modeSwitchAdditionsLabel}
+					footerBeforeSubmitLabel={props.footerBeforeSubmitLabel}
 					cursor={props.cursor}
 					onClose={onClose}
 				/>

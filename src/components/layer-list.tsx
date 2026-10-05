@@ -292,6 +292,8 @@ function LoadedSelectLayersView({
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
 				modeSwitchAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
+				modeSwitchAdditionsLabel={tr.text(LL_Msgs.addPosition())}
+				footerBeforeSubmitLabel={tr.text(LL_Msgs.addTags())}
 				footerBeforeSubmit={
 					<LayerTags
 						tags={pendingTags}

@@ -379,3 +379,7 @@ export const enableUpdatesCta = def((button: Rendered, alsoStopsIngameVote: bool
 		alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no',
 	}),
 )
+
+// headings of the add-layers dialog's Summary tab on a phone
+export const addPosition = def('Position')
+export const addTags = def('Tags')

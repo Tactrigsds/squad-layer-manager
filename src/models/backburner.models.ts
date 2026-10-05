@@ -466,20 +466,26 @@ const TOKEN_PART_KEYS = {
 	unit: 'units',
 } as const satisfies Record<Exclude<TokenTarget['kind'], 'filter'>, keyof TemplateParts>
 
-// Maps and filter names match fuzzily (unique substring); everything else must match exactly
-// (case/whitespace-insensitive). Exact matches are tried across every category first so a token that is
-// exactly a faction code can never be stolen by a fuzzy map match.
-export function resolveRequestTokens(input: {
-	tokens: string[]
+// what one request token can say back when it does not resolve
+export type TokenError = {
+	token: string
+	code: 'err:unknown-token' | 'err:ambiguous-token' | 'err:too-many'
+	msg: Msgs.Variants.Textable
+	suggestions: string[]
+	// the column a too-many token overflowed
+	column?: string
+}
+
+type TokenResolution = { code: 'ok'; target: TokenTarget } | (TokenError & { code: 'err:unknown-token' | 'err:ambiguous-token' })
+
+type ResolveInput = {
 	components: LC.LayerComponents
 	filterEntities: { id: string; name: string }[]
-}): ResolveTokensResult {
-	const { components, filterEntities } = input
-	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
-	if (tokens.length === 0) return { code: 'err:empty', msg: BB_Msgs.nothingRequested() }
+}
 
-	// exact lookup: normalized token -> canonical target. earlier entries win, so category priority is
-	// insertion order: gamemodes, factions, alliances, units, sizes, versions, maps (incl. abbreviations)
+// normalized token -> canonical target. earlier entries win, so category priority is insertion order: gamemodes,
+// factions, alliances, units, sizes, collections, versions, layers, maps (incl. abbreviations)
+function buildExactLookup(components: LC.LayerComponents) {
 	const exact = new Map<string, TokenTarget>()
 	const addExact = (raw: string | null | undefined, target: TokenTarget) => {
 		if (!raw) return
@@ -510,53 +516,74 @@ export function resolveRequestTokens(input: {
 		addExact(map, { kind: 'map', value: map })
 		addExact(components.mapAbbreviations[map], { kind: 'map', value: map })
 	}
+	return exact
+}
 
-	const targets: TokenTarget[] = []
-	for (const token of tokens) {
-		const exactTarget = exact.get(Str.normalizeForMatch(token))
-		if (exactTarget) {
-			targets.push(exactTarget)
-			continue
-		}
+// Maps and filter names match fuzzily (unique substring); everything else must match exactly
+// (case/whitespace-insensitive). Exact matches are tried across every category first so a token that is
+// exactly a faction code can never be stolen by a fuzzy map match.
+function resolveToken(token: string, exact: Map<string, TokenTarget>, input: ResolveInput): TokenResolution {
+	const { components, filterEntities } = input
+	const exactTarget = exact.get(Str.normalizeForMatch(token))
+	if (exactTarget) return { code: 'ok', target: exactTarget }
 
-		const mapMatches = uniqueSubstringMatch(components.maps, token)
-		if (mapMatches.code === 'ok') {
-			targets.push({ kind: 'map', value: mapMatches.value })
-			continue
-		}
-		if (mapMatches.code === 'err:multiple-matches') {
-			return {
-				code: 'err:ambiguous-token',
-				token,
-				msg: BB_Msgs.ambiguousMap(token, mapMatches.count),
-				suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
-			}
-		}
-
-		const filterMatches = uniqueSubstringMatch(
-			filterEntities.map((f) => f.name),
+	const mapMatches = uniqueSubstringMatch(components.maps, token)
+	if (mapMatches.code === 'ok') return { code: 'ok', target: { kind: 'map', value: mapMatches.value } }
+	if (mapMatches.code === 'err:multiple-matches') {
+		return {
+			code: 'err:ambiguous-token',
 			token,
-		)
-		if (filterMatches.code === 'ok') {
-			const entity = filterEntities.find((f) => f.name === filterMatches.value)!
-			targets.push({ kind: 'filter', filterId: entity.id, name: entity.name })
-			continue
+			msg: BB_Msgs.ambiguousMap(token, mapMatches.count),
+			suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
 		}
-		if (filterMatches.code === 'err:multiple-matches') {
-			return {
-				code: 'err:ambiguous-token',
-				token,
-				msg: BB_Msgs.ambiguousFilter(token, filterMatches.count),
-				suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
-			}
-		}
-
-		return { code: 'err:unknown-token', token, ...unknownToken(token, exact, components, filterEntities) }
 	}
 
+	const filterMatches = uniqueSubstringMatch(
+		filterEntities.map((f) => f.name),
+		token,
+	)
+	if (filterMatches.code === 'ok') {
+		const entity = filterEntities.find((f) => f.name === filterMatches.value)!
+		return { code: 'ok', target: { kind: 'filter', filterId: entity.id, name: entity.name } }
+	}
+	if (filterMatches.code === 'err:multiple-matches') {
+		return {
+			code: 'err:ambiguous-token',
+			token,
+			msg: BB_Msgs.ambiguousFilter(token, filterMatches.count),
+			suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
+		}
+	}
+
+	return { code: 'err:unknown-token', token, ...unknownToken(token, exact, components, filterEntities) }
+}
+
+const SINGLE_VALUED: [
+	Parameters<typeof BB_Msgs.tooManyValues>[0],
+	'layers' | 'maps' | 'gamemodes' | 'versions' | 'collections' | 'sizes',
+][] = [
+	['layer', 'layers'],
+	['map', 'maps'],
+	['gamemode', 'gamemodes'],
+	['version', 'versions'],
+	['collection', 'collections'],
+	['size', 'sizes'],
+]
+
+// Folds resolved tokens into template parts. A token past what its column can hold (a third faction, a second map)
+// is left out and reported, so the caller decides whether that sinks the whole request.
+function collectTargets(resolved: { token: string; target: TokenTarget }[]) {
 	const parts = emptyTemplateParts()
 	const displayParts: string[] = []
-	for (const target of targets) {
+	const errors: TokenError[] = []
+	const limitFor = (key: keyof TemplateParts): { limit: number; column: string; msg: Msgs.Variants.Textable } | undefined => {
+		const team = Object.entries(TEAM_PART_KEYS).find(([, k]) => k === key)
+		if (team) return { limit: 2, column: team[0], msg: BB_Msgs.tooManyTeamValues(team[0] as F.PhysicalTeamColumn) }
+		const single = SINGLE_VALUED.find(([, k]) => k === key)
+		if (single) return { limit: 1, column: single[0], msg: BB_Msgs.tooManyValues(single[0]) }
+		return undefined
+	}
+	for (const { token, target } of resolved) {
 		switch (target.kind) {
 			case 'layer':
 			case 'map':
@@ -568,7 +595,14 @@ export function resolveRequestTokens(input: {
 			case 'alliance':
 			case 'unit': {
 				const key = TOKEN_PART_KEYS[target.kind]
-				if (!parts[key].includes(target.value)) parts[key].push(target.value)
+				const values = parts[key]
+				if (values.includes(target.value)) break
+				const limit = limitFor(key)
+				if (limit && values.length >= limit.limit) {
+					errors.push({ token, code: 'err:too-many', column: limit.column, msg: limit.msg, suggestions: [] })
+					break
+				}
+				values.push(target.value)
 				displayParts.push(target.value)
 				break
 			}
@@ -580,34 +614,42 @@ export function resolveRequestTokens(input: {
 				assertNever(target)
 		}
 	}
+	return { parts, displayParts, errors }
+}
 
-	for (const [column, key] of Object.entries(TEAM_PART_KEYS)) {
-		if (parts[key].length > 2) {
-			return {
-				code: 'err:too-many',
-				column,
-				msg: BB_Msgs.tooManyTeamValues(column as F.PhysicalTeamColumn),
-			}
-		}
+export function resolveRequestTokens(input: { tokens: string[] } & ResolveInput): ResolveTokensResult {
+	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
+	if (tokens.length === 0) return { code: 'err:empty', msg: BB_Msgs.nothingRequested() }
+
+	const exact = buildExactLookup(input.components)
+	const resolved: { token: string; target: TokenTarget }[] = []
+	for (const token of tokens) {
+		const res = resolveToken(token, exact, input)
+		if (res.code !== 'ok') return { code: res.code, token: res.token, msg: res.msg, suggestions: res.suggestions }
+		resolved.push({ token, target: res.target })
 	}
-	const singleValued: [
-		Parameters<typeof BB_Msgs.tooManyValues>[0],
-		'layers' | 'maps' | 'gamemodes' | 'versions' | 'collections' | 'sizes',
-	][] = [
-		['layer', 'layers'],
-		['map', 'maps'],
-		['gamemode', 'gamemodes'],
-		['version', 'versions'],
-		['collection', 'collections'],
-		['size', 'sizes'],
-	]
-	for (const [label, key] of singleValued) {
-		if (parts[key].length > 1) {
-			return { code: 'err:too-many', column: label, msg: BB_Msgs.tooManyValues(label) }
-		}
-	}
+
+	const { parts, displayParts, errors } = collectTargets(resolved)
+	const tooMany = errors.at(0)
+	if (tooMany) return { code: 'err:too-many', column: tooMany.column!, msg: tooMany.msg }
 
 	return { code: 'ok', value: { filter: buildTemplateFilter(parts), parts: displayParts } }
+}
+
+// The search box's reading of a request: every token that resolves is applied, and each one that does not is
+// reported beside the rest rather than rejecting the whole request, as /reqlayer does.
+export function resolveSearchTokens(input: { tokens: string[] } & ResolveInput): { parts: TemplateParts; errors: TokenError[] } {
+	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
+	const exact = buildExactLookup(input.components)
+	const resolved: { token: string; target: TokenTarget }[] = []
+	const errors: TokenError[] = []
+	for (const token of tokens) {
+		const res = resolveToken(token, exact, input)
+		if (res.code === 'ok') resolved.push({ token, target: res.target })
+		else errors.push(res)
+	}
+	const collected = collectTargets(resolved)
+	return { parts: collected.parts, errors: [...errors, ...collected.errors] }
 }
 
 function uniqueSubstringMatch(candidates: string[], token: string) {

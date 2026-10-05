@@ -1,5 +1,6 @@
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
+import * as LayerSearchPrt from '@/frame-partials/layer-search.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -8,7 +9,6 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
-import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -18,6 +18,7 @@ import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 
 import { frameManager } from './frame-manager'
 
@@ -45,7 +46,7 @@ export function createInput(
 		instanceId: opts.sharedInstanceId ?? createId(4),
 		cursor: opts.cursor,
 		squadServer: opts.squadServer,
-		startingMenuItems: opts.startingTemplate ? menuItemsFromTemplate(opts.startingTemplate, colConfig) : undefined,
+		startingMenuItems: opts.startingTemplate ? LayerFilterMenuPrt.menuItemsFromTemplate(opts.startingTemplate, colConfig) : undefined,
 		rememberCollection: opts.rememberCollection,
 	}
 	return {
@@ -80,12 +81,16 @@ type Primary = {
 	initialEditedLayerId?: L.LayerId
 	cursor: LL.Cursor | undefined
 	input: Input
+	// how many layers the applied filters allow before the search narrows them. It costs a query of its own, so it
+	// is only kept up to date while something watches it (see Actions.watchFiltersOnlyCount)
+	filtersOnlyCount: { watchers: number; value: number | null }
 }
 
 type State = Primary &
 	AppliedFiltersPrt.Store &
 	PoolCheckboxesPrt.Store &
 	LayerFilterMenuPrt.Store &
+	LayerSearchPrt.Store &
 	LayerTablePrt.Store &
 	LayerTablePrt.Predicates &
 	//  setup for this is handled by the layer table partial
@@ -109,6 +114,7 @@ const setup: Frame['setup'] = (args) => {
 		cursor: args.input.cursor,
 		input,
 		initialEditedLayerId: args.input.initialEditedLayerId,
+		filtersOnlyCount: { watchers: 0, value: null },
 	} satisfies Primary)
 
 	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
@@ -156,6 +162,7 @@ const setup: Frame['setup'] = (args) => {
 				}
 			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
 	})
+	LayerSearchPrt.initLayerSearch({ ...args, input: {} })
 	// set before the table starts querying, so its first query is not one built without the pool and repeat rules
 	set({ baseQueryInput: Sel.baseQueryInput(args.get(), input.squadServer ? Zus.getState(input.squadServer) : undefined) })
 	LayerTablePrt.initLayerTable(args)
@@ -175,6 +182,36 @@ const setup: Frame['setup'] = (args) => {
 		baseQueryInput$.pipe(Rx.retry({ count: Infinity, delay: 1000 }), Rx.Ext.distinctDeepEquals()).subscribe((baseQueryInput) => {
 			set({ baseQueryInput })
 		}),
+	)
+
+	const squadServer$ = input.squadServer ? Zus.toObservable(input.squadServer, true).pipe(Rx.map(([state]) => state)) : Rx.of(undefined)
+	args.cleanup.push(
+		Rx.combineLatest([args.update$, squadServer$])
+			.pipe(
+				Rx.map(([[state], squadServer]) =>
+					state.filtersOnlyCount.watchers > 0
+						? LayerQueriesClient.getQueryLayersInput(Sel.preMenuFilteredQueryInput(state, squadServer), {
+								cfg: colConfig,
+								pageSize: 1,
+								sort: LQY.DEFAULT_SORT,
+							})
+						: null,
+				),
+				Rx.Ext.distinctDeepEquals(),
+				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
+				Rx.switchMap((queryInput) =>
+					queryInput
+						? LayerQueriesClient.queryLayers$(queryInput).pipe(
+								Rx.filter((packet) => packet.code === 'layers-page'),
+								Rx.map((packet) => packet.totalCount),
+							)
+						: Rx.EMPTY,
+				),
+				Rx.retry({ count: Infinity, delay: 1000 }),
+			)
+			.subscribe((value) => {
+				set((state) => ({ filtersOnlyCount: { ...state.filtersOnlyCount, value } }))
+			}),
 	)
 
 	if (input.rememberCollection) {
@@ -273,27 +310,23 @@ export namespace Sel {
 	export function baseQueryInput(state: State, squadServer: SquadServerFrame.State | undefined): LQY.BaseQueryInput {
 		const preFiltered = preMenuFilteredQueryInput(state, squadServer)
 		const filterMenuConstraints = LayerFilterMenuPrt.Sel.filterMenuConstraints(state)
-		return LQY.mergeBaseInputs(preFiltered, { constraints: filterMenuConstraints })
+		return LQY.mergeBaseInputs(preFiltered, { constraints: [...filterMenuConstraints, ...LayerSearchPrt.Sel.constraints(state)] })
 	}
 }
 
 export namespace Actions {
+	// keeps filtersOnlyCount up to date until the returned function is called
+	export function watchFiltersOnlyCount(stores: KeyProp): () => void {
+		const store = Zus.resolveStore<State>(stores.selectLayers)
+		const adjust = (delta: number) =>
+			store.setState((state) => ({ filtersOnlyCount: { ...state.filtersOnlyCount, watchers: state.filtersOnlyCount.watchers + delta } }))
+		adjust(1)
+		return () => adjust(-1)
+	}
+
 	export function setCursor(stores: KeyProp, cursor: LL.Cursor | undefined) {
 		Zus.resolveStore<State>(stores.selectLayers).setState({ cursor })
 	}
-}
-
-// a backburner template's constraints as the menu's per-column comparisons. A field the menu already models as
-// an `in` keeps that shape; elsewhere a single value becomes `eq` and several (e.g. a merged request's
-// `Map in [Chora, Fallujah]`) an `in`. The team-column split is done upstream.
-function menuItemsFromTemplate(filter: F.FilterNode, colConfig: LQY.EffectiveColumnAndTableConfig): Record<string, F.EditableCompNode> {
-	const items = LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, colConfig)
-	for (const [field, values] of Obj.objEntries(BB.templateToMenuFieldValues(filter))) {
-		const item = items[field]
-		if (!item) continue
-		items[field] = item.type === 'in' || values.length > 1 ? EFB.inValues(field, values) : EFB.eq(field, values[0])
-	}
-	return LayerFilterMenuPrt.alignTeamRowOperators(items)
 }
 
 function getFilterMenuDefaultFields(

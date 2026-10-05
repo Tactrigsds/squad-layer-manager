@@ -4,7 +4,7 @@ import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
+import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -32,7 +32,9 @@ import {
 	searchKeywords,
 	selectableCount,
 } from './options.ts'
+import { useIsComboBoxSheet } from './sheet.ts'
 import { useGrowOnlyWidth } from './sizing.ts'
+import { ComboBoxSurface } from './surface.tsx'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -80,6 +82,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const { values, selectionLimit, disabled, onSelect: _onSelect = () => {}, selectOnClose = false, reset } = props
 	const useInternalState = selectOnClose || !!props.confirm
 	const [open, _setOpen] = useState(false)
+	const sheet = useIsComboBoxSheet()
 	const [selection, setSelection] = useState<GroupSelection>(props.defaultGroups ?? {})
 	const [drillInto, setDrillInto] = useState<string | null>(null)
 	const [drillQuery, setDrillQuery] = useState('')
@@ -353,23 +356,101 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		},
 	)
 
+	const selectionHeader = (
+		<div className="flex h-[41px] shrink-0 items-center justify-between border-b px-2">
+			<span className="truncate text-sm font-medium">
+				{tr.text(UI_Msgs.selectedCount(props.title, displayValues.length, selectionLimit))}
+			</span>
+			<span className="flex items-center space-x-1">
+				{reset &&
+					(() => {
+						const resetToValues = Array.isArray(reset) ? reset : initialValues
+						const resetValues = resetToValues.filter((val) => optionsByValue.has(val))
+						const currentSet = new Set(displayValues)
+						const resetSet = new Set(resetValues)
+						const isIdentical = currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
+						return (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => onSelect(resetValues)}
+								disabled={isIdentical}
+								className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+								title={tr.text(UI_Msgs.resetToInitial())}
+							>
+								<Undo2 className="h-4 w-4 rtl:-scale-x-100" />
+							</Button>
+						)
+					})()}
+				{!drillEntry && selectableVisible.some((val) => !displayValues.includes(val)) && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => {
+							// adds the rows on screen to the selection rather than replacing it: under a
+							// narrowed grouping the rest of the catalog is not what the user is looking at,
+							// and dropping their earlier picks to reach it would be a trap
+							const allValues = [...displayValues]
+							for (const val of selectableVisible) {
+								if (allValues.includes(val)) continue
+								if (selectionLimit && allValues.length >= selectionLimit) break
+								allValues.push(val)
+							}
+							onSelect(allValues)
+						}}
+						className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+						title={tr.text(UI_Msgs.selectAll())}
+					>
+						<CheckCheck className="h-4 w-4" />
+					</Button>
+				)}
+				{displayValues.length > 0 && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => onSelect([])}
+						className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+						title={tr.text(UI_Msgs.clearAll())}
+					>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				)}
+				{!props.confirm && !sheet && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => setOpen(false)}
+						className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+						title={tr.text(UI_Msgs.close())}
+					>
+						<X className="h-4 w-4" />
+					</Button>
+				)}
+			</span>
+		</div>
+	)
+
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			{trigger}
-			<PopoverContent
-				align="start"
-				ref={popoverRef}
-				className={cn('relative p-0', POPOVER_SIZING_CLASSES)}
-				// see ComboBox
-				onEscapeKeyDown={(e) => e.preventDefault()}
+			<ComboBoxSurface
+				title={props.ariaLabel ?? props.title ?? ''}
+				onClose={() => setOpen(false)}
+				popoverProps={{
+					align: 'start',
+					ref: popoverRef,
+					className: cn('relative p-0', POPOVER_SIZING_CLASSES),
+					// see ComboBox
+					onEscapeKeyDown: (e) => e.preventDefault(),
+				}}
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
-				{open && hasDescriptions && <DescriptionBox ref={descriptionBoxRef} placement="top" />}
+				{open && !sheet && hasDescriptions && <DescriptionBox ref={descriptionBoxRef} placement="top" />}
 				{open && (
 					<Command
 						shouldFilter={drillEntry ? true : !props.setInputValue}
-						className="min-h-0"
+						className={cn('min-h-0', sheet && 'flex-1')}
 						onKeyDown={(e) => {
 							if (e.key !== 'Tab') return
 							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
@@ -378,14 +459,15 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 							cycleGroup(tabbed, e.shiftKey ? -1 : 1)
 						}}
 					>
-						<div className="flex min-h-0">
+						<div className={cn('flex min-h-0', sheet && 'flex-1')}>
 							<div
 								className={cn(
-									'flex grow shrink flex-col border-e',
-									MenuSizing.MENU_MIN_WIDTH_CLASS,
-									MenuSizing.MENU_MAX_WIDTH_CLASS,
+									'flex grow shrink flex-col',
+									sheet ? 'min-h-0' : ['border-e', MenuSizing.MENU_MIN_WIDTH_CLASS, MenuSizing.MENU_MAX_WIDTH_CLASS],
 								)}
 							>
+								{/* the sheet has no room for the selection pane, so the checks in the list stand for it */}
+								{sheet && selectionHeader}
 								<div className="shrink-0 border-b">
 									<CommandInput
 										value={inputValue}
@@ -398,7 +480,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								) : (
 									<GroupingBar groupings={barEntries} onPick={pickGroup} onDrill={openDrill} />
 								)}
-								<CommandList className={cn('min-h-0', MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
+								<CommandList className={cn('min-h-0', sheet ? 'flex-1 max-h-none' : MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS)}>
 									<CommandEmpty>{tr.text(UI_Msgs.noResults())}</CommandEmpty>
 									{drillEntry && options !== LOADING && (
 										<GroupDrillIn
@@ -453,12 +535,19 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 															)}
 														/>
-														<span className="min-w-0 flex-1 truncate">
+														<span
+															className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}
+														>
 															<PrefixedLabel
 																prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
 																label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
 																render={prefixRenderer}
 															/>
+															{sheet && option.description && (
+																<span className="text-xs font-normal whitespace-normal text-text-2">
+																	{option.description}
+																</span>
+															)}
 														</span>
 													</CommandItem>
 												))}
@@ -468,125 +557,65 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 							</div>
 
 							{/* on a narrow screen this pane gives up its width before the option pane does */}
-							<div className="flex w-64 min-w-32 shrink-[8] flex-col">
-								<div className="flex h-[41px] shrink-0 items-center justify-between border-b px-2">
-									<span className="truncate text-sm font-medium">
-										{tr.text(UI_Msgs.selectedCount(props.title, displayValues.length, selectionLimit))}
-									</span>
-									<span className="flex items-center space-x-1">
-										{reset &&
-											(() => {
-												const resetToValues = Array.isArray(reset) ? reset : initialValues
-												const resetValues = resetToValues.filter((val) => optionsByValue.has(val))
-												const currentSet = new Set(displayValues)
-												const resetSet = new Set(resetValues)
-												const isIdentical =
-													currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
-												return (
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => onSelect(resetValues)}
-														disabled={isIdentical}
-														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-														title={tr.text(UI_Msgs.resetToInitial())}
-													>
-														<Undo2 className="h-4 w-4 rtl:-scale-x-100" />
-													</Button>
-												)
-											})()}
-										{!drillEntry && selectableVisible.some((val) => !displayValues.includes(val)) && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => {
-													// adds the rows on screen to the selection rather than replacing it: under a
-													// narrowed grouping the rest of the catalog is not what the user is looking at,
-													// and dropping their earlier picks to reach it would be a trap
-													const allValues = [...displayValues]
-													for (const val of selectableVisible) {
-														if (allValues.includes(val)) continue
-														if (selectionLimit && allValues.length >= selectionLimit) break
-														allValues.push(val)
-													}
-													onSelect(allValues)
-												}}
-												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-												title={tr.text(UI_Msgs.selectAll())}
-											>
-												<CheckCheck className="h-4 w-4" />
-											</Button>
-										)}
-										{displayValues.length > 0 && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => onSelect([])}
-												className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-												title={tr.text(UI_Msgs.clearAll())}
-											>
-												<Trash2 className="h-4 w-4" />
-											</Button>
-										)}
-										{!props.confirm && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => setOpen(false)}
-												className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-												title={tr.text(UI_Msgs.close())}
-											>
-												<X className="h-4 w-4" />
-											</Button>
-										)}
-									</span>
-								</div>
-								{/* out of flow, so a long selection scrolls here instead of heightening the option pane beside it */}
-								<div className="relative min-h-[calc(var(--mi-h)*4)] flex-1">
-									<div className="absolute inset-0 space-y-1 overflow-y-auto p-2">
-										{displayValues.length === 0 ? (
-											<div className="text-sm text-muted-foreground text-center py-8">{tr.text(UI_Msgs.nothingSelected())}</div>
-										) : (
-											displayValues.map((value) => {
-												const option = optionsByValue.get(value)
-												const displayText = option ? (option.label ?? option.value) : value
-												return (
-													<div
-														key={value}
-														className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
-														onMouseEnter={() => showDescription(value)}
-														onMouseLeave={hideDescription}
-														onMouseDown={(e) => {
-															if (e.button === 1) {
-																e.preventDefault()
-																onSelect((prevValues) => prevValues.filter((v) => v !== value))
-															}
-														}}
-													>
-														<span className="flex-1 truncate">
-															<PrefixedLabel
-																prefix={selectedPrefix(option)}
-																label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
-																render={prefixRenderer}
-															/>
-														</span>
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
-															className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ms-2"
+							{!sheet && (
+								<div className="flex w-64 min-w-32 shrink-[8] flex-col">
+									{selectionHeader}
+									{/* out of flow, so a long selection scrolls here instead of heightening the option pane beside it */}
+									<div className="relative min-h-[calc(var(--mi-h)*4)] flex-1">
+										<div className="absolute inset-0 space-y-1 overflow-y-auto p-2">
+											{displayValues.length === 0 ? (
+												<div className="text-sm text-muted-foreground text-center py-8">
+													{tr.text(UI_Msgs.nothingSelected())}
+												</div>
+											) : (
+												displayValues.map((value) => {
+													const option = optionsByValue.get(value)
+													const displayText = option ? (option.label ?? option.value) : value
+													return (
+														<div
+															key={value}
+															className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
+															onMouseEnter={() => showDescription(value)}
+															onMouseLeave={hideDescription}
+															onMouseDown={(e) => {
+																if (e.button === 1) {
+																	e.preventDefault()
+																	onSelect((prevValues) => prevValues.filter((v) => v !== value))
+																}
+															}}
 														>
-															<X className="h-3 w-3" />
-														</Button>
-													</div>
-												)
-											})
-										)}
+															<span className="flex-1 truncate">
+																<PrefixedLabel
+																	prefix={selectedPrefix(option)}
+																	label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+																	render={prefixRenderer}
+																/>
+															</span>
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
+																className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ms-2"
+															>
+																<X className="h-3 w-3" />
+															</Button>
+														</div>
+													)
+												})
+											)}
+										</div>
 									</div>
 								</div>
-							</div>
+							)}
 						</div>
 
+						{sheet && !props.confirm && (
+							<div className="shrink-0 border-t p-2">
+								<Button className="w-full" onClick={() => setOpen(false)}>
+									{tr.text(UI_Msgs.done())}
+								</Button>
+							</div>
+						)}
 						{/* Full-width confirm button */}
 						{props.confirm && (
 							<div className="border-t shrink-0">
@@ -606,7 +635,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						)}
 					</Command>
 				)}
-			</PopoverContent>
+			</ComboBoxSurface>
 		</Popover>
 	)
 }

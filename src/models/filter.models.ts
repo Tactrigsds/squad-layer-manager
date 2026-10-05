@@ -510,7 +510,7 @@ export function isFloatEqNullOnly(domain: ValueDomain | undefined, type: CompTyp
 	return type === 'eq' && isFloatDomain(domain)
 }
 
-export function compOpSelectionKey(node: EditableCompNode): string {
+export function compOpSelectionKey(node: EditableCompNode): CompOpKey {
 	switch (node.type) {
 		case 'eq':
 			return node.neg ? 'neq' : 'eq'
