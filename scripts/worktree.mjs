@@ -12,6 +12,8 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+import { inFlake } from './nix-shell.mjs'
+
 const WORKTREE_ROOT = process.env.SLM_WORKTREE_ROOT || path.join(os.homedir(), 'projects', 'slm')
 const BRANCH_PREFIX = 'worktree-'
 
@@ -113,41 +115,29 @@ function install(dest, opts) {
 	run('pnpm', ['install'], dest, opts)
 }
 
-// Build products and local inputs that are gitignored, so a fresh worktree has none of them and nothing that
-// reads layers builds or boots until it does. Copied from the main checkout rather than symlinked: a worktree
-// that edits layer-engine/ rebuilds over its own copy, and must not overwrite the main checkout's in the
-// process. Notes go to stderr because a hook's stdout is the worktree path and nothing else.
-const ARTIFACTS = ['assets/layer-engine.wasm', 'layer-db.json']
+// layer-db.json is a gitignored local input, so a fresh worktree lacks it, and nothing that reads layers boots
+// until it does. Copied from the main checkout rather than symlinked, so the main checkout's copy is never changed
+// from a worktree. Notes go to stderr because a hook's stdout is the worktree path and nothing else.
+const LAYER_DB = 'layer-db.json'
 
-function ensureArtifacts(dest, { build = false, force = false } = {}) {
+// The engine is always built rather than copied: a copy from the main checkout matches whatever source the main
+// checkout last built, not this branch's layer-engine/. Cargo skips the build when nothing changed, which leaves
+// the nix shell startup (a couple of seconds) as the cost. A cold build is under half a minute.
+function ensureArtifacts(dest, { force = false } = {}) {
 	const root = mainCheckout(dest)
-	// The main checkout is a workspace too, and has nothing to copy from. It takes the build path below rather
-	// than being skipped, since a fresh clone has never built the engine either.
-	const copyFrom = path.resolve(dest) === path.resolve(root) ? null : root
-	const absent = copyFrom ? 'the main checkout has none' : 'this checkout has none'
-	for (const artifact of ARTIFACTS) {
-		const link = path.join(dest, artifact)
-		if (fs.existsSync(link) && !(force && copyFrom)) continue
-		const target = copyFrom && path.join(copyFrom, artifact)
-		if (target && fs.existsSync(target)) {
-			fs.mkdirSync(path.dirname(link), { recursive: true })
-			fs.copyFileSync(target, link)
-			console.error(`  ${artifact} copied from the main checkout`)
-			continue
-		}
-		if (!artifact.endsWith('.wasm')) {
-			console.error(`  ${artifact}: ${absent}, skipping`)
-			continue
-		}
-		// Only ever on the paths that can afford it: a cargo build is minutes, and a WorktreeCreate hook that
-		// takes minutes reads as a hung one.
-		if (build) {
-			console.error(`  ${artifact}: ${absent}, building it`)
-			run('pnpm', ['run', 'build:engine'], dest, { quiet: true })
-			continue
-		}
-		console.error(`  ${artifact}: ${absent} -- build it with \`pnpm build:engine\``)
+	const link = path.join(dest, LAYER_DB)
+	const target = path.join(root, LAYER_DB)
+	const wanted = path.resolve(dest) !== path.resolve(root) && (force || !fs.existsSync(link))
+	if (wanted && fs.existsSync(target)) {
+		fs.copyFileSync(target, link)
+		console.error(`  ${LAYER_DB} copied from the main checkout`)
+	} else if (wanted) {
+		console.error(`  ${LAYER_DB}: the main checkout has none, skipping`)
 	}
+
+	console.error('  building the layer engine')
+	const [cmd, args] = inFlake('pnpm', ['run', 'build:engine'])
+	run(cmd, args, dest, { quiet: true })
 }
 
 function slotRegistryPath(cwd) {
@@ -246,10 +236,9 @@ function dispatch() {
 			break
 		}
 
-		// What the dev workspace provisioner calls, so the artifact list lives in one place. Provisioning is slow
-		// and interactive enough to wait on a build when the main checkout has nothing to copy.
+		// What the dev workspace provisioner calls, so a created and a provisioned worktree get the same setup.
 		case 'ensure-artifacts':
-			ensureArtifacts(git(['rev-parse', '--show-toplevel'], cwd), { build: true, force: rest.includes('--force') })
+			ensureArtifacts(git(['rev-parse', '--show-toplevel'], cwd), { force: rest.includes('--force') })
 			break
 
 		case 'ls': {
