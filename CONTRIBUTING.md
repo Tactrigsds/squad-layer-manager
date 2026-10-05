@@ -120,7 +120,7 @@ pnpm dev
 ```
 
 Any checkout location works, including one made by `git worktree add` or an agent. `pnpm dev --reset-data` replaces
-that checkout's isolated database. `pnpm dev --emu-only` runs only the emulator with its REPL. See
+that checkout's isolated database with a freshly seeded one. `pnpm dev --emu-only` runs only the emulator with its REPL. See
 [docs/developers/dev_instances.md](docs/developers/dev_instances.md).
 
 ## Tests

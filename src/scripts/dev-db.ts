@@ -1,16 +1,13 @@
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
-import * as E from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { parseArgs } from 'node:util'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import * as CS from '@/models/context-shared'
-import * as PG from '@/models/player-groupings.models'
-import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
@@ -25,33 +22,21 @@ import * as BmServer from '../emulator/bm-server.ts'
 // the single admin list a dev workspace keeps, pointed at the worktree's emulated Admins.cfg
 const DEV_ADMIN_LIST = 'dev'
 
-// the one server a workspace that started from an empty database has: this worktree's emulator
+// the one server a workspace has: this worktree's emulator
 const DEV_SERVER_ID = 'emulator'
 
-// Gives this worktree the database its instance runs on, and points its servers at the worktree's emulator.
+// Gives this worktree a fresh database for its instance, migrated by the worktree's own build and seeded the way the
+// app's own first boot would seed it, with its one server pointed at the worktree's emulator. Never a copy of another
+// checkout's database: that one may have been migrated by a newer build than this worktree's, which the app refuses
+// to run on.
 //
-// The main checkout's database is the preferred source, since cloning it is what makes an experiment run
-// against realistic data. It is not a prerequisite: a fresh clone, or a machine that has only ever run the app
-// in docker, has none, and such a workspace starts from an empty database seeded the way the app's own first
-// boot would seed it (see seedFresh).
-//
-// The source may be in use by a running app, and must survive this untouched. That is what decides the
-// mechanism: `VACUUM INTO` over a read-only connection takes a read transaction and writes a new file. It
-// never writes the source, never takes its write lock, and never checkpoints its WAL -- it only reads
-// through it, so the clone includes everything committed as of the snapshot. A file copy would be wrong on
-// both counts: it would miss the -wal (the clone would silently lose recent writes) and tear across
-// concurrent writes.
-//
-// The destination is the dangerous half, and not for a reason WAL covers. WAL coordinates concurrent
-// *connections* to a database; this replaces the *file* behind SQLite's back. An app holding the old file
-// open is left writing to an unlinked inode: the writes succeed, and are lost, and it serves reads from a
-// database that no longer exists on disk -- silently, with nothing raising an error. Hence lockDest: the
-// exclusive lock is held from before the snapshot until after the rename, so an app that boots into that
-// window fails loudly on SQLITE_BUSY instead of becoming a ghost.
+// Replacing an existing database is the dangerous part. An app holding the old file open is left writing to an
+// unlinked inode: the writes succeed, and are lost, and it serves reads from a database that no longer exists on
+// disk, with nothing raising an error. Hence lockDest: the exclusive lock is held while the old file is removed, so
+// an app that boots into that window fails loudly on SQLITE_BUSY instead.
 
 const args = parseArgs({
 	options: {
-		from: { type: 'string' },
 		force: { type: 'boolean', default: false },
 	},
 	allowPositionals: false,
@@ -63,22 +48,8 @@ ensureLoggerSetup()
 
 const slot = Slots.requireSlot()
 const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
-const mainCheckoutDb = path.join(Slots.repoRootCheckout(), 'data/db.sqlite3')
-const requested = args.values.from ? path.resolve(args.values.from) : undefined
 const dest = path.resolve(process.env.DB_PATH ?? './data/db.sqlite3')
 
-// A source asked for by name has to be there; the main checkout's is a default, and its absence is the
-// ordinary case this script seeds an empty database for.
-if (requested && !fs.existsSync(requested)) {
-	console.error(`no database to clone at ${requested}`)
-	process.exit(1)
-}
-const source = requested ?? (fs.existsSync(mainCheckoutDb) ? mainCheckoutDb : undefined)
-
-if (source && source === dest) {
-	console.error(`source and destination are the same file (${dest}); run this from a worktree, not the main checkout`)
-	process.exit(1)
-}
 if (fs.existsSync(dest) && !args.values.force) {
 	console.error(`${dest} already exists. Pass --force to replace it.`)
 	process.exit(1)
@@ -120,23 +91,6 @@ function clearDest() {
 	for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dest + suffix, { force: true })
 }
 
-function snapshot(source: string) {
-	// readonly is load-bearing rather than good manners: it makes it impossible for this connection to take a
-	// write lock on the source, whatever it does next.
-	const src = new DatabaseConstructor(source, { readonly: true })
-	const tmp = `${dest}.clone-${process.pid}.tmp`
-	fs.mkdirSync(path.dirname(dest), { recursive: true })
-	fs.rmSync(tmp, { force: true })
-	try {
-		src.exec(`VACUUM INTO '${tmp.replaceAll("'", "''")}'`)
-	} finally {
-		src.close()
-	}
-	clearDest()
-	fs.renameSync(tmp, dest)
-}
-
-// The worktree's branch may add migrations the main checkout has never run, and an empty database has run none.
 async function migrate(driver: Database) {
 	const { applied } = await Migrate.runMigrations(driver, {
 		sqlDir: path.resolve(process.cwd(), 'drizzle-sqlite'),
@@ -156,21 +110,8 @@ function emulatorConnection(): SETTINGS.ServerConnection {
 	}
 }
 
-// The connection every server that is not the emulator gets. The point is that no connection reaching a real
-// squad server survives the clone: the source's rows hold the live RCON host and password, and a disabled row
-// keeps them, one settings-page toggle away from a dev instance driving the production server. Port 1 has
-// nothing behind it, so re-enabling one of these fails loudly and locally instead.
-function deadConnection(serverId: string): SETTINGS.ServerConnection {
-	return {
-		type: 'local',
-		logFile: path.join(DevInstance.DEV_DIR, `disabled-${serverId}.log`),
-		rcon: { host: '127.0.0.1', port: 1, password: SecretBox.seal('disabled') },
-	}
-}
-
 // The integrations a workspace runs with: the battlemetrics stub the emulator host serves (see dev/instance.ts),
-// which wants the org id it claims, and nothing else. A cloned database's real tokens are dropped for the same
-// reason its RCON connections are: nothing in a dev instance may reach a real service.
+// which wants the org id it claims, and nothing else. Nothing in a dev instance may reach a real service.
 function devIntegrations(): SETTINGS.Integrations {
 	return {
 		battlemetrics: { enabled: true, token: 'dev', orgId: BmServer.STUB_ORG_ID },
@@ -180,12 +121,13 @@ function devIntegrations(): SETTINGS.Integrations {
 }
 
 // What the app's own first boot would write to an empty database, written here instead: a workspace has to be
-// re-pointed at its emulator and signed in to before anyone sees it, and both need rows to exist by then.
+// pointed at its emulator and signed in to before anyone sees it, and both need rows to exist by then. The one admin
+// list it keeps is the emulator's Admins.cfg.
 //
 // Order matters. Seed.setup only runs against a database that has never been configured, which is what an
 // empty globalSettings table means, so the filters the pool config below names are seeded before the global
 // settings row that would make the app skip them.
-async function seedFresh(driver: Database) {
+async function seed(driver: Database) {
 	const db = drizzle(driver)
 	await Seed.setup({ ...CS.init(), db: () => db })
 
@@ -197,6 +139,12 @@ async function seedFresh(driver: Database) {
 			settings: SETTINGS.GlobalSettingsSchema.encode({
 				...Seed.applyInitialGlobalSettings(defaults.data),
 				integrations: devIntegrations(),
+				adminLists: {
+					[DEV_ADMIN_LIST]: {
+						source: { type: 'local', source: DevInstance.ADMINS_CFG_PATH },
+						adminIdentifyingPermissions: ['canseeadminchat'],
+					},
+				},
 			}),
 		}),
 	)
@@ -210,7 +158,9 @@ async function seedFresh(driver: Database) {
 		console.error(`SUPER_USERS is empty, so ${DevInstance.DEV_USER.username} can administer nothing; put ${discordId} in it`)
 	}
 
-	const settings = Seed.applyInitialPoolConfig(SETTINGS.ServerSettingsSchema.parse({ connections: emulatorConnection() }))
+	const settings = Seed.applyInitialPoolConfig(
+		SETTINGS.ServerSettingsSchema.parse({ connections: emulatorConnection(), adminLists: [DEV_ADMIN_LIST] }),
+	)
 	await db.insert(Schema.servers).values(
 		superjsonify(Schema.servers, {
 			id: DEV_SERVER_ID,
@@ -220,118 +170,15 @@ async function seedFresh(driver: Database) {
 			settings,
 		}),
 	)
-	console.log(`seeded an empty database: the '${DEV_SERVER_ID}' server and the '${DevInstance.DEV_USER.username}' user`)
+	await Slots.setLogin(DevInstance.DEV_USER.username)
+	console.log(`seeded the '${DEV_SERVER_ID}' server and the '${DevInstance.DEV_USER.username}' user, which this instance signs in as`)
 }
 
-// Re-point the cloned servers at this worktree's emulator. The rows are rewritten in place rather than
-// replaced: match history, app events and the layer queue all hang off a server id, and that history is the
-// realistic data the clone exists to provide.
-async function repointServers(driver: Database) {
-	const db = drizzle(driver)
-	const rows = await db.select().from(Schema.servers)
-	if (rows.length === 0) {
-		console.error('the cloned database has no servers to re-point')
-		process.exit(1)
-	}
-
-	// Only one emulator runs per worktree, so only one server can be live. Prefer the one that was already
-	// the default so the app comes up on the server the data is mostly about.
-	const target = rows.find((row) => row.defaultServer) ?? rows[0]
-
-	for (const row of rows) {
-		const parsed = SETTINGS.ServerSettingsSchema.safeParse(unsuperjsonify(Schema.servers, row).settings)
-		if (!parsed.success) {
-			// Its connections cannot be read, so they cannot be scrubbed either. Disabling is all that is left,
-			// and the app's own repair flow is what fixes such a row.
-			console.error(`server ${row.id} has settings that do not parse; disabling it without scrubbing its connection`)
-			await db.update(Schema.servers).set({ enabled: false, defaultServer: false }).where(E.eq(Schema.servers.id, row.id))
-			continue
-		}
-
-		const isTarget = row.id === target.id
-		const settings: SETTINGS.ServerSettings = {
-			...parsed.data,
-			connections: isTarget ? emulatorConnection() : deadConnection(row.id),
-		}
-		await db
-			.update(Schema.servers)
-			.set(superjsonify(Schema.servers, { settings, enabled: isTarget, defaultServer: isTarget }))
-			.where(E.eq(Schema.servers.id, row.id))
-		console.log(
-			isTarget
-				? `re-pointed server ${row.id} at the emulator (rcon 127.0.0.1:${slot.ports.rcon})`
-				: `disabled server ${row.id} and scrubbed its connection`,
-		)
-	}
-
-	// admin lists are named (migration 0092). Replace whatever the source install had with a single 'dev' list pointed
-	// at this worktree's emulated Admins.cfg, keep the migrated identifying perms, and point every server at it --
-	// otherwise a cloned server would recognise no admins at all.
-	const gsRows = await db.select().from(Schema.globalSettings)
-	if (gsRows.length > 0) {
-		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as {
-			settings: Record<string, unknown> & { adminLists?: Record<string, { adminIdentifyingPermissions?: string[] }> }
-		}
-		const migratedPerms = Object.values(gsRaw.settings.adminLists ?? {}).flatMap((l) => l.adminIdentifyingPermissions ?? [])
-		const identifyingPerms = migratedPerms.length > 0 ? [...new Set(migratedPerms)] : ['canseeadminchat']
-		// The source's groupings are mostly battlemetrics rules, and a dev instance has no battlemetrics: every player
-		// would read as ungrouped. The emulator's own admin list is the one source a worktree does have, so the
-		// grouping over it is installed alongside whatever was cloned rather than replacing it.
-		const clonedGroupings = (gsRaw.settings.playerGroupings ?? {}) as Record<string, unknown>
-		const settings = {
-			...gsRaw.settings,
-			adminLists: {
-				[DEV_ADMIN_LIST]: {
-					source: { type: 'local', source: DevInstance.ADMINS_CFG_PATH },
-					adminIdentifyingPermissions: identifyingPerms,
-				},
-			},
-			playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS), ...clonedGroupings },
-			integrations: devIntegrations(),
-		}
-		await db
-			.update(Schema.globalSettings)
-			.set(superjsonify(Schema.globalSettings, { settings }))
-			.where(E.eq(Schema.globalSettings.id, gsRows[0].id))
-		console.log('re-pointed the admin list at the emulated Admins.cfg, and the integrations at the battlemetrics stub')
-
-		const serverRows = await db.select().from(Schema.servers)
-		for (const row of serverRows) {
-			const raw = unsuperjsonify(Schema.servers, row) as { id: string; settings: Record<string, unknown> }
-			await db
-				.update(Schema.servers)
-				.set(superjsonify(Schema.servers, { settings: { ...raw.settings, adminLists: [DEV_ADMIN_LIST] } }))
-				.where(E.eq(Schema.servers.id, raw.id))
-		}
-		console.log(`pointed ${serverRows.length} server(s) at the '${DEV_ADMIN_LIST}' admin list`)
-	}
-}
-
-// The user the instance's url logs in as. A super user by preference: it holds every permission, so the one
-// link works for inspecting anything, and it is the account the person running the worktree already uses.
-async function resolveLogin(driver: Database) {
-	const db = drizzle(driver)
-	const selectUsers = () =>
-		db
-			.select({ discordId: Schema.users.discordId, username: Schema.discordAccounts.username })
-			.from(Schema.users)
-			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-	const candidates = superUsers.length > 0 ? await selectUsers().where(E.inArray(Schema.users.discordId, superUsers)).limit(1) : []
-	const [user] = candidates.length > 0 ? candidates : await selectUsers().limit(1)
-	if (!user) {
-		console.error('this database has no users, so no login for this instance -- pass ?login=<username> yourself')
-		return
-	}
-	await Slots.setLogin(user.username)
-	console.log(`this instance signs in as ${user.username}`)
-}
-
-console.log(source ? `cloning ${source}\n     -> ${dest}` : `no database to clone at ${mainCheckoutDb}\nstarting ${dest} empty`)
-// held across the snapshot and the rename, not just checked before them
+console.log(`starting ${dest} empty`)
+// held across the removal, not just checked before it
 const destLock = lockDest()
 try {
-	if (source) snapshot(source)
-	else clearDest()
+	clearDest()
 } finally {
 	destLock?.close()
 }
@@ -339,12 +186,8 @@ try {
 const driver = new DatabaseConstructor(dest)
 driver.pragma('journal_mode = WAL')
 try {
-	const integrity = driver.pragma('integrity_check', { simple: true })
-	if (integrity !== 'ok') throw new Error(`the database failed its integrity check: ${String(integrity)}`)
 	await migrate(driver)
-	if (!source) await seedFresh(driver)
-	await repointServers(driver)
-	await resolveLogin(driver)
+	await seed(driver)
 } finally {
 	driver.close()
 }
