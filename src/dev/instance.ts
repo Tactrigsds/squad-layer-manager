@@ -52,7 +52,8 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 		PORT: String(slot.ports.app),
 		HOST: '127.0.0.1',
 		CLIENT_PORT: String(slot.ports.client),
-		ORIGIN: `http://localhost:${slot.ports.client}`,
+		// set ORIGIN when starting `pnpm dev` to reach the instance through a proxy, e.g. `tailscale serve`
+		ORIGIN: process.env.ORIGIN ?? `http://localhost:${slot.ports.client}`,
 		DB_PATH: DEV_DB_PATH,
 
 		// A dev instance never reaches discord: the oauth callback is built from ORIGIN, so real login would
