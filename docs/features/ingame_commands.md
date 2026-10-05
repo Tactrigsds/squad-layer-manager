@@ -3,7 +3,7 @@
 Admins can use most of SLM from the game's chat: votes, swaps, warns, kicks, timeouts, broadcasts, flags, notes and
 layer requests. Players can use the public commands, such as `/switch` to ask to switch teams, `/admin` to call for an
 admin, and `/requestlayer` to request a layer. Each command runs with the permissions of the player who types it. See
-[Permissions](player_management.md#permissions).
+[Permissions and access control](permissions.md).
 
 Type `/help` in game to list the commands. Everything typed is case-insensitive, and player, squad and flag names match
 on any part of the name.
@@ -28,6 +28,11 @@ Click _Details_ on a command to see each of its arguments, the reasons configure
 A _trigger_ is the word typed in chat to run a command. `/timeout` and `/to` are two triggers for the same command. Add
 your own triggers for any command, including shortcuts with arguments filled in, such as `/to2h` for a two-hour
 timeout. See [Command triggers](../guide/configuring/command_triggers.md).
+
+Commands start with `/` by default. Add another prefix, such as `!`, to _Allowed Prefixes_ in the _In-game Commands_
+settings, then give a command a trigger with that prefix, such as `!switch` beside `/switch`. Players who are used to
+another tool's commands can then keep typing them. See
+[Command prefixes](../guide/configuring/admin_actions.md#command-prefixes).
 
 ## Typo correction
 

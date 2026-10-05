@@ -56,9 +56,23 @@ export const PAGES: Page[] = [
 		group: 'Features',
 	},
 	{
+		file: 'docs/features/permissions.md',
+		slug: 'permissions-and-access',
+		label: 'Permissions and access control',
+		section: 'features',
+		group: 'Features',
+	},
+	{
 		file: 'docs/features/integrations_and_hosting.md',
 		slug: 'integrations-and-hosting',
 		label: 'Integrations and hosting',
+		section: 'features',
+		group: 'Features',
+	},
+	{
+		file: 'docs/features/learning_slm.md',
+		slug: 'learning-slm',
+		label: 'Learning SLM',
 		section: 'features',
 		group: 'Features',
 	},

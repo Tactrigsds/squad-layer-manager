@@ -84,5 +84,21 @@ the history page as in the activity feed.
 
 ![the history page](../images/features/history.png)
 
+### Players and matches
+
+The _Players_ and _Matches_ tabs group the events a query finds by player or by match. Each row counts the events
+behind it. Expand a row to read those events in place.
+
+A player row lists the player's Steam and EOS IDs, how many matches they played, how many chat messages they sent, and
+when they were last seen. Use _Min matches_ to find regulars. Add an event type and a time to find, for example, every
+player who was warned in the last week.
+
+![players grouped with their events, one expanded](../images/features/history_players.png)
+
+A match row lists the match's layer, outcome, ticket and kill differences, length, and who set the layer. Narrow the
+matches by outcome, ticket difference, length, kills or map, such as to find every one-sided match on a map.
+
+![matches grouped with their events, one expanded](../images/features/history_matches.png)
+
 Post a link to a selection of events in Discord, and SLM replies with the events attached as a text file. See
 [Discord](integrations_and_hosting.md#discord).
