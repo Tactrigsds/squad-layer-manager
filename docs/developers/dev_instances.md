@@ -64,23 +64,17 @@ on.
 
 ## The database
 
-Provisioning clones the primary checkout's database, then re-points it at this workspace's emulator: the default server
-is switched to a `local` connection to the emulator's log file and RCON port, and every other server is disabled and has its
-connection scrubbed. Match history, users, filters and settings all survive, so an experiment runs against realistic
-data.
+Provisioning creates an empty database, migrates it with the workspace's own migrations, and seeds it the way the
+app's first boot seeds one. Provisioning also inserts the rows a workspace needs before anyone can look at it: an
+`emulator` server pointed at this workspace's emulated Squad server, a `dev` admin list read from the emulator's
+`Admins.cfg`, and the `dev` user the URL signs in as.
 
-Re-clone at any time with `pnpm dev --reset-data` after stopping the app. The clone is a `VACUUM INTO` snapshot over
-a read-only connection, so cloning from a primary checkout that is running the app is safe and never touches the
-source.
+A workspace never copies another checkout's database. That database may have been migrated by a newer branch, and SLM
+refuses to start on a database with migrations its build does not have. Seed match history, players and other data
+with `pnpm emuctl`.
 
-The primary checkout does not need a database of its own. A fresh clone has none, and neither does a machine that
-has only ever run the app in docker. In that case the workspace starts from an empty database, migrated and seeded
-the way the app's own first boot seeds one. Provisioning also inserts the two rows a workspace needs before anyone can look at it:
-an `emulator` server pointed at this worktree's emulated Squad server, and the `dev` user the URL signs in as.
-
-No connection that reaches a real squad server survives a clone. The source's rows hold live RCON hosts and
-passwords. A row that was only disabled would leave a dev instance one settings-page toggle away from driving the
-production server.
+Replace the database with a fresh one at any time with `pnpm dev --reset-data` after stopping the app. The same
+command fixes a workspace that refuses to start because a newer branch migrated its database.
 
 ## The emulator
 
@@ -145,8 +139,7 @@ Blocked deliberately, via env overrides in `src/dev/instance.ts`:
   every slot's port registered as a redirect uri on the discord app. `QUERY_PARAM_AUTH_BYPASS` stands in. RBAC roles
   that come from discord are unavailable as a result, but the `SUPER_USERS` bootstrap still applies.
 - **BattleMetrics** points at the emulator's stub, and provisioning writes the stub's org id and a dummy token into
-  the workspace's settings. The real API would write flags and notes to the live org. The Squad Browser and Steam
-  keys a cloned database holds are dropped for the same reason.
+  the workspace's settings. The real API would write flags and notes to the live org.
 
 Telemetry does go to the shared collector, tagged `slm.worktree=<name>` and `slm.dev.slot=<n>` so one grafana can
 serve every instance.

@@ -44,20 +44,21 @@ function assertNotLegacyDbPath() {
 }
 
 // Migrations only go forward, so a build older than the one that last migrated the database would run against a
-// schema it doesn't know. Only a warning outside production: a development database is cloned from the main checkout,
-// which is routinely ahead of an older worktree's branch.
+// schema it doesn't know.
 function assertNotNewerThanBuild(driver: Database, migrateOpts: { sqlDir: string; tsMigrations: Migrate.TsMigration[] }) {
 	const unknown = Migrate.getUnknownAppliedMigrations(driver, migrateOpts)
 	if (unknown.length === 0) return
 	const stamp = DbMeta.readBuildStamp(driver)
 	const tag = stamp && DbMeta.imageTagFor(stamp.gitSha)
-	const msg =
-		`the database was migrated by a newer build of SLM than this one (${ENV.PUBLIC_GIT_SHA}), and records ${unknown.length} ` +
-		`migration(s) this build does not have: ${unknown.join(', ')}. SLM cannot be downgraded. ` +
-		(tag ? `Set SLM_IMAGE_TAG=${tag}, the build that last ran against it, ` : 'Run the build that last ran against it, ') +
-		'or restore a backup taken before the upgrade (see docs/guide/operations/backups.md).'
-	if (ENV.NODE_ENV === 'production') throw new Error(`Refusing to start: ${msg}`)
-	log.warn(msg)
+	const remedy =
+		ENV.NODE_ENV !== 'production'
+			? 'In a dev workspace, `pnpm dev --reset-data` replaces it with a fresh one.'
+			: (tag ? `Set SLM_IMAGE_TAG=${tag}, the build that last ran against it, ` : 'Run the build that last ran against it, ') +
+				'or restore a backup taken before the upgrade (see docs/guide/operations/backups.md).'
+	throw new Error(
+		`Refusing to start: the database was migrated by a newer build of SLM than this one (${ENV.PUBLIC_GIT_SHA}), and records ` +
+			`${unknown.length} migration(s) this build does not have: ${unknown.join(', ')}. SLM cannot be downgraded. ${remedy}`,
+	)
 }
 
 export async function setup(opts?: { skipMigrationCheck?: boolean }) {

@@ -24,7 +24,7 @@ export const EMU_SOCKET_PATH = path.join(DEV_DIR, 'emu.sock')
 // rather than something each worktree has to be told.
 export const RCON_PASSWORD = 'devpassword'
 
-// The account a workspace with no database to clone signs in as. Provisioning writes the id into the .env it
+// The account a workspace signs in as. Provisioning writes the id into the .env it
 // generates as the sole SUPER_USERS entry, so the instance opens on a user who can administer it. Discord
 // snowflakes are timestamps and far smaller than 2^61, so this can never collide with a real one.
 export const DEV_USER = { discordId: 2305843009213693952n, username: 'dev' }
@@ -58,7 +58,7 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 
 		// A dev instance never reaches discord: the oauth callback is built from ORIGIN, so real login would
 		// need every slot's port registered as a redirect uri on the discord app. The bypass logs in as any
-		// user in the (cloned) db instead -- `?login=<username>`. The shared .env's credentials are unused
+		// user in the workspace's db instead -- `?login=<username>`. The shared .env's credentials are unused
 		// either way, so a worktree carries dummies rather than the real app's, and cannot reach it at all.
 		DISCORD_ENABLED: 'false',
 		QUERY_PARAM_AUTH_BYPASS: 'true',

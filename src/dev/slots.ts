@@ -30,7 +30,7 @@ export type Slot = {
 	worktree: string
 	name: string
 	ports: SlotPorts
-	// the username `instanceUrl` logs in as; resolved from the cloned database during provisioning
+	// the username `instanceUrl` logs in as; written during provisioning
 	login?: string
 }
 
