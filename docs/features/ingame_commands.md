@@ -29,6 +29,11 @@ A _trigger_ is the word typed in chat to run a command. `/timeout` and `/to` are
 your own triggers for any command, including shortcuts with arguments filled in, such as `/to2h` for a two-hour
 timeout. See [Command triggers](../guide/configuring/command_triggers.md).
 
+Commands start with `/` by default. Add another prefix, such as `!`, to _Allowed Prefixes_ in the _In-game Commands_
+settings, then give a command a trigger with that prefix, such as `!switch` beside `/switch`. Players who are used to
+another tool's commands can then keep typing them. See
+[Command prefixes](../guide/configuring/admin_actions.md#command-prefixes).
+
 ## Typo correction
 
 When a word in a command matches nothing, or matches more than one thing, SLM asks which one was meant instead of
