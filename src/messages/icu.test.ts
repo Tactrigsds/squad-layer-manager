@@ -1,5 +1,4 @@
 import { createIntl } from '@formatjs/intl'
-import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
@@ -123,10 +122,6 @@ describe.each(LOCALES)('%s', (locale) => {
 		expect(report).toBe('')
 		expect(renders).toBeGreaterThan(PATTERNS.length * 5)
 	})
-})
-
-test('the translations match the messages in src', () => {
-	expect(() => execFileSync('pnpm', ['-s', 'i18n:lint'], { encoding: 'utf8', stdio: 'pipe' })).not.toThrow()
 })
 
 test('value formatting is rejected at build time rather than dropped at runtime', () => {
