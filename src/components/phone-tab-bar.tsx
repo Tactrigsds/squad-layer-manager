@@ -4,6 +4,7 @@ import React from 'react'
 import * as APP_Msgs from '@/messages/app.messages'
 import { tr } from '@/systems/messages.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
+import * as TextEntryFocus from '@/systems/text-entry-focus.client'
 
 type Screen = SquadServerClient.DashboardTab
 
@@ -21,8 +22,12 @@ export default function PhoneTabBar(props: {
 	badges?: Partial<Record<Screen, number>>
 	onSelect: (screen: Screen) => void
 }) {
+	const hidden = TextEntryFocus.usePhoneChromeHidden()
 	return (
-		<nav className="grid shrink-0 grid-cols-4 min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content">
+		<nav
+			hidden={hidden}
+			className="grid shrink-0 grid-cols-4 min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content"
+		>
 			{SCREENS.map((s) => (
 				<button
 					key={s.value}

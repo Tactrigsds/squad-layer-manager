@@ -4,6 +4,7 @@ import React from 'react'
 
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { Button } from '@/components/ui/button'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -24,6 +25,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalSheetButton } from './constraint-matches-indicator.tsx'
+import LayerContextMenuOptions from './layer-context-menu-options.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import { RichSearchField, SearchErrors, SearchSuggestions } from './layer-search-parts.tsx'
 import { partColumnName, useSearchInput } from './layer-search.helpers.ts'
@@ -263,57 +265,64 @@ const LayerRow = React.memo(function LayerRow(props: {
 	}
 
 	return (
-		<li
-			className={cn(
-				'flex items-center gap-1 rounded-sm border pe-1',
-				isSelected ? 'border-pri-lo bg-pri-lo/25' : 'border-line bg-panel shadow-[inset_0_1px_0_var(--line-soft)]',
-				isUnselectable && !isSelected && 'text-text-3',
-			)}
-		>
-			<button
-				type="button"
-				role="checkbox"
-				aria-checked={isSelected}
-				aria-disabled={isUnselectable || undefined}
-				onMouseDown={keepFocus}
-				onClick={toggle}
-				className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 ps-3 text-start"
-			>
-				{blockedByMods ? (
-					<span className="fd-cbx opacity-45" title={tr.text(F_Msgs.unsupportedModDescription())}>
-						<Icons.PackageX />
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<li
+					className={cn(
+						'flex items-center gap-1 rounded-sm border pe-1 select-none [-webkit-touch-callout:none]',
+						isSelected ? 'border-pri-lo bg-pri-lo/25' : 'border-line bg-panel shadow-[inset_0_1px_0_var(--line-soft)]',
+						isUnselectable && !isSelected && 'text-text-3',
+					)}
+				>
+					<button
+						type="button"
+						role="checkbox"
+						aria-checked={isSelected}
+						aria-disabled={isUnselectable || undefined}
+						onMouseDown={keepFocus}
+						onClick={toggle}
+						className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 ps-3 text-start"
+					>
+						{blockedByMods ? (
+							<span className="fd-cbx opacity-45" title={tr.text(F_Msgs.unsupportedModDescription())}>
+								<Icons.PackageX />
+							</span>
+						) : blockedByPool ? (
+							<span className="fd-cbx opacity-45">
+								<Icons.Ban />
+							</span>
+						) : (
+							<span className={cn('fd-cbx shrink-0', isSelected && 'fd-cbx-on')}>{isSelected && <CheckIcon />}</span>
+						)}
+						<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+							<span className="flex flex-wrap items-baseline gap-x-2">
+								<span className="font-semibold">{name}</span>
+								{sortValue !== null && <span className="font-mono text-xs text-pri-hi">{sortValue}</span>}
+							</span>
+							<span className="flex flex-wrap gap-x-1.5 text-sm">
+								<span className="text-team1">{[layer.Faction_1, layer.Unit_1].filter(Boolean).join(' ')}</span>
+								<span className="text-text-3">{tr.text(L_Msgs.versus())}</span>
+								<span className="text-team2">{[layer.Faction_2, layer.Unit_2].filter(Boolean).join(' ')}</span>
+							</span>
+						</span>
+					</button>
+					<span onMouseDown={keepFocus}>
+						<ConstraintEvalSheetButton
+							layerId={row.id}
+							itemParity={props.teamParity}
+							matchDescriptors={row.constraints.matchDescriptors}
+							queriedConstraints={row.constraints.queriedConstraints}
+							height={24}
+							className="min-h-11 min-w-11 justify-end px-1.5"
+							sheetTitle={name}
+						/>
 					</span>
-				) : blockedByPool ? (
-					<span className="fd-cbx opacity-45">
-						<Icons.Ban />
-					</span>
-				) : (
-					<span className={cn('fd-cbx shrink-0', isSelected && 'fd-cbx-on')}>{isSelected && <CheckIcon />}</span>
-				)}
-				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-					<span className="flex flex-wrap items-baseline gap-x-2">
-						<span className="font-semibold">{name}</span>
-						{sortValue !== null && <span className="font-mono text-xs text-pri-hi">{sortValue}</span>}
-					</span>
-					<span className="flex flex-wrap gap-x-1.5 text-sm">
-						<span className="text-team1">{[layer.Faction_1, layer.Unit_1].filter(Boolean).join(' ')}</span>
-						<span className="text-text-3">{tr.text(L_Msgs.versus())}</span>
-						<span className="text-team2">{[layer.Faction_2, layer.Unit_2].filter(Boolean).join(' ')}</span>
-					</span>
-				</span>
-			</button>
-			<span onMouseDown={keepFocus}>
-				<ConstraintEvalSheetButton
-					layerId={row.id}
-					itemParity={props.teamParity}
-					matchDescriptors={row.constraints.matchDescriptors}
-					queriedConstraints={row.constraints.queriedConstraints}
-					height={24}
-					className="min-h-11 min-w-11 justify-end px-1.5"
-					sheetTitle={name}
-				/>
-			</span>
-		</li>
+				</li>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<LayerContextMenuOptions layerIds={[row.id]} />
+			</ContextMenuContent>
+		</ContextMenu>
 	)
 })
 

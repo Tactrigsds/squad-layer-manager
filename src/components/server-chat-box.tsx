@@ -50,7 +50,14 @@ const CHANNEL_CFG: Record<
 	},
 }
 
-export default function ServerChatBox({ stores }: { stores: SquadServerFrame.KeyProp }) {
+export default function ServerChatBox({
+	stores,
+	controls,
+}: {
+	stores: SquadServerFrame.KeyProp
+	// placed beside the channel picker, for a layout with no room for them elsewhere
+	controls?: React.ReactNode
+}) {
 	const serverId = stores.squadServer.serverId
 	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(Zus.getState(stores.squadServer)) ? 'warn-selected' : 'warn-admins'
 	const [channel, setChannel] = React.useState<Channel>(initialChannel)
@@ -207,6 +214,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 						</SelectItem>
 					</SelectContent>
 				</Select>
+				{controls}
 			</div>
 			<Textarea
 				ref={textareaRef}

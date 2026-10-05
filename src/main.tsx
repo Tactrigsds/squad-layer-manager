@@ -19,6 +19,7 @@ import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SiteMode from '@/systems/site-mode.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as TextEntryFocus from '@/systems/text-entry-focus.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -44,6 +45,7 @@ if (import.meta.env.DEV) await Catalogues.registerPseudo()
 	MessagesClient.setup()
 	ThemeSys.setup()
 	SiteMode.setup()
+	TextEntryFocus.setup()
 	ConfigClient.setup()
 	AnnouncementsClient.setup()
 	SquadServerClient.setup()
