@@ -31,6 +31,11 @@ with node_modules and the gitignored artifacts included. `pnpm worktree migrate`
 `.claude/worktrees`. It reports what it would do until passed `--apply`, and skips any with processes still running
 in them.
 
+`pnpm worktree prune` removes worktrees whose work has merged: no uncommitted or untracked changes, HEAD merged into
+`origin/HEAD`, not locked, and no processes running in them. Removing a worktree also frees its dev slot and database.
+A worktree with no commits of its own is kept unless `--empty` is passed, because a session may have only just
+created it. Like `migrate`, it reports what it would do until passed `--apply`.
+
 ## The one url
 
 `http://localhost:<client port>/?login=<user>`. The vite dev server proxies every api route, the websocket and each
@@ -56,8 +61,9 @@ so a browser tab pointed at a workspace stays valid across restarts:
 | 0    | 3100 | 3101   | 3102 | 3103    | 3104    |
 | 1    | 3110 | 3111   | 3112 | 3113    | 3114    |
 
-Slots start above the `.env` defaults (3000/5173), so an ordinary `pnpm server:dev` never contends with one. A slot
-whose checkout has been deleted is reclaimed automatically.
+Slots start above the `.env` defaults (3000/5173), so an ordinary `pnpm server:dev` never contends with one. There are 64
+slots. A slot whose checkout has been deleted is reclaimed automatically, so `pnpm worktree prune` frees the slots of
+merged worktrees.
 
 The registry is stored beside the shared git dir (`.git/slm-dev-slots.json`), the only location every worktree agrees
 on.
