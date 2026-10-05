@@ -553,12 +553,18 @@ and a directory placed there by hand is picked up by rescan.</p>
 there runs with nothing to register: <code>tsx watch</code> on the server, vite&#x27;s own module graph on the client, which is where a
 plugin&#x27;s HMR comes from. Discovery is dev-only on both halves. The client discovers through a virtual module rather than
 a glob guarded on <code>import.meta.env.DEV</code>, since a glob&#x27;s imports are real and survive into a build.</p>
-<p><strong>A package carries no copy of SLM.</strong> Its bundles import <code>slm/*</code>, rxjs, zod, drizzle-orm and react as bare
-specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
-through a <code>module.registerHooks</code> resolver, in the browser through the import map in <code>index.html</code> and the
-<code>/plugin-api/*</code> route. That is what keeps one zod (or <code>configSchema instanceof z.ZodObject</code> fails) and one React
-(or hooks break) in play. The export names come from <code>models/plugin-api-exports.ts</code>, generated beside the API
-report, since the server serves the browser&#x27;s shims but cannot import the client entries to enumerate them.</p>
+<p><strong>A package carries no copy of SLM.</strong> Its bundles import <code>slm/*</code> and the shared packages in
+<code>models/plugin-api-shim.ts</code> (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
+to a generated shim module re-exporting its own instance: on the server through a <code>module.registerHooks</code> resolver, in
+the browser through the import map in <code>index.html</code> and the <code>/plugin-api/*</code> route. That is what keeps one zod (or
+<code>configSchema instanceof z.ZodObject</code> fails) and one React (or hooks break) in play. The export names come from
+<code>models/plugin-api-exports.ts</code>, generated beside the API report, since the server serves the browser&#x27;s shims but
+cannot import the client entries to enumerate them.</p>
+<p><strong>Everything else a package imports is bundled, and only as ESM.</strong> <code>plugin:pack</code> builds each entry for the platform
+that loads it, so npm dependencies resolve, and fails on an import nothing at load time could answer. It refuses
+CommonJS: a CommonJS module&#x27;s <code>require()</code> of an external stays a runtime call, and the browser has no <code>require</code>. In
+dev, a plugin repo&#x27;s own <code>node_modules</code> can hold a second copy of a shared package. Vite&#x27;s <code>resolve.dedupe</code> and the
+server&#x27;s resolve hook, installed before discovery imports any manifest, send those imports to the host&#x27;s copy.</p>
 <p><strong>Upgrades cross a line ESM cannot.</strong> Every bundle url carries its content hash, so a refreshed package is a new module
 and the server loads a clean graph, with the old one still in memory but unreachable. A page that already evaluated the
 previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be halfway
