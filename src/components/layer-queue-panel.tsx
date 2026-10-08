@@ -341,7 +341,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			disabled={!isEditing}
 		>
 			<Icons.ListPlus />
-			<span>{tr.text(LL_Msgs.addLayers())}</span>
+			<span className="truncate">{tr.text(LL_Msgs.addLayers())}</span>
 		</StartActivityInteraction>
 	)
 	const genVoteButton = (
@@ -402,8 +402,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		</Tooltip>
 	)
 	const stateControls = (
-		<div className={cn('grid items-center', phone && 'ms-auto')}>
-			<div className="col-start-2 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
+		<div className="grid grid-cols-[minmax(0,auto)] items-center min-w-0">
+			<div className="col-start-1 row-start-1 flex items-center gap-1.5 invisible group-data-[status=saving]:visible">
 				{/* paused while hidden: an invisible element's animation still restyles the page on every tick */}
 				<span className="fd-spin [animation-play-state:paused] group-data-[status=saving]:[animation-play-state:running]" />
 				<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
@@ -411,18 +411,18 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			<PermissionDeniedTooltip denied={startEditingDenied}>
 				<Button
 					data-tour="queue-edit"
-					className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
+					className="col-start-1 row-start-1 min-w-0 invisible group-data-[status=idle]:visible"
 					size="sm"
 					disabled={!!startEditingDenied}
 					onClick={() => setEditing(true)}
 				>
 					<Icons.Edit />
-					<span>{tr.text(LL_Msgs.startEditing())}</span>
+					<span className="truncate">{tr.text(LL_Msgs.startEditing())}</span>
 				</Button>
 			</PermissionDeniedTooltip>
 			{(() => {
 				const saveButtonGroup = (
-					<ButtonGroup>
+					<ButtonGroup className="max-w-full">
 						<Tooltip help>
 							<TooltipTrigger asChild>
 								<Button
@@ -451,7 +451,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 									onClick={() => setEditing(false)}
 								>
 									<Icons.Save />
-									<span>
+									<span className="truncate">
 										{tr.text(
 											forceSave
 												? UI_Msgs.forceSave()
@@ -474,7 +474,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						</Tooltip>
 					</ButtonGroup>
 				)
-				return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
+				return <div className="col-start-1 row-start-1 min-w-0 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
 			})()}
 		</div>
 	)
@@ -492,20 +492,23 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const status = committing ? 'saving' : !isEditing ? 'idle' : 'editing'
 
 	if (phone) {
+		// Save takes the place of Start Editing, so the edit tools open below without moving it
 		return (
-			<div className="flex flex-col gap-1.5 grow group" data-status={status}>
+			<div className="flex flex-col gap-1.5 grow min-w-0 group" data-status={status}>
+				<div className="flex items-center gap-1.5">
+					<div className="flex-1">
+						<QueueHeaderBadges className="flex-wrap" stores={props.stores} />
+					</div>
+					{resetButton}
+					{stateControls}
+					{settingsButton}
+				</div>
 				<div className="flex items-center gap-1.5 group-data-[status=idle]:hidden">
 					{addLayersButton}
 					{genVoteButton}
 					{pasteRotationButton}
-				</div>
-				<div className="flex items-center gap-1.5">
-					<QueueHeaderBadges stores={props.stores} />
 					{clearButton}
 					{fixRepeatsButton}
-					{resetButton}
-					{stateControls}
-					{settingsButton}
 				</div>
 			</div>
 		)
