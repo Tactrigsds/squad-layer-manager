@@ -9,6 +9,7 @@ import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import HistoricalMatchBanner from '@/components/historical-match-banner'
 import { TabBar } from '@/components/tab-bar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
@@ -233,19 +234,20 @@ function TeamsChart(props: {
 	const interactive = selectedMatchOrdinal === null
 
 	const controls = hasData && groupings.ids.length > 1 && (
-		<span className="flex flex-wrap gap-0.5">
+		<ToggleGroup
+			type="single"
+			size="sm"
+			value={groupings.active ?? ''}
+			onValueChange={(groupingId) => {
+				if (groupings.ids.includes(groupingId)) BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)
+			}}
+		>
 			{groupings.ids.map((groupingId) => (
-				<button
-					type="button"
-					key={groupingId}
-					onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
-					className="fd-pill"
-					data-state={groupings.active === groupingId ? 'on' : 'off'}
-				>
+				<ToggleGroupItem key={groupingId} value={groupingId} className="px-2">
 					{tr.text(PG_Msgs.groupingName(groupingId))}
-				</button>
+				</ToggleGroupItem>
 			))}
-		</span>
+		</ToggleGroup>
 	)
 
 	return (
@@ -439,19 +441,22 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 	const metric = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.scorelineMetric)
 
 	const controls = (
-		<span role="group" aria-label={tr.text(MH_Msgs.scoreline())} className="flex flex-wrap gap-0.5">
+		<ToggleGroup
+			type="single"
+			size="sm"
+			aria-label={tr.text(MH_Msgs.scoreline())}
+			value={metric}
+			onValueChange={(value) => {
+				const next = ClientOnlySettings.SCORELINE_METRICS.find((candidate) => candidate === value)
+				if (next) ClientOnlySettings.Actions.setScorelineMetric(next)
+			}}
+		>
 			{ClientOnlySettings.SCORELINE_METRICS.map((value) => (
-				<button
-					type="button"
-					key={value}
-					onClick={() => ClientOnlySettings.Actions.setScorelineMetric(value)}
-					className="fd-pill"
-					data-state={metric === value ? 'on' : 'off'}
-				>
+				<ToggleGroupItem key={value} value={value} className="px-2">
 					{tr.text(MH_Msgs.scorelineMetric(value))}
-				</button>
+				</ToggleGroupItem>
 			))}
-		</span>
+		</ToggleGroup>
 	)
 
 	return (
@@ -616,6 +621,7 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 	const range = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationRange)
 	const split = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationSplit)
 	const scale = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationScale)
+	const hidden = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.populationHidden)
 	const currentMatch$ = MatchHistoryClient.currentMatch$(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const rangeQuery = useQuery(MatchHistoryClient.populationQueryOptions(serverId, range === 'match' ? null : range, currentMatch?.ordinal))
@@ -631,58 +637,74 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 	const hasPoints = !!view && view.runs.length > 0
 
 	const controls = (
-		<span className="flex flex-wrap gap-x-3 gap-y-0.5">
-			<span role="group" aria-label={tr.text(MH_Msgs.populationRangeLabel())} className="flex flex-wrap gap-0.5">
+		<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+			<ToggleGroup
+				type="single"
+				size="sm"
+				aria-label={tr.text(MH_Msgs.populationRangeLabel())}
+				value={range}
+				onValueChange={(value) => {
+					const next = ClientOnlySettings.POPULATION_RANGES.find((candidate) => candidate === value)
+					if (next) ClientOnlySettings.Actions.setPopulationRange(next)
+				}}
+			>
 				{ClientOnlySettings.POPULATION_RANGES.map((value) => (
-					<button
-						type="button"
-						key={value}
-						onClick={() => ClientOnlySettings.Actions.setPopulationRange(value)}
-						className="fd-pill"
-						data-state={range === value ? 'on' : 'off'}
-					>
+					<ToggleGroupItem key={value} value={value} className="px-2">
 						{tr.text(MH_Msgs.populationRange(value))}
-					</button>
+					</ToggleGroupItem>
 				))}
-			</span>
-			<span role="group" aria-label={tr.text(MH_Msgs.populationSplitLabel())} className="flex flex-wrap gap-0.5">
+			</ToggleGroup>
+			<ToggleGroup
+				type="single"
+				size="sm"
+				aria-label={tr.text(MH_Msgs.populationSplitLabel())}
+				value={split}
+				onValueChange={(value) => {
+					const next = ClientOnlySettings.POPULATION_SPLITS.find((candidate) => candidate === value)
+					if (next) ClientOnlySettings.Actions.setPopulationSplit(next)
+				}}
+			>
 				{ClientOnlySettings.POPULATION_SPLITS.map((value) => (
-					<button
-						type="button"
-						key={value}
-						onClick={() => ClientOnlySettings.Actions.setPopulationSplit(value)}
-						className="fd-pill"
-						data-state={split === value ? 'on' : 'off'}
-					>
+					<ToggleGroupItem key={value} value={value} className="px-2">
 						{tr.text(MH_Msgs.populationSplit(value))}
-					</button>
+					</ToggleGroupItem>
 				))}
-			</span>
+			</ToggleGroup>
 			{split !== 'stats' && (
-				<span role="group" aria-label={tr.text(MH_Msgs.populationScaleLabel())} className="flex flex-wrap gap-0.5">
+				<ToggleGroup
+					type="single"
+					size="sm"
+					aria-label={tr.text(MH_Msgs.populationScaleLabel())}
+					value={scale}
+					onValueChange={(value) => {
+						const next = ClientOnlySettings.POPULATION_SCALES.find((candidate) => candidate === value)
+						if (next) ClientOnlySettings.Actions.setPopulationScale(next)
+					}}
+				>
 					{ClientOnlySettings.POPULATION_SCALES.map((value) => (
-						<button
-							type="button"
-							key={value}
-							onClick={() => ClientOnlySettings.Actions.setPopulationScale(value)}
-							className="fd-pill"
-							data-state={scale === value ? 'on' : 'off'}
-						>
+						<ToggleGroupItem key={value} value={value} className="px-2">
 							{tr.text(MH_Msgs.populationScale(value))}
-						</button>
+						</ToggleGroupItem>
 					))}
-				</span>
+				</ToggleGroup>
 			)}
 		</span>
 	)
 
 	const swatch = (color: string) => <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
-	let legendItems: { key: string; mark: React.ReactNode; label: string }[]
+	const show = {
+		active: !hidden.includes('active'),
+		idle: !hidden.includes('idle'),
+		matchStart: range !== 'match' && !hidden.includes('matchStart'),
+		roundEnd: !hidden.includes('roundEnd'),
+	}
+	// an item with a toggle hides and shows that part of the chart
+	let legendItems: { key: string; mark: React.ReactNode; label: string; toggle?: ClientOnlySettings.PopulationMark }[]
 	switch (split) {
 		case 'activity':
 			legendItems = [
-				{ key: 'active', mark: swatch(Pop.COLORS.active), label: tr.text(MH_Msgs.populationActive()) },
-				{ key: 'idle', mark: <IdleSwatch />, label: tr.text(MH_Msgs.populationIdle()) },
+				{ key: 'active', mark: swatch(Pop.COLORS.active), label: tr.text(MH_Msgs.populationActive()), toggle: 'active' },
+				{ key: 'idle', mark: <IdleSwatch />, label: tr.text(MH_Msgs.populationIdle()), toggle: 'idle' },
 			]
 			break
 		case 'teams':
@@ -695,36 +717,58 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 			assertNever(split)
 	}
 	if (range !== 'match' && split !== 'stats') {
-		legendItems.push(
-			{
-				key: 'start',
-				mark: (
-					<svg width={10} height={10} aria-hidden="true" className="shrink-0 text-text-2">
-						<line x1={2} y1={0} x2={2} y2={10} stroke="currentColor" strokeWidth={1.5} />
-						<path d="M2 0 l5 2.5 l-5 2.5 Z" fill="currentColor" />
-					</svg>
-				),
-				label: tr.text(MH_Msgs.populationMatchStart()),
-			},
-			{
-				key: 'end',
-				mark: (
-					<svg width={6} height={10} aria-hidden="true" className="shrink-0 text-text-2">
-						<line x1={3} y1={0} x2={3} y2={10} stroke="currentColor" strokeWidth={1.5} strokeDasharray="2 2" />
-					</svg>
-				),
-				label: tr.text(MH_Msgs.populationRoundEnd()),
-			},
-		)
+		legendItems.push({
+			key: 'start',
+			mark: (
+				<svg width={10} height={10} aria-hidden="true" className="shrink-0 text-text-2">
+					<line x1={2} y1={0} x2={2} y2={10} stroke="currentColor" strokeWidth={1.5} />
+					<path d="M2 0 l5 2.5 l-5 2.5 Z" fill="currentColor" />
+				</svg>
+			),
+			label: tr.text(MH_Msgs.populationMatchStart()),
+			toggle: 'matchStart',
+		})
+	}
+	if (split !== 'stats') {
+		legendItems.push({
+			key: 'end',
+			mark: (
+				<svg width={6} height={10} aria-hidden="true" className="shrink-0 text-text-2">
+					<line x1={3} y1={0} x2={3} y2={10} stroke="currentColor" strokeWidth={1.5} strokeDasharray="2 2" />
+				</svg>
+			),
+			label: tr.text(MH_Msgs.populationRoundEnd()),
+			toggle: 'roundEnd',
+		})
 	}
 	const legend = (
 		<ul className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-2 min-w-0">
-			{legendItems.map((item) => (
-				<li key={item.key} className="flex items-center gap-1.5 min-w-0">
-					{item.mark}
-					<span className="truncate">{item.label}</span>
-				</li>
-			))}
+			{legendItems.map((item) => {
+				const toggle = item.toggle
+				return (
+					<li key={item.key} className="flex items-center min-w-0">
+						{toggle ? (
+							<button
+								type="button"
+								aria-pressed={show[toggle]}
+								onClick={() => ClientOnlySettings.Actions.togglePopulationMark(toggle)}
+								className={cn(
+									'flex items-center gap-1.5 min-w-0 rounded-sm cursor-pointer hover:text-text focus-visible:outline-2 focus-visible:outline-pri-hi',
+									!show[toggle] && 'opacity-45 line-through',
+								)}
+							>
+								{item.mark}
+								<span className="truncate">{item.label}</span>
+							</button>
+						) : (
+							<span className="flex items-center gap-1.5 min-w-0">
+								{item.mark}
+								<span className="truncate">{item.label}</span>
+							</span>
+						)}
+					</li>
+				)
+			})}
 		</ul>
 	)
 
@@ -744,6 +788,7 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 						<p>{tr.text(MH_Msgs.populationDescription())}</p>
 						<p className="text-text-2">{tr.text(MH_Msgs.populationIdleRule(view?.idleMinutes ?? 10))}</p>
 						{range !== 'match' && <p className="text-text-2">{tr.text(MH_Msgs.populationRangeHint())}</p>}
+						{split !== 'stats' && <p className="text-text-2">{tr.text(MH_Msgs.populationLegendHint())}</p>}
 						{split === 'stats' && <p className="text-text-2">{tr.text(MH_Msgs.populationStatsHint())}</p>}
 					</HelpButton>
 				}
@@ -760,8 +805,8 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 						view={view}
 						split={split === 'teams' ? 'teams' : 'activity'}
 						yMax={scale === 'max' ? view.cap : undefined}
-						showBandStarts={range !== 'match'}
-						onSelectBand={range === 'match' ? undefined : selectBand}
+						show={show}
+						onSelectBand={show.matchStart ? selectBand : undefined}
 					/>
 				) : (
 					<div className="h-full flex items-center justify-center text-text-3 text-sm">
@@ -846,7 +891,7 @@ function PopulationLines(props: {
 	view: StatsModels.PopulationView
 	split: 'activity' | 'teams'
 	yMax?: number
-	showBandStarts: boolean
+	show: React.ComponentProps<typeof PopulationChartSvg>['show']
 	onSelectBand?: (band: StatsModels.PopulationBand) => void
 }) {
 	const { view } = props
@@ -888,7 +933,7 @@ function PopulationLines(props: {
 			yMax={props.yMax}
 			formatX={formatX}
 			xTicks={xTicks}
-			showBandStarts={props.showBandStarts}
+			show={props.show}
 			onSelectBand={props.onSelectBand}
 			renderTooltip={renderTooltip}
 			ariaLabel={tr.text(MH_Msgs.chartsTab('population'))}

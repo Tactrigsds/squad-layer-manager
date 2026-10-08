@@ -21,7 +21,8 @@ const FLAG = 'l6 3 l-6 3 Z'
  * Players over time, filling its container. `split` stacks active players under idle ones with the total on top, or
  * draws a line per team. Each match is a band: a solid line where it started, flagged and named when there is room,
  * a dashed line where its round ended, and the stretch from round end to the next match darkened. The displayed match
- * is outlined. Hovering shows a crosshair and `renderTooltip` for the bucket under it; clicking selects that band.
+ * is outlined with its start. `show` turns each of these off, and with the active players hidden the idle ones sit
+ * on the axis. Hovering shows a crosshair and `renderTooltip` for the bucket under it; clicking selects that band.
  */
 export function PopulationChart(props: {
 	view: StatsModels.PopulationView
@@ -30,8 +31,8 @@ export function PopulationChart(props: {
 	yMax?: number
 	formatX: (time: number) => string
 	xTicks: (start: number, end: number, targetTicks: number) => number[]
-	// the match bands get start lines and names; off for a single match, whose start is the axis's left edge
-	showBandStarts: boolean
+	// matchStart is off for a single match, whose start is the axis's left edge
+	show: { active: boolean; idle: boolean; matchStart: boolean; roundEnd: boolean }
 	onSelectBand?: (band: StatsModels.PopulationBand) => void
 	renderTooltip: (index: number, band: StatsModels.PopulationBand | undefined) => React.ReactNode
 	ariaLabel: string
@@ -42,12 +43,14 @@ export function PopulationChart(props: {
 	const { width, height } = useMeasuredSize(container)
 	const [hover, setHover] = React.useState<number | null>(null)
 	const hatchId = React.useId()
+	const showBandStarts = props.show.matchStart
+	const showRoundEnds = props.show.roundEnd
 
 	let maxY = 0
 	const series = props.split === 'activity' ? [view.total] : view.sides
 	for (const values of series) for (const v of values) if (v > maxY) maxY = v
 
-	const top = TOP_PAD + (props.showBandStarts ? BAND_LABEL_HEIGHT : 0)
+	const top = TOP_PAD + (showBandStarts ? BAND_LABEL_HEIGHT : 0)
 	const plotHeight = height - AXIS_HEIGHT - top
 	const yAxis = Chart.axis(Math.max(maxY, props.yMax ?? 0), Math.max(2, Math.floor(plotHeight / 32)), { integer: true })
 	const left = Math.ceil(Math.max(...yAxis.ticks.map((tick) => Chart.estimateNumeralsWidth(String(tick), AXIS_FONT)))) + 6
@@ -88,7 +91,7 @@ export function PopulationChart(props: {
 	if (ready) {
 		const xTicks = props.xTicks(view.start, view.end, Math.max(2, Math.floor(plotWidth / 80)))
 		const bottom = top + plotHeight
-		const bandTop = TOP_PAD + (props.showBandStarts ? BAND_LABEL_HEIGHT - 2 : 0)
+		const bandTop = TOP_PAD + (showBandStarts ? BAND_LABEL_HEIGHT - 2 : 0)
 		body = (
 			<svg width={width} height={height} role="img" aria-label={props.ariaLabel} className="block">
 				<defs>
@@ -100,7 +103,7 @@ export function PopulationChart(props: {
 				{view.bands.map(
 					(band) =>
 						band.displayed &&
-						props.showBandStarts && (
+						showBandStarts && (
 							<g key={`sel-${band.ordinal}`} className="text-pri">
 								<rect
 									x={xToPx(band.start)}
@@ -135,7 +138,7 @@ export function PopulationChart(props: {
 				</g>
 				<g fill="#000000" fillOpacity={0.32}>
 					{view.bands.map((band) =>
-						band.roundEnd === null || band.roundEnd >= band.end ? null : (
+						!showRoundEnds || band.roundEnd === null || band.roundEnd >= band.end ? null : (
 							<rect
 								key={`gap-${band.ordinal}`}
 								x={xToPx(band.roundEnd)}
@@ -148,12 +151,14 @@ export function PopulationChart(props: {
 				</g>
 				{props.split === 'activity' ? (
 					<>
-						{area(view.active, null).map(({ from, d }) => (
-							<path key={`active-${from}`} d={d} fill={ACTIVE_COLOR} fillOpacity={0.7} />
-						))}
-						{area(view.total, view.active).map(({ from, d }) => (
-							<path key={`idle-${from}`} d={d} fill={`url(#${hatchId})`} />
-						))}
+						{props.show.active &&
+							area(view.active, null).map(({ from, d }) => (
+								<path key={`active-${from}`} d={d} fill={ACTIVE_COLOR} fillOpacity={0.7} />
+							))}
+						{props.show.idle &&
+							(props.show.active ? area(view.total, view.active) : area(view.idle, null)).map(({ from, d }) => (
+								<path key={`idle-${from}`} d={d} fill={`url(#${hatchId})`} />
+							))}
 						{line(view.total).map(({ from, d }) => (
 							<path key={`total-${from}`} d={d} fill="none" stroke={TOTAL_COLOR} strokeWidth={2} strokeLinejoin="round" />
 						))}
@@ -174,7 +179,7 @@ export function PopulationChart(props: {
 				)}
 				<g className="text-text-2" stroke="currentColor" strokeWidth={1.5}>
 					{view.bands.map((band) =>
-						band.roundEnd === null || band.roundEnd < view.start || band.roundEnd > view.end ? null : (
+						!showRoundEnds || band.roundEnd === null || band.roundEnd < view.start || band.roundEnd > view.end ? null : (
 							<line
 								key={`end-${band.ordinal}`}
 								x1={xToPx(band.roundEnd)}
@@ -185,14 +190,14 @@ export function PopulationChart(props: {
 							/>
 						),
 					)}
-					{props.showBandStarts &&
+					{showBandStarts &&
 						view.bands.map((band) =>
 							band.start < view.start ? null : (
 								<line key={`start-${band.ordinal}`} x1={xToPx(band.start)} x2={xToPx(band.start)} y1={bandTop} y2={bottom} />
 							),
 						)}
 				</g>
-				{props.showBandStarts && (
+				{showBandStarts && (
 					<g fontSize={AXIS_FONT} className="fill-current text-text-2">
 						{view.bands.map((band) => {
 							const x = Math.max(left, xToPx(band.start))
@@ -241,7 +246,7 @@ export function PopulationChart(props: {
 						/>
 						{(props.split === 'activity'
 							? [
-									{ key: 'active', value: view.active[hover], color: ACTIVE_COLOR },
+									...(props.show.active ? [{ key: 'active', value: view.active[hover], color: ACTIVE_COLOR }] : []),
 									{ key: 'total', value: view.total[hover], color: TOTAL_COLOR },
 								]
 							: view.sides.map((values, s) => ({ key: `side${s}`, value: values[hover], color: view.sideDisplays[s].color }))

@@ -103,7 +103,7 @@ export const populationSplit = def(
 	(split: 'activity' | 'teams' | 'stats') => ({ split }),
 )
 
-// the names of the population chart's two groups of pills, for screen readers
+// the names of the population chart's button groups, for screen readers
 export const populationRangeLabel = def('Range')
 
 export const populationSplitLabel = def('Split')
@@ -132,6 +132,8 @@ export const populationIdleRule = def(
 	'A player in a squad or in a vehicle is never idle. Anyone else is idle after {minutes} minutes without a kill, wound, death, chat message, or squad, team, role or vehicle change.',
 	(minutes: number) => ({ minutes }),
 )
+
+export const populationLegendHint = def('Click an entry in the legend to hide or show it on the chart.')
 
 export const populationRangeHint = def(
 	'Each point averages the players over a few minutes. A solid line marks where a match started and a dashed line where its round ended. Click a match to select it.',

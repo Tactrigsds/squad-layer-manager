@@ -470,6 +470,7 @@
 	"Click a segment to filter the teams panel to its group": "Click a segment to filter the teams panel to its group",
 	"Click a segment to filter the teams table to that group. Try clicking <em>{group}</em>.": "Click a segment to filter the teams table to that group. Try clicking <em>{group}</em>.",
 	"Click an ID to copy it. The links open the player's profiles on Steam, BattleMetrics and elsewhere.": "Click an ID to copy it. The links open the player's profiles on Steam, BattleMetrics and elsewhere.",
+	"Click an entry in the legend to hide or show it on the chart.": "Click an entry in the legend to hide or show it on the chart.",
 	"Click an event's time to select it. Shift+click another time, or drag down the times, to select everything between them.": "Click an event's time to select it. Shift+click another time, or drag down the times, to select everything between them.",
 	"Click here to go back to the match being played now.": "Click here to go back to the match being played now.",
 	"Clone": "Clone",
