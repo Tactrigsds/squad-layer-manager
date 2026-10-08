@@ -14,6 +14,9 @@ export const POPULATION_SPLITS: readonly PopulationSplit[] = ['activity', 'teams
 // how tall the population chart's y axis is: the server's player cap, or fitted to the players drawn
 export type PopulationScale = 'max' | 'fitted'
 export const POPULATION_SCALES: readonly PopulationScale[] = ['max', 'fitted']
+// the parts of the population chart its legend can hide
+export type PopulationMark = 'active' | 'idle' | 'matchStart' | 'roundEnd'
+const NO_POPULATION_MARKS: readonly PopulationMark[] = []
 // mirrors the ON_PRIMARY_PANEL variants in models/user-presence.ts (kept as a literal union so this module stays dependency-free)
 export type PrimaryPanelTab = 'VIEWING_QUEUE' | 'VIEWING_TEAMS'
 // the phone dashboard's screens; on the single-column layout `activity` is the Server Activity side and the rest the layers side
@@ -27,6 +30,7 @@ export type ClientOnlySettingsStore = {
 	populationRange: PopulationRange
 	populationSplit: PopulationSplit
 	populationScale: PopulationScale
+	populationHidden: PopulationMark[]
 	primaryPanelTab: PrimaryPanelTab
 	// where a bare visit to the dashboard lands; the tab itself lives in the url (see squad-server.client's useDashboardTab)
 	dashboardTab: DashboardTab
@@ -45,6 +49,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 			populationRange: 'match',
 			populationSplit: 'activity',
 			populationScale: 'max',
+			populationHidden: [],
 			primaryPanelTab: 'VIEWING_QUEUE',
 			dashboardTab: 'queue',
 			pinnedCommands: [],
@@ -73,6 +78,9 @@ export namespace Sel {
 	export function populationScale(s: ClientOnlySettingsStore): PopulationScale {
 		return POPULATION_SCALES.includes(s.populationScale) ? s.populationScale : POPULATION_SCALES[0]
 	}
+	export function populationHidden(s: ClientOnlySettingsStore): readonly PopulationMark[] {
+		return s.populationHidden ?? NO_POPULATION_MARKS
+	}
 }
 
 export namespace Actions {
@@ -93,6 +101,10 @@ export namespace Actions {
 	}
 	export function setPopulationScale(value: PopulationScale) {
 		Store.setState({ populationScale: value })
+	}
+	export function togglePopulationMark(mark: PopulationMark) {
+		const hidden = Sel.populationHidden(Store.getState())
+		Store.setState({ populationHidden: hidden.includes(mark) ? hidden.filter((m) => m !== mark) : [...hidden, mark] })
 	}
 	export function setPrimaryPanelTab(value: PrimaryPanelTab) {
 		Store.setState({ primaryPanelTab: value })

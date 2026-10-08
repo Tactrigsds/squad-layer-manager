@@ -59,12 +59,12 @@ test.describe('server dashboard', () => {
 		await expect(page.getByText('Players', { exact: true })).toBeVisible()
 
 		// the same range as figures, then back to the chart for the pop-out below
-		const split = charts.getByRole('group', { name: 'Split' })
-		await split.getByRole('button', { name: 'Stats' }).click()
+		const split = charts.getByRole('radiogroup', { name: 'Split' })
+		await split.getByRole('radio', { name: 'Stats' }).click()
 		const peak = charts.getByRole('term').filter({ hasText: /^Peak$/ })
 		await expect(peak).toBeVisible()
 		await expect(peak.locator('xpath=following-sibling::dd[1]')).toHaveText(/^\d+$/)
-		await split.getByRole('button', { name: 'Activity' }).click()
+		await split.getByRole('radio', { name: 'Activity' }).click()
 		await expect(chart).toBeVisible()
 
 		const panel = (await charts.getByRole('tabpanel').boundingBox())!

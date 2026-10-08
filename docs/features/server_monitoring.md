@@ -64,7 +64,7 @@ displays, or _6h_, _24h_ or _7d_ for every match in that time. Pick _Activity_ t
 players (see [Idle players](../guide/configuring/players.md#idle-players)), or _Teams_ for a line per team. Pick _Max
 pop_ to scale the chart to your server's player cap, or _Fitted_ to scale it to the players drawn. A solid line marks
 where a match started, and a dashed line where its round ended. Click a match on the chart to open it in the panel and
-in Server Activity.
+in Server Activity. Click an entry in the legend, such as _Idle_ or _Match start_, to hide or show it on the chart.
 
 ![the player count across a match, split into active and idle players](../images/features/population.png)
 
