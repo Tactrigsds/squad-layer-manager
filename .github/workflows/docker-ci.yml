@@ -192,6 +192,7 @@ jobs:
          && needs.quality-checks.result == 'success'
          && contains(fromJSON('["success", "skipped"]'), needs.integration-tests.result) }}
       permissions:
+         actions: write
          contents: write
          packages: write
       steps:
@@ -231,3 +232,10 @@ jobs:
               REPO="ghcr.io/$OWNER/squad-layer-manager"
               docker buildx imagetools create --tag "$REPO:$VERSION" --tag "$REPO:stable" "${{ needs.build.outputs.image-tag }}"
               gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/v$VERSION" -f sha="${{ github.sha }}"
+
+         # a tag pushed with GITHUB_TOKEN starts no workflows, so the docs site's tag trigger never sees it
+         - name: Publish the release's docs
+           if: steps.release.outputs.VERSION != ''
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: gh workflow run docs-pages.yml --repo "${{ github.repository }}" --ref main -f ref="v${{ steps.release.outputs.VERSION }}"
