@@ -1,6 +1,7 @@
 # Publishes the documentation site to the gh-pages branch, which GitHub Pages serves.
 #
 # A push to main rebuilds /next/, a release tag builds that release's folder once, and a manual run rebuilds any ref.
+# CI's tag-release job starts a manual run for each tag it makes, because its tag push cannot trigger this workflow.
 # Every run then rebuilds the unversioned root (landing page, changelog, versions.json) from main, so it always points
 # at the newest release. Folders already on gh-pages are left alone, which is what keeps each release's docs frozen.
 # A tag from before the site existed has no build script, so it gets no folder.
