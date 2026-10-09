@@ -58,7 +58,7 @@ export default function LayerPickerPhone(props: {
 
 	const resultsFooter = props.summary
 		? selectedCount > 0 && (
-				<Button className="w-full" onClick={() => goTo('summary')}>
+				<Button variant="primary" className="w-full" onClick={() => goTo('summary')}>
 					{tr.text(L_Msgs.continueWithLayers(selectedCount))}
 					<Icons.ChevronRight className="rtl:-scale-x-100" />
 				</Button>
@@ -157,7 +157,9 @@ function SummaryTab(props: {
 					{selected.length === 0 ? (
 						<div className="fd-panel flex flex-col items-start gap-2.5 p-3">
 							<span className="text-sm text-text-2">{tr.text(L_Msgs.noLayersSelected())}</span>
-							<Button onClick={props.onShowResults}>{tr.text(L_Msgs.goToResults())}</Button>
+							<Button variant="primary" onClick={props.onShowResults}>
+								{tr.text(L_Msgs.goToResults())}
+							</Button>
 						</div>
 					) : (
 						<ol className="flex flex-col gap-1.5">

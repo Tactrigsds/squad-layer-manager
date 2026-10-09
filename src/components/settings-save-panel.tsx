@@ -242,7 +242,7 @@ export function SettingsSavePanel({
 			<Button variant="outline" size="sm" onClick={handleReset}>
 				{tr.text(SETTINGS_Msgs.reset())}
 			</Button>
-			<Button size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
+			<Button variant="primary" size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
 				{anySaving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
 			</Button>
 		</div>

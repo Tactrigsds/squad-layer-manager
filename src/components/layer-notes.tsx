@@ -252,7 +252,7 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(LNote_Msgs.cancel())}
 				</Button>
-				<Button disabled={length === 0} onClick={submit}>
+				<Button variant="primary" disabled={length === 0} onClick={submit}>
 					{existing ? tr.text(LNote_Msgs.save()) : tr.text(LNote_Msgs.add())}
 				</Button>
 			</DialogFooter>

@@ -1225,7 +1225,7 @@ function VoteDisplayPropsForm(props: {
 				onChange={setLocalConfig}
 			/>
 			{!props.readonly && (
-				<Button className="w-full mt-4" size="sm" onClick={handleSave}>
+				<Button variant="primary" className="w-full mt-4" size="sm" onClick={handleSave}>
 					{tr.text(V_Msgs.saveVoteConfig())}
 				</Button>
 			)}

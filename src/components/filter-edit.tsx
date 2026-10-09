@@ -142,6 +142,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 				{([canSubmit, isDirty]) => {
 					return (
 						<Button
+							variant="primary"
 							onClick={() => form.handleSubmit()}
 							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
 						>

@@ -588,7 +588,9 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(BB_Msgs.cancel())}
 				</Button>
-				<Button onClick={save}>{props.itemId ? tr.text(BB_Msgs.applyRequest()) : tr.text(BB_Msgs.addRequest())}</Button>
+				<Button variant="primary" onClick={save}>
+					{props.itemId ? tr.text(BB_Msgs.applyRequest()) : tr.text(BB_Msgs.addRequest())}
+				</Button>
 			</DialogFooter>
 		</>
 	)

@@ -40,7 +40,7 @@ export function YamlEditorToolbar({
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>
 				{tr.text(SETTINGS_Msgs.reset())}
 			</Button>
-			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>
+			<Button variant="primary" size="sm" disabled={!canSave || saving} onClick={onSave}>
 				{saving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
 			</Button>
 		</>
