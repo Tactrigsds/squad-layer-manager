@@ -134,6 +134,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						</TooltipContent>
 					</Tooltip>
 					<Button
+						variant="primary"
 						disabled={!settingsChanged || saving || !!validationErrors}
 						onClick={() => void ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })}
 						className="min-w-30"

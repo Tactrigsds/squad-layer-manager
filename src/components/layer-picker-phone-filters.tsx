@@ -122,7 +122,7 @@ function FiltersOnlyCountBanner(props: { frameKey: SelectLayersFrame.Key; onShow
 					<span className="text-xs text-text-2">{tr.text(L_Msgs.searchNotCounted(searchCount))}</span>
 				)}
 			</div>
-			<Button className="shrink-0" onClick={props.onShowResults}>
+			<Button variant="primary" className="shrink-0" onClick={props.onShowResults}>
 				{tr.text(L_Msgs.phoneTabResults())}
 				<Icons.ChevronRight className="rtl:-scale-x-100" />
 			</Button>

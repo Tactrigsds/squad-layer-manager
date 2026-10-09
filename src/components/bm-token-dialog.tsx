@@ -130,7 +130,7 @@ function TokenForm(props: { onClose: () => void; onSaved: () => void }) {
 				<Button variant="outline" onClick={props.onClose} disabled={pending}>
 					{tr.text(UI_Msgs.cancel())}
 				</Button>
-				<Button onClick={save} disabled={!hasInput || pending}>
+				<Button variant="primary" onClick={save} disabled={!hasInput || pending}>
 					{setMutation.isPending && <Icons.Loader2 className="me-2 h-4 w-4 animate-spin" />}
 					{tr.text(BM_Msgs.tokenSave())}
 				</Button>
@@ -150,7 +150,7 @@ function LinkSteamPrompt(props: { onClose: () => void; onLinkSteam: () => void }
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(BM_Msgs.tokenLinkSteamLater())}
 				</Button>
-				<Button onClick={props.onLinkSteam}>
+				<Button variant="primary" onClick={props.onLinkSteam}>
 					<Icons.Link className="me-2 h-4 w-4" />
 					{tr.text(BM_Msgs.tokenLinkSteamAction())}
 				</Button>

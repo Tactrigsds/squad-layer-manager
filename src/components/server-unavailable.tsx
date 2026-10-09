@@ -92,7 +92,7 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 					) : (
 						<div className="pt-2">
 							<Link to="/" className="block">
-								<Button className="w-full" size="lg">
+								<Button variant="primary" className="w-full" size="lg">
 									<Home className="me-2 h-4 w-4" />
 									{tr.text(SS_Msgs.backToServersList())}
 								</Button>

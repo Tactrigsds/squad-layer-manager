@@ -368,7 +368,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(LTag_Msgs.cancel())}
 				</Button>
-				<Button disabled={!canSave} onClick={submit}>
+				<Button variant="primary" disabled={!canSave} onClick={submit}>
 					{isNew ? tr.text(LTag_Msgs.create()) : tr.text(LTag_Msgs.save())}
 				</Button>
 			</DialogFooter>

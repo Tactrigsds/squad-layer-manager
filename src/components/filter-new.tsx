@@ -101,7 +101,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 		<form.Subscribe>
 			{(f) => (
 				<PermissionDeniedTooltip denied={createDenied}>
-					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
+					<Button variant="primary" onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
 						{tr.text(F_Msgs.create())}
 					</Button>
 				</PermissionDeniedTooltip>
