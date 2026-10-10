@@ -17,7 +17,7 @@ export const POPULATION_SCALES: readonly PopulationScale[] = ['max', 'fitted']
 // the parts of the population chart its legend can hide
 export type PopulationMark = 'active' | 'idle' | 'matchStart' | 'roundEnd'
 const NO_POPULATION_MARKS: readonly PopulationMark[] = []
-// mirrors the ON_PRIMARY_PANEL variants in models/user-presence.ts (kept as a literal union so this module stays dependency-free)
+// mirrors the primary panel codes in models/user-presence.ts (kept as a literal union so this module stays dependency-free)
 export type PrimaryPanelTab = 'VIEWING_QUEUE' | 'VIEWING_TEAMS'
 // the phone dashboard's screens; on the single-column layout `activity` is the Server Activity side and the rest the layers side
 export type DashboardTab = 'matches' | 'queue' | 'teams' | 'activity'

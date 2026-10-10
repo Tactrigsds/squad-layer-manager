@@ -103,8 +103,8 @@ function countEditingClients(state: UP.State): EditorCounts {
 		const serverId = UP.activityServerId(activity)
 		if (!serverId) continue
 		const bump = (scope: UP.Ctx.DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
-		if (UP.editingQueueNode(activity)) bump('queue')
-		if (UP.editingLayerRequestsNode(activity)) bump('layer-requests')
+		if (UP.editingQueue(activity)) bump('queue')
+		if (UP.editingLayerRequests(activity)) bump('layer-requests')
 	}
 	return counts
 }
@@ -114,7 +114,7 @@ function countFilterEditingClients(state: UP.State): Map<string, number> {
 	const counts = new Map<string, number>()
 	for (const client of state.presence.values()) {
 		const filterId = UP.activityFilterId(client.activityState)
-		if (!filterId || !UP.editingFilterNode(client.activityState)) continue
+		if (!filterId || !UP.editingFilter(client.activityState)) continue
 		counts.set(filterId, (counts.get(filterId) ?? 0) + 1)
 	}
 	return counts

@@ -49,12 +49,12 @@ const editingQueue: Tour.StateSelector<boolean> = {
 	select: (upState) => {
 		const clientId = ConfigClient.getConfig()?.wsClientId
 		const activity = clientId ? upState.presence.get(clientId)?.activityState : null
-		return !!activity?.child?.EDITING_QUEUE
+		return !!UP.editingQueue(activity)
 	},
 }
 
 // the Add Layers pool dialog is open: an active `selectLayers` loader for the ADDING_ITEM activity
-const isAddDialogEntry = (e: any) => e.name === 'selectLayers' && e.active && e.data?.activity?.id === 'ADDING_ITEM'
+const isAddDialogEntry = (e: any) => e.name === 'selectLayers' && e.active && e.data?.activity?.code === 'ADDING_ITEM'
 const addDialogOpen: Tour.StateSelector<boolean> = {
 	inputs: () => [UPClient.Store],
 	select: (upState) => UPClient.Sel.loadedActivities(upState).some(isAddDialogEntry),
@@ -136,11 +136,7 @@ async function simStartEditing(ctx: Tour.SimulateCtx) {
 
 async function simOpenAddDialog(ctx: Tour.SimulateCtx) {
 	UPClient.Actions.updateActivity(
-		UP.createEditingQueueVariant({
-			_tag: 'leaf',
-			id: 'ADDING_ITEM',
-			opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
-		})(),
+		UP.createEditingQueueVariant({ code: 'ADDING_ITEM', cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' })(),
 	)
 	await Tour.awaitSelector(ctx.run, addDialogFrameReady, ctx.signal, 3000)
 }
@@ -210,9 +206,9 @@ async function simOpenEditLayer(ctx: Tour.SimulateCtx) {
 	if (!target) return
 	UPClient.Actions.updateActivity(
 		UP.createEditingQueueVariant({
-			_tag: 'leaf',
-			id: 'EDITING_ITEM',
-			opts: { itemId: target.itemId, cursor: { type: 'item-relative', itemId: target.itemId, position: 'on' } },
+			code: 'EDITING_ITEM',
+			itemId: target.itemId,
+			cursor: { type: 'item-relative', itemId: target.itemId, position: 'on' },
 		})(),
 	)
 	await Tour.awaitSelector(ctx.run, domPresent('edit-layer-dialog'), ctx.signal, 3000)

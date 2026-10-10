@@ -96,11 +96,11 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 	}
 
 	// Priority: has queue non-idle edit activity > editing > present
-	const aEditingActivity = UP.editingQueueNode(aPresence.activityState)
-	const bEditingActivity = UP.editingQueueNode(bPresence.activityState)
+	const aEditingActivity = UP.editingQueue(aPresence.activityState)
+	const bEditingActivity = UP.editingQueue(bPresence.activityState)
 
-	const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
-	const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'
+	const aNonIdle = !!aEditingActivity && aEditingActivity.code !== 'IDLE'
+	const bNonIdle = !!bEditingActivity && bEditingActivity.code !== 'IDLE'
 
 	if (aNonIdle && !bNonIdle) return -1
 	if (!aNonIdle && bNonIdle) return 1
@@ -178,8 +178,8 @@ export type UserPresencePanelProps = {
 	// users which have a matchng activity will be listed
 	className?: string
 	matchActivity?: UP.Resolver
-	// what activity to resolve the text status from, if any
-	matchActivityForStatusText?: UP.Resolver<UP.AnyActivityNode | null | undefined>
+	// the activities each user's status text is chosen from. Without it, no status text is shown
+	statusActivities?: ReadonlySet<UP.ActivityCode>
 	transitionMessages?: {
 		matchActivity: UP.Resolver
 		leaveMessage?: string
@@ -323,15 +323,14 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 		[loggedInUser?.discordId, myClientId],
 	)
 
-	const matchActivityForStatusText = props.matchActivityForStatusText
+	const statusActivities = props.statusActivities
 	const groupedPresence = React.useMemo((): PresenceGroup[] => {
 		const entries: PresenceEntry[] = sortedClientPresence.map(({ clientId, user, presence }) => {
 			let activityText: string | null = null
 			const eventText = userEventText.get(user.discordId)
-			const activityForText = matchActivityForStatusText?.(presence.activityState)
 			if (eventText) activityText = eventText
-			else if (activityForText) {
-				activityText = activityTextOf(UP.describeActivity(activityForText, layerList))
+			else if (statusActivities && presence.activityState) {
+				activityText = activityTextOf(UP.describeActivity(presence.activityState, layerList, { among: statusActivities }))
 			}
 			return { clientId, user, presence, activityText }
 		})
@@ -357,7 +356,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			}
 		}
 		return result
-	}, [sortedClientPresence, userEventText, layerList, matchActivityForStatusText])
+	}, [sortedClientPresence, userEventText, layerList, statusActivities])
 
 	const actionCount = React.useMemo(() => {
 		return groupedPresence.reduce((count, group) => count + group.entries.filter((e) => e.activityText !== null).length, 0)

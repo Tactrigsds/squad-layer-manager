@@ -11,7 +11,6 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
-import type * as ST from '@/lib/state-tree'
 import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
@@ -54,7 +53,7 @@ export type ConfiguredLoaderConfig = ConfiguredLoaders[number]
 /** Discriminated union of all loaded activity states - narrows automatically on `name` check */
 export type LoadedActivityState = Lifecycle.LoaderCacheEntryUnion<ConfiguredLoaders, true>
 
-function createActivityLoaderConfig<Name extends string, Key extends ST.Match.Node>(
+function createActivityLoaderConfig<Name extends string, Key extends object>(
 	name: Name,
 	match: (state: UP.RootActivity) => Key | undefined,
 ) {
@@ -65,8 +64,8 @@ function createActivityLoaderConfig<Name extends string, Key extends ST.Match.No
 export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig('selectLayers', (s) => {
 		const serverId = UP.activityServerId(s)
-		const node = UP.editingQueueNode(s)?.chosen
-		if (serverId && (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM')) return { serverId, ...node }
+		const edit = UP.editingQueue(s)
+		if (serverId && (edit?.code === 'ADDING_ITEM' || edit?.code === 'EDITING_ITEM')) return { serverId, ...edit }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -77,13 +76,13 @@ export const ACTIVITY_LOADER_CONFIGS = [
 			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
 			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
 			let editedLayerId: string | undefined
-			if (args.key.id === 'EDITING_ITEM') {
+			if (args.key.code === 'EDITING_ITEM') {
 				const layerList = frameManager.getState(squadServer)?.queue.layerList ?? []
-				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.opts.itemId))
+				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.itemId))
 				if (item) editedLayerId = item.layerId
 			}
 			const input = SelectLayersFrame.createInput({
-				cursor: args.key.opts.cursor,
+				cursor: args.key.cursor,
 				initialEditedLayerId: editedLayerId,
 				squadServer: squadServer,
 			})
@@ -95,15 +94,15 @@ export const ACTIVITY_LOADER_CONFIGS = [
 			if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.selectLayersFrame))
 		},
 		checkShouldUnload(args) {
-			if (args.key.opts.cursor.type !== 'item-relative') return false
-			const itemId = args.key.opts.cursor.itemId
+			if (args.key.cursor.type !== 'item-relative') return false
+			const itemId = args.key.cursor.itemId
 			return !LL.findItemById(getCurrentLayerList(), itemId)
 		},
 	}),
 	createActivityLoaderConfig('genVote', (s) => {
 		const serverId = UP.activityServerId(s)
-		const node = UP.editingQueueNode(s)?.chosen
-		if (serverId && node?.id === 'GENERATING_VOTE') return { serverId, ...node }
+		const edit = UP.editingQueue(s)
+		if (serverId && edit?.code === 'GENERATING_VOTE') return { serverId, ...edit }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -122,8 +121,8 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', (s) => {
-		const node = UP.editingQueueNode(s)?.chosen
-		if (node?.id === 'PASTE_ROTATION') return node
+		const edit = UP.editingQueue(s)
+		if (edit?.code === 'PASTE_ROTATION') return edit
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -202,9 +201,9 @@ function createPresenceStore() {
 				const layerRequestEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					const activity = client.activityState
-					if (UP.editingQueueNode(activity)) editors.add(client.userId)
-					if (UP.editingTeamswapsNode(activity)) teamswapEditors.add(client.userId)
-					if (UP.editingLayerRequestsNode(activity)) layerRequestEditors.add(client.userId)
+					if (UP.editingQueue(activity)) editors.add(client.userId)
+					if (UP.editingTeamswaps(activity)) teamswapEditors.add(client.userId)
+					if (UP.editingLayerRequests(activity)) layerRequestEditors.add(client.userId)
 				}
 				if (!Obj.deepEqual(editors, state.editors)) {
 					toUpdate.editors = editors
@@ -323,7 +322,7 @@ export namespace Actions {
 		const config = ConfigClient.getConfig()
 		if (!config) return
 		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
-		const onDashboard = !!UP.Trans.onDashboard(serverId).match(activity)
+		const onDashboard = UP.Trans.onDashboard(serverId).match(activity)
 		const currentPanel = UP.Trans.viewingQueue(serverId).match(activity)
 			? 'VIEWING_QUEUE'
 			: UP.Trans.viewingTeams(serverId).match(activity)
@@ -398,16 +397,15 @@ export function useItemPresence(itemId: LL.ItemId) {
 	const [presence, activityHovered] = Zus.useStore(
 		Store,
 		Zus.useDeep((state) => {
+			let itemActivity: UP.ItemOwnedActivity | undefined
 			const res = MapUtils.find(state.presence, (_, v) => {
-				const activity = UP.editingQueueNode(v.activityState)?.chosen
-				return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
+				const edit = UP.editingQueue(v.activityState)
+				if (!edit || !UP.isItemOwnedActivity(edit) || edit.itemId !== itemId) return false
+				itemActivity = edit
+				return true
 			})
-			if (!res) return [undefined, undefined] as const
-			const presence = {
-				...res?.[1],
-				itemActivity: UP.editingQueueNode(res[1].activityState)!.chosen as UP.ItemOwnedActivity,
-			}
-			if (!presence) return [undefined, undefined] as const
+			if (!res || !itemActivity) return [undefined, undefined] as const
+			const presence = { ...res[1], itemActivity }
 			const hovered = state.hoveredActivityUserId === presence.userId
 			return [presence, hovered] as const
 		}),
@@ -466,16 +464,7 @@ export namespace Sel {
 	}
 
 	export const isEditing = (userId: USR.UserId) => (store: Store) => {
-		return UP.editingQueueNode(userPresence(userId)(store)?.activityState)
-	}
-
-	export const activityPresent = (targetActivity: UP.RootActivity) => (state: Store) => {
-		for (const [activity] of UP.iterActivities(state.presence)) {
-			if (Obj.deepEqual(activity, targetActivity)) {
-				return true
-			}
-		}
-		return false
+		return !!UP.editingQueue(userPresence(userId)(store)?.activityState)
 	}
 
 	export const hoveredActivityUserId = (state: Store) => state.hoveredActivityUserId
@@ -544,17 +533,6 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 		[matchActivity],
 	)
 	return [!!predicate, setActive] as const
-}
-
-export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null | undefined) => P) {
-	return Zus.useStore(
-		Store,
-		Zus.useDeep(() => {
-			const config = ConfigClient.getConfig()
-			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
-			return matchActivity(state)
-		}),
-	)
 }
 
 export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O = LoaderCacheEntry<Loader>['data']>(opts: {
