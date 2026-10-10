@@ -7,7 +7,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LE from '@/models/layer-engine'
 import type * as LQY from '@/models/layer-queries.models'
-import type * as LOGS from '@/models/logs'
+import type * as LOG from '@/models/logs'
 import * as ATTRS from '@/models/otel-attrs'
 import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
@@ -108,7 +108,7 @@ export type SignalLoadingLayersStarted = {
 
 export type WorkerLog = {
 	type: 'worker-log'
-	payload: LOGS.LogEvent
+	payload: LOG.LogEvent
 }
 
 export type Sequenced = {

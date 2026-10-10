@@ -1,5 +1,5 @@
 import * as E from 'drizzle-orm'
-import * as crypto from 'node:crypto'
+import * as Crypto from 'node:crypto'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
@@ -91,7 +91,7 @@ function mintVerificationCode(discordId: bigint): { code: string; expiresAt: num
 		if (pending.discordId === discordId) pendingVerifications.delete(code)
 	}
 	let code = ''
-	for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]
+	for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[Crypto.randomInt(CODE_ALPHABET.length)]
 	const expiresAt = now + VERIFICATION_TTL_MS
 	pendingVerifications.set(code, { discordId, expiresAt })
 	return { code, expiresAt }

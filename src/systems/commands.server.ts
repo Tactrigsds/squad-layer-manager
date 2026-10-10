@@ -33,7 +33,7 @@ import * as CommandPrompts from '@/systems/command-prompts.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -63,7 +63,7 @@ let loggedConflicts = ''
 // settled against core and against each other. A command whose triggers were all taken is gone from here: it
 // cannot be typed, so it must not be listed either.
 function pluginCommandListings(): CMDH.PluginCommandListing[] {
-	const declared = Plugins.commandDeclarations().map(({ id, decl, stored }) => ({
+	const declared = PluginsSys.commandDeclarations().map(({ id, decl, stored }) => ({
 		id,
 		decl,
 		config: CMD.pluginCommandConfig(decl, stored, Settings.GLOBAL_SETTINGS.defaultPrefix),
@@ -224,7 +224,7 @@ async function runCommand(
 		return await chat.error('command-disabled', ctx.tr.text(CMD_Msgs.commandDisabled(cmd)))
 	}
 
-	const pluginCommand = CMD.isPluginCommandId(cmd) ? Plugins.commandDeclarations().find((c) => c.id === cmd) : undefined
+	const pluginCommand = CMD.isPluginCommandId(cmd) ? PluginsSys.commandDeclarations().find((c) => c.id === cmd) : undefined
 	if (CMD.isPluginCommandId(cmd) && !pluginCommand) return
 
 	// Authorization sits here, next to the allowed-chat and enabled gates: every declaration states its access, so no
@@ -240,7 +240,7 @@ async function runCommand(
 	// a plugin command takes the words after its trigger as typed: the argument machinery below is driven by
 	// declarations the host can see, which a plugin's command has none of
 	if (pluginCommand) {
-		const res = await Plugins.runCommand(ctx, cmd, {
+		const res = await PluginsSys.runCommand(ctx, cmd, {
 			text: tokens.join(' '),
 			args: tokens,
 			player: sender,

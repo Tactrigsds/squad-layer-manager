@@ -43,7 +43,7 @@ import * as DiscordClient from '@/systems/discord.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
-import * as LQClient from '@/systems/layer-queries.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as LoggedInUserClient from '@/systems/logged-in-user.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -70,7 +70,7 @@ const namespaces = {
 	FeatureFlags,
 	FilterEntityClient,
 	LayerInfoDialogClient,
-	LQClient,
+	LQClient: LayerQueriesClient,
 	LayerQueueClient,
 	LoggedInUserClient,
 	MatchHistoryClient,

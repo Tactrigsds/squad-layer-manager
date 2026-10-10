@@ -14,7 +14,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
-import * as Cookies from '@/systems/app-routes.client'
+import * as AppRoutesClient from '@/systems/app-routes.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -212,14 +212,14 @@ export namespace SelectedServerActions {
 	export function setSelectedServer(serverId: string) {
 		if (serverId === SelectedServerStore.getState().selectedServerId) return
 		if (!isKnownServer(serverId)) return
-		Cookies.setCookie('default-server-id', serverId)
+		AppRoutesClient.setCookie('default-server-id', serverId)
 		SelectedServerStore.setState({ selectedServerId: serverId })
 	}
 
 	export function setAsDefaultServer() {
 		const serverId = SelectedServerStore.getState().selectedServerId
 		if (!isKnownServer(serverId)) return
-		Cookies.setCookie('default-server-id', serverId)
+		AppRoutesClient.setCookie('default-server-id', serverId)
 	}
 }
 
@@ -301,7 +301,7 @@ export function setup() {
 	loadedServerIds$.subscribe()
 	// this cookie is set correctly by the backend according to the path on page load (the only time we expect setup() to be
 	// called); it may be absent when there are no enabled servers to default to, in which case '/' redirects to /servers
-	const cookieServerId = Cookies.getCookie('default-server-id')!
+	const cookieServerId = AppRoutesClient.getCookie('default-server-id')!
 	SelectedServerStore = Zus.createStore(() => ({
 		selectedServerId: cookieServerId,
 	}))

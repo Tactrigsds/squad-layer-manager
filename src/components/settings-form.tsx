@@ -67,8 +67,7 @@ import * as PLG from '@/models/plugins.models'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SDoc from '@/models/schema-docs.models'
 import * as SETTINGS from '@/models/settings.models'
-import type * as SM from '@/models/squad.models'
-import * as SquadModels from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -2138,7 +2137,7 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 	}
 }
 
-const PLAYER_PERM_OPTIONS = SquadModels.PLAYER_PERM.options.map((perm) => ({ value: perm }))
+const PLAYER_PERM_OPTIONS = SM.PLAYER_PERM.options.map((perm) => ({ value: perm }))
 
 const ADMIN_SOURCE_TYPES = ['remote', 'local', 'ftp', 'sftp'] as const satisfies readonly SM.AdminListSourceType[]
 

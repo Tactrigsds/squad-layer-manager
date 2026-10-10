@@ -9,7 +9,7 @@ import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
-import * as Otel from '@/systems/otel.server'
+import * as OtelSys from '@/systems/otel.server'
 
 const module = initModule('app-events')
 const orpcBase = getOrpcBase(module)
@@ -18,7 +18,7 @@ const orpcBase = getOrpcBase(module)
 // (which pushes them into the live activity feed); global (serverId=null) events are audit-only and call this directly.
 export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 	// stamp the emitting process so events can be grouped by run, and restart detection can correlate by instance
-	appEvent.instanceId = Otel.instanceId
+	appEvent.instanceId = OtelSys.instanceId
 	await ctx.db().insert(Schema.appEvents).values(AppEvents.toRow(appEvent, SETTINGS.redactSettingValue))
 	const associations = AppEvents.associationRows(appEvent)
 	if (associations.length > 0) {

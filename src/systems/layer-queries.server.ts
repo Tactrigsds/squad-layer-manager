@@ -10,7 +10,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
-import * as LayerQueries from '@/systems/layer-queries.shared'
+import * as LayerQueriesShared from '@/systems/layer-queries.shared'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Settings from '@/systems/settings.server'
@@ -26,7 +26,7 @@ export function setup() {
 export const router = {
 	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
 		const lqContext = { ...ctx, ...(await resolveLayerEngineContext()) }
-		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
+		return await LayerQueriesShared.getLayerInfo({ ctx: lqContext, input })
 	}),
 }
 
@@ -42,7 +42,7 @@ export async function resolveLayerQueryCtx<Ctx extends MH.Ctx & LQ.Ctx>(ctx: Ctx
 
 // for evaluating anonymous filters against explicit layer ids, with no queue or match-history attachment
 // (getLayersOutOfPool only reads the engine and the filter entities)
-export async function resolveAnonLayerQueryCtx<Ctx extends object>(ctx: Ctx): Promise<Ctx & LayerQueries.QueryCtx> {
+export async function resolveAnonLayerQueryCtx<Ctx extends object>(ctx: Ctx): Promise<Ctx & LayerQueriesShared.QueryCtx> {
 	return { ...ctx, ...(await resolveLayerEngineContext()), filters: FilterEntity.state.filters }
 }
 

@@ -19,7 +19,7 @@ import { randomBytes } from 'crypto'
 import { formatVersion } from '@/lib/versioning.ts'
 import * as Env from '@/server/env'
 import * as Logger from '@/server/logger'
-import * as Cleanup from '@/systems/cleanup.server'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.otel })
 let ENV!: ReturnType<typeof envBuilder>
@@ -108,5 +108,5 @@ export function setupOtel() {
 	})
 
 	Logger.setOtelSdk(sdk)
-	Cleanup.register(() => sdk.shutdown())
+	CleanupSys.register(() => sdk.shutdown())
 }

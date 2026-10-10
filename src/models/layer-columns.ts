@@ -8,7 +8,7 @@ import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
-import type * as SLL from '@/models/squad-layer-list.models'
+import type * as SquadLL from '@/models/squad-layer-list.models'
 import * as VEH from '@/models/vehicles.models'
 
 import * as L from './layer'
@@ -182,7 +182,7 @@ export function vehicleTypeForVehicle(vehicle: string, components = L.StaticLaye
 
 // the class of each of a unit's vehicle rows, in the unit's own order. Undefined per row where the artifact
 // predates the vehicle tables, or where the row matched no single canonical vehicle.
-export function vehicleTypesForUnitRecord(unit: SLL.Unit, components = L.StaticLayerComponents): (string | undefined)[] {
+export function vehicleTypesForUnitRecord(unit: SquadLL.Unit, components = L.StaticLayerComponents): (string | undefined)[] {
 	if (!VEH.hasVehicleData(components)) return unit.vehicles.map(() => undefined)
 	return VEH.canonicalVehiclesForUnitRecord(unit.unitObjectName, unit.vehicles, components).map((id) =>
 		id === undefined ? undefined : VEH.vehicleTypeName(id, components),

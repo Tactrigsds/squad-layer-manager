@@ -1,5 +1,5 @@
 import * as fs from 'fs'
-import * as fsPromise from 'fs/promises'
+import * as fsp from 'fs/promises'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import path from 'path'
@@ -50,7 +50,7 @@ function readLegacyArtifact(bytes: Buffer): { rowCount: number; layersVersion: s
 }
 
 async function readArtifactBytes(filePath: string): Promise<Buffer> {
-	const raw = await fsPromise.readFile(filePath)
+	const raw = await fsp.readFile(filePath)
 	return filePath.endsWith('.gz') ? await gunzip(raw) : raw
 }
 
@@ -63,7 +63,7 @@ async function main() {
 	const outputDir = process.argv[4] ?? inputDir
 
 	const layerDataPath = path.join(inputDir, LayerArtifacts.layerDataFileName(version))
-	const file = JSON.parse(await fsPromise.readFile(layerDataPath, 'utf-8')) as L.LayerDataFile
+	const file = JSON.parse(await fsp.readFile(layerDataPath, 'utf-8')) as L.LayerDataFile
 	const components = LC.buildFullLayerComponents(file.components)
 
 	const compressed = path.join(inputDir, LayerArtifacts.tableFileName(version, { compressed: true }))
@@ -100,10 +100,10 @@ async function main() {
 	verify(out, legacy)
 
 	const outPath = path.join(outputDir, LayerArtifacts.tableFileName(version))
-	await fsPromise.mkdir(outputDir, { recursive: true })
-	await fsPromise.writeFile(outPath, out)
+	await fsp.mkdir(outputDir, { recursive: true })
+	await fsp.writeFile(outPath, out)
 	const gz = await gzip(out, { level: 5 })
-	await fsPromise.writeFile(`${outPath}.gz`, gz)
+	await fsp.writeFile(`${outPath}.gz`, gz)
 	console.log(`wrote ${outPath} (${(out.length / 1e6).toFixed(2)} MB) and .gz (${(gz.length / 1e6).toFixed(2)} MB)`)
 }
 

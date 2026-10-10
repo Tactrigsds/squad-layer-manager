@@ -11,7 +11,7 @@ import * as Announcements from '@/systems/announcements.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as EventArchive from '@/systems/event-archive.server'
 import * as MatchLayers from '@/systems/match-layers.server'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 
 /**
  * A unix socket for operating the running app from inside its own container, where there is no session to
@@ -46,10 +46,10 @@ async function handle(req: Request): Promise<Response> {
 	switch (req.command) {
 		case 'reload-plugins': {
 			const ctx = DB.addPooledDb({ ...CS.init(), log })
-			await Plugins.reloadPackages(ctx)
+			await PluginsSys.reloadPackages(ctx)
 			return {
 				code: 'ok',
-				plugins: Plugins.listRuntimeInfo().map((p) => ({ id: p.id, enabled: p.enabled, status: p.status, error: p.error })),
+				plugins: PluginsSys.listRuntimeInfo().map((p) => ({ id: p.id, enabled: p.enabled, status: p.status, error: p.error })),
 			}
 		}
 		// forces a compaction pass rather than waiting for the next scheduled one -- for after EVENT_ARCHIVE_WINDOW

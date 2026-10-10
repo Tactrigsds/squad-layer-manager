@@ -3,7 +3,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
-import * as PartSys from '@/systems/parts.client'
+import * as PartsSys from '@/systems/parts.client'
 
 // casts arrive as deltas against the state before them, so the state is folded on the stream that receives them in
 // order, before the binding that shares it
@@ -12,9 +12,9 @@ const voteStateCold$ = (serverId: string) =>
 		RPC.dropUnavailable(),
 		Rx.tap((update) => {
 			if (update.code === 'initial-state' && update.state) {
-				PartSys.stripParts(update.state)
+				PartsSys.stripParts(update.state)
 			} else if (update.code === 'update' && !V.isVoteCastUpdate(update.update)) {
-				PartSys.stripParts(update.update)
+				PartsSys.stripParts(update.update)
 			}
 		}),
 		Rx.scan(

@@ -11,7 +11,7 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
-import * as LQYClient from '@/systems/layer-queries.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
@@ -55,7 +55,7 @@ export default function LayerDisplay({
 			s ? LQY.getParityForLayerItem(s.layerItemsState, item) : 0,
 		) ?? 0
 
-	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(props.item, props.stores?.squadServer)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {

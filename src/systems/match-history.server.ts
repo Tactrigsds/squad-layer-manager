@@ -34,7 +34,7 @@ import * as MatchPopulation from '@/systems/match-population.server'
 import * as MatchTallies from '@/systems/match-tallies.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as UsersClient from '@/systems/users.server'
+import * as Users from '@/systems/users.server'
 
 const module = initModule('match-history')
 let log!: CS.Logger
@@ -118,7 +118,7 @@ export const loadState = Instr.spanOp(
 				...m,
 				isCurrentMatch: m.historyEntryId === currentMatchId,
 			}))
-		const userRows = new Map<bigint, UsersClient.DbUser>()
+		const userRows = new Map<bigint, Users.DbUser>()
 		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
 			// @ts-expect-error idgaf
@@ -135,7 +135,7 @@ export const loadState = Instr.spanOp(
 		// setByUserId, not by embedding, and parts.users is display-only, so it can fill in after commit.
 		if (userRows.size > 0) {
 			addReleaseTask(async () => {
-				const users = await UsersClient.buildUsers([...userRows.values()])
+				const users = await Users.buildUsers([...userRows.values()])
 				for (const user of users) Arr.upsertOn(state.parts.users, user, 'discordId')
 				state.dispatchUpdate()
 			})

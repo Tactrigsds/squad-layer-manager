@@ -21,7 +21,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
 import * as Discord from '@/systems/discord.server'
-import * as User from '@/systems/users.server'
+import * as Users from '@/systems/users.server'
 
 // the role type attributed to permissions granted by the env-level SUPER_USERS/SUPER_ROLES bootstrap
 const SUPER_ROLE: RBAC.Role = { type: 'super' }
@@ -259,7 +259,7 @@ export const getRbacForDiscordUser = Instr.spanOp(
 		const discordUserId = ctx.user.discordId
 		const cached = cache.users.get(discordUserId)
 		if (cached) return await cached
-		const playerIds = await User.findUserPlayerIds(ctx, discordUserId)
+		const playerIds = await Users.findUserPlayerIds(ctx, discordUserId)
 
 		const userRbacPromise = resolveUserRbac(ctx, discordUserId, playerIds)
 
@@ -301,7 +301,7 @@ export const getRbacForPlayer = Instr.spanOp(
 
 		let discordId: bigint | undefined
 		if (steamId) {
-			discordId = await User.findDiscordIdBySteam64Id(ctx, steamId)
+			discordId = await Users.findDiscordIdBySteam64Id(ctx, steamId)
 		}
 
 		const rbacPromise = (async () => {
@@ -380,7 +380,7 @@ export async function tryDenySteamLinkEscalation(
 	steamId: bigint,
 ): Promise<RBAC.PermissionDeniedResponse | undefined> {
 	const steam = steamId.toString()
-	const linked = await User.findUserPlayerIds(ctx, subjectDiscordId)
+	const linked = await Users.findUserPlayerIds(ctx, subjectDiscordId)
 	const without = linked.filter((ids) => ids.steam !== steam)
 	const withLink = [...without, { steam }]
 

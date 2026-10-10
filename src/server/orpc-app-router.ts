@@ -1,6 +1,6 @@
 import * as Config from '@/server/config.server'
 import * as Announcements from '@/systems/announcements.server'
-import * as AppEvents from '@/systems/app-events.server'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Changelog from '@/systems/changelog.server'
 import * as Discord from '@/systems/discord.server'
@@ -10,7 +10,7 @@ import * as History from '@/systems/history.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerConsole from '@/systems/server-console.server'
@@ -44,9 +44,9 @@ export const orpcAppRouter = {
 	users: Users.orpcRouter,
 	teamswaps: Teamswaps.orpcRouter,
 	switchRequests: SwitchRequests.orpcRouter,
-	appEvents: AppEvents.router,
+	appEvents: AppEventsSys.router,
 	announcements: Announcements.router,
-	plugins: Plugins.router,
+	plugins: PluginsSys.router,
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,
 	serverConsole: ServerConsole.orpcRouter,

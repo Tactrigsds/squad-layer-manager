@@ -32,7 +32,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as UserPresenceSys from '@/systems/user-presence.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 
 export const module = initModule('teamswaps')
@@ -717,7 +717,7 @@ const dispatchOp = Instr.spanOp(
 					}
 
 					case 'end-all-teamswap-editing': {
-						UserPresenceSys.dispatchEndAllTeamswapEditing(ctx.serverId)
+						UserPresence.dispatchEndAllTeamswapEditing(ctx.serverId)
 						break
 					}
 

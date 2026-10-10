@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import * as TSWPrt from '@/frame-partials/teamswaps.partial'
+import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
@@ -13,7 +13,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
-export type Store = TSWPrt.Store
+export type Store = TeamswapsPrt.Store
 
 export namespace Sel {
 	export function localState(store: Store) {
@@ -148,7 +148,7 @@ function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.Pl
 	const currentMatch = matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
 	const state = Zus.getState(stores.squadServer)
 	const players = ChatPrt.Sel.players(state)
-	return TSWPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
+	return TeamswapsPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
 }
 
 export namespace Actions {
@@ -170,7 +170,7 @@ export namespace Actions {
 			if (!TSW.canQueue(state, playerId)) continue
 			const toTeam = getPlayerOppositeTeam(stores, playerId)
 			if (!toTeam) continue
-			TSWPrt.Actions.dispatch(
+			TeamswapsPrt.Actions.dispatch(
 				{ teamswaps: stores.squadServer },
 				{
 					code: 'add-player-teamswap',
@@ -187,7 +187,10 @@ export namespace Actions {
 	export function removeSwap(stores: SquadServerFrame.KeyProp, playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
 		for (const playerId of playerIds) {
-			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'remove-player-teamswaps', playerId, source, saved: false })
+			TeamswapsPrt.Actions.dispatch(
+				{ teamswaps: stores.squadServer },
+				{ code: 'remove-player-teamswaps', playerId, source, saved: false },
+			)
 		}
 		setEditing(stores.squadServer.serverId)
 	}
@@ -202,7 +205,7 @@ export namespace Actions {
 		}
 		if (swaps.size > 0) {
 			ensureViewingTeams(stores.squadServer.serverId)
-			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'swap-now', swaps, source })
+			TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'swap-now', swaps, source })
 		}
 	}
 
@@ -211,7 +214,10 @@ export namespace Actions {
 		const state = Sel.localState(Zus.getState(stores.squadServer))
 		for (const [playerId, swap_] of state.editedSwaps.entries()) {
 			if (swap_.toTeam !== teamId) continue
-			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'remove-player-teamswaps', playerId, source, saved: false })
+			TeamswapsPrt.Actions.dispatch(
+				{ teamswaps: stores.squadServer },
+				{ code: 'remove-player-teamswaps', playerId, source, saved: false },
+			)
 		}
 		setEditing(stores.squadServer.serverId)
 	}
@@ -219,18 +225,18 @@ export namespace Actions {
 	export function executeTeamswaps(stores: SquadServerFrame.KeyProp) {
 		ensureViewingTeams(stores.squadServer.serverId)
 		const source = { discordId: UsersClient.loggedInUserId }
-		TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'execute-teamswaps', source })
+		TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'execute-teamswaps', source })
 	}
 
 	export function save(stores: SquadServerFrame.KeyProp) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'save', source })
+		TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'save', source })
 	}
 
 	export function revertToSaved(stores: SquadServerFrame.KeyProp) {
 		ensureViewingTeams(stores.squadServer.serverId)
 		const source = { discordId: UsersClient.loggedInUserId }
-		TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'revert-to-saved', source })
+		TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'revert-to-saved', source })
 		clearEditing(stores.squadServer.serverId)
 	}
 }

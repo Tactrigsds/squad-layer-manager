@@ -1,8 +1,8 @@
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
-import * as DateFns from 'date-fns'
+import * as dateFns from 'date-fns'
 import fs from 'node:fs'
 import path from 'node:path'
-import * as readline from 'node:readline/promises'
+import * as readlinePromises from 'node:readline/promises'
 import * as Stream from 'node:stream/promises'
 import { parseArgs } from 'node:util'
 import * as Zlib from 'node:zlib'
@@ -62,7 +62,7 @@ function candidates(): Candidate[] {
 function describe(c: Candidate) {
 	const size = `${(c.sizeBytes / 1024 / 1024).toFixed(1)} MB`
 	const build = c.sha && c.sha !== 'unknown' ? `commit-${c.sha.slice(0, 7)}` : 'build unknown'
-	return `${c.fileName}\n    ${c.kind}, ${build}, taken ${DateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
+	return `${c.fileName}\n    ${c.kind}, ${build}, taken ${dateFns.format(c.takenAt, 'yyyy-MM-dd HH:mm:ss')}, ${size}`
 }
 
 function list() {
@@ -241,7 +241,7 @@ function pinGuidance(stamp: DbMeta.BuildStamp | null): string {
 async function confirm(question: string) {
 	if (args.values.yes) return
 	if (!process.stdin.isTTY) fail('refusing to restore without a confirmation. Re-run with --yes if you mean it.')
-	const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+	const rl = readlinePromises.createInterface({ input: process.stdin, output: process.stdout })
 	try {
 		const answer = await rl.question(`${question} [y/N] `)
 		if (!/^y(es)?$/i.test(answer.trim())) fail('aborted, nothing was changed')
@@ -321,7 +321,7 @@ try {
 		existing.pragma('wal_checkpoint(TRUNCATE)')
 		existing.close()
 
-		const asideName = `${path.basename(DB_PATH)}.replaced-${DateFns.format(new Date(), 'yyyyMMdd-HHmmss')}`
+		const asideName = `${path.basename(DB_PATH)}.replaced-${dateFns.format(new Date(), 'yyyyMMdd-HHmmss')}`
 		const asidePath = path.join(path.dirname(DB_PATH), asideName)
 		fs.renameSync(DB_PATH, asidePath)
 		// checkpointed above, so these hold nothing the copy needs. Left in place they would be replayed over the

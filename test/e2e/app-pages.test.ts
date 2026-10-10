@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
-import * as DB from '../harness/dashboard'
+import * as Dash from '../harness/dashboard'
 import { dragFrom } from '../harness/drag'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
 import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
@@ -22,7 +22,7 @@ test.describe('server dashboard', () => {
 		await expect(page.getByRole('row', { name: /In progress/ })).toBeVisible()
 
 		// the app generates queue items on boot and pushes the first one to the server as next layer
-		const queuePanel = DB.queueSection(page)
+		const queuePanel = Dash.queueSection(page)
 		await expect(queuePanel).toBeVisible()
 		const firstItem = queuePanel.getByText(/^\w+_\w+_v\d+$/).first()
 		await expect(firstItem).toBeVisible({ timeout: 20_000 })
@@ -43,10 +43,10 @@ test.describe('server dashboard', () => {
 		app.emu.world.connectPlayer(player)
 
 		// the roster reaches the UI through the app's ListPlayers poll, so the section's label counts them
-		await expect(DB.teamsLabel(page, /^Teams \(1\)/)).toBeVisible({ timeout: 20_000 })
+		await expect(Dash.teamsLabel(page, /^Teams \(1\)/)).toBeVisible({ timeout: 20_000 })
 
-		await DB.showTeams(page)
-		await expect(DB.teamsSection(page).getByText('e2e_joiner')).toBeVisible()
+		await Dash.showTeams(page)
+		await expect(Dash.teamsSection(page).getByText('e2e_joiner')).toBeVisible()
 	})
 
 	test('the population chart counts the roster, and pops out at the size it has in the panel', async ({ page }) => {
@@ -103,7 +103,7 @@ test.describe('server dashboard', () => {
 		await expect(history).toBeVisible()
 		// short enough that Match History and the breakdown alone overflow the column, measured rather than
 		// fixed so the case stays exercised however tall those two are
-		const labelTop = (await DB.queueLabel(page).boundingBox())!.y
+		const labelTop = (await Dash.queueLabel(page).boundingBox())!.y
 		await page.setViewportSize({ width: 1200, height: Math.round(labelTop) - 20 })
 		// and too short to show the queue and the teams at once, so the panel settles on tabs first
 		await expect(page.getByRole('tab', { name: /^Queue/ })).toBeVisible()
@@ -195,7 +195,7 @@ test.describe('teams panel', () => {
 	test.beforeEach(async ({ app, page }) => {
 		seedRoster(app)
 
-		await DB.showTeams(page)
+		await Dash.showTeams(page)
 		// the roster reaches the UI through the app's ListPlayers poll
 		await expect(playerRow(teamTable(page, 'A'), ALPHA_LEAD)).toBeVisible({ timeout: 20_000 })
 		await expect(playerRow(teamTable(page, 'B'), BRAVO_ONE)).toBeVisible({ timeout: 20_000 })

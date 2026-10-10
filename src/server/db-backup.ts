@@ -1,4 +1,4 @@
-import * as DateFns from 'date-fns'
+import * as dateFns from 'date-fns'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as Stream from 'node:stream/promises'
@@ -46,7 +46,7 @@ export function shaToken(sha: string | null | undefined): string {
 }
 
 export function fileName(dbPath: string, kind: BackupKind, sha: string | null | undefined, at = new Date()) {
-	return `${filePrefix(dbPath, kind)}-${shaToken(sha)}-${DateFns.format(at, 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
+	return `${filePrefix(dbPath, kind)}-${shaToken(sha)}-${dateFns.format(at, 'yyyyMMdd-HHmmss')}${BACKUP_FILE_EXT}`
 }
 
 // Whether a backup's sha token satisfies a `--commit-sha` request. The request may be a full sha, a short one, or a

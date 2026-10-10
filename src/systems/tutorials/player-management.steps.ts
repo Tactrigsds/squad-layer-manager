@@ -7,7 +7,7 @@ import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
 import * as CMD_Msgs from '@/messages/command.messages'
-import * as M from '@/messages/tutorials/player-management-tutorial.messages'
+import * as PMTUT_Msgs from '@/messages/tutorials/player-management-tutorial.messages'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -497,50 +497,50 @@ export function buildSteps(plan: GroupingPlan) {
 		hasAnyCommand(ids) ? [{ id, msg: withCommands(msg, ids), ...extra } as Tour.Step] : []
 
 	return Tour.defineSteps([
-		{ id: 'welcome', msg: M.welcome, checkpoint: CP_ROSTER },
+		{ id: 'welcome', msg: PMTUT_Msgs.welcome, checkpoint: CP_ROSTER },
 
 		// the server activity log, and the box under it for messaging the server
-		{ id: 'activity-panel', anchor: 'activity-panel', msg: M.Activity.panel },
-		{ id: 'activity-filter', anchor: 'activity-filter', spotlight: 'activity-panel', interact: 'free', msg: M.Activity.filter },
-		{ id: 'activity-select', anchor: 'activity-feed', interact: 'free', msg: M.Activity.select },
+		{ id: 'activity-panel', anchor: 'activity-panel', msg: PMTUT_Msgs.Activity.panel },
+		{ id: 'activity-filter', anchor: 'activity-filter', spotlight: 'activity-panel', interact: 'free', msg: PMTUT_Msgs.Activity.filter },
+		{ id: 'activity-select', anchor: 'activity-feed', interact: 'free', msg: PMTUT_Msgs.Activity.select },
 		{
 			id: 'activity-copy',
 			anchor: 'activity-feed',
 			interact: 'free',
-			msg: M.Activity.copy,
+			msg: PMTUT_Msgs.Activity.copy,
 			advanceFromPrevious: { type: 'state', ...feedSelected, simulate: simSelectFeedRows },
 		},
-		{ id: 'activity-warn', anchor: 'activity-warn', spotlight: 'activity-panel', interact: 'free', msg: M.Activity.warnBox },
+		{ id: 'activity-warn', anchor: 'activity-warn', spotlight: 'activity-panel', interact: 'free', msg: PMTUT_Msgs.Activity.warnBox },
 
 		// the match history, and looking back at a match through it
-		{ id: 'mh-overview', anchor: { all: 'match-history' }, msg: M.MatchHistory.overview },
+		{ id: 'mh-overview', anchor: { all: 'match-history' }, msg: PMTUT_Msgs.MatchHistory.overview },
 		{
 			id: 'mh-time',
 			anchor: pastMatchCell('mh-time'),
 			spotlight: { all: 'match-history' },
 			interact: 'anchor-only',
-			msg: M.MatchHistory.time,
+			msg: PMTUT_Msgs.MatchHistory.time,
 		},
-		{ id: 'mh-outcome', anchor: pastMatchCell('mh-outcome'), spotlight: { all: 'match-history' }, msg: M.MatchHistory.outcome },
+		{ id: 'mh-outcome', anchor: pastMatchCell('mh-outcome'), spotlight: { all: 'match-history' }, msg: PMTUT_Msgs.MatchHistory.outcome },
 		{
 			id: 'mh-kd',
 			anchor: pastMatchCell('mh-kd'),
 			spotlight: { all: 'match-history' },
 			interact: 'anchor-only',
-			msg: M.MatchHistory.kd,
+			msg: PMTUT_Msgs.MatchHistory.kd,
 		},
 		{
 			id: 'mh-set-by',
 			anchor: { css: '[data-tour="mh-row"] [data-tour="mh-set-by"]', all: true },
 			spotlight: { all: 'match-history' },
 			interact: 'anchor-only',
-			msg: M.MatchHistory.setBy,
+			msg: PMTUT_Msgs.MatchHistory.setBy,
 		},
-		{ id: 'mh-open', anchor: PAST_MATCH_ROW, interact: 'anchor-only', msg: M.MatchHistory.open },
+		{ id: 'mh-open', anchor: PAST_MATCH_ROW, interact: 'anchor-only', msg: PMTUT_Msgs.MatchHistory.open },
 		{
 			id: 'mh-viewing',
 			anchor: 'activity-panel',
-			msg: M.MatchHistory.viewing,
+			msg: PMTUT_Msgs.MatchHistory.viewing,
 			premise: viewingPastMatch,
 			advanceFromPrevious: { type: 'state', ...viewingPastMatch, simulate: simViewPastMatch },
 		},
@@ -549,16 +549,16 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: 'activity-match-nav',
 			spotlight: 'activity-panel',
 			interact: 'free',
-			msg: M.MatchHistory.arrows,
+			msg: PMTUT_Msgs.MatchHistory.arrows,
 			premise: viewingPastMatch,
 		},
-		{ id: 'mh-live', anchor: 'activity-live', interact: 'anchor-only', msg: M.MatchHistory.live, premise: viewingPastMatch },
+		{ id: 'mh-live', anchor: 'activity-live', interact: 'anchor-only', msg: PMTUT_Msgs.MatchHistory.live, premise: viewingPastMatch },
 		{
 			id: 'mh-days',
 			anchor: 'mh-days',
 			spotlight: { all: 'match-history' },
 			interact: 'anchor-only',
-			msg: M.MatchHistory.days,
+			msg: PMTUT_Msgs.MatchHistory.days,
 			advanceFromPrevious: {
 				type: 'state',
 				inputs: (run) => [run.squadServer],
@@ -575,7 +575,7 @@ export function buildSteps(plan: GroupingPlan) {
 			msg: {
 				inputs: () => [Tour.domInput('[data-tour="primary-tab-teams"]')],
 				select: (els: Element[]) => {
-					const msg = els.some((el) => el.getClientRects().length > 0) ? M.findTeamsTab : M.findTeamsStacked
+					const msg = els.some((el) => el.getClientRects().length > 0) ? PMTUT_Msgs.findTeamsTab : PMTUT_Msgs.findTeamsStacked
 					return { title: tr.text(msg.title()), body: Tour.richText(msg.body()) }
 				},
 			},
@@ -583,23 +583,37 @@ export function buildSteps(plan: GroupingPlan) {
 		{
 			id: 'teams-header',
 			anchor: 'teams-header',
-			msg: M.teamsHeader,
+			msg: PMTUT_Msgs.teamsHeader,
 			premise: teamsShown,
 			// in the stacked layout there is no tab, and the teams are already on screen
 			advanceFromPrevious: { type: 'state', ...teamsTabSelected, allowNext: true, simulate: simShowTeams },
 		},
 
 		// groupings, and the breakdown built from them
-		{ id: 'groupings-column', anchor: 'players-col-group', spotlight: 'teams-panel', msg: M.groupingsColumn, prepare: ensureTeamsShown },
+		{
+			id: 'groupings-column',
+			anchor: 'players-col-group',
+			spotlight: 'teams-panel',
+			msg: PMTUT_Msgs.groupingsColumn,
+			prepare: ensureTeamsShown,
+		},
 		...(plan.ids.length > 0
-			? [{ id: 'grouping-modes', anchor: 'teams-grouping', interact: 'free' as const, msg: M.groupingModes, prepare: ensureTeamsShown }]
+			? [
+					{
+						id: 'grouping-modes',
+						anchor: 'teams-grouping',
+						interact: 'free' as const,
+						msg: PMTUT_Msgs.groupingModes,
+						prepare: ensureTeamsShown,
+					},
+				]
 			: []),
-		{ id: 'breakdown', anchor: 'teams-breakdown', msg: M.breakdown, prepare: ensureTeamsChartShown },
+		{ id: 'breakdown', anchor: 'teams-breakdown', msg: PMTUT_Msgs.breakdown, prepare: ensureTeamsChartShown },
 		{
 			id: 'breakdown-hover',
 			anchor: 'teams-breakdown-chart',
 			interact: 'anchor-only',
-			msg: M.breakdownHover,
+			msg: PMTUT_Msgs.breakdownHover,
 			prepare: ensureTeamsChartShown,
 		},
 		...(groupStepsPossible
@@ -608,7 +622,7 @@ export function buildSteps(plan: GroupingPlan) {
 						id: 'breakdown-filter',
 						anchor: 'teams-breakdown-chart',
 						interact: 'anchor-only' as const,
-						msg: { title: M.breakdownFilter.title, body: () => M.breakdownFilter.body(plan.group!) },
+						msg: { title: PMTUT_Msgs.breakdownFilter.title, body: () => PMTUT_Msgs.breakdownFilter.body(plan.group!) },
 						prepare: ensureTeamsChartShown,
 					},
 					{
@@ -616,7 +630,7 @@ export function buildSteps(plan: GroupingPlan) {
 						anchor: 'teams-breakdown-chart',
 						spotlight: { css: '[data-tour="teams-breakdown"], [data-tour="teams-panel"]', all: true },
 						interact: 'free' as const,
-						msg: M.breakdownSelect,
+						msg: PMTUT_Msgs.breakdownSelect,
 						prepare: ensureTeamsChartShown,
 						advanceFromPrevious: {
 							type: 'state' as const,
@@ -633,12 +647,12 @@ export function buildSteps(plan: GroupingPlan) {
 						id: 'breakdown-unmatched',
 						anchor: 'breakdown-unmatched',
 						spotlight: 'teams-breakdown',
-						msg: M.breakdownUnmatched,
+						msg: PMTUT_Msgs.breakdownUnmatched,
 						prepare: ensureTeamsChartShown,
 					},
 				]
 			: []),
-		{ id: 'breakdown-history', anchor: { all: 'match-history' }, msg: M.breakdownHistory },
+		{ id: 'breakdown-history', anchor: { all: 'match-history' }, msg: PMTUT_Msgs.breakdownHistory },
 
 		// searching, filtering and sorting
 		{
@@ -646,7 +660,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: 'players-col-squad',
 			spotlight: 'teams-panel',
 			interact: 'free',
-			msg: { title: M.columnFilter.title, body: () => M.columnFilter.body(FILTER_SQUAD.name) },
+			msg: { title: PMTUT_Msgs.columnFilter.title, body: () => PMTUT_Msgs.columnFilter.body(FILTER_SQUAD.name) },
 			prepare: ensureTeamsShown,
 		},
 		{
@@ -654,7 +668,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: 'players-col-squad',
 			spotlight: 'teams-panel',
 			interact: 'free',
-			msg: M.removeFilter,
+			msg: PMTUT_Msgs.removeFilter,
 			prepare: ensureTeamsShown,
 			advanceFromPrevious: {
 				type: 'state',
@@ -667,18 +681,30 @@ export function buildSteps(plan: GroupingPlan) {
 			id: 'search',
 			anchor: 'teams-search',
 			interact: 'free',
-			msg: M.search,
+			msg: PMTUT_Msgs.search,
 			prepare: ensureTeamsShown,
 			advanceFromPrevious: { type: 'state', ...noColumnFilters, simulate: simClearFilters },
 		},
-		{ id: 'squad-sorting', anchor: 'players-col-squad', spotlight: 'teams-tables', msg: M.squadSorting, prepare: ensureTeamsShown },
-		{ id: 'show-spoilers', anchor: 'teams-show-spoilers', interact: 'anchor-only', msg: M.showSpoilers, prepare: ensureTeamsShown },
+		{
+			id: 'squad-sorting',
+			anchor: 'players-col-squad',
+			spotlight: 'teams-tables',
+			msg: PMTUT_Msgs.squadSorting,
+			prepare: ensureTeamsShown,
+		},
+		{
+			id: 'show-spoilers',
+			anchor: 'teams-show-spoilers',
+			interact: 'anchor-only',
+			msg: PMTUT_Msgs.showSpoilers,
+			prepare: ensureTeamsShown,
+		},
 		{
 			id: 'score-sorting',
 			anchor: 'players-stats-sort',
 			spotlight: 'teams-tables',
 			interact: 'free',
-			msg: M.scoreSorting,
+			msg: PMTUT_Msgs.scoreSorting,
 			prepare: ensureTeamsShown,
 			advanceFromPrevious: {
 				type: 'state',
@@ -687,12 +713,12 @@ export function buildSteps(plan: GroupingPlan) {
 				simulate: (ctx) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores(ctx.run), true),
 			},
 		},
-		{ id: 'selecting', anchor: 'teams-tables', interact: 'free', msg: M.selecting, prepare: ensureTeamsShown },
+		{ id: 'selecting', anchor: 'teams-tables', interact: 'free', msg: PMTUT_Msgs.selecting, prepare: ensureTeamsShown },
 		{
 			id: 'warn-selected',
 			anchor: 'activity-warn',
 			interact: 'free',
-			msg: M.Activity.warnSelected,
+			msg: PMTUT_Msgs.Activity.warnSelected,
 			advanceFromPrevious: {
 				type: 'change',
 				inputs: (run) => [run.squadServer],
@@ -701,7 +727,7 @@ export function buildSteps(plan: GroupingPlan) {
 				simulate: (ctx) => simSelect(ctx, [TARGETS.details]),
 			},
 		},
-		{ id: 'reset-panel', anchor: 'teams-reset', interact: 'anchor-only', msg: M.resetPanel, prepare: ensureTeamsShown },
+		{ id: 'reset-panel', anchor: 'teams-reset', interact: 'anchor-only', msg: PMTUT_Msgs.resetPanel, prepare: ensureTeamsShown },
 
 		// the player details window
 		{
@@ -709,13 +735,13 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: row(TARGETS.details),
 			prepare: (run) => revealPlayer(run, TARGETS.details),
 			interact: 'anchor-only',
-			msg: { title: M.PlayerDetails.open.title, body: () => M.PlayerDetails.open.body(TARGETS.details) },
+			msg: { title: PMTUT_Msgs.PlayerDetails.open.title, body: () => PMTUT_Msgs.PlayerDetails.open.body(TARGETS.details) },
 			advanceFromPrevious: { type: 'anchor', simulate: simResetPanel },
 		},
 		{
 			id: 'player-details',
 			anchor: 'player-details-window',
-			msg: M.PlayerDetails.window,
+			msg: PMTUT_Msgs.PlayerDetails.window,
 			premise: domPresent('player-details-window'),
 			advanceFromPrevious: {
 				type: 'state',
@@ -727,21 +753,21 @@ export function buildSteps(plan: GroupingPlan) {
 			id: 'player-details-ids',
 			anchor: 'player-details-ids',
 			spotlight: 'player-details-window',
-			msg: M.PlayerDetails.ids,
+			msg: PMTUT_Msgs.PlayerDetails.ids,
 			premise: domPresent('player-details-window'),
 		},
 		{
 			id: 'player-details-tags',
 			anchor: 'player-details-tags',
 			spotlight: 'player-details-window',
-			msg: M.PlayerDetails.tags,
+			msg: PMTUT_Msgs.PlayerDetails.tags,
 			premise: domPresent('player-details-window'),
 		},
 		{
 			id: 'player-details-activity',
 			anchor: 'player-details-activity',
 			spotlight: 'player-details-window',
-			msg: M.PlayerDetails.activity,
+			msg: PMTUT_Msgs.PlayerDetails.activity,
 			premise: domPresent('player-details-window'),
 		},
 
@@ -751,7 +777,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: 'player-details-warn',
 			spotlight: 'player-details-window',
 			interact: 'free',
-			msg: M.Warn.box,
+			msg: PMTUT_Msgs.Warn.box,
 			premise: domPresent('player-details-window'),
 		},
 		{
@@ -759,7 +785,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: 'warn-options',
 			spotlight: 'player-details-warn',
 			interact: 'free',
-			msg: M.Warn.options,
+			msg: PMTUT_Msgs.Warn.options,
 			premise: domPresent('player-details-window'),
 		},
 		...(warnPresets
@@ -769,7 +795,7 @@ export function buildSteps(plan: GroupingPlan) {
 						anchor: 'warn-presets',
 						spotlight: 'player-details-warn',
 						interact: 'free' as const,
-						msg: M.Warn.presets,
+						msg: PMTUT_Msgs.Warn.presets,
 						premise: domPresent('player-details-window'),
 					},
 				]
@@ -779,7 +805,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: closeControl('player-details-window'),
 			spotlight: 'player-details-window',
 			interact: 'anchor-only',
-			msg: withCommands(M.Warn.ingame, WARN_COMMANDS),
+			msg: withCommands(PMTUT_Msgs.Warn.ingame, WARN_COMMANDS),
 			premise: domPresent('player-details-window'),
 		},
 		{
@@ -791,8 +817,8 @@ export function buildSteps(plan: GroupingPlan) {
 			msg: {
 				inputs: () => [SettingsClient.PublicSettingsStore],
 				select: (settings: any) => ({
-					title: tr.text(M.Warn.squad.title()),
-					body: Tour.richText(M.Warn.squad.body(TARGETS.squadWarn, commandList(settings, SQUAD_COMMANDS))),
+					title: tr.text(PMTUT_Msgs.Warn.squad.title()),
+					body: Tour.richText(PMTUT_Msgs.Warn.squad.body(TARGETS.squadWarn, commandList(settings, SQUAD_COMMANDS))),
 				}),
 			},
 			advanceFromPrevious: {
@@ -809,7 +835,7 @@ export function buildSteps(plan: GroupingPlan) {
 			prepare: (run) => revealPlayer(run, 'Kestrel'),
 			spotlight: 'teams-tables',
 			interact: 'free',
-			msg: M.actionsMenu,
+			msg: PMTUT_Msgs.actionsMenu,
 			checkpoint: CP_ROSTER,
 		},
 		{
@@ -817,9 +843,9 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: row(TARGETS.kick),
 			prepare: (run) => revealPlayer(run, TARGETS.kick),
 			interact: 'free',
-			msg: { title: M.Kick.kick.title, body: () => M.Kick.kick.body(TARGETS.kick) },
+			msg: { title: PMTUT_Msgs.Kick.kick.title, body: () => PMTUT_Msgs.Kick.kick.body(TARGETS.kick) },
 		},
-		...inGame('kick-ingame', M.Kick.ingame, KICK_COMMANDS, {
+		...inGame('kick-ingame', PMTUT_Msgs.Kick.ingame, KICK_COMMANDS, {
 			advanceFromPrevious: { type: 'state', ...kicked, simulate: simKick },
 		}),
 		{
@@ -827,14 +853,14 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: row(TARGETS.timeout),
 			prepare: (run) => revealPlayer(run, TARGETS.timeout),
 			interact: 'free',
-			msg: { title: M.Timeouts.timeout.title, body: () => M.Timeouts.timeout.body(TARGETS.timeout) },
+			msg: { title: PMTUT_Msgs.Timeouts.timeout.title, body: () => PMTUT_Msgs.Timeouts.timeout.body(TARGETS.timeout) },
 			...(hasAnyCommand(KICK_COMMANDS) ? {} : { advanceFromPrevious: { type: 'state', ...kicked, simulate: simKick } }),
 		},
 		{
 			id: 'timeouts-open',
 			anchor: 'teams-timeouts',
 			interact: 'anchor-only',
-			msg: M.Timeouts.openList,
+			msg: PMTUT_Msgs.Timeouts.openList,
 			prepare: ensureTeamsShown,
 			advanceFromPrevious: { type: 'state', ...timedOut, simulate: simTimeout },
 		},
@@ -843,7 +869,7 @@ export function buildSteps(plan: GroupingPlan) {
 			id: 'timeouts-list',
 			anchor: { all: 'timeout-row' },
 			interact: 'free',
-			msg: M.Timeouts.list,
+			msg: PMTUT_Msgs.Timeouts.list,
 			premise: domPresent('timeouts-window'),
 			advanceFromPrevious: { type: 'state', ...domPresent('timeouts-window'), simulate: simOpenTimeouts },
 		},
@@ -852,7 +878,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: closeControl('timeouts-window'),
 			spotlight: 'timeouts-window',
 			interact: 'anchor-only',
-			msg: withCommands(M.Timeouts.ingame, TIMEOUT_COMMANDS),
+			msg: withCommands(PMTUT_Msgs.Timeouts.ingame, TIMEOUT_COMMANDS),
 			premise: domPresent('timeouts-window'),
 			advanceFromPrevious: { type: 'state', ...timeoutCancelled, simulate: simCancelTimeout },
 		},
@@ -863,7 +889,7 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: row(TARGETS.swapNow),
 			prepare: (run) => revealPlayer(run, TARGETS.swapNow),
 			interact: 'free',
-			msg: { title: M.SwapNow.swap.title, body: () => M.SwapNow.swap.body(TARGETS.swapNow) },
+			msg: { title: PMTUT_Msgs.SwapNow.swap.title, body: () => PMTUT_Msgs.SwapNow.swap.body(TARGETS.swapNow) },
 			checkpoint: CP_ROSTER,
 			advanceFromPrevious: {
 				type: 'state',
@@ -871,7 +897,7 @@ export function buildSteps(plan: GroupingPlan) {
 				simulate: () => closeWindows(WINDOW_ID.enum['timeouts']),
 			},
 		},
-		...inGame('swap-now-ingame', M.SwapNow.ingame, SWAP_NOW_COMMANDS, {
+		...inGame('swap-now-ingame', PMTUT_Msgs.SwapNow.ingame, SWAP_NOW_COMMANDS, {
 			advanceFromPrevious: { type: 'state', ...swappedNow, simulate: simSwapNow },
 		}),
 		{
@@ -879,42 +905,48 @@ export function buildSteps(plan: GroupingPlan) {
 			anchor: row(TARGETS.swapNext),
 			prepare: (run) => revealPlayer(run, TARGETS.swapNext),
 			interact: 'free',
-			msg: { title: M.Teamswaps.swapNext.title, body: () => M.Teamswaps.swapNext.body(TARGETS.swapNext) },
+			msg: { title: PMTUT_Msgs.Teamswaps.swapNext.title, body: () => PMTUT_Msgs.Teamswaps.swapNext.body(TARGETS.swapNext) },
 			...(hasAnyCommand(SWAP_NOW_COMMANDS) ? {} : { advanceFromPrevious: { type: 'state', ...swappedNow, simulate: simSwapNow } }),
 		},
 		{
 			id: 'swaps-panel',
 			anchor: 'swaps-panel',
-			msg: M.Teamswaps.panel,
+			msg: PMTUT_Msgs.Teamswaps.panel,
 			premise: domPresent('swaps-panel'),
 			advanceFromPrevious: { type: 'state', ...swapNextQueued, simulate: simSwapNext },
 		},
-		{ id: 'swaps-add-more', anchor: 'teams-tables', interact: 'free', msg: M.Teamswaps.addMore, premise: domPresent('swaps-panel') },
+		{
+			id: 'swaps-add-more',
+			anchor: 'teams-tables',
+			interact: 'free',
+			msg: PMTUT_Msgs.Teamswaps.addMore,
+			premise: domPresent('swaps-panel'),
+		},
 		{
 			id: 'swaps-remove',
 			anchor: { all: 'swap-badge' },
 			spotlight: 'swaps-panel',
 			interact: 'free',
-			msg: M.Teamswaps.remove,
+			msg: PMTUT_Msgs.Teamswaps.remove,
 			premise: domPresent('swaps-panel'),
 		},
-		{ id: 'swaps-save', anchor: 'swaps-save', spotlight: 'swaps-panel', interact: 'anchor-only', msg: M.Teamswaps.save },
+		{ id: 'swaps-save', anchor: 'swaps-save', spotlight: 'swaps-panel', interact: 'anchor-only', msg: PMTUT_Msgs.Teamswaps.save },
 		{
 			id: 'swaps-execute',
 			anchor: 'swaps-execute',
 			spotlight: 'swaps-panel',
 			interact: 'free',
-			msg: M.Teamswaps.execute,
+			msg: PMTUT_Msgs.Teamswaps.execute,
 			advanceFromPrevious: { type: 'anchor', simulate: simSaveSwaps },
 		},
-		...inGame('teamswaps-ingame', M.Teamswaps.ingame, TEAMSWAP_COMMANDS),
+		...inGame('teamswaps-ingame', PMTUT_Msgs.Teamswaps.ingame, TEAMSWAP_COMMANDS),
 		{
 			id: 'other-actions',
 			msg: {
 				inputs: () => [SettingsClient.PublicSettingsStore],
 				select: (settings: any) => ({
-					title: tr.text(M.otherActions.title()),
-					body: Tour.richText(M.otherActions.body(commandList(settings, OTHER_COMMANDS))),
+					title: tr.text(PMTUT_Msgs.otherActions.title()),
+					body: Tour.richText(PMTUT_Msgs.otherActions.body(commandList(settings, OTHER_COMMANDS))),
 				}),
 			},
 		},
@@ -932,8 +964,10 @@ export function buildSteps(plan: GroupingPlan) {
 						msg: {
 							inputs: () => [SettingsClient.PublicSettingsStore],
 							select: (settings: any) => ({
-								title: tr.text(M.SwitchQueue.request.title()),
-								body: Tour.richText(M.SwitchQueue.request.body(TARGETS.switchRequest, commandItem(settings, 'requestSwitch'))),
+								title: tr.text(PMTUT_Msgs.SwitchQueue.request.title()),
+								body: Tour.richText(
+									PMTUT_Msgs.SwitchQueue.request.body(TARGETS.switchRequest, commandItem(settings, 'requestSwitch')),
+								),
 							}),
 						},
 					},
@@ -941,13 +975,13 @@ export function buildSteps(plan: GroupingPlan) {
 						id: 'switch-open',
 						anchor: 'teams-switch-requests',
 						interact: 'anchor-only',
-						msg: M.SwitchQueue.openWindow,
+						msg: PMTUT_Msgs.SwitchQueue.openWindow,
 						prepare: ensureTeamsShown,
 					},
 					{
 						id: 'switch-window',
 						anchor: 'switch-requests-window',
-						msg: M.SwitchQueue.window,
+						msg: PMTUT_Msgs.SwitchQueue.window,
 						premise: domPresent('switch-requests-window'),
 						advanceFromPrevious: { type: 'state', ...domPresent('switch-requests-window'), simulate: simOpenSwitchRequests },
 					},
@@ -955,7 +989,7 @@ export function buildSteps(plan: GroupingPlan) {
 						id: 'switch-now',
 						anchor: 'switch-now',
 						interact: 'anchor-only',
-						msg: M.SwitchQueue.switchNow,
+						msg: PMTUT_Msgs.SwitchQueue.switchNow,
 						premise: domPresent('switch-requests-window'),
 					},
 					{
@@ -963,7 +997,7 @@ export function buildSteps(plan: GroupingPlan) {
 						anchor: closeControl('switch-requests-window'),
 						spotlight: 'switch-requests-window',
 						interact: 'anchor-only',
-						msg: withCommands(M.SwitchQueue.ingame, SWITCH_COMMANDS),
+						msg: withCommands(PMTUT_Msgs.SwitchQueue.ingame, SWITCH_COMMANDS),
 						premise: domPresent('switch-requests-window'),
 						advanceFromPrevious: { type: 'state', ...switchQueueEmpty, simulate: simSwitchNow },
 					},
@@ -982,8 +1016,8 @@ export function buildSteps(plan: GroupingPlan) {
 			msg: {
 				inputs: () => [SettingsClient.PublicSettingsStore],
 				select: (settings: any) => ({
-					title: tr.text(M.finish.title()),
-					body: Tour.richText(M.finish.body(commandItem(settings, 'help'))),
+					title: tr.text(PMTUT_Msgs.finish.title()),
+					body: Tour.richText(PMTUT_Msgs.finish.body(commandItem(settings, 'help'))),
 				}),
 			},
 		},

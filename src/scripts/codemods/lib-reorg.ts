@@ -10,8 +10,8 @@
  * lint:fix is part of the recipe, not an afterthought: this rewrites `import type * as X` into a
  * value import, and consistent-type-imports narrows it back.
  */
-import * as Fsp from 'node:fs/promises'
-import * as Path from 'node:path'
+import * as fsp from 'node:fs/promises'
+import * as path from 'node:path'
 
 // drizzle/ is in here because drizzle/schema.ts imports @/lib -- miss it and the integration suite
 // fails at import time with a bare-package resolution error rather than a typecheck error
@@ -23,8 +23,8 @@ const ZUSTAND_BARREL = 'src/lib/zustand.ts'
 async function sourceFiles(): Promise<string[]> {
 	const out: string[] = []
 	async function walk(dir: string) {
-		for (const entry of await Fsp.readdir(dir, { withFileTypes: true })) {
-			const full = Path.join(dir, entry.name)
+		for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
 				if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
 				await walk(full)
@@ -205,8 +205,8 @@ function modPath(m: string) {
 
 function utils(src: string, file: string): string {
 	for (const { from, to, ns, named } of UTILS) {
-		const path = modPath(from.replace('.', '\\.'))
-		if (!new RegExp(`from '${path}'`).test(src)) continue
+		const pattern = modPath(from.replace('.', '\\.'))
+		if (!new RegExp(`from '${pattern}'`).test(src)) continue
 
 		// collapse whatever alias this file used onto the one canonical namespace. The module path
 		// keeps whichever style it already had: vite.config.ts reaches src/app-routes.ts by relative
@@ -263,10 +263,10 @@ async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
-		const before = await Fsp.readFile(file, 'utf8')
+		const before = await fsp.readFile(file, 'utf8')
 		const after = staleNames(utils(rxjsAndPromise(reactRxjs(zustand(before, file), file), file), file))
 		if (after !== before) {
-			await Fsp.writeFile(file, after)
+			await fsp.writeFile(file, after)
 			changed++
 		}
 	}

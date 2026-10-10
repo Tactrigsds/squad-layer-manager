@@ -64,7 +64,7 @@ import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
-import * as VotesClient from '@/systems/vote.client'
+import * as VoteClient from '@/systems/vote.client'
 
 import { StartActivityInteraction } from './activity.tsx'
 import EditLayerDialog from './edit-layer-dialog.tsx'
@@ -111,7 +111,7 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 		if (target.dragItem.type !== 'layer-item') return
 		const cursors = LL.dropItemToLLItemCursors(event.over)
 		if (cursors.length === 0) return
-		const voteState = VotesClient.voteState$(serverId).getValue()
+		const voteState = VoteClient.voteState$(serverId).getValue()
 		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer))
 		if (voteState?.code === 'in-progress') {
 			for (const cursor of cursors) {
@@ -482,7 +482,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const [itemPresence, itemActivityUser, activityHovered] = UPClient.useItemPresence(item.itemId)
 
-	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
+	const globalVoteState = VoteClient.useVoteState(props.stores.squadServer.serverId)
 	const voteState =
 		(globalVoteState && globalVoteState?.itemId === parentItem?.itemId ? globalVoteState : undefined) ?? parentItem?.endingVoteState
 
@@ -829,7 +829,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 	const { index, isLocallyLast, displayedMutation } = display
 	const item = display.item as LL.VoteItem
 
-	const globalVoteState = VotesClient.useVoteState(props.stores.squadServer.serverId)
+	const globalVoteState = VoteClient.useVoteState(props.stores.squadServer.serverId)
 	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? item.endingVoteState
 
 	const isModified = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)

@@ -6,8 +6,8 @@
  *
  *   pnpm script src/scripts/codemods/ctx-convention.ts && pnpm run format && pnpm run lint:fix
  */
-import * as Fsp from 'node:fs/promises'
-import * as Path from 'node:path'
+import * as fsp from 'node:fs/promises'
+import * as path from 'node:path'
 
 const ROOTS = ['src', 'test', 'drizzle']
 const SELF = 'src/scripts/codemods/ctx-convention.ts'
@@ -15,8 +15,8 @@ const SELF = 'src/scripts/codemods/ctx-convention.ts'
 async function sourceFiles(): Promise<string[]> {
 	const out: string[] = []
 	async function walk(dir: string) {
-		for (const entry of await Fsp.readdir(dir, { withFileTypes: true })) {
-			const full = Path.join(dir, entry.name)
+		for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
 				if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
 				await walk(full)
@@ -105,10 +105,10 @@ async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
-		const before = await Fsp.readFile(file, 'utf8')
+		const before = await fsp.readFile(file, 'utf8')
 		const after = unpunServer(moveContexts(instrumentation(before, file), file))
 		if (after !== before) {
-			await Fsp.writeFile(file, after)
+			await fsp.writeFile(file, after)
 			changed++
 		}
 	}

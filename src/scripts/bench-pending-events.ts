@@ -1,6 +1,6 @@
 import '@/vitest-setup'
 
-import * as crypto from 'node:crypto'
+import * as Crypto from 'node:crypto'
 import * as fs from 'node:fs'
 
 import * as Gen from '@/lib/generator-utils'
@@ -110,7 +110,7 @@ async function replay(events: SM.LogEvents.ParsedEvent[]) {
 		await PendingEvents.process(state, now)
 	}
 	const ms = performance.now() - start
-	const digest = crypto.createHash('sha256')
+	const digest = Crypto.createHash('sha256')
 	for (const e of emitted) digest.update(JSON.stringify(e))
 	return { ms, emitted: emitted.length, digest: digest.digest('hex').slice(0, 16) }
 }

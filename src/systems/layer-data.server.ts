@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import * as fsPromise from 'node:fs/promises'
+import * as fsp from 'node:fs/promises'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 
@@ -32,7 +32,7 @@ export async function loadComponents(): Promise<{ file: L.LayerDataFile; path: s
 	// the components are half of a versioned pair, and the layer engine loads the other half from the same
 	// directory: whichever table it runs, these are the components its encoded values index into
 	const { layerDataPath } = LayerArtifacts.resolvePair()
-	const bytes = await fsPromise.readFile(layerDataPath)
+	const bytes = await fsp.readFile(layerDataPath)
 	const file = JSON.parse(bytes.toString('utf8')) as L.LayerDataFile
 	if (!file.components || !file.factionUnits || !file.extraColumns) {
 		throw new Error(`${layerDataPath} is malformed: expected { components, factionUnits, extraColumns }. re-run pnpm preprocess`)

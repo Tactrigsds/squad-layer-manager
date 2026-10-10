@@ -72,8 +72,8 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Steam from '@/systems/steam.server'
-import * as SwitchRequestsSys from '@/systems/switch-requests.server'
-import * as TeamswapsSys from '@/systems/teamswaps.server'
+import * as SwitchRequests from '@/systems/switch-requests.server'
+import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -847,7 +847,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
 		matchEventsCache: MatchEventsCache.initMatchEventsCacheContext(),
 
-		teamswaps: TeamswapsSys.initContext({
+		teamswaps: Teamswaps.initContext({
 			...ctx,
 			serverId,
 			cleanup,
@@ -855,7 +855,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			squadRcon,
 			server,
 		}),
-		switchRequests: SwitchRequestsSys.initContext({
+		switchRequests: SwitchRequests.initContext({
 			...ctx,
 			serverId,
 			cleanup,

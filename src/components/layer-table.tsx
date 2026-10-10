@@ -30,7 +30,7 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LQY from '@/models/layer-queries.models.ts'
 import * as RBAC from '@/rbac.models'
-import * as GlobalSettings from '@/systems/client-only-settings.client'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
@@ -389,7 +389,7 @@ export default function LayerTable(props: {
 	const page = useTableFrame(props.stores, (table) => table.pageData)
 
 	// shared display state for all cells -- see LayerTableCellCtx
-	const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+	const displayLayersNormalized = Zus.useStore(ClientOnlySettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
 	const teamParity = Zus.useStore(props.stores.layerTable, props.stores.squadServer ?? null, LayerTablePrt.Sel.teamParity)
 	const cellDisplayCtx = React.useMemo(
 		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),

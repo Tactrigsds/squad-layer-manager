@@ -3,7 +3,7 @@
  * edits are ordinary edits. Lifecycle, sync and the router stay with the host.
  */
 import type * as L from '@/models/layer'
-import * as LayerQueueSys from '@/systems/layer-queue.server'
+import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 
 export { dispatchOp, getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/systems/layer-queue.server'
@@ -22,13 +22,13 @@ export type { QueueEntry } from '@/systems/layer-queue.server'
  */
 export async function editSaved(
 	ctx: PluginsSys.ServerCtx<any>,
-	mutate: (entries: LayerQueueSys.QueueEntry[]) => (LayerQueueSys.QueueEntry | L.LayerId)[],
+	mutate: (entries: LayerQueue.QueueEntry[]) => (LayerQueue.QueueEntry | L.LayerId)[],
 ) {
 	// ServerCtx names only the domains slm/* exposes functions over, and the queue's save path reaches the
 	// vote payload, which is not one of them. The runtime object is the whole managed server (see
 	// plugins.server ServerCtx), so it is there; only the type declines to say so.
-	return await LayerQueueSys.editSaved(
-		ctx as unknown as Parameters<typeof LayerQueueSys.editSaved>[0],
+	return await LayerQueue.editSaved(
+		ctx as unknown as Parameters<typeof LayerQueue.editSaved>[0],
 		{ source: { type: 'plugin', pluginId: ctx.plugin.id } },
 		mutate,
 	)

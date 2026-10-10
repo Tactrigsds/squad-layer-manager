@@ -41,12 +41,12 @@ import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LogoSys from '@/systems/logo.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as UserPresenceSys from '@/systems/user-presence.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 
 // frame-ancestors keeps another site from framing SLM to trick a signed-in admin into clicking its controls
@@ -275,7 +275,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 	instance.get(AR.route('/plugin-assets/*'), async (req, res) => {
 		const rest = (req.params as { '*': string })['*']
 		const slash = rest.indexOf('/')
-		const filePath = slash > 0 ? Plugins.servableAsset(rest.slice(0, slash), rest.slice(slash + 1)) : null
+		const filePath = slash > 0 ? PluginsSys.servableAsset(rest.slice(0, slash), rest.slice(slash + 1)) : null
 		if (!filePath) return res.code(404).send()
 		res.header('Content-Type', filePath.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8')
 		// the url carries the bundle's content hash, so a stale copy is impossible
@@ -552,7 +552,7 @@ export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, 
 	// (activity + locks) in place with no visible break and leaves no ghost "other session"; otherwise mint a fresh id
 	const priorClientId =
 		typeof (ctx.req.query as { prior?: unknown })?.prior === 'string' ? (ctx.req.query as { prior: string }).prior : undefined
-	const wsClientId = UserPresenceSys.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
+	const wsClientId = UserPresence.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
 
 	const wsCtx: C.OrpcBase = {
 		wsClientId,
