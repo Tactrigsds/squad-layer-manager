@@ -93,7 +93,7 @@ it needs:</p>
 For observables, the same rule applies with the ctx as the first element of the emitted tuple.</p>
 <p><strong>A domain&#x27;s contexts are kept in that domain&#x27;s models file.</strong> <code>V.Ctx</code> is the vote context, <code>MH.Ctx</code> the match-history
 one, reached under the same namespace as the rest of that domain, with the runtime object it carries at
-<code>Ctx.Payload</code>. Two modules stay general rather than domain-owned: <code>src/models/context-shared.ts</code> (<code>CS</code>) is the leaf
+<code>Ctx.Payload</code>. Two modules stay general rather than domain-owned: <code>src/models/context-shared.models.ts</code> (<code>CS</code>) is the leaf
 every context composes on, and <code>src/server/context.ts</code> (<code>C</code>) holds server infrastructure with no domain models file,
 plus the composition root <code>ManagedServer</code>.</p>
 <p><strong>Contexts are types, so they erase.</strong> Each therefore has a <strong>def</strong> beside it, following the <code>XSchema</code> convention,
@@ -253,13 +253,13 @@ files next to components.</li>
 <li><strong><code>useEffect</code>/<code>useState</code> interdependence is a code smell.</strong> Use a frame instead.</li>
 <li>React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
 data from React state, and only call table methods in event handlers.</li>
-<li><strong>Never hardcode a z-index.</strong> Take an offset from <code>src/models/zindex.ts</code> via <code>useZIndex(ZI_OFFSETS.&lt;BAND&gt;)</code>. The
+<li><strong>Never hardcode a z-index.</strong> Take an offset from <code>src/models/zindex.models.ts</code> via <code>useZIndex(ZI_OFFSETS.&lt;BAND&gt;)</code>. The
 bands are relative to the nearest enclosing <code>BaseZIndexContext</code>, so a popover opened inside a dialog lands above
 that dialog without either callsite knowing about the other.</li>
 <li><strong>One overlay per list, not per item.</strong> A closed Radix ContextMenu or DropdownMenu is about fifteen fibers and a
 document keydown listener, and a closed Select renders every one of its items. A list delegates right-click and
 long-press to its body and opens one shared menu with the target it reads off the element hit (<code>PlayerTable</code> in
-<code>teams-panel.tsx</code>, and the feed below). <code>Tooltip</code> keeps its state machine in a plain object
+<code>teams-panel/player-table.tsx</code>, and the feed below). <code>Tooltip</code> keeps its state machine in a plain object
 (<code>use-follow-tooltip.ts</code>) and mounts its node only while open, so a closed one costs three hooks.</li>
 </ul>
 <h3 id="the-activity-feed-is-built-as-dom-not-rendered" class="docs-heading">The activity feed is built as dom, not rendered<a href="#the-activity-feed-is-built-as-dom-not-rendered" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#the-activity-feed-is-built-as-dom-not-rendered" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
@@ -336,7 +336,7 @@ An update the handler cannot apply restarts the watch, and the <code>init</code>
 update would otherwise have left diverged.</li>
 </ul>
 <p>Three state machines are built on it today, each as a model/server/client trio:</p>
-<div class="docs-table"><table><thead><tr><th>Machine</th><th>Model (reducer)</th><th>Server</th><th>Client</th></tr></thead><tbody><tr><td>Shared layer list, the queue</td><td><code>src/models/shared-layer-list.ts</code></td><td><code>src/systems/layer-queue.server.ts</code></td><td><code>src/frame-partials/layer-queue.partial.ts</code></td></tr><tr><td>Team swaps</td><td><code>src/models/teamswaps.models.ts</code></td><td><code>src/systems/teamswaps.server.ts</code></td><td><code>src/frame-partials/teamswaps.partial.ts</code></td></tr><tr><td>User presence</td><td><code>src/models/user-presence.ts</code></td><td><code>src/systems/user-presence.server.ts</code></td><td><code>src/systems/user-presence.client.ts</code></td></tr></tbody></table></div>
+<div class="docs-table"><table><thead><tr><th>Machine</th><th>Model (reducer)</th><th>Server</th><th>Client</th></tr></thead><tbody><tr><td>Shared layer list, the queue</td><td><code>src/models/shared-layer-list.models.ts</code></td><td><code>src/systems/layer-queue.server.ts</code></td><td><code>src/frame-partials/layer-queue.partial.ts</code></td></tr><tr><td>Team swaps</td><td><code>src/models/teamswaps.models.ts</code></td><td><code>src/systems/teamswaps.server.ts</code></td><td><code>src/frame-partials/teamswaps.partial.ts</code></td></tr><tr><td>User presence</td><td><code>src/models/user-presence.models.ts</code></td><td><code>src/systems/user-presence.server.ts</code></td><td><code>src/systems/user-presence.client.ts</code></td></tr></tbody></table></div>
 <p>The layer queue is the fullest example. Presence is the outlier: its client half is held in a plain global store rather
 than a frame partial, because presence is app-global.</p>
 <h2 id="the-domain-layer" class="docs-heading">The domain layer<a href="#the-domain-layer" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#the-domain-layer" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
@@ -349,8 +349,8 @@ filter can also reference another filter entity by id.</p>
 <p>Validation is two-tiered: <code>EditableFilterNode</code> is what the editor manipulates mid-keystroke, with everything
 optional, against a fully-valid <code>FilterNode</code>. Errors are collected <strong>by path</strong> rather than thrown, so the editor can
 highlight the exact offending node.</p>
-<p>Builders are layered and each only knows the level below it: <code>filter-builders.ts</code> constructs <code>FilterNode</code>s, and
-<code>constraint-builders.ts</code> wraps those into query <code>Constraint</code>s.</p>
+<p>Builders are layered and each only knows the level below it: <code>filter-builders.models.ts</code> constructs <code>FilterNode</code>s, and
+<code>constraint-builders.models.ts</code> wraps those into query <code>Constraint</code>s.</p>
 <p><code>filter-references.models.ts</code> answers where a filter entity is used: another filter&#x27;s apply-filter operator, or a
 server&#x27;s pool configuration, transitively through the filters that configuration applies. The server recomputes the
 index whenever a filter or a server&#x27;s settings change, streams it to clients, and refuses to delete a filter that
@@ -368,7 +368,7 @@ column is how filters and pools single a source out.</p>
 later upgrade it once new layer data makes it resolvable. For the engine, a known layer&#x27;s component indices are
 packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store&#x27;s i32 row ids),
 which is the row id the store indexes by.</p>
-<p>The set of columns is not fixed: <code>layer-columns.ts</code> combines base columns with server-configurable extra columns
+<p>The set of columns is not fixed: <code>layer-columns.models.ts</code> combines base columns with server-configurable extra columns
 into an <code>EffectiveColumnConfig</code>, and downstream query state is memoized against that object, so the same columns
 must always produce the same object.</p>
 <h3 id="events-three-distinct-things-with-similar-names" class="docs-heading">Events: three distinct things with similar names<a href="#events-three-distinct-things-with-similar-names" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#events-three-distinct-things-with-similar-names" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
@@ -460,7 +460,7 @@ the slices it reads. Both exist so the per-row work never re-examines a column s
 <ul>
 <li><strong>The ABI is deliberately primitive</strong>, with no wasm-bindgen. The host allocates, writes bytes into linear memory,
 calls in, and reads the response back out. Requests and responses are JSON.</li>
-<li><strong>All semantic lowering is done in TypeScript.</strong> <code>models/layer-engine.ts</code> compiles the filter AST down to a small
+<li><strong>All semantic lowering is done in TypeScript.</strong> <code>models/layer-engine.models.ts</code> compiles the filter AST down to a small
 IR of primitive comparisons over column indices and encoded values, inlining referenced filters recursively, so
 the IR handed to Rust is always self-contained.</li>
 <li><strong>The evaluator is three-valued</strong>, tracking true and unknown as separate bitsets so SQL null semantics survive
@@ -561,11 +561,11 @@ there runs with nothing to register: <code>tsx watch</code> on the server, vite&
 plugin&#x27;s HMR comes from. Discovery is dev-only on both halves. The client discovers through a virtual module rather than
 a glob guarded on <code>import.meta.env.DEV</code>, since a glob&#x27;s imports are real and survive into a build.</p>
 <p><strong>A package carries no copy of SLM.</strong> Its bundles import <code>slm/*</code> and the shared packages in
-<code>models/plugin-api-shim.ts</code> (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
+<code>models/plugin-api-shim.models.ts</code> (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
 to a generated shim module re-exporting its own instance: on the server through a <code>module.registerHooks</code> resolver, in
 the browser through the import map in <code>index.html</code> and the <code>/plugin-api/*</code> route. That is what keeps one zod (or
 <code>configSchema instanceof z.ZodObject</code> fails) and one React (or hooks break) in play. The export names come from
-<code>models/plugin-api-exports.ts</code>, generated beside the API report, since the server serves the browser&#x27;s shims but
+<code>models/plugin-api-exports.models.ts</code>, generated beside the API report, since the server serves the browser&#x27;s shims but
 cannot import the client entries to enumerate them.</p>
 <p><strong>Everything else a package imports is bundled, and only as ESM.</strong> <code>plugin:pack</code> builds each entry for the platform
 that loads it, so npm dependencies resolve, and fails on an import nothing at load time could answer. It refuses
