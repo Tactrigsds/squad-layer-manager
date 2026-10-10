@@ -69,9 +69,13 @@ export namespace Sel {
 		return (store: Store) => TSW.someCanQueue(localState(store), playerIds)
 	}
 
-	export function isSwapPending(playerId: SM.PlayerId): (store: Store) => boolean {
-		return (store: Store) => TSW.isSwapPending(localState(store), playerId)
-	}
+	export const isSwapPending = RSel.memoizeFactoryLru(
+		(playerId: SM.PlayerId) =>
+			(store: Store): boolean =>
+				TSW.isSwapPending(localState(store), playerId),
+		// well above the players on a full server, one selector per player row
+		256,
+	)
 
 	export function swapsToTeamEnriched(store: Store & ChatPrt.Store, team: MH.NormedTeamId): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
 		const swaps = localState(store).editedSwaps

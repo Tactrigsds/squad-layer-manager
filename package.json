@@ -56,6 +56,7 @@
 		"remove:hooks": "(git config --unset core.hooksPath || true) && git config slm.hooksOptOut true",
 		"test:e2e": "node scripts/test-e2e.mjs",
 		"probe": "node scripts/probe.mjs",
+		"test:perf": "node scripts/test-perf.mjs",
 		"test:e2e:src": "pnpm run build:engine && NODE_ENV=production vite build && pnpm run precompress:dist && playwright test --project=chromium",
 		"test:e2e:ci": "playwright test --project=chromium",
 		"__e2e-firefox:comment__": "the @firefox-tagged subset on gecko; see the firefox project in playwright.config.ts",

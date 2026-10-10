@@ -87,6 +87,7 @@ graph.svg
 # playwright
 /test-results/
 /playwright-report/
+/perf-results/
 
 # built by `pnpm build:engine` from layer-engine/
 assets/layer-engine.wasm
