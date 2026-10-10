@@ -19,7 +19,7 @@ type AsyncResourceOpts<T> = {
 	isErrorResponse: (value: T) => boolean
 	retryDelay: number
 	deferredTimeout: number
-	log: CS.Logger
+	log?: CS.Logger
 
 	// called when a fetch fails for real (non-abort, retries exhausted). without a handler the error escalates to an
 	// unhandled rejection and crashes the process, so long-lived resources should provide one (e.g. to tear down their owner)
@@ -71,12 +71,15 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		parentModule: OtelModule,
 		opts: Partial<AsyncResourceOpts<T>>,
 	) {
-		// @ts-expect-error init
-		this.opts = { ...opts }
-		this.opts.defaultTTL ??= 1000
-		this.opts.isErrorResponse ??= (value: T) => false
-		this.opts.retryDelay ??= 0
-		this.opts.deferredTimeout ??= 2000
+		this.opts = {
+			defaultTTL: opts.defaultTTL ?? 1000,
+			retries: opts.retries ?? 0,
+			isErrorResponse: opts.isErrorResponse ?? (() => false),
+			retryDelay: opts.retryDelay ?? 0,
+			deferredTimeout: opts.deferredTimeout ?? 2000,
+			log: opts.log,
+			onFatalError: opts.onFatalError,
+		}
 		this.log = opts.log ? LOG.getSubmoduleLogger(this.name, opts.log) : undefined
 		const module = getChildModule(parentModule, this.name)
 
@@ -262,7 +265,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		// stack of release fns, one per active subscription of this observable. entries are interchangeable, so pairing doesn't matter
 		const releases: (() => void)[] = []
 		return Rx.concat(
-			this.state?.value ?? Rx.EMPTY,
+			Rx.defer(() => this.state?.value ?? Rx.EMPTY),
 			this.valueSubject.pipe(
 				Rx.Ext.traceTag(tag),
 				// TODO adjust calling code to ingest ctx
@@ -289,9 +292,6 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 // * Throw within an async resource callback to immediately attempt a refetch. in most cases you shouldn't use this directly. instead throw ctx.refetch()
 // **
 export class ImmediateRefetchError extends Error {
-	static include<Ctx extends CS.Ctx>(ctx: Ctx) {
-		return { ...ctx }
-	}
 	constructor(message: string, cause?: Error) {
 		super(message, { cause })
 		this.name = 'RefetchError'
