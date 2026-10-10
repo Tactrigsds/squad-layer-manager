@@ -27,6 +27,20 @@ describe('toAsyncGenerator', () => {
 		expect(await it.next()).toEqual({ done: false, value: 2 })
 		expect(await it.next()).toEqual({ done: true, value: undefined })
 	})
+
+	it('keeps order across bursts large enough to compact the queue', async () => {
+		const source = new Rx.Subject<number>()
+		const it = Rx.Ext.toAsyncGenerator(source)
+		const first = it.next()
+		let sent = 0
+		for (; sent < 3000; sent++) source.next(sent)
+		const received = [(await first).value]
+		while (received.length < 1500) received.push((await it.next()).value)
+		for (; sent < 4000; sent++) source.next(sent)
+		source.complete()
+		for (let r = await it.next(); !r.done; r = await it.next()) received.push(r.value)
+		expect(received).toEqual(Array.from({ length: 4000 }, (_, i) => i))
+	})
 })
 
 describe('distinctDeepEquals', () => {

@@ -25,12 +25,15 @@ export type FileTailOptions = {
 }
 
 const DEFAULT_TAIL_LAST_BYTES = 0
+// bounds the memory a large backlog takes, such as after a stall or when the file is replaced with a bigger one
+const READ_CHUNK_BYTES = 1024 * 1024
 
 export class FileTail extends EventEmitter {
 	private options: FileTailOptions
 	private lastByteReceived: number | null = null
 	// the game can flush the log mid-character, so a read can end inside a multi-byte sequence
 	private decoder = new StringDecoder('utf8')
+	private readBuffer: Buffer | null = null
 	private missing = false
 	private active = false
 	private loopPromise: Promise<void> | null = null
@@ -102,13 +105,15 @@ export class FileTail extends EventEmitter {
 
 		const handle = await fsp.open(this.options.filePath, 'r')
 		try {
-			const length = fileSize - this.lastByteReceived
-			const buffer = Buffer.alloc(length)
-			const { bytesRead } = await handle.read(buffer, 0, length, this.lastByteReceived)
-			if (bytesRead === 0) return
-			this.lastByteReceived += bytesRead
-			const chunk = this.decoder.write(buffer.subarray(0, bytesRead))
-			if (chunk.length > 0) this.emit('chunk', chunk)
+			this.readBuffer ??= Buffer.allocUnsafe(READ_CHUNK_BYTES)
+			while (this.active && this.lastByteReceived < fileSize) {
+				const length = Math.min(READ_CHUNK_BYTES, fileSize - this.lastByteReceived)
+				const { bytesRead } = await handle.read(this.readBuffer, 0, length, this.lastByteReceived)
+				if (bytesRead === 0) return
+				this.lastByteReceived += bytesRead
+				const chunk = this.decoder.write(this.readBuffer.subarray(0, bytesRead))
+				if (chunk.length > 0) this.emit('chunk', chunk)
+			}
 		} finally {
 			await handle.close()
 		}

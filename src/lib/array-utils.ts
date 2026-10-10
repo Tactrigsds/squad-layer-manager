@@ -1,8 +1,22 @@
+// The set operations below scan with `includes` while the side being probed has at most this many items, and hash
+// the other side into a Set past it. On V8 a Set costs 25 to 65ns per item to build and a scan costs about 1ns per
+// comparison, so a short probe side favours the scan whatever the length of the other side.
+const LINEAR_SCAN_MAX_PROBES = 16
+
 export function intersect<T>(arr1: T[], arr2: T[]): T[] {
 	const result: T[] = []
-	for (const num of arr1) {
-		if (arr2.includes(num) && !result.includes(num)) {
-			result.push(num)
+	if (arr1.length <= LINEAR_SCAN_MAX_PROBES) {
+		for (const item of arr1) {
+			if (arr2.includes(item) && !result.includes(item)) result.push(item)
+		}
+		return result
+	}
+	const inArr2 = new Set(arr2)
+	const seen = new Set<T>()
+	for (const item of arr1) {
+		if (inArr2.has(item) && !seen.has(item)) {
+			seen.add(item)
+			result.push(item)
 		}
 	}
 	return result
@@ -19,18 +33,15 @@ export function cartesianProduct<T, U>(arr1: T[], arr2: U[]): [T, U][] {
 }
 
 export function union<T>(arr1: T[], arr2: T[]): T[] {
-	const result: T[] = []
-	for (const num of arr1) {
-		if (!result.includes(num)) {
-			result.push(num)
-		}
+	if (arr1.length + arr2.length <= LINEAR_SCAN_MAX_PROBES * 2) {
+		const result: T[] = []
+		for (const item of arr1) if (!result.includes(item)) result.push(item)
+		for (const item of arr2) if (!result.includes(item)) result.push(item)
+		return result
 	}
-	for (const num of arr2) {
-		if (!result.includes(num)) {
-			result.push(num)
-		}
-	}
-	return result
+	const seen = new Set<T>(arr1)
+	for (const item of arr2) seen.add(item)
+	return Array.from(seen)
 }
 
 export function includes(arr: unknown[], value: unknown): boolean {
@@ -72,9 +83,7 @@ export function last<T>(arr: T[]): T | undefined {
 }
 
 export function delta<T>(before: T[], after: T[]): { added: T[]; removed: T[] } {
-	const added = after.filter((item) => !before.includes(item))
-	const removed = before.filter((item) => !after.includes(item))
-	return { added, removed }
+	return { added: missing(after, before), removed: missing(before, after) }
 }
 
 export function deref<K extends keyof Entry, Entry extends { [key: string]: unknown }>(key: K, arr: Entry[]) {
@@ -91,11 +100,17 @@ export function destrOptional<Arr extends unknown[]>(arr: Arr | undefined) {
 }
 
 export function missing<T>(arr: T[], target: T[]): T[] {
-	return arr.filter((item) => !target.includes(item))
+	if (arr.length <= LINEAR_SCAN_MAX_PROBES) return arr.filter((item) => !target.includes(item))
+	const inTarget = new Set(target)
+	return arr.filter((item) => !inTarget.has(item))
 }
 
 export function isSubset<T>(superset: T[], subset: T[]): boolean {
-	return subset.every((item) => superset.includes(item))
+	if (subset.length <= LINEAR_SCAN_MAX_PROBES) {
+		return subset.every((item) => superset.includes(item))
+	}
+	const inSuperset = new Set(superset)
+	return subset.every((item) => inSuperset.has(item))
 }
 
 export function paged<T>(arr: T[], pageSize: number): T[][] {

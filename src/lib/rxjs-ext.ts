@@ -100,7 +100,9 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 	type Elt = { code: 'next'; value: T } | { code: 'error'; error: any } | { code: 'complete' }
 
 	// we need a queue here because we're translating push semantics into pull semantics so we would drop emissions otherwise
-	const queue: Elt[] = []
+	// dequeued by advancing `head`, since shift() goes quadratic once a burst outgrows V8's in-place left-trim
+	let queue: (Elt | undefined)[] = []
+	let head = 0
 	let wake: (() => void) | null = null
 	function enqueue(elt: Elt) {
 		queue.push(elt)
@@ -125,8 +127,16 @@ export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 
 	try {
 		while (true) {
-			if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve))
-			const elt = queue.shift()!
+			if (head === queue.length) {
+				queue.length = 0
+				head = 0
+				await new Promise<void>((resolve) => (wake = resolve))
+			} else if (head >= 1024 && head * 2 >= queue.length) {
+				queue = queue.slice(head)
+				head = 0
+			}
+			const elt = queue[head]!
+			queue[head++] = undefined
 			if (elt.code === 'next') {
 				yield elt.value
 				continue
