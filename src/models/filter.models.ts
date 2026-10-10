@@ -2,7 +2,6 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
-import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
@@ -825,103 +824,33 @@ export type NodeValidationErrorStore = {
 	setErrors: (errors: NodeValidationError[] | undefined) => void
 }
 
-// -------- node tree utilities --------
+// -------- editor tree --------
 
-export function buildNodePath(parent: Sparse.NodePath, childIndex: number) {
-	return parent.concat(childIndex)
-}
-
-export function tryDerefPath(root: EditableFilterNode, path: Sparse.NodePath) {
-	let node = root
-	for (const index of path) {
-		if (!isEditableBlockNode(node)) return null
-		node = node.children[index]
-	}
-	return node
-}
-
-function derefPath(root: EditableFilterNode, path: Sparse.NodePath) {
-	const node = tryDerefPath(root, path)
-	if (!node) {
-		throw new Error('Invalid path ' + path + ' for node ' + JSON.stringify(root))
-	}
-	return node
-}
-
-export function* walkNodes(
-	filter: EditableFilterNode,
-	path: Sparse.NodePath = [],
-): IterableIterator<[EditableFilterNode, Sparse.NodePath]> {
-	yield [filter, path]
-	if (isEditableBlockNode(filter)) {
-		for (const [child, index] of filter.children.map((child, index) => [child, index] as const)) {
-			yield* walkNodes(child, [...path, index])
-		}
-	}
-}
-
-// TODO this data structure should be phased out in favour of just using sparse-tree. It's pretty dumb.
+/**
+ * The filter editor's working form of a filter: every node stored flat by id, with the structure held as links.
+ * `children` has an entry for every block node, holding its children's ids in order, and none for a leaf.
+ * `parents` is the inverse, with an entry for every node except the root.
+ */
 export type FilterNodeTree = {
+	rootId: string
 	nodes: Map<string, ShallowEditableFilterNode>
-	paths: Map<string, Sparse.NodePath>
+	children: Map<string, readonly string[]>
+	parents: Map<string, string>
 }
 
 export const FilterNodeTreeSchema = z.object({
+	rootId: z.string(),
 	nodes: z.map(z.string(), ShallowEditableFilterNodeSchema),
-	paths: z.map(z.string(), z.array(z.number().int().min(0))),
+	children: z.map(z.string(), z.array(z.string()).readonly()),
+	parents: z.map(z.string(), z.string()),
 }) satisfies z.ZodType<FilterNodeTree, unknown>
-
-export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: Sparse.NodePath) {
-	for (const [id, path] of tree.paths.entries()) {
-		if (path.length === targetPath.length + 1 && Sparse.isChildPath(targetPath, path)) {
-			yield id
-		}
-	}
-}
-
-export function nextChildIndex(tree: FilterNodeTree, parentPath: Sparse.NodePath) {
-	let last = -1
-	for (const id of iterChildIdsForPath(tree, parentPath)) {
-		const path = tree.paths.get(id)
-		if (!path) continue
-		last = Math.max(last, path[path.length - 1])
-	}
-	return last + 1
-}
 
 export function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNode {
 	if (isEditableBlockNode(node)) {
-		const { children: _c, _id, ...shallowNode } = node as any
+		const { children: _c, ...shallowNode } = node
 		return shallowNode
 	}
 	return node
-}
-function upsertTreeInPlaceFromSparse(sparseTree: Sparse.SparseNode, basePath: Sparse.NodePath = [], tree?: Partial<FilterNodeTree>) {
-	basePath ??= []
-	tree ??= {
-		nodes: new Map(),
-		paths: new Map(),
-	}
-	tree.paths ??= new Map()
-
-	const idsLeft = new Set<string>()
-
-	// add/update nodes
-	for (const [node, _path] of Sparse.walkNodes(sparseTree)) {
-		const path = [...basePath, ..._path]
-		tree.paths.set(node.id, path)
-		idsLeft.add(node.id)
-	}
-
-	// delete nodes that are no longer in the tree
-	for (const [id, path] of tree.paths.entries()) {
-		if (idsLeft.has(id)) continue
-		if (!Sparse.isOwnedPath(basePath, path)) continue
-		tree.nodes?.delete(id)
-		tree.paths.delete(id)
-	}
-
-	return tree
 }
 
 /**
@@ -936,163 +865,181 @@ function upsertTreeInPlaceFromSparse(sparseTree: Sparse.SparseNode, basePath: Sp
  * The dot keeps these clear of createId's alphabet, so a path id can never collide with one minted for a
  * node added later.
  */
-function pathNodeId(path: Sparse.NodePath): string {
+function pathNodeId(path: number[]): string {
 	return path.length === 0 ? 'n' : `n.${path.join('.')}`
 }
 
-export function upsertFilterNodeTreeInPlace(
-	filter: EditableFilterNode,
-	baseFilterPath?: Sparse.NodePath,
-	tree?: FilterNodeTree,
-): FilterNodeTree {
-	baseFilterPath ??= []
-	tree ??= {
-		nodes: new Map(),
-		paths: new Map(),
-	}
-
-	const idsLeft = new Set<string>()
-
-	// add/update nodes
-	for (const [node, _path] of walkNodes(filter)) {
-		const path = [...baseFilterPath, ..._path]
-		const id: string = (node as any)._id ?? pathNodeId(path)
-		const shallowNode = toShallowNode(node)
-		idsLeft.add(id)
-		if (Obj.deepEqual(shallowNode, tree.nodes.get(id))) {
-			continue
+export function toFilterNodeTree(filter: EditableFilterNode): FilterNodeTree {
+	const tree: FilterNodeTree = { rootId: pathNodeId([]), nodes: new Map(), children: new Map(), parents: new Map() }
+	const visit = (node: EditableFilterNode, path: number[]): string => {
+		const id = pathNodeId(path)
+		tree.nodes.set(id, toShallowNode(node))
+		if (isEditableBlockNode(node)) {
+			const childIds = node.children.map((child, index) => {
+				const childId = visit(child, [...path, index])
+				tree.parents.set(childId, id)
+				return childId
+			})
+			tree.children.set(id, childIds)
 		}
-		tree.nodes.set(id, shallowNode)
-		tree.paths.set(id, path)
+		return id
 	}
-
-	// delete nodes that are no longer in the tree
-	for (const id of tree.paths.keys()) {
-		if (idsLeft.has(id)) continue
-		tree.nodes.delete(id)
-		tree.paths.delete(id)
-	}
-
+	visit(filter, [])
 	return tree
 }
 
-export function resolveImmediateChildren(tree: FilterNodeTree, id: string): string[] {
-	const targetPath = tree.paths.get(id)
-	if (!targetPath) return []
-	const children: string[] = []
-
-	for (const [id, path] of tree.paths) {
-		if (targetPath.length + 1 !== path.length) continue
-		if (!Sparse.isChildPath(targetPath, path)) continue
-		children[path[targetPath.length]] = id
-	}
-
-	return children
-}
-function treeToSparseTree(tree: Pick<FilterNodeTree, 'paths'>, subtreePath: Sparse.NodePath = []): Sparse.SparseNode {
-	let root!: Sparse.SparseNode
-
-	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
-		if (!Sparse.isOwnedPath(subtreePath, path)) continue
-		const sparseNode: Sparse.SparseNode = { id }
-
-		if (!root) {
-			root = sparseNode
-			continue
-		}
-
-		const parent = Sparse.derefPath(root, path.slice(subtreePath.length, -1))!
-		parent.children ??= []
-		parent.children[path[path.length - 1]] = sparseNode
-	}
-
-	return root
+export function treeToFilterNode(tree: FilterNodeTree, id = tree.rootId): EditableFilterNode {
+	const node = tree.nodes.get(id)!
+	if (!isEditableBlockNode(node)) return { ...node }
+	return { ...node, children: tree.children.get(id)!.map((child) => treeToFilterNode(tree, child)) }
 }
 
-export function treeToFilterNode(tree: FilterNodeTree, subtree: Sparse.NodePath = []): EditableFilterNode {
-	let root!: EditableFilterNode
-
-	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
-		if (!Sparse.isOwnedPath(subtree, path)) continue
-		const shallowNode = tree.nodes.get(id)!
-		const node: EditableFilterNode = isEditableBlockNode(shallowNode) ? { ...shallowNode, children: [] } : { ...shallowNode }
-		if (!root) {
-			root = node
-			continue
-		}
-		;(derefPath(root, path.slice(0, -1)) as EditableBlockNode).children[path[path.length - 1]] = node
-	}
-
-	return root
-}
-
-// outputs entries sorted in primarily order of depth, and secondarily in order of index
-export function toBreadthFirstTreePathEntries(paths: Map<string, Sparse.NodePath>): [string, Sparse.NodePath][] {
-	const pathsArr = Array.from(paths.entries())
-	pathsArr.sort(([_idA, pathA], [_idB, pathB]) => {
-		if (pathA.length !== pathB.length) {
-			return pathA.length - pathB.length
-		}
-		for (let i = 0; i < pathA.length; i++) {
-			if (pathA[i] !== pathB[i]) {
-				return pathA[i] - pathB[i]
-			}
-		}
-		return 0
-	})
-	return pathsArr
-}
-
-export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
-	if (Sparse.isChildPath(sourcePath, targetPath)) {
-		return
-	}
-	const commonAncestor = Sparse.getCommonAncestorPath(sourcePath, targetPath)
-	if (Obj.deepEqual(sourcePath, commonAncestor) || Obj.deepEqual(targetPath, commonAncestor)) {
-		commonAncestor.pop()
-	}
-	let sparseTree = treeToSparseTree(tree, commonAncestor)
-	sparseTree = Sparse.moveNode(sparseTree, sourcePath.slice(commonAncestor.length), targetPath.slice(commonAncestor.length))
-	upsertTreeInPlaceFromSparse(sparseTree, commonAncestor, tree)
-}
-
-// grafts `subtree` (a tree of its own, rooted at path []) in as a child of `parentPath`, shifting the
-// siblings from `index` on along to make room. In place, like the other tree helpers here.
-export function insertTreeSubtreeInPlace(tree: FilterNodeTree, parentPath: Sparse.NodePath, index: number, subtree: FilterNodeTree) {
-	for (const [id, node] of subtree.nodes) {
-		tree.nodes.set(id, node)
-	}
-	const sparseTree = treeToSparseTree(tree, parentPath)
-	sparseTree.children ??= []
-	// past the end would leave a hole, which walkNodes cannot traverse
-	sparseTree.children.splice(Math.min(index, sparseTree.children.length), 0, treeToSparseTree(subtree))
-	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
-}
-
-// The subtree at `targetId` as a standalone tree rooted at path [], with a fresh id for every node.
-// Callers mint the copy so that every replica applies the same one: a reducer that called this would
-// give each replica different ids. Node objects are shared, never mutated.
-export function copySubtree(tree: FilterNodeTree, targetId: string): FilterNodeTree | null {
-	const rootPath = tree.paths.get(targetId)
-	if (!rootPath) return null
-	const copy: FilterNodeTree = { nodes: new Map(), paths: new Map() }
-	for (const [id, path] of tree.paths) {
-		if (!Sparse.isOwnedPath(rootPath, path)) continue
+// whether the links describe exactly one tree over exactly the nodes in `nodes`. The schema cannot check this,
+// and every function below assumes it of the trees it is given.
+export function isWellFormedTree(tree: FilterNodeTree): boolean {
+	if (tree.parents.has(tree.rootId)) return false
+	const seen = new Set<string>()
+	const stack = [tree.rootId]
+	let blocks = 0
+	while (stack.length > 0) {
+		const id = stack.pop()!
+		// a second visit means a cycle, or a node listed under two parents
+		if (seen.has(id)) return false
+		seen.add(id)
 		const node = tree.nodes.get(id)
-		if (!node) continue
-		const copiedId = createId(4)
-		copy.nodes.set(copiedId, node)
-		copy.paths.set(copiedId, path.slice(rootPath.length))
+		if (!node) return false
+		const children = tree.children.get(id)
+		if (!isEditableBlockNode(node)) {
+			if (children) return false
+			continue
+		}
+		if (!children) return false
+		blocks++
+		for (const child of children) {
+			if (tree.parents.get(child) !== id) return false
+			stack.push(child)
+		}
 	}
-	return copy
+	return seen.size === tree.nodes.size && tree.children.size === blocks && tree.parents.size === seen.size - 1
 }
 
-export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
-	const targetPath = tree.paths.get(targetId)!
-	const parentPath = targetPath.slice(0, -1)
-	let sparseTree = treeToSparseTree(tree, parentPath)
-	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
-	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
+// undefined for an id the tree does not hold
+export function nodeDepth(tree: FilterNodeTree, id: string): number | undefined {
+	if (!tree.nodes.has(id)) return undefined
+	let depth = 0
+	for (let parent = tree.parents.get(id); parent !== undefined; parent = tree.parents.get(parent)) depth++
+	return depth
+}
+
+// whether `id` is `ancestorId` or one of its descendants
+export function isWithin(tree: FilterNodeTree, id: string, ancestorId: string): boolean {
+	for (let current: string | undefined = id; current !== undefined; current = tree.parents.get(current)) {
+		if (current === ancestorId) return true
+	}
+	return false
+}
+
+function subtreeIds(tree: FilterNodeTree, id: string): string[] {
+	const ids = [id]
+	for (let i = 0; i < ids.length; i++) {
+		const children = tree.children.get(ids[i])
+		if (children) ids.push(...children)
+	}
+	return ids
+}
+
+export function singleNodeTree(id: string, node: ShallowEditableFilterNode): FilterNodeTree {
+	return {
+		rootId: id,
+		nodes: new Map([[id, node]]),
+		children: isEditableBlockNode(node) ? new Map([[id, []]]) : new Map(),
+		parents: new Map(),
+	}
+}
+
+// The functions below are copy-on-write: each returns a new tree and shares every map it did not change, and
+// every node object, with the tree it was given.
+
+// grafts `subtree` in as a child of the block `parentId`, at `index` clamped to the end of its child list. The
+// two trees must not share an id.
+export function insertSubtree(tree: FilterNodeTree, parentId: string, index: number, subtree: FilterNodeTree): FilterNodeTree {
+	const nodes = new Map(tree.nodes)
+	const children = new Map(tree.children)
+	const parents = new Map(tree.parents)
+	for (const [id, node] of subtree.nodes) nodes.set(id, node)
+	for (const [id, ids] of subtree.children) children.set(id, ids)
+	for (const [id, parent] of subtree.parents) parents.set(id, parent)
+	parents.set(subtree.rootId, parentId)
+	const siblings = tree.children.get(parentId)!
+	children.set(parentId, siblings.toSpliced(Math.min(index, siblings.length), 0, subtree.rootId))
+	return { rootId: tree.rootId, nodes, children, parents }
+}
+
+// removes `id` and everything below it. `id` must not be the root.
+export function removeSubtree(tree: FilterNodeTree, id: string): FilterNodeTree {
+	const parentId = tree.parents.get(id)!
+	const nodes = new Map(tree.nodes)
+	const children = new Map(tree.children)
+	const parents = new Map(tree.parents)
+	for (const removed of subtreeIds(tree, id)) {
+		nodes.delete(removed)
+		children.delete(removed)
+		parents.delete(removed)
+	}
+	children.set(
+		parentId,
+		tree.children.get(parentId)!.filter((child) => child !== id),
+	)
+	return { rootId: tree.rootId, nodes, children, parents }
+}
+
+// `index` counts positions in the destination's child list as it stands before the move, the way the drop slot
+// between two rows names them. `id` must not be the root, and `parentId` must not be within `id`. Returns `tree`
+// itself when the node is already where it would land.
+export function moveNode(tree: FilterNodeTree, id: string, parentId: string, index: number): FilterNodeTree {
+	const fromId = tree.parents.get(id)!
+	const from = tree.children.get(fromId)!
+	const children = new Map(tree.children)
+	let to = tree.children.get(parentId)!
+	let at = Math.min(index, to.length)
+	if (fromId === parentId) {
+		const fromIndex = from.indexOf(id)
+		if (fromIndex < at) at--
+		if (at === fromIndex) return tree
+		to = from.toSpliced(fromIndex, 1)
+	} else {
+		children.set(
+			fromId,
+			from.filter((child) => child !== id),
+		)
+	}
+	children.set(parentId, to.toSpliced(at, 0, id))
+	const parents = fromId === parentId ? tree.parents : new Map(tree.parents).set(id, parentId)
+	return { rootId: tree.rootId, nodes: tree.nodes, children, parents }
+}
+
+// The subtree at `targetId` as a standalone tree, with a fresh id for every node. Callers mint the copy so that
+// every replica applies the same one: a reducer that called this would give each replica different ids. Node
+// objects are shared, never mutated.
+export function copySubtree(tree: FilterNodeTree, targetId: string): FilterNodeTree | null {
+	if (!tree.nodes.has(targetId)) return null
+	const copy: FilterNodeTree = { rootId: '', nodes: new Map(), children: new Map(), parents: new Map() }
+	const visit = (id: string): string => {
+		const copiedId = createId(4)
+		copy.nodes.set(copiedId, tree.nodes.get(id)!)
+		const children = tree.children.get(id)
+		if (children) {
+			const copiedChildren = children.map((child) => {
+				const copiedChild = visit(child)
+				copy.parents.set(copiedChild, copiedId)
+				return copiedChild
+			})
+			copy.children.set(copiedId, copiedChildren)
+		}
+		return copiedId
+	}
+	copy.rootId = visit(targetId)
+	return copy
 }
 
 export type Ctx = CS.Ctx & {

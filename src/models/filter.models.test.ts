@@ -111,19 +111,10 @@ describe('editor tree ids', () => {
 	// which loses whatever component state was open at the time.
 	it('agree across two independent builds of the same filter', () => {
 		const filter = FB.and([FB.inValues('Gamemode', ['RAAS']), FB.inValues('Map', ['Harju']), FB.and([FB.inValues('Gamemode', ['AAS'])])])
-		const clientSeed = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
-		const serverSnapshot = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
-		expect([...serverSnapshot.paths.keys()].sort()).toEqual([...clientSeed.paths.keys()].sort())
-		expect(clientSeed.paths.size).toBeGreaterThan(3)
-	})
-
-	// path ids made this reachable: with random ids an upsert never matched an existing node, so the
-	// unchanged-node shortcut below was dead code and never dropped anything
-	it('keeps the nodes an upsert leaves untouched', () => {
-		const filter = FB.and([FB.inValues('Gamemode', ['RAAS']), FB.inValues('Map', ['Harju'])])
-		const tree = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
-		F.upsertFilterNodeTreeInPlace(structuredClone(filter), undefined, tree)
-		expect(tree.paths.size).toBe(3)
+		const clientSeed = F.toFilterNodeTree(structuredClone(filter))
+		const serverSnapshot = F.toFilterNodeTree(structuredClone(filter))
+		expect([...serverSnapshot.nodes.keys()].sort()).toEqual([...clientSeed.nodes.keys()].sort())
+		expect(clientSeed.nodes.size).toBeGreaterThan(3)
 	})
 })
 
@@ -132,7 +123,7 @@ describe('node comments', () => {
 
 	it('survives the editor tree round trip', () => {
 		const filter = { ...FB.and([commented('why we exclude these')]), comment: 'top level note' }
-		const tree = F.upsertFilterNodeTreeInPlace(filter)
+		const tree = F.toFilterNodeTree(filter)
 		expect(F.treeToFilterNode(tree)).toEqual(filter)
 	})
 

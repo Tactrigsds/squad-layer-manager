@@ -12,7 +12,6 @@ import * as Arr from '@/lib/array-utils'
 import * as Obj from '@/lib/object-utils'
 import type { Clearable, Focusable } from '@/lib/react'
 import { eltToFocusable } from '@/lib/react'
-import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
@@ -74,34 +73,35 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	DndKit.useDragEnd((event) => {
 		if (!event.over) return
 		if (event.active.type !== 'filter-node') return
-		const editor = Zus.getState(props.stores.filterEditor)
-		const sourcePath = editor.tree.paths.get(event.active.id)!
+		const tree = Zus.getState(props.stores.filterEditor).tree
 		const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
 		if (!slot) return
-		const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
+		const slotId = slot.dragItem.id.toString()
 
-		let targetPath: Sparse.NodePath
-
+		let parentId: string
+		let index: number
 		switch (slot.position) {
-			case 'after':
-				targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
-				break
 			case 'before':
-				targetPath = slotPath
-				break
-			case 'on': {
-				targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
+			case 'after': {
+				const slotParentId = tree.parents.get(slotId)
+				if (slotParentId === undefined) return
+				parentId = slotParentId
+				index = tree.children.get(parentId)!.indexOf(slotId) + (slot.position === 'after' ? 1 : 0)
 				break
 			}
+			case 'on':
+				parentId = slotId
+				index = tree.children.get(slotId)?.length ?? 0
+				break
 			default:
 				assertNever(slot.position)
 		}
 
-		if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+		if (F.isWithin(tree, parentId, event.active.id)) {
 			console.warn('Cannot move node to its own child')
 			return
 		}
-		EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
+		EditFrame.Actions.moveNode(props.stores, event.active.id, parentId, index)
 	})
 
 	const [nodeStore, modified, editingNodeId] = Zus.useStore(
@@ -122,7 +122,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		document.addEventListener('keydown', onKeyDown)
 		return () => document.removeEventListener('keydown', onKeyDown)
 	}, [editingNodeId, props.stores])
-	const rootNodeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
+	const rootNodeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.rootId)
 	const allNodeIds = Zus.useStore(
 		props.stores.filterEditor,
 		Zus.useShallow((s) => Array.from(s.tree.nodes.keys())),
@@ -220,9 +220,9 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 		props.stores.filterEditor,
 		Zus.useShallow((s) => [s.tree.nodes.get(props.nodeId)?.type, s.nodeMapStore]),
 	)
-	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
-	const immediateChildren = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.immediateChildren(props.nodeId)))
-	if (!nodePath) return null
+	const depth = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.depth(props.nodeId))
+	const immediateChildren = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.children(props.nodeId))
+	if (depth === undefined) return null
 	if (!nodeType) return null
 
 	if (!F.isBlockType(nodeType)) {
@@ -233,7 +233,7 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	}
 
 	return (
-		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId} stores={props.stores}>
+		<NodeWrapper className="filter-node-display relative flex flex-col" depth={depth} nodeId={props.nodeId} stores={props.stores}>
 			<BlockNodeControlPanel nodeId={props.nodeId} stores={props.stores} />
 			{immediateChildren.map((id, index) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
@@ -345,10 +345,10 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 
 function BlockNodeControlPanel(props: NodeProps) {
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<F.BlockType>
-	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const depth = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.depth(props.nodeId))
 	const editing = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeEditing(props.nodeId))
-	if (!F.isBlockType(node.type) || !nodePath) return null
-	const isRootNode = nodePath.length === 0
+	if (!F.isBlockType(node.type) || depth === undefined) return null
+	const isRootNode = depth === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
 	const { setBlockType } = actions.block
@@ -415,18 +415,13 @@ function ChildNodeSeparator(props: {
 	const isDropTarget = dropProps.isDropTarget
 	const activeItem = DndKit.useDragging()
 	const [expanded, setExpanded] = React.useState(false)
-	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
 	const slot = props.item.slots[0]
-	const itemPath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
-	let isValid = true
-	if (activePath && itemPath) {
-		if (activeItem!.type !== 'filter-node') isValid = false
-		else if (slot.position !== 'on' && Sparse.isOwnedPath(activePath, itemPath)) isValid = false
-	}
-	let depth = itemPath?.length ?? 0
-	if (props.item.slots[0].position === 'on') {
-		depth++
-	}
+	const slotId = slot.dragItem.id?.toString()
+	const activeNodeId = activeItem?.type === 'filter-node' ? activeItem.id : undefined
+	const slotWithinActive = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.isWithin(slotId, activeNodeId))
+	const isValid = slot.position === 'on' || !slotWithinActive
+	const slotDepth = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.depth(slotId)) ?? 0
+	const depth = slot.position === 'on' ? slotDepth + 1 : slotDepth
 
 	if (expanded) {
 		return (
@@ -475,7 +470,7 @@ const NodeWrapper = ({
 	children,
 	className,
 	compact,
-	path,
+	depth,
 	nodeId,
 	stores,
 }: {
@@ -484,12 +479,11 @@ const NodeWrapper = ({
 	// a compact row is barely taller than the grip is wide, so the grip narrows to match rather than
 	// taking a third of the row
 	compact?: boolean
-	path: Sparse.NodePath
+	depth: number
 	nodeId: string
 	stores: EditFrame.KeyProp
 }) => {
 	const dragItem: DND.DragItem = { type: 'filter-node', id: nodeId }
-	const depth = path.length
 	const dragProps = DndKit.useDraggable(dragItem, { feedback: 'default' })
 	const draggingPlaceholder = <span className="w-[20px] mx-auto">...</span>
 	return (
@@ -833,11 +827,10 @@ function DoneButton(props: { onClick: () => void }) {
 export function LeafFilterNode(props: NodeProps) {
 	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
-	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
+	const depth = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.depth(props.nodeId))!
 	const editing = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeEditing(props.nodeId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 	if (F.isBlockType(node.type)) return null
-	const depth = nodePath.length
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 
 	const opCluster = depth > 0 && (
@@ -860,7 +853,7 @@ export function LeafFilterNode(props: NodeProps) {
 		return (
 			<NodeWrapper
 				compact
-				path={nodePath}
+				depth={depth}
 				className="group/row flex flex-wrap items-center gap-1"
 				nodeId={props.nodeId}
 				stores={props.stores}
@@ -881,7 +874,7 @@ export function LeafFilterNode(props: NodeProps) {
 		const subject = node.args[0]
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				{isSelectLayers ? (
 					<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				) : (
@@ -894,7 +887,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isMatchupNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
 				{doneButton}
@@ -903,7 +896,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isApplyFilterNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<ComboBox
 					allowEmpty={false}
 					title={tr.text(F_Msgs.modePicker())}
