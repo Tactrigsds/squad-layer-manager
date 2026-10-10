@@ -1784,16 +1784,14 @@ export function actorFromUser(ctx: SQS.Ctx, source: USR.GuiOrChatUserId | 'autos
 	return { type: 'system' }
 }
 
-// Runs each step, then a processing pass over the pending-events state, all under one hold of processEventsMtx.
-// The events the passes produce are persisted as they are produced and published on event$ once their batch commits.
+// Runs the steps, then one processing pass over the pending-events state, all under one hold of processEventsMtx.
+// The events the pass produces are persisted as they are produced and published on event$ once their batch commits.
 async function collectEvents(ctx: SQS.Ctx & CS.AbortSignal, ...steps: (() => void)[]) {
 	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
 	const ingest = ingestByServer.get(ctx.server)!
 	try {
-		for (const step of steps) {
-			step()
-			for await (const _event of PendingEvents.process(ctx.server.eventState, Date.now()));
-		}
+		for (const step of steps) step()
+		await PendingEvents.process(ctx.server.eventState, Date.now())
 	} finally {
 		publishIngested(ingest)
 	}

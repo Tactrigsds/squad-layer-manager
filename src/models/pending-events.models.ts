@@ -1,4 +1,3 @@
-import * as Arr from '@/lib/array-utils'
 import * as ExpHist from '@/lib/exp-histogram'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
@@ -434,8 +433,17 @@ function applyExpectations(state: State, event: SE.NewEvent) {
 	state.expectations.splice(idx, 1)
 }
 
+// Every event buffer is kept sorted by time, with ties in arrival order, so process() can merge them.
+// Events almost always arrive in order, so the scan from the end stops at the first comparison.
+function pushSorted<T extends { time: number }>(buf: T[], event: T) {
+	let i = buf.length
+	while (i > 0 && buf[i - 1].time > event.time) i--
+	if (i === buf.length) buf.push(event)
+	else buf.splice(i, 0, event)
+}
+
 export function onRconConnected(state: State, time: number, nextLayerId: L.LayerId | null, currentLayerId: L.LayerId) {
-	state.eventBufs.lifecycleEvents.push({
+	pushSorted(state.eventBufs.lifecycleEvents, {
 		type: 'RCON_CONNECTED',
 		time,
 		id: Gen.next(state.counters.pendingEventId),
@@ -445,15 +453,19 @@ export function onRconConnected(state: State, time: number, nextLayerId: L.Layer
 }
 
 export function onLogEvent(state: State, event: SM.LogEvents.ParsedEvent) {
+	const lastEvent = state.eventBufs.logEvents.at(-1)
+	if (!!lastEvent && lastEvent.time > event.time) {
+		throw new Error(`Log event with time ${event.time} is older than last event time ${lastEvent.time}`)
+	}
 	state.eventBufs.logEvents.push({ ...event, id: Gen.next(state.counters.pendingEventId) })
 }
 
 export function onRconDisconnected(state: State, time: number) {
-	state.eventBufs.lifecycleEvents.push({ type: 'RCON_DISCONNECTED', time, id: Gen.next(state.counters.pendingEventId) })
+	pushSorted(state.eventBufs.lifecycleEvents, { type: 'RCON_DISCONNECTED', time, id: Gen.next(state.counters.pendingEventId) })
 }
 
 export function onRconEvent(state: State, event: SM.RconEvents.Event) {
-	state.eventBufs.rconEmittedEvents.push({ ...event, id: Gen.next(state.counters.pendingEventId) })
+	pushSorted(state.eventBufs.rconEmittedEvents, { ...event, id: Gen.next(state.counters.pendingEventId) })
 }
 
 // `polledAt` (ListPlayers issue time) defaults to `time` (receive time) for callers that don't distinguish the
@@ -468,20 +480,34 @@ export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polle
 }
 
 // Builds an event: stamps expectation attribution, then persists it to get its id. Called at the point each
-// event is constructed, so everything from the yield onwards already carries the real (db-allocated) id.
+// event is constructed, so everything from there on already carries the real (db-allocated) id.
 //
 // The attribution stamp belongs here rather than in the caller: `source` is part of the persisted event (and of
 // its appEventId column), so stamping after the insert would silently drop it. It also has to precede
-// applyEventTeamMutations (which the caller runs on the yielded event) -- SQUAD_DISBANDED resolves its squad out
-// of currTeams, so the squad has to still be in there.
+// applyEventTeamMutations -- SQUAD_DISBANDED resolves its squad out of currTeams, so the squad has to still be in
+// there.
 async function createEvent(state: State, event: SE.NewEvent): Promise<SE.Event> {
 	applyExpectations(state, event)
 	return await state.hooks.createEvent(event)
 }
 
+// the events one process() call emits
+type Pass = { ctx: CS.Log; events: SE.Event[] }
+
+// Persists an event and folds it into `state` before returning, so the code after an emit sees the roster it produced.
+async function emit(state: State, pass: Pass, newEvent: SE.NewEvent) {
+	const event = await createEvent(state, newEvent)
+	applyEventToState(state, pass.ctx, event)
+	pass.events.push(event)
+}
+
+// Persists an event without folding it into `state`; the caller applies `out` once it has produced all of it.
+async function emitUnapplied(state: State, out: SE.Event[], newEvent: SE.NewEvent) {
+	out.push(await createEvent(state, newEvent))
+}
+
 // Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, then apply team
-// mutations. Runs on the event the generator handed over, i.e. once it is already on disk. Shared by the main
-// processing loop and the watchdog resync.
+// mutations. Runs once the event is already on disk.
 function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
 	if (SE.eventRoster(event) && !state.currTeams) {
 		state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
@@ -494,7 +520,7 @@ function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
 // Watchdog recovery: re-establish sync from RCON's current layer when the log-driven roll/sync got wedged. Mirrors
 // the RCON_CONNECTED sync-begin (resolve the match, enter 'syncing', emit a roster-less NEW_GAME for a new match)
 // so the next teams poll produces the RESET that reseeds the roster.
-async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event> {
+async function forceResync(state: State, pass: Pass, time: number): Promise<void> {
 	const layersStatus = await state.hooks.fetchLayersStatus()
 	if (!layersStatus) {
 		state.log.warn('sync watchdog fired but fetchLayersStatus returned null; cannot force resync')
@@ -506,7 +532,7 @@ async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event
 	state.currentMatch = { historyEntryId: match.historyEntryId, layerId: match.layerId }
 	state.syncState = { type: 'syncing', isNewMatch, boundaryTime: time }
 	if (isNewMatch) {
-		yield await createEvent(state, {
+		await emit(state, pass, {
 			type: 'NEW_GAME',
 			layerId: state.currentMatch.layerId,
 			matchId: state.currentMatch.historyEntryId,
@@ -516,9 +542,10 @@ async function* forceResync(state: State, time: number): AsyncGenerator<SE.Event
 	}
 }
 
-export async function* process(state: State, time: number): AsyncGenerator<SE.Event> {
-	const log = state.log
-	const ctx = { log, ...CS.init() }
+// Processes every buffered event that is ready, in time order, and returns the events it emitted. On a tie, log
+// events go first, then lifecycle, rcon and teams events.
+export async function process(state: State, time: number): Promise<SE.Event[]> {
+	const pass: Pass = { ctx: { log: state.log, ...CS.init() }, events: [] }
 	// GC expectations whose event never landed (matched ones are consumed on match, so this only drops stale arms)
 	state.expectations = state.expectations.filter((e) => e.expiresAt >= time)
 	// same for attributions: a set-next whose MAP_SET never came back would otherwise sit here forever, and a later
@@ -532,80 +559,62 @@ export async function* process(state: State, time: number): AsyncGenerator<SE.Ev
 		state.nonSyncedSince ??= time
 		if (time - state.nonSyncedSince >= SYNC_WATCHDOG_TIMEOUT_MS) {
 			state.nonSyncedSince = time // reset the clock so a failed resync retries after another full timeout, not every poll
-			for await (const event of forceResync(state, time)) {
-				applyEventToState(state, ctx, event)
-				yield event
-			}
+			await forceResync(state, pass, time)
 		}
 	} else {
 		state.nonSyncedSince = null
 	}
 
+	const bufs = state.eventBufs
 	// rcon and teams events wait for a log line to order them against. Until the first one arrives they would pile up
 	// without bound, and any older than the stale cutoff would be dropped on processing anyway.
 	if (state.lastKnownLogEventTime === null) {
-		state.eventBufs.rconEmittedEvents = state.eventBufs.rconEmittedEvents.filter((e) => !isStale(e, time))
-		state.eventBufs.teamsUpdates = state.eventBufs.teamsUpdates.filter((e) => !isStale(e, time))
+		bufs.rconEmittedEvents = bufs.rconEmittedEvents.filter((e) => !isStale(e, time))
+		bufs.teamsUpdates = bufs.teamsUpdates.filter((e) => !isStale(e, time))
 	}
 
-	const toProcess: PendingEvent[] = []
-	const comparator = (a: PendingEvent, b: PendingEvent) => a.time - b.time
+	const logEvents = bufs.logEvents
+	const lastLogEvent = logEvents.at(-1)
+	if (lastLogEvent && (state.lastKnownLogEventTime === null || lastLogEvent.time > state.lastKnownLogEventTime)) {
+		state.lastKnownLogEventTime = lastLogEvent.time
+	}
 
-	for (let i = 0; i < state.eventBufs.logEvents.length; i++) {
-		const logEvent = state.eventBufs.logEvents[i]
-		if (i > 0 && logEvent.time < state.eventBufs.logEvents[i - 1].time) {
-			throw new Error(`logEvents out of order at index ${i}: ${state.eventBufs.logEvents[i - 1].time} > ${logEvent.time}`)
+	// An rcon or teams event is ready once a log line at or after it has arrived, or once it has waited the min safe
+	// lead time, at which point we assume no older log line is still in flight.
+	const rconEvents = bufs.rconEmittedEvents
+	const teamsUpdates = bufs.teamsUpdates
+	let rconReady = 0
+	let teamsReady = 0
+	if (state.lastKnownLogEventTime !== null) {
+		const readyUntil = Math.max(state.lastKnownLogEventTime, time - state.minSafeLeadTimeForOtherEventsSinceLog)
+		while (rconReady < rconEvents.length && rconEvents[rconReady].time <= readyUntil) rconReady++
+		while (teamsReady < teamsUpdates.length && teamsUpdates[teamsReady].time <= readyUntil) teamsReady++
+	}
+
+	const sources: (readonly PendingEvent[])[] = [logEvents, bufs.lifecycleEvents, rconEvents, teamsUpdates]
+	const ends = [logEvents.length, bufs.lifecycleEvents.length, rconReady, teamsReady]
+	const cursors = [0, 0, 0, 0]
+	// every event taken here is processed, so the buffers only keep what is not ready yet
+	bufs.logEvents = []
+	bufs.lifecycleEvents = []
+	if (rconReady > 0) bufs.rconEmittedEvents = rconEvents.slice(rconReady)
+	if (teamsReady > 0) bufs.teamsUpdates = teamsUpdates.slice(teamsReady)
+
+	while (true) {
+		let next = -1
+		for (let i = 0; i < sources.length; i++) {
+			if (cursors[i] === ends[i]) continue
+			if (next === -1 || sources[i][cursors[i]].time < sources[next][cursors[next]].time) next = i
 		}
-		if (state.lastKnownLogEventTime === null || logEvent.time > state.lastKnownLogEventTime) {
-			state.lastKnownLogEventTime = logEvent.time
-		}
-		Arr.insertIntoSorted(toProcess, logEvent, comparator)
-	}
-
-	for (const lifecycleEvt of state.eventBufs.lifecycleEvents) {
-		// if (state.lastKnownLogEventTime == null || state.lastKnownLogEventTime < lifecycleEvt.time) continue
-		Arr.insertIntoSorted(toProcess, lifecycleEvt, comparator)
-	}
-
-	for (const rconEvent of state.eventBufs.rconEmittedEvents) {
-		if (
-			state.lastKnownLogEventTime === null ||
-			(state.lastKnownLogEventTime < rconEvent.time &&
-				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
-				rconEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog > time)
-		)
-			continue
-		Arr.insertIntoSorted(toProcess, rconEvent, comparator)
-	}
-
-	for (const teamUpdateEvent of state.eventBufs.teamsUpdates) {
-		if (
-			state.lastKnownLogEventTime === null ||
-			(state.lastKnownLogEventTime < teamUpdateEvent.time &&
-				// if the event has been sitting for the min safe lead time, then it's(probably) safe to process
-				teamUpdateEvent.time + state.minSafeLeadTimeForOtherEventsSinceLog > time)
-		)
-			continue
-		Arr.insertIntoSorted(toProcess, teamUpdateEvent, comparator)
-	}
-
-	const processedEventIds = new Set<number>()
-	for (let i = 0; i < toProcess.length; i++) {
-		const pendingEvent = toProcess[i]
+		if (next === -1) break
+		const pendingEvent = sources[next][cursors[next]++]
 		try {
-			for await (const event of processPendingEvent(state, processedEventIds, time, pendingEvent)) {
-				applyEventToState(state, ctx, event)
-				yield event
-			}
+			await processPendingEvent(state, pass, time, pendingEvent)
 		} catch (err) {
 			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
-			processedEventIds.add(pendingEvent.id)
 		}
 	}
-	for (const prop of Obj.objKeys(state.eventBufs)) {
-		// @ts-expect-error idgaf
-		state.eventBufs[prop] = state.eventBufs[prop].filter((e) => !processedEventIds.has(e.id))
-	}
+	return pass.events
 }
 
 export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event: SE.Event) {
@@ -775,12 +784,7 @@ function isStale(event: { time: number }, time: number) {
 	return event.time < time - STALE_EVENT_MS
 }
 
-async function* processPendingEvent(
-	state: State,
-	processedEventIds: Set<number>,
-	time: number,
-	pendingEvent: PendingEvent,
-): AsyncGenerator<SE.Event> {
+async function processPendingEvent(state: State, pass: Pass, time: number, pendingEvent: PendingEvent): Promise<void> {
 	const log = state.log
 
 	if (pendingEvent.type !== 'UNKNOWN') {
@@ -789,7 +793,6 @@ async function* processPendingEvent(
 
 	if (isStale(pendingEvent, time)) {
 		state.log.warn('Skipping event %s (%s) as it is stale (%s)', pendingEvent.type, pendingEvent.id, pendingEvent.time)
-		processedEventIds.add(pendingEvent.id)
 		return
 	}
 
@@ -802,7 +805,7 @@ async function* processPendingEvent(
 		}
 
 		state.isFirstConnection = state.isFirstConnection === null
-		yield await createEvent(state, {
+		await emit(state, pass, {
 			type: 'RCON_CONNECTED',
 			matchId: state.currentMatch.historyEntryId,
 			time: pendingEvent.time,
@@ -815,7 +818,7 @@ async function* processPendingEvent(
 		) {
 			state.nextLayerId = pendingEvent.nextLayerId
 			// nobody set this layer as far as SLM is concerned -- it is what the server already had when we connected
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'MAP_SET',
 				layerId: state.nextLayerId,
 				matchId: state.currentMatch.historyEntryId,
@@ -827,7 +830,7 @@ async function* processPendingEvent(
 		// Roster-less boundary marker for a genuinely new match; the roster follows on the first post-boundary poll
 		// (RESET). A same-match reconnect (isNewMatch=false) emits no NEW_GAME -- just the RESET reseed.
 		if (isNewMatch) {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'NEW_GAME',
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
@@ -852,7 +855,7 @@ async function* processPendingEvent(
 		state.squadCreatedAtAwaitingPoll.clear()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'RCON_DISCONNECTED',
 				time: pendingEvent.time,
 				matchId: state.currentMatch.historyEntryId,
@@ -883,7 +886,7 @@ async function* processPendingEvent(
 
 		// The definitive roster always arrives via RESET. For a new match the roster-less NEW_GAME boundary was
 		// already emitted at RCON_CONNECTED; a same-match reconnect emits only this RESET.
-		yield await createEvent(state, {
+		await emit(state, pass, {
 			type: 'RESET',
 			matchId: state.currentMatch.historyEntryId,
 			// the roster crosses into the event in its array form, which is what the db and the wire carry
@@ -914,7 +917,7 @@ async function* processPendingEvent(
 		await backfillUsernamesNoTag(state, teams)
 		// The roster-less NEW_GAME(server-roll) boundary was emitted when the real-layer NEW_GAME log arrived; this
 		// first post-boundary poll carries the definitive roster as a RESET. The reducer applies it to currTeams.
-		yield await createEvent(state, {
+		await emit(state, pass, {
 			type: 'RESET',
 			time: pendingEvent.time,
 			matchId: state.currentMatch.historyEntryId,
@@ -956,7 +959,6 @@ async function* processPendingEvent(
 					// Couldn't resolve the new layer. Stay in plain 'rolling' (no newGameEvent) so the roll can't
 					// complete against a stale match; the sync watchdog force-resyncs from RCON if this persists.
 					log.warn('fetchLayersStatus returned null; staying in rolling for the watchdog to recover')
-					processedEventIds.add(pendingEvent.id)
 					return
 				}
 				log.debug({ layerId: layersStatus.currentLayer.id }, 'found new layer during roll')
@@ -977,7 +979,7 @@ async function* processPendingEvent(
 
 			// Roster-less boundary marker, emitted promptly at the real-layer log. The roster follows on the first
 			// teams poll timestamped after this (see the rolling TEAMS_UPDATE branch), as a RESET.
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'NEW_GAME',
 				layerId: state.currentMatch.layerId,
 				matchId: state.currentMatch.historyEntryId,
@@ -988,7 +990,6 @@ async function* processPendingEvent(
 	}
 
 	if (state.syncState.type !== 'synced' || state.currentMatch === 'PENDING') {
-		processedEventIds.add(pendingEvent.id)
 		return
 	}
 	if (!state.currTeams) throw new Error('currTeams is null when synced')
@@ -1024,7 +1025,7 @@ async function* processPendingEvent(
 					: { type: 'layer-queue', itemId: attribution.itemId }
 				state.attributions.splice(attributionIndex, 1)
 			}
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'MAP_SET',
 				...base,
 				layerId: layer.id,
@@ -1035,7 +1036,7 @@ async function* processPendingEvent(
 
 		case 'INGAME_VOTE_CHAIN': {
 			const started = pendingEvent.events.INGAME_VOTE_STARTED
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'INGAME_VOTE_STARTED',
 				...base,
 				container: started.container,
@@ -1145,14 +1146,14 @@ async function* processPendingEvent(
 				...base,
 			}
 
-			yield await createEvent(state, roundEnded)
+			await emit(state, pass, roundEnded)
 
 			break
 		}
 
 		case 'PLAYER_KICKED_CHAIN': {
 			const events = pendingEvent.events
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				...base,
 				type: 'PLAYER_KICKED',
 				player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
@@ -1163,7 +1164,7 @@ async function* processPendingEvent(
 
 		// carryover from squadjs, no recent instances of this in current prod logs
 		case 'PLAYER_BANNED': {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				...base,
 				type: 'PLAYER_BANNED',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
@@ -1179,7 +1180,7 @@ async function* processPendingEvent(
 				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
 			}
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				...base,
 				type: 'PLAYER_WARNED',
 				reason: pendingEvent.reason,
@@ -1189,7 +1190,7 @@ async function* processPendingEvent(
 		}
 
 		case 'POSSESSED_ADMIN_CAMERA': {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				...base,
 				type: 'POSSESSED_ADMIN_CAMERA',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
@@ -1198,7 +1199,7 @@ async function* processPendingEvent(
 		}
 
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				...base,
 				type: 'UNPOSSESSED_ADMIN_CAMERA',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
@@ -1232,7 +1233,7 @@ async function* processPendingEvent(
 				log.debug('Dropping PLAYER_CONNECTED for %s: already in the roster', SM.PlayerIds.prettyPrint(player.ids))
 				// the join log is the only source of usernameNoTag, so the held player may still lack it
 				if (held.ids.usernameNoTag !== player.ids.usernameNoTag) {
-					yield await createEvent(state, {
+					await emit(state, pass, {
 						type: 'PLAYER_RECONCILED',
 						...base,
 						player: { ...held, ids: { ...held.ids, usernameNoTag: player.ids.usernameNoTag } },
@@ -1241,7 +1242,7 @@ async function* processPendingEvent(
 				break
 			}
 
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'PLAYER_CONNECTED',
 				...base,
 				player: Obj.deepClone(player),
@@ -1286,7 +1287,7 @@ async function* processPendingEvent(
 			if (existingSquad) {
 				for (const player of state.currTeams.players.values()) {
 					if (!SM.Squads.idsEqual(player, squad)) continue
-					yield await createEvent(state, {
+					await emit(state, pass, {
 						type: 'PLAYER_LEFT_SQUAD',
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						uniqueId: existingSquad.uniqueId,
@@ -1295,7 +1296,7 @@ async function* processPendingEvent(
 					})
 				}
 
-				yield await createEvent(state, {
+				await emit(state, pass, {
 					type: 'SQUAD_DISBANDED',
 					uniqueId: existingSquad.uniqueId,
 					matchId: state.currentMatch.historyEntryId,
@@ -1307,7 +1308,13 @@ async function* processPendingEvent(
 				if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
 					const playerSquad = SM.findSquadForPlayer(state.currTeams.squads, player)
 					if (playerSquad) {
-						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, playerSquad.uniqueId)
+						await emitLeaveSquadEvents(
+							state as StateWithCurrentMatchAndPlayers,
+							pass,
+							pendingEvent.time,
+							player,
+							playerSquad.uniqueId,
+						)
 					} else {
 						log.warn(
 							`Player ${SM.PlayerIds.prettyPrint(
@@ -1318,7 +1325,7 @@ async function* processPendingEvent(
 				}
 
 				if (player.teamId !== teamId) {
-					yield await createEvent(state, {
+					await emit(state, pass, {
 						type: 'PLAYER_CHANGED_TEAM',
 						player: SM.PlayerIds.getPlayerId(player.ids),
 						newTeamId: teamId,
@@ -1336,7 +1343,7 @@ async function* processPendingEvent(
 			}
 
 			state.squadCreatedAtAwaitingPoll.set(squad.uniqueId, pendingEvent.time)
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'SQUAD_CREATED',
 				squad: squad,
 				...base,
@@ -1352,7 +1359,7 @@ async function* processPendingEvent(
 				if (player.squadId) {
 					const squad = SM.findSquadForPlayer(state.currTeams.squads, player)
 					if (squad) {
-						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId)
+						await emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pass, pendingEvent.time, player, squad.uniqueId)
 					} else {
 						log.warn(`Squad not found for disconnecting player: ${SM.PlayerIds.prettyPrint(player.ids)}`)
 					}
@@ -1361,7 +1368,7 @@ async function* processPendingEvent(
 				log.warn(`Player not found on disconnect: ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)}`)
 				break
 			}
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'PLAYER_DISCONNECTED',
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				...base,
@@ -1375,7 +1382,7 @@ async function* processPendingEvent(
 				log.error('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
 				break
 			}
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'SQUAD_RENAMED',
 				uniqueId: squad.uniqueId,
 				oldSquadName: pendingEvent.oldSquadName,
@@ -1402,7 +1409,7 @@ async function* processPendingEvent(
 			}
 			for (const player of state.currTeams.players.values()) {
 				if (!SM.Squads.idsEqual(player, squad)) continue
-				yield await createEvent(state, {
+				await emit(state, pass, {
 					type: 'PLAYER_LEFT_SQUAD',
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					uniqueId: squad.uniqueId,
@@ -1411,7 +1418,7 @@ async function* processPendingEvent(
 					source: pendingEvent.source,
 				})
 			}
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'SQUAD_DISBANDED',
 				...base,
 				uniqueId: squad.uniqueId,
@@ -1437,8 +1444,9 @@ async function* processPendingEvent(
 				log.warn("Remove from squad but player's squad not found in currTeams: %s", SM.PlayerIds.prettyPrint(player.ids))
 				break
 			}
-			yield* emitLeaveSquadEvents(
+			await emitLeaveSquadEvents(
 				state as StateWithCurrentMatchAndPlayers,
+				pass,
 				pendingEvent.time,
 				player,
 				squad.uniqueId,
@@ -1448,11 +1456,14 @@ async function* processPendingEvent(
 		}
 
 		case 'TEAMS_UPDATE': {
-			// drained before any of it is yielded, as it always has been: every event the reconciler produces is
-			// computed against the pre-mutation roster, and the caller only mutates once we hand an event over
+			// every event the reconciler produces is computed against the pre-mutation roster, so none is applied until
+			// it has produced them all
 			const events: SE.Event[] = []
-			for await (const event of reconcileTeamsUpdate(state, pendingEvent)) events.push(event)
-			yield* events
+			await reconcileTeamsUpdate(state, pendingEvent, events)
+			for (const event of events) {
+				applyEventToState(state, pass.ctx, event)
+				pass.events.push(event)
+			}
 			// a forced-team-change attribution is valid for exactly one poll -- discard whatever wasn't consumed
 			state.forcedTeamChanges.clear()
 			break
@@ -1493,7 +1504,7 @@ async function* processPendingEvent(
 				variant = 'normal'
 			}
 
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: pendingEvent.type,
 				...base,
 				damage: pendingEvent.damage,
@@ -1532,7 +1543,7 @@ async function* processPendingEvent(
 				case 'DEPLOYABLE_HEALTH_CHANGED': {
 					const outcome = DSTR.onDeployableHealthChanged(tracker, pendingEvent)
 					if (outcome?.kind === 'radio-damaged') {
-						yield await createEvent(state, radioDamagedEvent(state as StateWithCurrentMatchAndPlayers, base, outcome))
+						await emit(state, pass, radioDamagedEvent(state as StateWithCurrentMatchAndPlayers, base, outcome))
 					} else if (outcome) {
 						destruction = outcome
 						source = 'deployable'
@@ -1542,8 +1553,7 @@ async function* processPendingEvent(
 				default:
 					assertNever(pendingEvent)
 			}
-			if (destruction)
-				yield await createEvent(state, destroyedEvent(state as StateWithCurrentMatchAndPlayers, base, source, destruction))
+			if (destruction) await emit(state, pass, destroyedEvent(state as StateWithCurrentMatchAndPlayers, base, source, destruction))
 			break
 		}
 
@@ -1586,7 +1596,7 @@ async function* processPendingEvent(
 				if (squad) channel = { ...squadChannel, uniqueId: squad.uniqueId }
 			}
 
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'CHAT_MESSAGE',
 				message: pendingEvent.message,
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
@@ -1597,7 +1607,7 @@ async function* processPendingEvent(
 		}
 
 		case 'ADMIN_BROADCAST': {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'ADMIN_BROADCAST',
 				message: pendingEvent.message,
 				source: pendingEvent.source,
@@ -1606,8 +1616,6 @@ async function* processPendingEvent(
 			break
 		}
 	}
-
-	processedEventIds.add(pendingEvent.id)
 }
 
 // A vehicle line can be about an emplacement (a mortar, a TOW), which is a deployable to anyone reading the feed.
@@ -1696,7 +1704,7 @@ function vehicleTeam(layer: L.UnvalidatedLayer, className: string): SM.TeamId | 
 	return inTeam1 ? 1 : 2
 }
 
-async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): AsyncGenerator<SE.Event> {
+async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: SE.Event[]): Promise<void> {
 	const nextTeams = event.teams
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
 	const nextSquads: SM.UniqueSquad[] = []
@@ -1745,7 +1753,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			)
 				continue
 			emittedEvent = true
-			yield await createEvent(state, {
+			await emitUnapplied(state, out, {
 				type: 'PLAYER_RECONCILED',
 				player: { ...known, isAdmin: nextPlayer.isAdmin, adminGroups: nextPlayer.adminGroups, role: nextPlayer.role },
 				...base,
@@ -1753,7 +1761,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			continue
 		}
 		emittedEvent = true
-		yield await createEvent(state, {
+		await emitUnapplied(state, out, {
 			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
 			player: {
 				ids: storedUsernamesNoTag.has(playerId)
@@ -1786,7 +1794,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 		}
 		state.pollAbsenceStreaks.delete(playerId)
 		emittedEvent = true
-		yield await createEvent(state, {
+		await emitUnapplied(state, out, {
 			type: 'PLAYER_DISCONNECTED',
 			player: playerId,
 			...base,
@@ -1831,7 +1839,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD,
 		)
 		emittedEvent = true
-		yield await createEvent(state, {
+		await emitUnapplied(state, out, {
 			type: 'SQUAD_CREATED',
 			squad: uniqueSquad,
 			synthesized: true,
@@ -1864,7 +1872,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			// currPlayer.squadId = null
 			emittedEvent = true
-			yield await createEvent(state, {
+			await emitUnapplied(state, out, {
 				type: 'PLAYER_LEFT_SQUAD',
 				player: playerId,
 				uniqueId: currSquad.uniqueId,
@@ -1880,7 +1888,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			disbandedSquads.add(currSquad.uniqueId)
 			emittedEvent = true
-			yield await createEvent(state, {
+			await emitUnapplied(state, out, {
 				type: 'SQUAD_DISBANDED',
 				uniqueId: currSquad.uniqueId,
 				...base,
@@ -1892,7 +1900,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 		const prevDetails = Obj.selectProps(currSquad, SM.SQUAD_DETAILS)
 		if (!Obj.deepEqual(details, prevDetails)) {
 			emittedEvent = true
-			yield await createEvent(state, {
+			await emitUnapplied(state, out, {
 				type: 'SQUAD_DETAILS_CHANGED',
 				uniqueId: currSquad.uniqueId,
 				details,
@@ -1907,7 +1915,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 		if (currPlayer && nextPlayer.teamId !== currPlayer.teamId) {
 			emittedEvent = true
-			yield await createEvent(state, {
+			await emitUnapplied(state, out, {
 				type: 'PLAYER_CHANGED_TEAM',
 				player: playerId,
 				newTeamId: nextPlayer.teamId,
@@ -1930,7 +1938,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 			if (hasChangedSquad) {
 				emittedEvent = true
-				yield await createEvent(state, {
+				await emitUnapplied(state, out, {
 					type: 'PLAYER_JOINED_SQUAD',
 					uniqueId: squad.uniqueId,
 					player: playerId,
@@ -1944,7 +1952,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 					return
 				}
 				emittedEvent = true
-				yield await createEvent(state, {
+				await emitUnapplied(state, out, {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					uniqueId: squad.uniqueId,
 					player: playerId,
@@ -1959,7 +1967,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 			const newUsername = prevPlayer.ids.username !== player.ids.username ? player.ids.username : undefined
 			if (!Obj.deepEqual(details, prevDetails) || newUsername) {
 				emittedEvent = true
-				yield await createEvent(state, {
+				await emitUnapplied(state, out, {
 					type: 'PLAYER_DETAILS_CHANGED',
 					player: SM.PlayerIds.getPlayerId(player.ids),
 					details,
@@ -1970,7 +1978,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 		}
 	}
 	if (emittedEvent) {
-		yield await createEvent(state, {
+		await emitUnapplied(state, out, {
 			type: 'TEAMS_POLLED_UPDATE',
 			matchId: state.currentMatch.historyEntryId,
 			time: event.time,
@@ -1985,15 +1993,16 @@ function playerDetails(player: SM.Player) {
 	return { ...details, partyId: details.partyId ?? null, vehicle: details.vehicle ?? null }
 }
 
-async function* emitLeaveSquadEvents(
+async function emitLeaveSquadEvents(
 	state: StateWithCurrentMatchAndPlayers,
+	pass: Pass,
 	time: number,
 	player: SM.Player,
 	squadUniqueId: number,
 	source?: SM.LogEvents.ActionSource,
-): AsyncGenerator<SE.Event> {
+): Promise<void> {
 	if (player.squadId) {
-		yield await createEvent(state, {
+		await emit(state, pass, {
 			type: 'PLAYER_LEFT_SQUAD',
 			player: SM.PlayerIds.getPlayerId(player.ids),
 			uniqueId: squadUniqueId,
@@ -2008,7 +2017,7 @@ async function* emitLeaveSquadEvents(
 			}
 		}
 		if (otherPlayers.length === 0) {
-			yield await createEvent(state, {
+			await emit(state, pass, {
 				type: 'SQUAD_DISBANDED',
 				uniqueId: squadUniqueId,
 				time,
@@ -2018,7 +2027,7 @@ async function* emitLeaveSquadEvents(
 		} else if (otherPlayers.length === 1) {
 			const otherPlayer = otherPlayers[0]
 			if (player.isLeader) {
-				yield await createEvent(state, {
+				await emit(state, pass, {
 					type: 'PLAYER_PROMOTED_TO_LEADER',
 					player: SM.PlayerIds.getPlayerId(otherPlayer.ids),
 					uniqueId: squadUniqueId,

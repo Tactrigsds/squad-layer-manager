@@ -81,12 +81,8 @@ async function collect(state: PendingEvents.State): Promise<SE.Event[]> {
 }
 
 // collect while driving process() at a specific wall-clock `time` (for the sync watchdog, which is time-based)
-async function collectAt(state: PendingEvents.State, time: number): Promise<SE.Event[]> {
-	const events: SE.Event[] = []
-	for await (const event of PendingEvents.process(state, time)) {
-		events.push(event)
-	}
-	return events
+function collectAt(state: PendingEvents.State, time: number): Promise<SE.Event[]> {
+	return PendingEvents.process(state, time)
 }
 
 function makePlayer(eos: string, teamId: SM.TeamId, opts: Partial<SM.Player> = {}): SM.Player {
@@ -1739,6 +1735,43 @@ describe('PendingEvents', () => {
 			expect(renames).toHaveLength(2)
 			expect(renames[0].time).toBe(200)
 			expect(renames[1].time).toBe(300)
+		})
+
+		it('merges log, rcon and teams events by time, with log events first on a tie', async () => {
+			const leader = makePlayer('eos-001', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([leader, makePlayer('eos-002', 1)], [makeSquad(1, 1, 'eos-001', 100)])
+			pinSquadUniqueId(state, 100)
+
+			PendingEvents.onTeamsPolled(
+				state,
+				makeTeams([leader, makePlayer('eos-003', 2)], [{ ...makeSquad(1, 1, 'eos-001', 100), squadName: 'Renamed' }]),
+				250,
+			)
+			PendingEvents.onRconEvent(state, {
+				type: 'SQUAD_RENAMED',
+				time: 200,
+				squadId: 1,
+				teamId: 1,
+				oldSquadName: 'Squad 1',
+				newSquadName: 'Renamed',
+			})
+			PendingEvents.onLogEvent(state, {
+				type: 'PLAYER_DISCONNECTED',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-002', playerController: 'ctrl_eos-002' },
+				ip: '1.2.3.4',
+			})
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(300))
+			const events = await collect(state)
+
+			expect(events.map((e) => [e.type, e.time])).toEqual([
+				['PLAYER_DISCONNECTED', 200],
+				['SQUAD_RENAMED', 200],
+				['PLAYER_CONNECTED', 250],
+				['TEAMS_POLLED_UPDATE', 250],
+			])
 		})
 	})
 
