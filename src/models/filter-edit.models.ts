@@ -8,7 +8,6 @@ import { createId } from '@/lib/id'
 import type { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
-import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
@@ -59,7 +58,7 @@ export const OpSchema = z.discriminatedUnion('code', [
 	z.object({ ...clientProps, code: z.literal('set-comment'), nodeId: z.string(), comment: F.NodeCommentSchema.nullable() }),
 	z.object({ ...clientProps, code: z.literal('move-node'), nodeId: z.string(), parentId: z.string(), index: z.number().int().min(0) }),
 	// carries a tree rather than a filter node because node ids are minted by the originating client:
-	// upsertFilterNodeTreeInPlace would mint different ids on every replica (see the note on determinism below)
+	// F.toFilterNodeTree would mint different ids on every replica (see the note on determinism below)
 	z.object({ ...clientProps, code: z.literal('replace-tree'), tree: F.FilterNodeTreeSchema }),
 	z.object({ ...clientProps, code: z.literal('set-meta'), patch: MetaSchema.partial() }),
 	z.object({ ...clientProps, code: z.literal('save') }),
@@ -106,7 +105,7 @@ export function initState(entity: F.FilterEntity): State {
 			invertedAlertMessage: entity.invertedAlertMessage,
 			invertedEmoji: entity.invertedEmoji,
 		},
-		tree: F.upsertFilterNodeTreeInPlace(entity.filter),
+		tree: toTree(entity.filter),
 	}
 	return { filterId: entity.id, draft: saved, saved }
 }
@@ -125,7 +124,7 @@ export function localState(filterId: F.FilterEntityId, filter: F.EditableFilterN
 // replica decides for all of them: session setup on the server, or the originating client of a
 // replace-tree op. Never inside the reducer.
 export function toTree(filter: F.EditableFilterNode): F.FilterNodeTree {
-	return F.upsertFilterNodeTreeInPlace(filter)
+	return F.toFilterNodeTree(filter)
 }
 
 export function isModified(state: State): boolean {
@@ -160,54 +159,42 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 // Copy-on-write, and the reducer replays against several base states (optimistic, synced, authoritative) that
 // share structure with each other -- so nothing reachable from `state` may be mutated. Each op rebuilds only
 // what lies between the state root and what it changed: an edit to one node leaves every other node, the
-// paths, and the whole saved baseline shared with the state before it.
+// links, and the whole saved baseline shared with the state before it.
 //
 // Returns null when the op is skipped against this base state.
 function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): State | null {
 	const tree = state.draft.tree
 	switch (op.code) {
 		case 'add-node': {
-			const parentPath = tree.paths.get(op.parentId)
-			if (!parentPath || tree.nodes.has(op.nodeId)) return null
-			if (op.index === undefined) {
-				// appending moves no sibling, so the new path is the only one that changes
-				const nodes = new Map(tree.nodes).set(op.nodeId, op.node)
-				const paths = new Map(tree.paths).set(op.nodeId, [...parentPath, nextChildIndex(tree, parentPath)])
-				return withTree(state, { nodes, paths })
-			}
-			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
-			const inserted: F.FilterNodeTree = { nodes: new Map([[op.nodeId, op.node]]), paths: new Map([[op.nodeId, []]]) }
-			F.insertTreeSubtreeInPlace(next, parentPath, op.index, inserted)
-			return withTree(state, next)
+			const siblings = tree.children.get(op.parentId)
+			if (!siblings || tree.nodes.has(op.nodeId)) return null
+			const inserted = F.singleNodeTree(op.nodeId, op.node)
+			return withTree(state, F.insertSubtree(tree, op.parentId, op.index ?? siblings.length, inserted))
 		}
 		case 'clone-node': {
-			const sourcePath = tree.paths.get(op.nodeId)
 			// the root has no parent for the copy to sit beside
-			if (!sourcePath || sourcePath.length === 0) return null
-			if (!isGraftableSubtree(op.subtree)) return null
+			const parentId = tree.parents.get(op.nodeId)
+			if (parentId === undefined) return null
+			if (!F.isWellFormedTree(op.subtree)) return null
 			for (const id of op.subtree.nodes.keys()) {
 				if (tree.nodes.has(id)) return null
 			}
-			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
-			F.insertTreeSubtreeInPlace(next, sourcePath.slice(0, -1), sourcePath[sourcePath.length - 1] + 1, op.subtree)
-			return withTree(state, next)
+			const index = tree.children.get(parentId)!.indexOf(op.nodeId) + 1
+			return withTree(state, F.insertSubtree(tree, parentId, index, op.subtree))
 		}
 		case 'delete-node': {
-			const path = tree.paths.get(op.nodeId)
 			// the root has no parent to be removed from
-			if (!path || path.length === 0) return null
-			// deleteTreeNode rewrites the maps in place, so it gets copies to work on. The node objects they
-			// hold are untouched either way, and stay shared.
-			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
-			F.deleteTreeNode(next, op.nodeId)
-			return withTree(state, next)
+			if (!tree.parents.has(op.nodeId)) return null
+			return withTree(state, F.removeSubtree(tree, op.nodeId))
 		}
 		case 'update-node': {
 			const existing = tree.nodes.get(op.nodeId)
 			if (!existing) return null
+			// only a block has a child list, so a node cannot change between block and leaf
+			if (F.isEditableBlockNode(existing) !== F.isEditableBlockNode(op.node)) return null
 			if (Obj.deepEqual(existing, op.node)) return state
-			// only the nodes map moves; every path is still where it was
-			return withTree(state, { nodes: new Map(tree.nodes).set(op.nodeId, op.node), paths: tree.paths })
+			// only the nodes map moves; every link is still where it was
+			return withTree(state, { ...tree, nodes: new Map(tree.nodes).set(op.nodeId, op.node) })
 		}
 		case 'set-comment': {
 			const existing = tree.nodes.get(op.nodeId)
@@ -216,17 +203,16 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 			const node = { ...existing }
 			if (op.comment) node.comment = op.comment
 			else delete node.comment
-			return withTree(state, { nodes: new Map(tree.nodes).set(op.nodeId, node), paths: tree.paths })
+			return withTree(state, { ...tree, nodes: new Map(tree.nodes).set(op.nodeId, node) })
 		}
 		case 'move-node': {
-			const sourcePath = tree.paths.get(op.nodeId)
-			const parentPath = tree.paths.get(op.parentId)
-			if (!sourcePath || !parentPath) return null
-			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
-			F.moveTreeNodeInPlace(next, sourcePath, [...parentPath, op.index])
-			return withTree(state, next)
+			if (!tree.parents.has(op.nodeId) || !tree.children.has(op.parentId)) return null
+			if (F.isWithin(tree, op.parentId, op.nodeId)) return null
+			const moved = F.moveNode(tree, op.nodeId, op.parentId, op.index)
+			return moved === tree ? state : withTree(state, moved)
 		}
 		case 'replace-tree':
+			if (!F.isWellFormedTree(op.tree)) return null
 			return withTree(state, op.tree)
 		case 'set-meta': {
 			const meta = { ...state.draft.meta, ...Obj.trimUndefined(op.patch) }
@@ -254,31 +240,8 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 	}
 }
 
-// a subtree can only be grafted in if it has exactly one root and a node behind every path, which the
-// schema alone does not guarantee
-function isGraftableSubtree(subtree: F.FilterNodeTree): boolean {
-	if (subtree.nodes.size !== subtree.paths.size) return false
-	let roots = 0
-	for (const [id, path] of subtree.paths) {
-		if (!subtree.nodes.has(id)) return false
-		if (path.length === 0) roots++
-	}
-	return roots === 1
-}
-
 function withTree(state: State, tree: F.FilterNodeTree): State {
 	return { ...state, draft: { ...state.draft, tree } }
-}
-
-// the index a new child of `parentPath` takes. Descendants deeper than a direct child share their
-// ancestor's index at this position, so scanning every path is still correct.
-function nextChildIndex(tree: F.FilterNodeTree, parentPath: Sparse.NodePath): number {
-	let last = -1
-	for (const path of tree.paths.values()) {
-		if (!Sparse.isChildPath(parentPath, path)) continue
-		last = Math.max(last, path[parentPath.length])
-	}
-	return last + 1
 }
 
 export type Ctx = CS.Ctx & { filterEdit: Ctx.Payload }

@@ -4,13 +4,11 @@ import * as React from 'react'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
-import * as MapUtils from '@/lib/map-utils'
 import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
-import * as Sparse from '@/lib/sparse-tree'
 import * as Zus from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
 import * as FE from '@/models/filter-edit.models'
@@ -224,20 +222,23 @@ export const frame = frameManager.createFrame<Types>({
 	createKey: (frameId, input) => ({ frameId, editedFilterId: input.editedFilterId, instanceId: input.instanceId }),
 })
 
-export namespace Sel {
-	export const nodePath = (id: string | undefined) => (state: FilterEditor) => (id ? state.tree.paths.get(id) : undefined)
+const NO_CHILDREN: readonly string[] = []
 
-	export const immediateChildren = (id: string) => (state: FilterEditor) => F.resolveImmediateChildren(state.tree, id)
+export namespace Sel {
+	export const rootId = (state: FilterEditor) => state.tree.rootId
+
+	export const depth = (id: string | undefined) => (state: FilterEditor) => (id ? F.nodeDepth(state.tree, id) : undefined)
+
+	export const children = (id: string) => (state: FilterEditor) => state.tree.children.get(id) ?? NO_CHILDREN
+
+	// whether `id` is `ancestorId` or one of its descendants
+	export const isWithin = (id: string | undefined, ancestorId: string | undefined) => (state: FilterEditor) =>
+		!!id && !!ancestorId && state.tree.nodes.has(id) && F.isWithin(state.tree, id, ancestorId)
 
 	export const node =
 		(id: string) =>
 		(state: FilterEditor): F.ShallowEditableFilterNode =>
 			state.tree.nodes.get(id)!
-
-	export const idByPath =
-		(path: Sparse.NodePath) =>
-		(state: FilterEditor): string | undefined =>
-			MapUtils.revLookup(state.tree.paths, path, Sparse.serializeNodePath)
 
 	export const createHint =
 		(id: string) =>
@@ -332,14 +333,8 @@ export namespace Actions {
 		})
 	}
 
-	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
-		const tree = store(stores).getState().tree
-		// ops address nodes by id: a path resolved on one replica means something else on another once a
-		// concurrent insert has shifted it
-		const nodeId = MapUtils.revLookup(tree.paths, sourcePath, Sparse.serializeNodePath)
-		const parentId = MapUtils.revLookup(tree.paths, targetPath.slice(0, -1), Sparse.serializeNodePath)
-		if (!nodeId || !parentId) return
-		dispatch(stores, { code: 'move-node', nodeId, parentId, index: targetPath[targetPath.length - 1] })
+	export function moveNode(stores: KeyProp, nodeId: string, parentId: string, index: number) {
+		dispatch(stores, { code: 'move-node', nodeId, parentId, index })
 	}
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
