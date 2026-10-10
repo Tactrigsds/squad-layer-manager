@@ -31,6 +31,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -328,7 +329,7 @@ async function emitTeamswapsUpdated(ctx: SQS.Ctx & C.Db & CS.AbortSignal, se: Ex
 		swaps: se.swaps,
 	})
 	if (AppEvents.summarizeTeamswapChanges(appEvent).length === 0) return
-	await SquadServer.emitAppEvent(ctx, appEvent)
+	await SquadServerActions.emitAppEvent(ctx, appEvent)
 	return appEvent
 }
 
@@ -370,7 +371,7 @@ async function watchExecution(
 				MAX_EXECUTION_ATTEMPTS,
 			)
 			// a re-fire is the same swap, already logged: it only re-arms attribution for the events it produces
-			if (execution.causeId) await SquadServer.armTeamChangeAttribution(ctx, unswapped, execution.causeId)
+			if (execution.causeId) await SquadServerActions.armTeamChangeAttribution(ctx, unswapped, execution.causeId)
 			await SquadRcon.switchPlayers(ctx, unswapped)
 			ctx.teamswaps.teamswapExecutedAt = Date.now()
 			continue
@@ -551,9 +552,9 @@ const dispatchOp = Instr.spanOp(
 							}
 							if (executedAppEvent) {
 								causeId = executedAppEvent.id
-								await SquadServer.armTeamChangeAttribution(ctx, toSwap, executedAppEvent.id)
+								await SquadServerActions.armTeamChangeAttribution(ctx, toSwap, executedAppEvent.id)
 							} else {
-								const forced = await SquadServer.forceTeamChangeAppEvent(
+								const forced = await SquadServerActions.forceTeamChangeAppEvent(
 									ctx,
 									toSwap,
 									SquadServer.actorFromUser(ctx, manualOp?.source),

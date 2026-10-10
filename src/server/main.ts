@@ -44,7 +44,7 @@ import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
-import * as SquadServer from '@/systems/squad-server.server'
+import * as SquadServerLifecycle from '@/systems/squad-server-lifecycle.server'
 import * as Steam from '@/systems/steam.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -147,18 +147,18 @@ await Instr.spanOp('main', { module }, async () => {
 	Config.setup()
 	await ServerAgent.setup()
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
-	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
+	// per-server "SLM started/restarted" admin warn (sent during SquadServerLifecycle.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// migration 0109's other half: sql cannot evaluate the extractors the index is built from
 	await AppEventsSys.backfillAppEventIndex(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
-	// both before SquadServer.setup: it boots a managed server per registered server, and the seeded sandbox has to be
+	// both before SquadServerLifecycle.setup: it boots a managed server per registered server, and the seeded sandbox has to be
 	// registered by then to get one
 	Sandbox.setup()
 	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
-	await Promise.all([SquadServer.setup(), Discord.setup()])
+	await Promise.all([SquadServerLifecycle.setup(), Discord.setup()])
 
 	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// before Config.pushPublicConfig, which carries the version it reads off the changelog
@@ -177,7 +177,7 @@ await Instr.spanOp('main', { module }, async () => {
 	// the bot's intents are only known once it has logged in
 	Config.pushPublicConfig()
 
-	// after SquadServer.setup, since its gauges read SquadServer.globalState
+	// after SquadServerLifecycle.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
 	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
 	// servers reach them through the hook in setupManagedServer

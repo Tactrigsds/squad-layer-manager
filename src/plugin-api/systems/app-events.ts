@@ -1,7 +1,7 @@
 import * as AppEvents from '@/models/app-events.models'
 import * as MatchHistory from '@/systems/match-history.server'
 import type * as PluginsSys from '@/systems/plugins.server'
-import * as SquadServer from '@/systems/squad-server.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 
 /**
  * Records a PLUGIN_EVENT in the audit log and this server's activity feed, attributed to the plugin.
@@ -12,7 +12,7 @@ import * as SquadServer from '@/systems/squad-server.server'
  * it never sent.
  */
 export async function emit(ctx: PluginsSys.ServerCtx<any>, name: string, payload: unknown, message: string) {
-	await SquadServer.emitAppEvent(
+	await SquadServerActions.emitAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PluginEvent>({
 			type: 'PLUGIN_EVENT',

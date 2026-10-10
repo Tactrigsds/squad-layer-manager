@@ -80,7 +80,7 @@ function getStream(serverId: string): IsolatedSubject<string> {
 	return stream
 }
 
-// Subscribed by each managed server (see squad-server.server.ts) when its connection mode is `server-agent`.
+// Subscribed by each managed server (see squad-server-lifecycle.server.ts) when its connection mode is `server-agent`.
 export function streamFor(serverId: string): IsolatedSubject<string> {
 	return getStream(serverId)
 }
@@ -152,7 +152,7 @@ function getRconTunnel(serverId: string): RconTunnel {
 	return tunnel
 }
 
-// The RCON transport used by a `server-agent` managed server (see squad-server.server.ts). It has no auth
+// The RCON transport used by a `server-agent` managed server (see squad-server-lifecycle.server.ts). It has no auth
 // password of its own: the agent authenticates to local RCON and this transport just carries the resulting
 // byte stream, becoming ready when the agent signals `rcon-ready`.
 export function rconTransportFor(serverId: string): RconTransport {

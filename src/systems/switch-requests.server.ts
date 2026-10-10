@@ -28,6 +28,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 export const module = initModule('switchRequests')
@@ -290,8 +291,8 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 			targets: planned.fulfilled,
 			movedConnector,
 		})
-		await SquadServer.emitAppEvent(ctx, appEvent)
-		await SquadServer.armTeamChangeAttribution(ctx, targets, appEvent.id)
+		await SquadServerActions.emitAppEvent(ctx, appEvent)
+		await SquadServerActions.armTeamChangeAttribution(ctx, targets, appEvent.id)
 		for (const swap of planned.swaps) {
 			sr.swapping.set(swap.playerId, { toTeam: swap.toTeam, via: swap.via, firedAt: now, attempts: 1, causeId: appEvent.id })
 			// the connector's own move is not a fulfilled request, so it is not counted as one
@@ -304,7 +305,7 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 	if (refires.length > 0) {
 		for (const refire of refires) {
 			// the same switch, already logged: only re-arm attribution for the events the re-fire produces
-			await SquadServer.armTeamChangeAttribution(ctx, [refire.playerId], refire.causeId)
+			await SquadServerActions.armTeamChangeAttribution(ctx, [refire.playerId], refire.causeId)
 		}
 		await SquadRcon.switchPlayers(
 			ctx,
@@ -448,8 +449,8 @@ export const switchNow = Instr.spanOp(
 			causeId: null,
 			targets: [playerId],
 		})
-		await SquadServer.emitAppEvent(ctx, appEvent)
-		await SquadServer.armTeamChangeAttribution(ctx, [playerId], appEvent.id)
+		await SquadServerActions.emitAppEvent(ctx, appEvent)
+		await SquadServerActions.armTeamChangeAttribution(ctx, [playerId], appEvent.id)
 		const firedAt = Date.now()
 		sr.swapping.set(playerId, {
 			toTeam: SM.oppositeTeamId(request.fromTeam),

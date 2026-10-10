@@ -334,7 +334,7 @@ function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string 
 const LOG_FILE_POLL_INTERVAL = 250
 
 // How long after the emulator logs something before the app is certain to have read it: one poll of the log tail
-// plus the parser's wait for the tick to go quiet (squad-server.server.ts derives both from the same interval),
+// plus the parser's wait for the tick to go quiet (squad-server-lifecycle.server.ts derives both from the same interval),
 // with the same again for slack. A test that needs the app to have *seen* something has to wait this out.
 export const LOG_INGEST_SETTLE_MS = (LOG_FILE_POLL_INTERVAL + LOG_FILE_POLL_INTERVAL * 1.5) * 2
 

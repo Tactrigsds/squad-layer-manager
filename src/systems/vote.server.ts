@@ -37,6 +37,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 
@@ -300,7 +301,7 @@ export const startVote = Instr.spanOp(
 			),
 		)
 
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteStarted>({
 				type: 'VOTE_STARTED',
@@ -433,7 +434,7 @@ export const abortVote = Instr.spanOp(
 			ctx.vote.update$.next(update)
 		}
 
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteAborted>({
 				type: 'VOTE_ABORTED',
@@ -645,7 +646,7 @@ export const endVote = Instr.spanOp(
 		if (endingVoteState.code === 'ended:insufficient-votes') {
 			await broadcastVoteUpdate(ctx, endingVoteState, ctx.tr.broadcast(V_Msgs.insufficientVotes(listItem, displayProps)))
 		}
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteEnded>({
 				type: 'VOTE_ENDED',

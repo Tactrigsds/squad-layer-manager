@@ -50,6 +50,8 @@ import * as Reminders from '@/systems/post-roll-reminders.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
+import * as SquadServerIngest from '@/systems/squad-server-ingest.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -778,7 +780,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 		}
 		if (attributeAhead) {
 			// detached: awaiting it under updateLayerMtx deadlocks against a roll waiting on that mutex
-			SquadServer.pushAttribution(ctx, {
+			SquadServerIngest.pushAttribution(ctx, {
 				type: 'MAP_SET_ATTRIBUTION',
 				itemId,
 				layerId: nextQueuedLayerId,
@@ -789,20 +791,20 @@ export const syncNextLayerToServer = Instr.spanOp(
 		try {
 			res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
 		} catch (err) {
-			if (attributeAhead) SquadServer.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
+			if (attributeAhead) SquadServerIngest.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
 			throw err
 		}
 		// we do this so we can stay in this async context so we hold on to the mutex that we acquired
 		switch (res.code) {
 			case 'err:unable-to-set-next-layer':
 				syncState$.next({ code: 'err:refused', actualLayerId: res.unexpectedLayerId })
-				if (attributeAhead) SquadServer.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
+				if (attributeAhead) SquadServerIngest.withdrawAttribution(ctx, itemId, nextQueuedLayerId).catch(logAttributionError)
 				break
 			case 'err:rcon':
 				syncState$.next({ code: 'err:rcon' })
 				// the command may still have landed
 				if (!attributeAhead) {
-					SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch(
+					SquadServerIngest.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch(
 						logAttributionError,
 					)
 				}
@@ -824,7 +826,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 						matchId: MatchHistory.peekCurrentMatch(ctx)?.historyEntryId ?? null,
 						causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
 					})
-					if (AppEvents.isFeedVisible(mapSet)) await SquadServer.emitAppEvent(ctx, mapSet)
+					if (AppEvents.isFeedVisible(mapSet)) await SquadServerActions.emitAppEvent(ctx, mapSet)
 					else await AppEventsSys.persistAppEvent(ctx, mapSet)
 					// attribute to whichever app event reaches the feed, since that's what the server event collapses into:
 					// the QUEUE_UPDATED for a queue-driven set (its MAP_SET is audit-only), the MAP_SET itself for an override.
@@ -832,7 +834,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 					mapSetAppEventId = mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : mapSet.id
 				}
 				if (!attributeAhead) {
-					SquadServer.pushAttribution(ctx, {
+					SquadServerIngest.pushAttribution(ctx, {
 						type: 'MAP_SET_ATTRIBUTION',
 						itemId,
 						layerId: nextQueuedLayerId,
@@ -1382,7 +1384,7 @@ const handleSideEffect = Instr.spanOp(
 				const removed = se.prevItems.filter((item) => !nextIds.has(item.itemId))
 				if (se.trigger === 'consumed') {
 					if (removed.length > 0) {
-						await SquadServer.emitAppEvent(
+						await SquadServerActions.emitAppEvent(
 							ctx,
 							AppEvents.create<AppEvents.LayerRequestConsumed>({
 								type: 'LAYER_REQUEST_CONSUMED',
@@ -1400,7 +1402,7 @@ const handleSideEffect = Instr.spanOp(
 				}
 				// each added item is attributed to whoever created it; the removal batch to whoever performed the write
 				for (const item of added) {
-					await SquadServer.emitAppEvent(
+					await SquadServerActions.emitAppEvent(
 						ctx,
 						AppEvents.create<AppEvents.LayerRequestAdded>({
 							type: 'LAYER_REQUEST_ADDED',
@@ -1414,7 +1416,7 @@ const handleSideEffect = Instr.spanOp(
 					)
 				}
 				if (removed.length > 0) {
-					await SquadServer.emitAppEvent(
+					await SquadServerActions.emitAppEvent(
 						ctx,
 						AppEvents.create<AppEvents.LayerRequestRemoved>({
 							type: 'LAYER_REQUEST_REMOVED',
@@ -1476,7 +1478,7 @@ const handleSideEffect = Instr.spanOp(
 					list: se.list,
 					save,
 				})
-				await SquadServer.emitAppEvent(ctx, queueUpdated)
+				await SquadServerActions.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
 				await UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)

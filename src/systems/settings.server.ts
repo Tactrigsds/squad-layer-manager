@@ -25,6 +25,7 @@ import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Seed from '@/systems/seed.server'
 import * as ServerConsole from '@/systems/server-console.server'
+import * as SquadServerLifecycle from '@/systems/squad-server-lifecycle.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 const module = initModule('settings')
@@ -774,7 +775,7 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const res = await SquadServer.enableServer(input.serverId)
+			const res = await SquadServerLifecycle.enableServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'enabled', input.serverId)
 			return res
 		}),
@@ -783,7 +784,7 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const res = await SquadServer.disableServer(input.serverId)
+			const res = await SquadServerLifecycle.disableServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'disabled', input.serverId)
 			return res
 		}),
@@ -808,7 +809,7 @@ const adminRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
 			const deletedName = serverRegistry.get(input.serverId)?.displayName
-			const res = await SquadServer.deleteServer(input.serverId)
+			const res = await SquadServerLifecycle.deleteServer(input.serverId)
 			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId, deletedName)
 			return res
 		}),
@@ -900,9 +901,9 @@ const adminRouter = {
 			log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
 
 			if (connectionsChanged) {
-				await SquadServer.restartIfRunning(serverId)
+				await SquadServerLifecycle.restartIfRunning(serverId)
 			} else {
-				await SquadServer.ensureRunning(serverId)
+				await SquadServerLifecycle.ensureRunning(serverId)
 			}
 
 			await AppEventsSys.persistAppEvent(
