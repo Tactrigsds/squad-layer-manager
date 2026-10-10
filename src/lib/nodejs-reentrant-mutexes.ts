@@ -26,6 +26,32 @@ export function addReleaseTask(task: () => void | Promise<void>) {
 	mtxStorage.getStore()?.releaseTasks.add(task)
 }
 
+// withAcquired with nothing to acquire: still a release-task scope of its own, so tasks added inside run once the
+// callback settles, but the parent's locked set is shared rather than copied, since nothing is added to it.
+function runUnlocked<Cb extends (...args: any[]) => Promise<any>>(cb: Cb, args: Parameters<Cb>): ReturnType<Cb> {
+	const releaseTasks = new Set<() => void | Promise<void>>()
+	const locked = mtxStorage.getStore()?.locked ?? new Set()
+	return mtxStorage.run({ locked, releaseTasks }, async () => {
+		try {
+			return await cb(...args)
+		} finally {
+			if (releaseTasks.size > 0) {
+				const logError: (...args: any[]) => void =
+					typeof (args[0] as any)?.log === 'function' ? (...a: any[]) => args[0].log.error?.(...a) : console.error
+				void Promise.resolve().then(() => {
+					for (const task of releaseTasks) {
+						try {
+							void task()
+						} catch (err) {
+							logError(err, 'error during release task execution')
+						}
+					}
+				})
+			}
+		}
+	}) as ReturnType<Cb>
+}
+
 /**
  * Runs a callback while all supplied mutexes are acquired.
  *
@@ -41,10 +67,9 @@ export const withAcquired = <Cb extends (...args: any[]) => Promise<any>>(
 	cb: Cb,
 ): Cb =>
 	((...args: Parameters<Cb>) => {
-		if (typeof getMutexes === 'function') {
-			getMutexes = getMutexes(...args)
-		}
-		const mutexes = Array.isArray(getMutexes) ? getMutexes : [getMutexes]
+		const resolved = typeof getMutexes === 'function' ? getMutexes(...args) : getMutexes
+		const mutexes = Array.isArray(resolved) ? resolved : [resolved]
+		if (mutexes.length === 0) return runUnlocked(cb, args)
 		return mtxStorage.run({ locked: new Set(mtxStorage.getStore()?.locked), releaseTasks: new Set() }, async () => {
 			const { locked, releaseTasks } = mtxStorage.getStore()!
 			// being in 'locked', means that we've already acquired this mutex
