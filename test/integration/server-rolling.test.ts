@@ -334,9 +334,15 @@ describe('the event archive', () => {
 			db.close()
 		}
 
+		// The three counts must cover the same events, but the app keeps recording events (queue reminders warn the
+		// admins on a timer). Bound every query at one cutoff, and wait for the log tail to record every event
+		// logged before the cutoff.
+		const to = Date.now()
+		await app.waitForRosterSync()
+
 		// basic mode's events default to the DEFAULT feed, which the advanced tree below does not apply
-		const allEvents = await client.history.query({ query: { feed: 'ALL' } })
-		const onMap = await client.history.query({ query: { feed: 'ALL', map: indexedMap } })
+		const allEvents = await client.history.query({ query: { feed: 'ALL', to } })
+		const onMap = await client.history.query({ query: { feed: 'ALL', map: indexedMap, to } })
 		expect(onMap.code).toBe('ok')
 		if (allEvents.code !== 'ok' || allEvents.type !== 'events') return
 		if (onMap.code !== 'ok' || onMap.type !== 'events') return
@@ -345,6 +351,7 @@ describe('the event archive', () => {
 		const offMap = await client.history.query({
 			query: {
 				mode: 'advanced',
+				to,
 				q: {
 					type: 'eq',
 					neg: true,
