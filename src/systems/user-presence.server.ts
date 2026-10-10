@@ -12,8 +12,8 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as SettingsSys from '@/systems/settings.server'
-import * as WSSessionSys from '@/systems/ws-session.server'
+import * as Settings from '@/systems/settings.server'
+import * as WsSessionSys from '@/systems/ws-session.server'
 
 // the two shared drafts a client can hold an editing session on
 type DispatchedOps = ODSM.Server.Dispatched<UP.Op, UP.Rejection>
@@ -189,7 +189,7 @@ export function reclaimClientId(userId: bigint, priorClientId?: string): string 
 	if (priorClientId !== undefined) {
 		const presence = globalUserPresence.session.state.presence.get(priorClientId)
 		if (presence && presence.userId === userId && presence.connectionState !== 'disconnected') {
-			WSSessionSys.evictStaleSocket(priorClientId)
+			WsSessionSys.evictStaleSocket(priorClientId)
 			return markReclaimed(priorClientId)
 		}
 	}
@@ -333,7 +333,7 @@ export function setup() {
 
 	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
-	const enabledServersSub = SettingsSys.publicSettings$
+	const enabledServersSub = Settings.publicSettings$
 		.pipe(
 			// scoped servers are included like any other: presence is what the owner's own queue editing runs on (the
 			// EDITING_QUEUE activity and its item locks), so dropping them here would collapse that activity to null and
@@ -354,7 +354,7 @@ export function setup() {
 	// interrupted client that isn't reclaimed within DISCONNECT_TIMEOUT is gone for good. The timer is
 	// tracked per id and superseded on each close/reclaim, since ids are reused across reconnects and a
 	// disconnect->reconnect->disconnect flap must not let a stale timer disconnect a fresh interruption.
-	const disconnectSub = WSSessionSys.disconnect$.subscribe(({ ctx, interrupted }) => {
+	const disconnectSub = WsSessionSys.disconnect$.subscribe(({ ctx, interrupted }) => {
 		const wsClientId = ctx.wsClientId
 		clearPendingDisconnect(wsClientId)
 		if (!interrupted) {
@@ -392,7 +392,7 @@ export function setup() {
 					// we don't want to remove presence instances that still might have an away indicator
 					const pastDisconnectTimeout =
 						presence.lastSeen === null || Date.now() - presence.lastSeen > UP.DISPLAYED_AWAY_PRESENCE_WINDOW
-					if (!WSSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
+					if (!WsSessionSys.wsSessions.has(wsClientId) && pastDisconnectTimeout) {
 						clientIdsToRemove.push(wsClientId)
 					}
 				}

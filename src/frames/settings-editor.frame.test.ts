@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
 
-import * as Editor from './settings-editor.frame'
+import * as SettingsEditorFrame from './settings-editor.frame'
 
 // deriveComputed is pure, so it runs against a state shape rather than a live frame. The cases below all follow the same
 // shape: take the baseline the server hands back, apply an edit the rbac editor actually makes, and check the change list
@@ -13,8 +13,8 @@ import * as Editor from './settings-editor.frame'
 // what watchSettings streams: the parsed settings encoded back to the input shape
 const baseline: any = SETTINGS.GlobalSettingsSchema.encode(SETTINGS.parseGlobalSettings({}).data!)
 
-function globalState(draft: any): Editor.SettingsEditor {
-	return { kind: 'global', mode: 'gui', saved: baseline, draft, yamlValid: null } as Editor.SettingsEditor
+function globalState(draft: any): SettingsEditorFrame.SettingsEditor {
+	return { kind: 'global', mode: 'gui', saved: baseline, draft, yamlValid: null } as SettingsEditorFrame.SettingsEditor
 }
 
 function withRole(roleId: string, cfg: any) {
@@ -22,13 +22,13 @@ function withRole(roleId: string, cfg: any) {
 }
 
 // the state after a save: `saved` is the round-tripped draft, exactly what the server sends back
-function afterSaving(draft: any): Editor.SettingsEditor {
+function afterSaving(draft: any): SettingsEditorFrame.SettingsEditor {
 	const parsed = SETTINGS.parseGlobalSettings(draft)
 	if (!parsed.success) throw new Error(`draft does not parse: ${parsed.error.message}`)
 	return { ...globalState(draft), saved: SETTINGS.GlobalSettingsSchema.encode(parsed.data) }
 }
 
-const changePaths = (state: Editor.SettingsEditor) => Editor.deriveComputed(state).changes.map((c) => c.path)
+const changePaths = (state: SettingsEditorFrame.SettingsEditor) => SettingsEditorFrame.deriveComputed(state).changes.map((c) => c.path)
 
 describe('deriveComputed changes', () => {
 	it('reports nothing for an untouched draft', () => {
@@ -62,6 +62,6 @@ describe('deriveComputed changes', () => {
 	it('still diffs a draft that does not parse', () => {
 		const draft = withRole('admins', { ...baseline.rbac.roles.admins, permissions: ['not-a-permission'] })
 		expect(changePaths(globalState(draft))).toEqual(['rbac.roles.admins.permissions'])
-		expect(Editor.deriveComputed(globalState(draft)).valid).toBe(false)
+		expect(SettingsEditorFrame.deriveComputed(globalState(draft)).valid).toBe(false)
 	})
 })

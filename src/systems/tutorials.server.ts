@@ -15,7 +15,7 @@ import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
-import * as SettingsModels from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -26,7 +26,7 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
-import * as LayerQueueSys from '@/systems/layer-queue.server'
+import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Settings from '@/systems/settings.server'
@@ -35,7 +35,7 @@ import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as UserPresence from '@/systems/user-presence.server'
-import * as WSSessionSys from '@/systems/ws-session.server'
+import * as WsSessionSys from '@/systems/ws-session.server'
 
 // The tutorial runtime. A run is one scoped, ephemeral emulated server (src/emulator, via sandbox.server) staged
 // for a scenario, with a coachmark tour narrating the real dashboard on top of it. This file is the server half:
@@ -57,7 +57,7 @@ export type StageCtx = C.Db &
 	MH.Ctx &
 	V.Ctx &
 	SR.Ctx.Rcon &
-	SettingsModels.Ctx &
+	SETTINGS.Ctx &
 	Msgs.Ctx &
 	CS.AbortSignal & { sandbox: Sandbox.SandboxInstance; owner: bigint }
 
@@ -158,7 +158,7 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 	// save/reset bump editWindowSeqId, so every op reads it fresh; a stale value silently skips the op
 	const opBase = () => ({ opId: SLL.createOpId(), userId: owner, editWindowSeqId: state().editWindowSeqId })
 
-	if (SLL.hasMutations(state())) await LayerQueueSys.dispatchOp(ctx, { op: 'reset-to-saved', ...opBase() })
+	if (SLL.hasMutations(state())) await LayerQueue.dispatchOp(ctx, { op: 'reset-to-saved', ...opBase() })
 
 	const alreadyThere =
 		spec.saved === 'generated'
@@ -168,9 +168,9 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 					.join() === spec.saved.join()
 	if (!alreadyThere) {
 		const itemIds = state().list.map((it) => it.itemId)
-		if (itemIds.length > 0) await LayerQueueSys.dispatchOp(ctx, { op: 'clear', itemIds, ...opBase() })
+		if (itemIds.length > 0) await LayerQueue.dispatchOp(ctx, { op: 'clear', itemIds, ...opBase() })
 		if (spec.saved !== 'generated') {
-			await LayerQueueSys.dispatchOp(ctx, {
+			await LayerQueue.dispatchOp(ctx, {
 				op: 'add',
 				items: spec.saved.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
 				index: { outerIndex: 0, innerIndex: null },
@@ -179,11 +179,11 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 		}
 		// saving an empty list requests generation instead of persisting; the client's ready selector waits for
 		// the generated head to land
-		await LayerQueueSys.dispatchOp(ctx, { op: 'save', ...opBase() })
+		await LayerQueue.dispatchOp(ctx, { op: 'save', ...opBase() })
 	}
 
 	if (spec.draftPrepend?.length) {
-		await LayerQueueSys.dispatchOp(ctx, {
+		await LayerQueue.dispatchOp(ctx, {
 			op: 'add',
 			items: spec.draftPrepend.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
 			index: { outerIndex: 0, innerIndex: null },
@@ -200,7 +200,7 @@ const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageC
 // the owner's live browser clients. Editing is fabricated for all of them, since presence cannot tell which tab is
 // on the dashboard; an owner realistically has one.
 function ownerClientIds(owner: bigint): string[] {
-	return [...WSSessionSys.wsSessions.values()].filter((s) => s.user.discordId === owner).map((s) => s.wsClientId)
+	return [...WsSessionSys.wsSessions.values()].filter((s) => s.user.discordId === owner).map((s) => s.wsClientId)
 }
 
 // ============================== scenarios ==============================
@@ -620,11 +620,11 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string, owner: bigin
 
 function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, nextLayerId: L.LayerId | null) {
 	const pacing = scenario.pacing
-	const settings = SettingsModels.PublicServerSettingsSchema.parse({})
+	const settings = SETTINGS.PublicServerSettingsSchema.parse({})
 	const ids = filterIdsFor(owner)
 	return {
 		...settings,
-		connections: SettingsModels.SandboxConnectionSchema.parse({
+		connections: SETTINGS.SandboxConnectionSchema.parse({
 			type: 'sandbox',
 			serverName: 'SLM Tutorial',
 			postMatchDelayMs: pacing.postMatchDelayMs,

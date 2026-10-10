@@ -1,4 +1,4 @@
-import * as D from 'drizzle-orm/sqlite-core'
+import * as SqliteCore from 'drizzle-orm/sqlite-core'
 
 import { z } from '@/lib/zod'
 import * as CMD from '@/models/command.models'
@@ -136,8 +136,8 @@ export const PermissionInfoSchema = z.object({
 
 // What registerPermissions hands back: one builder per declared action, asking for a server only where the
 // declaration said the action is about one.
-export type PermissionBuilders<D extends Record<string, PermissionDeclaration>> = {
-	[K in keyof D]: D[K]['scope'] extends 'server'
+export type PermissionBuilders<SqliteCore extends Record<string, PermissionDeclaration>> = {
+	[K in keyof SqliteCore]: SqliteCore[K]['scope'] extends 'server'
 		? (serverId: string) => RBAC.Permission<'plugin:action'>
 		: () => RBAC.Permission<'plugin:action'>
 }
@@ -246,10 +246,10 @@ export type PluginMigration = {
 // named rather than inferred so the API report prints `TableFactory` instead of drizzle's six
 // kilobytes of expanded SQLiteTableWithColumns
 export interface TableFactory {
-	table: <Cols extends Record<string, D.SQLiteColumnBuilderBase>>(
+	table: <Cols extends Record<string, SqliteCore.SQLiteColumnBuilderBase>>(
 		name: string,
 		columns: Cols,
-	) => ReturnType<typeof D.sqliteTable<string, Cols>>
+	) => ReturnType<typeof SqliteCore.sqliteTable<string, Cols>>
 	/**
 	 * The prefixed name `table(name, ...)` would produce, for the raw sql in migrations. Spell the
 	 * unprefixed name out there rather than reaching into the schema module: a migration is frozen in
@@ -265,7 +265,7 @@ export interface TableFactory {
 export function defineTables(manifest: { id: PluginId }): TableFactory {
 	const prefix = tablePrefix(manifest.id)
 	return {
-		table: (name, columns) => D.sqliteTable(prefix + name, columns),
+		table: (name, columns) => SqliteCore.sqliteTable(prefix + name, columns),
 		name: (name) => prefix + name,
 	}
 }

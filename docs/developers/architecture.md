@@ -76,7 +76,8 @@ app**. `import * as F from '@/models/filter.models'` means `F` is the filter mod
 Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS` (context-shared), `C`
 (server context), `SLL` (shared-layer-list).
 
-Each module has _only_ one alias, so a reader who knows the abbreviations can read any file quickly. The lib vocabulary:
+Each module has _only_ one alias, so a reader who knows the abbreviations can read any file quickly. `pnpm run lint`
+rejects a second alias for a module, and an alias that already names another module. The lib vocabulary:
 
 | namespace                        | module                                                        |                                                    |
 | -------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |

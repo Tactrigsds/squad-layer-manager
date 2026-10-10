@@ -12,7 +12,7 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as LQYClient from '@/systems/layer-queries.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import EmojiDisplay from './emoji-display'
@@ -119,12 +119,12 @@ function useIndicatorModel(props: ConstraintEvalTooltipProps) {
 	const layerId = props.layerId ?? props.layerItem?.layerId
 	const itemId = props.layerItem && LQY.resolveId(props.layerItem)
 	const onMouseOver = () => {
-		LQYClient.Actions.setHoveredConstraintItemId(itemId ?? null)
+		LayerQueriesClient.Actions.setHoveredConstraintItemId(itemId ?? null)
 	}
 	const onMouseOut = () => {
-		const state = Zus.getState(LQYClient.Store)
+		const state = Zus.getState(LayerQueriesClient.Store)
 		if (state.hoveredConstraintItemId !== itemId) return
-		LQYClient.Actions.setHoveredConstraintItemId(null)
+		LayerQueriesClient.Actions.setHoveredConstraintItemId(null)
 	}
 
 	const descriptorsForItem = props.matchDescriptors?.filter((desc) => {

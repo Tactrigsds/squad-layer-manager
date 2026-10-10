@@ -28,7 +28,6 @@ import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import * as LQYClient from '@/systems/layer-queries.client.ts'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -116,12 +115,12 @@ function ValidationWarningsDisplay(props: {
 							{repeatWarnings.map((warning) => {
 								const { item, index, parity, descriptors } = warning
 								const onMouseOver = () => {
-									LQYClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
+									LayerQueriesClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
 								}
 								const onMouseOut = () => {
-									const state = Zus.getState(LQYClient.Store)
+									const state = Zus.getState(LayerQueriesClient.Store)
 									if (state.hoveredConstraintItemId !== item.itemId) return
-									LQYClient.Actions.setHoveredConstraintItemId(null)
+									LayerQueriesClient.Actions.setHoveredConstraintItemId(null)
 								}
 								return (
 									<div
@@ -163,12 +162,12 @@ function ValidationWarningsDisplay(props: {
 							{[...filterWarnings.values()].map((warnings) => {
 								const { item, index, parity } = warnings[0]
 								const onMouseOver = () => {
-									LQYClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
+									LayerQueriesClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
 								}
 								const onMouseOut = () => {
-									const state = Zus.getState(LQYClient.Store)
+									const state = Zus.getState(LayerQueriesClient.Store)
 									if (state.hoveredConstraintItemId !== item.itemId) return
-									LQYClient.Actions.setHoveredConstraintItemId(null)
+									LayerQueriesClient.Actions.setHoveredConstraintItemId(null)
 								}
 								return (
 									<div

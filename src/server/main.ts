@@ -34,7 +34,7 @@ import * as MatchTallies from '@/systems/match-tallies.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Seed from '@/systems/seed.server'
@@ -52,7 +52,7 @@ import * as Tutorials from '@/systems/tutorials.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
-import * as WsSession from '@/systems/ws-session.server'
+import * as WsSessionSys from '@/systems/ws-session.server'
 
 import * as Config from './config.server.ts'
 import * as DB from './db'
@@ -119,7 +119,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Teamswaps.setup()
 	Users.setup()
 	Vote.setup()
-	WsSession.setup()
+	WsSessionSys.setup()
 	// resolves the artifact pair and its etag. The artifact itself is not decompressed into wasm memory until
 	// something queries it, which on a server with a non-empty saved queue may be never
 	await LayerEngine.setup()
@@ -181,7 +181,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Metrics.setup()
 	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
 	// servers reach them through the hook in setupManagedServer
-	await Plugins.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), [
+	await PluginsSys.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), [
 		...BUILTIN_PLUGINS,
 		...(ENV.NODE_ENV === 'development' ? await discoverSourcePlugins() : []),
 	])

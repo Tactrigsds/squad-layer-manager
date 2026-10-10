@@ -3,7 +3,7 @@ import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as z from '@/lib/zod'
 import * as LC from '@/models/layer-columns'
-import type * as SLL from '@/models/squad-layer-list.models'
+import type * as SquadLL from '@/models/squad-layer-list.models'
 
 // fully derived layer data, loaded at startup by layer-data.server/layer-data.client (or built
 // directly during preprocessing). models are supposed to be inert, so this state living here is a
@@ -996,7 +996,7 @@ export type LayerFactionAvailabilityEntry = {
 	unitObjectNames?: { 1?: string; 2?: string }
 }
 
-export type FactionUnitConfig = SLL.Unit
+export type FactionUnitConfig = SquadLL.Unit
 export type FactionUnitConfigMapping = Record<string, FactionUnitConfig>
 export type LayerDetails = {
 	layer: KnownLayer

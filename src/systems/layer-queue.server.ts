@@ -43,17 +43,17 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
-import * as LayerQueriesServer from '@/systems/layer-queries.server'
-import * as LayerQueries from '@/systems/layer-queries.shared.ts'
+import * as LayerQueries from '@/systems/layer-queries.server'
+import * as LayerQueriesShared from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Reminders from '@/systems/post-roll-reminders.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as UserPresenceSys from '@/systems/user-presence.server'
+import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
-import * as VoteSys from '@/systems/vote.server'
+import * as Vote from '@/systems/vote.server'
 
 // ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
 // roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
@@ -350,7 +350,7 @@ export const setupInstance = Instr.spanOp(
 
 		// -------- discard drafts whose last editor left without saving --------
 		ctx.cleanup.push(
-			UserPresenceSys.editingAbandoned$(serverId)
+			UserPresence.editingAbandoned$(serverId)
 				.pipe(
 					Instr.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
 						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
@@ -546,7 +546,7 @@ export async function saveQueueAndUpdateServer(
 	// the QUEUE_UPDATED for this save; the resulting MAP_SET app event (if the next layer changed) links back to it
 	queueUpdatedId?: string,
 ) {
-	await VoteSys.syncVoteStateWithQueueState(ctx, list)
+	await Vote.syncVoteStateWithQueueState(ctx, list)
 	return await DB.runTransaction(ctx, { redactParams: true }, async (txCtx) => {
 		const serverState = await SquadServer.getServerState(txCtx)
 		const nextItemId = list[0]?.itemId || null
@@ -609,8 +609,8 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	async (ctx: SideEffectCtx) => {
 		const serverState = await SquadServer.getServerState(ctx)
 		const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
-		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
-		const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
+		const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
+		const layerItemsState = await LayerQueries.resolveLayerItemsState(ctx)
 		const templates = ctx.layerQueue.session.state.savedBackburner.map((item) => ({ itemId: item.itemId, filter: item.filter }))
 
 		const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
@@ -618,7 +618,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 			constraints: LQY.Constraint[] = allConstraints,
 		): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
 			try {
-				const res = await LayerQueries.generateWithBackburner({
+				const res = await LayerQueriesShared.generateWithBackburner({
 					ctx: layerCtx,
 					input: {
 						constraints,
@@ -676,13 +676,13 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 	const serverState = await SquadServer.getServerState(ctx)
 	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
 	// statuses need the engine, so the query ctx is only resolved once there is a head to report on
-	const queryCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
-	const statusRes = await LayerQueries.getLayerItemStatuses({
+	const queryCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
+	const statusRes = await LayerQueriesShared.getLayerItemStatuses({
 		ctx: queryCtx,
 		input: {
 			constraints: allConstraints,
 			skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
-			list: await LayerQueriesServer.resolveLayerItemsState(ctx),
+			list: await LayerQueries.resolveLayerItemsState(ctx),
 		},
 	})
 	if (statusRes.code !== 'ok') return undefined
@@ -1051,8 +1051,8 @@ export const router = {
 				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write', { serverId: ctx.serverId }))
 				if (forceWriteDenied) {
 					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
-					const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
-					const poolRes = await LayerQueries.getLayersOutOfPool({
+					const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
+					const poolRes = await LayerQueriesShared.getLayersOutOfPool({
 						ctx: layerCtx,
 						input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
 					})
@@ -1078,8 +1078,8 @@ export async function isTemplateSatisfiable(
 	ctx: C.Db & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
 	filter: F.FilterNode,
 ): Promise<boolean> {
-	const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
-	const res = await LayerQueries.checkBackburnerTemplates({
+	const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
+	const res = await LayerQueriesShared.checkBackburnerTemplates({
 		ctx: layerCtx,
 		input: {
 			// a request only this server's missing mods could satisfy has no solutions here either
@@ -1349,7 +1349,7 @@ const handleSideEffect = Instr.spanOp(
 			case 'op-outcome':
 				break
 			case 'edit-window-closed': {
-				await UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
+				await UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break
 			}
 			case 'request-queue-item-generation': {
@@ -1371,7 +1371,7 @@ const handleSideEffect = Instr.spanOp(
 					await SquadServer.updateServerState(ctx, { backburner: se.items }, { type: 'system', event: 'backburner-updated' })
 				})
 				if (se.trigger === 'user-save') {
-					UserPresenceSys.dispatchEndAllLayerRequestEditing(ctx.serverId)
+					UserPresence.dispatchEndAllLayerRequestEditing(ctx.serverId)
 				}
 				const matchId = (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null
 				const describe = (item: BB.BackburnerItem) =>
@@ -1460,7 +1460,7 @@ const handleSideEffect = Instr.spanOp(
 					triggerOp?.op === 'save'
 						? {
 								force: triggerOp.force ?? false,
-								overrodeEditors: UserPresenceSys.getQueueEditors(ctx.serverId, triggerOp.userId),
+								overrodeEditors: UserPresence.getQueueEditors(ctx.serverId, triggerOp.userId),
 							}
 						: undefined
 				const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
@@ -1479,7 +1479,7 @@ const handleSideEffect = Instr.spanOp(
 				await SquadServer.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)
 				await dispatchOp(ctx, { op: 'save-completed', opId: SLL.createOpId() })
-				await UserPresenceSys.dispatchEndAllLayerQueueEditing(ctx.serverId)
+				await UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)
 				break
 			}
 			default:

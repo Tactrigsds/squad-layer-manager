@@ -1,5 +1,5 @@
 import * as Otel from '@opentelemetry/api'
-import * as DateFns from 'date-fns'
+import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm'
 import * as Crypto from 'node:crypto'
 
@@ -246,7 +246,7 @@ export const validateAndUpdate = Instr.spanOp(
 
 		let expiresAt = cachedSession.expiresAt
 		if (allowRefresh && cachedSession.expiresAt.getTime() - currentTime.getTime() < Math.floor(SESSION_MAX_AGE / 4)) {
-			expiresAt = new Date(DateFns.getTime(currentTime) + SESSION_MAX_AGE)
+			expiresAt = new Date(dateFns.getTime(currentTime) + SESSION_MAX_AGE)
 			await updateSessionInCacheAndDb(ctx, sessionId, { expiresAt })
 		}
 

@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
-import * as zlib from 'node:zlib'
+import * as Zlib from 'node:zlib'
 
 import * as Paths from '$root/paths'
 
@@ -11,8 +11,8 @@ import * as Paths from '$root/paths'
 // cache miss at whatever setting is cheap enough to do inline. Runs after build:client and build:landing-css, so it
 // sees everything that ships, and vite empties dist/ beforehand so there is nothing stale to clean up.
 
-const gzip = promisify(zlib.gzip)
-const brotli = promisify(zlib.brotliCompress)
+const gzip = promisify(Zlib.gzip)
+const brotli = promisify(Zlib.brotliCompress)
 
 const COMPRESSIBLE = new Set(['.js', '.mjs', '.cjs', '.css', '.html', '.json', '.map', '.svg', '.txt', '.wasm', '.webmanifest'])
 // under this, a sibling saves less than the headers of the request that would fetch it
@@ -38,15 +38,15 @@ function filesToCompress(dir: string): string[] {
 
 async function compress(filePath: string) {
 	const raw = await fs.promises.readFile(filePath)
-	const quality = filePath.endsWith('.map') ? MAP_BROTLI_QUALITY : zlib.constants.BROTLI_MAX_QUALITY
+	const quality = filePath.endsWith('.map') ? MAP_BROTLI_QUALITY : Zlib.constants.BROTLI_MAX_QUALITY
 	const [br, gz] = await Promise.all([
 		brotli(raw, {
 			params: {
-				[zlib.constants.BROTLI_PARAM_QUALITY]: quality,
-				[zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length,
+				[Zlib.constants.BROTLI_PARAM_QUALITY]: quality,
+				[Zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length,
 			},
 		}),
-		gzip(raw, { level: zlib.constants.Z_BEST_COMPRESSION }),
+		gzip(raw, { level: Zlib.constants.Z_BEST_COMPRESSION }),
 	])
 
 	let written = 0

@@ -1,4 +1,4 @@
-import * as crypto from 'node:crypto'
+import * as Crypto from 'node:crypto'
 
 import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
@@ -7,7 +7,7 @@ import { z } from '@/lib/zod'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as SB from '@/models/sandbox.models'
-import * as SettingsModels from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import { SandboxConnectionSchema } from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
@@ -68,9 +68,9 @@ export function setup() {
 
 // Loopback-only and holds nothing, but it is still the credential on a socket, so it is generated rather than a
 // constant: nothing outside this process ever needs to know it.
-const RCON_PASSWORD = crypto.randomBytes(24).toString('hex')
+const RCON_PASSWORD = Crypto.randomBytes(24).toString('hex')
 
-export function isSandbox(connections: SettingsModels.ServerConnection): connections is SettingsModels.SandboxConnection {
+export function isSandbox(connections: SETTINGS.ServerConnection): connections is SETTINGS.SandboxConnection {
 	return connections.type === 'sandbox'
 }
 
@@ -80,7 +80,7 @@ export function getInstance(serverId: string): SandboxInstance | undefined {
 
 // Started once per server and kept until the server is deleted or the process exits. The port is ephemeral and
 // therefore assigned here rather than configured, so the managed server has to ask for it (connectionFor) after this resolves.
-export async function ensureInstance(serverId: string, conn: SettingsModels.SandboxConnection): Promise<SandboxInstance> {
+export async function ensureInstance(serverId: string, conn: SETTINGS.SandboxConnection): Promise<SandboxInstance> {
 	const existing = instances.get(serverId)
 	if (existing) return existing
 
@@ -160,7 +160,7 @@ export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
 	if (entries.some((e) => e.id === SEEDED_SERVER_ID)) return
 
 	const settings = Seed.applyInitialPoolConfig({
-		...SettingsModels.PublicServerSettingsSchema.parse({}),
+		...SETTINGS.PublicServerSettingsSchema.parse({}),
 		connections: SandboxConnectionSchema.parse({ type: 'sandbox' }),
 	})
 	const res = await Settings.createServerEntry(ctx, {
@@ -212,7 +212,7 @@ export function populateDemoWorlds() {
 	}
 }
 
-export function connectionFor(serverId: string): SettingsModels.RconConnection {
+export function connectionFor(serverId: string): SETTINGS.RconConnection {
 	const instance = instances.get(serverId)
 	if (!instance) throw new Error(`sandbox ${serverId} has no running emulator`)
 	return { host: '127.0.0.1', port: instance.emu.rconPort, password: RCON_PASSWORD }

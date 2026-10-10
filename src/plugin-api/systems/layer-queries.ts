@@ -3,8 +3,8 @@ import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import type * as LQY from '@/models/layer-queries.models'
 import type * as GV from '@/plugin-api/models/gen-vote'
-import * as LayerQueriesSys from '@/systems/layer-queries.server'
-import * as LayerQueries from '@/systems/layer-queries.shared'
+import * as LayerQueries from '@/systems/layer-queries.server'
+import * as LayerQueriesShared from '@/systems/layer-queries.shared'
 import type * as PluginsSys from '@/systems/plugins.server'
 
 /**
@@ -25,13 +25,13 @@ import type * as PluginsSys from '@/systems/plugins.server'
 
 /** The queue and recent matches a repeat rule is measured against. Queries fill this in when `input.list` is absent. */
 export async function itemsState(ctx: PluginsSys.ServerCtx<any>): Promise<LQY.LayerItemsState> {
-	return await LayerQueriesSys.resolveLayerItemsState(ctx)
+	return await LayerQueries.resolveLayerItemsState(ctx)
 }
 
 export type QueryResult =
 	| {
 			code: 'ok'
-			layers: LayerQueries.PostProcessedLayer[]
+			layers: LayerQueriesShared.PostProcessedLayer[]
 			totalCount: number
 			pageCount: number
 			/** Per-field possible values, for the filter-menu-items constraints in the input. Empty without them. */
@@ -41,10 +41,10 @@ export type QueryResult =
 
 /** A page of layers matching the constraints. `pageSize` is required; sort defaults to none. */
 export async function query(ctx: PluginsSys.ServerCtx<any>, input: LQY.LayersQueryInput): Promise<QueryResult> {
-	const qctx = await LayerQueriesSys.resolveLayerQueryCtx(ctx)
-	let page: Extract<LayerQueries.QueryLayersResponsePart, { code: 'layers-page' }> | undefined
+	const qctx = await LayerQueries.resolveLayerQueryCtx(ctx)
+	let page: Extract<LayerQueriesShared.QueryLayersResponsePart, { code: 'layers-page' }> | undefined
 	let menuItemValues: Record<string, string[]> = {}
-	for await (const part of LayerQueries.queryLayersStreamed({ ctx: qctx, input: await withList(ctx, input) })) {
+	for await (const part of LayerQueriesShared.queryLayersStreamed({ ctx: qctx, input: await withList(ctx, input) })) {
 		switch (part.code) {
 			case 'err:invalid-node':
 				return part
@@ -64,12 +64,12 @@ export async function query(ctx: PluginsSys.ServerCtx<any>, input: LQY.LayersQue
 
 /** Whether each id names a layer this install knows. An id that is not even well-formed reports false rather than throwing. */
 export async function exists(ctx: PluginsSys.ServerCtx<any>, layerIds: L.LayerId[]) {
-	return await LayerQueries.layerExists({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input: layerIds })
+	return await LayerQueriesShared.layerExists({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx), input: layerIds })
 }
 
 /** Every column of one layer, scores included. Null when the id is unknown. */
 export async function info(ctx: PluginsSys.ServerCtx<any>, layerId: L.LayerId) {
-	return await LayerQueries.getLayerInfo({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input: { layerId } })
+	return await LayerQueriesShared.getLayerInfo({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx), input: { layerId } })
 }
 
 /** The distinct values of one column among the layers the constraints admit. What a picker is built from. */
@@ -77,20 +77,20 @@ export async function componentValues(
 	ctx: PluginsSys.ServerCtx<any>,
 	input: LQY.LayerComponentInput,
 ): Promise<{ code: 'ok'; values: string[] } | { code: 'err:unknown-column' } | F.InvalidFilterNodeResult> {
-	const res = await LayerQueries.queryLayerComponent({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input })
+	const res = await LayerQueriesShared.queryLayerComponent({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx), input })
 	// the host hands back a bare array on success, which is the one result here that does not carry a code
 	return Array.isArray(res) ? { code: 'ok', values: res } : res
 }
 
 /** Which of these layers the constraints reject. A layer that does not exist is out of pool. */
 export async function outOfPool(ctx: PluginsSys.ServerCtx<any>, input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }) {
-	return await LayerQueries.getLayersOutOfPool({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input })
+	return await LayerQueriesShared.getLayersOutOfPool({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx), input })
 }
 
 /** What each queue item violates: repeat rules broken, filters matched, and the warnings admins are shown. */
 export async function itemStatuses(ctx: PluginsSys.ServerCtx<any>, input: LQY.LayerItemStatusesInput) {
-	return await LayerQueries.getLayerItemStatuses({
-		ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx),
+	return await LayerQueriesShared.getLayerItemStatuses({
+		ctx: await LayerQueries.resolveLayerQueryCtx(ctx),
 		input: await withList(ctx, input),
 	})
 }
@@ -99,7 +99,7 @@ export type GenVoteResult =
 	| {
 			code: 'ok'
 			/** One per input choice, in order. Undefined where the choice already named a layer, or nothing was drawn. */
-			chosenLayers: (LayerQueries.PostProcessedLayer | undefined)[]
+			chosenLayers: (LayerQueriesShared.PostProcessedLayer | undefined)[]
 			/** Indices of the choices that had no layer and could not be filled. Empty on a full draw. */
 			unfilledChoices: number[]
 	  }
@@ -110,7 +110,7 @@ export type GenVoteResult =
  * choices took. Pass `seed` to make the draw reproducible, and `onlyIndex` to redraw a single choice.
  */
 export async function genVote(ctx: PluginsSys.ServerCtx<any>, input: GV.Input): Promise<GenVoteResult> {
-	const res = await LayerQueries.genVote({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input: await withList(ctx, input) })
+	const res = await LayerQueriesShared.genVote({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx), input: await withList(ctx, input) })
 	if (res.code !== 'ok') return res
 	// the host reports a failed draw as an english sentence per choice, which is not a string to freeze into
 	// this contract. Which choices came up empty is the same information and cannot rot.
@@ -120,11 +120,11 @@ export async function genVote(ctx: PluginsSys.ServerCtx<any>, input: GV.Input): 
 
 /** The min and max of every score column, for putting one layer's score in context. */
 export async function scoreRanges(ctx: PluginsSys.ServerCtx<any>) {
-	return await LayerQueries.getScoreRanges({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx) })
+	return await LayerQueriesShared.getScoreRanges({ ctx: await LayerQueries.resolveLayerQueryCtx(ctx) })
 }
 
 // Without a list, repeat rules have no history to measure against and quietly match nothing. The live queue is
 // what a plugin almost always means; pass one explicitly to ask about a hypothetical queue instead.
 async function withList<T extends LQY.BaseQueryInput>(ctx: PluginsSys.ServerCtx<any>, input: T): Promise<T> {
-	return input.list ? input : { ...input, list: await LayerQueriesSys.resolveLayerItemsState(ctx) }
+	return input.list ? input : { ...input, list: await LayerQueries.resolveLayerItemsState(ctx) }
 }

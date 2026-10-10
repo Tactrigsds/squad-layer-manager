@@ -2,7 +2,7 @@ import * as LTag from '@/models/layer-tags.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { LAYERS, layerText, queue, role } from '../harness/arrange'
-import * as DB from '../harness/dashboard'
+import * as Dash from '../harness/dashboard'
 import { savedQueue } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
@@ -49,9 +49,9 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 		const pageB = await second.newPage()
 		try {
 			await page.goto(app.loginUrl())
-			await expect(DB.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+			await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
 
-			const queuePanel = DB.queueSection(page)
+			const queuePanel = Dash.queueSection(page)
 			const item = queuePanel.getByRole('listitem').filter({ hasText: layerText('Harju_RAAS_v1') })
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 
@@ -106,8 +106,8 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 
 			// -------- a second editor --------
 			await pageB.goto(app.loginUrl(WRITER))
-			await expect(DB.queueLabel(pageB, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
-			const panelB = DB.queueSection(pageB)
+			await expect(Dash.queueLabel(pageB, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+			const panelB = Dash.queueSection(pageB)
 			const itemB = panelB.getByRole('listitem').filter({ hasText: layerText('Harju_RAAS_v1') })
 			await expect(itemB.getByText(META.label, { exact: true })).toBeVisible()
 
@@ -168,9 +168,9 @@ test.describe('shared query engine', () => {
 		const pageB = await page.context().newPage()
 		try {
 			await page.goto(app.loginUrl())
-			await expect(DB.queueLabel(page, /^Queue/)).toBeVisible({ timeout: 25_000 })
+			await expect(Dash.queueLabel(page, /^Queue/)).toBeVisible({ timeout: 25_000 })
 			await pageB.goto(app.loginUrl())
-			await expect(DB.queueLabel(pageB, /^Queue/)).toBeVisible({ timeout: 25_000 })
+			await expect(Dash.queueLabel(pageB, /^Queue/)).toBeVisible({ timeout: 25_000 })
 			for (const p of [page, pageB]) {
 				await p.getByRole('button', { name: 'Explore Layers' }).click()
 				await expect(p.getByText(/[\d,]+ matched layers/)).toBeVisible({ timeout: 25_000 })
@@ -190,11 +190,11 @@ test.describe('collaborative queue editing', () => {
 			await page.goto(app.loginUrl())
 			await pageB.goto(app.loginUrl(SECOND_USER))
 			for (const p of [page, pageB]) {
-				await expect(DB.queueLabel(p, 'Queue (3)')).toBeVisible({ timeout: 25_000 })
+				await expect(Dash.queueLabel(p, 'Queue (3)')).toBeVisible({ timeout: 25_000 })
 			}
 
-			const panelA = DB.queueSection(page)
-			const panelB = DB.queueSection(pageB)
+			const panelA = Dash.queueSection(page)
+			const panelB = Dash.queueSection(pageB)
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await pageB.getByRole('button', { name: 'Start Editing' }).click()

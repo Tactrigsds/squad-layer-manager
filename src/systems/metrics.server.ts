@@ -2,7 +2,7 @@ import * as Otel from '@opentelemetry/api'
 
 import * as ATTRS from '@/models/otel-attrs'
 import type * as SM from '@/models/squad.models'
-import * as Plugins from '@/systems/plugins.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 // Domain gauges. Everything here is read synchronously out of in-memory managed server state on the metric
@@ -25,7 +25,7 @@ export function setup() {
 			description: 'Constant 1 per installed plugin, carrying its version, source and declared api range',
 		})
 		.addCallback((result) => {
-			for (const info of Plugins.listRuntimeInfo()) {
+			for (const info of PluginsSys.listRuntimeInfo()) {
 				result.observe(1, {
 					[ATTRS.Plugin.ID]: info.id,
 					[ATTRS.Plugin.VERSION]: info.version,
@@ -40,7 +40,7 @@ export function setup() {
 			description: 'Constant 1 on the status each plugin is currently in',
 		})
 		.addCallback((result) => {
-			for (const info of Plugins.listRuntimeInfo()) {
+			for (const info of PluginsSys.listRuntimeInfo()) {
 				result.observe(1, { [ATTRS.Plugin.ID]: info.id, [ATTRS.Plugin.STATUS]: info.status })
 			}
 		})

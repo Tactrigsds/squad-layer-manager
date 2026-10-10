@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
-import * as DisplayHelpers from '@/lib/display-helpers.ts'
+import * as DH from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
@@ -324,7 +324,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										<span className="truncate">
 											<PrefixedLabel
 												prefix={selectedPrefix(option)}
-												label={label === null ? DisplayHelpers.NULL_DISPLAY : label}
+												label={label === null ? DH.NULL_DISPLAY : label}
 												render={prefixRenderer}
 											/>
 										</span>
@@ -540,7 +540,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														>
 															<PrefixedLabel
 																prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-																label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+																label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
 																render={prefixRenderer}
 															/>
 															{sheet && option.description && (
@@ -587,7 +587,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															<span className="flex-1 truncate">
 																<PrefixedLabel
 																	prefix={selectedPrefix(option)}
-																	label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+																	label={displayText === null ? DH.NULL_DISPLAY : displayText}
 																	render={prefixRenderer}
 																/>
 															</span>

@@ -1,5 +1,5 @@
 import * as fs from 'fs'
-import * as fsPromise from 'fs/promises'
+import * as fsp from 'fs/promises'
 import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 import path from 'path'
@@ -14,7 +14,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LA from '@/models/layer-artifact'
 import * as LC from '@/models/layer-columns'
-import * as SLL from '@/models/squad-layer-list.models'
+import * as SquadLL from '@/models/squad-layer-list.models'
 import * as VEH from '@/models/vehicles.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
@@ -107,7 +107,7 @@ async function main() {
 	if (writesArtifacts) {
 		;[csvPath, layersVersion] = LayerArtifacts.getVersionTemplatedPath(ENV.EXTRA_COLS_CSV_PATH)
 		tablePath = path.join(ENV.LAYERS_OUTPUT_DIR, LayerArtifacts.tableFileName(layersVersion))
-		await fsPromise.mkdir(ENV.LAYERS_OUTPUT_DIR, { recursive: true })
+		await fsp.mkdir(ENV.LAYERS_OUTPUT_DIR, { recursive: true })
 	}
 
 	if (args.includes('write-components-and-units')) {
@@ -118,7 +118,7 @@ async function main() {
 			extraColumns: LAYER_DB_CONFIG.columns,
 		}
 		const layerDataPath = path.join(ENV.LAYERS_OUTPUT_DIR, LayerArtifacts.layerDataFileName(layersVersion))
-		await fsPromise.writeFile(layerDataPath, JSON.stringify(file, null, 2))
+		await fsp.writeFile(layerDataPath, JSON.stringify(file, null, 2))
 		log.info('Wrote %s', layerDataPath)
 	}
 
@@ -132,7 +132,7 @@ async function main() {
 			csvPath,
 			layersVersion,
 		})
-		await fsPromise.writeFile(tablePath, artifact)
+		await fsp.writeFile(tablePath, artifact)
 		log.info('Wrote %s (%s MB)', tablePath, (artifact.length / 1e6).toFixed(1))
 	}
 
@@ -140,10 +140,10 @@ async function main() {
 		if (!fs.existsSync(tablePath)) throw new Error(`Layer artifact does not exist: ${tablePath}`)
 
 		log.info('Compressing %s', tablePath)
-		const buffer = await fsPromise.readFile(tablePath)
+		const buffer = await fsp.readFile(tablePath)
 		// level 5 compresses ~40% faster than the default 6 for a ~0.1% size cost on this data
 		const compressed = await gzip(buffer, { level: 5 })
-		await fsPromise.writeFile(`${tablePath}.gz`, compressed)
+		await fsp.writeFile(`${tablePath}.gz`, compressed)
 		log.info('Compressed to %s MB (%s)', (compressed.length / 1e6).toFixed(1), `${tablePath}.gz`)
 	}
 
@@ -360,7 +360,7 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 	}
 }
 
-type LayerSource = { manifest: SLL.SourceManifest; root: SLL.Root; vocab: Set<string> }
+type LayerSource = { manifest: SquadLL.SourceManifest; root: SquadLL.Root; vocab: Set<string> }
 
 function loadLayerSources(): LayerSource[] {
 	const sourcesDir = path.join(Paths.DATA, 'sources')
@@ -372,11 +372,11 @@ function loadLayerSources(): LayerSource[] {
 		.sort((a, b) => (a === 'vanilla' ? -1 : b === 'vanilla' ? 1 : a.localeCompare(b)))
 	if (names.length === 0) throw new Error(`no layer sources found in ${sourcesDir}`)
 	return names.map((dir) => {
-		const manifest = SLL.SourceManifestSchema.parse(JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'source.json'), 'utf-8')))
+		const manifest = SquadLL.SourceManifestSchema.parse(JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'source.json'), 'utf-8')))
 		if (manifest.name !== dir) throw new Error(`source ${dir}: manifest name "${manifest.name}" does not match its directory`)
 		const rawRoot = JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'layers.json'), 'utf-8'))
-		const vocab = SLL.collectUnitTypeVocabulary(rawRoot, manifest)
-		const root = SLL.createRootSchema(vocab, manifest.unitTypeOverrides).parse(rawRoot) as SLL.Root
+		const vocab = SquadLL.collectUnitTypeVocabulary(rawRoot, manifest)
+		const root = SquadLL.createRootSchema(vocab, manifest.unitTypeOverrides).parse(rawRoot) as SquadLL.Root
 		return { manifest, root, vocab }
 	})
 }
@@ -392,7 +392,7 @@ function buildUnitIndex(source: LayerSource): Map<string, string> {
 	const index: Map<string, string> = new Map()
 	for (const [name, unit] of Object.entries(source.root.Units)) {
 		if (!unit.type) continue
-		const parsed = SLL.parseUnitName(name, source.vocab, source.manifest.unitTypeOverrides)
+		const parsed = SquadLL.parseUnitName(name, source.vocab, source.manifest.unitTypeOverrides)
 		const segments = name.split(/[_-]/)
 		const key = [
 			unit.factionID,
@@ -533,7 +533,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 					log.warn(`${manifest.name}: ${map.levelName}: default unit ${faction.defaultUnit} is not in Units`)
 					continue
 				}
-				const parsedDefaultUnit = SLL.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
+				const parsedDefaultUnit = SquadLL.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
 				const defaultType = parsedDefaultUnit.unit ?? idDetails.type
 				const units = new Set(faction.types.filter((type) => type !== 'None'))
 				if (idDetails.type) units.add(idDetails.type)
@@ -564,7 +564,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			// range and training layers: the two default units are all there is
 			for (const [index, team] of teamConfigs.entries()) {
 				const record = root.Units[team.defaultFactionUnit!]
-				const parsed = SLL.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
+				const parsed = SquadLL.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
 				const faction = record?.factionID ?? team.defaultFactionUnit!.split('_')[0]
 				const teamNumber = (index + 1) as 1 | 2
 				availForLayer.push({
@@ -821,7 +821,7 @@ function parseBattlegroups(sources: LayerSource[]) {
 	const allianceToFaction: OneToManyMap<string, string> = new Map()
 	const factionToUnit: OneToManyMap<string, string> = new Map()
 	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
-	const factionUnits: Record<string, SLL.Unit> = {}
+	const factionUnits: Record<string, SquadLL.Unit> = {}
 	let duplicateUnitNames = 0
 
 	for (const source of sources) {
@@ -857,9 +857,9 @@ function parseBattlegroups(sources: LayerSource[]) {
 const UNIT_POSITION_SIZES: Record<string, string> = { L: 'Large', M: 'Medium', S: 'Small' }
 const SIZE_ORDER = ['Small', 'Medium', 'Large']
 
-function deriveLayerSize(source: LayerSource, map: SLL.Map): string {
+function deriveLayerSize(source: LayerSource, map: SquadLL.Map): string {
 	const sizes = [map.teamConfigs.team1!, map.teamConfigs.team2!].map((team) => {
-		const { position } = SLL.parseUnitName(team.defaultFactionUnit!, source.vocab, source.manifest.unitTypeOverrides)
+		const { position } = SquadLL.parseUnitName(team.defaultFactionUnit!, source.vocab, source.manifest.unitTypeOverrides)
 		const size = position === null ? undefined : UNIT_POSITION_SIZES[position[0]]
 		if (!size) {
 			log.warn(`${source.manifest.name}: ${map.levelName}: no layer size in unit ${team.defaultFactionUnit}, assuming Small`)

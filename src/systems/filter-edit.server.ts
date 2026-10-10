@@ -21,8 +21,8 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as FilterEntitySys from '@/systems/filter-entity.server'
-import * as UserPresenceSys from '@/systems/user-presence.server'
+import * as FilterEntity from '@/systems/filter-entity.server'
+import * as UserPresence from '@/systems/user-presence.server'
 
 const module = initModule('filter-edit')
 let log!: CS.Logger
@@ -54,7 +54,7 @@ function acquire(filterId: F.FilterEntityId): Session | null {
 		return existing
 	}
 
-	const entity = FilterEntitySys.state.filters.get(filterId)
+	const entity = FilterEntity.state.filters.get(filterId)
 	if (!entity) return null
 
 	const payload: FE.Ctx.Payload = {
@@ -64,7 +64,7 @@ function acquire(filterId: F.FilterEntityId): Session | null {
 		dispatchMtx: new Mutex(),
 	}
 	// nobody is left to commit the draft, and the next editor would inherit edits they never made
-	const sub = UserPresenceSys.editingFilterAbandoned$(filterId).subscribe(() => {
+	const sub = UserPresence.editingFilterAbandoned$(filterId).subscribe(() => {
 		void payload.dispatchMtx
 			.runExclusive(() => applyAndBroadcast(payload, [{ code: 'discard-abandoned-edits', opId: FE.createOpId() }]))
 			.catch((error) => log.error(error, 'failed to discard abandoned filter edits'))
@@ -191,7 +191,7 @@ async function handleSideEffect(ctx: DispatchCtx, se: FE.SideEffect) {
 			// the reducer already moved every replica's saved baseline, so a refused write leaves them
 			// believing the save landed. The client blocks the cases it can see (an invalid tree is rejected by
 			// the reducer, a reference cycle disables the button), and the next successful save reconciles the rest.
-			const res = await FilterEntitySys.updateFilter(
+			const res = await FilterEntity.updateFilter(
 				ctx,
 				se.filterId,
 				{ ...se.meta, filter: se.filter as F.FilterNode },
@@ -204,7 +204,7 @@ async function handleSideEffect(ctx: DispatchCtx, se: FE.SideEffect) {
 				log.error({ [ATTRS.Filter.ID]: se.filterId, [ATTRS.Filter.OUTCOME]: res.code }, 'shared filter draft failed to save')
 				return res
 			}
-			UserPresenceSys.dispatchEndAllFilterEditing(se.filterId)
+			UserPresence.dispatchEndAllFilterEditing(se.filterId)
 			return undefined
 		}
 		default:
@@ -216,10 +216,10 @@ export function setup() {
 	log = module.getLogger()
 
 	// a deleted filter has no draft to hold and nowhere to be present
-	const mutationSub = FilterEntitySys.filterMutation$.subscribe(([, mutation]) => {
+	const mutationSub = FilterEntity.filterMutation$.subscribe(([, mutation]) => {
 		if (mutation.type !== 'delete') return
 		destroy(mutation.key)
-		UserPresenceSys.dispatchFilterRemoved(mutation.key)
+		UserPresence.dispatchFilterRemoved(mutation.key)
 	})
 
 	CleanupSys.register(() => {

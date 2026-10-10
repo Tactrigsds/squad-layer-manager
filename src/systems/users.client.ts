@@ -9,7 +9,7 @@ import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as PartSys from '@/systems/parts.client'
+import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 export let loggedInUserId: bigint | undefined
@@ -30,7 +30,7 @@ export function useUser(id?: USR.UserId, opts?: { enabled?: boolean }) {
 // a fetch. undefined until they resolve, so callers can render whatever identity they do have in the meantime.
 export function useResolvedUser(id?: USR.UserId) {
 	const loggedInUser = useLoggedInUser()
-	const partial = id === undefined ? undefined : PartSys.findUser(id)
+	const partial = id === undefined ? undefined : PartsSys.findUser(id)
 	const isMe = id !== undefined && id === loggedInUser?.discordId
 	const res = useUser(id, { enabled: !partial && !isMe })
 	return (res.data?.code === 'ok' ? res.data.user : undefined) ?? partial ?? (isMe ? loggedInUser : undefined)
@@ -50,7 +50,7 @@ export function useUsers(userIds?: USR.UserId[] | Set<USR.UserId>, opts?: { enab
 export const loggedInUserQueryOptions = RPC.orpc.users.getLoggedInUser.queryOptions({
 	queryFn: async () => {
 		const user = await RPC.orpc.users.getLoggedInUser.call()
-		PartSys.upsertParts({ users: [user] })
+		PartsSys.upsertParts({ users: [user] })
 		loggedInUserId = user.discordId
 		loggedInUser = user
 		return user
@@ -97,7 +97,7 @@ export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Si
 // resolves a user id to the name to show, outside of a hook (e.g. from a toast in an rx subscription). Shares the
 // cache with useUser, so an already-loaded user costs nothing.
 export async function fetchDisplayName(id: USR.UserId, fallback = 'another user') {
-	const cached = PartSys.findUser(id)
+	const cached = PartsSys.findUser(id)
 	if (cached) return cached.displayName
 	const res = await RPC.queryClient.fetchQuery(userQueryOptions(id))
 	return res?.code === 'ok' ? res.user.displayName : fallback
@@ -113,7 +113,7 @@ export function invalidateLoggedInUser() {
 
 export function invalidateUsers() {
 	void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.key() })
-	PartSys.PartsStore.setState({ users: [] })
+	PartsSys.PartsStore.setState({ users: [] })
 }
 
 // an event feed, not state: it stays silent until something actually invalidates, so it must not be given a

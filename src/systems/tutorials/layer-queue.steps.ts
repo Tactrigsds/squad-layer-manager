@@ -11,7 +11,7 @@ import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { setGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
-import * as M from '@/messages/tutorials/layer-queue-tutorial.messages'
+import * as LQTUT_Msgs from '@/messages/tutorials/layer-queue-tutorial.messages'
 import * as CMD from '@/models/command.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as F from '@/models/filter.models'
@@ -230,7 +230,7 @@ function simAddNote(ctx: Tour.SimulateCtx) {
 	LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, {
 		op: 'add-note',
 		noteId: LNote.createNoteId(),
-		text: tr.text(M.seededNote()),
+		text: tr.text(LQTUT_Msgs.seededNote()),
 	})
 }
 
@@ -360,13 +360,13 @@ const CP = {
 export async function buildSteps() {
 	const scores = await scoreSupport()
 	return Tour.defineSteps([
-		{ id: 'welcome', msg: M.welcome, checkpoint: CP.fresh },
-		{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox },
-		{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory },
-		{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel },
+		{ id: 'welcome', msg: LQTUT_Msgs.welcome, checkpoint: CP.fresh },
+		{ id: 'sandbox', anchor: 'server-name', msg: LQTUT_Msgs.sandbox },
+		{ id: 'match-history', anchor: { all: 'match-history' }, msg: LQTUT_Msgs.matchHistory },
+		{ id: 'queue-panel', anchor: 'queue-panel', msg: LQTUT_Msgs.queuePanel },
 
 		// reading the queue, before any editing
-		{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems },
+		{ id: 'queue-items', anchor: 'queue-item', msg: LQTUT_Msgs.queueItems },
 		{
 			id: 'next-badge',
 			anchor: 'queue-next-badge',
@@ -377,7 +377,7 @@ export async function buildSteps() {
 					const cmd = settings?.commands?.showNext
 					// already prefixed by the settings seed, so these are what a player types verbatim
 					const triggers: string[] = cmd?.enabled === false ? [] : (cmd?.triggers ?? []).map(CMD.triggerString)
-					return { title: tr.text(M.nextBadge.title()), body: Tour.richText(M.nextBadge.body(triggers)) }
+					return { title: tr.text(LQTUT_Msgs.nextBadge.title()), body: Tour.richText(LQTUT_Msgs.nextBadge.body(triggers)) }
 				},
 			},
 		},
@@ -389,8 +389,8 @@ export async function buildSteps() {
 				select: (s: any) => {
 					const layer = headLayer(s)
 					return {
-						title: tr.text(M.layerAnatomy.title()),
-						body: layer ? Tour.richText(M.layerAnatomy.body(layer)) : null,
+						title: tr.text(LQTUT_Msgs.layerAnatomy.title()),
+						body: layer ? Tour.richText(LQTUT_Msgs.layerAnatomy.body(layer)) : null,
 					}
 				},
 			},
@@ -403,9 +403,9 @@ export async function buildSteps() {
 			msg: {
 				inputs: (run) => [run.squadServer],
 				select: (s: any) => ({
-					title: tr.text(M.teamNormalize.title()),
+					title: tr.text(LQTUT_Msgs.teamNormalize.title()),
 					body: Tour.richText(
-						M.teamNormalize.body(
+						LQTUT_Msgs.teamNormalize.body(
 							head(s) ? React.createElement(ShortLayerName, { layerId: head(s).layerId, teamParity: 0, normalized: false }) : null,
 						),
 					),
@@ -419,14 +419,14 @@ export async function buildSteps() {
 			anchor: 'layer-indicators',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.filterIndicators,
+			msg: LQTUT_Msgs.filterIndicators,
 		},
 		{
 			id: 'repeat-indicators',
 			anchor: 'layer-indicators',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.repeatIndicators,
+			msg: LQTUT_Msgs.repeatIndicators,
 		},
 
 		// the layer details window
@@ -434,12 +434,12 @@ export async function buildSteps() {
 			id: 'open-layer-details',
 			anchor: 'queue-layer-name',
 			interact: 'anchor-only',
-			msg: M.LayerDetails.openLayerDetails,
+			msg: LQTUT_Msgs.LayerDetails.openLayerDetails,
 		},
 		{
 			id: 'layer-details',
 			anchor: 'layer-details-window',
-			msg: M.LayerDetails.layerDetails,
+			msg: LQTUT_Msgs.LayerDetails.layerDetails,
 			premise: domPresent('layer-details'),
 			advanceFromPrevious: { type: 'state', ...domPresent('layer-details'), simulate: simOpenLayerDetails },
 		},
@@ -452,7 +452,7 @@ export async function buildSteps() {
 						id: 'open-layer-scores',
 						anchor: 'layer-info-tabs',
 						interact: 'anchor-only' as const,
-						msg: M.LayerDetails.openLayerScores,
+						msg: LQTUT_Msgs.LayerDetails.openLayerScores,
 					},
 				]
 			: []),
@@ -461,7 +461,7 @@ export async function buildSteps() {
 					{
 						id: 'layer-scores',
 						anchor: 'layer-details-window',
-						msg: M.LayerDetails.layerScores,
+						msg: LQTUT_Msgs.LayerDetails.layerScores,
 						premise: domPresent('layer-scores'),
 						advanceFromPrevious: { type: 'state' as const, ...domPresent('layer-scores'), simulate: simShowLayerScores },
 					},
@@ -470,8 +470,8 @@ export async function buildSteps() {
 						anchor: 'layer-score-Balance_Differential',
 						spotlight: 'layer-details-window',
 						msg: {
-							title: M.LayerDetails.balanceScore.title,
-							body: () => M.LayerDetails.balanceScore.body(signedScore(scores.balance)),
+							title: LQTUT_Msgs.LayerDetails.balanceScore.title,
+							body: () => LQTUT_Msgs.LayerDetails.balanceScore.body(signedScore(scores.balance)),
 						},
 						premise: domPresent('layer-scores'),
 					},
@@ -480,8 +480,8 @@ export async function buildSteps() {
 						anchor: 'layer-score-Asymmetry_Score',
 						spotlight: 'layer-details-window',
 						msg: {
-							title: M.LayerDetails.asymmetryScore.title,
-							body: () => M.LayerDetails.asymmetryScore.body(signedScore(scores.asymmetry)),
+							title: LQTUT_Msgs.LayerDetails.asymmetryScore.title,
+							body: () => LQTUT_Msgs.LayerDetails.asymmetryScore.body(signedScore(scores.asymmetry)),
 						},
 						premise: domPresent('layer-scores'),
 					},
@@ -491,7 +491,7 @@ export async function buildSteps() {
 									id: 'category-scores',
 									anchor: 'layer-score-categories',
 									spotlight: 'layer-details-window',
-									msg: M.LayerDetails.categorySpecificScores,
+									msg: LQTUT_Msgs.LayerDetails.categorySpecificScores,
 									premise: domPresent('layer-scores'),
 								},
 							]
@@ -502,7 +502,7 @@ export async function buildSteps() {
 						{
 							id: 'layer-scores-nonstandard',
 							anchor: 'layer-details-window',
-							msg: M.LayerDetails.layerScoresNonstandard,
+							msg: LQTUT_Msgs.LayerDetails.layerScoresNonstandard,
 							premise: domPresent('layer-scores'),
 							advanceFromPrevious: { type: 'state' as const, ...domPresent('layer-scores'), simulate: simShowLayerScores },
 						},
@@ -513,22 +513,22 @@ export async function buildSteps() {
 			id: 'close-layer-details',
 			anchor: { css: `${WINDOW} [data-window-control="close"]` },
 			interact: 'anchor-only',
-			msg: M.closeLayerDetails,
+			msg: LQTUT_Msgs.closeLayerDetails,
 		},
 		{
 			id: 'layer-context-menu',
 			anchor: 'queue-layer-name',
 			interact: 'free',
-			msg: M.layerContextMenu,
+			msg: LQTUT_Msgs.layerContextMenu,
 			advanceFromPrevious: { type: 'state', ...domPresent('layer-details-window', false), simulate: simCloseLayerDetails },
 		},
 
 		// editing
-		{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
+		{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: LQTUT_Msgs.startEditing },
 		{
 			id: 'queue-editors',
 			anchor: 'queue-editors',
-			msg: M.queueUserPresence,
+			msg: LQTUT_Msgs.queueUserPresence,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
 		},
@@ -538,13 +538,13 @@ export async function buildSteps() {
 			id: 'add-layers-button',
 			anchor: 'queue-add',
 			interact: 'anchor-only',
-			msg: M.AddLayersSequence.addLayersButton,
+			msg: LQTUT_Msgs.AddLayersSequence.addLayersButton,
 			premise: editingQueue,
 		},
 		{
 			id: 'add-dialog-tour',
 			anchor: 'add-dialog',
-			msg: M.AddLayersSequence.addLayersDialogTour,
+			msg: LQTUT_Msgs.AddLayersSequence.addLayersDialogTour,
 			premise: addDialogOpen,
 			advanceFromPrevious: { type: 'state', ...addDialogOpen, simulate: simOpenAddDialog },
 		},
@@ -553,15 +553,15 @@ export async function buildSteps() {
 			anchor: 'add-filters',
 			interact: 'free',
 			msg: {
-				title: M.AddLayersSequence.layerFilterMenu.title,
-				body: () => M.AddLayersSequence.layerFilterMenu.body(ADD_TARGET.map, ADD_TARGET.gamemode, ADD_TARGET.faction),
+				title: LQTUT_Msgs.AddLayersSequence.layerFilterMenu.title,
+				body: () => LQTUT_Msgs.AddLayersSequence.layerFilterMenu.body(ADD_TARGET.map, ADD_TARGET.gamemode, ADD_TARGET.faction),
 			},
 			premise: addDialogOpen,
 		},
 		{
 			id: 'results-table',
 			anchor: 'add-pick',
-			msg: M.AddLayersSequence.resultsTable,
+			msg: LQTUT_Msgs.AddLayersSequence.resultsTable,
 			premise: addDialogOpen,
 			advanceFromPrevious: {
 				type: 'state',
@@ -582,7 +582,7 @@ export async function buildSteps() {
 			id: 'results-pagination',
 			anchor: 'table-pagination',
 			spotlight: 'add-pick',
-			msg: M.AddLayersSequence.pagination,
+			msg: LQTUT_Msgs.AddLayersSequence.pagination,
 			premise: addDialogOpen,
 		},
 		{
@@ -590,7 +590,7 @@ export async function buildSteps() {
 			anchor: 'table-sort',
 			spotlight: 'add-pick',
 			interact: 'anchor-only',
-			msg: M.AddLayersSequence.sorting,
+			msg: LQTUT_Msgs.AddLayersSequence.sorting,
 			premise: addDialogOpen,
 		},
 		{
@@ -599,7 +599,7 @@ export async function buildSteps() {
 			anchor: { all: 'table-randomize' },
 			spotlight: 'add-pick',
 			interact: 'anchor-only',
-			msg: M.AddLayersSequence.randomization,
+			msg: LQTUT_Msgs.AddLayersSequence.randomization,
 			premise: addDialogOpen,
 		},
 		{
@@ -607,23 +607,23 @@ export async function buildSteps() {
 			anchor: 'applied-filters',
 			spotlight: 'add-dialog',
 			interact: 'free',
-			msg: M.AddLayersSequence.appliedFiltersToolbar,
+			msg: LQTUT_Msgs.AddLayersSequence.appliedFiltersToolbar,
 			premise: addDialogOpen,
 		},
-		{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen },
+		{ id: 'results-repeats', anchor: 'add-pick', msg: LQTUT_Msgs.AddLayersSequence.repeats, premise: addDialogOpen },
 		{
 			id: 'hide-repeats',
 			anchor: 'table-hide-repeats',
 			spotlight: 'add-pick',
 			interact: 'free',
-			msg: M.AddLayersSequence.hideRepeats,
+			msg: LQTUT_Msgs.AddLayersSequence.hideRepeats,
 			premise: addDialogOpen,
 		},
 		{
 			id: 'click-to-select',
 			anchor: 'add-pick',
 			interact: 'free',
-			msg: M.AddLayersSequence.clickToSelect,
+			msg: LQTUT_Msgs.AddLayersSequence.clickToSelect,
 			premise: addDialogOpen,
 			advanceFromPrevious: {
 				type: 'change',
@@ -637,7 +637,7 @@ export async function buildSteps() {
 			id: 'results-context-menu',
 			anchor: 'add-pick',
 			interact: 'free',
-			msg: M.AddLayersSequence.rightClick,
+			msg: LQTUT_Msgs.AddLayersSequence.rightClick,
 			premise: addDialogOpen,
 			advanceFromPrevious: {
 				type: 'state',
@@ -651,14 +651,17 @@ export async function buildSteps() {
 			id: 'add-another',
 			anchor: { css: '[data-tour="add-filters"], [data-tour="add-pick"]', all: true },
 			interact: 'free',
-			msg: { title: M.AddLayersSequence.addAnother.title, body: () => M.AddLayersSequence.addAnother.body(ADD_SECOND.map) },
+			msg: {
+				title: LQTUT_Msgs.AddLayersSequence.addAnother.title,
+				body: () => LQTUT_Msgs.AddLayersSequence.addAnother.body(ADD_SECOND.map),
+			},
 			premise: addDialogOpen,
 		},
 		{
 			id: 'see-selection',
 			anchor: 'table-show-selected',
 			interact: 'free',
-			msg: M.AddLayersSequence.seeSelection,
+			msg: LQTUT_Msgs.AddLayersSequence.seeSelection,
 			premise: addDialogOpen,
 			advanceFromPrevious: {
 				type: 'state',
@@ -674,7 +677,7 @@ export async function buildSteps() {
 			anchor: 'add-submit',
 			spotlight: 'add-dialog',
 			interact: 'free',
-			msg: M.AddLayersSequence.submit,
+			msg: LQTUT_Msgs.AddLayersSequence.submit,
 			premise: addDialogOpen,
 			advanceFromPrevious: {
 				type: 'state',
@@ -690,7 +693,7 @@ export async function buildSteps() {
 			// last. data-mutation is on the row already, and the queue-panel scope keeps other lists out of it.
 			id: 'added-highlight',
 			anchor: { css: '[data-tour="queue-panel"] li[data-mutation="added"]', all: true },
-			msg: M.addedHighlight,
+			msg: LQTUT_Msgs.addedHighlight,
 			premise: editingQueue,
 			checkpoint: CP.edited,
 			advanceFromPrevious: {
@@ -704,7 +707,7 @@ export async function buildSteps() {
 			id: 'layer-attribution',
 			anchor: 'queue-item-source',
 			spotlight: 'queue-item',
-			msg: M.layerAttribution,
+			msg: LQTUT_Msgs.layerAttribution,
 			premise: editingQueue,
 		},
 
@@ -714,7 +717,7 @@ export async function buildSteps() {
 			anchor: 'queue-reorder',
 			spotlight: 'queue-panel',
 			interact: 'free',
-			msg: M.reorderLayer,
+			msg: LQTUT_Msgs.reorderLayer,
 			premise: editingQueue,
 		},
 		{
@@ -722,7 +725,7 @@ export async function buildSteps() {
 			anchor: 'queue-delete',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.removeLayer,
+			msg: LQTUT_Msgs.removeLayer,
 			premise: editingQueue,
 			advanceFromPrevious: {
 				type: 'change',
@@ -737,7 +740,7 @@ export async function buildSteps() {
 			anchor: 'queue-swap',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.swapTeams,
+			msg: LQTUT_Msgs.swapTeams,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'anchor', simulate: simRemoveSeed },
 		},
@@ -746,7 +749,7 @@ export async function buildSteps() {
 			anchor: 'queue-item-edit',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.editLayer,
+			msg: LQTUT_Msgs.editLayer,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'anchor', simulate: simSwapHead },
 		},
@@ -754,7 +757,7 @@ export async function buildSteps() {
 			id: 'edit-layer-dialog',
 			anchor: 'edit-layer-dialog',
 			interact: 'free',
-			msg: M.editLayerSelection,
+			msg: LQTUT_Msgs.editLayerSelection,
 			advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog'), simulate: simOpenEditLayer },
 		},
 		{
@@ -762,7 +765,7 @@ export async function buildSteps() {
 			anchor: 'queue-item-menu',
 			spotlight: 'queue-item',
 			interact: 'free',
-			msg: M.layerItemEllipsis,
+			msg: LQTUT_Msgs.layerItemEllipsis,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog', false), simulate: simCloseQueueSubActivity },
 		},
@@ -774,7 +777,7 @@ export async function buildSteps() {
 			anchor: { all: 'match-history' },
 			spotlight: { css: '[data-tour="match-history"], [data-tour="queue-panel"]', all: true },
 			interact: 'free',
-			msg: M.replayLayer,
+			msg: LQTUT_Msgs.replayLayer,
 			premise: editingQueue,
 		},
 		{
@@ -782,7 +785,7 @@ export async function buildSteps() {
 			anchor: 'queue-item-display',
 			spotlight: 'queue-item',
 			interact: 'free',
-			msg: M.addTag,
+			msg: LQTUT_Msgs.addTag,
 			premise: editingQueue,
 		},
 		{
@@ -790,7 +793,7 @@ export async function buildSteps() {
 			anchor: 'queue-item-display',
 			spotlight: 'queue-item',
 			interact: 'free',
-			msg: M.notes,
+			msg: LQTUT_Msgs.notes,
 			premise: editingQueue,
 			advanceFromPrevious: {
 				type: 'change',
@@ -811,7 +814,7 @@ export async function buildSteps() {
 			id: 'save',
 			anchor: 'queue-save',
 			interact: 'anchor-only',
-			msg: M.save,
+			msg: LQTUT_Msgs.save,
 			premise: editingQueue,
 			advanceFromPrevious: {
 				type: 'change',
@@ -826,7 +829,7 @@ export async function buildSteps() {
 			anchor: 'save-warnings',
 			spotlight: { css: '[data-tour="save-warnings"], [data-tour="queue-save"]', all: true },
 			interact: 'free',
-			msg: M.warningsOnSave,
+			msg: LQTUT_Msgs.warningsOnSave,
 			// no editing premise here: the point of the step is the edit session ending on the second press
 			advanceFromPrevious: { type: 'anchor', simulate: simShowSaveWarnings },
 		},
@@ -837,7 +840,7 @@ export async function buildSteps() {
 			id: 'force-save-editing',
 			anchor: 'queue-edit',
 			interact: 'anchor-only',
-			msg: M.startEditingAgain,
+			msg: LQTUT_Msgs.startEditingAgain,
 			checkpoint: CP.saved,
 			// arrives when the second save press goes through and ends the reader's session
 			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
@@ -847,7 +850,7 @@ export async function buildSteps() {
 			stage: 'second-editor',
 			anchor: 'queue-editors',
 			spotlight: { css: '[data-tour="queue-editors"], [data-tour="queue-save"]', all: true },
-			msg: M.collaborativeEditing,
+			msg: LQTUT_Msgs.collaborativeEditing,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
 		},
@@ -858,7 +861,7 @@ export async function buildSteps() {
 			anchor: 'queue-delete',
 			spotlight: 'queue-item',
 			interact: 'anchor-only',
-			msg: M.forceSaveEdit,
+			msg: LQTUT_Msgs.forceSaveEdit,
 			premise: editingQueue,
 		},
 		{
@@ -866,7 +869,7 @@ export async function buildSteps() {
 			anchor: 'queue-force-save',
 			spotlight: { css: '[data-tour="queue-force-save"], [data-tour="queue-save"]', all: true },
 			interact: 'free',
-			msg: M.forceSave,
+			msg: LQTUT_Msgs.forceSave,
 			premise: editingQueue,
 			advanceFromPrevious: { type: 'anchor', simulate: simRemoveHead },
 		},
@@ -875,26 +878,26 @@ export async function buildSteps() {
 		{
 			id: 'autogen-intro',
 			anchor: 'queue-panel',
-			msg: M.Autogen.intro,
+			msg: LQTUT_Msgs.Autogen.intro,
 			checkpoint: CP.postForce,
 			// armed and pressed: done once the queue is no longer the reader's to edit
 			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
 		},
-		{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditingToClear },
+		{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: LQTUT_Msgs.startEditingToClear },
 		{
 			// one step for both halves of the instruction: empty the queue, then save. Done is a generated head.
 			id: 'autogen-try',
 			anchor: 'queue-clear',
 			spotlight: 'queue-panel',
 			interact: 'free',
-			msg: M.Autogen.tryItOut,
+			msg: LQTUT_Msgs.Autogen.tryItOut,
 			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
 		},
 		{
 			id: 'autogen-item',
 			anchor: 'queue-item-source',
 			spotlight: 'queue-item',
-			msg: M.Autogen.generatedItem,
+			msg: LQTUT_Msgs.Autogen.generatedItem,
 			checkpoint: CP.generated,
 			advanceFromPrevious: { type: 'state', inputs: (run) => [run.squadServer], select: headIsGenerated },
 		},
@@ -904,79 +907,79 @@ export async function buildSteps() {
 			id: 'open-pool-settings',
 			anchor: 'pool-settings',
 			interact: 'anchor-only',
-			msg: M.PoolSettings.showPoolSettings,
+			msg: LQTUT_Msgs.PoolSettings.showPoolSettings,
 		},
 		{
 			id: 'pool-settings',
 			anchor: 'pool-config-body',
-			msg: M.PoolSettings.poolSettings,
+			msg: LQTUT_Msgs.PoolSettings.poolSettings,
 			premise: domPresent('pool-config-body'),
 			advanceFromPrevious: { type: 'state', ...domPresent('pool-config-body'), simulate: simOpenPoolConfig },
 		},
 		{
 			id: 'pool-filter',
 			anchor: 'pool-filter',
-			msg: M.PoolSettings.poolFilter,
+			msg: LQTUT_Msgs.PoolSettings.poolFilter,
 			premise: domPresent('pool-config-body'),
 		},
 		{
 			id: 'indicate-matches',
 			anchor: 'pool-list-indicateMatches',
-			msg: M.PoolSettings.indicateMatchesAndMisses,
+			msg: LQTUT_Msgs.PoolSettings.indicateMatchesAndMisses,
 			premise: domPresent('pool-config-body'),
 		},
 		{
 			id: 'default-select',
 			anchor: 'pool-list-defaultSelectable',
-			msg: M.PoolSettings.defaultSelect,
+			msg: LQTUT_Msgs.PoolSettings.defaultSelect,
 			premise: domPresent('pool-config-body'),
 		},
 		{
 			id: 'view-repeat-rules',
 			anchor: 'pool-config-tabs',
 			interact: 'anchor-only',
-			msg: M.PoolSettings.viewRepeatRules,
+			msg: LQTUT_Msgs.PoolSettings.viewRepeatRules,
 			premise: domPresent('pool-config-body'),
 		},
 		{
 			id: 'repeat-rules',
 			anchor: 'pool-repeat-rules',
-			msg: M.PoolSettings.repeatRulesOverview,
+			msg: LQTUT_Msgs.PoolSettings.repeatRulesOverview,
 			premise: domPresent('pool-repeat-rules'),
 			advanceFromPrevious: { type: 'state', ...domPresent('pool-repeat-rules'), simulate: simShowRepeatRules },
 		},
 		{
 			id: 'repeat-rule',
 			anchor: 'pool-repeat-rules',
-			msg: M.PoolSettings.repeatRule,
+			msg: LQTUT_Msgs.PoolSettings.repeatRule,
 			premise: domPresent('pool-repeat-rules'),
 		},
 		{
 			id: 'target-values',
 			anchor: 'repeat-rule-targets',
 			spotlight: 'pool-repeat-rules',
-			msg: M.PoolSettings.targetValues,
+			msg: LQTUT_Msgs.PoolSettings.targetValues,
 			premise: domPresent('pool-repeat-rules'),
 		},
 		{
 			id: 'rule-options',
 			anchor: 'repeat-rule-options',
 			spotlight: 'pool-repeat-rules',
-			msg: M.PoolSettings.ruleOptions,
+			msg: LQTUT_Msgs.PoolSettings.ruleOptions,
 			premise: domPresent('pool-repeat-rules'),
 		},
 		{
 			id: 'view-next-layer',
 			anchor: 'pool-config-tabs',
 			interact: 'anchor-only',
-			msg: M.PoolSettings.viewNextLayer,
+			msg: LQTUT_Msgs.PoolSettings.viewNextLayer,
 			premise: domPresent('pool-config-body'),
 		},
 		{
 			id: 'override-admin-set-next-layer',
 			anchor: 'next-layer-overrideAdminSetNextLayer',
 			spotlight: 'pool-next-layer',
-			msg: M.PoolSettings.overrideAdminSetNextLayer,
+			msg: LQTUT_Msgs.PoolSettings.overrideAdminSetNextLayer,
 			premise: domPresent('pool-next-layer'),
 			advanceFromPrevious: { type: 'state', ...domPresent('pool-next-layer'), simulate: simShowNextLayer },
 		},
@@ -984,7 +987,7 @@ export async function buildSteps() {
 			id: 'warn-on-next-layer-change',
 			anchor: 'next-layer-warnOnNextLayerChange',
 			spotlight: 'pool-next-layer',
-			msg: M.PoolSettings.warnOnNextLayerChange,
+			msg: LQTUT_Msgs.PoolSettings.warnOnNextLayerChange,
 			premise: domPresent('pool-next-layer'),
 		},
 	])

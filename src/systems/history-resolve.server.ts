@@ -8,8 +8,8 @@ import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as HistoryQuery from '@/systems/history-query.shared'
-import * as LayerQueriesServer from '@/systems/layer-queries.server'
-import * as LayerQueries from '@/systems/layer-queries.shared'
+import * as LayerQueries from '@/systems/layer-queries.server'
+import * as LayerQueriesShared from '@/systems/layer-queries.shared'
 import * as Rbac from '@/systems/rbac.server'
 
 // The main-thread half of query resolution: the parts the query engine must not depend on. Visibility comes
@@ -36,7 +36,7 @@ export type RewriteResult = { code: 'ok'; node: HQ.Node; unrecognisedLayerMatche
  */
 export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Node, bounds: HistoryQuery.Bounds): Promise<RewriteResult> {
 	// most queries carry no layer node, so the engine ctx is resolved on first use
-	let lqCtx: LayerQueries.QueryCtx | undefined
+	let lqCtx: LayerQueriesShared.QueryCtx | undefined
 	let sawLayerNode = false
 	const scope = HistoryQuery.matchBoundsCond(bounds)
 
@@ -60,7 +60,7 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 		if (node.type !== 'match-layer') return { code: 'ok', node }
 
 		sawLayerNode = true
-		lqCtx ??= await LayerQueriesServer.resolveAnonLayerQueryCtx({ ...ctx })
+		lqCtx ??= await LayerQueries.resolveAnonLayerQueryCtx({ ...ctx })
 
 		// the filter is evaluated against the layers actually played, not against the layer universe: the
 		// played set is bounded by the match count, while the universe is combinatorial
@@ -69,7 +69,7 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 			.selectDistinct({ layerId: Schema.matchHistory.layerId })
 			.from(Schema.matchHistory)
 			.where(E.and(E.isNotNull(Schema.matchHistory.layerMap), scope))
-		const pool = await LayerQueries.getLayersOutOfPool({
+		const pool = await LayerQueriesShared.getLayersOutOfPool({
 			ctx: lqCtx,
 			input: {
 				layerIds: played.map((p) => p.layerId as L.LayerId),

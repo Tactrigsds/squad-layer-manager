@@ -23,8 +23,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
-import type * as MH from '@/models/match-history.models'
-import * as MHModels from '@/models/match-history.models'
+import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 
 import { formatDateTime } from './format'
@@ -177,7 +176,7 @@ export function TeamFactionDisplay(props: TeamFactionProps) {
 		{ color: [DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2][props.team - 1], id: props.team },
 		{
 			color: [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB][(props.parity + props.team - 1) % 2],
-			id: MHModels.getNormedTeamId(props.team, props.parity),
+			id: MH.getNormedTeamId(props.team, props.parity),
 		},
 	] as { color: string; id: MH.NormedTeamId | SM.TeamId }[]
 	if (displayTeamsNormalized) attrs.reverse()
@@ -211,13 +210,13 @@ function teamsDisplayPair(
 	includeUnits = true,
 ): [React.ReactNode, React.ReactNode] {
 	const parity = teamParity ?? 0
-	const [left, right] = MHModels.getDisplayedTeamOrder(parity, displayLayersNormalized).map((normedTeam) => (
+	const [left, right] = MH.getDisplayedTeamOrder(parity, displayLayersNormalized).map((normedTeam) => (
 		<TeamFactionDisplay
 			key={normedTeam}
 			parity={parity}
 			includeUnits={includeUnits}
 			layer={layer}
-			team={MHModels.getDenormedTeamId(normedTeam, parity)}
+			team={MH.getDenormedTeamId(normedTeam, parity)}
 			showAltTeamIndicator={true}
 			normalized={displayLayersNormalized}
 			extraStyles={extraStyles}
@@ -250,7 +249,7 @@ export function MatchTeamDisplay(props: MatchTeamProps & { ctx: RC.RenderCtx }) 
 			normalized={ctx.displayTeamsNormalized}
 			className={props.className}
 			parity={match.ordinal}
-			team={MHModels.getDenormedTeamId(props.teamId, match.ordinal)}
+			team={MH.getDenormedTeamId(props.teamId, match.ordinal)}
 			layer={match.layerId}
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}

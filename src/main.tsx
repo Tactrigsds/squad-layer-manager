@@ -20,8 +20,8 @@ import * as SettingsClient from '@/systems/settings.client'
 import * as SiteMode from '@/systems/site-mode.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TextEntryFocus from '@/systems/text-entry-focus.client'
-import * as ThemeSys from '@/systems/theme.client'
-import * as UserPresenceClient from '@/systems/user-presence.client'
+import * as ThemeClient from '@/systems/theme.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { BUILTIN_PLUGIN_CLIENTS } from '../plugins/builtins.ts'
@@ -43,7 +43,7 @@ if (import.meta.env.DEV) await Catalogues.registerPseudo()
 	Catalogues.register()
 	// one viewer per tab, so the locale is ambient; this reads their stored choice and falls back to the browser
 	MessagesClient.setup()
-	ThemeSys.setup()
+	ThemeClient.setup()
 	SiteMode.setup()
 	TextEntryFocus.setup()
 	ConfigClient.setup()
@@ -54,7 +54,7 @@ if (import.meta.env.DEV) await Catalogues.registerPseudo()
 	BattlemetricsClient.setup()
 	UsersClient.setup()
 	ChangelogClient.setup()
-	void UserPresenceClient.setup()
+	void UPClient.setup()
 	console.debug('systems initialized')
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')

@@ -1,5 +1,4 @@
 import * as Otel from '@opentelemetry/api'
-import type * as OtelApi from '@opentelemetry/api'
 import type { MutexInterface } from 'async-mutex'
 import type Pino from 'pino'
 
@@ -9,7 +8,7 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.ts'
 import * as LOG from '@/models/logs.ts'
-import * as ATTR from '@/models/otel-attrs.ts'
+import * as ATTRS from '@/models/otel-attrs.ts'
 // Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
 // the durable-subscription operator built on it. Lifted out of context.ts, which is about context
 // types and was two thirds this.
@@ -21,19 +20,19 @@ import { baseLogger } from './logger.ts'
 const CONTEXT_ATTR_MAPPING = [
 	{
 		ctxPath: (ctx: Partial<CS.ServerId>) => ctx?.serverId,
-		attr: ATTR.SquadServer.ID,
+		attr: ATTRS.SquadServer.ID,
 	},
-	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
-	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.username, attr: ATTR.User.NAME },
+	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.discordId?.toString(), attr: ATTRS.User.ID },
+	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.username, attr: ATTRS.User.NAME },
 	{
 		ctxPath: (ctx: Partial<C.WSSession>) => ctx?.wsClientId,
-		attr: ATTR.WebSocket.CLIENT_ID,
+		attr: ATTRS.WebSocket.CLIENT_ID,
 	},
 	// structurally typed rather than importing the plugin host's Ctx, which would close a cycle. Every
 	// op a plugin runs is under a `plugin:<id>:` name already; these make it a group-by instead of a
 	// string prefix match, and pin the span to the version that produced it.
-	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.id, attr: ATTR.Plugin.ID },
-	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.manifest?.version, attr: ATTR.Plugin.VERSION },
+	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.id, attr: ATTRS.Plugin.ID },
+	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.manifest?.version, attr: ATTRS.Plugin.VERSION },
 ].map((m) => ({ ...m, mapped: LOG.MAPPED_ATTRS.includes(m.attr) }))
 
 const MAPPED_ATTRS = new Set<string>(LOG.MAPPED_ATTRS)
@@ -48,7 +47,7 @@ type PluginCtx = { plugin: { id: string; manifest: { version: string } } }
  * because we do not own the object: a Subject hands one value to every subscriber, so blanking it
  * would let whichever op ran first take the link away from all the others.
  */
-function spendOtelLinks(ctx: CS.Otel): [links: OtelApi.Link[], spent: CS.Otel] {
+function spendOtelLinks(ctx: CS.Otel): [links: Otel.Link[], spent: CS.Otel] {
 	return [ctx.otel.links, { ...ctx, otel: { links: [] } }]
 }
 
@@ -60,7 +59,7 @@ const spanStatuses = new WeakMap<Otel.Span, { code: Otel.SpanStatusCode; message
 // is a no-op until NodeSDK.start(), and this module is imported long before that.
 let opDuration: Otel.Histogram | undefined
 function getOpDurationHistogram() {
-	opDuration ??= Otel.metrics.getMeter('squad-layer-manager').createHistogram(ATTR.Op.DURATION, {
+	opDuration ??= Otel.metrics.getMeter('squad-layer-manager').createHistogram(ATTRS.Op.DURATION, {
 		description: 'Duration of a spanOp, by op name and outcome',
 		unit: 's',
 		advice: {
@@ -139,9 +138,9 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				if (args[0] === ctx) args[0] = spent
 				else if (Array.isArray(args[0])) args[0] = args[0].map((a: unknown) => (a === ctx ? spent : a))
 				for (const link of ctxLinks) {
-					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
+					const source = link.attributes?.[ATTRS.SpanLink.SOURCE]
 					// explicitly included links take precedence
-					if (source && links.some((l) => l.attributes?.[ATTR.SpanLink.SOURCE] === source)) {
+					if (source && links.some((l) => l.attributes?.[ATTRS.SpanLink.SOURCE] === source)) {
 						continue
 					}
 					links.push(link)
@@ -162,7 +161,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		}
 
 		if (opts.root || !Otel.trace.getActiveSpan()) {
-			baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
+			baggageEntries[ATTRS.Span.ROOT_NAME] = { value: fullName }
 			hasBaggageEntries = true
 		}
 
@@ -211,7 +210,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 			const log = opts.module.getLogger() ?? baseLogger
 			const startedAt = performance.now()
-			let metricOutcome: ATTR.Op.Outcome = 'ok'
+			let metricOutcome: ATTRS.Op.Outcome = 'ok'
 			try {
 				const result = await run(...(args as Parameters<Cb>))
 				let statusString: string | undefined
@@ -266,11 +265,11 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				}
 				throw error
 			} finally {
-				const metricAttrs: Otel.Attributes = { [ATTR.Op.NAME]: fullName, [ATTR.Op.OUTCOME]: metricOutcome }
+				const metricAttrs: Otel.Attributes = { [ATTRS.Op.NAME]: fullName, [ATTRS.Op.OUTCOME]: metricOutcome }
 				// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
 				// configured servers and of installed plugins
-				if (spanAttrs[ATTR.SquadServer.ID]) metricAttrs[ATTR.SquadServer.ID] = spanAttrs[ATTR.SquadServer.ID]
-				if (spanAttrs[ATTR.Plugin.ID]) metricAttrs[ATTR.Plugin.ID] = spanAttrs[ATTR.Plugin.ID]
+				if (spanAttrs[ATTRS.SquadServer.ID]) metricAttrs[ATTRS.SquadServer.ID] = spanAttrs[ATTRS.SquadServer.ID]
+				if (spanAttrs[ATTRS.Plugin.ID]) metricAttrs[ATTRS.Plugin.ID] = spanAttrs[ATTRS.Plugin.ID]
 				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, metricAttrs)
 				span.end()
 			}

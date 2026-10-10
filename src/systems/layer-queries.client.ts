@@ -17,7 +17,7 @@ import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
-import * as LOGS from '@/models/logs'
+import * as LOG from '@/models/logs'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -566,7 +566,7 @@ async function sendWorkerRequest<T extends RequestType>(type: T, input: RequestI
 function onWorkerMessage(event: MessageEvent<WorkerTypes.FromWorker>) {
 	const message = event.data
 	if (message.type === 'worker-log') {
-		LOGS.showLogEvent(message.payload)
+		LOG.showLogEvent(message.payload)
 		return
 	}
 	if (message.type === 'layer-download-started') {

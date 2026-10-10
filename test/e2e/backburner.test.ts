@@ -5,7 +5,7 @@ import * as L from '@/models/layer'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'
-import * as DB from '../harness/dashboard'
+import * as Dash from '../harness/dashboard'
 import { belowItem, centerOf, dragFrom } from '../harness/drag'
 import { expect, test } from './fixtures'
 
@@ -71,7 +71,7 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 
 	test('the request dialog is seeded from the request being edited, and applies the change', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (2)')).toBeVisible({ timeout: 20_000 })
 
 		await panel.getByRole('listitem').filter({ hasText: 'Narva' }).getByRole('button', { name: 'Edit request' }).click()
@@ -98,11 +98,11 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 		await app.waitForRosterSync()
 
 		await page.goto(app.loginUrl())
-		await expect(DB.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 
 		// a request arriving from chat shows up in the panel without a reload
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible({ timeout: 20_000 })
 		const row = panel.getByRole('listitem').filter({ hasText: 'Fallujah' })
 		await expect(row).toBeVisible()
@@ -122,7 +122,7 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 
 	test('a new request starts from the layer request filters', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (2)')).toBeVisible({ timeout: 20_000 })
 
 		await panel.getByRole('button', { name: 'Edit layer requests' }).click()
@@ -189,7 +189,7 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 
 	test('drag-combining requests with conflicting filters is rejected with a toast', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible({ timeout: 20_000 })
 		const regularRow = panel.getByRole('listitem').filter({ hasText: 'RAAS Only' }).filter({ hasText: 'Gorodok' })
 		const invertedRow = panel.getByRole('listitem').filter({ hasText: 'not RAAS Only' })
@@ -205,7 +205,7 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 
 	test('dragging a request onto the queue opens the Select Layers dialog seeded from its template', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible({ timeout: 20_000 })
 		const requestRow = panel.getByRole('listitem').filter({ hasText: 'Sumari' })
 		await expect(requestRow).toBeVisible()
@@ -269,7 +269,7 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 
 	test('a request that only one layer satisfies is added straight to the queue, no picker', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		await expect(panel.getByText('Layer Requests (1)')).toBeVisible({ timeout: 20_000 })
 
 		const requestRow = panel.getByRole('listitem').filter({ hasText: 'Sumari' })
@@ -285,12 +285,12 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 
 	test('dragging a queue item onto the requests panel moves it into a request', async ({ page }) => {
 		await page.goto(app.loginUrl())
-		const panel = DB.queueSection(page)
+		const panel = Dash.queueSection(page)
 		// the drop in the previous test was draft state, which may or may not have outlived that page's
 		// editing session: read the starting counts rather than assuming them
 		const requestsHeader = panel.getByText(/Layer Requests \(\d+\)/)
 		await expect(requestsHeader).toBeVisible({ timeout: 20_000 })
-		const queueTab = DB.queueLabel(page, /^Queue \(\d+\)/)
+		const queueTab = Dash.queueLabel(page, /^Queue \(\d+\)/)
 		await expect(queueTab).toBeVisible()
 		const requestCount = Number(/\((\d+)\)/.exec((await requestsHeader.textContent())!)![1])
 		const queueCount = Number(/\((\d+)\)/.exec((await queueTab.textContent())!)![1])
@@ -303,7 +303,7 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 		// the layer moves out of the queue and into a request: it's gone from the queue and Gorodok now shows
 		// exactly once (the request), not twice
 		await expect(panel.getByText(`Layer Requests (${requestCount + 1})`)).toBeVisible({ timeout: 10_000 })
-		await expect(DB.queueLabel(page, `Queue (${queueCount - 1})`)).toBeVisible()
+		await expect(Dash.queueLabel(page, `Queue (${queueCount - 1})`)).toBeVisible()
 		await expect(panel.getByRole('listitem').filter({ hasText: 'Gorodok' })).toHaveCount(1)
 	})
 })
