@@ -312,29 +312,57 @@ async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvoca
 	}
 }
 
+const BROADCAST_PREFIX = 'AdminBroadcast '
+const BROADCAST_MAX_BYTES = SM.RCON_MAX_BUF_LEN - Buffer.byteLength(BROADCAST_PREFIX, 'utf8')
+const truncateBuf = new Uint8Array(SM.RCON_MAX_BUF_LEN)
+const utf8Encoder = new TextEncoder()
+
 // the rcon calls a broadcast takes: one per message, each of which the game logs separately. Exposed so a caller
 // attributing the broadcast can arm an expectation per line (see broadcastAction).
-/** Splits a message into chunks rcon will accept, breaking at blank lines first, then newlines. */
+/**
+ * Splits a message into chunks rcon will accept, breaking at blank lines first, then packing lines into as few
+ * chunks as fit. A single line over the limit is truncated.
+ */
 export function splitBroadcast(message: string): string[] {
-	if (message.length <= SM.RCON_MAX_BUF_LEN) return [message]
-	const messages: string[] = []
-	for (const msg of message.split('\n\n')) {
-		if (msg.length > SM.RCON_MAX_BUF_LEN) {
-			for (const line of msg.split('\n')) {
-				if (line.length > SM.RCON_MAX_BUF_LEN) {
-					messages.push(line.slice(0, SM.RCON_MAX_BUF_LEN))
-				}
-			}
-		} else {
-			messages.push(msg)
+	if (Buffer.byteLength(message, 'utf8') <= BROADCAST_MAX_BYTES) return [message]
+	const chunks: string[] = []
+	for (const paragraph of message.split('\n\n')) {
+		if (paragraph.trim() === '') continue
+		if (Buffer.byteLength(paragraph, 'utf8') <= BROADCAST_MAX_BYTES) {
+			chunks.push(paragraph)
+			continue
 		}
+		let chunk = ''
+		let chunkBytes = 0
+		for (let line of paragraph.split('\n')) {
+			let lineBytes = Buffer.byteLength(line, 'utf8')
+			if (lineBytes > BROADCAST_MAX_BYTES) {
+				line = truncateUtf8(line, BROADCAST_MAX_BYTES)
+				lineBytes = Buffer.byteLength(line, 'utf8')
+			}
+			if (chunk !== '' && chunkBytes + 1 + lineBytes <= BROADCAST_MAX_BYTES) {
+				chunk += '\n' + line
+				chunkBytes += 1 + lineBytes
+				continue
+			}
+			if (chunk.trim() !== '') chunks.push(chunk)
+			chunk = line
+			chunkBytes = lineBytes
+		}
+		if (chunk.trim() !== '') chunks.push(chunk)
 	}
-	return messages
+	return chunks
+}
+
+// encodeInto stops before a character that would not fit, so the cut never splits a code point
+function truncateUtf8(str: string, maxBytes: number) {
+	const { read } = utf8Encoder.encodeInto(str, truncateBuf.subarray(0, maxBytes))
+	return str.slice(0, read)
 }
 
 export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: string) {
-	for (const line of splitBroadcast(message)) {
-		await ctx.rcon.execute(`AdminBroadcast ${line}`, { level: 'debug', signal: ctx.signal })
+	for (const chunk of splitBroadcast(message)) {
+		await ctx.rcon.execute(BROADCAST_PREFIX + chunk, { level: 'debug', signal: ctx.signal })
 	}
 }
 
