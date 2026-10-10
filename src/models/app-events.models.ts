@@ -364,6 +364,8 @@ export const TeamswapsUpdatedSchema = event('TEAMSWAPS_UPDATED', {
 	trigger: TSW.SaveTriggerSchema,
 	prevSwaps: TSW.TeamswapCollectionSchema,
 	swaps: TSW.TeamswapCollectionSchema,
+	// for a 'counterbalance' re-pick: the team sizes after the saved swaps, before and after it
+	balance: z.object({ before: TSW.TeamCountsSchema, after: TSW.TeamCountsSchema }).optional(),
 })
 export type TeamswapsUpdated = z.infer<typeof TeamswapsUpdatedSchema>
 

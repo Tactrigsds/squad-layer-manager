@@ -1,5 +1,6 @@
 // Counterbalance: after an admin edits the queued teamswaps, pick swaps from the other side that bring the team sizes
-// as close to even as the configured rules allow.
+// as close to even as the configured rules allow. The client re-picks against the edit set on every admin edit. The
+// server re-picks against the saved swaps when roster changes leave them uneven for `rosterChangeDelay`.
 //
 // Players are picked in units. A unit is a party's members on the larger team, or a single player outside any party,
 // so a party is never split by a counterbalance swap. A unit is eligible only when no member is excluded, and is
@@ -8,11 +9,12 @@
 
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
-import type * as MH from '@/models/match-history.models'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as MH from '@/models/match-history.models'
 import { t, type TString } from '@/models/messages.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SDoc from '@/models/schema-docs.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 
 export const GroupRefSchema = z.object({
 	grouping: z
@@ -62,10 +64,18 @@ export const SettingsSchema = z.object({
 			SDoc.of({
 				label: t('Enabled'),
 				description: t(
-					'When an admin queues or removes a swap from the web dashboard, SLM queues swaps from the other team until the team sizes are as even as possible. Players joining, leaving or switching teams never add or remove counterbalance swaps.',
+					'When an admin queues or removes a swap from the web dashboard, SLM queues swaps from the other team until the team sizes are as even as possible.',
 				),
 			}),
 		),
+	rosterChangeDelay: ZodUtils.HumanTime.prefault('2m').meta(
+		SDoc.of({
+			label: t('Roster Change Delay'),
+			description: t(
+				'How long players joining, leaving or switching teams must leave the saved swaps more than one player from even before SLM re-picks the counterbalance swaps. A re-pick only happens while an admin swap is saved and nobody is editing the swaps.',
+			),
+		}),
+	),
 	neverPickGroups: z
 		.array(GroupRefSchema)
 		.prefault([])
@@ -129,6 +139,30 @@ export type Result = {
 	// how many more players would have had to move to reach even teams
 	shortfall: number
 }
+
+// The roster as counterbalance sees it: everyone on a team, with this match's stats and their grouping facts
+export function candidates(
+	players: Iterable<SM.Player>,
+	stats: Record<SM.PlayerId, PlayerStats>,
+	ordinal: number,
+	factsOf: (playerId: SM.PlayerId, player: SM.Player) => PG.PlayerFacts,
+): Candidate[] {
+	const result: Candidate[] = []
+	for (const player of players) {
+		if (player.teamId === null) continue
+		const playerId = SM.PlayerIds.getPlayerId(player.ids)
+		result.push({
+			playerId,
+			team: MH.getNormedTeamId(player.teamId, ordinal),
+			partyId: player.partyId ?? null,
+			stats: stats[playerId] ?? NO_STATS,
+			facts: factsOf(playerId, player),
+		})
+	}
+	return result
+}
+
+const NO_STATS: PlayerStats = { kills: 0, wounds: 0, deaths: 0 }
 
 export function kd(stats: PlayerStats): number {
 	return stats.kills / Math.max(stats.deaths, 1)

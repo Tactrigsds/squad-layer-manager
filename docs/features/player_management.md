@@ -118,7 +118,9 @@ admin queues or removes a swap, SLM re-picks swaps from the other team so that t
 Counterbalance swaps carry a scale icon and a dashed outline.
 
 - A party is always swapped together.
-- Players joining, leaving or switching teams never add or remove counterbalance swaps.
+- If players joining, leaving or switching teams leave the saved swaps more than one player from even for 2 minutes,
+  SLM re-picks the counterbalance swaps and records the re-pick in the activity feed. Unsaved edits are never changed.
+  _Roster Change Delay_ sets how long SLM waits.
 - Swaps queued with an in-game command are not counterbalanced.
 - Remove a counterbalance swap to have SLM pick a different player.
 

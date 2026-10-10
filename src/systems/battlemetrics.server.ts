@@ -204,6 +204,13 @@ function getCachedPlayer(eosId: string): BM.PlayerFlagsAndProfile | undefined {
 	return entry.value
 }
 
+// a player's flags as last fetched, without fetching. Empty when nothing is cached for them yet
+export function cachedPlayerFlags(eosId: string): BM.PlayerFlag[] {
+	const entry = playerFlagsAndProfileCache.get(eosId)
+	if (!entry || !orgFlagsCache || !isServable(entry, Date.now())) return []
+	return BM.resolveFlags(entry.value.flagIds, orgFlagsCache)
+}
+
 function setCachedPlayer(eosId: string, bmPlayerId: string, value: BM.PlayerFlagsAndProfile) {
 	const ttl = PLAYER_CACHE_TTL * (1 + (Math.random() * 2 - 1) * PLAYER_CACHE_TTL_JITTER)
 	playerFlagsAndProfileCache.set(eosId, { value, bmPlayerId, expiresAt: Date.now() + ttl })

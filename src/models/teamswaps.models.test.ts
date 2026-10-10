@@ -454,3 +454,46 @@ describe('reducer set-counterbalance-swaps', () => {
 		expect(rejection.code).toBe('noop')
 	})
 })
+
+describe('reducer set-counterbalance-swaps on the saved swaps', () => {
+	const players: [SM.PlayerId, MH.NormedTeamId][] = [
+		['a', 'A'],
+		['b', 'B'],
+		['c', 'B'],
+		['d', 'B'],
+	]
+
+	function savedWithCounterbalance() {
+		const state = stateWith(players, [['a', 'B']])
+		state.savedSwaps = new Map([...state.savedSwaps, ['b', { toTeam: 'A', source: SOURCE, counterbalance: true }]])
+		state.editedSwaps = state.savedSwaps
+		return state
+	}
+
+	it('replaces the saved counterbalance swaps, warns the dropped player and records the team sizes', () => {
+		const { state, sideEffects } = apply(
+			savedWithCounterbalance(),
+			op({ code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: new Map([['c', 'A']]) }),
+		)
+		expect(state.editedSwaps).toBe(state.savedSwaps)
+		expect([...state.savedSwaps.keys()]).toEqual(['a', 'c'])
+		expect(sideEffects.filter((se) => se.code === 'notify-teamswaps-cancelled').flatMap((se) => se.players)).toEqual(['b'])
+		expect(notifiedUpcoming(sideEffects)).toEqual(['c'])
+		const save = sideEffects.find((se) => se.code === 'save')
+		expect(save?.code === 'save' && save.trigger).toBe('counterbalance')
+		expect(save?.code === 'save' && save.balance).toEqual({ before: { A: 1, B: 3 }, after: { A: 1, B: 3 } })
+	})
+
+	it('leaves the swaps alone while someone has unsaved edits', () => {
+		let { state } = apply(
+			savedWithCounterbalance(),
+			op({ code: 'add-player-teamswap', playerId: 'd', toTeam: 'A', saved: false, source: SOURCE }),
+		)
+		const rejection = rejectionOf(() =>
+			apply(state, op({ code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: new Map([['c', 'A']]) })),
+		)
+		expect(rejection.code).toBe('noop')
+		;({ state } = apply(state, op({ code: 'revert-to-saved', source: SOURCE })))
+		expect(state.savedSwaps.get('b')?.counterbalance).toBe(true)
+	})
+})

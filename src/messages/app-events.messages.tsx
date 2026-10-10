@@ -202,6 +202,32 @@ export const teamswapsDropped = def(
 	(count: number) => ({ count }),
 )
 
+// the team sizes are the ones after the saved swaps, before and after the re-pick, which is the reason it happened
+export const teamswapsCounterbalanced = def(
+	(
+		added: number,
+		removed: number,
+		teams: { A: React.ReactNode; B: React.ReactNode },
+		balance?: { before: { A: number; B: number }; after: { A: number; B: number } },
+	) => {
+		const delta = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')
+		if (!balance)
+			return rt('Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams', { delta })
+		return rt(
+			'Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams. Teams after the swaps: {teamA} {beforeA} to {afterA}, {teamB} {beforeB} to {afterB}',
+			{
+				delta,
+				teamA: teams.A,
+				teamB: teams.B,
+				beforeA: balance.before.A,
+				afterA: balance.after.A,
+				beforeB: balance.before.B,
+				afterB: balance.after.B,
+			},
+		)
+	},
+)
+
 export const teamswapsCleared = def((actor: React.ReactNode) => rt('{actor} cleared the queued teamswaps', { actor }))
 
 export const teamswapsUpdated = def((actor: React.ReactNode, added: number, removed: number, queued: number) =>
@@ -391,6 +417,12 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 				return `executed the queued teamswaps (${players(removed)})`
 			}
 			if (e.trigger === 'roster-change') return `dropped ${removed} queued teamswap${removed === 1 ? '' : 's'} (roster changed)`
+			if (e.trigger === 'counterbalance') {
+				const parts = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')
+				const b = e.balance
+				const sizes = b ? `, teams after swaps ${b.before.A}v${b.before.B} -> ${b.after.A}v${b.after.B}` : ''
+				return `re-picked the counterbalance teamswaps (${parts}) after the roster changed${sizes}`
+			}
 			if (e.swaps.size === 0) return 'cleared the queued teamswaps'
 			const parts = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean)
 			return `updated the queued teamswaps (${parts.join(', ')})`

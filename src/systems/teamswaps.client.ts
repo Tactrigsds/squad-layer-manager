@@ -8,7 +8,7 @@ import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as TSWCB from '@/models/teamswap-counterbalance.models'
@@ -165,10 +165,8 @@ function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.Pl
 	return TeamswapsPrt.getPlayerOppositeTeam(playerId, currentMatchNow(stores.squadServer.serverId), players)
 }
 
-const NO_STATS: TSWCB.PlayerStats = { kills: 0, wounds: 0, deaths: 0 }
-
-// Re-picks the counterbalance swaps against the edit set as it now stands. Called only after an admin's own edit and
-// never on a roster change, which is what keeps counterbalance a response to deliberate swaps.
+// Re-picks the counterbalance swaps against the edit set as it now stands, after an admin's own edit. Roster changes
+// are the server's to answer (see the counterbalance timer in teamswaps.server).
 function counterbalance(stores: SquadServerFrame.KeyProp, source: USR.GuiOrChatUserId) {
 	const frameState = Zus.getState(stores.squadServer)
 	const settings = ServerSettingsPrt.Sel.saved(frameState).teamswapCounterbalance
@@ -177,17 +175,7 @@ function counterbalance(stores: SquadServerFrame.KeyProp, source: USR.GuiOrChatU
 	if (!match) return
 	const state = Sel.localState(frameState)
 	const chat = ChatPrt.Sel.chatState(frameState)
-	const players: TSWCB.Candidate[] = []
-	for (const [playerId, player] of chat.players) {
-		if (player.teamId === null) continue
-		players.push({
-			playerId,
-			team: MH.getNormedTeamId(player.teamId, match.ordinal),
-			partyId: player.partyId ?? null,
-			stats: chat.playerStats[playerId] ?? NO_STATS,
-			facts: BattlemetricsClient.playerFactsNow(playerId, player),
-		})
-	}
+	const players = TSWCB.candidates(chat.players.values(), chat.playerStats, match.ordinal, BattlemetricsClient.playerFactsNow)
 	const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>()
 	for (const [playerId, swap_] of state.editedSwaps) {
 		if (!swap_.counterbalance) manualSwaps.set(playerId, swap_.toTeam)

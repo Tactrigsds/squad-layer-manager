@@ -44,7 +44,9 @@ export const helpCounterbalanceRules = def(
 
 export const helpCounterbalanceParties = def('A party is always swapped together.')
 
-export const helpCounterbalanceRoster = def('Players joining, leaving or switching teams never add or remove counterbalance swaps.')
+export const helpCounterbalanceRoster = def(
+	'If players joining, leaving or switching teams leave the saved swaps uneven for 2 minutes by default, SLM re-picks the counterbalance swaps. Unsaved edits are never changed.',
+)
 
 export const helpCounterbalanceInGame = def('Swaps queued with an in-game command are not counterbalanced.')
 

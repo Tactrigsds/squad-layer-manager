@@ -11,16 +11,19 @@ import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as AppEvents from '@/models/app-events.models'
-import type * as CS from '@/models/context-shared.models'
+import * as CS from '@/models/context-shared.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type { TString } from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as PendingEvents from '@/models/pending-events.models'
+import * as PG from '@/models/player-groupings.models'
 import * as SE from '@/models/server-events.models'
+import type * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
+import * as TSWCB from '@/models/teamswap-counterbalance.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
@@ -28,8 +31,10 @@ import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -109,8 +114,10 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ManagedServerCleanup) {
 		dispatchMtx: new Mutex(),
 		teamswapExecutedAt: null,
 		haveReadSavedSwapsFromDb: false,
+		counterbalanceCheck$: new Rx.Subject<void>(),
+		counterbalanceSettled: null,
 	}
-	ctx.cleanup.push(context.op$, context.dispatchMtx)
+	ctx.cleanup.push(context.op$, context.dispatchMtx, context.counterbalanceCheck$)
 
 	// sync with team updates
 	ctx.cleanup.push(
@@ -244,6 +251,66 @@ function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
 }
 
+// Re-picks the counterbalance swaps once roster changes have left the saved swaps uneven for `rosterChangeDelay`. The
+// timer starts when that becomes true and is dropped as soon as it stops being true. A re-pick that changes nothing,
+// such as one with no eligible players left, is remembered, so the same roster does not restart the timer.
+export function setupInstance(ctx: C.ManagedServer & C.Db) {
+	const serverId = ctx.serverId
+	ctx.cleanup.push(
+		Rx.merge(ctx.teamswaps.counterbalanceCheck$, ctx.serverSettings.update$)
+			.pipe(
+				Rx.map(() => counterbalanceDue(ctx)),
+				Rx.distinctUntilChanged(),
+				Rx.switchMap((due) => (due ? Rx.timer(ctx.serverSettings.settings.teamswapCounterbalance.rosterChangeDelay) : Rx.EMPTY)),
+				Instr.durableSub('counterbalanceAfterRosterChange', { module, taskScheduling: 'exhaust' }, async (_, signal) => {
+					await counterbalanceSavedSwaps(SquadServer.resolveCtx(CS.addSignal(SquadServer.getBaseCtx(), signal), serverId))
+				}),
+			)
+			.subscribe(),
+	)
+}
+
+function counterbalanceDue(ctx: TSW.Ctx & SETTINGS.Ctx): boolean {
+	if (!ctx.serverSettings.settings.teamswapCounterbalance.enabled) return false
+	const state = getState(ctx)
+	if (state.swapping || state.editedSwaps !== state.savedSwaps) return false
+	const settled = ctx.teamswaps.counterbalanceSettled
+	if (settled?.players === state.players && settled.savedSwaps === state.savedSwaps) return false
+	if (![...state.savedSwaps.values()].some((swap_) => !swap_.counterbalance)) return false
+	const counts = TSW.teamCountsAfterSwaps(state.players, state.savedSwaps)
+	return Math.abs(counts.A - counts.B) > 1
+}
+
+async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db) {
+	try {
+		if (!counterbalanceDue(ctx)) return
+		const state = getState(ctx)
+		const match = await MatchHistory.requireCurrentMatch(ctx)
+		const chat = ctx.server.chatInterpolatedState
+		const players = TSWCB.candidates(chat.players.values(), chat.playerStats, match.ordinal, (playerId, player) =>
+			PG.playerFacts(player, Battlemetrics.cachedPlayerFlags(playerId)),
+		)
+		const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>()
+		for (const [playerId, swap_] of state.savedSwaps) {
+			if (!swap_.counterbalance) manualSwaps.set(playerId, swap_.toTeam)
+		}
+		const result = TSWCB.compute({
+			settings: ctx.serverSettings.settings.teamswapCounterbalance,
+			groupings: Settings.GLOBAL_SETTINGS.playerGroupings,
+			players,
+			manualSwaps,
+			skipped: new Set(),
+			pending: new Set(state.pendingSwaps.keys()),
+		})
+		log.info('counterbalance re-pick after roster changes: %d swap(s), %d short of even', result.swaps.size, result.shortfall)
+		await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: result.swaps }])
+	} finally {
+		const state = getState(ctx)
+		ctx.teamswaps.counterbalanceSettled = { players: state.players, savedSwaps: state.savedSwaps }
+		ctx.teamswaps.counterbalanceCheck$.next()
+	}
+}
+
 // how long the roll may spend sorting players onto their new teams before the queue fires anyway
 const ROLL_ROSTER_TIMEOUT_MS = 30_000
 const ROLL_ROSTER_POLL_MS = 2_000
@@ -327,6 +394,7 @@ async function emitTeamswapsUpdated(ctx: SQS.Ctx & C.Db & CS.AbortSignal, se: Ex
 		trigger: se.trigger,
 		prevSwaps: se.prevSaved,
 		swaps: se.swaps,
+		balance: se.balance,
 	})
 	if (AppEvents.summarizeTeamswapChanges(appEvent).length === 0) return
 	await SquadServerActions.emitAppEvent(ctx, appEvent)
@@ -503,6 +571,7 @@ const dispatchOp = Instr.spanOp(
 			return opErrors
 		}
 		ctx.teamswaps.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
+		ctx.teamswaps.counterbalanceCheck$.next()
 
 		const nextOps: TSW.Op[] = []
 		// draining the queue and forcing the swaps are the same action, so an execution logs one event for both: the
