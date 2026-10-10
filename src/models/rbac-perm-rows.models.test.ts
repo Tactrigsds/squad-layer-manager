@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import * as PermRows from '@/models/rbac-perm-rows'
+import * as PermRows from '@/models/rbac-perm-rows.models'
 
 // the editor renders rowsFromConfig and writes back configFromRows, so anything that survives one round trip is a config
 // the user can open and save without the meaning drifting under them.

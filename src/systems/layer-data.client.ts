@@ -1,6 +1,6 @@
 import * as AR from '@/app-routes'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 
 let loaded: Promise<L.LayerData> | null = null
 // the ETag of the layer-data.json this page runs on, which is its content hash. Null until loaded, or where

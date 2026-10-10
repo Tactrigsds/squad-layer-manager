@@ -150,7 +150,7 @@ For observables, the same rule applies with the ctx as the first element of the 
 
 **A domain's contexts are kept in that domain's models file.** `V.Ctx` is the vote context, `MH.Ctx` the match-history
 one, reached under the same namespace as the rest of that domain, with the runtime object it carries at
-`Ctx.Payload`. Two modules stay general rather than domain-owned: `src/models/context-shared.ts` (`CS`) is the leaf
+`Ctx.Payload`. Two modules stay general rather than domain-owned: `src/models/context-shared.models.ts` (`CS`) is the leaf
 every context composes on, and `src/server/context.ts` (`C`) holds server infrastructure with no domain models file,
 plus the composition root `ManagedServer`.
 
@@ -380,7 +380,7 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **`useEffect`/`useState` interdependence is a code smell.** Use a frame instead.
 - React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
   data from React state, and only call table methods in event handlers.
-- **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
+- **Never hardcode a z-index.** Take an offset from `src/models/zindex.models.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
   bands are relative to the nearest enclosing `BaseZIndexContext`, so a popover opened inside a dialog lands above
   that dialog without either callsite knowing about the other.
 - **One overlay per list, not per item.** A closed Radix ContextMenu or DropdownMenu is about fifteen fibers and a
@@ -480,11 +480,11 @@ Before touching a reducer:
 
 Three state machines are built on it today, each as a model/server/client trio:
 
-| Machine                      | Model (reducer)                   | Server                                | Client                                      |
-| ---------------------------- | --------------------------------- | ------------------------------------- | ------------------------------------------- |
-| Shared layer list, the queue | `src/models/shared-layer-list.ts` | `src/systems/layer-queue.server.ts`   | `src/frame-partials/layer-queue.partial.ts` |
-| Team swaps                   | `src/models/teamswaps.models.ts`  | `src/systems/teamswaps.server.ts`     | `src/frame-partials/teamswaps.partial.ts`   |
-| User presence                | `src/models/user-presence.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
+| Machine                      | Model (reducer)                          | Server                                | Client                                      |
+| ---------------------------- | ---------------------------------------- | ------------------------------------- | ------------------------------------------- |
+| Shared layer list, the queue | `src/models/shared-layer-list.models.ts` | `src/systems/layer-queue.server.ts`   | `src/frame-partials/layer-queue.partial.ts` |
+| Team swaps                   | `src/models/teamswaps.models.ts`         | `src/systems/teamswaps.server.ts`     | `src/frame-partials/teamswaps.partial.ts`   |
+| User presence                | `src/models/user-presence.models.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
 
 The layer queue is the fullest example. Presence is the outlier: its client half is held in a plain global store rather
 than a frame partial, because presence is app-global.
@@ -503,8 +503,8 @@ Validation is two-tiered: `EditableFilterNode` is what the editor manipulates mi
 optional, against a fully-valid `FilterNode`. Errors are collected **by path** rather than thrown, so the editor can
 highlight the exact offending node.
 
-Builders are layered and each only knows the level below it: `filter-builders.ts` constructs `FilterNode`s, and
-`constraint-builders.ts` wraps those into query `Constraint`s.
+Builders are layered and each only knows the level below it: `filter-builders.models.ts` constructs `FilterNode`s, and
+`constraint-builders.models.ts` wraps those into query `Constraint`s.
 
 `filter-references.models.ts` answers where a filter entity is used: another filter's apply-filter operator, or a
 server's pool configuration, transitively through the filters that configuration applies. The server recomputes the
@@ -530,7 +530,7 @@ later upgrade it once new layer data makes it resolvable. For the engine, a know
 packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
 which is the row id the store indexes by.
 
-The set of columns is not fixed: `layer-columns.ts` combines base columns with server-configurable extra columns
+The set of columns is not fixed: `layer-columns.models.ts` combines base columns with server-configurable extra columns
 into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
 must always produce the same object.
 
@@ -652,7 +652,7 @@ Three things shape working on it:
 
 - **The ABI is deliberately primitive**, with no wasm-bindgen. The host allocates, writes bytes into linear memory,
   calls in, and reads the response back out. Requests and responses are JSON.
-- **All semantic lowering is done in TypeScript.** `models/layer-engine.ts` compiles the filter AST down to a small
+- **All semantic lowering is done in TypeScript.** `models/layer-engine.models.ts` compiles the filter AST down to a small
   IR of primitive comparisons over column indices and encoded values, inlining referenced filters recursively, so
   the IR handed to Rust is always self-contained.
 - **The evaluator is three-valued**, tracking true and unknown as separate bitsets so SQL null semantics survive
@@ -773,11 +773,11 @@ plugin's HMR comes from. Discovery is dev-only on both halves. The client discov
 a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
 
 **A package carries no copy of SLM.** Its bundles import `slm/*` and the shared packages in
-`models/plugin-api-shim.ts` (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
+`models/plugin-api-shim.models.ts` (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
 to a generated shim module re-exporting its own instance: on the server through a `module.registerHooks` resolver, in
 the browser through the import map in `index.html` and the `/plugin-api/*` route. That is what keeps one zod (or
 `configSchema instanceof z.ZodObject` fails) and one React (or hooks break) in play. The export names come from
-`models/plugin-api-exports.ts`, generated beside the API report, since the server serves the browser's shims but
+`models/plugin-api-exports.models.ts`, generated beside the API report, since the server serves the browser's shims but
 cannot import the client entries to enumerate them.
 
 **Everything else a package imports is bundled, and only as ESM.** `plugin:pack` builds each entry for the platform

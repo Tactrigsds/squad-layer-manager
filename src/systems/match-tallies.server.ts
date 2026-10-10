@@ -4,7 +4,7 @@ import { Worker } from 'node:worker_threads'
 
 import * as Schema from '$root/drizzle/schema'
 import * as Prom from '@/lib/promise-utils'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as MH from '@/models/match-history.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'

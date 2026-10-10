@@ -25,7 +25,7 @@ const repoRoot = path.resolve(import.meta.dirname, '..', '..')
 const apiDir = path.join(repoRoot, 'src', 'plugin-api')
 const reportPath = path.join(apiDir, 'api-report.md')
 // the value exports per entry, which the shim modules a packaged plugin imports are built from
-const exportsPath = path.join(repoRoot, 'src', 'models', 'plugin-api-exports.ts')
+const exportsPath = path.join(repoRoot, 'src', 'models', 'plugin-api-exports.models.ts')
 // the plugin guide, whose example manifest has to declare a range this build accepts
 const guidePath = path.join(repoRoot, 'docs', 'developers', 'writing_plugins.md')
 const versionStr = PLG.formatApiVersion()
@@ -136,7 +136,7 @@ function exportsFileContent(): string {
 		'//',
 		"// The value exports of each slm/* entry. A packaged plugin's bundles import those specifiers as",
 		'// bare names, and both halves of the host answer them with a generated shim module built from this',
-		'// table (see models/plugin-api-shim.ts). The client entries are the reason it is a table and not',
+		'// table (see models/plugin-api-shim.models.ts). The client entries are the reason it is a table and not',
 		'// Object.keys of the real namespace: the server serves their shims but cannot import them.',
 		'export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {',
 		...entries,

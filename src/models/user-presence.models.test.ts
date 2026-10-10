@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import * as ODSM from '@/lib/odsm'
 
-import * as UP from './user-presence'
+import * as UP from './user-presence.models'
 
 describe('OpSchema', () => {
 	const op = (activity: unknown) => ({

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 import * as CHAT from '@/models/chat.models'
 import type * as HQ from '@/models/history.models'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 import type * as SE from '@/models/server-events.models'
 import * as VEH from '@/models/vehicles.models'
 

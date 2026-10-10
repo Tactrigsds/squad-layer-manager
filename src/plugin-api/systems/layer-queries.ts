@@ -1,7 +1,7 @@
 import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
-import type * as L from '@/models/layer'
 import type * as LQY from '@/models/layer-queries.models'
+import type * as L from '@/models/layer.models'
 import type * as GV from '@/plugin-api/models/gen-vote'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueriesShared from '@/systems/layer-queries.shared'

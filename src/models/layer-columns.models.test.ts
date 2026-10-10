@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import type * as L from '@/models/layer.models'
 
 function entry(over: Partial<L.LayerFactionAvailabilityEntry> = {}): L.LayerFactionAvailabilityEntry {
 	return {

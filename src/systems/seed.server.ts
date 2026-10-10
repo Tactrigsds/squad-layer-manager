@@ -1,5 +1,5 @@
 import * as Schema from '$root/drizzle/schema.ts'
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 import * as F from '@/models/filter.models'
 import * as PG from '@/models/player-groupings.models'
 import * as Project from '@/models/project.models'

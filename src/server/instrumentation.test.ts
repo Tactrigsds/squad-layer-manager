@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, test } from 'vitest'
 
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import type { OtelModule } from '@/lib/otel'
-import * as CS from '@/models/context-shared'
-import * as ATTRS from '@/models/otel-attrs'
+import * as CS from '@/models/context-shared.models'
+import * as ATTRS from '@/models/otel-attrs.models'
 import * as Instr from '@/server/instrumentation'
 
 // A real in-memory tracer, so these can assert on what actually landed on the span. Under the no-op

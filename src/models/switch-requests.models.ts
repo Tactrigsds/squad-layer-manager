@@ -7,7 +7,7 @@ import type { MutexInterface } from 'async-mutex'
 import * as CD from '@/lib/ctx-def'
 import type { IsolatedSubject } from '@/lib/isolated-subject'
 import { z } from '@/lib/zod'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as SM from '@/models/squad.models'
 
 export const SwitchRequestSchema = z.object({

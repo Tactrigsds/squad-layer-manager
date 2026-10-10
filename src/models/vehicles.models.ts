@@ -1,9 +1,9 @@
-import type * as SquadLL from '@/models/squad-layer-list.models'
+import type * as GLD from '@/models/game-layer-data.models'
 
 // Canonical vehicles: the query-facing identity of a vehicle, shared by every camo/faction/mod copy whose
 // loadout is near-identical. Preprocess builds these tables from every source's unit records
 // (buildVehicleTables); they ship in layer-data.json and back the Vehicle_*/VehicleType_* filter columns,
-// which lower into membership tests over the artifact's UnitRecord_1/2 columns (see layer-engine.ts).
+// which lower into membership tests over the artifact's UnitRecord_1/2 columns (see layer-engine.models.ts).
 export type VehicleComponents = {
 	// canonical vehicle names, the value list of the Vehicle_* columns
 	vehicles: string[]
@@ -48,7 +48,7 @@ export function vehicleIdsForTypes(typeIds: ReadonlySet<number>, components: Veh
 // left undefined for the caller to fall back on.
 export function canonicalVehiclesForUnitRecord(
 	unitRecordName: string,
-	rows: readonly SquadLL.Vehicle[],
+	rows: readonly GLD.Vehicle[],
 	components: VehicleComponents,
 ): (number | undefined)[] {
 	const recordId = unitRecordIndex(components).get(unitRecordName)
@@ -70,12 +70,12 @@ export function vehicleTypeName(vehicleId: number, components: VehicleComponents
 // using the blueprint resolved to exactly one canonical vehicle.
 export type ClassInfo = { vehicle: string | undefined; vehicleType: string | undefined }
 
-const classIndexCache = new WeakMap<Record<string, SquadLL.Unit>, Map<string, ClassInfo>>()
+const classIndexCache = new WeakMap<Record<string, GLD.Unit>, Map<string, ClassInfo>>()
 
 // Built over every unit, not one layer's two, because a vehicle can be on the field without its unit being
 // played (seed layers, admin-spawned vehicles). A blueprint shared by rows resolving to different canonical
 // vehicles keeps the first; camo and faction copies share one canonical vehicle, so this is rare.
-export function classIndex(factionUnits: Record<string, SquadLL.Unit>, components: Partial<VehicleComponents>): Map<string, ClassInfo> {
+export function classIndex(factionUnits: Record<string, GLD.Unit>, components: Partial<VehicleComponents>): Map<string, ClassInfo> {
 	let index = classIndexCache.get(factionUnits)
 	if (index) return index
 	index = new Map()
@@ -118,10 +118,10 @@ export function classesByVehicle(index: Map<string, ClassInfo>): Map<string, str
 	return inverse
 }
 
-const unitClassesCache = new WeakMap<SquadLL.Unit, Set<string>>()
+const unitClassesCache = new WeakMap<GLD.Unit, Set<string>>()
 
 // the blueprints (without `_C`) a unit fields, for telling which side a vehicle belongs to
-export function unitClasses(unit: SquadLL.Unit): Set<string> {
+export function unitClasses(unit: GLD.Unit): Set<string> {
 	let classes = unitClassesCache.get(unit)
 	if (!classes) {
 		classes = new Set(unit.vehicles.flatMap((row) => row.classNames.map((c) => c.replace(/_C$/, ''))))
@@ -185,7 +185,7 @@ const TRACKED_ICONS = new Set(['map_tank', 'map_antiair'])
 const WHEELED_ICONS = new Set(['map_ifv', 'map_apc', 'T_map_apc_open_turret'])
 const WHEELED_ICON_TOKENS = /jeep|truck|car|motorcycle|moto|quad|bike|speeder/
 
-function locomotionOf(vehicle: SquadLL.Vehicle): Locomotion {
+function locomotionOf(vehicle: GLD.Vehicle): Locomotion {
 	const icon = vehicle.icon.toLowerCase()
 	if (vehicle.spawnerSize === 'BOAT' || icon.includes('boat')) return 'boat'
 	if (vehicle.spawnerSize === 'HELICOPTER' || icon.includes('helo') || icon.includes('helicopter')) return 'air'
@@ -303,7 +303,7 @@ const NAME_MERGES: Record<string, string> = {
 
 // the name a vehicle record is known by, after the tables above correct it. An empty display name falls back to
 // the rowName; those records are each their own vehicle.
-export function vehicleDisplayName(vehicle: SquadLL.Vehicle): string {
+export function vehicleDisplayName(vehicle: GLD.Vehicle): string {
 	const rawName = vehicle.name !== '' ? vehicle.name : vehicle.rowName
 	return ROW_NAME_OVERRIDES[vehicle.rowName] ?? NAME_MERGES[normalizeVehicleName(rawName)] ?? rawName
 }
@@ -446,7 +446,7 @@ class UnionFind {
 	}
 }
 
-export function buildVehicleTables(factionUnits: Record<string, SquadLL.Unit>): VehicleComponents & { stats: VehicleTableStats } {
+export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): VehicleComponents & { stats: VehicleTableStats } {
 	const factionTokens = new Set<string>()
 	for (const unit of Object.values(factionUnits)) {
 		for (const token of unit.factionID.split(/[_-]/)) {

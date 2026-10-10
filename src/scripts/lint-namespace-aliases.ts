@@ -11,12 +11,12 @@ const ROOTS = ['src', 'test', 'drizzle']
 const SKIP_DIRS = [`${path.sep}node_modules${path.sep}`, `test${path.sep}fixtures${path.sep}plugin-`]
 const EXTENSIONS = new Set(['.ts', '.tsx'])
 
-// context.ts and context-shared.ts alias by their own convention. The plugin API registries name each namespace after
+// context.ts and context-shared.models.ts alias by their own convention. The plugin API registries name each namespace after
 // the `slm/*` specifier it serves.
 const EXEMPT_FILES = new Set(
 	[
 		'src/server/context.ts',
-		'src/models/context-shared.ts',
+		'src/models/context-shared.models.ts',
 		'src/systems/plugin-api-registry.server.ts',
 		'src/systems/plugin-api-registry.client.ts',
 	].map((f) => path.normalize(f)),

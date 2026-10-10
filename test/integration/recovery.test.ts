@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'

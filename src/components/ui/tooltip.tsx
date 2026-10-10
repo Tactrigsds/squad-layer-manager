@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { HELP_TIP_DELAY_MS, useFollowTooltip } from '@/hooks/use-follow-tooltip'
 import * as Flt from '@/lib/floating'
 import { cn } from '@/lib/utils'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 /**
  * A tooltip that follows the pointer instead of anchoring to a trigger, for surfaces whose hover targets are

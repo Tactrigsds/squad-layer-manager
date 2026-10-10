@@ -1,5 +1,5 @@
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 

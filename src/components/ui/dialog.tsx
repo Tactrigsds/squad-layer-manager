@@ -5,7 +5,7 @@ import * as React from 'react'
 import * as Browser from '@/lib/browser'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 import { DraggableWindowOutlet } from './draggable-window'

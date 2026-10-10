@@ -1,6 +1,6 @@
 import { assertNever } from '@/lib/type-guards'
 import { def, t, type TString } from '@/models/messages.models'
-import type * as UP from '@/models/user-presence'
+import type * as UP from '@/models/user-presence.models'
 
 // Shown next to a user's avatar for a few seconds after one of their ops lands on the synced timeline, so it
 // reads as a completed action rather than as the op name.

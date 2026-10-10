@@ -12,7 +12,7 @@ import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 
 import { createId } from '../lib/id'
-import * as L from './layer'
+import * as L from './layer.models'
 
 // ============================================================================
 // Base Schemas and Types

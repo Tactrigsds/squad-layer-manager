@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type * as LE from '@/models/layer-engine'
+import type * as LE from '@/models/layer-engine.models'
 import { foldBackburnerTemplates } from '@/systems/layer-queries.shared'
 
 // distinguishable leaf IRs; the stubbed count treats a col as unsatisfiable when combined with the base

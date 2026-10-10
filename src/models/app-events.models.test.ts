@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import * as AppEvents from '@/models/app-events.models'
 import type * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SLL from '@/models/shared-layer-list'
+import * as SLL from '@/models/shared-layer-list.models'
 
 describe('app-events persistence', () => {
 	it('round-trips an event through toRow -> fromRow (incl. bigint actor)', () => {

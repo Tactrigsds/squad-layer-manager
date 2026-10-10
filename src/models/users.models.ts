@@ -1,7 +1,7 @@
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import { z } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as DM from '@/models/discord.models'
 
 export const GuiUserIdSchema = z.object({

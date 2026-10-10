@@ -12,7 +12,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 

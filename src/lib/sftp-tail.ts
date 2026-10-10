@@ -4,7 +4,7 @@ import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
 import { StringDecoder } from 'string_decoder'
 
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 
 import { getChildModule, type OtelModule } from './otel'
 

@@ -3,7 +3,7 @@ import type pino from 'pino'
 
 import * as CD from '@/lib/ctx-def'
 import * as Prom from '@/lib/promise-utils'
-import * as ATTR from '@/models/otel-attrs'
+import * as ATTR from '@/models/otel-attrs.models'
 
 export { CtxSymbol, init, isCtx } from '@/lib/ctx-def'
 export type Ctx = CD.Ctx

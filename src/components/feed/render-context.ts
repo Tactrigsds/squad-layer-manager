@@ -20,7 +20,7 @@ export type RenderCtx = {
 	stores: SquadServerFrame.KeyProp
 	// the draggable-window outlet a window opened from here belongs to (react context, resolved once per scope)
 	outletKey: unknown
-	// what a popover opened from here has to clear; see @/models/zindex
+	// what a popover opened from here has to clear; see @/models/zindex.models
 	zIndexBase: number
 	displayTeamsNormalized: boolean
 	// per-match stores for scopes whose rows span servers (the history page); a dashboard scope leaves it

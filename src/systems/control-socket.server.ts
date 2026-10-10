@@ -3,7 +3,7 @@ import * as net from 'node:net'
 import * as path from 'node:path'
 
 import * as ZodUtils from '@/lib/zod-utils'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'

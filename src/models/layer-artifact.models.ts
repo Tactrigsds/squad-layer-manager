@@ -1,4 +1,4 @@
-import type * as LC from '@/models/layer-columns'
+import type * as LC from '@/models/layer-columns.models'
 
 // The factored layer artifact the query engine reads (layer-engine/src/store.rs).
 //

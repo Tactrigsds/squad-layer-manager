@@ -1,6 +1,6 @@
 import pino from 'pino'
 
-import * as LOG from '@/models/logs'
+import * as LOG from '@/models/logs.models'
 
 export function createLogger(forward?: (event: LOG.LogEvent) => void) {
 	return pino({

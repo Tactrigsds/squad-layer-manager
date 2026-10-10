@@ -2,7 +2,7 @@
 //
 // The value exports of each slm/* entry. A packaged plugin's bundles import those specifiers as
 // bare names, and both halves of the host answer them with a generated shim module built from this
-// table (see models/plugin-api-shim.ts). The client entries are the reason it is a table and not
+// table (see models/plugin-api-shim.models.ts). The client entries are the reason it is a table and not
 // Object.keys of the real namespace: the server serves their shims but cannot import them.
 export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/components/combo-box': ['ComboBox', 'ComboBoxMulti', 'LOADING'],

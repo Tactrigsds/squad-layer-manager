@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import * as Obj from '@/lib/object-utils'
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 import * as FE from '@/models/filter-edit.models'
 import * as F from '@/models/filter.models'
 

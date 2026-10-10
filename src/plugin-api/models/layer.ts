@@ -32,7 +32,7 @@ export {
 	swapFactions,
 	swapFactionsInId,
 	toLayer,
-} from '@/models/layer'
+} from '@/models/layer.models'
 export type {
 	FactionUnitConfig,
 	FactionUnitConfigMapping,
@@ -41,4 +41,4 @@ export type {
 	LayerId,
 	LayerIdArgs,
 	UnvalidatedLayer,
-} from '@/models/layer'
+} from '@/models/layer.models'

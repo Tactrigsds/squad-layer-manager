@@ -1,9 +1,9 @@
 import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as HQ from '@/models/history.models'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'

@@ -1,8 +1,8 @@
 import * as CMD from '@/models/command.models'
 import type * as F from '@/models/filter.models'
-import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
+import type * as L from '@/models/layer.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
 

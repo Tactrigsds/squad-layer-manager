@@ -4,7 +4,7 @@ import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ReactUtils from '@/lib/react'
 import * as Zus from '@/lib/zustand'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 
 import * as Cleanup from './cleanup'
 import * as Rx from './rxjs'

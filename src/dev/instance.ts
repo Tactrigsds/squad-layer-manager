@@ -1,8 +1,8 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 import * as Paths from '../../paths.ts'

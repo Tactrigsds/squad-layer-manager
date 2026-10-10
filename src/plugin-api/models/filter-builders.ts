@@ -27,4 +27,4 @@ export {
 	teamCol,
 	val,
 	vals,
-} from '@/models/filter-builders'
+} from '@/models/filter-builders.models'

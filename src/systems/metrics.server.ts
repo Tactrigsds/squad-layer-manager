@@ -1,6 +1,6 @@
 import * as Otel from '@opentelemetry/api'
 
-import * as ATTRS from '@/models/otel-attrs'
+import * as ATTRS from '@/models/otel-attrs.models'
 import type * as SM from '@/models/squad.models'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as SquadServer from '@/systems/squad-server.server'

@@ -5,13 +5,13 @@ import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
+import type * as GLD from '@/models/game-layer-data.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
-import type * as SquadLL from '@/models/squad-layer-list.models'
 import * as VEH from '@/models/vehicles.models'
 
-import * as L from './layer'
+import * as L from './layer.models'
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
 export type ColumnType = z.infer<typeof COLUMN_TYPE>
 
@@ -48,7 +48,7 @@ export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 export const UNIT_RECORD_COLUMNS = { 1: 'UnitRecord_1', 2: 'UnitRecord_2' } as const
 
 // Vehicle columns are virtual: they have no artifact column, and comparisons against them lower into
-// membership tests over UNIT_RECORD_COLUMNS (see layer-engine.ts). The defs exist so the filter editor
+// membership tests over UNIT_RECORD_COLUMNS (see layer-engine.models.ts). The defs exist so the filter editor
 // and validation treat them like any other enum column.
 export const VEHICLE_COLUMNS = ['Vehicle_1', 'Vehicle_2', 'VehicleType_1', 'VehicleType_2'] as const
 export type VehicleColumn = (typeof VEHICLE_COLUMNS)[number]
@@ -182,7 +182,7 @@ export function vehicleTypeForVehicle(vehicle: string, components = L.StaticLaye
 
 // the class of each of a unit's vehicle rows, in the unit's own order. Undefined per row where the artifact
 // predates the vehicle tables, or where the row matched no single canonical vehicle.
-export function vehicleTypesForUnitRecord(unit: SquadLL.Unit, components = L.StaticLayerComponents): (string | undefined)[] {
+export function vehicleTypesForUnitRecord(unit: GLD.Unit, components = L.StaticLayerComponents): (string | undefined)[] {
 	if (!VEH.hasVehicleData(components)) return unit.vehicles.map(() => undefined)
 	return VEH.canonicalVehiclesForUnitRecord(unit.unitObjectName, unit.vehicles, components).map((id) =>
 		id === undefined ? undefined : VEH.vehicleTypeName(id, components),

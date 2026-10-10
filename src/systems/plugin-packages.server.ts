@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as PLG from '@/models/plugins.models'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'

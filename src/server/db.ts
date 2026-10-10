@@ -8,7 +8,7 @@ import { highlight } from 'sql-highlight'
 
 import { assertNever } from '@/lib/type-guards'
 import { tsMigrations } from '@/migrations/registry'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 

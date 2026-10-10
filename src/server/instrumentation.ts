@@ -6,9 +6,9 @@ import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
-import * as CS from '@/models/context-shared.ts'
-import * as LOG from '@/models/logs.ts'
-import * as ATTRS from '@/models/otel-attrs.ts'
+import * as CS from '@/models/context-shared.models.ts'
+import * as LOG from '@/models/logs.models.ts'
+import * as ATTRS from '@/models/otel-attrs.models.ts'
 // Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
 // the durable-subscription operator built on it. Lifted out of context.ts, which is about context
 // types and was two thirds this.

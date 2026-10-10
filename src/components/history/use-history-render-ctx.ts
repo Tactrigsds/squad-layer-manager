@@ -8,7 +8,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
 import type * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
-import { BaseZIndexContext } from '@/models/zindex'
+import { BaseZIndexContext } from '@/models/zindex.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 

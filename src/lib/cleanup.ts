@@ -1,6 +1,6 @@
 import type { MutexInterface } from 'async-mutex'
 
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 
 import * as Rx from './rxjs'
 import { assertNever } from './type-guards'

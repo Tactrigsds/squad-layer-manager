@@ -6,12 +6,12 @@ import { up as migrateTeamScopes } from '@/migrations/0063_filter_team_scopes_to
 import { up as migrateBlockOperators } from '@/migrations/0065_filter_block_operators'
 import { up as migrateApplyOperators } from '@/migrations/0066_filter_apply_operators'
 import { up as migrateBlockIds } from '@/migrations/0082_block_operators_to_logical_ids'
-import * as CS from '@/models/context-shared'
-import * as FB from '@/models/filter-builders'
+import * as CS from '@/models/context-shared.models'
+import * as FB from '@/models/filter-builders.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
-import * as LE from '@/models/layer-engine'
+import * as LC from '@/models/layer-columns.models'
+import * as LE from '@/models/layer-engine.models'
+import * as L from '@/models/layer.models'
 import * as VEH from '@/models/vehicles.models'
 
 // -------- operator selection round-trips --------

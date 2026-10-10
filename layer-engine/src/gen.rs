@@ -52,7 +52,7 @@ impl StepSpec {
 /// A step's columns resolved to readers once, so grouping a node never re-examines a column spec.
 ///
 /// Every column a step can name is a layer's own column or a per-team one (see WEIGHT_COLUMNS in
-/// models/layer-columns.ts), so this never touches the score scopes.
+/// models/layer-columns.models.ts), so this never touches the score scopes.
 struct StepKey<'a> {
     sides: [Vec<Reader<'a>>; 2],
     radices: [&'a [i64]; 2],

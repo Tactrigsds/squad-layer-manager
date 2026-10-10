@@ -4,7 +4,7 @@ import * as React from 'react'
 
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 const Select = SelectPrimitive.Root
 

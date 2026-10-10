@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 // mirrors layer-data.server.ts setup(), minus the serving concerns

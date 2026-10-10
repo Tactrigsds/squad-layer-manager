@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import * as Gen from '@/lib/generator-utils'
-import type * as CS from '@/models/context-shared'
-import type * as L from '@/models/layer'
+import type * as CS from '@/models/context-shared.models'
+import type * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'

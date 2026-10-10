@@ -2,8 +2,8 @@ import React from 'react'
 
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
-import * as L from '@/models/layer'
 import type * as LQY from '@/models/layer-queries.models.ts'
+import * as L from '@/models/layer.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 
 import * as Atoms from './feed/atoms'

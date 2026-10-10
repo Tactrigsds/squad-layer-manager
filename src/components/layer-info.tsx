@@ -11,9 +11,9 @@ import * as Zus from '@/lib/zustand'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns.ts'
-import type * as SquadLL from '@/models/squad-layer-list.models'
+import type * as GLD from '@/models/game-layer-data.models'
+import * as LC from '@/models/layer-columns.models.ts'
+import * as L from '@/models/layer.models'
 import * as TUT from '@/models/tutorial.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -393,7 +393,7 @@ function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfi
 	)
 }
 
-function IndividualVehicleRow({ vehicle, type }: { vehicle: SquadLL.Vehicle; type: string | undefined }) {
+function IndividualVehicleRow({ vehicle, type }: { vehicle: GLD.Vehicle; type: string | undefined }) {
 	const delayRespawnInfo = `${vehicle.delay}/${vehicle.respawnTime}`
 	const label = type ? LC_Msgs.vehicleTypeLabels[type] : undefined
 

@@ -8,7 +8,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import * as V from '@/models/vote.models.ts'
 import { tr } from '@/systems/messages.client'
 

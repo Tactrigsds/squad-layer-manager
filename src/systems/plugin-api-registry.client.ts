@@ -5,7 +5,7 @@ import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 
 import { z } from '@/lib/zod'
-import * as SHIM from '@/models/plugin-api-shim'
+import * as SHIM from '@/models/plugin-api-shim.models'
 import * as componentsComboBox from '@/plugin-api/components/combo-box'
 import * as componentsIcons from '@/plugin-api/components/icons'
 import * as componentsLayer from '@/plugin-api/components/layer'

@@ -2,8 +2,8 @@ import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as z from '@/lib/zod'
-import * as LC from '@/models/layer-columns'
-import type * as SquadLL from '@/models/squad-layer-list.models'
+import type * as GLD from '@/models/game-layer-data.models'
+import * as LC from '@/models/layer-columns.models'
 
 // fully derived layer data, loaded at startup by layer-data.server/layer-data.client (or built
 // directly during preprocessing). models are supposed to be inert, so this state living here is a
@@ -996,7 +996,7 @@ export type LayerFactionAvailabilityEntry = {
 	unitObjectNames?: { 1?: string; 2?: string }
 }
 
-export type FactionUnitConfig = SquadLL.Unit
+export type FactionUnitConfig = GLD.Unit
 export type FactionUnitConfigMapping = Record<string, FactionUnitConfig>
 export type LayerDetails = {
 	layer: KnownLayer

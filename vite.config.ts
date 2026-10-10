@@ -9,7 +9,7 @@ import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
 import * as AR from './src/app-routes.ts'
 import { BUILD_TARGET } from './src/browser-support.ts'
-import * as SHIM from './src/models/plugin-api-shim.ts'
+import * as SHIM from './src/models/plugin-api-shim.models.ts'
 import { extractMessages } from './src/scripts/messages-build.ts'
 import * as Env from './src/server/env.ts'
 

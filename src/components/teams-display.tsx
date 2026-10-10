@@ -2,7 +2,7 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'

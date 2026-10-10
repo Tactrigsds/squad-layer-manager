@@ -12,7 +12,7 @@ import * as LTag from '@/models/layer-tags.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 
-import * as L from './layer'
+import * as L from './layer.models'
 
 const opPropsBase = { opId: z.string() }
 // `userId` is the person operating the editor: it drives presence and who a save overrode. Absent when

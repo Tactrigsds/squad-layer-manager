@@ -1,4 +1,4 @@
-import type * as LE from '@/models/layer-engine'
+import type * as LE from '@/models/layer-engine.models'
 
 // Host side of the layer query engine (layer-engine/). The same wasm module runs in the browser's query worker and in the
 // server process, so this wrapper is deliberately free of both DOM and node APIs: callers hand it the two byte

@@ -1,6 +1,6 @@
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import {
 	DraggableWindowContext,
 	type DraggableWindowContextValue,

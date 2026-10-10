@@ -50,7 +50,7 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 // GLD is Galactic Contention's spelling of Gameplay_Layer_Data
 var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/" };
 
-// the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.ts
+// the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.models.ts
 var asymmetricGamemodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Invasion", "Insurgency", "Destruction" };
 
 if (plan)

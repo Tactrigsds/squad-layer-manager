@@ -1,7 +1,7 @@
 import type React from 'react'
 
 import * as I18n from '@/messages/i18n'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 import { def, rt } from '@/models/messages.models'
 
 // Copy for the layer queue tutorial. Each entry is one step's card: a title and a body, both message factories,

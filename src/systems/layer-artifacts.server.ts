@@ -5,7 +5,7 @@ import * as semver from 'semver'
 
 import * as Paths from '$root/paths'
 import * as Str from '@/lib/string-utils'
-import * as LA from '@/models/layer-artifact'
+import * as LA from '@/models/layer-artifact.models'
 import * as Env from '@/server/env'
 
 // Where the layer artifacts come from, and which version of them the app runs on.

@@ -2,7 +2,7 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 import { DraggableWindowOutlet } from './draggable-window'
 

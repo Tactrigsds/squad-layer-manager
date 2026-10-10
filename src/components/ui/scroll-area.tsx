@@ -2,7 +2,7 @@ import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 // radix sets the viewport's overflow per axis from the scrollbars that are rendered, so an axis with no
 // ScrollBar is `overflow: hidden` -- content wider than the viewport is clipped and unreachable. Both axes

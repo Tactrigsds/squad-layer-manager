@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { rolldown } from 'rolldown'
 import * as semver from 'semver'
 
-import * as SHIM from '@/models/plugin-api-shim'
+import * as SHIM from '@/models/plugin-api-shim.models'
 import * as PLG from '@/models/plugins.models'
 
 // Builds a plugin source directory into a package SLM can install: plugin.json plus one esm bundle

@@ -1,7 +1,7 @@
 import * as DH from '@/lib/display-helpers'
 import * as MsgFmt from '@/messages/format'
-import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
+import type * as L from '@/models/layer.models'
 import { def, join, t } from '@/models/messages.models'
 import type * as V from '@/models/vote.models'
 

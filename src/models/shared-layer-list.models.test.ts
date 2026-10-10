@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest'
 import * as Obj from '@/lib/object-utils'
 import type * as ODSM from '@/lib/odsm'
 import * as BB from '@/models/backburner.models'
-import * as FB from '@/models/filter-builders'
-import * as L from '@/models/layer'
+import * as FB from '@/models/filter-builders.models'
 import * as LL from '@/models/layer-list.models'
 import * as LTag from '@/models/layer-tags.models'
-import * as SLL from '@/models/shared-layer-list'
+import * as L from '@/models/layer.models'
+import * as SLL from '@/models/shared-layer-list.models'
 
 const USER = 5n
 const OTHER_USER = 6n

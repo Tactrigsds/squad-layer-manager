@@ -7,7 +7,7 @@
 //! block's rows are the cross product of that layer's faction/unit availability. So a layer's own columns are stored
 //! once per block (928 of them), the per-team columns once per distinct availability pattern (314, shared by every
 //! block that repeats one), and the score columns once per (layer, faction, unit) side record (8313). See
-//! `src/models/layer-artifact.ts` for the writer and the full scope list.
+//! `src/models/layer-artifact.models.ts` for the writer and the full scope list.
 //!
 //! Two arrays carry the whole shape:
 //!

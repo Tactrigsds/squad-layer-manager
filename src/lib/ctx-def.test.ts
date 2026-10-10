@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import * as CD from '@/lib/ctx-def'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as USR from '@/models/users.models'
 
 // The value of a def is entirely in the errors it produces, so most of this file is negative cases:

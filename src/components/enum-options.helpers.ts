@@ -1,7 +1,7 @@
 import type { ComboBoxGroupingDef } from '@/components/combo-box/options.ts'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
 
 // The dimensions a column's value picker can narrow by, and which group each value sits in. Shared so the

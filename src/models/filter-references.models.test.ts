@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import * as z from '@/lib/zod'
 
-import * as FB from './filter-builders'
+import * as FB from './filter-builders.models'
 import * as FR from './filter-references.models'
 import type * as F from './filter.models'
 import * as PLG from './plugins.models'

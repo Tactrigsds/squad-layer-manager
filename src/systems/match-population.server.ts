@@ -4,7 +4,7 @@ import zlib from 'node:zlib'
 
 import * as Schema from '$root/drizzle/schema'
 import { LRUMap } from '@/lib/lru-map'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as Pop from '@/models/population.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'

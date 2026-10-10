@@ -9,7 +9,7 @@
  */
 import * as Rx from '@/lib/rxjs'
 import * as AAR from '@/models/admin-action-reasons.models'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'

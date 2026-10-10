@@ -15,7 +15,7 @@ import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SC_Msgs from '@/messages/server-console.messages'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would

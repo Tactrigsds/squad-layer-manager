@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // @vitest-environment happy-dom
-import * as PermRows from '@/models/rbac-perm-rows'
+import * as PermRows from '@/models/rbac-perm-rows.models'
 import * as SETTINGS from '@/models/settings.models'
 
 import * as SettingsEditorFrame from './settings-editor.frame'

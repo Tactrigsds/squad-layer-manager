@@ -10,11 +10,11 @@ import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as CS from '@/models/context-shared'
-import * as L from '@/models/layer'
-import * as LA from '@/models/layer-artifact'
-import * as LC from '@/models/layer-columns'
-import * as SquadLL from '@/models/squad-layer-list.models'
+import * as CS from '@/models/context-shared.models'
+import * as GLD from '@/models/game-layer-data.models'
+import * as LA from '@/models/layer-artifact.models'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import * as VEH from '@/models/vehicles.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
@@ -150,7 +150,7 @@ async function main() {
 	log.info('Done!')
 }
 
-// Builds the factored artifact the query engine reads (see models/layer-artifact.ts and layer-engine/src/store.rs).
+// Builds the factored artifact the query engine reads (see models/layer-artifact.models.ts and layer-engine/src/store.rs).
 //
 // Two passes, so the whole table never exists as JS objects: first the base layers, which fix the row order (ascending
 // packed id, which the engine binary-searches and which groups layers of a map together); then the extra-cols csv,
@@ -360,7 +360,7 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 	}
 }
 
-type LayerSource = { manifest: SquadLL.SourceManifest; root: SquadLL.Root; vocab: Set<string> }
+type LayerSource = { manifest: GLD.SourceManifest; root: GLD.Root; vocab: Set<string> }
 
 function loadLayerSources(): LayerSource[] {
 	const sourcesDir = path.join(Paths.DATA, 'sources')
@@ -372,11 +372,11 @@ function loadLayerSources(): LayerSource[] {
 		.sort((a, b) => (a === 'vanilla' ? -1 : b === 'vanilla' ? 1 : a.localeCompare(b)))
 	if (names.length === 0) throw new Error(`no layer sources found in ${sourcesDir}`)
 	return names.map((dir) => {
-		const manifest = SquadLL.SourceManifestSchema.parse(JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'source.json'), 'utf-8')))
+		const manifest = GLD.SourceManifestSchema.parse(JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'source.json'), 'utf-8')))
 		if (manifest.name !== dir) throw new Error(`source ${dir}: manifest name "${manifest.name}" does not match its directory`)
 		const rawRoot = JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'layers.json'), 'utf-8'))
-		const vocab = SquadLL.collectUnitTypeVocabulary(rawRoot, manifest)
-		const root = SquadLL.createRootSchema(vocab, manifest.unitTypeOverrides).parse(rawRoot) as SquadLL.Root
+		const vocab = GLD.collectUnitTypeVocabulary(rawRoot, manifest)
+		const root = GLD.createRootSchema(vocab, manifest.unitTypeOverrides).parse(rawRoot) as GLD.Root
 		return { manifest, root, vocab }
 	})
 }
@@ -392,7 +392,7 @@ function buildUnitIndex(source: LayerSource): Map<string, string> {
 	const index: Map<string, string> = new Map()
 	for (const [name, unit] of Object.entries(source.root.Units)) {
 		if (!unit.type) continue
-		const parsed = SquadLL.parseUnitName(name, source.vocab, source.manifest.unitTypeOverrides)
+		const parsed = GLD.parseUnitName(name, source.vocab, source.manifest.unitTypeOverrides)
 		const segments = name.split(/[_-]/)
 		const key = [
 			unit.factionID,
@@ -533,7 +533,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 					log.warn(`${manifest.name}: ${map.levelName}: default unit ${faction.defaultUnit} is not in Units`)
 					continue
 				}
-				const parsedDefaultUnit = SquadLL.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
+				const parsedDefaultUnit = GLD.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
 				const defaultType = parsedDefaultUnit.unit ?? idDetails.type
 				const units = new Set(faction.types.filter((type) => type !== 'None'))
 				if (idDetails.type) units.add(idDetails.type)
@@ -564,7 +564,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			// range and training layers: the two default units are all there is
 			for (const [index, team] of teamConfigs.entries()) {
 				const record = root.Units[team.defaultFactionUnit!]
-				const parsed = SquadLL.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
+				const parsed = GLD.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
 				const faction = record?.factionID ?? team.defaultFactionUnit!.split('_')[0]
 				const teamNumber = (index + 1) as 1 | 2
 				availForLayer.push({
@@ -821,7 +821,7 @@ function parseBattlegroups(sources: LayerSource[]) {
 	const allianceToFaction: OneToManyMap<string, string> = new Map()
 	const factionToUnit: OneToManyMap<string, string> = new Map()
 	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
-	const factionUnits: Record<string, SquadLL.Unit> = {}
+	const factionUnits: Record<string, GLD.Unit> = {}
 	let duplicateUnitNames = 0
 
 	for (const source of sources) {
@@ -857,9 +857,9 @@ function parseBattlegroups(sources: LayerSource[]) {
 const UNIT_POSITION_SIZES: Record<string, string> = { L: 'Large', M: 'Medium', S: 'Small' }
 const SIZE_ORDER = ['Small', 'Medium', 'Large']
 
-function deriveLayerSize(source: LayerSource, map: SquadLL.Map): string {
+function deriveLayerSize(source: LayerSource, map: GLD.Map): string {
 	const sizes = [map.teamConfigs.team1!, map.teamConfigs.team2!].map((team) => {
-		const { position } = SquadLL.parseUnitName(team.defaultFactionUnit!, source.vocab, source.manifest.unitTypeOverrides)
+		const { position } = GLD.parseUnitName(team.defaultFactionUnit!, source.vocab, source.manifest.unitTypeOverrides)
 		const size = position === null ? undefined : UNIT_POSITION_SIZES[position[0]]
 		if (!size) {
 			log.warn(`${source.manifest.name}: ${map.levelName}: no layer size in unit ${team.defaultFactionUnit}, assuming Small`)

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 
-import * as L from './layer'
-import * as LC from './layer-columns'
+import * as LC from './layer-columns.models'
+import * as L from './layer.models'
 
 describe('vehicle classes', () => {
 	// the classification reads the map icon, so a vehicle whose icon names a role rather than a chassis

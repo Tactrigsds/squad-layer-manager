@@ -3,7 +3,7 @@ import * as Logo from '@/lib/logo'
 import * as Raster from '@/lib/raster'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as I18n from '@/messages/i18n'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as Settings from '@/systems/settings.server'
 
 // The served renditions of the SLM mark. Their accent is the instance's topBarColor, so they are built from

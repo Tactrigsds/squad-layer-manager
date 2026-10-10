@@ -1,10 +1,10 @@
 import * as CD from '@/lib/ctx-def'
 import { assertNever } from '@/lib/type-guards'
 import * as F_Msgs from '@/messages/filter.messages'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import * as VEH from '@/models/vehicles.models'
 
 // The request/response shapes of the layer query engine (layer-engine/), and the lowering from a filter tree into the IR it

@@ -10,7 +10,7 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
 import * as USR from '@/models/users.models'
 

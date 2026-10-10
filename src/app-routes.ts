@@ -53,7 +53,7 @@ export const routes = [
 	defRoute('/manifest.webmanifest', [], 'custom', { authed: false }),
 
 	// the shim modules a packaged plugin's bundles import `slm/*` and the shared packages through, and
-	// the browser-facing files of a packaged plugin. See models/plugin-api-shim.ts.
+	// the browser-facing files of a packaged plugin. See models/plugin-api-shim.models.ts.
 	defRoute('/plugin-api/*', [], 'custom'),
 	defRoute('/plugin-assets/*', [], 'custom'),
 

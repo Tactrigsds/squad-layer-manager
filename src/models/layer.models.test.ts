@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import * as L from './layer'
-import * as LC from './layer-columns'
+import * as LC from './layer-columns.models'
+import * as L from './layer.models'
 
 describe('getLayerCommand', () => {
 	const testLayers = [

@@ -2,7 +2,7 @@ import React from 'react'
 
 import * as Obj from '@/lib/object-utils'
 import * as Zus from '@/lib/zustand.ts'
-import type * as UP from '@/models/user-presence'
+import type * as UP from '@/models/user-presence.models'
 import * as UPClient from '@/systems/user-presence.client'
 
 type ChildPropsBase = {

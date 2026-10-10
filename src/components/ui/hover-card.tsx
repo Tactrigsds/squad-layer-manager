@@ -2,7 +2,7 @@ import * as HoverCardPrimitive from '@radix-ui/react-hover-card'
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 const HoverCard = HoverCardPrimitive.Root
 
