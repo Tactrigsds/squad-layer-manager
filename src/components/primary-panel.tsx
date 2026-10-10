@@ -20,7 +20,7 @@ import { PluginSlot } from './plugin-slot.tsx'
 import StatsPanel from './stats-panel.tsx'
 import { StickyGroup } from './sticky-group.tsx'
 import { TabBar } from './tab-bar.tsx'
-import TeamsPanel from './teams-panel.tsx'
+import TeamsPanel from './teams-panel/teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
 type PanelTab = 'queue' | 'teams'

@@ -20,7 +20,7 @@ import { PluginSlot } from './plugin-slot.tsx'
 import ServerActivityPanel from './server-activity-panel.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 import StatsPanel from './stats-panel.tsx'
-import TeamsPanel from './teams-panel.tsx'
+import TeamsPanel from './teams-panel/teams-panel.tsx'
 import { Timer } from './timer.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 

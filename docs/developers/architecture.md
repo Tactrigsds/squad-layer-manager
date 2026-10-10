@@ -386,7 +386,7 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **One overlay per list, not per item.** A closed Radix ContextMenu or DropdownMenu is about fifteen fibers and a
   document keydown listener, and a closed Select renders every one of its items. A list delegates right-click and
   long-press to its body and opens one shared menu with the target it reads off the element hit (`PlayerTable` in
-  `teams-panel.tsx`, and the feed below). `Tooltip` keeps its state machine in a plain object
+  `teams-panel/player-table.tsx`, and the feed below). `Tooltip` keeps its state machine in a plain object
   (`use-follow-tooltip.ts`) and mounts its node only while open, so a closed one costs three hooks.
 
 ### The activity feed is built as dom, not rendered
