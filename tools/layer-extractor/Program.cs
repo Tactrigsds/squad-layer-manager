@@ -48,7 +48,7 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 // the package paths extraction reads out of a mod; --plan reports the containers that hold them, and a partial
 // fetch that has only those containers still extracts completely
 // GLD is Galactic Contention's spelling of Gameplay_Layer_Data
-var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/" };
+var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/", "/Gameplay/Rulesets/" };
 
 // the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.ts
 var asymmetricGamemodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Invasion", "Insurgency", "Destruction" };
@@ -529,6 +529,31 @@ double RestrictionValue(JToken? reference, params string[] fields)
 	return 0;
 }
 
+// the tickets a team loses when an enemy destroys one of its vehicles, keyed by the vehicle setting's VehicleType and
+// one of its VehicleTags (the Light/Medium/Heavy weight class); BP_Ruleset_Vehicle applies it to every gamemode
+var ticketLossRules = new List<(string VehicleType, string[] Tags, int Loss)>();
+var ticketTableFile = searchKeys.FirstOrDefault(k => k.EndsWith("/KillDeathRulesetEnemyTable.uasset", StringComparison.OrdinalIgnoreCase));
+var ticketRows = ticketTableFile != null ? LoadExports(ticketTableFile)?.FirstOrDefault(e => e["Type"]?.ToString() == "DataTable")?["Rows"] as JObject : null;
+if (ticketRows == null) Console.Error.WriteLine("warn: no KillDeathRulesetEnemyTable; vehicles get no ticketValue");
+foreach (var (_, row) in ticketRows ?? new JObject())
+{
+	var loss = FindRowField(row!, "OwnerTicketLoss");
+	if (loss == null) continue;
+	ticketLossRules.Add((
+		FindRowField(row!, "VehicleType")?.ToString() ?? "",
+		((FindRowField(row!, "VehicleTag") as JArray) ?? new JArray()).Select(t => t.ToString()).ToArray(),
+		loss.ToObject<int>()));
+}
+int? TicketValue(JToken? setting)
+{
+	var type = setting?["VehicleType"]?.ToString();
+	if (type == null) return null;
+	var tags = ((setting!["VehicleTags"] as JArray) ?? new JArray()).Select(t => t.ToString()).ToHashSet();
+	foreach (var rule in ticketLossRules)
+		if (rule.VehicleType == type && rule.Tags.All(tags.Contains)) return rule.Loss;
+	return null;
+}
+
 var units = new JObject();
 foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value, StringComparer.Ordinal))
 {
@@ -616,7 +641,7 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 			spawnCommands.Add($"AdminCreateVehicle {bpPath}");
 		}
 
-		vehicles.Add(new JObject
+		var vehicle = new JObject
 		{
 			["name"] = vehicleName,
 			["rowName"] = vehicleRowName,
@@ -634,7 +659,9 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 			["classNames"] = new JArray(classNames),
 			["tags"] = new JArray(((setting?["VehicleTags"] as JArray) ?? new JArray()).Select(SllEnumName)),
 			["spawnCommands"] = new JArray(spawnCommands),
-		});
+		};
+		if (TicketValue(setting) is { } ticketValue) vehicle["ticketValue"] = ticketValue;
+		vehicles.Add(vehicle);
 	}
 
 	units[rowName] = new JObject
