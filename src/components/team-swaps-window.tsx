@@ -2,7 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { MatchTeamDisplay } from '@/components/teams-display'
-import { CounterbalanceSwitch } from '@/components/teams-panel/swaps-panel'
+import { CounterbalanceCountdown, CounterbalanceSwitch } from '@/components/teams-panel/swaps-panel'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map-utils'
@@ -95,6 +95,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 			</div>
 			<div className="flex flex-wrap items-center gap-2 px-3 pt-2">
 				<CounterbalanceSwitch stores={stores} />
+				<CounterbalanceCountdown stores={stores} />
 			</div>
 			<div className="px-3 py-2">
 				<PermissionDeniedTooltip denied={manageDenied}>

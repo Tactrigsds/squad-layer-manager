@@ -497,3 +497,13 @@ describe('reducer set-counterbalance-swaps on the saved swaps', () => {
 		expect(state.savedSwaps.get('b')?.counterbalance).toBe(true)
 	})
 })
+
+describe('reducer init-saved-teamswaps', () => {
+	it('restores the queue in sync, so a restart does not read as unsaved edits', () => {
+		const state = TSW.initState()
+		state.players = new Map([['a', 'A']])
+		const { state: next } = apply(state, op({ code: 'init-saved-teamswaps', swaps: new Map([['a', { toTeam: 'B', source: SOURCE }]]) }))
+		expect(next.savedSwaps.size).toBe(1)
+		expect(next.editedSwaps).toBe(next.savedSwaps)
+	})
+})

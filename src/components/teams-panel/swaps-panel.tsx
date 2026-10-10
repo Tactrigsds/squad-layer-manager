@@ -28,6 +28,7 @@ import type * as ChatPrt from '@/frame-partials/chat.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map-utils'
+import { useNow } from '@/lib/react'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
@@ -168,6 +169,7 @@ export function SwapsPanel({
 					/>
 				</div>
 				<CounterbalanceSwitch stores={stores} />
+				<CounterbalanceCountdown stores={stores} />
 				<TeamsAfterSwap leftTeam={leftTeam} rightTeam={rightTeam} stores={stores} />
 			</div>
 			<TeamSwapsDisplay teamId={rightTeam} align="end" className="ps-2" stores={stores} />
@@ -213,6 +215,60 @@ export function CounterbalanceSwitch({ stores }: { stores: SquadServerFrame.KeyP
 					<Icons.SlidersHorizontal className="size-3.5" />
 				</TSR.Link>
 			)}
+		</div>
+	)
+}
+
+// the server's pending re-pick of the saved counterbalance swaps, shown only while one is due
+export function CounterbalanceCountdown({ stores }: { stores: SquadServerFrame.KeyProp }) {
+	const dueAt = Zus.useStore(stores.squadServer!, TSWClient.Sel.counterbalanceDueAt)
+	if (dueAt === null) return null
+	return <CounterbalanceCountdownLine dueAt={dueAt} stores={stores} />
+}
+
+function CounterbalanceCountdownLine({ dueAt, stores }: { dueAt: number; stores: SquadServerFrame.KeyProp }) {
+	const serverId = stores.squadServer!.serverId
+	const now = useNow(1000)
+	const counts = Zus.useStore(stores.squadServer!, TSWClient.Sel.savedTeamCounts)
+	const denied = RbacClient.useAccess('teamswaps.counterbalanceNow', { serverId })
+	const seconds = Math.max(0, Math.ceil((dueAt - now) / 1000))
+	const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+	return (
+		<div className="flex flex-wrap items-center justify-center gap-1 text-xs">
+			<Tooltip help>
+				<TooltipTrigger asChild>
+					<span role="timer" className="inline-flex items-center gap-1 tabular-nums text-warn">
+						<Icons.Timer className="size-3.5" />
+						{tr.text(TSW_Msgs.counterbalanceRepickIn(time))}
+					</span>
+				</TooltipTrigger>
+				<TooltipContent>
+					{tr.richText(
+						TSW_Msgs.counterbalanceRepickReason(
+							<MatchTeamDisplay teamId="A" stores={stores} />,
+							counts.A,
+							<MatchTeamDisplay teamId="B" stores={stores} />,
+							counts.B,
+						),
+					)}
+				</TooltipContent>
+			</Tooltip>
+			<PermissionDeniedTooltip denied={denied}>
+				<Button size="sm" variant="ghost" disabled={!!denied} onClick={() => void TSWClient.Actions.counterbalanceNow(stores)}>
+					{tr.text(TSW_Msgs.counterbalanceRepickNow())}
+				</Button>
+			</PermissionDeniedTooltip>
+			<PermissionDeniedTooltip denied={denied}>
+				<Button
+					size="sm"
+					variant="ghost"
+					disabled={!!denied}
+					title={tr.text(TSW_Msgs.counterbalanceSkipHint())}
+					onClick={() => void TSWClient.Actions.skipCounterbalance(stores)}
+				>
+					{tr.text(TSW_Msgs.counterbalanceSkip())}
+				</Button>
+			</PermissionDeniedTooltip>
 		</div>
 	)
 }

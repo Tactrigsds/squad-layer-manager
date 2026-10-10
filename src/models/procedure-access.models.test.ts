@@ -62,6 +62,8 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'filterEdit.dispatchOps': { filterId: 'f1' },
 	'teamswaps.watchUpdates': S,
 	'teamswaps.dispatchOp': S,
+	'teamswaps.counterbalanceNow': S,
+	'teamswaps.skipCounterbalance': S,
 	'switchRequests.watchUpdates': S,
 	'switchRequests.switchNow': S,
 	'plugins.rpcStream': S,

@@ -251,9 +251,13 @@ function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
 }
 
+type CounterbalanceTimerEvent = { kind: 'scheduled'; dueAt: number } | { kind: 'cleared' } | { kind: 'fired' }
+
 // Re-picks the counterbalance swaps once roster changes have left the saved swaps uneven for `rosterChangeDelay`. The
-// timer starts when that becomes true and is dropped as soon as it stops being true. A re-pick that changes nothing,
-// such as one with no eligible players left, is remembered, so the same roster does not restart the timer.
+// timer starts when that becomes true and is dropped as soon as it stops being true, and its deadline is published in
+// the state so the dashboard can count it down. A re-pick that changes nothing, such as one with no eligible players
+// left, is remembered, so the same roster does not restart the timer. Events are handled in order, so a deadline is
+// never published after the clear that follows it.
 export function setupInstance(ctx: C.ManagedServer & C.Db) {
 	const serverId = ctx.serverId
 	ctx.cleanup.push(
@@ -261,27 +265,56 @@ export function setupInstance(ctx: C.ManagedServer & C.Db) {
 			.pipe(
 				Rx.map(() => counterbalanceDue(ctx)),
 				Rx.distinctUntilChanged(),
-				Rx.switchMap((due) => (due ? Rx.timer(ctx.serverSettings.settings.teamswapCounterbalance.rosterChangeDelay) : Rx.EMPTY)),
-				Instr.durableSub('counterbalanceAfterRosterChange', { module, taskScheduling: 'exhaust' }, async (_, signal) => {
-					await counterbalanceSavedSwaps(SquadServer.resolveCtx(CS.addSignal(SquadServer.getBaseCtx(), signal), serverId))
+				Rx.switchMap((due): Rx.Observable<CounterbalanceTimerEvent> => {
+					if (!due) return Rx.of({ kind: 'cleared' })
+					const delay = ctx.serverSettings.settings.teamswapCounterbalance.rosterChangeDelay
+					return Rx.concat(
+						Rx.of({ kind: 'scheduled' as const, dueAt: Date.now() + delay }),
+						Rx.timer(delay).pipe(Rx.map(() => ({ kind: 'fired' as const }))),
+					)
+				}),
+				Instr.durableSub('counterbalanceTimer', { module }, async (evt, signal) => {
+					const ctx = SquadServer.resolveCtx(CS.addSignal(SquadServer.getBaseCtx(), signal), serverId)
+					switch (evt.kind) {
+						case 'scheduled':
+							return await setCounterbalanceDueAt(ctx, evt.dueAt)
+						case 'cleared':
+							return await setCounterbalanceDueAt(ctx, null)
+						case 'fired':
+							return await counterbalanceSavedSwaps(ctx)
+						default:
+							assertNever(evt)
+					}
 				}),
 			)
 			.subscribe(),
 	)
 }
 
+async function setCounterbalanceDueAt(ctx: TSW.Ctx & C.ManagedServer & C.Db, dueAt: number | null) {
+	if (getState(ctx).counterbalanceDueAt === dueAt) return
+	await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'counterbalance-timer', dueAt }])
+}
+
+// drops the pending re-pick until the roster or the saved swaps change again
+function skipCounterbalance(ctx: TSW.Ctx) {
+	const state = getState(ctx)
+	ctx.teamswaps.counterbalanceSettled = TSW.counterbalanceKey(state)
+	ctx.teamswaps.counterbalanceCheck$.next()
+}
+
 function counterbalanceDue(ctx: TSW.Ctx & SETTINGS.Ctx): boolean {
 	if (!ctx.serverSettings.settings.teamswapCounterbalance.enabled) return false
 	const state = getState(ctx)
 	if (state.swapping || state.editedSwaps !== state.savedSwaps) return false
-	const settled = ctx.teamswaps.counterbalanceSettled
-	if (settled?.players === state.players && settled.savedSwaps === state.savedSwaps) return false
 	if (![...state.savedSwaps.values()].some((swap_) => !swap_.counterbalance)) return false
 	const counts = TSW.teamCountsAfterSwaps(state.players, state.savedSwaps)
-	return Math.abs(counts.A - counts.B) > 1
+	if (Math.abs(counts.A - counts.B) <= 1) return false
+	return ctx.teamswaps.counterbalanceSettled !== TSW.counterbalanceKey(state)
 }
 
-async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db) {
+// `source` is the admin who asked for the re-pick early, and empty when the timer fired it
+async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db, source: USR.GuiOrChatUserId = {}) {
 	try {
 		if (!counterbalanceDue(ctx)) return
 		const state = getState(ctx)
@@ -303,10 +336,10 @@ async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db) {
 			pending: new Set(state.pendingSwaps.keys()),
 		})
 		log.info('counterbalance re-pick after roster changes: %d swap(s), %d short of even', result.swaps.size, result.shortfall)
-		await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: result.swaps }])
+		await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'set-counterbalance-swaps', saved: true, source, swaps: result.swaps }])
 	} finally {
 		const state = getState(ctx)
-		ctx.teamswaps.counterbalanceSettled = { players: state.players, savedSwaps: state.savedSwaps }
+		ctx.teamswaps.counterbalanceSettled = TSW.counterbalanceKey(state)
 		ctx.teamswaps.counterbalanceCheck$.next()
 	}
 }
@@ -516,6 +549,25 @@ export const orpcRouter = {
 				)
 			}).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
+
+	counterbalanceNow: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context, input }) => {
+			const ctxRes = await SquadServer.tryCtx(context, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			await counterbalanceSavedSwaps(ctxRes.ctx, { discordId: ctxRes.ctx.user.discordId, origin: 'gui' })
+		}),
+
+	skipCounterbalance: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context, input }) => {
+			const ctxRes = await SquadServer.tryCtx(context, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			log.info('counterbalance re-pick skipped by %s', ctxRes.ctx.user.discordId)
+			skipCounterbalance(ctxRes.ctx)
 		}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects

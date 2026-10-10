@@ -209,22 +209,36 @@ export const teamswapsCounterbalanced = def(
 		removed: number,
 		teams: { A: React.ReactNode; B: React.ReactNode },
 		balance?: { before: { A: number; B: number }; after: { A: number; B: number } },
+		// the admin who asked for the re-pick early, when it was not the timer
+		actor?: React.ReactNode,
 	) => {
 		const delta = [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')
-		if (!balance)
-			return rt('Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams', { delta })
-		return rt(
-			'Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams. Teams after the swaps: {teamA} {beforeA} to {afterA}, {teamB} {beforeB} to {afterB}',
-			{
-				delta,
-				teamA: teams.A,
-				teamB: teams.B,
-				beforeA: balance.before.A,
-				afterA: balance.after.A,
-				beforeB: balance.before.B,
-				afterB: balance.after.B,
-			},
-		)
+		if (!balance) {
+			return actor
+				? rt('{actor} had counterbalance re-pick the queued teamswaps ({delta}) after players joined, left or switched teams', {
+						actor,
+						delta,
+					})
+				: rt('Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams', { delta })
+		}
+		const sizes = {
+			delta,
+			teamA: teams.A,
+			teamB: teams.B,
+			beforeA: balance.before.A,
+			afterA: balance.after.A,
+			beforeB: balance.before.B,
+			afterB: balance.after.B,
+		}
+		return actor
+			? rt(
+					'{actor} had counterbalance re-pick the queued teamswaps ({delta}) after players joined, left or switched teams. Teams after the swaps: {teamA} {beforeA} to {afterA}, {teamB} {beforeB} to {afterB}',
+					{ actor, ...sizes },
+				)
+			: rt(
+					'Counterbalance re-picked the queued teamswaps ({delta}) after players joined, left or switched teams. Teams after the swaps: {teamA} {beforeA} to {afterA}, {teamB} {beforeB} to {afterB}',
+					sizes,
+				)
 	},
 )
 

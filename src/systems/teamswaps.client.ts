@@ -46,6 +46,16 @@ export namespace Sel {
 		}
 	}
 
+	export function counterbalanceDueAt(store: Store) {
+		return localState(store).counterbalanceDueAt
+	}
+
+	// the team sizes once the saved swaps have run
+	export const savedTeamCounts = RSel.createSelector(
+		[(store: Store) => localState(store).players, (store: Store) => localState(store).savedSwaps],
+		TSW.teamCountsAfterSwaps,
+	)
+
 	export function hasSwaps(store: Store) {
 		return localState(store).editedSwaps.size > 0 || localState(store).savedSwaps.size > 0
 	}
@@ -298,6 +308,22 @@ export namespace Actions {
 		TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'revert-to-saved', source })
 		Zus.toPartialStore(stores.squadServer, 'teamswaps').setState({ counterbalanceSkipped: new Set() })
 		clearEditing(stores.squadServer.serverId)
+	}
+
+	export async function counterbalanceNow(stores: SquadServerFrame.KeyProp) {
+		try {
+			await RPC.orpc.teamswaps.counterbalanceNow.call({ serverId: stores.squadServer.serverId })
+		} catch (err) {
+			console.error('counterbalance re-pick failed', err)
+		}
+	}
+
+	export async function skipCounterbalance(stores: SquadServerFrame.KeyProp) {
+		try {
+			await RPC.orpc.teamswaps.skipCounterbalance.call({ serverId: stores.squadServer.serverId })
+		} catch (err) {
+			console.error('skipping the counterbalance re-pick failed', err)
+		}
 	}
 
 	// writes straight to the saved settings, so the switch takes effect for every admin at once

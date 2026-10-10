@@ -238,6 +238,7 @@ function TeamswapsUpdatedRow(props: {
 									B: <Atoms.MatchTeamDisplay ctx={ctx} matchId={matchId} teamId="B" />,
 								},
 								appEvent.balance,
+								appEvent.actor.type === 'slm-user' ? actorLabel : undefined,
 							),
 						)
 					: queued === 0

@@ -45,7 +45,7 @@ export const helpCounterbalanceRules = def(
 export const helpCounterbalanceParties = def('A party is always swapped together.')
 
 export const helpCounterbalanceRoster = def(
-	'If players joining, leaving or switching teams leave the saved swaps uneven for 2 minutes by default, SLM re-picks the counterbalance swaps. Unsaved edits are never changed.',
+	'If players joining, leaving or switching teams leave the saved swaps uneven, a countdown (2 minutes by default) appears under the switch. When it ends, SLM re-picks the counterbalance swaps. Use Re-pick now to skip the wait, or Skip to keep the current swaps. Unsaved edits are never changed.',
 )
 
 export const helpCounterbalanceInGame = def('Swaps queued with an in-game command are not counterbalanced.')
@@ -63,6 +63,23 @@ export const counterbalanceHint = def(
 export const counterbalanceRules = def('Counterbalance rules')
 
 export const counterbalanceSwap = def('Counterbalance swap')
+
+export const counterbalanceRepickIn = def('Re-picking in {time}', (time: string) => ({ time }))
+
+export const counterbalanceRepickReason = def((teamA: React.ReactNode, countA: number, teamB: React.ReactNode, countB: number) =>
+	rt(
+		'Players joined, left or switched teams. After the saved swaps, the teams would be {teamA} {countA} and {teamB} {countB}. When the countdown ends, SLM re-picks the counterbalance swaps to even them out.',
+		{ teamA, countA, teamB, countB },
+	),
+)
+
+export const counterbalanceRepickNow = def('Re-pick now')
+
+export const counterbalanceSkip = def('Skip')
+
+export const counterbalanceSkipHint = def(
+	'Keep the current counterbalance swaps. SLM counts down again after the next roster change or edit to the swaps.',
+)
 
 export const addGroup = def('Add group')
 
