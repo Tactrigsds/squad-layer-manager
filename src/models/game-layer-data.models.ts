@@ -160,6 +160,9 @@ export const VehicleSchema = z.object({
 	classNames: z.array(z.string()),
 	tags: z.array(z.string()),
 	spawnCommands: z.array(z.string()),
+	// tickets the owning team loses when an enemy destroys the vehicle; absent where the game's vehicle ruleset has no
+	// rule for it, and in sources extracted before the field existed
+	ticketValue: z.number().optional(),
 })
 export type Vehicle = z.infer<typeof VehicleSchema>
 
