@@ -251,7 +251,7 @@ export function parseNegatingPermissionType(expr: string): RoleGrantablePermissi
 
 export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
 	// Obj.exclude collapses the discriminated union; the runtime object is still a valid Permission
-	return perms.filter((perm) => !perm.negated && !perm.negating).map((perm) => Obj.exclude(perm, ['negated', 'negating']) as Permission)
+	return perms.filter((perm) => !perm.negated && !perm.negating).map((perm) => Obj.omit(perm, ['negated', 'negating']) as Permission)
 }
 
 export function recalculateNegations(perms: TracedPermission[]) {

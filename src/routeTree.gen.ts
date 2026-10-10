@@ -17,7 +17,6 @@ import { Route as AppCommandsRouteImport } from './routes/_app/commands'
 import { Route as AppHistoryRouteImport } from './routes/_app/history'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTutorialsRouteImport } from './routes/_app/tutorials'
-import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
 import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
 import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
 import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
@@ -64,11 +63,6 @@ const AppTutorialsRoute = AppTutorialsRouteImport.update({
   path: '/tutorials',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const SandboxSandboxRoute = SandboxSandboxRouteImport.update({
-  id: '/_sandbox/sandbox',
-  path: '/sandbox',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppFiltersIndexRoute = AppFiltersIndexRouteImport.update({
   id: '/filters/',
   path: '/filters/',
@@ -108,7 +102,6 @@ export interface FileRoutesByFullPath {
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
   '/tutorials': typeof AppTutorialsRoute
-  '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
@@ -124,7 +117,6 @@ export interface FileRoutesByTo {
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
   '/tutorials': typeof AppTutorialsRoute
-  '/sandbox': typeof SandboxSandboxRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
@@ -142,7 +134,6 @@ export interface FileRoutesById {
   '/_app/history': typeof AppHistoryRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tutorials': typeof AppTutorialsRoute
-  '/_sandbox/sandbox': typeof SandboxSandboxRoute
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/_app/filters/new': typeof AppFiltersNewRoute
   '/_app/servers/$serverId': typeof AppServersServerIdRoute
@@ -160,7 +151,6 @@ export interface FileRouteTypes {
     | '/history'
     | '/settings'
     | '/tutorials'
-    | '/sandbox'
     | '/filters/$filterId'
     | '/filters/new'
     | '/servers/$serverId'
@@ -176,7 +166,6 @@ export interface FileRouteTypes {
     | '/history'
     | '/settings'
     | '/tutorials'
-    | '/sandbox'
     | '/filters/$filterId'
     | '/filters/new'
     | '/servers/$serverId'
@@ -193,7 +182,6 @@ export interface FileRouteTypes {
     | '/_app/history'
     | '/_app/settings'
     | '/_app/tutorials'
-    | '/_sandbox/sandbox'
     | '/_app/filters/$filterId'
     | '/_app/filters/new'
     | '/_app/servers/$serverId'
@@ -205,7 +193,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
-  SandboxSandboxRoute: typeof SandboxSandboxRoute
   LayersLayerIdTabRoute: typeof LayersLayerIdTabRoute
 }
 
@@ -266,13 +253,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/tutorials'
       preLoaderRoute: typeof AppTutorialsRouteImport
       parentRoute: typeof AppRouteRoute
-    }
-    '/_sandbox/sandbox': {
-      id: '/_sandbox/sandbox'
-      path: '/sandbox'
-      fullPath: '/sandbox'
-      preLoaderRoute: typeof SandboxSandboxRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/_app/filters/': {
       id: '/_app/filters/'
@@ -354,7 +334,6 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
-  SandboxSandboxRoute: SandboxSandboxRoute,
   LayersLayerIdTabRoute: LayersLayerIdTabRoute,
 }
 export const routeTree = rootRouteImport

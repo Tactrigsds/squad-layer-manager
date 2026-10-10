@@ -34,7 +34,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
-import { inline, useStableValue } from '@/lib/react.ts'
+import { inline, useStable } from '@/lib/react.ts'
 import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
@@ -213,7 +213,7 @@ function LoadedSelectLayersView({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'selectLayers' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 
 	const setPosition = (newPosition: AddLayersPosition) => {
 		SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, ADD_LAYERS_CURSORS[newPosition])
@@ -312,7 +312,7 @@ function LoadedGenVoteView({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'genVote' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 	const data = entry.data
 
 	const onOpenChange = (open: boolean) => {
@@ -379,7 +379,7 @@ function LoadedPasteRotation({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'pasteRotation' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 	const installedMods = Zus.useStore(

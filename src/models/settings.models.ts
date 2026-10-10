@@ -62,7 +62,7 @@ export function withSettingComment<T extends Commentable>(settings: T, path: str
 }
 
 function withComments<T extends Commentable>(settings: T, comments: SettingsComments): T {
-	if (Object.keys(comments).length === 0) return Obj.exclude(settings, [COMMENTS_KEY]) as T
+	if (Object.keys(comments).length === 0) return Obj.omit(settings, [COMMENTS_KEY]) as T
 	return { ...settings, comments }
 }
 
@@ -1808,7 +1808,7 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 }
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
-	return Obj.exclude(settings, ['connections', COMMENTS_KEY])
+	return Obj.omit(settings, ['connections', COMMENTS_KEY])
 }
 
 // -------- secrets --------

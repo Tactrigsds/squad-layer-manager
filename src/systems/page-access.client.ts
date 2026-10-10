@@ -34,7 +34,6 @@ export const PAGE_ACCESS = {
 	'/_app/history': Access.req(Req.perm('history:query')),
 	'/_app/settings': Access.req(SETTINGS_PAGE),
 	'/_app/tutorials': Access.PUBLIC,
-	'/_sandbox/sandbox': Access.PUBLIC,
 	'/_app/filters/$filterId': Access.PUBLIC,
 	'/_app/filters/new': Access.req(Req.perm('filters:create')),
 	'/_app/servers/$serverId': Access.req((params: { serverId: string }) => Req.viewServer(params.serverId)),

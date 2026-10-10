@@ -21,4 +21,3 @@ export class WritableBuffer extends Writable {
 		return this.getBuffer().toString(encoding)
 	}
 }
-export default WritableBuffer

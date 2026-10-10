@@ -3,17 +3,6 @@
 import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
 
-import { isNullOrUndef } from './type-guards'
-
-export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
-	// @ts-expect-error it works
-	const reversed: { [key in T[keyof T]]: keyof T } = {}
-	for (const key in obj) {
-		reversed[obj[key]] = key
-	}
-	return reversed
-}
-
 export function deepClone<T>(obj: T) {
 	// Unwrap Immer draft if necessary before cloning
 	const unwrapped = isDraft(obj) ? current(obj) : obj
@@ -24,14 +13,13 @@ export function deref<Entry extends { [key: string]: unknown }>(key: keyof Entry
 	return arr.map((entry) => entry[key])
 }
 
-export function exclude<T extends object, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+export function omit<T extends object, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
 	const result = { ...obj }
 	for (const key of keys) {
 		delete result[key]
 	}
 	return result
 }
-export const omit = exclude
 
 export function selectProps<T extends object, K extends keyof T>(obj: T, selected: readonly K[]) {
 	const result: Partial<T> = {}
@@ -60,19 +48,6 @@ export const deepEqual = fastDeepEqual
 // for when you walso want to assert that b is assignable to a
 export const deepEqualStrict = <A, B extends A>(a: A, b: B): a is B => fastDeepEqual(a, b)
 
-/*
-assumes that both objects have the same keys
- */
-export function getModifiedProperties<T extends object>(original: T, modified: T) {
-	const result: string[] = []
-	for (const key in modified) {
-		if (original[key] !== modified[key]) {
-			result.push(key)
-		}
-	}
-	return result
-}
-
 export function objKeys<T extends object>(obj: T) {
 	return Object.keys(obj) as (keyof T)[]
 }
@@ -83,14 +58,6 @@ export function objValues<T extends object>(obj: T) {
 
 export function objEntries<T extends object>(obj: T) {
 	return Object.entries(obj) as [keyof T, T[keyof T]][]
-}
-
-export function prefixProps(obj: Record<string, any>, prefix: string) {
-	const result: Record<string, any> = {}
-	for (const key in obj) {
-		result[`${prefix}_${key}`] = obj[key]
-	}
-	return result
 }
 
 export function revLookup<T extends { [key: string]: any }>(obj: T, key: T[keyof T]): keyof T {
@@ -206,17 +173,6 @@ export function map<O extends object, R>(obj: O, callback: (value: O[keyof O], k
 	return output
 }
 
-export function mapRecord<O extends Record<string, any>, R>(
-	obj: O,
-	callback: (value: O[keyof O], key: keyof O) => R,
-): { [K in keyof O]: R } {
-	const output: { [K in keyof O]: R } = {} as { [K in keyof O]: R }
-	for (const [key, value] of Object.entries(obj)) {
-		output[key as keyof O] = callback(value, key as keyof O)
-	}
-	return output
-}
-
 export function filterRecord<O extends Record<string, any>, R>(
 	obj: O,
 	callback: (value: O[keyof O], key: keyof O) => boolean,
@@ -225,20 +181,6 @@ export function filterRecord<O extends Record<string, any>, R>(
 	for (const [key, value] of Object.entries(obj)) {
 		if (callback(value, key as keyof O)) {
 			output[key as keyof O] = value as R
-		}
-	}
-	return output
-}
-
-export function flattenShallow(obj: any): any {
-	const output: any = {}
-	for (const [key, value] of Object.entries(obj)) {
-		if (!isNullOrUndef(value) && typeof key === 'object') {
-			for (const [keyInner, valueInner] of Object.entries(key)) {
-				output[keyInner] = valueInner
-			}
-		} else if (!isNullOrUndef(value)) {
-			output[key] = value
 		}
 	}
 	return output
@@ -261,15 +203,6 @@ export function trimUndefined<T extends object>(obj: T) {
 		}
 	}
 	return result
-}
-
-export function deepMemo() {
-	let stored: any = null
-	return (obj: unknown) => {
-		if (deepEqual(stored, obj)) return stored
-		stored = obj
-		return stored as unknown
-	}
 }
 
 /**
@@ -390,6 +323,9 @@ export function internStrings<T>(value: T): T {
 	return walk(value)
 }
 
+// false for arrays, Maps, Dates and class instances
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value)
+	if (typeof value !== 'object' || value === null) return false
+	const proto = Object.getPrototypeOf(value)
+	return proto === Object.prototype || proto === null
 }

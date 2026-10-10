@@ -340,7 +340,7 @@ function getFilterMenuDefaultFields(
 		if (layer.Gamemode === 'Training') {
 			defaults = { Gamemode: 'Training', Collection: opts?.keepCollection ? layer.Collection : undefined }
 		} else {
-			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
+			defaults = Obj.omit(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
 			// editing a layer should leave the rest of the catalog reachable, so only the focus action narrows to one collection
 			if (!opts?.keepCollection) delete defaults.Collection
 			for (const [key, value] of Obj.objEntries(defaults)) {

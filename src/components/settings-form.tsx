@@ -4572,7 +4572,7 @@ function LocalYamlField({
 		if (v === null) return
 		if (!root$ || !rootOnChange || !Obj.isPlainObject(v)) return onChange(toInputShape(schema, v))
 		const comments = (v[SETTINGS.COMMENTS_KEY] ?? {}) as SETTINGS.SettingsComments
-		const root = setAtPath(root$.getValue(), path, toInputShape(schema, Obj.exclude(v, [SETTINGS.COMMENTS_KEY])))
+		const root = setAtPath(root$.getValue(), path, toInputShape(schema, Obj.omit(v, [SETTINGS.COMMENTS_KEY])))
 		rootOnChange(SETTINGS.withSubtreeComments(root, pathStr, comments))
 	}
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
