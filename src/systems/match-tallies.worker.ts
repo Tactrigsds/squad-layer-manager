@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { parentPort, workerData } from 'node:worker_threads'
 
 import type * as CHAT from '@/models/chat.models'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as MH from '@/models/match-history.models'
 import * as Pop from '@/models/population.models'
 import * as Env from '@/server/env'

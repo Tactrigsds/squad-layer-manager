@@ -15,7 +15,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
-import * as SquadServer from '@/systems/squad-server.server'
+import * as SquadServerRouter from '@/systems/squad-server-router.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
@@ -28,7 +28,7 @@ export type OrpcAppRouter = typeof orpcAppRouter
 
 export const orpcAppRouter = {
 	battlemetrics: Battlemetrics.router,
-	squadServer: SquadServer.orpcRouter,
+	squadServer: SquadServerRouter.orpcRouter,
 	layerQueue: LayerQueue.router,
 	vote: Vote.router,
 	config: Config.router,

@@ -1,6 +1,6 @@
 import * as Typo from '@/lib/typography'
-import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
+import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 

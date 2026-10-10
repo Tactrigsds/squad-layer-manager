@@ -1,6 +1,6 @@
 import * as FRM from '@/lib/frame'
 import * as Zus from '@/lib/zustand'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import { baseLogger } from '@/systems/logger.client'
 
 export const frameManager = new FRM.FrameManager({ ...CS.init(), log: baseLogger.child({ name: 'frames' }) })

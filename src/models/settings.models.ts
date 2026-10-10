@@ -9,13 +9,13 @@ import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
-import * as CB from '@/models/constraint-builders'
-import * as CS from '@/models/context-shared'
+import * as CB from '@/models/constraint-builders.models'
+import * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as LTag from '@/models/layer-tags.models'
+import * as L from '@/models/layer.models'
 import { t } from '@/models/messages.models'
 import * as Activity from '@/models/player-activity.models'
 import * as PG from '@/models/player-groupings.models'
@@ -62,7 +62,7 @@ export function withSettingComment<T extends Commentable>(settings: T, path: str
 }
 
 function withComments<T extends Commentable>(settings: T, comments: SettingsComments): T {
-	if (Object.keys(comments).length === 0) return Obj.exclude(settings, [COMMENTS_KEY]) as T
+	if (Object.keys(comments).length === 0) return Obj.omit(settings, [COMMENTS_KEY]) as T
 	return { ...settings, comments }
 }
 
@@ -1808,7 +1808,7 @@ export function applySettingMutations(settings: PublicServerSettings, mutations:
 }
 
 export function getPublicSettings(settings: ServerSettings): PublicServerSettings {
-	return Obj.exclude(settings, ['connections', COMMENTS_KEY])
+	return Obj.omit(settings, ['connections', COMMENTS_KEY])
 }
 
 // -------- secrets --------

@@ -1,6 +1,6 @@
 import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as SC from '@/models/server-console.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'

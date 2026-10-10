@@ -3,7 +3,7 @@ import superjson from 'superjson'
 
 import * as Schema from '$root/drizzle/schema'
 import * as Prom from '@/lib/promise-utils'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'

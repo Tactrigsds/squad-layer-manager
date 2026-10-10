@@ -2,8 +2,8 @@ import { metrics } from '@opentelemetry/api'
 
 import * as AR from '@/app-routes'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import type * as CS from '@/models/context-shared'
-import * as ATTRS from '@/models/otel-attrs'
+import type * as CS from '@/models/context-shared.models'
+import * as ATTRS from '@/models/otel-attrs.models'
 import type * as C from '@/server/context'
 import { initModule } from '@/server/logger'
 export const wsSessions = new Map<string, C.OrpcSessionBase>()

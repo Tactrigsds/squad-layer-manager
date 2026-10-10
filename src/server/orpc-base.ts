@@ -6,7 +6,7 @@ import { getChildModule, type OtelModule } from '@/lib/otel.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
-import * as ATTRS from '@/models/otel-attrs'
+import * as ATTRS from '@/models/otel-attrs.models'
 import * as PA from '@/models/procedure-access.models'
 import * as RBAC from '@/rbac.models'
 

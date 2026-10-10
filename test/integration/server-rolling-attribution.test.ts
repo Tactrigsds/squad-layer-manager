@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 
 import { cmd } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'

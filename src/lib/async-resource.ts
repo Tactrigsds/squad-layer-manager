@@ -1,8 +1,8 @@
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
 
-import * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
+import * as CS from '@/models/context-shared.models'
+import * as LOG from '@/models/logs.models'
 import type * as C from '@/server/context.ts'
 import * as Instr from '@/server/instrumentation'
 

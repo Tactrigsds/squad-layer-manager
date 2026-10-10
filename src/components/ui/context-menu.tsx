@@ -3,7 +3,7 @@ import { CheckIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icon
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 const ContextMenu = ContextMenuPrimitive.Root

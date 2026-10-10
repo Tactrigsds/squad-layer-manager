@@ -1,7 +1,7 @@
 import { makePlayer } from '@/emulator'
 import * as BB from '@/models/backburner.models'
-import * as FB from '@/models/filter-builders'
-import * as L from '@/models/layer'
+import * as FB from '@/models/filter-builders.models'
+import * as L from '@/models/layer.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'

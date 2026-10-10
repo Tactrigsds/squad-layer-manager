@@ -1,6 +1,6 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Rx from '@/lib/rxjs'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'

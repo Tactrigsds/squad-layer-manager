@@ -2,7 +2,7 @@ import * as Otel from '@opentelemetry/api'
 import pino from 'pino'
 import { describe, expect, it } from 'vitest'
 
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 
 import { AsyncResource } from './async-resource'
 import * as Rx from './rxjs'

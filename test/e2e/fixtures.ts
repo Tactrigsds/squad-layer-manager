@@ -1,7 +1,7 @@
 import { test as base, type TestInfo } from '@playwright/test'
 import fs from 'node:fs'
 
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 
 import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harness/app-fixture'
 import { filter } from '../harness/arrange'

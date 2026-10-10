@@ -1,7 +1,7 @@
 // this is very sparse at the moment, maybe we'll add more of these on-off flags later
 import type * as FRM from '@/lib/frame'
 import * as Zus from '@/lib/zustand'
-import * as CB from '@/models/constraint-builders'
+import * as CB from '@/models/constraint-builders.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
 export type PoolCheckboxesState = {

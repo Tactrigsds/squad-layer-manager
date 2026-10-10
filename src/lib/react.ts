@@ -8,15 +8,6 @@ export type GenericForwardedRef<RefType, Props extends object> = <P extends Prop
 	props: P & { ref?: React.RefObject<RefType> },
 ) => React.ReactElement
 
-export function useClosureRef<T extends object>(obj: T) {
-	const objRef = React.useRef(obj)
-
-	React.useLayoutEffect(() => {
-		objRef.current = obj
-	}, [obj])
-	return objRef
-}
-
 /**
  * A ref built once per mount, for when reevaluating the starting value on every render is too much psychic damage.
  *
@@ -54,15 +45,6 @@ export function eltToFocusable(elt: HTMLElement): Focusable {
 	}
 }
 
-export function useStableReferenceDeepEquals<T>(value: T) {
-	const ref = React.useRef<T>(value)
-	if (value !== ref.current) {
-		if (!Obj.deepEqual(value, ref.current)) {
-			ref.current = value
-		}
-	}
-	return ref.current
-}
 export function useStable<T>(value: T, compare: (a: T, b: T) => boolean = Obj.deepEqual) {
 	const ref = React.useRef<T>(value)
 	if (!compare(value, ref.current)) {
@@ -71,29 +53,19 @@ export function useStable<T>(value: T, compare: (a: T, b: T) => boolean = Obj.de
 	return ref.current
 }
 
+// recomputes cb only when deps change by `equals`
 export function useStableValue<Deps extends [] | [unknown, ...unknown[]], O>(
 	cb: (...args: Deps) => O,
 	deps: Deps,
-	opts?: {
-		// do equality fheck for deps or the output value
-		compare?: 'deps' | 'value'
-		equals?: (a: any, b: any) => boolean
-	},
+	opts?: { equals?: (a: any, b: any) => boolean },
 ) {
-	const ref = React.useRef<any>(null)
+	const depsRef = React.useRef<Deps | null>(null)
 	const outValueRef = React.useRef<O | undefined>(undefined)
-	const compare = opts?.compare ?? 'deps'
-	const compareValue = compare === 'deps' ? deps : cb(...deps)
 	const equals = opts?.equals ?? Obj.deepEqual
-	if (!equals(ref.current!, compareValue)) {
-		ref.current = compareValue
-		if (compare === 'deps') {
-			outValueRef.current = cb(...(compareValue as Deps))
-		} else {
-			outValueRef.current = compareValue as any
-		}
+	if (depsRef.current === null || !equals(depsRef.current, deps)) {
+		depsRef.current = deps
+		outValueRef.current = cb(...deps)
 	}
-
 	return outValueRef.current as O
 }
 

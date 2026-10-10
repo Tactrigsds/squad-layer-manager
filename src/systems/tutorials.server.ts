@@ -7,16 +7,16 @@ import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CMD from '@/models/command.models'
-import type * as CS from '@/models/context-shared'
-import * as FB from '@/models/filter-builders'
+import type * as CS from '@/models/context-shared.models'
+import * as FB from '@/models/filter-builders.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
+import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SLL from '@/models/shared-layer-list'
+import * as SLL from '@/models/shared-layer-list.models'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as TUT from '@/models/tutorial.models'
@@ -30,6 +30,7 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Settings from '@/systems/settings.server'
+import * as SquadServerLifecycle from '@/systems/squad-server-lifecycle.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -738,7 +739,7 @@ async function teardown(ctx: C.Db, owner: bigint) {
 	runChanged$.next()
 	// before the server goes, so the fabricated editor leaves the way a real client would
 	await UserPresence.dispatchFabricatedDisconnect(peerClientId(serverIdFor(owner)))
-	await SquadServer.deleteServer(serverIdFor(owner))
+	await SquadServerLifecycle.deleteServer(serverIdFor(owner))
 	await FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
 }
 
@@ -797,7 +798,7 @@ export async function setup(ctx: C.Db) {
 	const servers = (await ctx.db().select({ id: Schema.servers.id }).from(Schema.servers).where(E.like(Schema.servers.id, like)))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_SERVER_ID.test(id))
-	for (const id of servers) await SquadServer.deleteServer(id)
+	for (const id of servers) await SquadServerLifecycle.deleteServer(id)
 	const filterIds = (await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.like(Schema.filters.id, like)))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_FILTER_ID.test(id))
@@ -829,7 +830,7 @@ const start = Instr.spanOp(
 				layerQueue: initialQueue,
 			})
 			if (created.code !== 'ok') throw new Error(`could not create tutorial server: ${created.code}`)
-			const enabled = await SquadServer.enableServer(serverId)
+			const enabled = await SquadServerLifecycle.enableServer(serverId)
 			if (enabled.code !== 'ok') throw new Error(`could not enable tutorial server: ${enabled.code}`)
 			await scenario.setup(stageCtxFor(ctx, serverId, owner), reader)
 			runs.set(owner, { scenarioId, serverId, owner, phase: 'active' })

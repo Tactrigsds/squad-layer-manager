@@ -1,4 +1,4 @@
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 
 import * as Fmt from './format'
 

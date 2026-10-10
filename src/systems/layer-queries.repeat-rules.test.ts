@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import * as CB from '@/models/constraint-builders'
-import * as CS from '@/models/context-shared'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
-import type * as LE from '@/models/layer-engine'
+import * as CB from '@/models/constraint-builders.models'
+import * as CS from '@/models/context-shared.models'
+import * as LC from '@/models/layer-columns.models'
+import type * as LE from '@/models/layer-engine.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as L from '@/models/layer.models'
 import * as SETTINGS from '@/models/settings.models'
 import { buildQueryConstraints, getLayerItemStatuses, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 

@@ -7,7 +7,7 @@ import * as Find from '@/lib/subtree-find'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as SF_Msgs from '@/messages/subtree-find.messages'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 // A find bar over one subtree, provisioned by `useSubtreeFind`. Nothing about a match is rendered here: the frame

@@ -17,7 +17,7 @@ register('@opentelemetry/instrumentation/hook.mjs', import.meta.url, {
 	data: {
 		// Only third-party modules are ever instrumented, so keep IITM away from our own files. It rewrites
 		// each module it wraps by parsing its source for exports, and under tsx it sees raw TypeScript: it
-		// mis-parses `export namespace Foo {}` (src/models/otel-attrs.ts) and hands back a namespace whose
+		// mis-parses `export namespace Foo {}` (src/models/otel-attrs.models.ts) and hands back a namespace whose
 		// members are undefined, which crashes logs.ts at import time. Excluding every file: URL outside
 		// node_modules covers both the tsx dev path and the prod bundle; `node:` builtins are not file:
 		// URLs, so http/net/dns stay instrumented.

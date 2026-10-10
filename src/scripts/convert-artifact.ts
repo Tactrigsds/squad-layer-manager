@@ -5,9 +5,9 @@ import zlib from 'node:zlib'
 import path from 'path'
 
 import * as Paths from '$root/paths'
-import type * as L from '@/models/layer'
-import * as LA from '@/models/layer-artifact'
-import * as LC from '@/models/layer-columns'
+import * as LA from '@/models/layer-artifact.models'
+import * as LC from '@/models/layer-columns.models'
+import type * as L from '@/models/layer.models'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 // Rewrites an SLMC2 artifact (one column per row) as an SLMC3 one (block/pattern/side-record scopes), then verifies

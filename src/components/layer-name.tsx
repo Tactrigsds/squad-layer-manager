@@ -1,5 +1,5 @@
 import ShortLayerName from '@/components/short-layer-name'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 
 /**
  * The plugin-facing layer name: `slm/components/layer`. A thin front for ShortLayerName, whose own props

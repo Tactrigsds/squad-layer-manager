@@ -1,7 +1,7 @@
 import * as React from 'react'
 
 import * as Zus from '@/lib/zustand'
-import { BaseZIndexContext } from '@/models/zindex'
+import { BaseZIndexContext } from '@/models/zindex.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import { DraggableWindowOutletContext } from '@/systems/draggable-window.client'
 

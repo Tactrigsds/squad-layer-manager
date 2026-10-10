@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 
 import * as Cleanup from './cleanup'
 import * as Rx from './rxjs'

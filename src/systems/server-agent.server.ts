@@ -7,7 +7,7 @@ import type { WebSocket } from 'ws'
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import type { RconTransport, RconTransportHandlers } from '@/lib/rcon/core-rcon'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
@@ -80,7 +80,7 @@ function getStream(serverId: string): IsolatedSubject<string> {
 	return stream
 }
 
-// Subscribed by each managed server (see squad-server.server.ts) when its connection mode is `server-agent`.
+// Subscribed by each managed server (see squad-server-lifecycle.server.ts) when its connection mode is `server-agent`.
 export function streamFor(serverId: string): IsolatedSubject<string> {
 	return getStream(serverId)
 }
@@ -152,7 +152,7 @@ function getRconTunnel(serverId: string): RconTunnel {
 	return tunnel
 }
 
-// The RCON transport used by a `server-agent` managed server (see squad-server.server.ts). It has no auth
+// The RCON transport used by a `server-agent` managed server (see squad-server-lifecycle.server.ts). It has no auth
 // password of its own: the agent authenticates to local RCON and this transport just carries the resulting
 // byte stream, becoming ready when the agent signals `rcon-ready`.
 export function rconTransportFor(serverId: string): RconTransport {

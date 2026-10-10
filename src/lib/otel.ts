@@ -1,7 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 import type pino from 'pino'
 
-import * as ATTRS from '@/models/otel-attrs'
+import * as ATTRS from '@/models/otel-attrs.models'
 
 export type OtelModule = {
 	name: string

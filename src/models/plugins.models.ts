@@ -273,7 +273,7 @@ export function defineTables(manifest: { id: PluginId }): TableFactory {
 // -------- config field controls --------
 
 /**
- * The JSON Schema key a config field names its control with. settings-form.tsx picks its own controls by
+ * The JSON Schema key a config field names its control with. settings-form/overrides.ts picks its own controls by
  * setting path, which a plugin has no way to reach; this survives z.toJSONSchema, so a plugin's schema can
  * ask for one by declaring it.
  */

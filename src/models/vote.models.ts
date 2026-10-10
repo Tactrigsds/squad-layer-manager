@@ -7,12 +7,12 @@ import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as CS from '@/models/context-shared'
-import * as L from '@/models/layer'
+import * as CS from '@/models/context-shared.models'
+import * as L from '@/models/layer.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 
-import type * as LC from './layer-columns'
+import type * as LC from './layer-columns.models'
 import * as LL from './layer-list.models'
 
 export const DEFAULT_NUM_CHOICES = 3

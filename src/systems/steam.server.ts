@@ -1,5 +1,5 @@
 import { z } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'

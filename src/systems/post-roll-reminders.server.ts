@@ -1,5 +1,5 @@
 import type * as Cleanup from '@/lib/cleanup'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 
 // Reminders warned to admins after each roll. A provider is asked, when the announcements run, for
 // everything it wants said now, and the caller does the warning: nothing registered here reaches the

@@ -1,6 +1,6 @@
 import type React from 'react'
 
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import type * as SM from '@/models/squad.models'
 
 // Import leaf: models absorb their text through this vocabulary and the display layer imports those models back, so

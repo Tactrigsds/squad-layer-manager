@@ -1,0 +1,506 @@
+import * as CD from '@/lib/ctx-def'
+import { assertNever } from '@/lib/type-guards'
+import * as F_Msgs from '@/messages/filter.messages'
+import type * as CS from '@/models/context-shared.models'
+import * as F from '@/models/filter.models'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
+import * as VEH from '@/models/vehicles.models'
+
+// The request/response shapes of the layer query engine (layer-engine/), and the lowering from a filter tree into the IR it
+// executes.
+//
+// Lowering stays here rather than in Rust on purpose: team columns, enum mapping, null-as-an-enum-index, and the
+// forgiveness of reversed range bounds are all decisions the SQL backend already makes, and duplicating them in
+// another language is how the two would drift apart. The engine only sees primitive comparisons over column indices
+// and db-encoded values.
+
+export type Ir =
+	| { op: 'and' | 'or'; children: Ir[] }
+	| { op: 'not'; child: Ir }
+	| { op: 'true' | 'false' }
+	| { op: 'is_null'; col: number }
+	| { op: 'eq_val' | 'lt_val' | 'gt_val' | 'ge_val' | 'le_val'; col: number; val: number }
+	| { op: 'in_vals'; col: number; vals: number[] }
+	| { op: 'eq_col' | 'lt_col' | 'gt_col'; col: number; other: number }
+
+// a pick step, with the packing spelled out in the request so the engine and LC.packStepKey can't drift
+export type StepSpec = {
+	cols1: number[]
+	radices1: number[]
+	cols2?: number[]
+	radices2?: number[]
+	weights: { key: number; weight: number }[]
+}
+
+export type GenSpec = {
+	steps: StepSpec[]
+	defaultWeight: number
+	seed: number
+	numLayers: number
+}
+
+export type Sort =
+	| { column: { col: number; dir: 'ASC' | 'DESC' | 'ASC:ABS' | 'DESC:ABS' } }
+	| { random: GenSpec & { excludeIds: number[] } }
+
+export type Request =
+	| { kind: 'select'; where: Ir | null; indicators: Ir[]; sort: Sort | null; pageIndex: number; pageSize: number; columns: number[] }
+	| { kind: 'distinct'; where: Ir | null; col: number }
+	| { kind: 'matches'; filters: Ir[]; ids: number[] }
+	| { kind: 'info'; id: number; columns: number[] }
+	| { kind: 'ranges'; columns: number[] }
+	| { kind: 'groupCounts'; where: Ir | null; step: StepSpec }
+	| ({ kind: 'solveRepeats' } & SolveRepeatsSpec)
+
+// layer-engine/src/solve.rs describes the search. Rule values are interned to integers by the host, NO_RULE_VALUE where
+// a rule has nothing to compare.
+export const NO_RULE_VALUE = -1
+export type SolveRepeatsSpec = {
+	rules: { within: number; team: boolean; crossTeam: boolean }[]
+	// per layer, per rule: the values in team slots 1 and 2. A rule that is not per-team reads slot 1 only.
+	layers: [number, number][][]
+	history: number[]
+	queue: { source: number; targets: number[]; swappable: boolean; pinned: boolean }[]
+	firstParity: number
+	swapCost: number
+	moveCost: number
+	maxNodes?: number
+}
+export type SolveRepeatsResponse = {
+	status: 'optimal' | 'budgetExhausted'
+	order: number[]
+	swapped: boolean[]
+	violations: number
+	baselineViolations: number
+	swaps: number
+	moves: number
+	nodes: number
+}
+
+export type SelectResponse = { totalCount: number; rows: (number | null)[][]; indicators: boolean[][] }
+export type MatchesResponse = { exists: boolean[]; matches: boolean[][] }
+export type RangeResponse = { col: number; min: number | null; max: number | null }
+export type GroupCount = { key: number; count: number }
+
+export type ColumnIndex = (name: string) => number
+
+// what the query layer needs of an engine instance. The wasm host (systems/layer-engine.shared.ts) implements it; the
+// context depends on this type rather than the class so models don't reach into systems.
+export type EngineHandle = {
+	readonly rowCount: number
+	columnIndex: (name: string) => number
+	query: <T>(request: Request) => T
+}
+
+export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
+
+// ---------------------------- filter -> IR ----------------------------
+
+export type LowerCtx = F.Ctx & LC.Ctx & { colIndex: ColumnIndex }
+
+// Errors are collected against the node path rather than thrown, because the filter editor highlights the offending
+// node from them.
+export function lowerFilterNode(ctx: LowerCtx, node: F.FilterNode, path: string[] = [], appliedFilters: string[] = []): LowerResult {
+	const errors: F.NodeValidationError[] = []
+	const ir = lowerNode(ctx, node, path, appliedFilters, errors)
+	if (errors.length > 0) return { code: 'err:invalid-node', errors }
+	return { code: 'ok', ir: ir! }
+}
+
+// These fold the boolean constants rather than passing them through: callers build children
+// conditionally, so a matchup whose dimensions are all "any" produces a pile of `true`s that would
+// otherwise survive as a redundant AND/OR node. `true` is the identity of AND and its annihilator
+// under OR (and vice versa for `false`).
+export function and(children: Ir[]): Ir {
+	if (children.some((child) => child.op === 'false')) return { op: 'false' }
+	const kept = children.filter((child) => child.op !== 'true')
+	if (kept.length === 0) return { op: 'true' }
+	if (kept.length === 1) return kept[0]
+	return { op: 'and', children: kept }
+}
+
+export function or(children: Ir[]): Ir {
+	if (children.some((child) => child.op === 'true')) return { op: 'true' }
+	const kept = children.filter((child) => child.op !== 'false')
+	if (kept.length === 0) return { op: 'false' }
+	if (kept.length === 1) return kept[0]
+	return { op: 'or', children: kept }
+}
+
+export function not(child: Ir): Ir {
+	return { op: 'not', child }
+}
+
+function lowerNode(
+	ctx: LowerCtx,
+	node: F.FilterNode,
+	path: string[],
+	appliedFilters: string[],
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	if (F.isCompNode(node)) {
+		const ir = lowerComp(ctx, node, path, errors)
+		// only comp nodes carry a `neg` flag; blocks and apply-filters fold negation into their type
+		if (ir && node.neg) return not(ir)
+		return ir
+	}
+
+	if (F.isApplyFilterNode(node)) {
+		const filterPath = [...path, 'filterId']
+		if (appliedFilters.includes(node.filterId)) {
+			errors.push({
+				path: filterPath,
+				filterId: node.filterId,
+				type: 'recursive-filter',
+				msg: F_Msgs.recursiveFilter(node.filterId),
+			})
+			return undefined
+		}
+		const entity = ctx.filters.get(node.filterId)
+		if (!entity) {
+			errors.push({
+				path: filterPath,
+				filterId: node.filterId,
+				type: 'unknown-filter',
+				msg: F_Msgs.unknownFilter(node.filterId),
+			})
+			return undefined
+		}
+		// referenced filters are inlined, so the engine only ever sees one self-contained tree
+		const inner = lowerNode(ctx, entity.filter as F.FilterNode, filterPath, [...appliedFilters, node.filterId], errors)
+		if (!inner) return undefined
+		return F.APPLY_FILTER_TYPE_NEGATED[node.type] ? not(inner) : inner
+	}
+
+	if (F.isMatchupNode(node)) {
+		return lowerMatchup(ctx, node, path, errors)
+	}
+
+	if (F.isBlockNode(node)) {
+		const childrenPath = [...path, 'children']
+		const children: Ir[] = []
+		for (let i = 0; i < node.children.length; i++) {
+			const child = lowerNode(ctx, node.children[i], [...childrenPath, i.toString()], appliedFilters, errors)
+			if (child) children.push(child)
+		}
+		const semantics = F.BLOCK_TYPE_SEMANTICS[node.type]
+		const base: Ir =
+			children.length === 0
+				? semantics.conjunction
+					? { op: 'true' }
+					: { op: 'false' }
+				: { op: semantics.conjunction ? 'and' : 'or', children }
+		return semantics.negated ? not(base) : base
+	}
+
+	errors.push({ type: 'invalid-node', path, msg: F_Msgs.unhandledNodeType() })
+	return undefined
+}
+
+// A matchup pairs the two team specs against the two teams. Unlocked, either orientation matches, so
+// it lowers to a disjunction over both -- this is the correlation a `team-column` quantifier cannot
+// express, since that expands one column over both teams independently.
+function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
+	const orient = (teamOf0: 1 | 2, teamOf1: 1 | 2, errs: F.NodeValidationError[]): Ir =>
+		and([teamSpecIr(ctx, node.teams[0], teamOf0, path, errs), teamSpecIr(ctx, node.teams[1], teamOf1, path, errs)])
+
+	// both orientations resolve the same specs against columns of the same enum mapping, so the mirror
+	// would report every problem a second time; collect errors from the first orientation only
+	const base = node.locked ? orient(1, 2, errors) : or([orient(1, 2, errors), orient(2, 1, [])])
+	return F.MATCHUP_TYPE_NEGATED[node.type] ? not(base) : base
+}
+
+// one side of a matchup against a concrete team. Only dimensions carrying values constrain anything;
+// an empty one is "any", and `and([])` is already `true`, so no special case is needed.
+function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: string[], errors: F.NodeValidationError[]): Ir {
+	const children: Ir[] = []
+	for (const teamColumn of F.TEAM_COLUMNS) {
+		const values = spec[teamColumn]
+		if (!values || values.length === 0) continue
+		const column = F.resolveTeamColumn(teamColumn, team)
+		const vehicleInfo = LC.vehicleColumnInfo(column)
+		if (vehicleInfo) {
+			const ir = vehicleValuesIr(ctx, column, vehicleInfo, values, path, errors)
+			if (ir) children.push(ir)
+			continue
+		}
+		const col = columnIndex(ctx, column, path, errors)
+		if (col === undefined) continue
+		children.push(valueListIr(ctx, column, col, values, path, errors))
+	}
+	return and(children)
+}
+
+// A vehicle predicate has no column of its own: it resolves the value list to canonical vehicle ids
+// against the layer-data tables, widens those to the unit records whose composition contains any of
+// them, and scans the team's UnitRecord column for membership. This is the entire vehicle-query
+// mechanism; the engine only ever sees the in_vals.
+function vehicleValuesIr(
+	ctx: LowerCtx,
+	column: string,
+	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
+	items: F.InListItem[],
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	const components = L.StaticLayerComponents
+	if (!VEH.hasVehicleData(components)) {
+		errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleDataUnavailable() })
+		return undefined
+	}
+	const ids = new Set<number>()
+	for (const item of items) {
+		if (item === null || F.isColumnListItem(item)) {
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+			continue
+		}
+		const encoded = encodeValue(ctx, column, item, path, errors)
+		if (encoded !== undefined) ids.add(encoded)
+	}
+	const vehicleIds = info.kind === 'vehicleTypes' ? VEH.vehicleIdsForTypes(ids, components) : ids
+	const unitRecordIds = VEH.unitRecordIdsForVehicles(vehicleIds, components)
+	const col = ctx.colIndex(LC.UNIT_RECORD_COLUMNS[info.team])
+	return or(unitRecordIds.length > 0 ? [{ op: 'in_vals', col, vals: unitRecordIds }] : [])
+}
+
+function lowerVehicleComp(
+	ctx: LowerCtx,
+	node: F.CompNode,
+	column: string,
+	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	switch (node.type) {
+		case 'eq': {
+			const arg = node.args[1]
+			if (arg.type !== 'value' || arg.value === null) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+				return undefined
+			}
+			return vehicleValuesIr(ctx, column, info, [arg.value], path, errors)
+		}
+		case 'in':
+			return vehicleValuesIr(ctx, column, info, node.args[1].values, path, errors)
+		case 'lt':
+		case 'gt':
+		case 'inrange':
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+			return undefined
+		default:
+			assertNever(node)
+	}
+}
+
+function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
+	const subject = node.args[0] as F.Arg | undefined
+	if (subject?.type !== 'column' && subject?.type !== 'team-column') {
+		errors.push({ type: 'invalid-node', path, msg: F_Msgs.firstOperandMustBeColumn() })
+		return undefined
+	}
+	// a comparison referencing a team-generic column expands over both teams, combined per the column's quantifier
+	const teamArg = (node.args as F.Arg[]).find((arg) => arg.type === 'team-column') as F.TeamColumnArg | undefined
+	if (!teamArg) return lowerCompForTeam(ctx, node, path, undefined, errors)
+	const team1 = lowerCompForTeam(ctx, node, path, 1, errors)
+	// both teams resolve to columns of the same enum mapping, so team 2 reports the same errors; drop them rather
+	// than listing every problem twice
+	const team2 = lowerCompForTeam(ctx, node, path, 2, [])
+	if (!team1 || !team2) return undefined
+	return { op: teamArg.quantifier === 'both' ? 'and' : 'or', children: [team1, team2] }
+}
+
+function lowerCompForTeam(
+	ctx: LowerCtx,
+	node: F.CompNode,
+	path: string[],
+	team: 1 | 2 | undefined,
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	const subject = resolveColumn(ctx, node.args[0] as F.Arg, team, path, errors)
+	if (subject === undefined) return undefined
+	// vehicle columns are virtual: no artifact column exists, so they take their own lowering path
+	const vehicleInfo = LC.vehicleColumnInfo(subject)
+	if (vehicleInfo) return lowerVehicleComp(ctx, node, subject, vehicleInfo, path, errors)
+	const col = columnIndex(ctx, subject, path, errors)
+	if (col === undefined) return undefined
+	const subjectDomain = F.columnValueDomain(subject, ctx.effectiveColsConfig)
+
+	// the other operand of a comparison: another column, or a value encoded against the subject's mapping
+	const operand = (arg: F.ScalarArg): { col: number } | { val: number | null } | undefined => {
+		if (arg.type === 'column' || arg.type === 'team-column') {
+			const name = resolveColumn(ctx, arg, team, path, errors)
+			if (name === undefined) return undefined
+			if (LC.isVirtualColumn(name, ctx.effectiveColsConfig)) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(name) })
+				return undefined
+			}
+			const other = columnIndex(ctx, name, path, errors)
+			if (other === undefined) return undefined
+			const domain = F.columnValueDomain(name, ctx.effectiveColsConfig)
+			if (subjectDomain && domain && !F.domainsCompatible(subjectDomain, domain)) {
+				errors.push({
+					type: 'invalid-node',
+					path,
+					msg: F_Msgs.columnsNotComparable(subject, name),
+				})
+				return undefined
+			}
+			return { col: other }
+		}
+		return { val: scalarValue(ctx, subject, arg.value, path, errors) }
+	}
+
+	switch (node.type) {
+		case 'eq': {
+			const other = operand(node.args[1])
+			if (!other) return undefined
+			if ('col' in other) return { op: 'eq_col', col, other: other.col }
+			// a null value is an IS NULL test, except on an enum column that maps null to a concrete index
+			return other.val === null ? { op: 'is_null', col } : { op: 'eq_val', col, val: other.val }
+		}
+		case 'in':
+			return valueListIr(ctx, subject, col, node.args[1].values, path, errors)
+		case 'lt':
+		case 'gt': {
+			const other = operand(node.args[1])
+			if (!other) return undefined
+			if ('col' in other) return { op: node.type === 'lt' ? 'lt_col' : 'gt_col', col, other: other.col }
+			if (other.val === null) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.orderedComparisonNull() })
+				return { op: 'false' }
+			}
+			return { op: node.type === 'lt' ? 'lt_val' : 'gt_val', col, val: other.val }
+		}
+		case 'inrange': {
+			const lo = operand(node.args[1])
+			const hi = operand(node.args[2])
+			if (!lo || !hi) return undefined
+			if (!('val' in lo) || !('val' in hi) || lo.val === null || hi.val === null) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.rangeComparisonNull() })
+				return { op: 'false' }
+			}
+			// reversed constant bounds are forgiven, matching the SQL backend; prod filters rely on it
+			const [low, high] = lo.val > hi.val ? [hi.val, lo.val] : [lo.val, hi.val]
+			return {
+				op: 'and',
+				children: [
+					{ op: 'ge_val', col, val: low },
+					{ op: 'le_val', col, val: high },
+				],
+			}
+		}
+		default:
+			assertNever(node)
+	}
+}
+
+// membership of `col` (the already-resolved index of `column`) in a list of items. Constants collapse
+// into one membership pass; column items and null stay separate disjuncts. Shared by the `in`
+// operator and the matchup operators, which differ only in that matchups never carry column items.
+function valueListIr(
+	ctx: LowerCtx,
+	column: string,
+	col: number,
+	items: F.InListItem[],
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir {
+	const columnDomain = F.columnValueDomain(column, ctx.effectiveColsConfig)
+	const constants: number[] = []
+	const children: Ir[] = []
+	for (const item of items) {
+		if (item === null) {
+			const nullIndex = enumNullIndex(ctx, column)
+			if (nullIndex === null) children.push({ op: 'is_null', col })
+			else constants.push(nullIndex)
+			continue
+		}
+		if (F.isColumnListItem(item)) {
+			if (LC.isVirtualColumn(item.column, ctx.effectiveColsConfig)) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(item.column) })
+				continue
+			}
+			const other = columnIndex(ctx, item.column, path, errors)
+			if (other === undefined) continue
+			const domain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)
+			if (columnDomain && domain && !F.domainsCompatible(columnDomain, domain)) {
+				errors.push({
+					type: 'invalid-node',
+					path,
+					msg: F_Msgs.columnsNotComparable(column, item.column),
+				})
+				continue
+			}
+			children.push({ op: 'eq_col', col, other })
+			continue
+		}
+		const value = encodeValue(ctx, column, item, path, errors)
+		if (value !== undefined) constants.push(value)
+	}
+	if (constants.length > 0) children.unshift({ op: 'in_vals', col, vals: constants })
+	return or(children)
+}
+
+function resolveColumn(
+	ctx: LowerCtx,
+	arg: F.Arg,
+	team: 1 | 2 | undefined,
+	path: string[],
+	errors: F.NodeValidationError[],
+): string | undefined {
+	if (arg.type === 'team-column') {
+		if (team === undefined) {
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.unresolvedTeamColumn(arg.column) })
+			return undefined
+		}
+		return F.resolveTeamColumn(arg.column, team)
+	}
+	if (arg.type === 'column') return arg.column
+	errors.push({ type: 'invalid-node', path, msg: F_Msgs.needsColumnOperand() })
+	return undefined
+}
+
+function columnIndex(ctx: LowerCtx, column: string, path: string[], errors: F.NodeValidationError[]): number | undefined {
+	if (!LC.getColumnDef(column, ctx.effectiveColsConfig)) {
+		errors.push({ type: 'unmapped-column', column, path, msg: F_Msgs.unmappedColumn(column) })
+		return undefined
+	}
+	return ctx.colIndex(column)
+}
+
+// null on an enum column that carries null as a mapped value (e.g. LayerVersion's "no version") is a real index, not
+// SQL NULL
+function enumNullIndex(ctx: LowerCtx, column: string): number | null {
+	const def = LC.getColumnDef(column, ctx.effectiveColsConfig)
+	if (def?.type !== 'string' || !def.enumMapping) return null
+	const mapped = LC.dbValue(column, null, ctx)
+	return LC.isUnmappedDbValue(mapped) || mapped === null ? null : Number(mapped)
+}
+
+function scalarValue(ctx: LowerCtx, column: string, value: F.Value, path: string[], errors: F.NodeValidationError[]): number | null {
+	if (value === null) return enumNullIndex(ctx, column)
+	const encoded = encodeValue(ctx, column, value, path, errors)
+	return encoded ?? null
+}
+
+function encodeValue(
+	ctx: LowerCtx,
+	column: string,
+	value: NonNullable<F.Value>,
+	path: string[],
+	errors: F.NodeValidationError[],
+): number | undefined {
+	const encoded = LC.dbValue(column, value, ctx)
+	if (LC.isUnmappedDbValue(encoded) || encoded === null || encoded === undefined) {
+		errors.push({ type: 'unmapped-value', path, column, value, msg: F_Msgs.unmappedValue(column, value) })
+		return undefined
+	}
+	if (typeof encoded === 'boolean') return encoded ? 1 : 0
+	return Number(encoded)
+}
+
+// the factored query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its
+// lifetime, so it is shared by every request rather than opened per query.
+export type Ctx = CS.Ctx & { engine: EngineHandle } & LC.Ctx
+export const CtxDef = CD.defCtx<Ctx>()(['engine'], { name: 'layerEngine', extends: [LC.CtxDef] })

@@ -30,7 +30,7 @@ the frontend (localStorage) and the backend (database, config, environment varia
 Prefer copy-on-write unless mutation is proven safe or the code is a hot path.
 
 Async functions which kick off async work and which return a promise or async iterable should take a cancellation signal by default. For non-lib functions, pass it via the ctx object (see
-src/models/context-shared.ts). The client is not converted to this pattern yet, so use judgement about when to
+src/models/context-shared.models.ts). The client is not converted to this pattern yet, so use judgement about when to
 upgrade a function. Never leave a dangling promise.
 
 When branching on a union, especially a discriminated one, cover the default case with `assertNever()` from
@@ -38,7 +38,7 @@ src/lib/type-guards.ts, so adding a member raises a type error.
 
 Use namespace imports for all nontrivial modules, unless that module has an established convention against it. Each
 namespace must be consistent and unique across the app, except for special cases like the imports in context.ts and
-context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules and
+context-shared.models.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules and
 packages. The lib vocabulary is in docs/developers/architecture.md under "Namespace imports everywhere".
 
 Never import rxjs, zustand, react-rxjs or zod directly. Each is reached through its wrapper in `src/lib` (`Rx`,
@@ -216,7 +216,7 @@ Log significant actions taken by the user or by the system via app events (see s
 Pass commonly used state via the ctx object. It is always the first argument, or for observables always the first
 element of the observable's data tuple. A domain's contexts are kept in that domain's models file (`V.Ctx`, `MH.Ctx`,
 ...), with the runtime object it carries at `Ctx.Payload`. Check the domain's models file first, then
-context-shared.ts for the shared primitives, then server/context.ts for server infrastructure. Every context has a
+context-shared.models.ts for the shared primitives, then server/context.ts for server infrastructure. Every context has a
 `CtxDef` beside it; see docs/developers/architecture.md, "Context as duck-typed dependency injection".
 
 A function's ctx parameter type should name the minimum context it needs.
@@ -254,7 +254,7 @@ store or another variant of `Zus.AnyInput`.
 
 Never export non-components from .tsx files. It breaks hot module replacement.
 
-Never hardcode a z-index. Take one from src/models/zindex.ts via `useZIndex(ZI_OFFSETS.<BAND>)`, picking the band
+Never hardcode a z-index. Take one from src/models/zindex.models.ts via `useZIndex(ZI_OFFSETS.<BAND>)`, picking the band
 for what you are layering: in-container overlays, sticky headers, popovers, tooltips, draggable windows, dialogs.
 The offsets are relative to the nearest enclosing `BaseZIndexContext` rather than absolute, so a bare `z-50` is
 right up until the component is rendered inside a dialog or a draggable window. For sticky headers nested inside

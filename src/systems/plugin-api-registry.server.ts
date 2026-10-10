@@ -9,7 +9,7 @@ import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 
 import * as zod from '@/lib/zod'
-import * as SHIM from '@/models/plugin-api-shim'
+import * as SHIM from '@/models/plugin-api-shim.models'
 import * as libDisplayHelpers from '@/plugin-api/lib/display-helpers'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libTemplating from '@/plugin-api/lib/templating'

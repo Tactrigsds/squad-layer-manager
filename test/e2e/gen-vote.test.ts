@@ -1,4 +1,4 @@
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'

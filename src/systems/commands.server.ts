@@ -17,8 +17,8 @@ import * as BB from '@/models/backburner.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
-import type * as CS from '@/models/context-shared'
-import * as L from '@/models/layer'
+import type * as CS from '@/models/context-shared.models'
+import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import type * as SR from '@/models/squad-rcon.models'
@@ -37,6 +37,7 @@ import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -1165,9 +1166,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	warn: async (h, args) => {
 		const target = args.player
 		const targetId = SM.PlayerIds.getPlayerId(target.ids)
-		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
+		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServerActions.messageVars())
 		const message = AAR.renderAppliedReason(applied)
-		await SquadServer.warnPlayers(h.ctx, [targetId], message, ingameActor(h.sender), { reasonLabel: applied.label })
+		await SquadServerActions.warnPlayers(h.ctx, [targetId], message, ingameActor(h.sender), { reasonLabel: applied.label })
 		// echo the exact delivered text so the admin sees what the player got (preset labels are embedded in it)
 		await h.reply(CMD_Msgs.warned(target.ids.username, message))
 		return { code: 'ok' }
@@ -1198,10 +1199,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
+		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServerActions.messageVars({ squadName: squad.squadName }))
 		// squad warns carry the same @Squad tag the web squad warn box prepends
 		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
-		await SquadServer.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
+		await SquadServerActions.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
 		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const squadLabel = SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, args.squad.teamId))
 		await h.reply(CMD_Msgs.warnedSquad(squadLabel, message))
@@ -1212,10 +1213,16 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'kill', !!args.reason)
 		if (g) return g
 		const target = args.player
-		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
+		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServerActions.messageVars())
 		// the kill notify delivers the rendered reason verbatim (see h.ctx.tr.warn(SM_Msgs.notifyKilled()))
 		const reason = applied && AAR.renderAppliedReason(applied)
-		await SquadServer.killPlayersAction(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), reason, applied?.label)
+		await SquadServerActions.killPlayersAction(
+			h.ctx,
+			[SM.PlayerIds.getPlayerId(target.ids)],
+			ingameActor(h.sender),
+			reason,
+			applied?.label,
+		)
 		await h.reply(CMD_Msgs.killedPlayer(target.ids.username, applied?.label))
 		return { code: 'ok' }
 	},
@@ -1226,9 +1233,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'kill', !!args.reason)
 		if (g) return g
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
+		const applied =
+			args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServerActions.messageVars({ squadName: squad.squadName }))
 		const reason = applied && AAR.renderAppliedReason(applied)
-		await SquadServer.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
+		await SquadServerActions.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
 		await h.reply(CMD_Msgs.killedSquad(squadSubjectLabel(h, squad.squadName, players.length), applied?.label))
 		return { code: 'ok' }
 	},
@@ -1238,8 +1246,13 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (target.squadId == null) return await h.error('not-in-squad', h.ctx.tr.text(CMD_Msgs.playerNotInSquad(target.ids.username)))
 		const g = await requireReasonGuard(h, 'remove-from-squad', !!args.reason)
 		if (g) return g
-		const applied = args.reason && CMD.applyResolvedReason('remove-from-squad', args.reason, SquadServer.messageVars())
-		await SquadServer.removePlayersFromSquad(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), applied || undefined)
+		const applied = args.reason && CMD.applyResolvedReason('remove-from-squad', args.reason, SquadServerActions.messageVars())
+		await SquadServerActions.removePlayersFromSquad(
+			h.ctx,
+			[SM.PlayerIds.getPlayerId(target.ids)],
+			ingameActor(h.sender),
+			applied || undefined,
+		)
 		await h.reply(CMD_Msgs.removedFromSquad(target.ids.username, applied?.label))
 		return { code: 'ok' }
 	},
@@ -1249,8 +1262,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (g) return g
 		const { squad, teamLabel } = args.squad
 		const applied =
-			args.reason && CMD.applyResolvedReason('disband-squad', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
-		await SquadServer.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied || undefined)
+			args.reason &&
+			CMD.applyResolvedReason('disband-squad', args.reason, SquadServerActions.messageVars({ squadName: squad.squadName }))
+		await SquadServerActions.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied || undefined)
 		await h.reply(CMD_Msgs.disbandedSquad(squad.squadName, teamLabel, applied?.label))
 		return { code: 'ok' }
 	},
@@ -1259,14 +1273,19 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'demote-commander', !!args.reason)
 		if (g) return g
 		const target = args.player
-		const applied = args.reason && CMD.applyResolvedReason('demote-commander', args.reason, SquadServer.messageVars())
-		await SquadServer.demoteCommanderAction(h.ctx, SM.PlayerIds.getPlayerId(target.ids), ingameActor(h.sender), applied || undefined)
+		const applied = args.reason && CMD.applyResolvedReason('demote-commander', args.reason, SquadServerActions.messageVars())
+		await SquadServerActions.demoteCommanderAction(
+			h.ctx,
+			SM.PlayerIds.getPlayerId(target.ids),
+			ingameActor(h.sender),
+			applied || undefined,
+		)
 		await h.reply(CMD_Msgs.demoted(target.ids.username, applied?.label))
 		return { code: 'ok' }
 	},
 
 	broadcast: async (h, args) => {
-		const applied = CMD.applyResolvedReason('broadcast', args.reason, SquadServer.messageVars())
+		const applied = CMD.applyResolvedReason('broadcast', args.reason, SquadServerActions.messageVars())
 		const message = AAR.renderAppliedReason(applied)
 		await SquadRcon.broadcast(h.ctx, message)
 		return { code: 'ok' }
@@ -1435,7 +1454,7 @@ async function resolveChatOwner(h: HandlerCtx): Promise<USR.GuiOrChatUserId> {
 
 // enforces the per-action "require a reason" setting; returns the error handler-result to short-circuit, or null
 async function requireReasonGuard(h: HandlerCtx, action: AAR.AdminActionType, hasReason: boolean): Promise<HandlerResult | null> {
-	const rr = SquadServer.reasonRequirementError(action, hasReason)
+	const rr = SquadServerActions.reasonRequirementError(action, hasReason)
 	return rr ? await h.error('reason-required', rr.msg) : null
 }
 
@@ -1453,8 +1472,9 @@ async function executeKick(
 	const g = await requireReasonGuard(h, 'kick', !!resolvedReason)
 	if (g) return g
 	const reason =
-		resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars(squadName ? { squadName } : undefined))
-	await SquadServer.kickPlayersAction(
+		resolvedReason &&
+		CMD.applyResolvedReason('kick', resolvedReason, SquadServerActions.messageVars(squadName ? { squadName } : undefined))
+	await SquadServerActions.kickPlayersAction(
 		h.ctx,
 		targets.map((t) => SM.PlayerIds.getPlayerId(t.ids)),
 		ingameActor(h.sender),
@@ -1477,7 +1497,7 @@ async function executeTimeout(
 	if (g) return g
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(h.ctx.serverId, durationMs))
 	if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
-	const vars = SquadServer.messageVars({
+	const vars = SquadServerActions.messageVars({
 		duration: ZodUtils.formatHumanTime(durationMs),
 		...(squadName ? { squadName } : {}),
 	})

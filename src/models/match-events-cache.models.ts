@@ -1,7 +1,7 @@
 import * as CD from '@/lib/ctx-def'
 import type { LRUMap } from '@/lib/lru-map'
 import type * as CHAT from '@/models/chat.models'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 
 export type Ctx = CS.Ctx & { matchEventsCache: Ctx.Payload } & CS.ServerId
 export const CtxDef = CD.defCtx<Ctx>()(['matchEventsCache'], { name: 'matchEventsCache', extends: [CS.ServerIdDef] })

@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, type RefObject, useContext, useLayoutEffect, useRef } from 'react'
 
 import * as Zus from '@/lib/zustand'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 /**
  * StickyGroup

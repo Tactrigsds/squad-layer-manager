@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 // A panel along the bottom of a phone screen over a scrim. It is not modal: it leaves focus management to whatever

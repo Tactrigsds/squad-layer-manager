@@ -9,16 +9,16 @@
  */
 import * as Rx from '@/lib/rxjs'
 import * as AAR from '@/models/admin-action-reasons.models'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'
 import type * as PluginsSys from '@/systems/plugins.server'
-import * as SquadServer from '@/systems/squad-server.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 
 /** Ends the current match, attributed to the calling plugin, and waits for the round end it produces. */
 export async function endMatch(ctx: PluginsSys.ServerCtx<any>) {
-	return await SquadServer.endMatchAction(ctx, { type: 'plugin', pluginId: ctx.plugin.id })
+	return await SquadServerActions.endMatchAction(ctx, { type: 'plugin', pluginId: ctx.plugin.id })
 }
 
 /** Kicks players, attributed to the calling plugin, under one PLAYER_KICKED app event. `reason` is shown to them. */
@@ -32,7 +32,7 @@ export async function kickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.Pl
  */
 export async function tryKickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.PlayerId[], reason?: string) {
 	const applied = reason === undefined ? undefined : AAR.applyCustomReason(reason, {})
-	return await SquadServer.kickPlayersAction(ctx, targets, { type: 'plugin', pluginId: ctx.plugin.id }, applied)
+	return await SquadServerActions.kickPlayersAction(ctx, targets, { type: 'plugin', pluginId: ctx.plugin.id }, applied)
 }
 
 /**

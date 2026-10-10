@@ -2,7 +2,7 @@ import type { AsyncResource } from '@/lib/async-resource'
 import * as CD from '@/lib/ctx-def'
 import type RconCore from '@/lib/rcon/core-rcon'
 import type * as Rx from '@/lib/rxjs'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import type * as Msgs from '@/models/messages.models'
 import type * as SM from '@/models/squad.models'
 

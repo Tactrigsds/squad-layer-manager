@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type EmuPlayer, makePlayer } from '@/emulator'
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 
 import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import * as I18n from '@/messages/i18n'
 import * as BB from '@/models/backburner.models'
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 import type * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 
 const components = L.StaticLayerComponents
 const tr = I18n.translatorFor(I18n.DEFAULT_LOCALE)

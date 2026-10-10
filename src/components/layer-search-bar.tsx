@@ -6,7 +6,7 @@ import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 import { RichSearchField, SearchErrors, SearchSuggestions } from './layer-search-parts.tsx'

@@ -4,7 +4,7 @@ import * as React from 'react'
 import { LayerInfo } from '@/components/layer-info'
 import * as DH from '@/lib/display-helpers.ts'
 import * as APP_Msgs from '@/messages/app.messages'
-import * as L from '@/models/layer'
+import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
 
 export const Route = createFileRoute('/layers/$layerId/$tab')({

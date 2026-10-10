@@ -33,12 +33,6 @@ export type Mutate<S, Ms> = number extends Ms['length' & keyof Ms]
 export type Setter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'setState', never>
 export type Getter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'getState', never>
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-	if (typeof v !== 'object' || v === null) return false
-	const proto = Object.getPrototypeOf(v)
-	return proto === Object.prototype || proto === null
-}
-
 // returns a full setState-style setter scoped to property K of T -- supports value, partial-merge, updater fn, and the replace flag
 export function toPartialSetter<T, K extends keyof T>(store: StoreApi<T>, key: K): Setter<T[K]>
 export function toPartialSetter<T, K extends keyof T>(set: Setter<T>, key: K): Setter<T[K]>
@@ -49,7 +43,7 @@ export function toPartialSetter(a: StoreApi<any> | Setter<any>, key: any): any {
 			const prev = state[key]
 			const resolved = typeof partial === 'function' ? partial(prev) : partial
 			// merging only makes sense for plain objects -- spreading arrays/Maps/class instances would mangle them
-			const next = !replace && isPlainObject(prev) && isPlainObject(resolved) ? { ...prev, ...resolved } : resolved
+			const next = !replace && Obj.isPlainObject(prev) && Obj.isPlainObject(resolved) ? { ...prev, ...resolved } : resolved
 			return { [key]: next }
 		})
 	}

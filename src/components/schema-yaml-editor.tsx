@@ -13,7 +13,7 @@ import * as Yaml from '@/lib/yaml'
 import type { z } from '@/lib/zod'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SDoc from '@/models/schema-docs.models'
-import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 import type { SchemaYamlEditorProps } from './schema-yaml-editor.types'

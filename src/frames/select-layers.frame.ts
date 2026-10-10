@@ -9,13 +9,13 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
-import * as CS from '@/models/context-shared'
-import * as EFB from '@/models/editable-filter-builders'
+import * as CS from '@/models/context-shared.models'
+import * as EFB from '@/models/editable-filter-builders.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as L from '@/models/layer.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -340,7 +340,7 @@ function getFilterMenuDefaultFields(
 		if (layer.Gamemode === 'Training') {
 			defaults = { Gamemode: 'Training', Collection: opts?.keepCollection ? layer.Collection : undefined }
 		} else {
-			defaults = Obj.exclude(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
+			defaults = Obj.omit(layer, ['Alliance_1', 'Alliance_2', 'id', 'Size'])
 			// editing a layer should leave the rest of the catalog reachable, so only the focus action narrows to one collection
 			if (!opts?.keepCollection) delete defaults.Collection
 			for (const [key, value] of Obj.objEntries(defaults)) {

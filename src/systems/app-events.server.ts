@@ -14,7 +14,7 @@ import * as OtelSys from '@/systems/otel.server'
 const module = initModule('app-events')
 const orpcBase = getOrpcBase(module)
 
-// persists an app event to the audit log. server-scoped events additionally flow through SquadServer.emitAppEvent
+// persists an app event to the audit log. server-scoped events additionally flow through SquadServerActions.emitAppEvent
 // (which pushes them into the live activity feed); global (serverId=null) events are audit-only and call this directly.
 export async function persistAppEvent(ctx: C.Db, appEvent: AppEvents.AppEvent) {
 	// stamp the emitting process so events can be grouped by run, and restart detection can correlate by instance

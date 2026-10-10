@@ -1,7 +1,7 @@
 import scoreRanges from '$root/assets/score-ranges.json'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
-import type * as L from '@/models/layer'
-import type * as LC from '@/models/layer-columns'
+import type * as LC from '@/models/layer-columns.models'
+import type * as L from '@/models/layer.models'
 import { buildUseOpenWindow } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 

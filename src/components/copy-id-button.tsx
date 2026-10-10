@@ -3,7 +3,7 @@ import React from 'react'
 
 import { cn } from '@/lib/utils'
 import * as SM_Msgs from '@/messages/squad.messages'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 
 // A labeled player id ("steam: 7656...") that copies itself on click.

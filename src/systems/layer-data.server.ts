@@ -4,9 +4,9 @@ import { promisify } from 'node:util'
 import zlib from 'node:zlib'
 
 import { z } from '@/lib/zod'
-import type * as CS from '@/models/context-shared'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import type * as CS from '@/models/context-shared.models'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import { initModule } from '@/server/logger'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 

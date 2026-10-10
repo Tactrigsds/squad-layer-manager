@@ -6,10 +6,10 @@ import * as Cleanup from '@/lib/cleanup'
 import type * as FRM from '@/lib/frame'
 import * as Lifecycle from '@/lib/lifecycle'
 import * as Zus from '@/lib/zustand'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import type { DraggableWindowContextValue } from '@/models/draggable-windows.models'
 import * as DW from '@/models/draggable-windows.models'
-import { DRAGGABLE_WINDOW_STACK_LIMIT } from '@/models/zindex'
+import { DRAGGABLE_WINDOW_STACK_LIMIT } from '@/models/zindex.models'
 import { baseLogger } from '@/systems/logger.client'
 
 // ============================================================================

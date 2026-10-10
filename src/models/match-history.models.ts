@@ -8,13 +8,13 @@ import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
 import type * as CHAT from '@/models/chat.models'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
-import * as L from './layer'
+import * as L from './layer.models'
 
 export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 

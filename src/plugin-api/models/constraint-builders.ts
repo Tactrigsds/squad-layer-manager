@@ -5,4 +5,4 @@
  * The `id` you give a constraint comes back on every warning and match descriptor it produces, which is
  * how you tell which of your constraints a result is about.
  */
-export { filterAnon, filterEntity, filterMenuItems, poolFilter, repeatRule } from '@/models/constraint-builders'
+export { filterAnon, filterEntity, filterMenuItems, poolFilter, repeatRule } from '@/models/constraint-builders.models'

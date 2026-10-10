@@ -12,7 +12,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
@@ -24,11 +24,12 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 // Kick timeouts: a row is active while cancelled=false and expiresAt > now, and is enforced globally --
 // players with an active timeout are re-kicked on PLAYER_CONNECTED / roster RESET on every SLM server
-// (see the enforcement subscription in squad-server.server.ts).
+// (see the enforcement subscription in squad-server-lifecycle.server.ts).
 
 const module = initModule('timeouts')
 const orpcBase = getOrpcBase(module)
@@ -140,7 +141,7 @@ export async function kickWithTimeout(
 		expiresAt: expiresAt.getTime(),
 		reason: opts.reason,
 	})
-	await SquadServer.emitAppEvent(ctx, appEvent)
+	await SquadServerActions.emitAppEvent(ctx, appEvent)
 	// player rows are normally upserted lazily by event persistence, which may not have run yet for a
 	// fresh connect; ensure the FK target exists
 	await ctx
@@ -168,8 +169,8 @@ export async function kickWithTimeout(
 	// ahead of the kick and the admin notice, so watchers list the timeout without waiting on rcon
 	update$.next()
 	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)))
-	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
-	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
+	await SquadServerActions.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
+	await SquadServerActions.notifyAdminsOfWebAction(ctx, appEvent)
 	return { code: 'ok', timeoutId }
 }
 
@@ -196,7 +197,7 @@ export async function cancelTimeout(
 		target: timeout.playerId,
 		timeoutId: timeout.id,
 	})
-	if (opts.serverCtx) await SquadServer.emitAppEvent(opts.serverCtx, appEvent)
+	if (opts.serverCtx) await SquadServerActions.emitAppEvent(opts.serverCtx, appEvent)
 	else await AppEventsSys.persistAppEvent(ctx, appEvent)
 	return { code: 'ok' }
 }
@@ -214,7 +215,7 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 			applied &&
 			AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
 		const message = ctx.tr.text(SM_Msgs.notifyKicked(rendered ?? undefined))
-		await SquadServer.kickPlayerAction(
+		await SquadServerActions.kickPlayerAction(
 			ctx,
 			timeout.playerId,
 			timeout.appEventId ? { type: 'event', id: timeout.appEventId } : { type: 'system' },
@@ -299,7 +300,7 @@ export const router = {
 			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const reasonRes = SquadServer.resolveReasonInput('timeout', input, {
+			const reasonRes = SquadServerActions.resolveReasonInput('timeout', input, {
 				duration: ZodUtils.formatHumanTime(input.durationMs),
 				...(input.squadName ? { squadName: input.squadName } : {}),
 			})

@@ -8,8 +8,8 @@ import * as F_Msgs from '@/messages/filter.messages'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as BB from '@/models/backburner.models'
 import * as F from '@/models/filter.models'
-import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns'
+import * as LC from '@/models/layer-columns.models'
+import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
 
 // The search box while it is being edited. The input is uncontrolled: it reads the search once as it mounts, and

@@ -3,7 +3,7 @@ import { node, tracing } from '@opentelemetry/sdk-node'
 import { Mutex } from 'async-mutex'
 import pino from 'pino'
 
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as Instr from '@/server/instrumentation'
 
 // Measures the fixed cost spanOp adds to a call, against a recording tracer with no exporter and a logger at

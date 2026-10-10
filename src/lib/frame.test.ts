@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // @vitest-environment happy-dom
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 
 import * as FRM from './frame'
 import * as Prom from './promise-utils'

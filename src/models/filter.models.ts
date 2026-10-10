@@ -9,10 +9,10 @@ import { z } from '@/lib/zod'
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
 // another filter entity.
 import type * as AppEvents from '@/models/app-events.models'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import type * as Msgs from '@/models/messages.models'
 
-import * as LC from './layer-columns'
+import * as LC from './layer-columns.models'
 
 // -------- values & argument terms --------
 

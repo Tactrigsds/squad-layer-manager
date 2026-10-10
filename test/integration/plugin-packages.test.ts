@@ -6,7 +6,7 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
-import * as SHIM from '@/models/plugin-api-shim'
+import * as SHIM from '@/models/plugin-api-shim.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { LAYERS, queue, role } from '../harness/arrange'

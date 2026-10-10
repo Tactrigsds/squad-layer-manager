@@ -3,7 +3,7 @@ import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
-import type * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -251,7 +251,7 @@ export function parseNegatingPermissionType(expr: string): RoleGrantablePermissi
 
 export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
 	// Obj.exclude collapses the discriminated union; the runtime object is still a valid Permission
-	return perms.filter((perm) => !perm.negated && !perm.negating).map((perm) => Obj.exclude(perm, ['negated', 'negating']) as Permission)
+	return perms.filter((perm) => !perm.negated && !perm.negating).map((perm) => Obj.omit(perm, ['negated', 'negating']) as Permission)
 }
 
 export function recalculateNegations(perms: TracedPermission[]) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as L from '@/models/layer.models'
 
 describe('LL.movesToOrder', () => {
 	const source: LL.Source = { type: 'manual', userId: 1n }

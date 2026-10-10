@@ -15,14 +15,14 @@ import type { Parts } from '@/lib/types'
 import { z } from '@/lib/zod'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as AppEvents from '@/models/app-events.models'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
-import * as ATTRS from '@/models/otel-attrs'
+import * as ATTRS from '@/models/otel-attrs.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SLL from '@/models/shared-layer-list'
+import * as SLL from '@/models/shared-layer-list.models'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
@@ -37,6 +37,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
 
@@ -300,7 +301,7 @@ export const startVote = Instr.spanOp(
 			),
 		)
 
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteStarted>({
 				type: 'VOTE_STARTED',
@@ -433,7 +434,7 @@ export const abortVote = Instr.spanOp(
 			ctx.vote.update$.next(update)
 		}
 
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteAborted>({
 				type: 'VOTE_ABORTED',
@@ -645,7 +646,7 @@ export const endVote = Instr.spanOp(
 		if (endingVoteState.code === 'ended:insufficient-votes') {
 			await broadcastVoteUpdate(ctx, endingVoteState, ctx.tr.broadcast(V_Msgs.insufficientVotes(listItem, displayProps)))
 		}
-		await SquadServer.emitAppEvent(
+		await SquadServerActions.emitAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.VoteEnded>({
 				type: 'VOTE_ENDED',

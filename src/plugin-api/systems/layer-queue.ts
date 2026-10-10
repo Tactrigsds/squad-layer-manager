@@ -2,7 +2,7 @@
  * Queue reads and edits. dispatchOp is the same op path the web client goes through, so a plugin's
  * edits are ordinary edits. Lifecycle, sync and the router stay with the host.
  */
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 

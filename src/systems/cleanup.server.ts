@@ -1,6 +1,6 @@
 import * as Cleanup from '@/lib/cleanup'
 import * as Prom from '@/lib/promise-utils'
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 

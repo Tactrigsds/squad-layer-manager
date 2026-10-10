@@ -1,6 +1,6 @@
 //! Filter IR and its evaluator.
 //!
-//! TypeScript lowers a filter tree into this IR (see src/models/layer-engine.ts): team columns are already expanded
+//! TypeScript lowers a filter tree into this IR (see src/models/layer-engine.models.ts): team columns are already expanded
 //! over both teams, values are already db-encoded through LC.dbValue, and referenced filters are already inlined. So
 //! this side only has to implement primitive comparisons and SQL's three-valued logic.
 //!

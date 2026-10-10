@@ -1,7 +1,7 @@
 import React, { useImperativeHandle, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as MessagesClient from '@/systems/messages.client'
 
 export type DescriptionBoxHandle = {

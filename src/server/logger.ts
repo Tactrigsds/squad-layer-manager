@@ -9,9 +9,9 @@ import format from 'quick-format-unescaped'
 import { flattenObjToAttrs } from '@/lib/object-utils'
 import type { OtelModule } from '@/lib/otel'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
-import * as ATTRS from '@/models/otel-attrs'
+import type * as CS from '@/models/context-shared.models'
+import * as LOG from '@/models/logs.models'
+import * as ATTRS from '@/models/otel-attrs.models'
 
 import * as Env from './env'
 export let baseLogger!: CS.Logger

@@ -1,6 +1,6 @@
 import { AsyncResource } from 'async_hooks'
 
-import * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared.models'
 
 import * as Rx from './rxjs'
 

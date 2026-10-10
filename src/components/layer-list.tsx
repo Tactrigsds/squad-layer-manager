@@ -34,7 +34,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
-import { inline, useStableValue } from '@/lib/react.ts'
+import { inline, useStable } from '@/lib/react.ts'
 import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
@@ -47,11 +47,11 @@ import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as UP_Msgs from '@/messages/user-presence.messages'
 import * as V_Msgs from '@/messages/vote.messages'
-import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import type * as LTag from '@/models/layer-tags.models'
-import * as UP from '@/models/user-presence'
+import * as L from '@/models/layer.models'
+import * as UP from '@/models/user-presence.models'
 import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -213,7 +213,7 @@ function LoadedSelectLayersView({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'selectLayers' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 
 	const setPosition = (newPosition: AddLayersPosition) => {
 		SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, ADD_LAYERS_CURSORS[newPosition])
@@ -312,7 +312,7 @@ function LoadedGenVoteView({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'genVote' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 	const data = entry.data
 
 	const onOpenChange = (open: boolean) => {
@@ -379,7 +379,7 @@ function LoadedPasteRotation({
 	stores: SquadServerFrame.KeyProp
 	entry: Extract<UPClient.LoadedActivityState, { name: 'pasteRotation' }>
 }) {
-	const entry = useStableValue((e) => e, [_entry])
+	const entry = useStable(_entry)
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 	const installedMods = Zus.useStore(

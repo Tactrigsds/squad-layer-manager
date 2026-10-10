@@ -3,7 +3,7 @@ import * as dateFns from 'date-fns'
 
 import * as DH from '@/lib/display-helpers'
 import * as I18n from '@/messages/i18n'
-import type * as L from '@/models/layer'
+import type * as L from '@/models/layer.models'
 import { t } from '@/models/messages.models'
 
 // Formatters for values that appear inside message bodies. Separate from the vocabulary in

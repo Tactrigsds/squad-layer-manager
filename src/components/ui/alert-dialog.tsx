@@ -3,7 +3,7 @@ import * as React from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
 const AlertDialog = AlertDialogPrimitive.Root
 

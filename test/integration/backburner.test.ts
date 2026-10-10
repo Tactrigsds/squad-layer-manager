@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 import * as BB from '@/models/backburner.models'
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'

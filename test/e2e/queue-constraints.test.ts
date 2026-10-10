@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import * as FB from '@/models/filter-builders'
+import * as FB from '@/models/filter-builders.models'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'

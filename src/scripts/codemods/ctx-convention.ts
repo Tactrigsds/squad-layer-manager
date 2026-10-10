@@ -56,9 +56,9 @@ function instrumentation(src: string, file: string): string {
  * any prefix of themselves.
  */
 const MOVES: { from: string; to: string; imp: string }[] = [
-	{ from: 'CS.EffectiveColumnConfig', to: 'LC.Ctx', imp: "import type * as LC from '@/models/layer-columns'" },
-	{ from: 'CS.LayerGeneration', to: 'LC.Ctx.Generation', imp: "import type * as LC from '@/models/layer-columns'" },
-	{ from: 'CS.LayerEngine', to: 'LE.Ctx', imp: "import type * as LE from '@/models/layer-engine'" },
+	{ from: 'CS.EffectiveColumnConfig', to: 'LC.Ctx', imp: "import type * as LC from '@/models/layer-columns.models'" },
+	{ from: 'CS.LayerGeneration', to: 'LC.Ctx.Generation', imp: "import type * as LC from '@/models/layer-columns.models'" },
+	{ from: 'CS.LayerEngine', to: 'LE.Ctx', imp: "import type * as LE from '@/models/layer-engine.models'" },
 	{ from: 'CS.LayerQuery', to: 'LQY.Ctx', imp: "import type * as LQY from '@/models/layer-queries.models'" },
 	{ from: 'CS.Filters', to: 'F.Ctx', imp: "import type * as F from '@/models/filter.models'" },
 	{ from: 'CS.MatchHistory', to: 'MH.Ctx.Recent', imp: "import type * as MH from '@/models/match-history.models'" },
@@ -68,12 +68,12 @@ const MOVES: { from: string; to: string; imp: string }[] = [
 	{ from: 'C.User', to: 'USR.Ctx', imp: "import type * as USR from '@/models/users.models'" },
 	{ from: 'C.PlayerIds', to: 'SM.Ctx.Ids', imp: "import type * as SM from '@/models/squad.models'" },
 	{ from: 'C.Player', to: 'SM.Ctx', imp: "import type * as SM from '@/models/squad.models'" },
-	{ from: 'Instr.OtelCtx', to: 'CS.Otel', imp: "import type * as CS from '@/models/context-shared'" },
-	{ from: 'C.ServerId', to: 'CS.ServerId', imp: "import type * as CS from '@/models/context-shared'" },
+	{ from: 'Instr.OtelCtx', to: 'CS.Otel', imp: "import type * as CS from '@/models/context-shared.models'" },
+	{ from: 'C.ServerId', to: 'CS.ServerId', imp: "import type * as CS from '@/models/context-shared.models'" },
 	{ from: 'C.Vote', to: 'V.Ctx', imp: "import type * as V from '@/models/vote.models'" },
 	{ from: 'C.MatchEventsCache', to: 'MEC.Ctx', imp: "import type * as MEC from '@/models/match-events-cache.models'" },
 	{ from: 'C.Teamswap', to: 'TSW.Ctx', imp: "import type * as TSW from '@/models/teamswaps.models'" },
-	{ from: 'C.UserPresence', to: 'UP.Ctx', imp: "import type * as UP from '@/models/user-presence'" },
+	{ from: 'C.UserPresence', to: 'UP.Ctx', imp: "import type * as UP from '@/models/user-presence.models'" },
 	{ from: 'C.SquadServer', to: 'SQS.Ctx', imp: "import type * as SQS from '@/models/squad-server.models'" },
 	{ from: 'C.SquadRcon', to: 'SR.Ctx', imp: "import type * as SR from '@/models/squad-rcon.models'" },
 	{ from: 'C.Rcon', to: 'SR.Ctx.Rcon', imp: "import type * as SR from '@/models/squad-rcon.models'" },
