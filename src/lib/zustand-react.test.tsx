@@ -314,3 +314,94 @@ describe('useStore_Susp', () => {
 		expect(result.current).toBe(2)
 	})
 })
+
+describe('useStore shared selections', () => {
+	const selectCount = (s: State) => s.count
+
+	it('subscribes once and runs the selector once per change for every component naming the same selector', () => {
+		const store = createStore()
+		const subscribe = vi.spyOn(store, 'subscribe')
+		const selector = vi.fn(selectCount)
+		function Reader() {
+			return <span>{Zus.useStore(store, selector)}</span>
+		}
+		render(
+			<>
+				<Reader />
+				<Reader />
+				<Reader />
+			</>,
+		)
+		expect(subscribe).toHaveBeenCalledTimes(1)
+		selector.mockClear()
+
+		act(() => store.setState({ count: 1 }))
+		expect(selector).toHaveBeenCalledTimes(1)
+		expect(screen.getAllByText('1')).toHaveLength(3)
+	})
+
+	it('does not re-render a component when its selection is unchanged', () => {
+		const store = createStore()
+		const renders = vi.fn()
+		function Reader() {
+			renders()
+			return <span>{Zus.useStore(store, selectCount)}</span>
+		}
+		render(<Reader />)
+		renders.mockClear()
+
+		act(() => store.setState({ name: 'b' }))
+		expect(renders).not.toHaveBeenCalled()
+	})
+
+	it('lets a parent drop a child whose selector throws on the change that removes it', () => {
+		type Items = { ids: string[] }
+		const store = Zus.createStore<Items>(() => ({ ids: ['a', 'b'] }))
+		const ids = (s: Items) => s.ids
+		const itemOf = (id: string) => (s: Items) => {
+			if (!s.ids.includes(id)) throw new Error(`Item not found: ${id}`)
+			return id
+		}
+		const itemSelectors = new Map(['a', 'b'].map((id) => [id, itemOf(id)]))
+		function Item(props: { id: string }) {
+			return <li>{Zus.useStore(store, itemSelectors.get(props.id)!)}</li>
+		}
+		function List() {
+			return (
+				<ul>
+					{Zus.useStore(store, ids).map((id) => (
+						<Item key={id} id={id} />
+					))}
+				</ul>
+			)
+		}
+		// children subscribe before their parent, so the removed item's selector runs, and throws, ahead of the list's
+		render(<List />)
+		act(() => store.setState({ ids: ['a'] }))
+		expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['a'])
+	})
+
+	it('drops its source subscription when the last component unmounts', () => {
+		const store = createStore()
+		const unsubscribed = vi.fn()
+		const subscribe = store.subscribe
+		vi.spyOn(store, 'subscribe').mockImplementation((listener) => {
+			const unsubscribe = subscribe(listener)
+			return () => {
+				unsubscribed()
+				unsubscribe()
+			}
+		})
+		function Reader() {
+			return <span>{Zus.useStore(store, selectCount)}</span>
+		}
+		const view = render(
+			<>
+				<Reader />
+				<Reader />
+			</>,
+		)
+		view.unmount()
+		expect(unsubscribed).toHaveBeenCalledTimes(1)
+	})
+})

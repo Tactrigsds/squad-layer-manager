@@ -235,6 +235,105 @@ export function useStore_Susp(...args: (MaybeInput | ((...states: any[]) => any)
 	return useStoreImpl(args, true)
 }
 
+type Selector = (...states: any[]) => any
+
+const THREW = Symbol('threw')
+
+// One selector over one tuple of sync sources, shared by every useStore call that names the same ones. It subscribes to
+// the sources once and runs the selector once per change, and its components hear about a change only when the result
+// differs. N components reading one selector cost one run per change rather than N trips through React.
+class Selection {
+	private states: any[] | null = null
+	private value: any
+	// the value the listeners last heard about. A render can read() a change before onSourceChange runs, so comparing
+	// against `value` alone would let that change go unannounced.
+	private announced: any
+	private listeners = new Set<() => void>()
+	private unsubscribes: (() => void)[] = []
+
+	constructor(
+		private sources: (SyncSource<any> | null)[],
+		private selector: Selector | undefined,
+	) {}
+
+	read = () => {
+		const prev = this.states
+		if (prev) {
+			let same = true
+			for (let i = 0; i < this.sources.length; i++) {
+				if (!Object.is(prev[i], getSourceState(this.sources[i]))) {
+					same = false
+					break
+				}
+			}
+			if (same) return this.value
+		}
+		const states = this.sources.map(getSourceState)
+		this.value = this.selector ? this.selector(...states) : states.length === 1 ? states[0] : states
+		this.states = states
+		return this.value
+	}
+
+	subscribe = (listener: () => void) => {
+		if (this.listeners.size === 0) {
+			this.announced = this.read()
+			this.unsubscribes = this.sources.map((s) => subscribe(s as AnyStore<any> | null, this.onSourceChange))
+		}
+		this.listeners.add(listener)
+		return () => {
+			this.listeners.delete(listener)
+			if (this.listeners.size > 0) return
+			for (const unsubscribe of this.unsubscribes) unsubscribe()
+			this.unsubscribes = []
+		}
+	}
+
+	// A selector that throws here, such as a per-item selector for an item just deleted, is treated as a change, as
+	// useSyncExternalStore treats a throwing getSnapshot: the components re-render, and the one whose parent has dropped
+	// it never reads again. Throwing here instead would abort the source's setState and every listener after this one.
+	private onSourceChange = () => {
+		let value: any
+		try {
+			value = this.read()
+		} catch {
+			this.announced = THREW
+			for (const listener of this.listeners) listener()
+			return
+		}
+		if (Object.is(value, this.announced)) return
+		this.announced = value
+		for (const listener of this.listeners) listener()
+	}
+}
+
+// keyed on the selector, then on each source in turn. Every level is weak, so an inline selector's selection is
+// dropped with the render that made it, and a torn-down frame's with its store.
+type SelectionNode = { selection?: Selection; next?: WeakMap<object, SelectionNode> }
+const NO_SELECTOR = {}
+const NO_SOURCE = {}
+const selections = new WeakMap<object, SelectionNode>()
+
+function selectionFor(sources: (SyncSource<any> | null)[], selector: Selector | undefined): Selection {
+	const selectorKey = selector ?? NO_SELECTOR
+	let node = selections.get(selectorKey)
+	if (!node) {
+		node = {}
+		selections.set(selectorKey, node)
+	}
+	for (const source of sources) {
+		node.next ??= new WeakMap()
+		const sourceKey = source ?? NO_SOURCE
+		let next = node.next.get(sourceKey)
+		if (!next) {
+			next = {}
+			node.next.set(sourceKey, next)
+		}
+		node = next
+	}
+	node.selection ??= new Selection(sources, selector)
+	return node.selection
+}
+
 function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspend: boolean): any {
 	const hasSelector = typeof args[args.length - 1] === 'function'
 	// nullish inputs stay in the array as placeholders so hook/effect-dep counts are stable across renders
@@ -244,6 +343,27 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 	const regularSources = allInputs.filter((s): s is SyncSource<any> | null => !isQuerySource(s))
 	const querySources = allInputs.filter(isQuerySource)
 
+	// Query sources and suspension need a subscription per call; everything else shares a Selection. Suspension is
+	// fixed per call site and the query count per component instance (usePerCallStore guards it), so a given call
+	// always takes the same branch and calls the same hooks.
+	/* oxlint-disable react-hooks/rules-of-hooks */
+	if (!suspend && querySources.length === 0) return useSharedSelection(regularSources, selector)
+	return usePerCallStore(allInputs, regularSources, querySources, selector, suspend)
+	/* oxlint-enable react-hooks/rules-of-hooks */
+}
+
+function useSharedSelection(sources: (SyncSource<any> | null)[], selector: Selector | undefined): any {
+	const selection = selectionFor(sources, selector)
+	return React.useSyncExternalStore(selection.subscribe, selection.read)
+}
+
+function usePerCallStore(
+	allInputs: (ResolvedInput<any> | null)[],
+	regularSources: (SyncSource<any> | null)[],
+	querySources: QuerySource<any>[],
+	selector: Selector | undefined,
+	suspend: boolean,
+): any {
 	// an empty useQueries still allocates an observer and re-runs its setQueries effect every render, so it is
 	// skipped outright. legal only because the query count is fixed per component instance, which this guards.
 	// Only the query count is pinned: the number of sync sources may vary freely between renders.

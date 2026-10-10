@@ -345,6 +345,13 @@ const presence = Zus.getState(ConfigClient.Store, UPClient.Store, Sel.clientPres
 
 The two call shapes match, so moving a selector between render and handler code is a mechanical edit.
 
+Every `useStore` call that names the same sources and the same selector function shares one subscription. A change
+to the sources runs that selector once, and React hears about it only in the components whose result changed. A
+module-level selector therefore costs one run per change however many components read it, and a per-item selector
+from `RSel.memoizeFactory` costs one run per item without passing through React. An inline selector is a new
+function each render, so it gets a subscription of its own and resubscribes when it changes. Query sources and
+`useStore_Susp` keep a subscription per call.
+
 `Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, which is how frames drive RxJS
 pipelines from zustand state, and how ODSM side effects react to prev/next diffs.
 

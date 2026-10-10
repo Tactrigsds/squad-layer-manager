@@ -3,7 +3,7 @@ import * as SM from '@/models/squad.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 
 import * as Atoms from './feed/atoms'
-import { SCOPE_ATTR } from './feed/render-context'
+import * as RC from './feed/render-context'
 import { useRenderCtx } from './feed/use-render-ctx'
 
 export interface PlayerDisplayProps {
@@ -25,15 +25,21 @@ export interface PlayerDisplayProps {
  *
  * The markup and every interaction on it are Atoms.PlayerDisplay's; this supplies the scope. The activity feed
  * renders the same template to strings without any per-name react at all, which is the point -- a feed names
- * hundreds of players, and this component costs a battlemetrics subscription each. That subscription is to this
- * player's colour alone, so a battlemetrics update re-renders only the names it recolours.
+ * hundreds of players. A ctx subscribes to the match history, settings and users, so a list of names builds one and
+ * renders each through PlayerDisplayInCtx, leaving each name only its battlemetrics subscription. That subscription is
+ * to this player's colour alone, so a battlemetrics update re-renders only the names it recolours.
  */
 export function PlayerDisplay(props: PlayerDisplayProps) {
-	const ctx = useRenderCtx(props.stores)
-	const { player, showTeam, showSquad, showRole, className, matchId, disableContextMenu } = props
+	const { stores, ...rest } = props
+	const ctx = useRenderCtx(stores)
+	return <PlayerDisplayInCtx ctx={ctx} {...rest} />
+}
+
+export function PlayerDisplayInCtx(props: Omit<PlayerDisplayProps, 'stores'> & { ctx: RC.RenderCtx }) {
+	const { ctx, player, showTeam, showSquad, showRole, className, matchId, disableContextMenu } = props
 	const groupColor = BattlemetricsClient.usePlayerGroupColor(SM.PlayerIds.getPlayerId(player.ids), player)
 	return (
-		<span className="contents" {...{ [SCOPE_ATTR]: ctx.scopeId }}>
+		<span className="contents" {...{ [RC.SCOPE_ATTR]: ctx.scopeId }}>
 			<Atoms.PlayerDisplay
 				ctx={ctx}
 				player={player}

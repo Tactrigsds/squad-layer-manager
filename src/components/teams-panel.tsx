@@ -44,9 +44,10 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 import * as RC from './feed/render-context'
+import { useRenderCtx } from './feed/use-render-ctx'
 import PlayerBulkContextMenuOptions, { detectFullSquadSelection } from './player-bulk-context-menu-options'
 import PlayerContextMenuOptions, { PlayerMenuItems } from './player-context-menu-options'
-import { PlayerDisplay } from './player-display'
+import { PlayerDisplayInCtx } from './player-display'
 import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { SquadDisplay } from './squad-display'
@@ -880,6 +881,8 @@ type BaseRowMeta = {
 	matchId: number
 	groupColorByName: Map<string, string>
 	stores: SquadServerFrame.KeyProp
+	// one per table rather than one per name: a ctx subscribes to the match history, settings and users
+	renderCtx: RC.RenderCtx
 }
 
 // shared across both table variants' headers
@@ -1215,8 +1218,8 @@ function nameCell({ player, playerId, meta }: RowCellProps<TeamsPanelModels.Enri
 	// let the enclosing row context menu (bulk-aware) handle right-clicks on the name
 	return (
 		<span className="flex min-w-0 items-center gap-1">
-			<PlayerDisplay
-				stores={meta.stores}
+			<PlayerDisplayInCtx
+				ctx={meta.renderCtx}
 				player={player}
 				matchId={meta.matchId}
 				disableContextMenu
@@ -2292,7 +2295,8 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction: null, totalSize }
 	}
 
-	const rowMeta = { matchId, groupColorByName, stores: props.stores, squads } satisfies TeamRowMeta
+	const renderCtx = useRenderCtx(props.stores)
+	const rowMeta = { matchId, groupColorByName, stores: props.stores, squads, renderCtx } satisfies TeamRowMeta
 	const meta = {
 		...rowMeta,
 		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
@@ -2417,7 +2421,16 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 		[squadsWithTeam, getFaction, getTeamColor, creatorNames, squadSizes],
 	)
 
-	const rowMeta = { matchId, groupColorByName, stores: props.stores, squadsWithTeam, getFaction, getTeamColor } satisfies CombinedRowMeta
+	const renderCtx = useRenderCtx(props.stores)
+	const rowMeta = {
+		matchId,
+		groupColorByName,
+		stores: props.stores,
+		squadsWithTeam,
+		getFaction,
+		getTeamColor,
+		renderCtx,
+	} satisfies CombinedRowMeta
 	const meta = {
 		...rowMeta,
 		groupingId: groupingModes.active,

@@ -8,12 +8,12 @@ import * as Obj from '@/lib/object-utils'
 // subscribe with a bare `Zus.useStore(store, Sel.foo)` -- no useShallow/useDeep wrapper --
 // and only re-render when the selected data actually changes.
 //
-// Keep them module-level. `Zus.useStore` caches its snapshot on the selector's identity as well as the states, so
-// a selector defined inline in a component body is a new function every render; if it also builds a fresh array or
-// object, every render sees a new snapshot and useSyncExternalStore spins.
+// Keep them module-level. `Zus.useStore` shares one subscription per selector function, so every component naming a
+// module-level selector is served by a single run of it per change. A selector defined inline in a component body is
+// a new function every render, and resubscribes on each one.
 //
 // For parameterized selectors, memoize the factory itself so every call site shares one
-// selector instance (and one cache) per parameter:
+// selector instance (and one cache, and one subscription) per parameter:
 //
 //   export const itemState = memoizeFactory((itemId: string) =>
 //     createDeepSelector([layerList, mutations], (list, muts) => ...))

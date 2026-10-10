@@ -20,9 +20,13 @@ export namespace Sel {
 		return store.switchRequests.requests.length
 	}
 
-	export function isQueued(playerId: SM.PlayerId): (store: Store) => boolean {
-		return (store: Store) => !!SRQ.requestFor(store.switchRequests.requests, playerId)
-	}
+	export const isQueued = RSel.memoizeFactoryLru(
+		(playerId: SM.PlayerId) =>
+			(store: Store): boolean =>
+				!!SRQ.requestFor(store.switchRequests.requests, playerId),
+		// well above the players on a full server, one selector per player row
+		256,
+	)
 
 	export function isSwitching(playerId: SM.PlayerId): (store: Store) => boolean {
 		return (store: Store) => store.switchRequests.swapping.includes(playerId)
