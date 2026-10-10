@@ -31,7 +31,7 @@ export type DragItem =
 	  }
 	| {
 			// a rule row in a player grouping's ordered rule list. A rule has no id of its own and its order is its priority,
-			// so it's identified by grouping + position -- see ruleDragId (settings-form), which owns the encoding.
+			// so it's identified by grouping + position -- see ruleDragId (settings-form/editors/player-groupings), which owns the encoding.
 			type: 'grouping-rule'
 			id: string
 	  }
