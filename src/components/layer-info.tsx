@@ -361,7 +361,7 @@ function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfi
 		<section className="space-y-1">
 			<h4 className="text-sm font-medium">{title}</h4>
 			{vehicles.length > 0 && (
-				<div className="grid grid-cols-[auto_auto_auto_auto] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
+				<div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
 					<div className="text-end font-medium" role="columnheader">
 						#
 					</div>
@@ -371,6 +371,14 @@ function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfi
 								<Icons.Timer size={16} className="text-muted-foreground" />
 							</TooltipTrigger>
 							<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
+						</Tooltip>
+					</div>
+					<div className="flex items-center justify-end font-medium" role="columnheader">
+						<Tooltip>
+							<TooltipTrigger>
+								<Icons.Ticket size={16} className="text-muted-foreground" />
+							</TooltipTrigger>
+							<TooltipContent>{tr.text(L_Msgs.vehicleTicketValue())}</TooltipContent>
 						</Tooltip>
 					</div>
 					<div className="flex items-center font-medium" role="columnheader">
@@ -403,6 +411,9 @@ function IndividualVehicleRow({ vehicle, type }: { vehicle: GLD.Vehicle; type: s
 				{vehicle.count}
 			</div>
 			<div role="cell">{delayRespawnInfo}</div>
+			<div className="text-end" role="cell">
+				{vehicle.ticketValue ?? '–'}
+			</div>
 			<div role="cell">
 				<Tooltip>
 					<TooltipTrigger className="flex items-center gap-1.5">

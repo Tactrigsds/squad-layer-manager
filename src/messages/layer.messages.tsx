@@ -151,6 +151,8 @@ export const unknownUnit = def('Unknown')
 
 export const vehicleDelayRespawn = def('Delay/Respawn (in minutes)')
 
+export const vehicleTicketValue = def('Tickets lost when the enemy destroys this vehicle')
+
 export const vehicleType = def('Vehicle Type')
 
 export const vehicleName = def('Name')

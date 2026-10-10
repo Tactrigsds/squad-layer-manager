@@ -2340,6 +2340,7 @@
 	"Ticket diff": "Ticket diff",
 	"Ticket difference": "Ticket difference",
 	"Tickets": "Tickets",
+	"Tickets lost when the enemy destroys this vehicle": "Tickets lost when the enemy destroys this vehicle",
 	"Time": "Time",
 	"Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}": "Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}",
 	"Timed out {subject} for {duration}{hasReason, select, yes { for {reason}} other {}}": "Timed out {subject} for {duration}{hasReason, select, yes { for {reason}} other {}}",
