@@ -1,55 +1,26 @@
 import { describe, expect, it } from 'vitest'
 
-import * as ST from '@/lib/state-tree'
+import * as ODSM from '@/lib/odsm'
 
 import * as UP from './user-presence'
 
-const serverId = 'server-1'
-
-// Rebuild an activity from its serialized updates, mirroring how the reducer applies them.
-function rebuild(activity: UP.RootActivity | null): UP.RootActivity | null {
-	if (!activity) return null
-	return UP.activityToUpdates(activity).reduce<UP.RootActivity | null>((acc, update) => UP.applyActivityUpdate(acc, update), null)
-}
-
-describe('activityToUpdates', () => {
-	it('round-trips a bare server dashboard', () => {
-		const activity = UP.applyActivityUpdate(null, { code: 'enter-server-dashboard', serverId })
-		expect(rebuild(activity)).toEqual(activity)
+describe('OpSchema', () => {
+	const op = (activity: unknown) => ({
+		opId: 'op',
+		time: 1,
+		clientId: 'client-1',
+		userId: 1n,
+		code: 'update-activity',
+		update: { code: 'set-editing-queue', activity },
 	})
 
-	it('round-trips viewing the queue with settings open', () => {
-		let activity = UP.applyActivityUpdate(null, { code: 'enter-server-dashboard', serverId })
-		activity = UP.applyActivityUpdate(activity, { code: 'set-primary-panel', to: 'VIEWING_QUEUE', serverId })
-		activity = UP.applyActivityUpdate(activity, { code: 'set-viewing-queue-settings' })
-		activity = UP.applyActivityUpdate(activity, { code: 'set-changing-queue-settings' })
-		expect(rebuild(activity)).toEqual(activity)
+	it('accepts a well-formed queue editing activity', () => {
+		expect(UP.OpSchema.safeParse(op({ code: 'MOVING_ITEM', itemId: 'item-42' })).success).toBe(true)
 	})
 
-	it('round-trips viewing teams with a player dialogue', () => {
-		let activity = UP.applyActivityUpdate(null, { code: 'enter-server-dashboard', serverId })
-		activity = UP.applyActivityUpdate(activity, { code: 'set-primary-panel', to: 'VIEWING_TEAMS', serverId })
-		activity = UP.applyActivityUpdate(activity, { code: 'set-player-dialogue', dialog: UP.PLAYER_DIALOGUE_ID.options[0] })
-		expect(rebuild(activity)).toEqual(activity)
-	})
-
-	it('round-trips editing the queue and teamswaps simultaneously', () => {
-		let activity = UP.applyActivityUpdate(null, { code: 'enter-server-dashboard', serverId })
-		activity = UP.applyActivityUpdate(activity, {
-			code: 'set-editing-queue',
-			variant: ST.Match.leaf('IDLE', {}) as UP.QueueEditingActivity<'IDLE'>,
-		})
-		activity = UP.applyActivityUpdate(activity, { code: 'set-editing-teamswaps' })
-		expect(rebuild(activity)).toEqual(activity)
-	})
-
-	it('round-trips an item-owned editing activity', () => {
-		let activity = UP.applyActivityUpdate(null, { code: 'enter-server-dashboard', serverId })
-		activity = UP.applyActivityUpdate(activity, {
-			code: 'set-editing-queue',
-			variant: ST.Match.leaf('EDITING_ITEM', { itemId: 'item-42', cursor: { type: 'start' } }) as UP.QueueEditingActivity,
-		})
-		expect(rebuild(activity)).toEqual(activity)
+	it('rejects a queue editing activity missing its fields', () => {
+		expect(UP.OpSchema.safeParse(op({ code: 'EDITING_ITEM' })).success).toBe(false)
+		expect(UP.OpSchema.safeParse(op({ garbage: true })).success).toBe(false)
 	})
 })
 
@@ -77,19 +48,22 @@ describe('reducer enabled-server gating', () => {
 		expect(UP.activityServerId(next.presence.get('client-1')?.activityState)).toBe('server-1')
 	})
 
+	const editItem = (clientId: string, itemId: string, code: 'EDITING_ITEM' | 'MOVING_ITEM' = 'EDITING_ITEM'): UP.Op =>
+		({
+			...clientOp({
+				code: 'update-activity',
+				update: {
+					code: 'set-editing-queue',
+					activity: code === 'EDITING_ITEM' ? { code, itemId, cursor: { type: 'start' } } : { code, itemId },
+				},
+			}),
+			clientId,
+		}) as UP.Op
+
 	it('ends editing (and drops locks) only for clients on the saved server', () => {
 		const editQueue = (clientId: string, sid: string, itemId: string): UP.Op[] => [
 			{ ...clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: sid } }), clientId } as UP.Op,
-			{
-				...clientOp({
-					code: 'update-activity',
-					update: {
-						code: 'set-editing-queue',
-						variant: ST.Match.leaf('EDITING_ITEM', { itemId, cursor: { type: 'start' } }) as UP.QueueEditingActivity,
-					},
-				}),
-				clientId,
-			} as UP.Op,
+			editItem(clientId, itemId),
 		]
 
 		let state = stateWith(['server-1', 'server-2'])
@@ -114,6 +88,20 @@ describe('reducer enabled-server gating', () => {
 
 		expect(UP.Trans.editingTeamswaps('server-1').match(state.presence.get('client-1')!.activityState!)).toBeFalsy()
 		expect(UP.Trans.editingTeamswaps('server-2').match(state.presence.get('client-2')!.activityState!)).toBeTruthy()
+	})
+
+	it('refuses an item another client holds, but not one the client holds itself', () => {
+		const enter = (clientId: string) =>
+			({ ...clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-1' } }), clientId }) as UP.Op
+		let state = stateWith(['server-1'])
+		;[state] = UP.reducer(state, [enter('client-1'), enter('client-2'), editItem('client-1', 'item-1')], [])
+
+		// a refused op changes nothing, so the batch is rejected as a no-op
+		expect(() => UP.reducer(state, [editItem('client-2', 'item-1')], [])).toThrow(ODSM.RejectedError)
+
+		;[state] = UP.reducer(state, [editItem('client-1', 'item-1', 'MOVING_ITEM')], [])
+		expect(UP.editingQueue(state.presence.get('client-1')!.activityState)?.code).toBe('MOVING_ITEM')
+		expect([...state.itemLocks]).toEqual([['item-1', 'client-1']])
 	})
 
 	it('nulls existing presence when its server is disabled via set-enabled-servers', () => {

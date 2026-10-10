@@ -215,7 +215,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 								<UserPresencePanel
 									sourcePresenceFn={sortEditingPresence}
 									matchActivity={UP.Trans.onFilter(props.entity.id).match}
-									matchActivityForStatusText={(root) => UP.editingFilterNode(root) ?? undefined}
+									statusActivities={UP.FILTER_PAGE_ACTIVITIES}
 									event$={presenceEvent$}
 									className="min-w-0"
 								/>

@@ -35,7 +35,6 @@ import * as Browser from '@/lib/browser.ts'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import { inline, useStableValue } from '@/lib/react.ts'
-import * as ST from '@/lib/state-tree.ts'
 import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
@@ -153,17 +152,16 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 
 	DndKit.useDraggingCallback((item) => {
 		if (!item) {
-			UPClient.Actions.updateActivity({ code: 'set-editing-queue-idle-if', currentIds: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue-idle-if', currentCodes: ['MOVING_ITEM', 'ADDING_ITEM_FROM_HISTORY'] })
 			return
 		}
-		const { leaf } = ST.Match
 		if (item?.type === 'layer-item') {
-			UPClient.Actions.updateActivity({ code: 'set-editing-queue', variant: leaf('MOVING_ITEM', { itemId: item.id }) })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue', activity: { code: 'MOVING_ITEM', itemId: item.id } })
 			return
 		}
 
 		if (item?.type === 'history-entry') {
-			UPClient.Actions.updateActivity({ code: 'set-editing-queue', variant: leaf('ADDING_ITEM_FROM_HISTORY', {}) })
+			UPClient.Actions.updateActivity({ code: 'set-editing-queue', activity: { code: 'ADDING_ITEM_FROM_HISTORY' } })
 			return
 		}
 	})
@@ -229,7 +227,7 @@ function LoadedSelectLayersView({
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
 	const onAddItems = (items: LL.NewItem[]) => {
-		if (activity.id !== 'ADDING_ITEM') return
+		if (activity.code !== 'ADDING_ITEM') return
 		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
 		let cursor = Zus.getState(entry.data.selectLayersFrame).cursor
 		let index: LL.ItemIndex
@@ -247,8 +245,8 @@ function LoadedSelectLayersView({
 	}
 
 	const onEditedLayer = (layerId: L.LayerId) => {
-		if (activity.id !== 'EDITING_ITEM') return
-		const itemId = activity.opts.itemId
+		if (activity.code !== 'EDITING_ITEM') return
+		const itemId = activity.itemId
 		void LayerQueuePrt.Actions.dispatch(
 			{ queue: stores.squadServer },
 			{
@@ -281,17 +279,17 @@ function LoadedSelectLayersView({
 		/>
 	)
 
-	if (activity.id === 'EDITING_ITEM') {
+	if (activity.code === 'EDITING_ITEM') {
 		return <EditLayerDialog stores={dialogStores} open={entry.active} onOpenChange={onSelectLayersChange} onSelectLayer={onEditedLayer} />
-	} else if (activity.id === 'ADDING_ITEM') {
+	} else if (activity.code === 'ADDING_ITEM') {
 		return (
 			<SelectLayersDialog
-				title={activity.opts.title ?? tr.text(LL_Msgs.addLayers())}
+				title={activity.title ?? tr.text(LL_Msgs.addLayers())}
 				stores={dialogStores}
 				open={entry.active}
 				onOpenChange={onSelectLayersChange}
 				selectQueueItems={onAddItems}
-				modeSwitchAdditions={activity.opts.variant === 'toggle-position' && addLayersTabsList}
+				modeSwitchAdditions={activity.variant === 'toggle-position' && addLayersTabsList}
 				modeSwitchAdditionsLabel={tr.text(LL_Msgs.addPosition())}
 				footerBeforeSubmitLabel={tr.text(LL_Msgs.addTags())}
 				footerBeforeSubmit={
@@ -502,9 +500,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const editActivity = React.useMemo(
 		() => ({
-			_tag: 'leaf' as const,
-			id: 'EDITING_ITEM' as const,
-			opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
+			code: 'EDITING_ITEM' as const,
+			itemId: item.itemId,
+			cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const },
 		}),
 		[item.itemId],
 	)
@@ -525,7 +523,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	if (user && itemPresence?.itemActivity) {
 		sourceDisplay = (
-			<Badge key={`activity ${itemPresence.itemActivity.id}`} variant="info" className="text-nowrap">
+			<Badge key={`activity ${itemPresence.itemActivity.code}`} variant="info" className="text-nowrap">
 				{attributedActivityText(itemPresence.activityState!, index, itemActivityUser.displayName)}
 			</Badge>
 		)
@@ -873,11 +871,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 	// we're only using .useActivityState here because there's nothing to load with this activity at the moment
 	const [configuringVote, setConfiguringVote] = UPClient.useActivityState({
-		create: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
+		create: UP.createEditingQueueVariant({ code: 'CONFIGURING_VOTE', itemId: item.itemId }),
 		match: React.useCallback(
 			(state) => {
-				const node = UP.editingQueueNode(state)?.chosen
-				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
+				const edit = UP.editingQueue(state)
+				return edit?.code === 'CONFIGURING_VOTE' && edit.itemId === item.itemId
 			},
 			[item.itemId],
 		),
@@ -1106,18 +1104,15 @@ function VoteLayerListItem(props: LayerListItemProps) {
 												loaderName="selectLayers"
 												preload="intent"
 												createActivity={UP.createEditingQueueVariant({
-													_tag: 'leaf',
-													id: 'ADDING_ITEM',
-													opts: {
-														cursor: {
-															type: 'index',
-															index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
-														},
-														action: 'add',
-														title: activityTitle,
+													code: 'ADDING_ITEM',
+													cursor: {
+														type: 'index',
+														index: { outerIndex: index.outerIndex, innerIndex: item.choices.length },
 													},
+													action: 'add',
+													title: activityTitle,
 												})}
-												matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.title === activityTitle}
+												matchKey={(key) => key.code === 'ADDING_ITEM' && key.title === activityTitle}
 												render={Button}
 												variant="ghost"
 												size="icon"
@@ -1345,23 +1340,20 @@ function ItemMenuItems(props: {
 	const activities = React.useMemo(() => {
 		return {
 			'add-after': {
-				_tag: 'leaf',
-				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' }, action: 'add' },
+				code: 'ADDING_ITEM',
+				cursor: { type: 'item-relative', itemId: item.itemId, position: 'after' },
+				action: 'add',
 			},
 			'add-before': {
-				_tag: 'leaf',
-				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' }, action: 'add' },
+				code: 'ADDING_ITEM',
+				cursor: { type: 'item-relative', itemId: item.itemId, position: 'before' },
+				action: 'add',
 			},
 			'create-vote': {
-				_tag: 'leaf',
-				id: 'ADDING_ITEM',
-				opts: {
-					cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' },
-					title: tr.text(V_Msgs.createVote()),
-					action: 'edit',
-				},
+				code: 'ADDING_ITEM',
+				cursor: { type: 'item-relative', itemId: item.itemId, position: 'on' },
+				title: tr.text(V_Msgs.createVote()),
+				action: 'edit',
 			},
 		} satisfies { [k in SubDropdownState]: UP.QueueEditingActivity }
 	}, [item.itemId])
@@ -1401,9 +1393,9 @@ function ItemMenuItems(props: {
 	const appliedTags = item.type === 'single-list-item' ? (item.tags ?? []) : []
 	const availableTags = configuredTags.filter((t) => !appliedTags.includes(t.id))
 	const editActivity = {
-		_tag: 'leaf' as const,
-		id: 'EDITING_ITEM' as const,
-		opts: { itemId: item.itemId, cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const } },
+		code: 'EDITING_ITEM' as const,
+		itemId: item.itemId,
+		cursor: { type: 'item-relative' as const, itemId: item.itemId, position: 'on' as const },
 	}
 	return (
 		<>
@@ -1551,7 +1543,7 @@ function QueueItemSeparator(props: {
 	)
 }
 
-function attributedActivityText(activity: UP.AnyActivityNode, index: LL.ItemIndex, displayName: string) {
+function attributedActivityText(activity: UP.RootActivity, index: LL.ItemIndex, displayName: string) {
 	const described = UP.describeActivity(activity, index)
 	if (!described) return null
 	return tr.text(UP_Msgs.attributedActivity(displayName, described))

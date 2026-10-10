@@ -71,11 +71,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 									UP.Trans.editingQueue(serverId).match(root) ||
 									UP.Trans.editingLayerRequests(serverId).match(root)
 								}
-								matchActivityForStatusText={(root) =>
-									UP.Trans.editingQueue(serverId).match(root) ||
-									UP.Trans.editingLayerRequests(serverId).match(root) ||
-									UP.Trans.viewingQueue(serverId).match(root)
-								}
+								statusActivities={UP.QUEUE_PANEL_ACTIVITIES}
 								event$={Zus.getState(props.stores.squadServer).queue.presenceEvent$}
 								className="min-w-0"
 							/>
@@ -98,9 +94,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 								matchActivity={(root) =>
 									UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)
 								}
-								matchActivityForStatusText={(root) =>
-									UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
-								}
+								statusActivities={UP.TEAMS_PANEL_ACTIVITIES}
 								event$={Zus.getState(props.stores.squadServer).teamswaps.presenceEvent$}
 								className="min-w-0"
 							/>

@@ -83,7 +83,7 @@ const teamsTabSelected: Tour.StateSelector<boolean> = {
 function editingTeamswaps(serverId: string, upState: any): boolean {
 	const clientId = ConfigClient.getConfig()?.wsClientId
 	const activity = clientId ? upState.presence.get(clientId)?.activityState : null
-	return !!activity && !!UP.Trans.editingTeamswaps(serverId).match(activity)
+	return !!activity && UP.Trans.editingTeamswaps(serverId).match(activity)
 }
 
 const rosterSettled: Tour.StateSelector<boolean> = {

@@ -42,11 +42,7 @@ function QueuePresence(props: { stores: SquadServerFrame.KeyProp }) {
 				UP.Trans.editingQueue(serverId).match(root) ||
 				UP.Trans.editingLayerRequests(serverId).match(root)
 			}
-			matchActivityForStatusText={(root) =>
-				UP.Trans.editingQueue(serverId).match(root) ||
-				UP.Trans.editingLayerRequests(serverId).match(root) ||
-				UP.Trans.viewingQueue(serverId).match(root)
-			}
+			statusActivities={UP.QUEUE_PANEL_ACTIVITIES}
 			event$={event$}
 			transitionMessages={[
 				{
@@ -67,9 +63,7 @@ function TeamsPresence(props: { stores: SquadServerFrame.KeyProp }) {
 			stores={props.stores}
 			sourcePresenceFn={sortEditingPresence}
 			matchActivity={(root) => UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)}
-			matchActivityForStatusText={(root) =>
-				UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
-			}
+			statusActivities={UP.TEAMS_PANEL_ACTIVITIES}
 			event$={event$}
 			className="min-w-0"
 		/>

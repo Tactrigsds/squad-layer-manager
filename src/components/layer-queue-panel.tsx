@@ -329,11 +329,12 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			data-tour="queue-add"
 			loaderName="selectLayers"
 			createActivity={UP.createEditingQueueVariant({
-				_tag: 'leaf',
-				id: 'ADDING_ITEM',
-				opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
+				code: 'ADDING_ITEM',
+				cursor: { type: 'start' },
+				variant: 'toggle-position',
+				action: 'add',
 			})}
-			matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
+			matchKey={(key) => key.code === 'ADDING_ITEM' && key.variant === 'toggle-position'}
 			preload="intent"
 			render={Button}
 			className={cn(idleHidden, phone && 'flex-1 min-w-0')}
@@ -347,12 +348,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const genVoteButton = (
 		<StartActivityInteraction
 			loaderName="genVote"
-			createActivity={UP.createEditingQueueVariant({
-				_tag: 'leaf',
-				id: 'GENERATING_VOTE',
-				opts: { cursor: { type: 'start' } },
-			})}
-			matchKey={(key) => key.id === 'GENERATING_VOTE'}
+			createActivity={UP.createEditingQueueVariant({ code: 'GENERATING_VOTE', cursor: { type: 'start' } })}
+			matchKey={(key) => key.code === 'GENERATING_VOTE'}
 			preload="intent"
 			render={Button}
 			className={idleHidden}
@@ -368,8 +365,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const pasteRotationButton = (
 		<StartActivityInteraction
 			loaderName="pasteRotation"
-			createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
-			matchKey={(key) => key.id === 'PASTE_ROTATION'}
+			createActivity={UP.createEditingQueueVariant({ code: 'PASTE_ROTATION' })}
+			matchKey={(key) => key.code === 'PASTE_ROTATION'}
 			preload="intent"
 			render={Button}
 			className={idleHidden}
