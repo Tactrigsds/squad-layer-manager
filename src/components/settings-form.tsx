@@ -98,10 +98,24 @@ import { MessagePreviewBox } from './warn-reasons-sub'
 // projection indexed by row position reads an index that no longer exists. Guard the projection (return undefined
 // for a row that is gone) rather than deferring the pulse, which the uncontrolled inputs depend on being immediate.
 
-type Node = any
+// The JSON Schema projection of a settings schema (z.toJSONSchema, io: 'input'), narrowed to the keys the form walks.
+// Annotations such as schema docs and plugin field controls are read through SDoc and PLG.
+type SchemaNode = {
+	[key: string]: unknown
+	type?: 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean' | 'null'
+	enum?: (string | number)[]
+	const?: string | number | boolean | null
+	default?: unknown
+	anyOf?: SchemaNode[]
+	oneOf?: SchemaNode[]
+	items?: SchemaNode
+	properties?: Record<string, SchemaNode>
+	// false for a strict object
+	additionalProperties?: SchemaNode | boolean
+	propertyNames?: SchemaNode
+}
+type ObjectSchemaNode = SchemaNode & { properties: Record<string, SchemaNode> }
 type Path = (string | number)[]
-
-// a trigger with no level configured is not evaluated at all; the picker needs a value to represent that
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
 type ValueState<T = any> = Zus.ValueObservable<T>
@@ -147,10 +161,10 @@ function useReset(reset$: Rx.Observable<void>, fn: () => void) {
 
 // -------- schema helpers --------
 
-function stripNullable(node: Node): { inner: Node; nullable: boolean } {
+function stripNullable(node: SchemaNode): { inner: SchemaNode; nullable: boolean } {
 	if (node?.anyOf) {
-		const nulls = node.anyOf.filter((b: Node) => b.type === 'null')
-		const others = node.anyOf.filter((b: Node) => b.type !== 'null')
+		const nulls = node.anyOf.filter((b: SchemaNode) => b.type === 'null')
+		const others = node.anyOf.filter((b: SchemaNode) => b.type !== 'null')
 		if (nulls.length && others.length) {
 			return { inner: others.length === 1 ? others[0] : { anyOf: others }, nullable: true }
 		}
@@ -159,26 +173,26 @@ function stripNullable(node: Node): { inner: Node; nullable: boolean } {
 }
 
 // HumanTime and similar accept `string | number`; we edit them as the string form
-function isStringOrNumber(node: Node): boolean {
+function isStringOrNumber(node: SchemaNode): boolean {
 	if (!node?.anyOf || node.anyOf.length !== 2) return false
-	const types = new Set(node.anyOf.map((b: Node) => b.type))
+	const types = new Set(node.anyOf.map((b: SchemaNode) => b.type))
 	return types.has('string') && types.has('number')
 }
 
 // a discriminated union (Zod z.discriminatedUnion) projects to `oneOf`/`anyOf` of object branches that each pin one
 // property to a `const` (the discriminator). Returns those branches + the discriminator key so we can render a variant
 // picker instead of falling back to a raw-json editor.
-function discriminatedUnion(node: Node): { branches: Node[]; discriminator: string } | null {
-	const branches: Node[] | undefined = node?.oneOf ?? node?.anyOf
+function discriminatedUnion(node: SchemaNode): { branches: ObjectSchemaNode[]; discriminator: string } | null {
+	const branches = node?.oneOf ?? node?.anyOf
 	if (!branches || branches.length < 2) return null
-	if (!branches.every((b: Node) => b?.type === 'object' && b.properties)) return null
+	if (!branches.every((b): b is ObjectSchemaNode => b?.type === 'object' && !!b.properties)) return null
 	const constKeys = Object.keys(branches[0].properties).filter((k) => branches[0].properties[k]?.const !== undefined)
-	const discriminator = constKeys.find((k) => branches.every((b: Node) => b.properties?.[k]?.const !== undefined))
+	const discriminator = constKeys.find((k) => branches.every((b) => b.properties[k]?.const !== undefined))
 	if (!discriminator) return null
 	return { branches, discriminator }
 }
 
-function emptyValue(node: Node): unknown {
+function emptyValue(node: SchemaNode): unknown {
 	const { inner, nullable } = stripNullable(node)
 	if (nullable) return null
 	if (inner.const !== undefined) return inner.const
@@ -240,13 +254,10 @@ function useMessageVars(value$: ValueState): Templating.TemplateVarDef[] {
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
-// the whole settings document being edited, so a bespoke field can read a sibling it isn't scoped to (e.g. the admin
-// list sftp editor copying connection details from `connections.sftp`). Null when unset (e.g. tests).
-const RootValueContext = React.createContext<ValueState | null>(null)
-
-// the root document's onChange, so a bespoke field can write siblings it isn't scoped to. The command-prefix editor
-// uses it to propagate a prefix rename across every command string / timeout alias that uses that prefix.
-const RootOnChangeContext = React.createContext<((next: any) => void) | null>(null)
+// The whole document being edited and its onChange, passed down every field. A bespoke field reads and writes siblings
+// it isn't scoped to through it: the command-prefix editor propagates a prefix rename across every command string,
+// and comments are stored on the root document.
+type FormRoot = { value$: ValueState; onChange: (next: any) => void }
 
 // the zod schema of the whole document, so a field can resolve the sub-schema at its own path for its scoped YAML
 // editor (the json-schema projection the form walks can't be handed back to zod for parsing)
@@ -375,7 +386,7 @@ function sectionExtraFor(path: Path): React.FC | undefined {
 
 // -------- override widgets (matched by path) --------
 
-type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path }
+type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path; root: FormRoot }
 
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$)
@@ -1188,11 +1199,9 @@ function PrefixRow({
 
 // bespoke editor for `allowedPrefixes`: prefixes are numbered so they have their own identity. Editing a prefix's
 // characters propagates the change to every command string and timeout alias that uses it; one prefix is marked the
-// default (new commands seed from it); a prefix in use can't be removed. Reads/writes siblings via the root contexts.
-function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	const rootOnChange = React.useContext(RootOnChangeContext)
-	const root = (useFieldValue(root$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
+// default (new commands seed from it); a prefix in use can't be removed. Reads/writes siblings via the form root.
+function AllowedPrefixesField({ value$, reset$, root: formRoot }: OverrideProps) {
+	const root = (useFieldValue(formRoot.value$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
 	const prefixes = (useFieldValue(value$) as CMD.PrefixConfig[] | undefined) ?? []
 	const commands = root.commands ?? {}
 	const defaultPrefix = root.defaultPrefix ?? prefixes[0]?.prefix ?? ''
@@ -1200,8 +1209,8 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	const [newPrefix, setNewPrefix] = React.useState('')
 
 	function writeRoot(patch: Record<string, unknown>) {
-		const cur = (root$.getValue() as Record<string, unknown>) ?? {}
-		rootOnChange?.({ ...cur, ...patch })
+		const cur = (formRoot.value$.getValue() as Record<string, unknown>) ?? {}
+		formRoot.onChange({ ...cur, ...patch })
 		reset$.next()
 	}
 
@@ -1300,12 +1309,11 @@ const NEW_TRIGGER_ARGS = '{{rest}}'
 // bespoke editor for a command's `triggers` array (inline-prefixed, short). A plain trigger is one input; pinning
 // arguments to it grows a second one on the same row rather than moving it to a table of its own, since it is still
 // just a way of running this command.
-function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
+function CommandTriggersField({ value$, reset$, onChange, root, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
 	const triggers = (useFieldValue(value$) as CMD.CommandTrigger[] | undefined) ?? []
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
 	// document would re-render all of them on every keystroke anywhere in the form
-	const requireReasonFor$ = scopeValue(root$, 'requireReasonFor')
+	const requireReasonFor$ = scopeValue(root.value$, 'requireReasonFor')
 	const requireReasonFor = useFieldValue(requireReasonFor$) as AAR.AdminActionType[] | undefined
 	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
 	const current = () => (value$.getValue() as CMD.CommandTrigger[]) ?? []
@@ -1419,7 +1427,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 // compact editor for a single command (`commands.<id>`): collapses the triggers/allowedChats/enabled sub-sections into a
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
 // shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
-function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
+function CommandCard({ value$, reset$, onChange, path, root }: OverrideProps) {
 	const cmdId = path[1] as CMD.CommandId
 	const cfg = (useFieldValue(value$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
 	const allowedChats = cfg.allowedChats ?? []
@@ -1435,7 +1443,14 @@ function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
 					{tr.text(CMD_Msgs.triggers())} <HelpTip text={tr.text(CMD_Msgs.triggersHelp())} />
 				</span>
-				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} cmdId={cmdId} />
+				<CommandTriggersField
+					value$={triggers$}
+					reset$={reset$}
+					onChange={(v) => patch({ triggers: v })}
+					path={[]}
+					root={root}
+					cmdId={cmdId}
+				/>
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
@@ -2146,20 +2161,12 @@ function defaultAdminSource(type: SM.AdminListSourceType): SM.AdminListSource {
 	return { type, source: '' }
 }
 
-// a never-emitting stand-in so useFieldValue can be called unconditionally when there is no root document (e.g. tests)
-const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as ValueState
-
-// Editor for the named admin lists (global settings). Each is a name, one source (remote/local/ftp/sftp) and the
-// group permissions that mark an admin *in that list*. The name is what servers and role assignments refer to, so
-// renaming one is a breaking edit -- hence the rename is explicit rather than an inline text field that fires per
-// keystroke.
 // Which of the defined lists apply to this server. A sandbox additionally has one SLM synthesises, which is not
 // listed here because there is no source to name -- so say so, rather than leaving the impression that an empty
 // selection means the emulated server has no admins.
-function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
+function ServerAdminListsField({ value$, onChange, root }: OverrideProps) {
 	const value = (useFieldValue(value$) as string[] | undefined) ?? []
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	const connType$ = scopeValue(scopeValue(root$, 'connections'), 'type')
+	const connType$ = scopeValue(scopeValue(root.value$, 'connections'), 'type')
 	const isSandbox = useFieldValue(connType$) === 'sandbox'
 	const definedLists = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
@@ -2215,6 +2222,10 @@ function InstalledModsField({ value$, onChange }: OverrideProps) {
 	)
 }
 
+// Editor for the named admin lists (global settings). Each is a name, one source (remote/local/ftp/sftp) and the
+// group permissions that mark an admin *in that list*. The name is what servers and role assignments refer to, so
+// renaming one is a breaking edit -- hence the rename is explicit rather than an inline text field that fires per
+// keystroke.
 function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$) as Record<string, SM.AdminListDef> | undefined) ?? {}
 	const names = Object.keys(value)
@@ -2389,13 +2400,13 @@ function MainPoolField(props: OverrideProps) {
 
 // every dotted object path in a settings schema, in declaration order: the paths a settings grant may address.
 // Stops at arrays/records since grants target the static object tree, not indices or dynamic keys.
-function enumerateGrantPaths(node: Node, prefix = ''): string[] {
+function enumerateGrantPaths(node: SchemaNode, prefix = ''): string[] {
 	const { inner } = stripNullable(node)
 	if (inner?.type !== 'object' || !inner.properties || (inner.additionalProperties && typeof inner.additionalProperties === 'object')) {
 		return []
 	}
 	const out: string[] = []
-	for (const [key, child] of Object.entries(inner.properties as Record<string, Node>)) {
+	for (const [key, child] of Object.entries(inner.properties as Record<string, SchemaNode>)) {
 		const p = prefix ? `${prefix}.${key}` : key
 		out.push(p, ...enumerateGrantPaths(child, p))
 	}
@@ -2405,7 +2416,7 @@ function enumerateGrantPaths(node: Node, prefix = ''): string[] {
 let cachedGlobalGrantPaths: string[] | undefined
 function globalGrantPathOptions(): string[] {
 	cachedGlobalGrantPaths ??= enumerateGrantPaths(
-		z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }),
+		z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as SchemaNode,
 	).filter((p) => p !== SETTINGS.COMMENTS_KEY)
 	return cachedGlobalGrantPaths
 }
@@ -2414,7 +2425,7 @@ function globalGrantPathOptions(): string[] {
 let cachedServerGrantPaths: string[] | undefined
 function serverGrantPathOptions(): string[] {
 	cachedServerGrantPaths ??= enumerateGrantPaths(
-		z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }),
+		z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as SchemaNode,
 	).filter((p) => p !== 'connections' && !p.startsWith('connections.') && p !== SETTINGS.COMMENTS_KEY)
 	return cachedServerGrantPaths
 }
@@ -3411,7 +3422,7 @@ const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	multiline: PluginMultilineField,
 }
 
-function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
+function overrideFor(path: Path, _node: SchemaNode): React.FC<OverrideProps> | undefined {
 	const declared = PLG.fieldControl(_node)
 	if (declared) return DECLARED_CONTROLS[declared]
 	const last = path[path.length - 1]
@@ -3495,7 +3506,7 @@ function SelectField({
 	onChange: (v: any) => void
 	// a numeric enum's options are numbers, which the select holds as strings and hands back as the option itself
 	options: (string | number)[]
-	node: Node
+	node: SchemaNode
 }) {
 	const value = useFieldValue(value$)
 	return (
@@ -3532,14 +3543,16 @@ function DiscriminatedUnionField({
 	onChange,
 	branches,
 	discriminator,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	branches: Node[]
+	branches: ObjectSchemaNode[]
 	discriminator: string
+	root: FormRoot
 }) {
 	const value = useFieldValue(value$) as any
 	const branchFor = (constVal: string) => branches.find((b) => String(b.properties[discriminator].const) === constVal)
@@ -3547,7 +3560,7 @@ function DiscriminatedUnionField({
 	const branch = branchFor(String(active)) ?? branches[0]
 	// hide the discriminator from the rendered fields; it's set by the picker (and carried in the value)
 	const branchProps = Object.fromEntries(Object.entries(branch.properties).filter(([k]) => k !== discriminator))
-	const branchNode: Node = { ...branch, properties: branchProps }
+	const branchNode: SchemaNode = { ...branch, properties: branchProps }
 	return (
 		<div className="space-y-2">
 			<Select
@@ -3574,7 +3587,7 @@ function DiscriminatedUnionField({
 					})}
 				</SelectContent>
 			</Select>
-			<ObjectField node={branchNode} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+			<ObjectField node={branchNode} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 		</div>
 	)
 }
@@ -3590,7 +3603,7 @@ function EnumArrayField({
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
-	node: Node
+	node: SchemaNode
 }) {
 	const value = useFieldValue(value$) as any[]
 	return (
@@ -3611,7 +3624,7 @@ function NullableField({
 	onChange,
 	children,
 }: {
-	inner: Node
+	inner: SchemaNode
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
@@ -3639,7 +3652,7 @@ function NullableField({
 function wrapNullable(
 	nullable: boolean,
 	child: React.ReactNode,
-	inner: Node,
+	inner: SchemaNode,
 	value$: ValueState,
 	reset$: Rx.Subject<void>,
 	onChange: (v: any) => void,
@@ -3654,7 +3667,7 @@ function wrapNullable(
 
 // placeholder for a text/number input: the schema default when there is one (doubles as a format hint, e.g. '5m'),
 // an example duration for HumanTime fields without one, otherwise the field's name
-function placeholderFor(node: Node, inner: Node, path: Path): string | undefined {
+function placeholderFor(node: SchemaNode, inner: SchemaNode, path: Path): string | undefined {
 	const def = effectiveDefault(node)
 	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
 	if (isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
@@ -3668,16 +3681,18 @@ function FieldControl({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
+	root: FormRoot
 }) {
 	const Override = overrideFor(path, node)
 	// oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here
-	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
+	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} root={root} />
 
 	// the whole rbac subtree renders as one consolidated per-role editor (kept inside the standard section shell so its
 	// header + super-users callout + reset controls are preserved)
@@ -3697,6 +3712,7 @@ function FieldControl({
 				onChange={onChange}
 				branches={du.branches}
 				discriminator={du.discriminator}
+				root={root}
 			/>
 		)
 	}
@@ -3764,14 +3780,14 @@ function FieldControl({
 	}
 
 	if (inner.type === 'array') {
-		return <ArrayField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+		return <ArrayField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 	}
 
 	if (inner.type === 'object') {
 		if (inner.additionalProperties && typeof inner.additionalProperties === 'object') {
-			return <RecordField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+			return <RecordField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 		}
-		return <ObjectField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+		return <ObjectField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 	}
 
 	// fallback for anything the walker can't render structurally
@@ -3784,21 +3800,23 @@ function ArrayField({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any[]) => void
+	root: FormRoot
 }) {
-	const items: Node = node.items ?? {}
+	const items: SchemaNode = node.items ?? {}
 	const { inner } = stripNullable(items)
 
 	const value = (useFieldValue(value$) as any[]) ?? []
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
-		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={items} />
+		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum.map(String)} node={items} />
 	}
 
 	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
@@ -3824,6 +3842,7 @@ function ArrayField({
 					reset$={reset$}
 					parentOnChange={onChange}
 					isPrimitive={isPrimitive}
+					root={root}
 					onRemove={() => structural(((value$.getValue() as any[]) ?? []).filter((_, i) => i !== idx))}
 				/>
 			))}
@@ -3848,15 +3867,17 @@ function ArrayItem({
 	reset$,
 	parentOnChange,
 	isPrimitive,
+	root,
 	onRemove,
 }: {
-	items: Node
+	items: SchemaNode
 	path: Path
 	idx: number
 	parent$: ValueState
 	reset$: Rx.Subject<void>
 	parentOnChange: (v: any[]) => void
 	isPrimitive: boolean
+	root: FormRoot
 	onRemove: () => void
 }) {
 	const value$ = scopeValue(parent$, idx)
@@ -3879,7 +3900,7 @@ function ArrayItem({
 			)}
 		>
 			<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
-				<FieldControl node={items} path={[...path, idx]} value$={value$} reset$={reset$} onChange={onChange} />
+				<FieldControl node={items} path={[...path, idx]} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 			</div>
 			<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive shrink-0" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
@@ -3894,17 +3915,19 @@ function RecordField({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
+	root: FormRoot
 }) {
-	const valueNode: Node = node.additionalProperties
+	const valueNode: SchemaNode = typeof node.additionalProperties === 'object' ? node.additionalProperties : {}
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
-	const keyEnum: string[] | undefined = node.propertyNames?.enum
+	const keyEnum = node.propertyNames?.enum?.map(String)
 	const [newKey, setNewKey] = React.useState('')
 	const value = (useFieldValue(value$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
@@ -3951,6 +3974,7 @@ function RecordField({
 					parent$={value$}
 					reset$={reset$}
 					parentOnChange={onChange}
+					root={root}
 					onRename={(next) => rename(key, next)}
 					onRemove={() => remove(key)}
 				/>
@@ -4002,16 +4026,18 @@ function RecordEntry({
 	parent$,
 	reset$,
 	parentOnChange,
+	root,
 	onRename,
 	onRemove,
 }: {
-	valueNode: Node
+	valueNode: SchemaNode
 	path: Path
 	entryKey: string
 	fixedKey: boolean
 	parent$: ValueState
 	reset$: Rx.Subject<void>
 	parentOnChange: (v: Record<string, any>) => void
+	root: FormRoot
 	onRename: (next: string) => void
 	onRemove: () => void
 }) {
@@ -4029,7 +4055,7 @@ function RecordEntry({
 					<Icons.X className="h-4 w-4" />
 				</Button>
 			</div>
-			<FieldControl node={valueNode} path={[...path, entryKey]} value$={value$} reset$={reset$} onChange={onChange} />
+			<FieldControl node={valueNode} path={[...path, entryKey]} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 		</div>
 	)
 }
@@ -4040,17 +4066,28 @@ function ObjectField({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
+	root: FormRoot
 }) {
-	const props: Record<string, Node> = node.properties ?? {}
+	const props: Record<string, SchemaNode> = node.properties ?? {}
 	const { normal, advanced } = splitAdvanced(Object.keys(props), path.join('.'), React.useContext(AdvancedPathsContext))
 	const field = (key: string) => (
-		<Field key={key} name={key} node={props[key]} path={[...path, key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+		<Field
+			key={key}
+			name={key}
+			node={props[key]}
+			path={[...path, key]}
+			parent$={value$}
+			parentOnChange={onChange}
+			reset$={reset$}
+			root={root}
+		/>
 	)
 	return (
 		<div className="space-y-3">
@@ -4068,7 +4105,7 @@ function ObjectField({
 // from child defaults to get the real nested default (used for both the "Default:" hint and reset-to-default). A key the
 // object's own default already provides wins over the child default (it's the more specific value, e.g. rbac's preset).
 const defaultCache = new WeakMap<object, { has: boolean; value: unknown }>()
-function effectiveDefault(node: Node): { has: boolean; value: unknown } {
+function effectiveDefault(node: SchemaNode): { has: boolean; value: unknown } {
 	if (node && typeof node === 'object' && defaultCache.has(node)) return defaultCache.get(node)!
 	const { inner } = stripNullable(node)
 	const explicit = node?.default !== undefined ? node.default : inner?.default
@@ -4103,7 +4140,7 @@ function formatDefaultValue(val: unknown): string {
 	return JSON.stringify(val)
 }
 
-function isScalarNode(inner: Node): boolean {
+function isScalarNode(inner: SchemaNode): boolean {
 	if (inner?.enum && inner.type !== 'array') return true
 	if (isStringOrNumber(inner)) return true
 	return inner?.type === 'string' || inner?.type === 'number' || inner?.type === 'integer' || inner?.type === 'boolean'
@@ -4157,7 +4194,7 @@ function FieldResetControls({
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	node: Node
+	node: SchemaNode
 	path: Path
 	showDefaultLabel: boolean
 }) {
@@ -4270,8 +4307,7 @@ function useSettingComment(root$: ValueState, pathStr: string): string | undefin
 }
 
 type CommentProps = {
-	root$: ValueState
-	rootOnChange: (next: any) => void
+	root: FormRoot
 	pathStr: string
 	writable: boolean
 	editing: boolean
@@ -4280,14 +4316,10 @@ type CommentProps = {
 	caretRef: React.RefObject<number | null>
 }
 
-// a field's comment affordances, or null where the form has no root document to keep them on (tests)
-function useCommentProps(pathStr: string, writable: boolean): CommentProps | null {
-	const root$ = React.useContext(RootValueContext)
-	const rootOnChange = React.useContext(RootOnChangeContext)
+function useCommentProps(root: FormRoot, pathStr: string, writable: boolean): CommentProps {
 	const [editing, setEditing] = React.useState(false)
 	const caretRef = React.useRef<number | null>(null)
-	if (!root$ || !rootOnChange) return null
-	return { root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }
+	return { root, pathStr, writable, editing, setEditing, caretRef }
 }
 
 // the collapsed preview squeezes each whitespace run to one space, so a caret placed in it has to be walked back to
@@ -4335,12 +4367,12 @@ const COMMENT_PREVIEW_LENGTH = 160
 
 // The comment block under a field's name: the text while displayed, a textarea while editing. Edits go straight into
 // the root document, so a comment is staged and saved with the rest of the draft. Mirrors the filter editor's NodeComment.
-function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEditing, caretRef }: CommentProps) {
-	const comment = useSettingComment(root$, pathStr)
+function SettingComment({ root, pathStr, writable, editing, setEditing, caretRef }: CommentProps) {
+	const comment = useSettingComment(root.value$, pathStr)
 	const [expanded, setExpanded] = React.useState(false)
 	const setComment = React.useCallback(
-		(text: string) => rootOnChange(SETTINGS.withSettingComment(root$.getValue(), pathStr, text)),
-		[root$, rootOnChange, pathStr],
+		(text: string) => root.onChange(SETTINGS.withSettingComment(root.value$.getValue(), pathStr, text)),
+		[root, pathStr],
 	)
 	const setCommentDebounced = useDebounced({ delay: DEBOUNCE_MS, onChange: setComment })
 
@@ -4411,8 +4443,8 @@ function SettingComment({ root$, rootOnChange, pathStr, writable, editing, setEd
 
 // sits in the field's hover-revealed icon row beside AnchorLink. A field that has a comment keeps the icon showing, so
 // the comment reads as something that can be edited.
-function CommentButton({ root$, pathStr, editing, setEditing, caretRef }: CommentProps) {
-	const hasComment = !!useSettingComment(root$, pathStr)
+function CommentButton({ root, pathStr, editing, setEditing, caretRef }: CommentProps) {
+	const hasComment = !!useSettingComment(root.value$, pathStr)
 	const label = hasComment ? tr.text(UI_Msgs.editComment()) : tr.text(UI_Msgs.addComment())
 	return (
 		<Tooltip help>
@@ -4545,6 +4577,7 @@ function LocalYamlField({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
 	schema: z.ZodType
 	label: string
@@ -4554,26 +4587,25 @@ function LocalYamlField({
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
+	root: FormRoot
 }) {
-	const root$ = React.useContext(RootValueContext)
-	const rootOnChange = React.useContext(RootOnChangeContext)
 	const pathStr = path.join('.')
 	// Every comment lives on the root document. The ones under this subtree ride into the editor keyed relative to it,
 	// so they render as `#` lines, and come back out to the root in the same write as the subtree value.
 	const seedValue = () => {
 		const value = value$.getValue()
-		if (!root$ || !Obj.isPlainObject(value)) return value
-		const comments = SETTINGS.subtreeComments(root$.getValue()?.[SETTINGS.COMMENTS_KEY], pathStr)
+		if (!Obj.isPlainObject(value)) return value
+		const comments = SETTINGS.subtreeComments(root.value$.getValue()?.[SETTINGS.COMMENTS_KEY], pathStr)
 		return Object.keys(comments).length > 0 ? { ...value, [SETTINGS.COMMENTS_KEY]: comments } : value
 	}
 	const [seed, setSeed] = React.useState(() => ({ value: seedValue(), nonce: 0 }))
 	useReset(reset$, () => setSeed((prev) => ({ value: seedValue(), nonce: prev.nonce + 1 })))
 	const onValidChange = (v: unknown) => {
 		if (v === null) return
-		if (!root$ || !rootOnChange || !Obj.isPlainObject(v)) return onChange(toInputShape(schema, v))
+		if (!Obj.isPlainObject(v)) return onChange(toInputShape(schema, v))
 		const comments = (v[SETTINGS.COMMENTS_KEY] ?? {}) as SETTINGS.SettingsComments
-		const root = setAtPath(root$.getValue(), path, toInputShape(schema, Obj.omit(v, [SETTINGS.COMMENTS_KEY])))
-		rootOnChange(SETTINGS.withSubtreeComments(root, pathStr, comments))
+		const next = setAtPath(root.value$.getValue(), path, toInputShape(schema, Obj.omit(v, [SETTINGS.COMMENTS_KEY])))
+		root.onChange(SETTINGS.withSubtreeComments(next, pathStr, comments))
 	}
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
 	// would be a surprise. This component only exists while the field is in YAML mode, so the ref resets on reopen.
@@ -4608,13 +4640,15 @@ function SectionField({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
 	name: string
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
+	root: FormRoot
 }) {
 	const { inner } = stripNullable(node)
 	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
@@ -4632,7 +4666,7 @@ function SectionField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
-	const commentProps = useCommentProps(pathStr, writable)
+	const commentProps = useCommentProps(root, pathStr, writable)
 	return (
 		<fieldset
 			id={domId}
@@ -4655,10 +4689,10 @@ function SectionField({
 						/>
 					</span>
 					<AnchorLink domId={domId} />
-					{commentProps && writable && <CommentButton {...commentProps} />}
+					{writable && <CommentButton {...commentProps} />}
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
-				{commentProps && <SettingComment {...commentProps} />}
+				<SettingComment {...commentProps} />
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{/* oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here */}
 				{SectionExtra && <SectionExtra />}
@@ -4672,9 +4706,10 @@ function SectionField({
 						value$={value$}
 						reset$={reset$}
 						onChange={onChange}
+						root={root}
 					/>
 				) : (
-					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 				)}
 			</StickyGroup>
 		</fieldset>
@@ -4690,14 +4725,16 @@ function LeafField({
 	reset$,
 	onChange,
 	hasOverride,
+	root,
 }: {
 	name: string
-	node: Node
+	node: SchemaNode
 	path: Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	hasOverride: boolean
+	root: FormRoot
 }) {
 	const { inner } = stripNullable(node)
 	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
@@ -4714,7 +4751,7 @@ function LeafField({
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
-	const commentProps = useCommentProps(pathStr, writable)
+	const commentProps = useCommentProps(root, pathStr, writable)
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
@@ -4756,11 +4793,11 @@ function LeafField({
 					)}
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
-					{commentProps && writable && <CommentButton {...commentProps} />}
+					{writable && <CommentButton {...commentProps} />}
 					<CommandsPageCrossLink path={path} />
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
-				{commentProps && <SettingComment {...commentProps} />}
+				<SettingComment {...commentProps} />
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				<FieldIssues issues={fieldIssues} pathStr={pathStr} />
 				<FieldNotice path={path} />
@@ -4776,9 +4813,10 @@ function LeafField({
 						value$={value$}
 						reset$={reset$}
 						onChange={onChange}
+						root={root}
 					/>
 				) : (
-					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 				)}
 			</div>
 		</div>
@@ -4793,13 +4831,15 @@ function Field({
 	parent$,
 	parentOnChange,
 	reset$,
+	root,
 }: {
 	name: string
-	node: Node
+	node: SchemaNode
 	path: Path
 	parent$: ValueState
 	parentOnChange: (v: Record<string, any>) => void
 	reset$: Rx.Subject<void>
+	root: FormRoot
 }) {
 	const value$ = scopeValue(parent$, name)
 	const onChange = (v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v })
@@ -4814,8 +4854,21 @@ function Field({
 		!!inner.properties &&
 		!(inner.additionalProperties && typeof inner.additionalProperties === 'object')
 
-	if (isSection) return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
-	return <LeafField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} hasOverride={hasOverride} />
+	if (isSection) {
+		return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+	}
+	return (
+		<LeafField
+			name={name}
+			node={node}
+			path={path}
+			value$={value$}
+			reset$={reset$}
+			onChange={onChange}
+			hasOverride={hasOverride}
+			root={root}
+		/>
+	)
 }
 
 // a presentation-only grouping of top-level fields: a prominent sticky header + anchor, no value/reset semantics of
@@ -4845,18 +4898,20 @@ function GroupedRootFields({
 	value$,
 	reset$,
 	onChange,
+	root,
 }: {
-	node: Node
+	node: SchemaNode
 	groups: SettingsGroup[]
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
+	root: FormRoot
 }) {
-	const props: Record<string, Node> = node.properties ?? {}
+	const props: Record<string, SchemaNode> = node.properties ?? {}
 	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
 	const advancedPaths = React.useContext(AdvancedPathsContext)
 	const field = (key: string) => (
-		<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} />
+		<Field key={key} name={key} node={props[key]} path={[key]} parent$={value$} parentOnChange={onChange} reset$={reset$} root={root} />
 	)
 	// each group carries its own advanced tail, so a rarely-touched setting stays with the settings it belongs to
 	const renderKeys = (keys: string[]) => {
@@ -4945,17 +5000,18 @@ export default function SettingsForm({
 	// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
 	writeAccess?: RBAC.SettingsWriteAccess
 }) {
-	const rawJsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
+	const rawJsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as SchemaNode, [schema])
 	// float any priorityKeys to the front of the root object's properties (insertion order drives render + reset order)
 	const jsonSchema = React.useMemo(() => {
-		const props: Record<string, Node> | undefined = rawJsonSchema?.properties
+		const props: Record<string, SchemaNode> | undefined = rawJsonSchema?.properties
 		if (!priorityKeys?.length || !props) return rawJsonSchema
-		const ordered: Record<string, Node> = {}
+		const ordered: Record<string, SchemaNode> = {}
 		for (const k of priorityKeys) if (k in props) ordered[k] = props[k]
 		for (const k of Object.keys(props)) if (!(k in ordered)) ordered[k] = props[k]
 		return { ...rawJsonSchema, properties: ordered }
 	}, [rawJsonSchema, priorityKeys])
 	const rootPath = React.useMemo<Path>(() => [], [])
+	const root = React.useMemo<FormRoot>(() => ({ value$, onChange }), [value$, onChange])
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const savedCtx = React.useMemo(() => ({ saved }), [saved])
 	const messageVars = useMessageVars(value$)
@@ -4965,33 +5021,37 @@ export default function SettingsForm({
 	)
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
-			<RootValueContext.Provider value={value$}>
-				<RootOnChangeContext.Provider value={onChange}>
-					<RootSchemaContext.Provider value={schema}>
-						<AdvancedPathsContext.Provider value={advancedPaths}>
-							<WriteAccessContext.Provider value={writeAccess}>
-								<SavedRootContext.Provider value={savedCtx}>
-									<MessageVarsContext.Provider value={messageVars}>
-										<ValidationContext.Provider value={normIssues}>
-											{groups ? (
-												<GroupedRootFields
-													node={jsonSchema}
-													groups={groups}
-													value$={value$}
-													reset$={reset$}
-													onChange={onChange}
-												/>
-											) : (
-												<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
-											)}
-										</ValidationContext.Provider>
-									</MessageVarsContext.Provider>
-								</SavedRootContext.Provider>
-							</WriteAccessContext.Provider>
-						</AdvancedPathsContext.Provider>
-					</RootSchemaContext.Provider>
-				</RootOnChangeContext.Provider>
-			</RootValueContext.Provider>
+			<RootSchemaContext.Provider value={schema}>
+				<AdvancedPathsContext.Provider value={advancedPaths}>
+					<WriteAccessContext.Provider value={writeAccess}>
+						<SavedRootContext.Provider value={savedCtx}>
+							<MessageVarsContext.Provider value={messageVars}>
+								<ValidationContext.Provider value={normIssues}>
+									{groups ? (
+										<GroupedRootFields
+											node={jsonSchema}
+											groups={groups}
+											value$={value$}
+											reset$={reset$}
+											onChange={onChange}
+											root={root}
+										/>
+									) : (
+										<ObjectField
+											node={jsonSchema}
+											path={rootPath}
+											value$={value$}
+											reset$={reset$}
+											onChange={onChange}
+											root={root}
+										/>
+									)}
+								</ValidationContext.Provider>
+							</MessageVarsContext.Provider>
+						</SavedRootContext.Provider>
+					</WriteAccessContext.Provider>
+				</AdvancedPathsContext.Provider>
+			</RootSchemaContext.Provider>
 		</FormOptionsContext.Provider>
 	)
 }
