@@ -2,6 +2,26 @@ import { describe, expect, it } from 'vitest'
 
 import * as Arr from '@/lib/array-utils'
 
+describe('set operations', () => {
+	// one size takes the linear scan and the other the Set, and both must match the naive definitions
+	for (const size of [5, 60]) {
+		const before = Array.from({ length: size }, (_, i) => i % (size - 2)).concat(NaN)
+		const after = Array.from({ length: size }, (_, i) => i + (size >> 1)).concat(NaN)
+
+		it(`matches the reference results with ${size} items`, () => {
+			expect(Arr.union(before, after)).toEqual([...new Set([...before, ...after])])
+			expect(Arr.intersect(before, after)).toEqual([...new Set(before.filter((x) => after.includes(x)))])
+			expect(Arr.missing(before, after)).toEqual(before.filter((x) => !after.includes(x)))
+			expect(Arr.delta(before, after)).toEqual({
+				added: after.filter((x) => !before.includes(x)),
+				removed: before.filter((x) => !after.includes(x)),
+			})
+			expect(Arr.isSubset(before, after)).toBe(false)
+			expect(Arr.isSubset(after, Arr.intersect(before, after))).toBe(true)
+		})
+	}
+})
+
 describe('moveItem', () => {
 	const items = ['a', 'b', 'c', 'd']
 

@@ -78,8 +78,9 @@ export function some<K, T>(map: Map<K, T>, predicate: (key: K, value: T) => bool
 }
 
 export function revLookup<K, T>(map: Map<K, T>, value: T, toId: (value: T) => unknown = (value: T) => value): K | undefined {
+	const needle = toId(value)
 	for (const [key, val] of map.entries()) {
-		if (toId(val) === toId(value)) {
+		if (toId(val) === needle) {
 			return key
 		}
 	}
@@ -88,8 +89,9 @@ export function revLookup<K, T>(map: Map<K, T>, value: T, toId: (value: T) => un
 
 export function revLookupAll<K, T>(map: Map<K, T>, value: T, toId: (value: T) => unknown = (value: T) => value): K[] {
 	const matches: K[] = []
+	const needle = toId(value)
 	for (const [key, val] of map.entries()) {
-		if (toId(val) === toId(value)) {
+		if (toId(val) === needle) {
 			matches.push(key)
 		}
 	}
