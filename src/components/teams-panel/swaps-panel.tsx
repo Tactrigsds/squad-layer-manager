@@ -1,3 +1,4 @@
+import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -20,17 +21,24 @@ import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { OpenWindowInteraction } from '@/components/ui/draggable-window'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import type * as ChatPrt from '@/frame-partials/chat.partial'
+import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map-utils'
+import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as MH from '@/models/match-history.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
+import * as TSWCB from '@/models/teamswap-counterbalance.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -159,9 +167,52 @@ export function SwapsPanel({
 						)}
 					/>
 				</div>
+				<CounterbalanceSwitch stores={stores} />
 				<TeamsAfterSwap leftTeam={leftTeam} rightTeam={rightTeam} stores={stores} />
 			</div>
 			<TeamSwapsDisplay teamId={rightTeam} align="end" className="ps-2" stores={stores} />
+		</div>
+	)
+}
+
+const ENABLED_PATH = TSWCB.ENABLED_SETTING_PATH.join('.')
+
+export function CounterbalanceSwitch({ stores }: { stores: SquadServerFrame.KeyProp }) {
+	const serverId = stores.squadServer!.serverId
+	const enabled = Zus.useStore(stores.squadServer!, (s) => ServerSettingsPrt.Sel.saved(s).teamswapCounterbalance.enabled)
+	const writeDenied = RbacClient.usePermsCheck(SETTINGS.Grants.writeServerSettingsPaths(serverId, [ENABLED_PATH]))
+	const canReadSettings = RbacClient.useServerSettingsAccess(serverId).canRead
+	const id = React.useId()
+	return (
+		<div className="flex items-center gap-1.5">
+			<PermissionDeniedTooltip denied={writeDenied}>
+				<Switch
+					id={id}
+					checked={enabled}
+					disabled={!!writeDenied}
+					onCheckedChange={(next) => void TSWClient.Actions.setCounterbalanceEnabled(stores, next)}
+				/>
+			</PermissionDeniedTooltip>
+			<Tooltip help>
+				<TooltipTrigger asChild>
+					<Label htmlFor={id} className="inline-flex cursor-pointer items-center gap-1 text-xs">
+						<Icons.Scale className="size-3.5 text-info" />
+						{tr.text(TSW_Msgs.counterbalance())}
+					</Label>
+				</TooltipTrigger>
+				<TooltipContent>{tr.text(TSW_Msgs.counterbalanceHint())}</TooltipContent>
+			</Tooltip>
+			{canReadSettings && (
+				<TSR.Link
+					to="/settings"
+					hash={SettingsNav.serverSettingAnchor(serverId, 'teamswapCounterbalance')}
+					className="text-text-3 hover:text-text"
+					title={tr.text(TSW_Msgs.counterbalanceRules())}
+					aria-label={tr.text(TSW_Msgs.counterbalanceRules())}
+				>
+					<Icons.SlidersHorizontal className="size-3.5" />
+				</TSR.Link>
+			)}
 		</div>
 	)
 }
@@ -207,15 +258,16 @@ function TeamSwapsDisplay(props: {
 }
 
 function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; stores: SquadServerFrame.KeyProp }) {
-	const { mutation } = props.swap
+	const { mutation, counterbalance } = props.swap
 	const playerId = SM.PlayerIds.getPlayerId(props.swap.player.ids)
 	const variant = mutation.added ? 'added' : mutation.removed ? 'removed' : 'secondary'
 
 	return (
 		<Badge
 			data-tour="swap-badge"
+			data-counterbalance={counterbalance ?? false}
 			variant={variant}
-			className="flex items-center gap-1"
+			className="flex items-center gap-1 data-[counterbalance=true]:border data-[counterbalance=true]:border-dashed data-[counterbalance=true]:border-info"
 			title={mutation.removed ? undefined : tr.text(SM_Msgs.middleClickDeleteSwap())}
 			onMouseDown={(e) => {
 				// prevent middle-click autoscroll
@@ -226,6 +278,9 @@ function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; st
 				TSWClient.Actions.removeSwap(props.stores, [playerId])
 			}}
 		>
+			{counterbalance && (
+				<Icons.Scale className="size-3 shrink-0 text-info" role="img" aria-label={tr.text(TSW_Msgs.counterbalanceSwap())} />
+			)}
 			<span className={mutation.removed ? 'line-through opacity-60' : undefined}>{props.swap.player.ids.username}</span>
 			{!mutation.removed && (
 				<button

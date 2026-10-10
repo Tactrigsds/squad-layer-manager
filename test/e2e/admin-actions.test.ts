@@ -34,6 +34,9 @@ test.beforeAll(async () => {
 			// a configured grouping is the mode in effect, so the group column shows parties only once Party is picked
 			s.playerGroupings = { Admins: { rules: [{ type: 'server-admin', group: 'Admin' }], groups: {} } } as typeof s.playerGroupings
 		},
+		serverSettings: (s) => {
+			s.teamswapCounterbalance.enabled = true
+		},
 	})
 	leader = app.emu.world.connectPlayer(makePlayer({ name: ' sq_leader', teamId: 1 }))
 	member = app.emu.world.connectPlayer(makePlayer({ name: ' sq_member', teamId: 1 }))
@@ -178,6 +181,38 @@ test.describe('admin actions from the teams panel', () => {
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeHidden()
 		await panel.getByText('Show Spoilers', { exact: true }).click()
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeVisible()
+	})
+
+	// Runs on the roster the earlier tests leave: sq_leader, sq_member and e2e_swapee on team 1, loner on team 2, and
+	// party #3 spanning sq_leader and loner. Queuing loner leaves team 1 four ahead.
+	test('counterbalance offsets a queued swap, keeps a party together and ignores roster changes', async ({ page }) => {
+		const panel = Dash.teamsSection(page)
+		const lonerRow = panel.getByRole('row', { name: /loner/ })
+		await expect(lonerRow).toBeVisible({ timeout: 20_000 })
+		await lonerRow.click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Swap Next' }).click()
+
+		// sq_leader stays: party #3 includes loner, who is already moving the other way
+		const counterbalanced = page.locator('[data-tour="swap-badge"][data-counterbalance="true"]')
+		await expect(counterbalanced).toHaveCount(2, { timeout: 20_000 })
+		await expect(counterbalanced.filter({ hasText: 'sq_member' })).toHaveCount(1)
+		await expect(counterbalanced.filter({ hasText: 'e2e_swapee' })).toHaveCount(1)
+
+		const joiner = app.emu.world.connectPlayer(makePlayer({ name: ' cb_joiner', teamId: 2 }))
+		await expect(panel.getByRole('row', { name: /cb_joiner/ })).toBeVisible({ timeout: 20_000 })
+		await expect(counterbalanced).toHaveCount(2)
+
+		// sq_member is not picked again, and nobody else on team 1 is free to take their place
+		await counterbalanced.filter({ hasText: 'sq_member' }).getByRole('button', { name: 'Delete swap' }).click()
+		await expect(counterbalanced).toHaveCount(1)
+		await expect(counterbalanced.filter({ hasText: 'e2e_swapee' })).toHaveCount(1)
+
+		// with no admin swap left there is nothing to counterbalance
+		await page.locator('[data-tour="swap-badge"]', { hasText: 'loner' }).getByRole('button', { name: 'Delete swap' }).click()
+		await expect(page.locator('[data-tour="swap-badge"]')).toHaveCount(0)
+
+		app.emu.world.disconnectPlayer(joiner)
+		await expect(panel.getByRole('row', { name: /cb_joiner/ })).toBeHidden({ timeout: 20_000 })
 	})
 
 	test("adding a BattleMetrics note, then reading it in the player's details window", async ({ page }) => {

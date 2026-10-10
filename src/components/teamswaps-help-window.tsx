@@ -40,6 +40,20 @@ function TeamswapsHelpWindow() {
 						<span>{tr.richText(TSW_Msgs.helpClearTeam())}</span>
 					</li>
 				</ul>
+				<section className="space-y-2 border-t border-line-soft pt-3">
+					<h3 className="flex items-center gap-1.5 font-semibold text-foreground">
+						<Icons.Scale className="h-3.5 w-3.5 shrink-0 text-info" />
+						{tr.text(TSW_Msgs.helpCounterbalanceTitle())}
+					</h3>
+					<p>{tr.richText(TSW_Msgs.helpCounterbalanceIntro())}</p>
+					<ul className="list-disc list-inside space-y-1.5">
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceRules())}</li>
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceParties())}</li>
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceRoster())}</li>
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceInGame())}</li>
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceRemove())}</li>
+					</ul>
+				</section>
 			</div>
 		</div>
 	)

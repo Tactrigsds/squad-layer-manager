@@ -401,3 +401,56 @@ describe('reducer reset-players', () => {
 		expect([...next.players.entries()]).toEqual([['a', 'B']])
 	})
 })
+
+describe('reducer set-counterbalance-swaps', () => {
+	const players: [SM.PlayerId, MH.NormedTeamId][] = [
+		['a', 'A'],
+		['b', 'B'],
+		['c', 'B'],
+	]
+
+	it('replaces the previous counterbalance swaps and leaves admin swaps alone', () => {
+		let { state } = apply(
+			stateWith(players),
+			op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: false, source: SOURCE }),
+		)
+		;({ state } = apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['b', 'A']]) })))
+		;({ state } = apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['c', 'A']]) })))
+		expect([...state.editedSwaps]).toEqual([
+			['a', { toTeam: 'B', source: SOURCE }],
+			['c', { toTeam: 'A', source: SOURCE, counterbalance: true }],
+		])
+	})
+
+	it('never overrides an admin swap or a swap to the team a player is already on', () => {
+		let { state } = apply(
+			stateWith(players),
+			op({ code: 'add-player-teamswap', playerId: 'b', toTeam: 'A', saved: false, source: SOURCE }),
+		)
+		;({ state } = apply(
+			state,
+			op({
+				code: 'set-counterbalance-swaps',
+				source: SOURCE,
+				swaps: new Map<SM.PlayerId, MH.NormedTeamId>([
+					['b', 'A'],
+					['c', 'B'],
+					['a', 'B'],
+				]),
+			}),
+		))
+		expect(state.editedSwaps.get('b')?.counterbalance).toBeUndefined()
+		expect(state.editedSwaps.has('c')).toBe(false)
+		expect(state.editedSwaps.get('a')?.counterbalance).toBe(true)
+	})
+
+	it('is a no-op when the counterbalance swaps are unchanged, so a saved queue stays in sync', () => {
+		const state = stateWith(players)
+		state.savedSwaps = new Map([['b', { toTeam: 'A', source: SOURCE, counterbalance: true }]])
+		state.editedSwaps = state.savedSwaps
+		const rejection = rejectionOf(() =>
+			apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['b', 'A']]) })),
+		)
+		expect(rejection.code).toBe('noop')
+	})
+})

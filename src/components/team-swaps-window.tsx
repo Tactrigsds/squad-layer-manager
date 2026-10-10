@@ -2,12 +2,14 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { MatchTeamDisplay } from '@/components/teams-display'
+import { CounterbalanceSwitch } from '@/components/teams-panel/swaps-panel'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as MapUtils from '@/lib/map-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as MH from '@/models/match-history.models'
@@ -90,6 +92,9 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 				<span className="flex justify-end">
 					<MatchTeamDisplay teamId="B" showAltTeamIndicator stores={stores} />
 				</span>
+			</div>
+			<div className="flex flex-wrap items-center gap-2 px-3 pt-2">
+				<CounterbalanceSwitch stores={stores} />
 			</div>
 			<div className="px-3 py-2">
 				<PermissionDeniedTooltip denied={manageDenied}>
@@ -255,7 +260,12 @@ function SwapRow({
 				mutation.removed && 'opacity-60',
 			)}
 		>
-			<span className={cn('truncate font-bold', mutation.removed && 'line-through')}>{player.ids.username}</span>
+			<span className={cn('inline-flex min-w-0 items-center gap-1.5 font-bold', mutation.removed && 'line-through')}>
+				{swap.counterbalance && (
+					<Icons.Scale className="size-3.5 shrink-0 text-info" role="img" aria-label={tr.text(TSW_Msgs.counterbalanceSwap())} />
+				)}
+				<span className="truncate">{player.ids.username}</span>
+			</span>
 			<span className="whitespace-nowrap text-xs text-text-2">
 				{player.teamId !== null && match && <MatchTeamDisplay matchId={match.historyEntryId} teamId={player.teamId} stores={stores} />}
 				{player.squadId !== null && <> · {tr.text(SM_Msgs.squadWithId(player.squadId))}</>}

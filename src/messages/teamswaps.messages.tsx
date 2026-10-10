@@ -5,6 +5,7 @@ import * as React from 'react'
 import * as Tgt from '@/messages/target'
 import type * as MH from '@/models/match-history.models'
 import { def, join, raw, rt, t, type TString, type Variants } from '@/models/messages.models'
+import type * as TSWCB from '@/models/teamswap-counterbalance.models'
 import type * as TSW from '@/models/teamswaps.models'
 
 // -------- the help window --------
@@ -28,6 +29,58 @@ export const helpStepSwapNow = def(rt('Click <strong>Swap Now</strong> to immedi
 export const helpRevert = def(rt('<strong>Revert</strong> discards unsaved edits back to the last saved state.'))
 
 export const helpClearTeam = def(rt('The <strong>trash icon</strong> on a team column clears all for that team.'))
+
+export const helpCounterbalanceTitle = def('Counterbalance swaps')
+
+export const helpCounterbalanceIntro = def(
+	rt(
+		'When <strong>Counterbalance</strong> is on, SLM re-picks swaps from the other team whenever an admin queues or removes a swap, so that the teams end up the same size. Counterbalance swaps carry the <strong>scale icon</strong>.',
+	),
+)
+
+export const helpCounterbalanceRules = def(
+	'SLM picks players by the counterbalance rules in the server settings. Some players are picked first, and some are never picked.',
+)
+
+export const helpCounterbalanceParties = def('A party is always swapped together.')
+
+export const helpCounterbalanceRoster = def('Players joining, leaving or switching teams never add or remove counterbalance swaps.')
+
+export const helpCounterbalanceInGame = def('Swaps queued with an in-game command are not counterbalanced.')
+
+export const helpCounterbalanceRemove = def('Remove a counterbalance swap to have SLM pick a different player.')
+
+// -------- counterbalance --------
+
+export const counterbalance = def('Counterbalance')
+
+export const counterbalanceHint = def(
+	'When on, SLM queues swaps from the other team whenever an admin queues or removes a swap, so that the teams end up the same size.',
+)
+
+export const counterbalanceRules = def('Counterbalance rules')
+
+export const counterbalanceSwap = def('Counterbalance swap')
+
+export const addGroup = def('Add group')
+
+export const groupPicker = def('Group')
+
+export const addPreference = def('Add preference')
+
+export const removePreference = def('Remove preference')
+
+export const preferenceLabels: Record<TSWCB.Preference['type'], TString> = {
+	group: t('In group'),
+	kd: t('K/D'),
+	kills: t('Kills'),
+	wounds: t('Wounds'),
+}
+
+export const orderLabels: Record<TSWCB.StatOrder, TString> = {
+	lowest: t('Lowest first'),
+	highest: t('Highest first'),
+}
 
 export const notifyPlayerOfUpcomingTeamswap = def(
 	'You have been marked for a team swap on mapchange. Thank you for helping with team balance and contact admins if you have issues.',

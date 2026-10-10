@@ -24,6 +24,7 @@ import {
 } from '@/components/settings-form/editors/plugin-fields'
 import { AdminActionReasonsField, LayerTagsField } from '@/components/settings-form/editors/preset-tables'
 import { RbacSuperCallout } from '@/components/settings-form/editors/rbac'
+import { CounterbalanceGroupsField, CounterbalancePickFirstField } from '@/components/settings-form/editors/teamswap-counterbalance'
 import type { OverrideProps, Path, SchemaNode } from '@/components/settings-form/settings-form.helpers'
 import * as PLG from '@/models/plugins.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -65,6 +66,8 @@ export function overrideFor(path: Path, _node: SchemaNode): React.FC<OverridePro
 	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
 	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
 	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
+	if (path.length === 2 && path[0] === 'teamswapCounterbalance' && last === 'neverPickGroups') return CounterbalanceGroupsField
+	if (path.length === 2 && path[0] === 'teamswapCounterbalance' && last === 'pickFirst') return CounterbalancePickFirstField
 	if (SDoc.read(_node)?.secret) return PasswordField
 	return undefined
 }

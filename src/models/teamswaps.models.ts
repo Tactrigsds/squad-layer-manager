@@ -21,6 +21,8 @@ export type TeamswapStatus = z.infer<typeof TeamswapStatusSchema>
 export const TeamswapSchema = z.object({
 	toTeam: MH.NormedTeamIdSchema,
 	source: USR.GuiOrChatUserIdSchema,
+	// queued by counterbalance (see teamswap-counterbalance.models) rather than picked by an admin
+	counterbalance: z.literal(true).optional(),
 })
 export type Teamswap = z.infer<typeof TeamswapSchema>
 export const TeamswapCollectionSchema = z.map(SM.PlayerIdSchema, TeamswapSchema)
@@ -184,6 +186,14 @@ export const OpSchema = z.discriminatedUnion('code', [
 		source: USR.GuiOrChatUserIdSchema,
 	}),
 
+	// replaces every counterbalance swap in the edit set with `swaps`
+	z.object({
+		opId: z.string(),
+		code: z.literal('set-counterbalance-swaps'),
+		source: USR.GuiOrChatUserIdSchema,
+		swaps: z.map(SM.PlayerIdSchema, MH.NormedTeamIdSchema),
+	}),
+
 	z.object({ opId: z.string(), code: z.literal('teamswap-execution-completed') }),
 
 	z.discriminatedUnion('reason', [
@@ -232,7 +242,7 @@ export type OpError<OpCode extends Op['code'] = Op['code']> = { op: Extract<Op, 
 						? OpErrors.CurrentlyNotSwapping
 						: OpCode extends 'execute-teamswaps'
 							? OpErrors.CurrentlySwapping | OpErrors.SwapsNotSaved
-							: OpCode extends 'swap-now'
+							: OpCode extends 'swap-now' | 'set-counterbalance-swaps'
 								? OpErrors.CurrentlySwapping
 								: OpCode extends 'init-saved-teamswaps'
 									? OpErrors.CurrentlySwapping
@@ -548,6 +558,28 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					saveSource = op.source
 					saveTrigger = 'user-edit'
 					if (removed.length > 0) emit({ code: 'notify-teamswaps-cancelled', players: removed })
+					break
+				}
+
+				case 'set-counterbalance-swaps': {
+					if (state.swapping) {
+						emitOpError({ code: 'err:currently-swapping', op })
+						break
+					}
+					const next: TeamswapCollection = new Map()
+					for (const [playerId, swap_] of state.editedSwaps) {
+						if (!swap_.counterbalance) next.set(playerId, swap_)
+					}
+					for (const [playerId, toTeam] of op.swaps) {
+						if (next.has(playerId) || state.pendingSwaps.has(playerId)) continue
+						const team = state.players.get(playerId)
+						if (!team || team === toTeam) continue
+						// an unchanged swap keeps its entry, so an unchanged edit set stays reference-equal to the saved one
+						const existing = state.editedSwaps.get(playerId)
+						next.set(playerId, existing?.toTeam === toTeam ? existing : { toTeam, source: op.source, counterbalance: true })
+					}
+					const changed = next.size !== state.editedSwaps.size || [...next].some(([id, swap_]) => state.editedSwaps.get(id) !== swap_)
+					if (changed) state.editedSwaps = next
 					break
 				}
 

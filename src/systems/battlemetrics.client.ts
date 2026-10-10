@@ -172,6 +172,13 @@ export function groupColorNow(playerId: string, player: PG.PlayerFactsSource | u
 	return groupColorOf(inputs, currentBmData()[playerId]?.flagIds, player)
 }
 
+// A player's grouping facts as of now, without subscribing to anything
+export function playerFactsNow(playerId: string, player: PG.PlayerFactsSource): PG.PlayerFacts {
+	const orgFlags = RPC.queryClient.getQueryData(RPC.orpc.battlemetrics.listOrgFlags.queryOptions({ staleTime: Infinity }).queryKey)
+	const flagIds = currentBmData()[playerId]?.flagIds
+	return PG.playerFacts(player, flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : [])
+}
+
 function currentBmData(): BM.PublicPlayerBmData {
 	const value = playerBmData$.getValue()
 	return value instanceof Promise ? {} : value

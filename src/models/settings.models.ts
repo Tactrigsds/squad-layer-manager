@@ -23,6 +23,7 @@ import * as SDoc from '@/models/schema-docs.models'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as TA from '@/models/team-attribution.models'
+import * as TSWCB from '@/models/teamswap-counterbalance.models'
 import * as RBAC from '@/rbac.models'
 
 // ============================== rbac (moved out of the deploy-time config so it's admin-editable at runtime) ==============================
@@ -1491,6 +1492,14 @@ export const PublicServerSettingsSchema = z.object({
 				),
 			}),
 		),
+	teamswapCounterbalance: TSWCB.SettingsSchema.prefault({}).meta(
+		SDoc.of({
+			label: t('Teamswap Counterbalance'),
+			description: t(
+				'Which players SLM picks when it counterbalances the swaps an admin queues, so that the teams end up the same size. Parties are always swapped together.',
+			),
+		}),
+	),
 	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').meta(
 		SDoc.of({
 			label: t('Post Roll Announcements Timeout'),

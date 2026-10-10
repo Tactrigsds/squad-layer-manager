@@ -1,15 +1,26 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
+import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
+import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import type * as MH from '@/models/match-history.models'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as MH from '@/models/match-history.models'
+import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
+import * as TSWCB from '@/models/teamswap-counterbalance.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as UP from '@/models/user-presence.models'
+import type * as USR from '@/models/users.models'
+import * as RPC from '@/orpc.client'
+import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
+import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -142,13 +153,68 @@ export namespace Sel {
 	}
 }
 
+function currentMatchNow(serverId: string): MH.MatchDetails | undefined {
+	const matchesResult = MatchHistoryClient.recentMatches$(serverId).getValue()
+	if (matchesResult instanceof Promise) return undefined
+	return matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
+}
+
 function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.PlayerId): MH.NormedTeamId | null {
-	const matchesResult = MatchHistoryClient.recentMatches$(stores.squadServer.serverId).getValue()
-	if (matchesResult instanceof Promise) return null
-	const currentMatch = matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
 	const state = Zus.getState(stores.squadServer)
 	const players = ChatPrt.Sel.players(state)
-	return TeamswapsPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
+	return TeamswapsPrt.getPlayerOppositeTeam(playerId, currentMatchNow(stores.squadServer.serverId), players)
+}
+
+const NO_STATS: TSWCB.PlayerStats = { kills: 0, wounds: 0, deaths: 0 }
+
+// Re-picks the counterbalance swaps against the edit set as it now stands. Called only after an admin's own edit and
+// never on a roster change, which is what keeps counterbalance a response to deliberate swaps.
+function counterbalance(stores: SquadServerFrame.KeyProp, source: USR.GuiOrChatUserId) {
+	const frameState = Zus.getState(stores.squadServer)
+	const settings = ServerSettingsPrt.Sel.saved(frameState).teamswapCounterbalance
+	if (!settings.enabled) return
+	const match = currentMatchNow(stores.squadServer.serverId)
+	if (!match) return
+	const state = Sel.localState(frameState)
+	const chat = ChatPrt.Sel.chatState(frameState)
+	const players: TSWCB.Candidate[] = []
+	for (const [playerId, player] of chat.players) {
+		if (player.teamId === null) continue
+		players.push({
+			playerId,
+			team: MH.getNormedTeamId(player.teamId, match.ordinal),
+			partyId: player.partyId ?? null,
+			stats: chat.playerStats[playerId] ?? NO_STATS,
+			facts: BattlemetricsClient.playerFactsNow(playerId, player),
+		})
+	}
+	const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>()
+	for (const [playerId, swap_] of state.editedSwaps) {
+		if (!swap_.counterbalance) manualSwaps.set(playerId, swap_.toTeam)
+	}
+	const result = TSWCB.compute({
+		settings,
+		groupings: SettingsClient.PublicSettingsStore.getState()?.playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS,
+		players,
+		manualSwaps,
+		skipped: frameState.teamswaps.counterbalanceSkipped,
+		pending: new Set(state.pendingSwaps.keys()),
+	})
+	TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'set-counterbalance-swaps', source, swaps: result.swaps })
+}
+
+// Records the counterbalance swaps among `removing`, so counterbalance picks someone else in their place. A synced edit
+// set starts a fresh edit, so it forgets what earlier edits skipped.
+function skipCounterbalanced(stores: SquadServerFrame.KeyProp, removing: SM.PlayerId[]) {
+	const slice = Zus.toPartialStore(stores.squadServer, 'teamswaps')
+	const { session, counterbalanceSkipped } = slice.getState()
+	const { editedSwaps, savedSwaps } = session.localState
+	const next = new Set(editedSwaps === savedSwaps ? [] : counterbalanceSkipped)
+	for (const playerId of removing) {
+		if (editedSwaps.get(playerId)?.counterbalance) next.add(playerId)
+	}
+	if (next.size === 0 && counterbalanceSkipped.size === 0) return
+	slice.setState({ counterbalanceSkipped: next })
 }
 
 export namespace Actions {
@@ -181,17 +247,20 @@ export namespace Actions {
 				},
 			)
 		}
+		counterbalance(stores, source)
 		setEditing(stores.squadServer.serverId)
 	}
 
 	export function removeSwap(stores: SquadServerFrame.KeyProp, playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
+		skipCounterbalanced(stores, playerIds)
 		for (const playerId of playerIds) {
 			TeamswapsPrt.Actions.dispatch(
 				{ teamswaps: stores.squadServer },
 				{ code: 'remove-player-teamswaps', playerId, source, saved: false },
 			)
 		}
+		counterbalance(stores, source)
 		setEditing(stores.squadServer.serverId)
 	}
 
@@ -212,13 +281,15 @@ export namespace Actions {
 	export function clearTeamSwaps(stores: SquadServerFrame.KeyProp, teamId: MH.NormedTeamId) {
 		const source = { discordId: UsersClient.loggedInUserId }
 		const state = Sel.localState(Zus.getState(stores.squadServer))
-		for (const [playerId, swap_] of state.editedSwaps.entries()) {
-			if (swap_.toTeam !== teamId) continue
+		const playerIds = [...state.editedSwaps].filter(([, swap_]) => swap_.toTeam === teamId).map(([playerId]) => playerId)
+		skipCounterbalanced(stores, playerIds)
+		for (const playerId of playerIds) {
 			TeamswapsPrt.Actions.dispatch(
 				{ teamswaps: stores.squadServer },
 				{ code: 'remove-player-teamswaps', playerId, source, saved: false },
 			)
 		}
+		counterbalance(stores, source)
 		setEditing(stores.squadServer.serverId)
 	}
 
@@ -237,6 +308,21 @@ export namespace Actions {
 		ensureViewingTeams(stores.squadServer.serverId)
 		const source = { discordId: UsersClient.loggedInUserId }
 		TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'revert-to-saved', source })
+		Zus.toPartialStore(stores.squadServer, 'teamswaps').setState({ counterbalanceSkipped: new Set() })
 		clearEditing(stores.squadServer.serverId)
+	}
+
+	// writes straight to the saved settings, so the switch takes effect for every admin at once
+	export async function setCounterbalanceEnabled(stores: SquadServerFrame.KeyProp, enabled: boolean) {
+		try {
+			const res = await RPC.orpc.settings.server.updateSettings.call({
+				serverId: stores.squadServer.serverId,
+				ops: [{ path: [...TSWCB.ENABLED_SETTING_PATH], value: enabled }],
+			})
+			if (res?.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else if (res?.code === 'err:invalid-settings') toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
+		} catch (err) {
+			toast.error(...tr.toast(SETTINGS_Msgs.saveFailed(err instanceof Error ? err.message : String(err))))
+		}
 	}
 }
