@@ -3,7 +3,6 @@ import type * as OtelApi from '@opentelemetry/api'
 import type { MutexInterface } from 'async-mutex'
 import type Pino from 'pino'
 
-import { LRUMap } from '@/lib/lru-map.ts'
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
 import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
@@ -35,7 +34,9 @@ const CONTEXT_ATTR_MAPPING = [
 	// string prefix match, and pin the span to the version that produced it.
 	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.id, attr: ATTR.Plugin.ID },
 	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.manifest?.version, attr: ATTR.Plugin.VERSION },
-] as const
+].map((m) => ({ ...m, mapped: LOG.MAPPED_ATTRS.includes(m.attr) }))
+
+const MAPPED_ATTRS = new Set<string>(LOG.MAPPED_ATTRS)
 
 type PluginCtx = { plugin: { id: string; manifest: { version: string } } }
 
@@ -51,8 +52,8 @@ function spendOtelLinks(ctx: CS.Otel): [links: OtelApi.Link[], spent: CS.Otel] {
 	return [ctx.otel.links, { ...ctx, otel: { links: [] } }]
 }
 
-// LRU map in case of leaks
-const spanStatusMap = new LRUMap<string, { code: Otel.SpanStatusCode; message?: string }>(500)
+// a span's own status cannot be read back, so setSpanStatus records it here for spanOp to read once the op settles
+const spanStatuses = new WeakMap<Otel.Span, { code: Otel.SpanStatusCode; message?: string }>()
 
 // Every op records here, which is what turns the spans we already emit into rate/error/duration
 // without needing a spanmetrics connector in the collector. Lazily resolved: the global meter provider
@@ -100,6 +101,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 	},
 	cb: Cb,
 ) {
+	const fullName = `${opts.module.name}:${name}`
+	const run = withAcquired(opts.mutexes ?? [], cb as Cb)
+	const extraTextPart = (args: any[]) => (opts.extraText ? ` : ${opts.extraText(...(args as Parameters<Cb>)).trim()}` : '')
+
 	return async (..._args: Parameters<Cb>): Promise<Awaited<ReturnType<Cb>>> => {
 		let args = _args as any[]
 
@@ -117,12 +122,13 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			}
 		}
 
-		let links = opts.links ? [...opts.links] : []
+		let links = opts.links?.length ? [...opts.links] : []
 		let spanContext = Otel.context.active()
-		const fullName = `${opts.module.name}:${name}`
 
 		const spanAttrs: Record<string, any> = {}
+		let hasSpanAttrs = false
 		const baggageEntries: Record<string, Otel.BaggageEntry> = {}
+		let hasBaggageEntries = false
 
 		// Only the ctx-derived attrs and stored links need a ctx; opts.attrs and the baggage merge must
 		// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
@@ -142,14 +148,14 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				}
 			}
 
-			// Extract attributes from context using the mapping
-			for (const { ctxPath, attr } of CONTEXT_ATTR_MAPPING) {
+			for (const { ctxPath, attr, mapped } of CONTEXT_ATTR_MAPPING) {
 				const value = ctxPath(ctx)
 				if (value !== undefined && value !== null) {
 					spanAttrs[attr] = value
-					// Also add to baggage if it's in MAPPED_ATTRS
-					if (LOG.MAPPED_ATTRS.includes(attr)) {
+					hasSpanAttrs = true
+					if (mapped) {
 						baggageEntries[attr] = { value: value }
+						hasBaggageEntries = true
 					}
 				}
 			}
@@ -157,59 +163,57 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 		if (opts.root || !Otel.trace.getActiveSpan()) {
 			baggageEntries[ATTR.Span.ROOT_NAME] = { value: fullName }
+			hasBaggageEntries = true
 		}
 
-		// Add any custom attrs
-		let customAttrs = opts.attrs
-		if (typeof customAttrs === 'function') {
-			customAttrs = customAttrs(...(args as Parameters<Cb>))
-		}
+		const customAttrs = typeof opts.attrs === 'function' ? opts.attrs(...(args as Parameters<Cb>)) : opts.attrs
 		if (customAttrs) {
-			for (const [key, value] of Object.entries(customAttrs)) {
+			for (const key in customAttrs) {
+				const value = customAttrs[key]
 				spanAttrs[key] = value
-				// Add to baggage if it's in MAPPED_ATTRS
-				if (LOG.MAPPED_ATTRS.includes(key)) {
+				hasSpanAttrs = true
+				if (MAPPED_ATTRS.has(key)) {
 					baggageEntries[key] = { value: String(value) }
+					hasBaggageEntries = true
 				}
 			}
 		}
 
-		if (Object.keys(baggageEntries).length > 0) {
+		if (hasBaggageEntries) {
 			const currentBaggage = Otel.propagation.getBaggage(spanContext)
-			const newBaggageObj: Record<string, Otel.BaggageEntry> = {
-				...baggageEntries,
-			}
-
-			// Merge with existing baggage
+			let changed = !currentBaggage
 			if (currentBaggage) {
-				for (const [k, v] of currentBaggage.getAllEntries()) {
-					if (!(k in newBaggageObj)) {
-						newBaggageObj[k] = v
+				for (const k in baggageEntries) {
+					if (currentBaggage.getEntry(k)?.value !== baggageEntries[k].value) {
+						changed = true
+						break
 					}
 				}
 			}
-
-			const newBaggage = Otel.propagation.createBaggage(newBaggageObj)
-			spanContext = Otel.propagation.setBaggage(spanContext, newBaggage)
+			if (changed) {
+				const newBaggageObj: Record<string, Otel.BaggageEntry> = { ...baggageEntries }
+				if (currentBaggage) {
+					for (const [k, v] of currentBaggage.getAllEntries()) {
+						if (!(k in newBaggageObj)) {
+							newBaggageObj[k] = v
+						}
+					}
+				}
+				spanContext = Otel.propagation.setBaggage(spanContext, Otel.propagation.createBaggage(newBaggageObj))
+			}
 		}
 
 		const tracer = opts.module.tracer
 		return await tracer.startActiveSpan(fullName, { root: opts.root, links, kind: opts.kind }, spanContext, async (span) => {
-			// Set all collected attributes on the span
-			if (Object.keys(spanAttrs).length > 0) {
-				setSpanOpAttrs(spanAttrs)
+			if (hasSpanAttrs) {
+				span.setAttributes(spanAttrs)
 			}
 
-			let log = opts.module?.getLogger() ?? baseLogger
-
-			const resolveLevel = (level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined, fallback: Pino.Level): Pino.Level =>
-				typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
-
-			const extraText = opts.extraText ? `${opts.extraText(...(args as Parameters<Cb>))} ` : ''
+			const log = opts.module.getLogger() ?? baseLogger
 			const startedAt = performance.now()
 			let metricOutcome: ATTR.Op.Outcome = 'ok'
 			try {
-				const result = await withAcquired(opts.mutexes ?? (() => []), cb as Cb)(...(args as Parameters<Cb>))
+				const result = await run(...(args as Parameters<Cb>))
 				let statusString: string | undefined
 				// a returned `err:*` code. Captured rather than logged here so the op produces exactly one
 				// record: it used to emit an `OP : ... : value-error : <msg>` line and then fall through
@@ -225,56 +229,59 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 						setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 					}
 				}
-				let spanStatus = spanStatusMap.get(span.spanContext().spanId)
+				let spanStatus: { code: Otel.SpanStatusCode; message?: string } | undefined = spanStatuses.get(span)
 				if (!spanStatus) {
-					spanStatus = { code: Otel.SpanStatusCode.OK }
-					span.setStatus({ code: Otel.SpanStatusCode.OK })
+					spanStatus = OK_STATUS
+					span.setStatus(OK_STATUS)
 				}
 				const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
 				metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
 				const logLevel = valueError
-					? resolveLevel(opts.levels?.valueError, 'warn')
+					? resolveLevel(opts.levels?.valueError, 'warn', args)
 					: isError
-						? resolveLevel(opts.levels?.error, 'warn')
-						: resolveLevel(opts.levels?.event, 'debug')
-				statusString ??= isError ? (spanStatus?.message ?? 'error') : 'ok'
-				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-				// the value-error message carries the code plus its detail, so prefer it over the bare code
-				const outcome = valueError?.message ?? statusString
-				const opMsg = `op : ${fullName}${extraTextPart} : ${outcome}`
-				if (valueError?.cause) {
-					log?.[logLevel](valueError.cause as Error, opMsg)
-				} else {
-					log?.[logLevel](opMsg)
+						? resolveLevel(opts.levels?.error, 'warn', args)
+						: resolveLevel(opts.levels?.event, 'debug', args)
+				if (log?.isLevelEnabled(logLevel)) {
+					statusString ??= isError ? (spanStatus.message ?? 'error') : 'ok'
+					// the value-error message carries the code plus its detail, so prefer it over the bare code
+					const outcome = valueError?.message ?? statusString
+					const opMsg = `op : ${fullName}${extraTextPart(args)} : ${outcome}`
+					if (valueError?.cause) {
+						log[logLevel](valueError.cause as Error, opMsg)
+					} else {
+						log[logLevel](opMsg)
+					}
 				}
 				return result as Awaited<ReturnType<Cb>>
 			} catch (error) {
 				const message = recordGenericError(error)
-				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
 				metricOutcome = Prom.isAbortError(error) ? 'aborted' : 'error'
 				if (Prom.isAbortError(error)) {
 					// expected cancellation (request dropped, managed server destroyed, shutdown) -- not a failure
-					log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
+					if (log?.isLevelEnabled('debug')) log.debug(`${name}${extraTextPart(args)} : aborted: ${message}`)
 				} else if (error instanceof Error) {
-					log?.error(error, `${name}${extraTextPart} : error: ${message}`)
+					log?.error(error, `${name}${extraTextPart(args)} : error: ${message}`)
 				} else {
-					log?.error(`${name}${extraTextPart} : error: ${message}`)
+					log?.error(`${name}${extraTextPart(args)} : error: ${message}`)
 				}
 				throw error
 			} finally {
-				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, {
-					[ATTR.Op.NAME]: fullName,
-					[ATTR.Op.OUTCOME]: metricOutcome,
-					// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
-					// configured servers and of installed plugins
-					...(spanAttrs[ATTR.SquadServer.ID] ? { [ATTR.SquadServer.ID]: spanAttrs[ATTR.SquadServer.ID] } : {}),
-					...(spanAttrs[ATTR.Plugin.ID] ? { [ATTR.Plugin.ID]: spanAttrs[ATTR.Plugin.ID] } : {}),
-				})
-				spanStatusMap.delete(span.spanContext().spanId)
+				const metricAttrs: Otel.Attributes = { [ATTR.Op.NAME]: fullName, [ATTR.Op.OUTCOME]: metricOutcome }
+				// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
+				// configured servers and of installed plugins
+				if (spanAttrs[ATTR.SquadServer.ID]) metricAttrs[ATTR.SquadServer.ID] = spanAttrs[ATTR.SquadServer.ID]
+				if (spanAttrs[ATTR.Plugin.ID]) metricAttrs[ATTR.Plugin.ID] = spanAttrs[ATTR.Plugin.ID]
+				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, metricAttrs)
 				span.end()
 			}
 		})
 	}
+}
+
+const OK_STATUS = { code: Otel.SpanStatusCode.OK } as const
+
+function resolveLevel(level: Pino.Level | ((...a: any[]) => Pino.Level) | undefined, fallback: Pino.Level, args: any[]): Pino.Level {
+	return typeof level === 'function' ? level(...args) : (level ?? fallback)
 }
 
 export function setSpanOpAttrs(attrs: Record<string, any>) {
@@ -285,8 +292,9 @@ export function setSpanStatus(_status: Otel.SpanStatusCode | 'ok' | 'error', mes
 	const activeSpan = Otel.default.trace.getActiveSpan()
 	if (!activeSpan) return
 
-	spanStatusMap.set(activeSpan.spanContext().spanId, { code: status, message })
-	activeSpan.setStatus({ code: status, message })
+	const spanStatus = { code: status, message }
+	spanStatuses.set(activeSpan, spanStatus)
+	activeSpan.setStatus(spanStatus)
 }
 
 export function recordGenericError(error: unknown, setStatus = true) {
