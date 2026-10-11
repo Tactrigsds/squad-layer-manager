@@ -63,6 +63,7 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
+import * as RC from './feed/render-context'
 import * as Selection from './feed/selection'
 import { ServerEvent } from './feed/server-event'
 import { useEventsSelectionText, useFollowGroupColors, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
@@ -342,7 +343,8 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const renderedPageCount = historyRequested ? (eventsQuery.data?.pages.length ?? 0) : 0
 	const prependAnchor = React.useRef<{ el: Element; top: number; pageCount: number } | null>(null)
 	const anchorForPrepend = () => {
-		const el = content && topVisibleFeedRow(content)
+		const movableRowIds = new Set(filteredEvents.filter((e) => e.type === 'NEW_GAME').map((e) => RC.rowIdentity(e).id))
+		const el = content && topVisibleFeedRow(content, movableRowIds)
 		prependAnchor.current = el ? { el, top: el.getBoundingClientRect().top, pageCount: renderedPageCount } : null
 	}
 	React.useLayoutEffect(() => {
@@ -824,13 +826,17 @@ function ActivityExpandToggle({ expanded, onToggle }: { expanded: boolean; onTog
 	)
 }
 
-// The first row whose bottom edge is below the top of the feed's scroll viewport. The feed's first element is
-// skipped: it is the leading date separator, which changes or unmounts once older events render above it.
-function topVisibleFeedRow(content: HTMLElement): Element | null {
+// The first event row whose bottom edge is below the top of the feed's scroll viewport. Separators are passed over,
+// since the leading one changes or unmounts once older events render above it, and so are the rows in `skipRowIds`.
+// A match's NEW_GAME belongs there: it rides along on every page that touches its match, so the older page moves it
+// up past the rows it inserts.
+function topVisibleFeedRow(content: HTMLElement, skipRowIds: ReadonlySet<string>): Element | null {
 	const viewportTop = (content.closest('[data-radix-scroll-area-viewport]') ?? content).getBoundingClientRect().top
-	for (let i = 1; i < content.children.length; i++) {
-		const el = content.children[i]
-		if (el.getBoundingClientRect().bottom > viewportTop) return el
+	for (const el of content.children) {
+		const rowId = el.getAttribute(RC.ROW_ATTR)
+		if (rowId === null || skipRowIds.has(rowId)) continue
+		const rect = el.getBoundingClientRect()
+		if (rect.height > 0 && rect.bottom > viewportTop) return el
 	}
 	return null
 }
