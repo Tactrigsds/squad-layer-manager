@@ -130,15 +130,22 @@ export const loadState = Instr.spanOp(
 			}
 		}
 
-		// buildUser reaches the Discord REST API, which yields to the event loop. Enriching here would hold the
-		// process-wide transaction lock across a network round trip, so defer it: recentMatches reference users by
-		// setByUserId, not by embedding, and parts.users is display-only, so it can fill in after commit.
+		// buildUsers reaches the Discord REST API, so enriching here would hold the transaction lock across a network
+		// round trip. recentMatches reference users by setByUserId and parts.users is display-only, so it fills in after
+		// commit. loadState's own release scope runs before a caller's COMMIT, so inside a transaction it goes on
+		// unlockTasks, unawaited because runTransaction awaits those while the caller still holds matchHistory.mtx.
 		if (userRows.size > 0) {
-			addReleaseTask(async () => {
-				const users = await Users.buildUsers([...userRows.values()])
-				for (const user of users) Arr.upsertOn(state.parts.users, user, 'discordId')
-				state.dispatchUpdate()
-			})
+			const enrichUsers = async () => {
+				try {
+					const users = await Users.buildUsers([...userRows.values()])
+					for (const user of users) Arr.upsertOn(state.parts.users, user, 'discordId')
+					state.dispatchUpdate()
+				} catch (err) {
+					log.error(err, 'enriching match history users failed')
+				}
+			}
+			if (ctx.tx) ctx.tx.unlockTasks.push(() => void enrichUsers())
+			else addReleaseTask(enrichUsers)
 		}
 
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
