@@ -110,7 +110,9 @@ pnpm emuctl help                # the full list
 
 The same commands are available as a REPL inside `pnpm dev --emu-only` when it has a terminal (`help` lists them there
 too). Both front ends dispatch one registry (`src/dev/emu-control.ts`) against the same live world, so neither can
-grow a verb the other lacks.
+grow a verb the other lacks. A sandbox server's _Sandbox Controls_ window dispatches the same verbs
+(`src/models/sandbox.models.ts`, executed by `src/emulator/verbs.ts`), though it drives the sandbox's own emulator, not
+the dev instance's.
 
 `emuctl` talks to the host over a unix socket at `data/dev/emu.sock`. The socket needs no port, cannot be reached
 from the network, and is scoped to the worktree because it is stored in the worktree's own `data/dev`. `emuctl` exits

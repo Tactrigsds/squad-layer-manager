@@ -1,6 +1,6 @@
 # Server agent
 
-The server agent is a small program that runs on the game host, next to your squad server. It streams the server's
+The server agent is a small program that runs on the game host, next to your Squad server. It streams the server's
 log lines to SLM and proxies RCON, so SLM does not need direct access to either.
 
 Use it when SLM runs somewhere other than the game host. It is the recommended connection mode, because:

@@ -16,31 +16,17 @@ was taken before.
 **Periodic backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app
 snapshots its database on that interval.
 
-The two share a schedule and a retention window. A backup taken before a migration counts as that interval's backup,
-and is uploaded and recorded like any other. An upgrade therefore does not produce two copies of the same database a
-minute apart, and the next periodic backup comes a full interval later.
+A backup taken before a migration counts as that interval's periodic backup.
 
-Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
-
-## The Filename format
-
-Every backup is named for where it came from:
+## Backup names
 
 ```
-slm-backup-<db>[-pre-migration]-<sha>-<yyyyMMdd>-<HHmmss>.sqlite3.gz
-
 slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz                 a periodic backup
 slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz   taken before a migration
 ```
 
-`<db>` is the source database's filename without its extension. Retention only deletes names matching it, so two
-instances sharing a directory cannot prune each other's backups.
-
-`<sha>` is the short git sha of the build that owned the database when the snapshot was taken, recorded inside it in
-`_slm_meta`. It is `unknown` if the database carried no stamp. For a pre-migration backup this is the version being
-upgraded _from_, which is the one a rollback needs.
-
-The timestamp sorts chronologically.
+The sha names the SLM build that last ran against the database. For a pre-migration backup, that is the version being
+upgraded from, which is the one a rollback needs.
 
 ## Uploading to SFTP
 
@@ -89,14 +75,8 @@ It refuses to run while the app is up. Choose which backup it puts back:
 `--from` also takes a path. Use it to restore a backup fetched back off the SFTP target. Drop it in `data/backups` or
 pass the full path.
 
-Because the filename carries the owning build's sha, `--list` shows the build. Use `--commit-sha` to pick the newest
-backup from a particular version without unpacking anything. `--commit-sha` accepts a full sha, a short one, or a
-`commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
-
-`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks the
-backup and reports which app build the database belongs to, which image tag to pin, how far behind the current build it
-is, and whether its secrets decrypt with the `SETTINGS_ENCRYPTION_KEY` this install is configured with. Run it first
-when rolling back an upgrade, to find which version to set `SLM_IMAGE_TAG` to before starting the app.
+`--inspect` changes nothing. It reports which build a backup belongs to, which image tag to pin, how far behind the
+current build it is, and whether its secrets decrypt with this install's `SETTINGS_ENCRYPTION_KEY`.
 
 A backup is only complete with the key that encrypted it. Restored under a different key, the database comes up with
 every server disabled and every integration token unset, and each has to be re-entered on the settings page. Keep the
@@ -106,12 +86,10 @@ everything under the current key, and the variable can be removed again (see
 [installing.md, encryption key](../../installing.md#7-encryption-key)).
 
 The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
-undone. Delete it once the restore is confirmed. The backup is checked (`integrity_check`) before anything is moved, so
-a corrupt archive changes nothing.
+undone. Delete it once the restore is confirmed.
 
-Do not restore by hand. `gunzip -c backup.gz > data/db.sqlite3` leaves the old `-wal` file in place. SQLite replays it
-over the restored file, and the **old** database silently comes back, with `integrity_check` reporting it as fine.
-Restoring while the app is running also loses data: the app keeps writing to a database that is no longer at that path.
+Do not restore by hand by unzipping a backup over `data/db.sqlite3`. SQLite replays the old database's leftover write log
+over the restored file, and the old database silently comes back.
 
 ## Pinning a version
 
@@ -141,8 +119,7 @@ tag for one of them, and the app's own version is on its about page.
 ## Rolling back a bad upgrade
 
 Roll the image back too. Restoring a pre-migration backup and then starting the same version applies the same
-migration again. Each database is stamped with the git sha and branch of the app that last ran against it, so the
-backup records which build it belongs to.
+migration again.
 
 Ask which build that is before restoring anything:
 
@@ -165,9 +142,8 @@ docker compose stop app
 ./restore.sh --pre-migration
 ```
 
-The restore repeats the tag and exits non-zero, because the database it just put back is behind the image
-`SLM_IMAGE_TAG` still names. This stops `./restore.sh --pre-migration && docker compose up -d app` from
-starting the app on a database it would migrate straight back up. Pin `commit-9c1f0a2` as above, then:
+The restore repeats the tag and exits non-zero, because the restored database is behind the image `SLM_IMAGE_TAG`
+still names. Pin `commit-9c1f0a2` as above, then:
 
 ```sh
 docker compose pull app

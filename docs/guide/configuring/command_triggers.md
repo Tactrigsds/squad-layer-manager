@@ -63,20 +63,4 @@ can pass a player's own words into a public command's free-text argument. Write 
 ## Finding them
 
 The commands page lists a command's shortcut triggers under its details, and searching for one finds the command it
-runs. `/help` lists each shortcut on its own line, since each one asks the caller for something different.
-
-## When every trigger pins something
-
-If a command has no plain trigger, its shortcuts are listed as the command itself instead of under it. The examples
-follow the first shortcut. An argument that every shortcut pins is shown with its fixed value instead of as a word
-to type:
-
-```
-/timeout <player>
-/to <player>
-  <player>   name | id
-  duration   fixed at 45m
-```
-
-An argument that no shortcut passes on is left out. `{{arg1}} 45m` never reaches `<reason>`, so a timeout run this
-way cannot carry one, and the page does not offer it.
+runs. `/help` lists each shortcut on its own line.

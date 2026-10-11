@@ -67,13 +67,21 @@ A rule always hides its repeats behind the layer table's _Hide Repeats_. _Option
 - _Cross-team_ pools both teams together, so a value one team played counts as a repeat when the other team plays
   it. Only a rule on a team-specific attribute can take it.
 
-A rule is named after its attribute. Use _Add label_ to give the rule a name of its own, which is then what the
-repeat is reported under. Empty the box to take the name away again.
+A rule is named after its attribute, unless _Add label_ gives it a name of its own.
 
-Drag a rule by its grip to reorder the list.
+A repeat rule looks back only as far as the most recent seeding or training layer.
 
-A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
-opt out of that.
+### Fixing repeats
+
+While editing the queue, use _Fix Repeats_ (the wand icon) to clear repeat warnings automatically. SLM reorders the
+queue and swaps layers' teams to clear as many warnings as possible, with as few changes as possible. Moving a layer
+one place and swapping a layer's teams each count as one change. SLM never swaps the teams of:
+
+- an Invasion, Destruction or Insurgency layer
+- a layer whose swapped matchup falls outside the pool
+- a layer with a tag that has _Prevent swaps_ turned on
+
+A layer that another admin is editing stays where it is. The changes stay in the draft until the queue is saved.
 
 ## Randomization
 

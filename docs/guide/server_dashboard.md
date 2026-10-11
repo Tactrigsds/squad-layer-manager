@@ -1,6 +1,6 @@
 # Learning how to use SLM
 
-SLM is mostly learned inside the app, by using it. Start with the tutorials, then practise on the sandbox server.
+SLM is learned inside the app, by using it. Start with the tutorials, then practise on the sandbox server.
 
 ## Tutorials
 

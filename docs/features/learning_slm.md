@@ -5,8 +5,8 @@ admins somewhere to practise.
 
 ## Tutorials
 
-The tutorials walk through the server dashboard step by step. Open _Tutorials_ from the nav bar. SLM also offers them
-the first time a user opens a server's dashboard.
+The tutorials walk through the server dashboard step by step. They open from _Tutorials_ in the nav bar, and SLM
+offers them the first time a user opens a server's dashboard.
 
 | Tutorial          | Length | Covers                                                                              |
 | ----------------- | ------ | ----------------------------------------------------------------------------------- |
@@ -21,24 +21,23 @@ ask for an action, such as warning a player or adding a layer, and wait until it
 
 ![the first step of the player management tutorial](../images/features/tutorial_welcome.png)
 
-The controls in the bottom corner move between steps, reset the current step, or open the contents. Search the
-contents to jump straight to a topic.
+A tutorial's contents can be searched to jump straight to a topic.
 
 ![the contents of the player management tutorial](../images/features/tutorial_contents.png)
 
-Leaving the dashboard pauses a tutorial. Resume it later from the _Tutorials_ page, or replay one already finished.
-Follow the tutorials on a desktop, with a mouse and keyboard.
+Leaving the dashboard pauses a tutorial. Resume it, or replay a finished one, from the _Tutorials_ page. The tutorials
+need a desktop, with a mouse and keyboard.
 
 ## Practising on the sandbox server
 
-A fresh install comes with a server named _Sandbox_, attached to an emulated Squad server. Use it to try the queue,
-votes and player actions without affecting real players. See
+A fresh install starts with a server named _Sandbox_, attached to an emulated Squad server. Admins can try the queue,
+votes and player actions there without affecting real players. See
 [Sandbox servers](../guide/operations/sandbox_servers.md).
 
 ## Tooltips and the commands page
 
-Tooltips can be found throughout the app. Hover over an unfamiliar button, icon or label to see more about it. The
-_Commands_ page lists every in-game command and how to use it. See [In-game commands](ingame_commands.md).
+Tooltips can be found throughout the app. Hover over a button, icon or label you do not recognise to see more about
+it. The _Commands_ page lists every in-game command and how to use it. See [In-game commands](ingame_commands.md).
 
 ## Trying SLM without installing it
 

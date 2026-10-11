@@ -1,7 +1,8 @@
 # Layer selection
 
 SLM manages the layer rotation of one or more Squad servers. Admins work from a web app that signs in with Discord, and
-from in-game commands. To install SLM, see [installing.md](../installing.md). If you're here to learn how to use SLM, try the in-app tutorials instead.
+from in-game commands. To install SLM, see [installing.md](../installing.md). To learn SLM by using it, see
+[Learning SLM](learning_slm.md).
 
 ## The layer queue
 
@@ -12,123 +13,113 @@ after. When the queue runs out, SLM generates a layer from your layer pool, the 
 marks the generated layer with a dice icon. [Filters and the layer pool](#filters-and-the-layer-pool) describes the pool
 below.
 
-Click _Start Editing_ to change the queue. Several admins can edit the queue at once, and _Start Editing_ announces the
-edit to the other admins. Layers can be added one at a time, as a generated vote, or pasted in as a whole rotation.
-Queue items can hold colour-coded tags and freeform notes, for additional context.
+Several admins can edit the queue at once, and each one sees who else is editing. Layers can be added one at a time, as
+a generated vote, or pasted in as a whole rotation. Queue items can carry colour-coded tags and freeform notes.
 
 ![the layer queue while editing, with a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
 
 ## The layer selection dialog
 
-Use the layer selection dialog to find layers to add to the queue. Narrow the full layer catalog with filters, named
-rules that pick out a set of layers, such as "no mechanized units on hilly maps". [Filters and the layer
-pool](#filters-and-the-layer-pool) describes filters below. Narrow the catalog further with constraints on map,
-gamemode, factions, units and vehicles, or shuffle the list, weighted toward preferable layers. Each layer is marked
-when it falls outside your pool or would break a [repeat rule](#repeat-rules). Add the selected layers as separate queue
-items or as one vote.
+Use the layer selection dialog to search the full layer catalog for layers to add to the queue. Filters narrow the
+catalog, along with constraints on map, gamemode, factions, units and vehicles. The results can be shuffled, weighted
+toward preferable layers. Each layer is marked when it falls outside your pool or would break a
+[repeat rule](#repeat-rules). The selected layers go into the queue as separate queue items or as one vote.
 
 ![the Add Layers dialog, with three RAAS layers selected](../images/features/add_layers.png)
 
-On a phone, the dialog lists the layers as cards, with the filters and the selected layers on tabs of their own.
+SLM works on a phone. The dialog lists layers as cards there, with the filters and the selected layers on tabs of their
+own. SLM can also be installed as an app, which opens in its own window. See
+[Can SLM be installed as an app?](../faq.md#can-slm-be-installed-as-an-app).
 
 ![the queue on a phone](../images/features/phone_queue.png)
 ![the Add Layers dialog on a phone](../images/features/phone_layer_picker.png)
 
-> [!TIP]
-> SLM can be installed as an app on a phone or a computer, and opens in its own window without the browser's address
-> bar. On Android, open the browser menu and choose _Add to home screen_ or _Install app_. On an iPhone or iPad, tap
-> _Share_ in Safari and choose _Add to Home Screen_. On a computer, click the install icon at the end of the address bar
-> in Chrome or Edge.
-
 ## Filters and the layer pool
 
-The base game offers about 730,000 layers, counting every map, gamemode, faction and unit combination, and this number
-can balloon with additional mods. A _filter_ is a named expression that picks a subset of them out. Filters can be
-composed by referencing each other to create more complex filters. Edit a filter in the builder, a visual editor, or as
-text in YAML.
+The base game offers about 730,000 layers, counting every map, gamemode, faction and unit combination, and mods add
+more. A _filter_ is a named expression that picks a subset of them out, such as "no mechanized units on hilly maps". A
+filter can reference other filters. Filters can be edited in a visual builder or as YAML text.
 
 ![a filter in the builder](../images/configuring/filter_edit.png)
 
-Filters define which layers admins can select by default and which layers SLM generates when the queue is empty, or
-simply categorize layers. See
+Filters decide which layers admins can select by default and which layers SLM generates when the queue is empty. A
+filter can also mark the layers it matches with an emoji, as a category. See
 [Layer pool and filters](../guide/configuring/layer_pool.md).
 
 ## Repeat rules
 
 A _repeat rule_ defines how soon a map, layer, faction or unit may be played again, counting both the queue and the
 recent match history. The defaults catch the same map within 4 matches, the same layer within 7, and the same faction
-on the same side within 3. Narrow a rule to named values, such as Skorpo alone over 10 matches.
+on the same side within 3. A rule can be narrowed to named values, such as Skorpo alone over 10 matches.
 
 ![the default repeat rules](../images/configuring/default_repeat_rules.png)
 
-SLM marks each layer that breaks a repeat rule. Hover over the marker ![repeat rule icon](../images/icons/repeat.svg) to see which rule the layer breaks. The repeated value is underlined in pink, on both the marked layer and
-the earlier layer it repeats.
+SLM marks each layer that breaks a repeat rule with ![repeat rule icon](../images/icons/repeat.svg), and underlines the
+repeated value in pink on both the marked layer and the earlier layer it repeats.
 
 ![a repeated map, underlined on both layers, with the rule it breaks](../images/features/repeat_hover.png)
 
-While editing the queue, click _Fix Repeats_ (the wand icon) to clear repeat warnings automatically. SLM reorders the
-queue and swaps teams to clear as many warnings as possible, with as few changes as possible. Moving a layer one place
-and swapping a layer's teams each count as one change. SLM never swaps the teams of:
-
-- an Invasion, Destruction or Insurgency layer
-- a layer whose swapped matchup falls outside the pool
-- a layer with a tag that has _Prevent swaps_ turned on
-
-A layer that another admin is editing stays where it is. The changes stay in the draft until the queue is saved.
+Use _Fix Repeats_ to clear repeat warnings automatically. SLM reorders the queue and swaps layers' teams to clear as
+many warnings as possible, with as few changes as possible. See [Fixing repeats](../guide/configuring/layer_rotation.md#fixing-repeats).
 
 ## Layer details and scores
 
 Each layer shows a balance score and an asymmetry score, and compares its two teams on anti-infantry, armor, logistics
-and transportation. The scores are heuristics for how fair a matchup is likely to be. They come from a scoring system
-created by community member ZERO, and refined through feedback and iteration on the TacTrig server.
-Custom scoring can be built as well. See [Building custom layer data](../developers/custom_layer_data.md).
+and transportation. The scores are heuristics for how fair a matchup is likely to be. They come from a system
+created by community member ZERO, and refined through feedback on the TacTrig server. A custom layer dataset can
+replace the scores. See [Building custom layer data](../developers/custom_layer_data.md). The current scores predate recent game changes. A
+revised scoring system is in progress.
 
 ![a layer's details: each team's unit, tickets and vehicles](../images/features/layer_details.png)
 ![a layer's scores: balance, asymmetry and each category compared](../images/features/layer_scores.png)
 
 ## Votes
 
-It's easy to create new votes on the fly with the _Gen Vote Dialog_.
+A vote lets players choose the next layer from several choices. Use the _Generate Vote_ dialog to generate each choice
+from the pool, under optional constraints such as a different map for every choice. A choice can be edited or regenerated on
+its own.
 
 ![the Generate Vote dialog](../images/features/generate_vote.png)
 
 ![the Generate Vote dialog on a phone](../images/features/phone_gen_vote.png)
 
-Start a vote from the dashboard or in game with `/startvote`, or let SLM start the vote partway into a match. Players
-vote by typing a choice's number in chat, and SLM broadcasts details of the vote to the server. Use an internal vote to
-poll your admins alone through warns.
+A vote starts from the dashboard, in game with `/startvote`, or by itself partway into a match. Players vote by typing
+a choice's number in chat, and SLM broadcasts the choices and reminders to the server. An internal vote polls only the
+admins.
 
 ![a vote in progress](../images/features/vote_in_progress.png)
 
-Each vote's duration can be set, along with which layer details voters see, such as the map, gamemode or factions.
+Each vote sets its own duration, and which parts of a layer the choices spell out, such as the map, gamemode or
+factions.
 
 ## Squad's in-game voting
 
 SLM also works on a server that uses Squad's own in-game voting system. When an in-game vote starts, or SLM infers that
 voting was turned on with `AdminEnableVoting 1`, SLM stops setting the next layer, so SLM and the vote never fight over
-it. The server's dashboard will show that an in-game vote is deciding the next layer.
+it. The server's dashboard shows that an in-game vote is deciding the next layer.
 
 ## Layer requests
 
-A layer request lets an admin ask for a layer with specific characteristics, without editing the queue by hand. Admins
-make one in game by naming any mix of map, gamemode, faction, unit or specify any layer filter. Type `/reqlayer fallu raas usa rgf` to
-request Fallujah RAAS with USA against RGF. When the queue runs out of deliberately queued layers, SLM generates the next
-layer from the requests. SLM's autogeneration logic will attempt to satisfy as many requests as possible, such that if one admin requests WPMC, and another suggests Narva, the generated layer config might be on Narva and include WPMC.
+A layer request asks for a layer with specific characteristics, without editing the queue by hand. A request names any
+mix of map, gamemode, faction, unit or filter. `/reqlayer fallu raas usa rgf` requests Fallujah RAAS with USA against
+RGF. When the queue runs out of deliberately queued layers, SLM generates the next layer from the requests, and
+satisfies as many of them as it can at once. If one admin requests WPMC and another requests Narva, the generated layer
+can be WPMC on Narva.
 
 ![the layer requests panel](../images/features/layer_requests.png)
 
 ## Mod support
 
-SLM's layer catalog currently covers vanilla Squad and three mods: SuperMod, Resurgence and Galactic Contention. Each layer's
+SLM's layer catalog covers vanilla Squad and three mods: SuperMod, Resurgence and Galactic Contention. Each layer's
 _Collection_ column records whether the layer is vanilla (`OWI`) or which mod it comes from, so a filter can include or
-exclude a whole mod.
+exclude a whole mod. Each server's settings name the mods that server has installed, and SLM never queues, generates or
+offers a layer from a mod the server lacks.
 
-In each server's settings, configure the mods that server has installed. A custom layer dataset can also be loaded in
-place of the built-in one, with other mods, your own scoring or extra columns. See [layer_data.md](../guide/operations/layer_data.md) and
-[Building custom layer data](../developers/custom_layer_data.md).
+A custom layer dataset can replace the built-in one, with other mods, other scoring or extra columns. See
+[Layer data](../guide/operations/layer_data.md) and [Building custom layer data](../developers/custom_layer_data.md).
 
-A layer the catalog does not know, such as one from a mod SLM does not cover, can still be queued. In the _Add Layers_
-dialog, click the _Show Raw Input_ icon ![text cursor input icon](../images/icons/text-cursor-input.svg) and type the
-layer in the format `AdminSetNextLayer` takes, such as `Narva_RAAS_v1 RGF USMC`.
+A layer the catalog does not know can still be queued as raw text, in the format `AdminSetNextLayer` takes, such as
+`Narva_RAAS_v1 RGF USMC`. Open raw input from the
+![text cursor input icon](../images/icons/text-cursor-input.svg) icon in the _Add Layers_ dialog.
 
 ![the raw input in the Add Layers dialog](../images/features/raw_layer_input.png)

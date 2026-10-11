@@ -14,11 +14,8 @@ Open one to see the expression that decides what it matches:
 
 ![filter_edit](../../images/configuring/filter_edit.png)
 
-Each condition is one line, written out. Click a line to edit it, then click _Done_ or press _Escape_. Only one line is
-open at a time. The buttons for commenting, copying and removing a line appear when the pointer is over it.
-
-The block at the top sets how the conditions under it combine. The four block types are _all of_, _any of_,
-_none of_ and _not all of_. Opening one also names the operation it stands for. _No Mech on Hilly Maps_ uses
+Each condition is one line. The block at the top sets how the conditions under it combine: _all of_, _any of_,
+_none of_ or _not all of_. _No Mech on Hilly Maps_ uses
 _not all of_, so a layer matches unless both of these hold:
 
 - `Map` is Manicouagan, Skorpo or Lashkar
@@ -37,10 +34,8 @@ It uses _all of_, so a layer has to meet every one of:
 - the layer is excluded from _Similar Factions_
 - the layer is included in _No Mech on Hilly Maps_
 
-Switch a filter between _Builder_ and _Text_. Use the text view to edit the expression as text, which is easier for
-changes that take a line at a time in the builder, such as changing how the conditions nest. Click _Reformat_ to tidy
-the text up. A line's comment shows up in the text view as a `#` line above it, and a `#` line written there becomes the
-comment on the line below.
+A filter can also be edited as text, from its _Text_ tab, which is quicker for changes such as how the conditions
+nest.
 
 ## Pool configuration
 
@@ -79,7 +74,7 @@ _Emoji_ and an _Alert Message_. Edit them from the filter itself:
 ![filter_extra_fields_edit_button](../../images/configuring/filter_extra_fields_edit_button.png)
 ![filter_extra_fields](../../images/configuring/filter_extra_fields.png)
 
-An emoji can be a standard one, or one from your discord server's emoji library:
+An emoji can be a standard one, or one from your Discord server's emoji library:
 
 ![emoji_library](../../images/configuring/emoji_library.png)
 
@@ -130,7 +125,7 @@ Individual layers in the layer queue can be tagged. Layers with certain tags can
 ![fogless_friday](../../images/configuring/fogless_friday.png)
 
 A tag with _Prevent swaps_ turned on stops _Fix Repeats_ from swapping the teams of a layer carrying it. See
-[Repeat rules](../../features/layer_selection.md#repeat-rules).
+[Fixing repeats](layer_rotation.md#fixing-repeats).
 
 ## Layer table columns
 

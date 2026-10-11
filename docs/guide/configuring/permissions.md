@@ -2,9 +2,9 @@
 
 Access to SLM is managed through roles (role-based access control, or RBAC). A _role_ lists _permissions_, and either
 allows or denies each one for everyone assigned that role. A denial withholds the permission even from someone another
-role allows it to. Some permissions are global. Many can be scoped to one squad server.
+role allows it to. Some permissions are global. Many can be scoped to one Squad server.
 
-Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds every permission any of
+Unlike Discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds every permission any of
 their roles allows, minus every permission any of their roles denies.
 
 ## Admin lists
@@ -20,7 +20,7 @@ change this setting:
 
 ![adminlist](../../images/configuring/adminlist.png)
 
-An admin list identifies a player by steam ID or EOS ID, and one list can use a mix of the two.
+An admin list identifies a player by Steam ID or EOS ID, and one list can use a mix of the two.
 
 More than one admin list can be configured, which is useful when each of your servers has its own. Each server names
 the lists that apply to it. See [Server admin lists](servers.md#server-admin-lists).
@@ -89,16 +89,16 @@ role, when the user saving it lacks a permission the change would grant.
 
 A role can be assigned to a user or to a player:
 
-- a _user_ signs in with their discord account and works from the web interface
+- a _user_ signs in with their Discord account and works from the web interface
 - a _player_ is in the game and uses the [in-game commands](admin_actions.md#in-game-commands)
 
-A user can link their discord account to their in-game account, and the permissions from both then combine for
+A user can link their Discord account to their in-game account, and the permissions from both then combine for
 every action:
 ![linked_steam_account_button](../../images/configuring/linked_steam_accounts_button.png)
 ![linked_steam_account_dialog](../../images/configuring/linked_steam_accounts_dialog.png)
 
-This is optional, and matters mostly for people who hold elevated permissions on their user account
-and want to use them in game.
+Linking is optional. It matters to someone who holds elevated permissions on their user account and wants to use them
+in game.
 
 The _Assignments_ subsection of a role holds five sources. Two of them cover in-game players:
 
@@ -107,7 +107,7 @@ The _Assignments_ subsection of a role holds five sources. Two of them cover in-
 - _Admin-list groups_: the role goes to the members of a named group in a named list, whether or not that group
   identifies admins. A whitelist reserve-slot group works here. Again, it applies only on servers that use the list.
 
-The other three cover users, and take an individual discord user, a discord role, or every member of your discord
+The other three cover users, and take an individual Discord user, a Discord role, or every member of your Discord
 server:
 
 ![discord_roles](../../images/configuring/discord_roles.png)
