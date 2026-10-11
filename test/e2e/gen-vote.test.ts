@@ -10,6 +10,29 @@ import { expect, test } from './fixtures'
 // weighting scheme is a different app config, so each test boots its own app. The dialog's basic flow --
 // generate from the pool, submit, save -- lives in queue-lifecycle.test.ts.
 
+// the gamemodes of the layer data, less Invasion
+const OTHER_GAMEMODES = [
+	'AAS',
+	'RAAS',
+	'Seed',
+	'Skirmish',
+	'Insurgency',
+	'TC',
+	'Destruction',
+	'Training',
+	'FRAAS',
+	'GLOP',
+	'RINV',
+	'Contention',
+	'TDM',
+	'KOTH',
+	'RVAAS',
+	'RAAS_PreCap',
+	'Frontline',
+	'AAS_PreCap',
+	'RVAAS_PreCap',
+]
+
 test.describe('generation weights', () => {
 	// Gamemode is safe to assert on because only Map has to be unique across choices
 	// (V.GenVote.DEFAULT_CHOICE_COMPARISONS).
@@ -20,11 +43,14 @@ test.describe('generation weights', () => {
 			// weights, not a filter, still have to be what narrows the gamemode
 			filters: [filter('vanilla', 'Vanilla', FB.and([FB.eq('Collection', 'OWI')]))],
 			globalSettings: (settings) => {
-				// unlisted values weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so Invasion outweighs every other
-				// gamemode by four orders of magnitude: drawing anything else is a ~0.04% event per choice
+				// every other gamemode is listed at weight 0, so the draw cannot land outside Invasion. An unlisted one
+				// would weigh LC.DEFAULT_GENERATION_WEIGHT (0.1) and win a draw now and then. A name the layer data lacks
+				// is dropped from the weights.
 				settings.layerGeneration = {
 					pickOrder: ['Gamemode'],
-					weights: { Gamemode: [{ value: 'Invasion', weight: 1000 }] },
+					weights: {
+						Gamemode: [{ value: 'Invasion', weight: 1000 }, ...OTHER_GAMEMODES.map((value) => ({ value, weight: 0 }))],
+					},
 					matchupWeights: { AllianceMatchup: [], FactionMatchup: [], UnitMatchup: [], FactionUnitMatchup: [] },
 				}
 			},
