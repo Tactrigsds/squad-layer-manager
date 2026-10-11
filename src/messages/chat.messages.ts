@@ -21,6 +21,10 @@ export const sendFailed = def((code?: string) => ({
 
 export const activityTitle = def('Server Activity')
 
+export const expandActivity = def('Expand server activity')
+
+export const collapseActivity = def('Show player details')
+
 export const viewingHistoricalMatch = def((layer: Rendered, startTime?: string) =>
 	rt('Viewing historical match {layer}{hasTime, select, yes { {startTime}} other {}}', {
 		layer,
