@@ -28,6 +28,7 @@ describe('pool configuration schema', () => {
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
 			layerRequestFilters: [{ filterId: 'b-filter', applyAs: 'inverted' }],
+			generateVotes: { enabled: true, displayProps: ['map', 'factions'] },
 			skipWarningsForTags: ['planned:aaaaaa'],
 			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 		}

@@ -309,6 +309,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			<TooltipTrigger asChild>
 				<Button
 					data-tour="queue-clear"
+					aria-label={tr.text(LL_Msgs.clearQueue())}
 					disabled={!isEditing}
 					className={idleHidden}
 					variant="ghost"

@@ -6,7 +6,7 @@ import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
-import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
+import { GenerationPanel, PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { TextInputField } from '@/components/settings-form/controls'
 import {
@@ -210,6 +210,7 @@ export function MainPoolField(props: OverrideProps) {
 		<div className="space-y-6">
 			<PoolFiltersPanel api={api} />
 			<RepeatRulesPanel api={api} />
+			<GenerationPanel api={api} />
 		</div>
 	)
 }

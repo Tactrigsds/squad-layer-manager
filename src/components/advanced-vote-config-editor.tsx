@@ -1,11 +1,11 @@
 import React from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { VoteDisplayPropsCheckboxes } from '@/components/vote-display-props-checkboxes'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as DH from '@/lib/display-helpers.ts'
+import type * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
 import type * as L from '@/models/layer.models'
@@ -28,7 +28,6 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	const displayProps = props.config?.displayProps ?? voteDefaults.voteDisplayProps
 	const duration = props.config?.duration ?? voteDefaults.voteDuration
 	const usingDefault = !props.config?.displayProps && !props.config?.duration
-	const statuses = DH.toDisplayPropStatuses(displayProps)
 
 	const preview =
 		props.choices.length > 0
@@ -36,27 +35,8 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
-	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
-		update = { ...update }
-
-		const updated = { ...statuses, ...update }
-		if (update.layer) {
-			updated.map = true
-			updated.gamemode = true
-		} else if (update.layer === false) {
-			updated.map = false
-			updated.gamemode = false
-		} else if (update.gamemode === false || update.map === false) {
-			updated.layer = false
-		}
-
-		const displayPropsValue = DH.fromDisplayPropStatuses(updated)
-		const configToPass: Partial<V.AdvancedVoteConfig> = {
-			...props.config,
-			displayProps: displayPropsValue,
-		}
-
-		props.onChange(configToPass)
+	function setDisplayProps(displayProps: DH.LayerDisplayProp[]) {
+		props.onChange({ ...props.config, displayProps })
 	}
 
 	function setDuration(newDuration: number) {
@@ -80,73 +60,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 				<p className="text-xs text-text-3">{tr.text(V_Msgs.displayOptionsBlurb())}</p>
 			</div>
 			<div className="grid gap-2.5">
-				<div className="grid grid-cols-2 gap-x-3 gap-y-1">
-					<div>
-						<div className="grid gap-1">
-							<div className="flex items-center gap-1.5">
-								<Checkbox
-									id="layer"
-									checked={statuses.layer}
-									onCheckedChange={(checked) => setDisplayProps({ layer: checked })}
-									disabled={props.readonly}
-								/>
-								<Label htmlFor="layer" className="fd-lbl-plain">
-									{tr.text(V_Msgs.displayLayer())}
-								</Label>
-							</div>
-							<div className="ms-[18px] grid gap-1">
-								<div className="flex items-center gap-1.5">
-									<Checkbox
-										id="map"
-										checked={statuses.map}
-										onCheckedChange={(checked) => setDisplayProps({ map: checked })}
-										disabled={props.readonly}
-									/>
-									<Label htmlFor="map" className="fd-lbl-plain">
-										{tr.text(V_Msgs.displayMap())}
-									</Label>
-								</div>
-								<div className="flex items-center gap-1.5">
-									<Checkbox
-										id="gamemode"
-										checked={statuses.gamemode}
-										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked })}
-										disabled={props.readonly}
-									/>
-									<Label htmlFor="gamemode" className="fd-lbl-plain">
-										{tr.text(V_Msgs.displayGamemode())}
-									</Label>
-								</div>
-							</div>
-						</div>
-					</div>
-					<div>
-						<div className="grid gap-1">
-							<div className="flex items-center gap-1.5">
-								<Checkbox
-									id="factions"
-									checked={statuses.factions}
-									onCheckedChange={(checked) => setDisplayProps({ factions: checked })}
-									disabled={props.readonly}
-								/>
-								<Label htmlFor="factions" className="fd-lbl-plain">
-									{tr.text(V_Msgs.displayFactions())}
-								</Label>
-							</div>
-							<div className="flex items-center gap-1.5">
-								<Checkbox
-									id="units"
-									checked={statuses.units}
-									onCheckedChange={(checked) => setDisplayProps({ units: checked })}
-									disabled={props.readonly}
-								/>
-								<Label htmlFor="units" className="fd-lbl-plain">
-									{tr.text(V_Msgs.displayUnits())}
-								</Label>
-							</div>
-						</div>
-					</div>
-				</div>
+				<VoteDisplayPropsCheckboxes displayProps={displayProps} onChange={setDisplayProps} disabled={props.readonly} />
 				{!valid && (
 					<div className="fd-alert fd-alert-dng grid-cols-1">
 						<p className="text-xs">{tr.text(V_Msgs.choicesIndistinguishable())}</p>
