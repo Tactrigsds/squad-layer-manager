@@ -11,7 +11,8 @@ import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedQueue, wa
 // The layer backburner's in-game surface, and the generation it feeds: /reqlayer requests are validated
 // against the pool, queued, listed, evicted at the per-user cap, and consumed by autogeneration when the
 // map rolls -- which is also where the pool's repeat rules bind, so a second roll proves the just-played
-// maps stay out of what generation draws.
+// maps stay out of what generation draws. The pool generates votes, which neither roll may produce: a request
+// outranks a vote, and the second roll leaves a single map, too few for a vote.
 
 const ADMIN_STEAM_ID = '76561198000000001'
 const REQUESTER_STEAM_ID = '76561198000000002'
@@ -51,6 +52,7 @@ beforeAll(async () => {
 			s.queue.mainPool.constrainGeneration = [{ filterId: 'gen-pool', applyAs: 'regular' }]
 			s.queue.mainPool.layerRequestFilters = [{ filterId: 'gen-pool', applyAs: 'regular' }]
 			s.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
+			s.queue.mainPool.generateVotes = { enabled: true, displayProps: ['map', 'gamemode'] }
 		},
 	})
 	app.emu.world.connectPlayer(admin)
@@ -136,6 +138,7 @@ describe('generation on roll', () => {
 			},
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
+		expect(generated.type).toBe('single-list-item')
 		expect(generated.layerId).toMatch(/^FL-/)
 		expect(generated.source).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
 
@@ -159,6 +162,7 @@ describe('generation on roll', () => {
 			},
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
+		expect(generated.type).toBe('single-list-item')
 		expect(generated.layerId).toMatch(/^SK-/)
 		// nothing was requested this time, so the item is plainly generated
 		expect(generated.source.type).toBe('generated')
