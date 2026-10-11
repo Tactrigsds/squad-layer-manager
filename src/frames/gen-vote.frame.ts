@@ -222,16 +222,15 @@ export namespace Actions {
 		s.setState({ choices: choices.filter((_, i) => i !== index) })
 	}
 
-	export async function regen(stores: KeyProp & Partial<SquadServerFrame.KeyProp>, onlyIndex?: number) {
+	export async function regen(stores: KeyProp, onlyIndex?: number) {
 		const s = store(stores)
-		const squadServer = stores.squadServer
 		s.setState({ generating: true })
 		const state = s.getState()
 		try {
 			const startingChoices = state.choices.map((c, i) =>
 				onlyIndex === undefined || i === onlyIndex ? { ...c, layerId: undefined } : c,
 			)
-			const base = Sel.baseQueryInput(state, Zus.getState(squadServer))
+			const base = Sel.baseQueryInput(state, Zus.getState(state.server))
 
 			const res = await LayerQueriesClient.generateVote({
 				...base,

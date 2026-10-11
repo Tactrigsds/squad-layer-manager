@@ -123,3 +123,49 @@ test.describe('generation weights', () => {
 		}
 	})
 })
+
+test.describe('repeat rules', () => {
+	// Three maps for three choices that each need a different map, after a queue ending on one of them: hiding
+	// repeats leaves one choice nothing to draw, and showing them forces Gorodok in, indicated as the repeat.
+	test('hides repeats by default, and indicates them once shown', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.gorodokRaas),
+			filters: [
+				filter('three-maps', 'Three Maps', FB.and([FB.eq('Collection', 'OWI'), FB.inValues('Map', ['Gorodok', 'Narva', 'Sumari'])])),
+			],
+			serverSettings: (settings) => {
+				selectableFilter(settings.queue.mainPool, 'three-maps')
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 1, warn: false, indicate: true }]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await page.getByRole('button', { name: 'Gen Vote' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Generate Vote' })
+			// after the queued Gorodok, so it is the layer the rule looks back on
+			await dialog.getByRole('button', { name: 'Play After' }).click()
+			const hideRepeats = dialog.getByRole('checkbox', { name: 'Hide Repeats' })
+			await expect(hideRepeats).toHaveAttribute('aria-checked', 'true')
+
+			await dialog.getByRole('button', { name: 'Generate', exact: true }).click()
+			const choices = dialog.getByRole('listitem')
+			await expect(choices.filter({ hasText: 'No suitable layer found' })).toHaveCount(1)
+			await expect(choices.filter({ hasText: 'Narva_' })).toHaveCount(1)
+			await expect(choices.filter({ hasText: 'Sumari_' })).toHaveCount(1)
+			await expect(choices.filter({ hasText: 'Gorodok_' })).toHaveCount(0)
+
+			await hideRepeats.click()
+			await expect(hideRepeats).toHaveAttribute('aria-checked', 'false')
+			await dialog.getByRole('button', { name: 'Regenerate All' }).click()
+			const gorodok = choices.filter({ hasText: 'Gorodok_' })
+			await expect(gorodok).toHaveCount(1)
+			await gorodok.getByRole('button', { name: 'Layer indicators' }).hover()
+			await expect(page.getByRole('tooltip')).toContainText('Map Gorodok repeats')
+		} finally {
+			await app.dispose()
+		}
+	})
+})
