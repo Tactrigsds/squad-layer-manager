@@ -58,7 +58,7 @@ _Advanced_ in the _In-game Commands_ section:
 If an existing prefix is changed, SLM moves every [trigger](#command-triggers) with that prefix to the new one.
 
 > [!TIP]
-> Pick a prefix that does not collide with existing commands. Some SLM commands behave differently from their squadjs
+> Pick a prefix that does not collide with existing commands. Some SLM commands behave differently from their SquadJS
 > counterparts, which confuses users. Disable the old command instead, with a message that points users at the SLM
 > one.
 

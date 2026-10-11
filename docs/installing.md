@@ -32,7 +32,7 @@ Do not publish the port to a network you do not control.
 
 ### 2. Where to install
 
-SLM needs access to your squad server's log files, and an RCON connection. There are three ways to achieve this:
+SLM needs access to your Squad server's log files, and an RCON connection. There are three ways to achieve this:
 
 - Install SLM where it's possible to mount the log files into the container, and access RCON over a VLAN or the local
   network. This gives the lowest latency, and is relatively secure. It often costs some control over where SLM runs,
@@ -40,7 +40,7 @@ SLM needs access to your squad server's log files, and an RCON connection. There
 - Access the log files over SFTP, and access RCON remotely through an exposed port. Logs arrive with higher latency,
   and remote RCON access is insecure, because RCON is not encrypted.
 - **Recommended:** run the SLM server agent on the game host. It streams log data and proxies RCON over a secure
-  websocket connection. Your squad server or hosting provider does not need to expose an additional port, and how and
+  websocket connection. Your Squad server or hosting provider does not need to expose an additional port, and how and
   where SLM is hosted stays under your control. See [server_agent.md](guide/operations/server_agent.md).
 
 ### 3. Docker Compose
@@ -79,7 +79,7 @@ app container.
 
 ### 4. Discord app
 
-SLM authenticates users through your own discord app, installed on your org's discord server.
+SLM authenticates users through your own Discord app, installed on your org's Discord server.
 
 Create one at [discord.com/developers/applications](https://discord.com/developers/applications).
 
@@ -99,18 +99,18 @@ Configure the bot's intents like this:
 
 Copy your bot token into `DISCORD_BOT_TOKEN` in `.env.secrets`.
 
-Like most discord apps, SLM must be configured with a public install link. This is not a security issue. Another
-server getting hold of the install link cannot perform any actions, and SLM automatically leaves any discord server
+Like most Discord apps, SLM must be configured with a public install link. This is not a security issue. Another
+server getting hold of the install link cannot perform any actions, and SLM automatically leaves any Discord server
 that is not the one configured below.
 
-Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find it, enable Developer Mode in your
-discord settings and right-click the server icon. Only members of that server can be granted access to SLM.
+Set `DISCORD_HOME_GUILD_ID` to the id of your org's Discord server. To find it, enable Developer Mode in your
+Discord settings and right-click the server icon. Only members of that server can be granted access to SLM.
 
-Set at least one `SUPER_USERS` id to your discord user id (click your profile picture with developer mode enabled), or
+Set at least one `SUPER_USERS` id to your Discord user id (click your profile picture with developer mode enabled), or
 nobody can administer the app. Super users hold every permission unconditionally, so they cannot be locked out. This
-person must be a member of your org's discord server.
+person must be a member of your org's Discord server.
 
-Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
+Next, install the app on your org's Discord server by visiting the install link on the `Installation` page. Make
 sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
 
 ### 5. Secrets
@@ -121,8 +121,8 @@ Secrets that SLM needs at startup are in `.env.secrets`, and the rest of the bas
 | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | `SETTINGS_ENCRYPTION_KEY`            | encrypts sensitive settings at rest (see [Encryption key](#7-encryption-key))                      |
 | `SETTINGS_ENCRYPTION_KEY_PREVIOUS`   | the key being rotated away from, set only while rotating (see [Encryption key](#7-encryption-key)) |
-| `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                                                             |
-| `DISCORD_BOT_TOKEN`                  | the discord bot token                                                                              |
+| `DISCORD_CLIENT_SECRET`              | the Discord app's oauth2 client secret                                                             |
+| `DISCORD_BOT_TOKEN`                  | the Discord bot token                                                                              |
 | `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                                                  |
 | `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                                                   |
 
@@ -251,7 +251,7 @@ If docker is configured to start on boot, the app starts automatically after a r
 Stop everything with `docker compose down`. To stop only the app and leave grafana running, use `docker compose stop
 app`.
 
-Once the app is running, sign in with discord OAuth. Set up the integrations and the discord bot's permissions below,
+Once the app is running, sign in with Discord OAuth. Set up the integrations and the Discord bot's permissions below,
 then move on to [configuring SLM](guide/configuring/overview.md).
 
 ### 11. Integrations
@@ -271,7 +271,7 @@ and profile beside the actions taken against them. Enter a personal access token
 - player notes: read and create
 - rcon: read
 
-Set _Organization ID_ to your org's battlemetrics id. SLM shows only the flags that belong to it. With no token, SLM
+Set _Organization ID_ to your org's BattleMetrics id. SLM shows only the flags that belong to it. With no token, SLM
 polls nothing and hides the parts of the app that show flags.
 
 **Join button.** Use the join button on the server dashboard to open the server in Squad. SLM looks up the link through
@@ -280,7 +280,7 @@ the Squad Browser or through Steam. Configure one of the two for the button to w
 - **Squad Browser** identifies a server by the name the server reports over RCON, and answers whether or not anyone is
   playing on the server. Enter a squad browser api key, which starts with `sqb_`.
 - **Steam** builds the link from the lobby of a player in game. Steam answers only while someone is on the server, and
-  only for players whose steam profile makes game details public. Enter a web api key from
+  only for players whose Steam profile makes game details public. Enter a web api key from
   https://steamcommunity.com/dev/apikey.
 
 If both are configured, SLM asks the Squad Browser first, and Steam covers the servers the Squad Browser does not list.
@@ -289,7 +289,7 @@ With neither, the button is hidden. The button never appears for a sandbox serve
 ### 12. Discord bot permissions
 
 The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
-that, switch on `Message Content Intent` on the `Bot` page of your discord app. Without it, the
+that, switch on `Message Content Intent` on the `Bot` page of your Discord app. Without it, the
 bot cannot read messages, and the `discord.expandHistoryLinks` setting shows a warning. To turn the replies off, switch
 that setting off. The bot only replies to people whose roles grant `history:query`, the permission the history page
 itself needs.

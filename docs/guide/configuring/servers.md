@@ -1,8 +1,8 @@
 # Servers
 
-One SLM instance can manage several squad servers.
+One SLM instance can manage several Squad servers.
 
-A fresh install already has a server named _Sandbox_. It attaches to an emulated squad server, which imitates a real
+A fresh install already has a server named _Sandbox_. It attaches to an emulated Squad server, which imitates a real
 one closely enough for SLM to work against. Use it to test things out. See
 [sandbox_servers.md](../operations/sandbox_servers.md).
 
@@ -14,10 +14,10 @@ Click _Add Server_ to set up a real one:
 
 Each server uses one of three connection modes:
 
-- _local_: SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
+- _local_: SLM shares the machine with the Squad server, reading `SquadGame.log` from disk and dialling RCON
   directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
 - _sftp_: SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
-  PSG-hosted squad servers, where no program can be run on the game host. Needs SFTP and RCON details.
+  PSG-hosted Squad servers, where no program can be run on the game host. Needs SFTP and RCON details.
 - _server agent_ (recommended): a small program on the game host streams the log to SLM and proxies RCON. SLM never
   holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
   [server_agent.md](../operations/server_agent.md).

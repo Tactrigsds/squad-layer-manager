@@ -48,10 +48,10 @@ grant a permission the user saving it lacks.
 
 ## Checking permissions
 
-Every user can open the permissions dialog from their account menu to see what they hold, grouped by role or by
-permission, and which role granted each one.
+The permissions dialog in each user's account menu lists what they hold, grouped by role or by permission, and which
+role granted each one.
 
-Turn on _Simulate_ to switch roles off and see the app as someone who holds fewer of them. A simulation only removes
-access, and runs only in that browser: the server still checks real permissions on every action.
+Turn on _Simulate_ to switch roles off and see the app as someone who holds fewer of them. A simulation only removes access, and
+runs only in that browser: the server still checks real permissions on every action.
 
 ![the permissions dialog, with Simulate](../images/configuring/permissions_info_dialog.png)

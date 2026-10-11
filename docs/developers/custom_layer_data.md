@@ -99,35 +99,26 @@ There are two ways to get a mod's files.
 `~/.local/share/Steam/steamapps/workshop/content/393380/<workshopId>`, where `393380` is Squad's app id. That
 directory is the `<modDir>`. Steam downloads the whole mod, art included.
 
-**Fetch only what the extractor reads.** `fetch-workshop-mod.sh` downloads about 5% of a mod with
-[DepotDownloader](https://github.com/SteamRE/DepotDownloader):
+**Fetch only what the extractor reads.** `fetch-workshop-mod.sh` downloads about 5% of a mod, the dedicated-server
+containers that hold layer data, with [DepotDownloader](https://github.com/SteamRE/DepotDownloader). It needs no Steam
+account. Set `DEPOT_DOWNLOADER` if DepotDownloader is not at `~/.local/opt/depotdownloader/DepotDownloader`.
 
 ```sh
 ./fetch-workshop-mod.sh <workshopId> <outDir>
 ```
 
-1. A workshop item ships its containers once per platform. The script takes only the dedicated-server ones
-   (`-LinuxServer`), which strip the art and keep every gameplay asset. A mod with no dedicated-server cook is an error.
-2. Of those, it fetches the container indexes (`.utoc`) first, a few kilobytes each.
-3. `LayerExtractor --plan` reads the indexes and names the containers that hold layer, faction, availability and
-   vehicle data.
-4. The script fetches only those containers (`.ucas`).
-
-Squad's workshop content is open to Steam's anonymous dedicated-server login, so the script needs no Steam account.
-It looks for DepotDownloader at `~/.local/opt/depotdownloader/DepotDownloader`. Set `DEPOT_DOWNLOADER` to use another
-path. `<outDir>` is then the `<modDir>` to extract from.
+`<outDir>` is then the `<modDir>` to extract from.
 
 ### Inspecting game files
 
-Three commands help when an export comes out wrong or a mod lays its files out unusually:
+When an export comes out wrong, `list:<substring>` prints the mounted file paths that match, and `dump:<substring>`
+prints the raw exports of the first matching package. Each takes `<modDir>` or `--vanilla`, such as
+`dotnet run -- --vanilla list:FactionSetups`.
 
-| Command                | Does                                                                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `list:<substring>`     | prints the mounted file paths that contain the substring                                                             |
-| `dump:<substring>`     | prints the raw exports of the first package whose path contains the substring                                        |
-| `textures:<substring>` | writes each matching texture to `--out`, as for the [vehicle icons](../guide/operations/layer_data.md#vehicle-icons) |
+### Vehicle icons
 
-Each takes the same `<modDir>` or `--vanilla` as an export, such as `dotnet run -- --vanilla list:FactionSetups`.
+The vehicle map icons under `src/assets/vehicle-icons` are extracted from the base game with
+`textures:VehicleMapIcons`, then rebuilt with `pnpm build:vehicle-icons <dir>`. Mod vehicles have no icons.
 
 ## Custom scoring
 
