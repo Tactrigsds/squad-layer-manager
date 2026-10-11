@@ -145,6 +145,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	const steam = steamId ?? profile?.playerIds.steam
 	// the same secondary filter the framed window has, applied in sql rather than over a rendered feed
 	const [feed, setFeed] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
+	const [activityExpanded, setActivityExpanded] = React.useState(false)
 	const eventsQuery = React.useMemo(
 		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'DEFAULT' ? undefined : feed }),
 		[playerId, feed],
@@ -160,55 +161,62 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
-				<PlayerTimeoutStatus playerId={playerId} />
-				<div className="flex flex-col">
-					<div className="inline-flex gap-2 items-baseline">
-						{username && <CopyIdButton kind="username" id={username} />}
-						{steam && <CopyIdButton kind="steam" id={steam} />}
+			{!activityExpanded && (
+				<>
+					<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+						<PlayerTimeoutStatus playerId={playerId} />
+						<div className="flex flex-col">
+							<div className="inline-flex gap-2 items-baseline">
+								{username && <CopyIdButton kind="username" id={username} />}
+								{steam && <CopyIdButton kind="steam" id={steam} />}
+							</div>
+							<div className="inline-flex gap-1 items-baseline">
+								<CopyIdButton kind="eos" id={playerId} />
+							</div>
+						</div>
+						<div className="flex items-center gap-2 text-muted-foreground">
+							{steam ? (
+								<>
+									<ExtLink href={`https://steamcommunity.com/profiles/${steam}`}>{SM_Msgs.linkNames.steam}</ExtLink>
+									<ExtLink href={`https://communitybanlist.com/search/${steam}`}>{SM_Msgs.linkNames.cbl}</ExtLink>
+									<ExtLink href={`https://mysquadstats.com/search/${steam}#vanillaStats`}>
+										{SM_Msgs.linkNames.mySquadStats}
+									</ExtLink>
+								</>
+							) : (
+								<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
+							)}
+							<ExtLink
+								href={
+									profile
+										? profile.profileUrl
+										: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+								}
+							>
+								{SM_Msgs.linkNames.battlemetrics}
+							</ExtLink>
+							{!!profile?.hoursPlayed && (
+								<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
+							)}
+						</div>
+						<PlayerDiscordLink steamId={steam} />
 					</div>
-					<div className="inline-flex gap-1 items-baseline">
-						<CopyIdButton kind="eos" id={playerId} />
-					</div>
-				</div>
-				<div className="flex items-center gap-2 text-muted-foreground">
-					{steam ? (
-						<>
-							<ExtLink href={`https://steamcommunity.com/profiles/${steam}`}>{SM_Msgs.linkNames.steam}</ExtLink>
-							<ExtLink href={`https://communitybanlist.com/search/${steam}`}>{SM_Msgs.linkNames.cbl}</ExtLink>
-							<ExtLink href={`https://mysquadstats.com/search/${steam}#vanillaStats`}>{SM_Msgs.linkNames.mySquadStats}</ExtLink>
-						</>
-					) : (
-						<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
-					)}
-					<ExtLink
-						href={
-							profile
-								? profile.profileUrl
-								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
-						}
-					>
-						{SM_Msgs.linkNames.battlemetrics}
-					</ExtLink>
-					{!!profile?.hoursPlayed && (
-						<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
-					)}
-				</div>
-				<PlayerDiscordLink steamId={steam} />
-			</div>
-			{/* no groupings: resolving one needs the roster entry's admin standing and discord roles, which is per-server */}
-			<PlayerTags
-				playerId={playerId}
-				username={username}
-				adminGroups={info?.code === 'ok' ? info.adminGroups : []}
-				adminListUrls={info?.code === 'ok' ? info.adminListUrls : {}}
-				flags={flags}
-				groupings={[]}
-			/>
-			<Separator />
+					{/* no groupings: resolving one needs the roster entry's admin standing and discord roles, which is per-server */}
+					<PlayerTags
+						playerId={playerId}
+						username={username}
+						adminGroups={info?.code === 'ok' ? info.adminGroups : []}
+						adminListUrls={info?.code === 'ok' ? info.adminListUrls : {}}
+						flags={flags}
+						groupings={[]}
+					/>
+					<Separator />
+				</>
+			)}
 			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
-				<div className="inline-flex items-baseline gap-1 justify-between w-full">
-					<h3 className="inline">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+				<div className="flex items-center gap-1 w-full">
+					<h3 className="me-auto">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+					<ActivityExpandToggle expanded={activityExpanded} onToggle={() => setActivityExpanded((v) => !v)} />
 					{/* no selectedOnly: this window has no teams panel selection to restrict against */}
 					<EventFilterSelect variant="ghost" value={feed} onValueChange={setFeed} />
 				</div>
@@ -309,6 +317,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
+	const [activityExpanded, setActivityExpanded] = React.useState(false)
 	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
 	// the player's events on this server through the same filter, newest first, so a selection of recent rows has its
 	// ends on the first pages of the history results
@@ -327,20 +336,21 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	usePaintedSelection(content)
 
 	// older events prepend above the reader. The browser's own scroll anchoring sits out when the scroller is at
-	// the top, which is exactly where the load-older button lives, so the topmost row is held in place by hand
-	// until the fetch settles.
-	const prependAnchor = React.useRef<{ el: Element; top: number } | null>(null)
+	// the top, which is exactly where the load-older button lives, so the top visible row is held in place by hand,
+	// once, in the commit that renders the new page. A page served from the hover preload's cache never sets
+	// isFetching, so the page count is what marks that commit.
+	const renderedPageCount = historyRequested ? (eventsQuery.data?.pages.length ?? 0) : 0
+	const prependAnchor = React.useRef<{ el: Element; top: number; pageCount: number } | null>(null)
 	const anchorForPrepend = () => {
-		const el = content?.firstElementChild
-		if (el) prependAnchor.current = { el, top: el.getBoundingClientRect().top }
+		const el = content && topVisibleFeedRow(content)
+		prependAnchor.current = el ? { el, top: el.getBoundingClientRect().top, pageCount: renderedPageCount } : null
 	}
-	const wasLoadingOlder = React.useRef(false)
 	React.useLayoutEffect(() => {
 		const anchor = prependAnchor.current
-		if (wasLoadingOlder.current && !isLoadingOlder) prependAnchor.current = null
-		wasLoadingOlder.current = isLoadingOlder
-		if (anchor?.el.isConnected) scrollBy(anchor.el.getBoundingClientRect().top - anchor.top)
-	})
+		if (!anchor || renderedPageCount <= anchor.pageCount) return
+		prependAnchor.current = null
+		if (anchor.el.isConnected) scrollBy(anchor.el.getBoundingClientRect().top - anchor.top)
+	}, [renderedPageCount, scrollBy])
 	const { setIsPinned } = useDraggableWindow()
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
@@ -393,131 +403,136 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div data-tour="player-details-ids" className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
-				<PlayerTimeoutStatus playerId={playerId} />
-				<div className="flex flex-col ">
-					<div className="inline-flex gap-2 items-baseline">
-						{ids?.username && <CopyIdButton kind="username" id={ids?.username} />}
-						{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
-					</div>
-					<div className="inline-flex gap-1 items-baseline">
-						<CopyIdButton kind="eos" id={playerId} />
-						{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
-					</div>
-					{ids?.playerController && (
-						<div className="flex min-w-0 gap-1 items-baseline">
-							<CopyIdButton kind="playerController" id={ids.playerController} />
+			{!activityExpanded && (
+				<>
+					<div data-tour="player-details-ids" className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+						<PlayerTimeoutStatus playerId={playerId} />
+						<div className="flex flex-col ">
+							<div className="inline-flex gap-2 items-baseline">
+								{ids?.username && <CopyIdButton kind="username" id={ids?.username} />}
+								{(ids?.steam ?? profile?.playerIds.steam) && (
+									<CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />
+								)}
+							</div>
+							<div className="inline-flex gap-1 items-baseline">
+								<CopyIdButton kind="eos" id={playerId} />
+								{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
+							</div>
+							{ids?.playerController && (
+								<div className="flex min-w-0 gap-1 items-baseline">
+									<CopyIdButton kind="playerController" id={ids.playerController} />
+								</div>
+							)}
 						</div>
-					)}
-				</div>
-				<div className="flex items-center gap-2 text-muted-foreground">
-					{(ids?.steam ?? profile?.playerIds.steam) ? (
-						<>
-							<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>
-								{SM_Msgs.linkNames.steam}
+						<div className="flex items-center gap-2 text-muted-foreground">
+							{(ids?.steam ?? profile?.playerIds.steam) ? (
+								<>
+									<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>
+										{SM_Msgs.linkNames.steam}
+									</ExtLink>
+									<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>
+										{SM_Msgs.linkNames.cbl}
+									</ExtLink>
+									<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
+										{SM_Msgs.linkNames.mySquadStats}
+									</ExtLink>
+								</>
+							) : (
+								<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
+							)}
+							<ExtLink
+								href={
+									profile
+										? profile.profileUrl
+										: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+								}
+							>
+								{SM_Msgs.linkNames.battlemetrics}
 							</ExtLink>
-							<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>
-								{SM_Msgs.linkNames.cbl}
-							</ExtLink>
-							<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
-								{SM_Msgs.linkNames.mySquadStats}
-							</ExtLink>
-						</>
+							{!!profile?.hoursPlayed && (
+								<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
+							)}
+						</div>
+						<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
+					</div>
+					<PlayerTags
+						playerId={playerId}
+						username={ids?.username}
+						isAdmin={data?.isAdmin}
+						adminGroups={data?.adminGroups ?? []}
+						adminListUrls={data?.adminListUrls ?? {}}
+						flags={flags}
+						groupings={groupings}
+					/>
+					{matchPlayer && currentMatch ? (
+						<div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/50 px-3 py-1.5">
+							<h3 className="fd-cond text-sm font-bold">{tr.text(SM_Msgs.thisMatch())}</h3>
+							<dl className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs [&>div]:flex [&>div]:min-w-0 [&>div]:items-baseline [&>div]:gap-1 [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
+								<div>
+									<dt>{tr.text(SM_Msgs.teamLabel())}</dt>
+									<dd>
+										<MatchTeamDisplay
+											matchId={currentMatch.historyEntryId}
+											teamId={matchPlayer.teamId!}
+											showAltTeamIndicator
+											stores={stores}
+										/>
+									</dd>
+								</div>
+								<div>
+									<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
+									<dd>
+										{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
+										{matchPlayer.isLeader && <span className="ms-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
+									</dd>
+								</div>
+								<div>
+									<dt>{tr.text(SM_Msgs.partyColumn())}</dt>
+									<dd className="font-mono">{matchPlayer.partyId ?? '-'}</dd>
+								</div>
+								<div>
+									<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
+									<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
+										{matchPlayer.stats?.teamkills ?? 0}
+									</dd>
+								</div>
+								{showSpoilers && (
+									<div>
+										<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
+										<dd>{matchPlayer.role ?? '-'}</dd>
+									</div>
+								)}
+								{showSpoilers && (
+									<div>
+										<dt>{tr.text(SM_Msgs.vehicleColumn())}</dt>
+										<dd>{matchPlayer.vehicle ?? '-'}</dd>
+									</div>
+								)}
+								{showSpoilers && (
+									<div>
+										<dt>{tr.text(SM_Msgs.killsWoundsDeaths())}</dt>
+										<dd className="font-mono">
+											{matchPlayer.stats?.kills ?? 0} · {matchPlayer.stats?.wounds ?? 0} · {matchPlayer.stats?.deaths ?? 0}
+										</dd>
+									</div>
+								)}
+							</dl>
+						</div>
 					) : (
-						<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
+						phone && (
+							<div className="mx-3 my-2 flex items-center gap-2 rounded-[3px] border border-line-soft bg-[#3a3a3d] px-2.5 py-2 text-xs text-text-2">
+								<Icons.Info className="size-3.5 shrink-0 text-text-3" />
+								{tr.text(SM_Msgs.notInCurrentMatch())}
+							</div>
+						)
 					)}
-					<ExtLink
-						href={
-							profile
-								? profile.profileUrl
-								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
-						}
-					>
-						{SM_Msgs.linkNames.battlemetrics}
-					</ExtLink>
-					{!!profile?.hoursPlayed && (
-						<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
-					)}
-				</div>
-				<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
-			</div>
-			<PlayerTags
-				playerId={playerId}
-				username={ids?.username}
-				isAdmin={data?.isAdmin}
-				adminGroups={data?.adminGroups ?? []}
-				adminListUrls={data?.adminListUrls ?? {}}
-				flags={flags}
-				groupings={groupings}
-			/>
-			{matchPlayer && currentMatch ? (
-				<div className="border-b border-border/50">
-					<div className="flex flex-col px-3 pt-2">
-						<span className="fd-cond text-base font-bold">{tr.text(SM_Msgs.thisMatch())}</span>
-					</div>
-					<dl className="grid grid-cols-3 gap-x-2.5 gap-y-1.5 px-3 py-2 text-sm [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
-						<div>
-							<dt>{tr.text(SM_Msgs.teamLabel())}</dt>
-							<dd>
-								<MatchTeamDisplay
-									matchId={currentMatch.historyEntryId}
-									teamId={matchPlayer.teamId!}
-									showAltTeamIndicator
-									stores={stores}
-								/>
-							</dd>
-						</div>
-						<div>
-							<dt>{tr.text(SM_Msgs.squadLabel())}</dt>
-							<dd>
-								{matchPlayer.squadId === null ? '-' : matchPlayer.squadId}
-								{matchPlayer.isLeader && <span className="ms-1 text-text-3">{tr.text(SM_Msgs.leaderShort())}</span>}
-							</dd>
-						</div>
-						<div>
-							<dt>{tr.text(SM_Msgs.partyColumn())}</dt>
-							<dd className="font-mono">{matchPlayer.partyId ?? '-'}</dd>
-						</div>
-						<div>
-							<dt>{tr.text(SM_Msgs.teamKillsLabel())}</dt>
-							<dd className={cn('font-mono', (matchPlayer.stats?.teamkills ?? 0) > 0 && 'text-destructive')}>
-								{matchPlayer.stats?.teamkills ?? 0}
-							</dd>
-						</div>
-						{showSpoilers && (
-							<div>
-								<dt>{tr.text(SM_Msgs.roleColumn())}</dt>
-								<dd>{matchPlayer.role ?? '-'}</dd>
-							</div>
-						)}
-						{showSpoilers && (
-							<div>
-								<dt>{tr.text(SM_Msgs.vehicleColumn())}</dt>
-								<dd>{matchPlayer.vehicle ?? '-'}</dd>
-							</div>
-						)}
-						{showSpoilers && (
-							<div>
-								<dt>{tr.text(SM_Msgs.killsWoundsDeaths())}</dt>
-								<dd className="font-mono">
-									{matchPlayer.stats?.kills ?? 0} · {matchPlayer.stats?.wounds ?? 0} · {matchPlayer.stats?.deaths ?? 0}
-								</dd>
-							</div>
-						)}
-					</dl>
-				</div>
-			) : (
-				phone && (
-					<div className="mx-3 my-2 flex items-center gap-2 rounded-[3px] border border-line-soft bg-[#3a3a3d] px-2.5 py-2 text-xs text-text-2">
-						<Icons.Info className="size-3.5 shrink-0 text-text-3" />
-						{tr.text(SM_Msgs.notInCurrentMatch())}
-					</div>
-				)
+					<Separator />
+				</>
 			)}
-			<Separator />
 			<div data-tour="player-details-activity" className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
-				<div className="inline-flex items-baseline gap-1 justify-between w-full">
-					<h3 className="inline">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+				<div className="flex items-center gap-1 w-full">
+					<h3 className="me-auto">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+					<ActivityExpandToggle expanded={activityExpanded} onToggle={() => setActivityExpanded((v) => !v)} />
 					<EventFilterSelect
 						variant="ghost"
 						value={filterState}
@@ -791,6 +806,33 @@ function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 		// one renders from the cache instead of refetching
 		staleTime: 60_000,
 	})
+}
+
+function ActivityExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+	const label = tr.text(expanded ? CHAT_Msgs.collapseActivity() : CHAT_Msgs.expandActivity())
+	return (
+		<button
+			type="button"
+			onClick={onToggle}
+			aria-pressed={expanded}
+			aria-label={label}
+			title={label}
+			className="inline-flex items-center rounded p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+		>
+			{expanded ? <Icons.Minimize2 className="h-3.5 w-3.5" /> : <Icons.Maximize2 className="h-3.5 w-3.5" />}
+		</button>
+	)
+}
+
+// The first row whose bottom edge is below the top of the feed's scroll viewport. The feed's first element is
+// skipped: it is the leading date separator, which changes or unmounts once older events render above it.
+function topVisibleFeedRow(content: HTMLElement): Element | null {
+	const viewportTop = (content.closest('[data-radix-scroll-area-viewport]') ?? content).getBoundingClientRect().top
+	for (let i = 1; i < content.children.length; i++) {
+		const el = content.children[i]
+		if (el.getBoundingClientRect().bottom > viewportTop) return el
+	}
+	return null
 }
 
 function formatDateLabel(time: number): string {
