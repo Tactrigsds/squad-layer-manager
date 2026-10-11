@@ -162,6 +162,7 @@ export function PhoneSortSheet(props: {
 	const { showSelected, adminsOnly, showSpoilers } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const isReset = Zus.useStore(squadServer, SquadServerFrame.Sel.teamsPanelIsReset)
 	const { roles, groups } = Zus.useStore(
 		squadServer,
 		currentMatch$,
@@ -191,7 +192,7 @@ export function PhoneSortSheet(props: {
 			onOpenChange={props.onOpenChange}
 			title={tr.text(SM_Msgs.sortAndShow())}
 			trailing={
-				<Button variant="ghost" size="sm" onClick={() => SquadServerFrame.Actions.resetTeamsPanel(props.stores)}>
+				<Button variant="ghost" size="sm" disabled={isReset} onClick={() => SquadServerFrame.Actions.resetTeamsPanel(props.stores)}>
 					{tr.text(SM_Msgs.resetPanel())}
 				</Button>
 			}
@@ -363,7 +364,7 @@ export function PhoneSelectionBar({ stores }: { stores: SquadServerFrame.KeyProp
 					size="icon-sm"
 					variant="ghost"
 					title={tr.text(SM_Msgs.clearSelection())}
-					onClick={() => SquadServerFrame.Actions.setSelection(stores, {})}
+					onClick={() => SquadServerFrame.Actions.clearSelection(stores)}
 				>
 					<Icons.X />
 				</Button>
