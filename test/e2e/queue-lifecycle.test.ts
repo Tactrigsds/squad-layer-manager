@@ -1,14 +1,16 @@
 import * as FB from '@/models/filter-builders.models'
+import * as L from '@/models/layer.models'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerText, queue, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
-import { savedQueue } from '../harness/inspect'
+import { savedPool, savedQueue } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // One queue, followed through its whole life against a single app: rendered as seeded, edited and
-// discarded, edited and saved, consumed by a map roll, refilled by a generated vote, and the vote
-// configured. Each test hands the next its starting state, so the order is the scenario.
+// discarded, edited and saved, consumed by a map roll, refilled by a generated vote, the vote configured, and
+// finally emptied so that autogeneration refills it with a vote. Each test hands the next its starting state, so the
+// order is the scenario.
 
 const MATCHES_POOL = '✅'
 const MISSES_POOL = '❌'
@@ -221,5 +223,44 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 		await voteItem.getByRole('button', { name: 'Configure vote' }).click()
 		await expect(duration).toHaveValue('92')
+	})
+
+	test('generates a vote when the queue runs out, once the pool configuration asks for one', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+
+		await page.getByRole('button', { name: 'Pool Configuration' }).click()
+		await page.getByRole('button', { name: 'Generation' }).click()
+		const factions = page.getByRole('checkbox', { name: 'Factions' })
+		await expect(factions).toBeDisabled()
+		await page.getByRole('checkbox', { name: 'Generate votes' }).click()
+		await factions.click()
+		// the choices are only certain to differ by map, so the map cannot be hidden
+		await expect(page.getByRole('checkbox', { name: 'Map', exact: true })).toBeDisabled()
+		await page.getByRole('button', { name: 'Save Changes' }).click()
+		await app.waitFor(() => savedPool(app).generateVotes?.enabled || null, { label: 'generated votes switched on' })
+		await page.getByRole('button', { name: 'Close window' }).click()
+
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Clear Queue' }).click()
+		await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+
+		const [vote] = await app.waitFor(
+			() => {
+				const list = savedQueue(app)
+				return list.length === 1 && list[0].type === 'vote-list-item' ? list : null
+			},
+			{ label: 'the generated vote', timeoutMs: 30_000 },
+		)
+		expect(vote.source.type).toBe('generated')
+		const maps = vote.choices!.map((choice) => L.toLayer(choice.layerId).Map)
+		expect(maps).toHaveLength(3)
+		expect(new Set(maps).size).toBe(3)
+		expect(vote.voteConfig?.displayProps?.toSorted()).toEqual(['factions', 'gamemode', 'map'])
+
+		const voteItem = Dash.queueSection(page)
+			.getByRole('listitem')
+			.filter({ has: page.getByRole('heading', { name: 'Vote' }) })
+		await expect(voteItem.getByRole('listitem')).toHaveCount(3)
 	})
 })

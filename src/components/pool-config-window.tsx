@@ -16,7 +16,7 @@ import { tr } from '@/systems/messages.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
-import { NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
+import { GenerationPanel, NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
 import type { PoolConfigWindowProps } from './pool-config-window.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -68,7 +68,10 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 	// the save/reset affordances disappear (this is all public data, so viewing stays available)
 	const readOnly = !!mainPoolApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
 
-	const [tab, setTab] = useState_withGlobalHandle<'filters' | 'repeatRules' | 'nextLayer'>(TUT.TOUR_HANDLES.poolConfigTab, 'filters')
+	const [tab, setTab] = useState_withGlobalHandle<'filters' | 'repeatRules' | 'generation' | 'nextLayer'>(
+		TUT.TOUR_HANDLES.poolConfigTab,
+		'filters',
+	)
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -88,6 +91,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						options={[
 							{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
 							{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
+							{ label: tr.text(SETTINGS_Msgs.generationTab()), value: 'generation' },
 							{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
 						]}
 						active={tab}
@@ -102,6 +106,8 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 					<PoolFiltersPanel api={mainPoolApi} />
 				) : tab === 'repeatRules' ? (
 					<RepeatRulesPanel api={mainPoolApi} />
+				) : tab === 'generation' ? (
+					<GenerationPanel api={mainPoolApi} />
 				) : (
 					<NextLayerPanel apis={nextLayerApis} />
 				)}

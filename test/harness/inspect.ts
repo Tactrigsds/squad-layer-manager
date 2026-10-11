@@ -16,7 +16,14 @@ import type { AppFixture } from './app-fixture'
 export function savedQueue(
 	app: AppFixture,
 	serverId: string = app.serverId,
-): { type: string; itemId: string; layerId?: string; source: { type: string; requesters?: { steamId?: string }[] } }[] {
+): {
+	type: string
+	itemId: string
+	layerId?: string
+	source: { type: string; requesters?: { steamId?: string }[] }
+	choices?: { layerId: string }[]
+	voteConfig?: { displayProps?: string[] }
+}[] {
 	const db = app.readDb()
 	try {
 		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(serverId) as { layerQueue: string }
@@ -51,6 +58,7 @@ export function savedBackburner(app: AppFixture): { itemId: string; filter: Para
 export function savedPool(app: AppFixture): {
 	skipWarningsForTags?: string[]
 	repeatRules: { field: string; label?: string; autogen?: boolean; targetValues?: string[] }[]
+	generateVotes?: { enabled: boolean; displayProps: string[] }
 } {
 	const db = app.readDb()
 	try {

@@ -290,6 +290,24 @@ export const nextLayerLabels: Record<SETTINGS.NextLayerSettingKey, TString> = {
 	warnOnNextLayerChange: t('Warn admins when the next layer changes'),
 }
 
+// -------- the generation panel --------
+
+export const generationTab = def('Generation')
+
+export const generatedVotes = def('Generated Votes')
+
+export const generateVotesLabel = def('Generate votes')
+
+export const generateVotesHelp = def(
+	'When the queue runs out, SLM generates a vote between 3 layers instead of a single layer. Each choice is on a different map. When a layer request is pending, SLM still generates the requested layer on its own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer instead.',
+)
+
+export const generatedVoteDisplayOptions = def('Vote Display Options')
+
+export const generatedVoteDisplayOptionsHelp = def(
+	'The parts of each layer that players see when a generated vote starts. The map is always shown, because it is the one part the choices are certain to differ by.',
+)
+
 // -------- repeat rules --------
 
 export const repeatRules = def('Repeat Rules')

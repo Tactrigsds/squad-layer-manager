@@ -5,6 +5,7 @@ import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Arr from '@/lib/array-utils.ts'
+import type * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
@@ -35,6 +36,7 @@ import { Label } from './ui/label.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
+import { VoteDisplayPropsCheckboxes } from './vote-display-props-checkboxes.tsx'
 
 // Shared pool-configuration UI (pool filter, secondary filter lists, repeat rules), used by both the dashboard's
 // server-settings popover and the settings page's server forms. All data access goes through PoolConfigApi so the
@@ -377,19 +379,23 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 	)
 }
 
+const ROOT_PATH: SETTINGS.SettingsPath = []
+
 function BooleanSettingRow({
 	api,
+	path = ROOT_PATH,
 	label,
 	description,
 	tourId,
 }: {
 	api: PoolConfigApi
+	path?: SETTINGS.SettingsPath
 	label: string
 	description: string
 	tourId?: string
 }) {
 	const id = React.useId()
-	const checked = usePoolValue(api, []) === true
+	const checked = usePoolValue(api, path) === true
 	return (
 		<div data-tour={tourId} className="flex items-start gap-2.5">
 			<PermissionDeniedTooltip denied={api.writeDenied}>
@@ -398,7 +404,7 @@ function BooleanSettingRow({
 					className="mt-0.5"
 					checked={checked}
 					disabled={!!api.writeDenied}
-					onCheckedChange={(next) => api.set([], next)}
+					onCheckedChange={(next) => api.set(path, next)}
 				/>
 			</PermissionDeniedTooltip>
 			<div className="min-w-0 space-y-1">
@@ -425,6 +431,38 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 						tourId={`next-layer-${key}`}
 					/>
 				))}
+			</div>
+		</div>
+	)
+}
+
+export function GenerationPanel({ api }: { api: PoolConfigApi }) {
+	const enabled = usePoolValue(api, ['generateVotes', 'enabled']) === true
+	const displayProps = (usePoolValue(api, ['generateVotes', 'displayProps']) as DH.LayerDisplayProp[] | undefined) ?? []
+	return (
+		<div className="space-y-3">
+			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
+			<BooleanSettingRow
+				api={api}
+				path={['generateVotes', 'enabled']}
+				label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
+				description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
+			/>
+			<div className="space-y-2 ps-6">
+				<div className="space-y-1">
+					<h5 className="text-sm font-medium">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptions())}</h5>
+					<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptionsHelp())}</p>
+				</div>
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<div>
+						<VoteDisplayPropsCheckboxes
+							displayProps={displayProps}
+							onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
+							disabled={!enabled || !!api.writeDenied}
+							lockMap
+						/>
+					</div>
+				</PermissionDeniedTooltip>
 			</div>
 		</div>
 	)

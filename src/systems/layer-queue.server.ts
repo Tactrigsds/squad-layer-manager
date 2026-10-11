@@ -33,7 +33,7 @@ import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
-import type * as V from '@/models/vote.models'
+import * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
@@ -610,64 +610,109 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
 		const serverState = await SquadServer.getServerState(ctx)
-		const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
-		const layerItemsState = await LayerQueries.resolveLayerItemsState(ctx)
+		const list = await LayerQueries.resolveLayerItemsState(ctx)
 		const templates = ctx.layerQueue.session.state.savedBackburner.map((item) => ({ itemId: item.itemId, filter: item.filter }))
+		const generateVotes = serverState.settings.queue.mainPool.generateVotes
 
-		const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
-		const generated = await (async function generate(
-			constraints: LQY.Constraint[] = allConstraints,
-		): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
-			try {
-				const res = await LayerQueriesShared.generateWithBackburner({
-					ctx: layerCtx,
-					input: {
-						constraints,
-						templates,
-						list: layerItemsState,
-						cursor: { type: 'start' },
-						action: 'add',
-						seed: LQY.getSeed(),
-					},
-				})
-				if (res.code !== 'ok') {
-					log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
-					return fallback
-				}
-				if (res.invalidItemIds.length > 0) {
-					log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
-				}
-				if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
-				const noDnrConstraints = constraints.filter((c) => c.type !== 'do-not-repeat')
-				if (noDnrConstraints.length < constraints.length) {
-					log.info('no layers found with do-not-repeat constraints applied, retrying without')
-					return await generate(noDnrConstraints)
-				}
-				log.warn(`No layers found for constraints: %o`, { constraints })
-				return fallback
-			} catch (e) {
-				log.error(e, 'Error generating layer')
-				return fallback
+		// a layer request outranks a vote: the requested layer is queued on its own
+		let generated = templates.length > 0 || !generateVotes.enabled ? await generateLayer(layerCtx, constraints, templates, list) : null
+		let nextQueueItem: LL.Item | null = null
+		if (generateVotes.enabled && !generated?.consumedItemIds.length) {
+			const choices = await generateVoteChoices(layerCtx, constraints, list)
+			if (choices.length >= 2) {
+				// the map is the one thing the choices are certain to differ by, so it is always shown
+				const displayProps = Array.from(new Set<DH.LayerDisplayProp>(['map', ...generateVotes.displayProps]))
+				nextQueueItem = LL.createVoteItem(choices, { type: 'generated' }, { displayProps })
+			} else {
+				log.warn('only %d map(s) available for a generated vote, generating a single layer instead', choices.length)
 			}
-		})()
-
-		const requesters: USR.GuiOrChatUserId[] = []
-		for (const item of ctx.layerQueue.session.state.savedBackburner) {
-			if (!generated.consumedItemIds.includes(item.itemId)) continue
-			if (requesters.some((r) => BB.sameOwner(r, item.source))) continue
-			requesters.push(item.source)
 		}
-		const source: LL.Source = requesters.length > 0 ? { type: 'layer-request', requesters } : { type: 'generated' }
-		const nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, source)
+
+		let consumedBackburnerItemIds: string[] | undefined
+		if (!nextQueueItem) {
+			generated ??= await generateLayer(layerCtx, constraints, templates, list)
+			const requesters: USR.GuiOrChatUserId[] = []
+			for (const item of ctx.layerQueue.session.state.savedBackburner) {
+				if (!generated.consumedItemIds.includes(item.itemId)) continue
+				if (requesters.some((r) => BB.sameOwner(r, item.source))) continue
+				requesters.push(item.source)
+			}
+			const source: LL.Source = requesters.length > 0 ? { type: 'layer-request', requesters } : { type: 'generated' }
+			nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, source)
+			if (generated.consumedItemIds.length > 0) consumedBackburnerItemIds = generated.consumedItemIds
+		}
 		await dispatchOp(ctx, {
 			op: 'queue-item-generated',
 			item: nextQueueItem,
-			consumedBackburnerItemIds: generated.consumedItemIds.length > 0 ? generated.consumedItemIds : undefined,
+			consumedBackburnerItemIds,
 			opId: SLL.createOpId(),
 		})
 	},
 )
+
+// Draws a single layer, folding in whatever backburner templates fit. Falls back to dropping the repeat rules, and
+// then to L.DEFAULT_LAYER_ID, rather than leave the queue empty.
+async function generateLayer(
+	layerCtx: LQY.Ctx,
+	constraints: LQY.Constraint[],
+	templates: LayerQueriesShared.BackburnerTemplate[],
+	list: LQY.LayerItemsState,
+): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
+	const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
+	try {
+		const res = await LayerQueriesShared.generateWithBackburner({
+			ctx: layerCtx,
+			input: { constraints, templates, list, cursor: { type: 'start' }, action: 'add', seed: LQY.getSeed() },
+		})
+		if (res.code !== 'ok') {
+			log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
+			return fallback
+		}
+		if (res.invalidItemIds.length > 0) {
+			log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
+		}
+		if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
+		const noDnrConstraints = constraints.filter((c) => c.type !== 'do-not-repeat')
+		if (noDnrConstraints.length < constraints.length) {
+			log.info('no layers found with do-not-repeat constraints applied, retrying without')
+			return await generateLayer(layerCtx, noDnrConstraints, templates, list)
+		}
+		log.warn(`No layers found for constraints: %o`, { constraints })
+		return fallback
+	} catch (e) {
+		log.error(e, 'Error generating layer')
+		return fallback
+	}
+}
+
+// Draws up to V.DEFAULT_NUM_CHOICES layers, each on a different map. Unlike generateLayer, the repeat rules are never
+// dropped: a vote that offers the map just played is worse than a vote with fewer choices, or a single layer.
+async function generateVoteChoices(layerCtx: LQY.Ctx, constraints: LQY.Constraint[], list: LQY.LayerItemsState): Promise<L.LayerId[]> {
+	try {
+		const res = await LayerQueriesShared.genVote({
+			ctx: layerCtx,
+			input: {
+				constraints,
+				list,
+				cursor: { type: 'start' },
+				action: 'add',
+				choices: Array.from({ length: V.DEFAULT_NUM_CHOICES }, () => V.GenVote.initChoice()),
+				uniqueConstraints: ['Map'],
+				seed: LQY.getSeed(),
+			},
+		})
+		if (res.code !== 'ok') {
+			log.error(`Invalid node error when generating vote: %o`, { cause: res.errors })
+			return []
+		}
+		return res.chosenLayers.flatMap((layer) => (layer ? [layer.id] : []))
+	} catch (e) {
+		log.error(e, 'Error generating vote')
+		return []
+	}
+}
 
 // What the queue head breaks, as the layer table's own warning indicators would show it: the repeat rules it
 // violates and the pool filters it misses. Undefined when there is nothing to report, so a caller can drop the
