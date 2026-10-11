@@ -185,6 +185,9 @@ export namespace Sel {
 	export function hasSelection(s: State) {
 		return selectedPlayerCount(s) > 0
 	}
+	export function teamsPanelIsReset(s: State) {
+		return TeamsPanelPrt.Sel.isReset(s) && !hasSelection(s)
+	}
 
 	// mirrors the server's admin-target rule so the warn boxes can default their "notify admins" toggle to match
 	export function allTargetsAreAdmins(targets: Iterable<SM.PlayerId>) {
@@ -386,6 +389,10 @@ export namespace Actions {
 	// the teams panel's reset button: the filters and sorting are the partial's, the selection is the frame's
 	export function resetTeamsPanel(stores: KeyProp) {
 		TeamsPanelPrt.Actions.reset({ teamsPanel: stores.squadServer! })
+		clearSelection(stores)
+	}
+
+	export function clearSelection(stores: KeyProp) {
 		setSelection(stores, {})
 	}
 

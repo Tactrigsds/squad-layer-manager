@@ -99,6 +99,10 @@ export function initTeamsPanel(args: Args) {
 	)
 }
 
+function sortingEquals(a: SortingState, b: SortingState) {
+	return a.length === b.length && a.every((s, i) => s.id === b[i].id && s.desc === b[i].desc)
+}
+
 // a player outside the selection has no entry, which the record's type does not say
 function isSelected(selection: Record<SM.PlayerId, boolean>, playerId: SM.PlayerId) {
 	return (selection[playerId] as boolean | undefined) ?? false
@@ -255,6 +259,22 @@ export namespace Sel {
 			const sort = store.teamsPanel.sorting[target]
 			return target === 'teams' ? sort[0]?.id === 'squad' : sort[0]?.id === 'faction' && sort[1]?.id === 'squad'
 		}
+	}
+
+	// whether everything Actions.reset clears is already at its initial value
+	export function isReset(store: Store) {
+		const p = store.teamsPanel
+		return (
+			p.searchQuery === '' &&
+			!p.adminsOnly &&
+			p.roleFilter === null &&
+			p.groupFilter === null &&
+			p.squadFilters.A === null &&
+			p.squadFilters.B === null &&
+			p.squadFilters.combined === null &&
+			sortingEquals(p.sorting.teams, DEFAULT_TEAM_SORTING) &&
+			sortingEquals(p.sorting.combined, DEFAULT_COMBINED_SORTING)
+		)
 	}
 
 	// the column-header filter values as one stable object, so a table reads them in a single subscription

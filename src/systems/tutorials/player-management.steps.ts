@@ -206,6 +206,16 @@ function clearSearchInput() {
 	if (input) input.value = ''
 }
 
+// The reset button is disabled while the panel has nothing to reset, and the reader may have cleared the selection
+// the previous step asked for.
+function ensureResettable(run: Tour.RunStores) {
+	ensureTeamsShown()
+	const s = Zus.getState(run.squadServer)
+	if (!SquadServerFrame.Sel.teamsPanelIsReset(s)) return
+	const playerId = playerIdNamed(s, TARGETS.details)
+	if (playerId) SquadServerFrame.Actions.selectPlayerIds(stores(run), [playerId])
+}
+
 function simResetPanel(ctx: Tour.SimulateCtx) {
 	SquadServerFrame.Actions.resetTeamsPanel(stores(ctx.run))
 	clearSearchInput()
@@ -727,7 +737,7 @@ export function buildSteps(plan: GroupingPlan) {
 				simulate: (ctx) => simSelect(ctx, [TARGETS.details]),
 			},
 		},
-		{ id: 'reset-panel', anchor: 'teams-reset', interact: 'anchor-only', msg: PMTUT_Msgs.resetPanel, prepare: ensureTeamsShown },
+		{ id: 'reset-panel', anchor: 'teams-reset', interact: 'anchor-only', msg: PMTUT_Msgs.resetPanel, prepare: ensureResettable },
 
 		// the player details window
 		{

@@ -199,8 +199,10 @@ test.describe('teams panel', () => {
 		// the roster reaches the UI through the app's ListPlayers poll
 		await expect(playerRow(teamTable(page, 'A'), ALPHA_LEAD)).toBeVisible({ timeout: 20_000 })
 		await expect(playerRow(teamTable(page, 'B'), BRAVO_ONE)).toBeVisible({ timeout: 20_000 })
-		// the panel's state outlives any one test, so start each from a known one
-		await page.getByRole('button', { name: 'Reset selections, filters, sorting and search' }).click()
+		// the panel's state outlives any one test, so start each from a known one. The button is disabled when the panel
+		// is already there.
+		const reset = page.getByRole('button', { name: 'Reset selections, filters, sorting and search' })
+		if (await reset.isEnabled()) await reset.click()
 	})
 
 	test('the search box filters both team tables', async ({ page }) => {

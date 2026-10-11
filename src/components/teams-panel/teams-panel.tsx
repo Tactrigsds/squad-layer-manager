@@ -76,6 +76,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		(tswStore, upStore) => TSWClient.Sel.hasSwaps(tswStore) || upStore.teamswapEditors.size > 0,
 	)
 	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const isReset = Zus.useStore(squadServer, SquadServerFrame.Sel.teamsPanelIsReset)
 	const { showSelected, adminsOnly, showSpoilers, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const showSelectedId = React.useId()
 	const adminsOnlyId = React.useId()
@@ -140,6 +141,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								size="icon"
 								className="shrink-0"
 								title={tr.text(SM_Msgs.resetPanel())}
+								disabled={isReset}
 								onClick={() => {
 									SquadServerFrame.Actions.resetTeamsPanel(props.stores)
 									if (searchRef.current) searchRef.current.value = ''

@@ -349,6 +349,7 @@ export default function PlayerBulkContextMenuOptions({
 				{tr.text(SM_Msgs.invertSelection())}
 				<ContextMenuShortcut>{SM_Msgs.shortcuts.invertBox.all}</ContextMenuShortcut>
 			</Item>
+			<Item onClick={() => SquadServerFrame.Actions.clearSelection(stores)}>{tr.text(SM_Msgs.clearSelection())}</Item>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
