@@ -15,6 +15,7 @@ import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
+import * as RS from '@/models/rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import * as SM from '@/models/squad.models'
@@ -54,6 +55,9 @@ export type State = ChatPrt.Store &
 
 		// a Fix Repeats run is searching or applying its edits
 		fixingRepeats: boolean
+
+		// the rules of the ruleset the saved settings point at, kept current as either changes
+		repeatRules: RS.RepeatRuleConfig[]
 
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
@@ -98,6 +102,7 @@ export const frame = frameManager.createFrame<Types>({
 			layerItemStatusesFor: null,
 			savedQueueWarnings: null,
 			fixingRepeats: false,
+			repeatRules: [],
 			playerSelection: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
@@ -128,6 +133,15 @@ export const frame = frameManager.createFrame<Types>({
 		args.cleanup.push(
 			Rx.combineLatest([
 				state$.pipe(
+					Rx.map(([state]) => state.settings.saved.queue.mainPool.rulesetId),
+					Rx.distinctUntilChanged(),
+				),
+				Zus.toStream(SettingsClient.PublicSettingsStore, SettingsClient.selectRulesets, { fireImmediately: true }),
+			]).subscribe(([rulesetId, rulesets]) => args.set({ repeatRules: [...RS.rulesFor(rulesets, rulesetId)] })),
+		)
+		args.cleanup.push(
+			Rx.combineLatest([
+				state$.pipe(
 					Rx.map(([state]) => state.layerItemsState),
 					Rx.distinctUntilChanged(),
 				),
@@ -140,12 +154,16 @@ export const frame = frameManager.createFrame<Types>({
 					Rx.map(([state]) => state.backgroundStateEpoch),
 					Rx.distinctUntilChanged(),
 				),
+				state$.pipe(
+					Rx.map(([state]) => state.repeatRules),
+					Rx.distinctUntilChanged(),
+				),
 			])
 				.pipe(
 					Rx.debounceTime(250),
-					Rx.switchMap(([list, settings]) =>
+					Rx.switchMap(([list, settings, _epoch, repeatRules]) =>
 						LayerQueriesClient.layerItemStatuses$({
-							constraints: SETTINGS.getSettingsConstraints(settings),
+							constraints: SETTINGS.getSettingsConstraints(settings, repeatRules),
 							skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
 							list,
 						}).pipe(
@@ -169,6 +187,12 @@ export namespace Sel {
 	// describes every layer that exists, not the ones a hypothetical vanilla server could load
 	export function settingsOrDefault(s: State | undefined) {
 		return s?.settings.saved ?? SETTINGS.catalogSettings()
+	}
+
+	const NO_RULES: readonly RS.RepeatRuleConfig[] = []
+	// with no server, no repeat rules apply
+	export function repeatRulesOrNone(s: State | undefined) {
+		return s?.repeatRules ?? NO_RULES
 	}
 
 	export function playerSelection(s: State) {
@@ -299,7 +323,7 @@ export namespace Actions {
 			const presence = UPClient.Store.getState()
 			const res = await LayerQueriesClient.solveRepeatViolations({
 				list,
-				constraints: SETTINGS.getSettingsConstraints(settings),
+				constraints: SETTINGS.getSettingsConstraints(settings, state.repeatRules),
 				skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
 				noSwapTags: layerTags.filter((tag) => tag.preventSwaps).map((tag) => tag.id),
 				poolConstraints: SETTINGS.getPoolMembershipConstraints(settings),
@@ -530,7 +554,7 @@ export async function refreshSavedQueueWarnings(key: Zus.AnyStore<State>): Promi
 	const recentMatches = await Rx.firstValueFrom(MatchHistoryClient.recentMatches$(state.queue.serverId))
 	const savedList = LQY.resolveLayerItemsState(state.queue.rbSession.localState.savedList, recentMatches)
 	const statuses = await LayerQueriesClient.fetchLayerItemStatuses({
-		constraints: SETTINGS.getSettingsConstraints(settings),
+		constraints: SETTINGS.getSettingsConstraints(settings, state.repeatRules),
 		skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
 		list: savedList,
 	})

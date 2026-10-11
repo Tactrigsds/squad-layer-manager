@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import { useFrameLifecycle } from '@/frames/frame-manager'
+import * as RulesetEditorFrame from '@/frames/ruleset-editor.frame'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
@@ -16,7 +18,7 @@ import { tr } from '@/systems/messages.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
-import { GenerationPanel, NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
+import { GenerationPanel, NextLayerPanel, PoolFiltersPanel, RulesetPanel } from './pool-config-panels.tsx'
 import type { PoolConfigWindowProps } from './pool-config-window.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -36,6 +38,13 @@ DraggableWindowStore.getState().registerDefinition<PoolConfigWindowProps, unknow
 	dependsOn: (props) => [frameDependency(props.stores.squadServer!)],
 })
 
+// The rules go first: they are saved into the ruleset the server already uses, or the one it is being switched to,
+// and a server pointed at a ruleset whose rules failed to save would apply rules nobody chose.
+async function saveAll(stores: ServerSettingsPrt.KeyProp & RulesetEditorFrame.KeyProp) {
+	if (!(await RulesetEditorFrame.Actions.save(stores))) return
+	if (Zus.getState(stores.settings).settings.modified) await ServerSettingsPrt.Actions.save(stores)
+}
+
 function PoolConfigWindow(props: PoolConfigWindowProps) {
 	const stores = props.stores
 
@@ -53,10 +62,19 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 		}
 	}, [setViewingSettings, stores.squadServer])
 
-	const [settingsChanged, saving, validationErrors] = Zus.useStore(
+	const [serverSettingsChanged, serverSettingsSaving, validationErrors] = Zus.useStore(
 		stores.squadServer!,
 		Zus.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
+	const rulesetEditor = useFrameLifecycle(RulesetEditorFrame.frame, {
+		input: { source: { type: 'server', settingsKey: stores.squadServer! } },
+	})
+	const [rulesChanged, rulesSaving] = Zus.useStore(
+		rulesetEditor,
+		Zus.useShallow((s) => [s.modified, s.saving]),
+	)
+	const settingsChanged = serverSettingsChanged || rulesChanged
+	const saving = serverSettingsSaving || rulesSaving
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
 	// the next-layer settings sit outside the pool subtree, so each gets its own api and its own write check
@@ -105,7 +123,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				{tab === 'filters' ? (
 					<PoolFiltersPanel api={mainPoolApi} />
 				) : tab === 'repeatRules' ? (
-					<RepeatRulesPanel api={mainPoolApi} />
+					<RulesetPanel poolApi={mainPoolApi} rulesetEditor={rulesetEditor} />
 				) : tab === 'generation' ? (
 					<GenerationPanel api={mainPoolApi} />
 				) : (
@@ -130,6 +148,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 								disabled={!settingsChanged || saving}
 								onClick={() => {
 									ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
+									RulesetEditorFrame.Actions.reset({ rulesetEditor })
 								}}
 							>
 								<Icons.Undo className="h-4 w-4 rtl:-scale-x-100" />
@@ -142,7 +161,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 					<Button
 						variant="primary"
 						disabled={!settingsChanged || saving || !!validationErrors}
-						onClick={() => void ServerSettingsPrt.Actions.save({ settings: stores.squadServer! })}
+						onClick={() => void saveAll({ settings: stores.squadServer!, rulesetEditor })}
 						className="min-w-30"
 					>
 						<Spinner

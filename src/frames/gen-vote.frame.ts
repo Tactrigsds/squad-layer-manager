@@ -138,7 +138,10 @@ export namespace Sel {
 	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State) {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
-		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
+		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(
+			SquadServerFrame.Sel.repeatRulesOrNone(squadServer),
+			state.poolCheckboxes.checkboxesState.dnr,
+		)
 
 		// applied, not indicated: a vote choice the server cannot load is not a choice
 		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'regular' })

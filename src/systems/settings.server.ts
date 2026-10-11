@@ -9,6 +9,7 @@ import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
 import * as LTag from '@/models/layer-tags.models'
+import * as RS from '@/models/rulesets.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -166,6 +167,9 @@ export type ServerEntry = {
 	adminLists: readonly SM.AdminListId[]
 	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
 	sandbox: boolean
+	// mirrored out of this server's settings so the ruleset editors can say which servers share a ruleset, and so a
+	// ruleset in use is not deleted from under a server
+	rulesetId: RS.RulesetId | null
 	// 'scoped' entries are delivered to and usable by only their owner (ownerDiscordId); see ServerVisibility and the
 	// RBAC scoping in rbac.server. 'public' is every other server. ownerDiscordId is null for public entries.
 	visibility: SS.ServerVisibility
@@ -259,6 +263,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			broken,
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
+			rulesetId: settingsRes.success ? settingsRes.data.queue.mainPool.rulesetId : null,
 			visibility: row.visibility,
 			ownerDiscordId: row.ownerDiscordId,
 		})
@@ -291,6 +296,22 @@ export async function createServerEntry(
 	}
 
 	const visibility = input.visibility ?? 'public'
+	// a public server that names no ruleset gets one of its own, so its rules can be edited without touching
+	// another server's. Scoped servers are tutorials, which name theirs.
+	if (visibility === 'public' && settingsRes.data.queue.mainPool.rulesetId === null) {
+		const rulesets = GLOBAL_SETTINGS.rulesets
+		const own: RS.Ruleset = {
+			id: RS.ownIdForServer(rulesets, input.id),
+			name: RS.freeName(rulesets, input.displayName),
+			ownerServerId: input.id,
+			rules: [...RS.DEFAULT_RULES],
+		}
+		const writeRes = await writeRulesets(ctx, [...rulesets, own], { type: 'system' })
+		if (writeRes.code !== 'ok') return writeRes
+		settingsRes.data.queue.mainPool.rulesetId = own.id
+	}
+	const rulesetError = unknownRulesetError(settingsRes.data)
+	if (rulesetError) return rulesetError
 	const ownerDiscordId = input.ownerDiscordId ?? null
 	const newServer: SS.ServerState = {
 		id: input.id,
@@ -317,6 +338,7 @@ export async function createServerEntry(
 		broken: false,
 		adminLists: newServer.settings.adminLists,
 		sandbox: newServer.settings.connections.type === 'sandbox',
+		rulesetId: newServer.settings.queue.mainPool.rulesetId,
 		visibility,
 		ownerDiscordId,
 	})
@@ -330,6 +352,18 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
 	await ctx.db({ redactParams: true }).delete(Schema.servers).where(E.eq(Schema.servers.id, serverId))
 	serverRegistry.delete(serverId)
+	// the server's own ruleset goes with it, unless another server has come to use it, which keeps it ownerless
+	const owned = GLOBAL_SETTINGS.rulesets.filter((r) => r.ownerServerId === serverId)
+	if (owned.length > 0) {
+		const inUse = rulesetIdsInUse()
+		const rulesets = GLOBAL_SETTINGS.rulesets.flatMap((r) => {
+			if (r.ownerServerId !== serverId) return [r]
+			if (!inUse.has(r.id)) return []
+			const { ownerServerId: _ownerServerId, ...rest } = r
+			return [rest]
+		})
+		await writeRulesets(ctx, rulesets, { type: 'system' })
+	}
 	// the console outlives a stopped server, so deleting the server is what finally drops its tail
 	ServerConsole.disposeFor(serverId)
 	pushScopedServersToRbac()
@@ -370,9 +404,11 @@ function syncServerEntry(serverId: SS.ServerId, settings: SETTINGS.ServerSetting
 	if (!entry) return
 	const adminListsChanged = !Obj.deepEqual(entry.adminLists, settings.adminLists)
 	const sandbox = settings.connections.type === 'sandbox'
-	if (!adminListsChanged && entry.sandbox === sandbox) return
+	const rulesetId = settings.queue.mainPool.rulesetId
+	if (!adminListsChanged && entry.sandbox === sandbox && entry.rulesetId === rulesetId) return
 	entry.adminLists = settings.adminLists
 	entry.sandbox = sandbox
+	entry.rulesetId = rulesetId
 	// permissions resolved against the lists this server used to name are cached per player
 	if (adminListsChanged) Rbac.invalidateAll()
 	settings$.next({ scope: 'registry' })
@@ -485,6 +521,50 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // an admin in it), so the lists have to be refetched rather than just re-selected
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
+// the rules of the ruleset a server's settings point at
+export function repeatRulesFor(settings: SETTINGS.PublicServerSettings): readonly RS.RepeatRuleConfig[] {
+	return RS.rulesFor(GLOBAL_SETTINGS.rulesets, settings.queue.mainPool.rulesetId)
+}
+
+function unknownRulesetError(settings: SETTINGS.PublicServerSettings) {
+	const id = settings.queue.mainPool.rulesetId
+	if (id === null || RS.find(GLOBAL_SETTINGS.rulesets, id)) return undefined
+	return { code: 'err:unknown-ruleset' as const, message: `No ruleset has the id "${id}"` }
+}
+
+// the ids of the rulesets some server points at
+function rulesetIdsInUse(): Set<RS.RulesetId> {
+	const ids = new Set<RS.RulesetId>()
+	for (const entry of serverRegistry.values()) {
+		if (entry.rulesetId) ids.add(entry.rulesetId)
+	}
+	return ids
+}
+
+// the one place that replaces the rulesets in the global settings, for every writer that holds no more than the
+// rulesets: server creation and deletion, tutorials, and the ruleset editors
+export async function writeRulesets(ctx: C.Db, rulesets: RS.Ruleset[], actor: AppEvents.Actor) {
+	const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, rulesets })
+	if (!parseRes.success) return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+	const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+	if (changes.length === 0) return { code: 'ok' as const }
+	GLOBAL_SETTINGS = parseRes.data
+	await persistGlobalSettings(ctx)
+	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.SettingsUpdated>({
+			type: 'SETTINGS_UPDATED',
+			actor,
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			changes: auditableSettingChanges(changes),
+		}),
+	)
+	return { code: 'ok' as const }
+}
+
 // ============================== unified settings bus ==============================
 
 export type SettingsEvent =
@@ -517,6 +597,8 @@ export type PublicSettings = {
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
 	// every client rendering the queue needs these to resolve the tag ids stored on layer items
 	layerTags: SETTINGS.GlobalSettings['layerTags']
+	// the repeat rules a server applies are looked up here by its ruleset id
+	rulesets: SETTINGS.GlobalSettings['rulesets']
 	tickRateThresholds: SETTINGS.GlobalSettings['tickRateThresholds']
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	// the commands page lists these as the presets the broadcast command accepts. Their text is broadcast to the whole
@@ -539,6 +621,7 @@ function buildPublicSettings(): PublicSettings {
 		playerActivity: GLOBAL_SETTINGS.playerActivity,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
 		layerTags: GLOBAL_SETTINGS.layerTags,
+		rulesets: GLOBAL_SETTINGS.rulesets,
 		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
@@ -613,6 +696,15 @@ const globalRouter = {
 
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 
+			const keptRulesetIds = new Set(parseRes.data.rulesets.map((r) => r.id))
+			const removedInUse = [...rulesetIdsInUse()].filter((id) => !keptRulesetIds.has(id))
+			if (removedInUse.length > 0) {
+				return {
+					code: 'err:ruleset-in-use' as const,
+					message: `A server still uses the ruleset(s) ${removedInUse.map((id) => `"${id}"`).join(', ')}`,
+				}
+			}
+
 			const changePaths = changes.map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths(changePaths))
 			if (denyRes) return denyRes
@@ -649,6 +741,24 @@ const globalRouter = {
 				}),
 			)
 			return { code: 'ok' as const, changes }
+		}),
+
+	// creates or replaces one ruleset, for the ruleset editors beside a server's pool configuration. A separate
+	// endpoint for the same reason as upsertLayerTag: those editors do not hold the whole settings object.
+	// Deletion is left to the settings page, which can see what uses a ruleset.
+	saveRuleset: orpcBase
+		.meta({ type: 'mutation' })
+		.input(RS.RulesetSchema)
+		.handler(async ({ context: ctx, input }) => {
+			const existing = GLOBAL_SETTINGS.rulesets
+			const prior = RS.find(existing, input.id)
+			// ownership is decided by server creation, never by an editor
+			const ruleset: RS.Ruleset = { ...input, ownerServerId: prior?.ownerServerId }
+			if (ruleset.ownerServerId === undefined) delete ruleset.ownerServerId
+			const rulesets = prior ? existing.map((r) => (r.id === input.id ? ruleset : r)) : [...existing, ruleset]
+			const res = await writeRulesets(ctx, rulesets, { type: 'slm-user', userId: ctx.user.discordId })
+			if (res.code !== 'ok') return res
+			return { code: 'ok' as const, ruleset }
 		}),
 
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
@@ -722,6 +832,8 @@ const serverRouter = {
 				if (!res.success) {
 					return { code: 'err:invalid-settings' as const, message: res.error.message }
 				}
+				const rulesetError = unknownRulesetError(res.data)
+				if (rulesetError) return rulesetError
 				changes = diffSettings(prior, res.data)
 
 				await updateServerSettings(ctx, res.data, {
@@ -882,6 +994,8 @@ const adminRouter = {
 			if (!parseRes.success) {
 				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 			}
+			const rulesetError = unknownRulesetError(parseRes.data)
+			if (rulesetError) return rulesetError
 
 			const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parseRes.data.connections)
 

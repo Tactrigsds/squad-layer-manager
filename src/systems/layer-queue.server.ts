@@ -609,7 +609,9 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
 		const serverState = await SquadServer.getServerState(ctx)
-		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
+			generatingLayers: true,
+		})
 		const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
 		const list = await LayerQueries.resolveLayerItemsState(ctx)
 		const templates = ctx.layerQueue.session.state.savedBackburner.map((item) => ({ itemId: item.itemId, filter: item.filter }))
@@ -720,7 +722,9 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 	const head = getSavedQueue(ctx)[0]
 	if (!head) return undefined
 	const serverState = await SquadServer.getServerState(ctx)
-	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
+		generatingLayers: false,
+	})
 	// statuses need the engine, so the query ctx is only resolved once there is a head to report on
 	const queryCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
 	const statusRes = await LayerQueriesShared.getLayerItemStatuses({

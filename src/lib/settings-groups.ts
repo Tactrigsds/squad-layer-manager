@@ -25,7 +25,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	},
 	{ slug: 'commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
 	{ slug: 'players', keys: ['playerGroupings', 'playerActivity', 'playerFlagsRequiringNote'] },
-	{ slug: 'layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
+	{ slug: 'layers', keys: ['layerTags', 'rulesets', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',
 		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'discord', 'logFilePollInterval', 'tickRateThresholds'],
@@ -73,6 +73,7 @@ export const LOCAL_YAML_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'messageVariables',
 	'playerGroupings',
 	'layerTags',
+	'rulesets',
 	'layerTable',
 	'layerGeneration',
 	'chat',

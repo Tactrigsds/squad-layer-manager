@@ -8,6 +8,7 @@ import type * as LE from '@/models/layer-engine.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
+import * as RS from '@/models/rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import { buildQueryConstraints, getLayerItemStatuses, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 
@@ -575,7 +576,7 @@ describe('the cursor a select layers dialog resolves for a slot', () => {
 
 describe('queryLayers and getLayerItemStatuses resolving the same slot', () => {
 	const settings = SETTINGS.PublicServerSettingsSchema.parse({})
-	const repeatConstraints = SETTINGS.getSettingsConstraints(settings).filter((c) => c.type === 'do-not-repeat')
+	const repeatConstraints = SETTINGS.getSettingsConstraints(settings, RS.DEFAULT_RULES).filter((c) => c.type === 'do-not-repeat')
 	const key = (d: LQY.RepeatMatchDescriptor) => `${d.constraintId}|${d.field}|${d.repeatOffset}`
 
 	it('produce the same descriptors for every queued item', async () => {
@@ -604,20 +605,17 @@ describe('queryLayers and getLayerItemStatuses resolving the same slot', () => {
 })
 
 describe('the constraints each path builds from the same settings', () => {
-	const withOptions = (options: { warn: boolean; indicate: boolean }) => {
-		const settings = SETTINGS.PublicServerSettingsSchema.parse({})
-		settings.queue.mainPool.repeatRules = settings.queue.mainPool.repeatRules.map((rule) => ({ ...rule, ...options }))
-		return settings
-	}
+	const settings = SETTINGS.PublicServerSettingsSchema.parse({})
+	const withOptions = (options: { warn: boolean; indicate: boolean }) => RS.DEFAULT_RULES.map((rule) => ({ ...rule, ...options }))
 	const flags = (constraints: LQY.Constraint[]) =>
 		constraints.filter((c) => c.type === 'do-not-repeat').map((c) => `${c.id}:${c.warn}:${c.showIndicator}`)
 
 	for (const warn of [true, false]) {
 		for (const indicate of [true, false]) {
 			it(`carry the same warn/indicate flags with warn ${warn} and indicate ${indicate}`, () => {
-				const settings = withOptions({ warn, indicate })
-				expect(flags(SETTINGS.getSettingsConstraints(settings))).toEqual(
-					flags(PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, 'disabled')),
+				const rules = withOptions({ warn, indicate })
+				expect(flags(SETTINGS.getSettingsConstraints(settings, rules))).toEqual(
+					flags(PoolCheckboxesPrt.getToggledRepeatRuleConstraints(rules, 'disabled')),
 				)
 			})
 		}
@@ -630,7 +628,6 @@ describe('the constraints each path builds from the same settings', () => {
 // would have hidden. The two must describe the same set, which they only do if the rules are one disjunction:
 // anding them regularly asks for a layer that repeats every rule at once.
 describe('the Hide Repeats filter', () => {
-	const filterSettings = SETTINGS.PublicServerSettingsSchema.parse({})
 	const filterList: LQY.LayerItemsState = {
 		layerItems: [{ type: 'match-history-entry', itemId: 1, layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' }] as LQY.LayerItem[],
 		firstLayerItemParity: 0,
@@ -646,7 +643,7 @@ describe('the Hide Repeats filter', () => {
 
 	const whereForApplyAs = (applyAs: SETTINGS.PoolFilterApplyAs) => {
 		const compiled = buildQueryConstraints(ctx, {
-			constraints: PoolCheckboxesPrt.getToggledRepeatRuleConstraints(filterSettings, applyAs),
+			constraints: PoolCheckboxesPrt.getToggledRepeatRuleConstraints(RS.DEFAULT_RULES, applyAs),
 			list: filterList,
 			cursor: { type: 'end' },
 		})

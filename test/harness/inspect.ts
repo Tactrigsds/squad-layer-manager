@@ -57,7 +57,7 @@ export function savedBackburner(app: AppFixture): { itemId: string; filter: Para
 
 export function savedPool(app: AppFixture): {
 	skipWarningsForTags?: string[]
-	repeatRules: { field: string; label?: string; autogen?: boolean; targetValues?: string[] }[]
+	rulesetId: string | null
 	generateVotes?: { enabled: boolean; displayProps: string[] }
 } {
 	const db = app.readDb()
@@ -135,6 +135,27 @@ export function savedGlobalSettings(app: AppFixture): Record<string, any> {
 	} finally {
 		db.close()
 	}
+}
+
+export type SavedRuleset = {
+	id: string
+	name: string
+	ownerServerId?: string
+	rules: {
+		field: string
+		label?: string
+		within: number
+		autogen?: boolean
+		warn?: boolean
+		indicate?: boolean
+		targetValues?: string[]
+	}[]
+}
+
+// the ruleset the test server points at, as the global settings row holds it
+export function savedServerRuleset(app: AppFixture): SavedRuleset | undefined {
+	const id = savedPool(app).rulesetId
+	return (savedGlobalSettings(app).rulesets as SavedRuleset[] | undefined)?.find((r) => r.id === id)
 }
 
 // every SETTINGS_UPDATED event's payload as persisted, serialized, for asserting what the audit log never holds

@@ -91,6 +91,7 @@ export const PROCEDURE_ACCESS = {
 		Req.holdsAnyGrant('global-settings:write'),
 	),
 	'settings.global.upsertLayerTag': global('queue:manage-tags'),
+	'settings.global.saveRuleset': Access.req(SETTINGS.Grants.writeGlobalSettingsPaths([['rulesets']])),
 	'settings.server.watchSettings': VIEW_SERVER,
 	'settings.server.updateSettings': Access.req((i: ServerInput & { ops: { path: (string | number)[] }[] }) =>
 		SETTINGS.Grants.writeServerSettingsPaths(

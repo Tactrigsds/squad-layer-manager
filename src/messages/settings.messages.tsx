@@ -312,6 +312,33 @@ export const generatedVoteDisplayOptionsHelp = def(
 
 export const repeatRules = def('Repeat Rules')
 
+// -------- rulesets --------
+
+export const ruleset = def('Ruleset')
+
+export const rulesetHelp = def(
+	'The ruleset whose repeat rules this server applies to its queue and to generated layers. Other servers can use the same ruleset. Saving its rules changes them for every server that uses it.',
+)
+
+export const rulesetPicker = def('Choose a ruleset')
+
+export const noRuleset = def('No ruleset')
+
+export const noRulesetBlurb = def('No repeat rules apply until a ruleset is chosen.')
+
+// a badge beside the ruleset picker
+export const ownRuleset = def("This server's own ruleset")
+
+export const rulesetSharedWith = def('Also used by {count, plural, one {# other server} other {# other servers}}', (count: number) => ({
+	count,
+}))
+
+export const rulesetConflict = def('Someone else saved this ruleset since you started editing it. Saving replaces their rules with yours.')
+
+export const saveRuleset = def('Save Ruleset')
+
+export const unknownRuleset = def('The ruleset "{id}" does not exist. Choose another.', (id: string) => ({ id }))
+
 export const addRepeatRule = def('Add Repeat Rule')
 
 export const repeatRuleLabel = def('Label')

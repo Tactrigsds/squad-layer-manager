@@ -54,9 +54,9 @@ test.describe('generation weights', () => {
 					matchupWeights: { AllianceMatchup: [], FactionMatchup: [], UnitMatchup: [], FactionUnitMatchup: [] },
 				}
 			},
+			repeatRules: [],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'vanilla')
-				settings.queue.mainPool.repeatRules = []
 			},
 		})
 		try {
@@ -100,9 +100,9 @@ test.describe('generation weights', () => {
 					},
 				}
 			},
+			repeatRules: [],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'vanilla')
-				settings.queue.mainPool.repeatRules = []
 			},
 		})
 		try {
@@ -133,9 +133,9 @@ test.describe('repeat rules', () => {
 			filters: [
 				filter('three-maps', 'Three Maps', FB.and([FB.eq('Collection', 'OWI'), FB.inValues('Map', ['Gorodok', 'Narva', 'Sumari'])])),
 			],
+			repeatRules: [{ label: 'Map', field: 'Map', within: 1, warn: false, indicate: true }],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'three-maps')
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 1, warn: false, indicate: true }]
 			},
 		})
 		try {

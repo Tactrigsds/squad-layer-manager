@@ -18,6 +18,7 @@ import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as LOG from '@/models/logs.models'
+import type * as RS from '@/models/rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -315,10 +316,14 @@ export function useLayerComponents(
 let catalogWideSettings: SETTINGS.PublicServerSettings | undefined
 
 export namespace Sel {
-	// recomputed only when the saved settings change, rather than on every squad-server frame update
+	const NO_RULES: readonly RS.RepeatRuleConfig[] = []
+	// recomputed only when the saved settings or the server's rules change, rather than on every squad-server frame update
 	export const layerItemStatusConstraints = RSel.createDeepSelector(
-		[(state: SquadServerFrame.State | undefined | null) => state?.settings.saved],
-		(saved) => SETTINGS.getSettingsConstraints(saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings())),
+		[
+			(state: SquadServerFrame.State | undefined | null) => state?.settings.saved,
+			(state: SquadServerFrame.State | undefined | null) => state?.repeatRules ?? NO_RULES,
+		],
+		(saved, repeatRules) => SETTINGS.getSettingsConstraints(saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings()), repeatRules),
 	)
 }
 

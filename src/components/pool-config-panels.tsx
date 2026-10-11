@@ -3,12 +3,14 @@ import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
+import * as RulesetEditorFrame from '@/frames/ruleset-editor.frame'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Arr from '@/lib/array-utils.ts'
 import type * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as F from '@/models/filter.models.ts'
 import type * as LC from '@/models/layer-columns.models.ts'
@@ -16,10 +18,12 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as L from '@/models/layer.models'
 import type * as Msgs from '@/models/messages.models.ts'
+import type * as RS from '@/models/rulesets.models'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as SettingsClient from '@/systems/settings.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -28,11 +32,12 @@ import EmojiDisplay from './emoji-display.tsx'
 import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
 import { LayerTags } from './layer-tags.tsx'
-import { type PoolConfigApi, usePoolValue } from './pool-config-panels.helpers.ts'
+import { type PoolConfigApi, usePoolValue, useRulesetRulesApi } from './pool-config-panels.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
+import { Spinner } from './ui/spinner.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
@@ -548,10 +553,9 @@ function RepeatRuleRow(props: {
 	onStructural: () => void
 }) {
 	const { index, api, onStructural } = props
-	const rulesPath = ['repeatRules']
-	const rulePath = [...rulesPath, index]
+	const rulePath = [index]
 
-	const rule = usePoolValue(api, rulePath) as SETTINGS.PoolRepeatRuleConfig
+	const rule = usePoolValue(api, rulePath) as RS.RepeatRuleConfig
 	const drag = DndKit.useDraggable({ type: 'repeat-rule', id: ruleDragId(props.panelId, index) }, { feedback: 'default' })
 
 	// an empty box is how a label is taken away again, so it unsets rather than saving ''
@@ -587,9 +591,9 @@ function RepeatRuleRow(props: {
 	}
 
 	const deleteRule = () => {
-		const rules = api.getValue(rulesPath) as LQY.RepeatRule[]
+		const rules = api.getValue([]) as LQY.RepeatRule[]
 		api.set(
-			rulesPath,
+			[],
 			rules.filter((_, i) => i !== index),
 		)
 		onStructural()
@@ -712,18 +716,18 @@ function RepeatRuleRow(props: {
 	)
 }
 
-export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi }) {
+// api is rooted at the list of rules (see useRulesetRulesApi)
+function RepeatRulesTable(props: { api: PoolConfigApi }) {
 	const { api } = props
 	const panelId = React.useId()
-	const rulesPath = ['repeatRules']
-	const rulesLength = ((usePoolValue(api, rulesPath) as LQY.RepeatRule[] | null) ?? []).length
+	const rulesLength = ((usePoolValue(api, []) as LQY.RepeatRule[] | null) ?? []).length
 	// remounts the uncontrolled rows after edits that shift or rewrite their seeded values
 	const [structuralKey, setStructuralKey] = React.useState(0)
 	const onStructural = () => setStructuralKey((k) => k + 1)
 
 	const addRule = () => {
-		const rules = (api.getValue(rulesPath) as LQY.RepeatRule[] | null) ?? []
-		api.set(rulesPath, [...rules, { field: 'Map', within: 0, indicate: true, warn: true }])
+		const rules = (api.getValue([]) as LQY.RepeatRule[] | null) ?? []
+		api.set([], [...rules, { field: 'Map', within: 0, indicate: true, warn: true }])
 	}
 
 	// drag-to-reorder via the shared dnd-kit provider (see dndkit.client). The handler is registered once and reads
@@ -741,16 +745,16 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 			const to = parseRuleDragId(String(slot.dragItem.id))
 			const { panelId, api, onStructural } = stateRef.current
 			if (from.panelId !== panelId || to.panelId !== panelId) return
-			const rules = (api.getValue(['repeatRules']) as SETTINGS.PoolRepeatRuleConfig[] | null) ?? []
+			const rules = (api.getValue([]) as RS.RepeatRuleConfig[] | null) ?? []
 			const reordered = Arr.moveItem(rules, from.idx, to.idx, slot.position)
 			if (reordered === rules) return
-			api.set(['repeatRules'], reordered)
+			api.set([], reordered)
 			onStructural()
 		}, []),
 	)
 
 	return (
-		<div data-tour="pool-repeat-rules" className={cn('space-y-3', props.className)}>
+		<div data-tour="pool-repeat-rules" className="space-y-3">
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
 					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
@@ -784,6 +788,84 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 					{rulesLength > 0 && <RuleDropSeparator position="after" panelId={panelId} idx={rulesLength - 1} />}
 				</ol>
 			</div>
+		</div>
+	)
+}
+
+// The ruleset a server uses, and the rules in it. The picker writes the server's (unsaved) rulesetId through poolApi;
+// the rules are a draft in the ruleset editor frame, saved by the host alongside its own changes, or by the panel's
+// own save button when `inlineSave` is set.
+export function RulesetPanel(props: {
+	className?: string
+	poolApi: PoolConfigApi
+	rulesetEditor: RulesetEditorFrame.Key
+	inlineSave?: boolean
+}) {
+	const { poolApi, rulesetEditor } = props
+	const rulesApi = useRulesetRulesApi(rulesetEditor)
+	const rulesetId = (usePoolValue(poolApi, ['rulesetId']) as RS.RulesetId | null) ?? null
+	const rulesets = Zus.useStore(SettingsClient.PublicSettingsStore, SettingsClient.selectRulesets)
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const [saved, modified, conflict, saving] = Zus.useStore(
+		rulesetEditor,
+		Zus.useShallow((s) => [s.saved, s.modified, s.conflict, s.saving] as const),
+	)
+	const stores = { rulesetEditor }
+
+	const otherServers = (servers ?? []).filter((server) => server.rulesetId === rulesetId && server.id !== saved?.ownerServerId).length
+	const options = rulesets.map((r) => ({ value: r.id, label: r.name }))
+	const unknown = rulesetId !== null && !saved
+
+	return (
+		<div className={cn('space-y-4', props.className)}>
+			<div className="space-y-2">
+				<span className="flex items-center gap-2">
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.ruleset())}</h4>
+					<HelpTooltip label={tr.text(SETTINGS_Msgs.ruleset())}>{tr.text(SETTINGS_Msgs.rulesetHelp())}</HelpTooltip>
+				</span>
+				<div className="flex flex-wrap items-center gap-2">
+					<ComboBox
+						className="w-72 max-w-full"
+						title={tr.text(SETTINGS_Msgs.rulesetPicker())}
+						placeholder={tr.text(SETTINGS_Msgs.noRuleset())}
+						options={options}
+						value={rulesetId ?? undefined}
+						allowEmpty
+						disabled={!!poolApi.writeDenied}
+						onSelect={(value) => poolApi.set(['rulesetId'], value ?? null)}
+					/>
+					{saved?.ownerServerId && (
+						<span className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.ownRuleset())}</span>
+					)}
+					{otherServers > 0 && (
+						<span className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.rulesetSharedWith(otherServers))}</span>
+					)}
+				</div>
+				{rulesetId === null && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noRulesetBlurb())}</p>}
+				{unknown && (
+					<Alert variant="destructive">
+						<AlertDescription>{tr.text(SETTINGS_Msgs.unknownRuleset(rulesetId))}</AlertDescription>
+					</Alert>
+				)}
+				{conflict && (
+					<Alert variant="warning">
+						<AlertDescription>{tr.text(SETTINGS_Msgs.rulesetConflict())}</AlertDescription>
+					</Alert>
+				)}
+			</div>
+			{saved && <RepeatRulesTable api={rulesApi} />}
+			{saved && props.inlineSave && !rulesApi.writeDenied && (
+				<div className="flex items-center justify-end gap-2">
+					<Button size="icon" variant="ghost" disabled={!modified || saving} onClick={() => RulesetEditorFrame.Actions.reset(stores)}>
+						<Icons.Undo className="h-4 w-4 rtl:-scale-x-100" />
+						<span className="sr-only">{tr.text(SETTINGS_Msgs.resetChanges())}</span>
+					</Button>
+					<Button variant="primary" disabled={!modified || saving} onClick={() => void RulesetEditorFrame.Actions.save(stores)}>
+						{saving && <Spinner className="animate-spin" />}
+						{tr.text(SETTINGS_Msgs.saveRuleset())}
+					</Button>
+				</div>
+			)}
 		</div>
 	)
 }

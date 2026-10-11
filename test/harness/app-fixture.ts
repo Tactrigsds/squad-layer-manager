@@ -14,6 +14,7 @@ import type * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
+import * as RS from '@/models/rulesets.models'
 import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -151,6 +152,8 @@ export type AppFixtureOptions = {
 	// the test timings below already applied), so durations are milliseconds, not '3m' strings.
 	globalSettings?: (settings: SETTINGS.GlobalSettings) => void
 	serverSettings?: (settings: SETTINGS.ServerSettings) => void
+	// the rules of the test server's own ruleset (TEST_RULESET_ID). Defaults to the rules a new server gets.
+	repeatRules?: RS.RepeatRuleConfig[]
 	// the queue the server starts with. Generation only fires when the saved list would be empty, so a
 	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing.
 	layerQueue?: LL.List
@@ -247,6 +250,8 @@ const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
 // the single admin list the harness defines; tests name it when assigning roles to in-game admins
 export const TEST_ADMIN_LIST = 'test-admins'
+// the test server's own ruleset, holding opts.repeatRules
+export const TEST_RULESET_ID = 'emu-server'
 // a group holding no admin-identifying permission, for reserveAdmins
 const RESERVE_GROUP = 'SlmTestReserve'
 const RESERVE_PERM: SM.PlayerPerm = 'reserve'
@@ -426,6 +431,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		squadBrowser: { enabled: true, token: '' },
 		steam: { enabled: true, token: '' },
 	}
+	globalSettings.rulesets = [
+		...globalSettings.rulesets,
+		{ id: TEST_RULESET_ID, name: 'Emulated Server', ownerServerId: serverId, rules: [...(opts.repeatRules ?? RS.DEFAULT_RULES)] },
+	]
 	opts.globalSettings?.(globalSettings)
 	await db
 		.insert(Schema.globalSettings)
@@ -451,6 +460,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	applyTestServerTimings(serverSettings)
 	// the harness's list applies to the test server, or nothing in it would recognise an admin
 	serverSettings.adminLists = [TEST_ADMIN_LIST]
+	serverSettings.queue.mainPool.rulesetId = TEST_RULESET_ID
 	opts.serverSettings?.(serverSettings)
 
 	// Put the emulated server's next layer where a steady-state server's would be: on the head of

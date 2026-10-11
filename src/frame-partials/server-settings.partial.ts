@@ -119,7 +119,7 @@ export namespace Actions {
 			if (res?.code === 'err:permission-denied') {
 				RbacClient.handlePermissionDenied(res)
 				return false
-			} else if (res?.code === 'err:invalid-settings') {
+			} else if (res?.code === 'err:invalid-settings' || res?.code === 'err:unknown-ruleset') {
 				toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 				return false
 			}

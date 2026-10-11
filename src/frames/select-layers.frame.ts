@@ -294,7 +294,10 @@ export namespace Sel {
 		// should generally not do this, but we're going to move this into frames anyway and it's low impact
 		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
 
-		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
+		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(
+			SquadServerFrame.Sel.repeatRulesOrNone(squadServer),
+			state.poolCheckboxes.checkboxesState.dnr,
+		)
 
 		// left unapplied so an unsupported layer is still listed, greyed out with the reason, rather than absent
 		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'disabled' })
