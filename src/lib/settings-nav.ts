@@ -21,6 +21,11 @@ export function pluginSettingAnchor(pluginId: string, path: string): string {
 	return `setting:plugin:${pluginId}:${path}`
 }
 
+// the anchor id of one server's setting, given its dotted path. Mirrors the idPrefix the server settings form is given.
+export function serverSettingAnchor(serverId: string, path: string): string {
+	return `setting:server:${serverId}:${path}`
+}
+
 // `setting:<scope>:<scopeId>:<path>` -> `section:<scope>:<scopeId>`
 function scopedSection(id: string, scope: 'server' | 'plugin'): string | null {
 	const rest = id.slice(`setting:${scope}:`.length)

@@ -36,6 +36,11 @@ export type DragItem =
 			id: string
 	  }
 	| {
+			// a row in the teamswap counterbalance "picked first" list, identified by position (id = index)
+			type: 'counterbalance-preference'
+			id: string
+	  }
+	| {
 			// a layer template in the backburner panel (id = BB.ItemId)
 			type: 'backburner-item'
 			id: string

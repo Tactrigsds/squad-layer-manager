@@ -22,6 +22,9 @@ export type TeamswapSlice = {
 	session: ODSM.Client.Session<TSW.Op, TSW.State>
 	// user-attributed teamswap ops that landed on the synced timeline, for transient presence-panel event text
 	presenceEvent$: Rx.Subject<UP.PresenceEvent>
+	// players this client removed a counterbalance swap from since the edit set was last in sync, so counterbalance
+	// picks someone else instead of re-picking them
+	counterbalanceSkipped: Set<SM.PlayerId>
 	onUpdate(update: TSW.UpdateForClient): void
 }
 
@@ -136,6 +139,7 @@ export function initTeamswaps(args: Args) {
 		serverId,
 		session: initSession(),
 		presenceEvent$,
+		counterbalanceSkipped: new Set(),
 
 		onUpdate(update) {
 			const prev = get().session

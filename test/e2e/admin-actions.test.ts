@@ -34,6 +34,10 @@ test.beforeAll(async () => {
 			// a configured grouping is the mode in effect, so the group column shows parties only once Party is picked
 			s.playerGroupings = { Admins: { rules: [{ type: 'server-admin', group: 'Admin' }], groups: {} } } as typeof s.playerGroupings
 		},
+		serverSettings: (s) => {
+			s.teamswapCounterbalance.enabled = true
+			s.teamswapCounterbalance.rosterChangeDelay = 8_000
+		},
 	})
 	leader = app.emu.world.connectPlayer(makePlayer({ name: ' sq_leader', teamId: 1 }))
 	member = app.emu.world.connectPlayer(makePlayer({ name: ' sq_member', teamId: 1 }))
@@ -178,6 +182,101 @@ test.describe('admin actions from the teams panel', () => {
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeHidden()
 		await panel.getByText('Show Spoilers', { exact: true }).click()
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeVisible()
+	})
+
+	// Runs on the roster the earlier tests leave: sq_leader, sq_member and e2e_swapee on team 1, loner on team 2, and
+	// party #3 spanning sq_leader and loner. Queuing loner leaves team 1 four ahead.
+	test('counterbalance offsets a queued swap, keeps a party together and leaves unsaved edits alone on a roster change', async ({
+		page,
+	}) => {
+		const panel = Dash.teamsSection(page)
+		const lonerRow = panel.getByRole('row', { name: /loner/ })
+		await expect(lonerRow).toBeVisible({ timeout: 20_000 })
+		await lonerRow.click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Swap Next' }).click()
+
+		// sq_leader stays: party #3 includes loner, who is already moving the other way
+		const counterbalanced = page.locator('[data-tour="swap-badge"][data-counterbalance="true"]')
+		await expect(counterbalanced).toHaveCount(2, { timeout: 20_000 })
+		await expect(counterbalanced.filter({ hasText: 'sq_member' })).toHaveCount(1)
+		await expect(counterbalanced.filter({ hasText: 'e2e_swapee' })).toHaveCount(1)
+
+		const joiner = app.emu.world.connectPlayer(makePlayer({ name: ' cb_joiner', teamId: 2 }))
+		await expect(panel.getByRole('row', { name: /cb_joiner/ })).toBeVisible({ timeout: 20_000 })
+		await expect(counterbalanced).toHaveCount(2)
+
+		// sq_member is not picked again, and nobody else on team 1 is free to take their place
+		await counterbalanced.filter({ hasText: 'sq_member' }).getByRole('button', { name: 'Delete swap' }).click()
+		await expect(counterbalanced).toHaveCount(1)
+		await expect(counterbalanced.filter({ hasText: 'e2e_swapee' })).toHaveCount(1)
+
+		// with no admin swap left there is nothing to counterbalance
+		await page.locator('[data-tour="swap-badge"]', { hasText: 'loner' }).getByRole('button', { name: 'Delete swap' }).click()
+		await expect(page.locator('[data-tour="swap-badge"]')).toHaveCount(0)
+
+		app.emu.world.disconnectPlayer(joiner)
+		await expect(panel.getByRole('row', { name: /cb_joiner/ })).toBeHidden({ timeout: 20_000 })
+	})
+
+	// Saved swaps are re-picked once roster changes leave them more than one player from even for rosterChangeDelay
+	// (8s here), and the timer is dropped if the teams even out before then.
+	test('counterbalance re-picks saved swaps after the roster leaves them uneven', async ({ page }) => {
+		const panel = Dash.teamsSection(page)
+		const feed = page.getByRole('region', { name: 'Server Activity' })
+		const lonerRow = panel.getByRole('row', { name: /loner/ })
+		await expect(lonerRow).toBeVisible({ timeout: 20_000 })
+		await lonerRow.click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'Swap Next' }).click()
+		const counterbalanced = page.locator('[data-tour="swap-badge"][data-counterbalance="true"]')
+		await expect(counterbalanced).toHaveCount(2, { timeout: 20_000 })
+		await page.locator('[data-tour="swaps-save"]').click()
+		await expect(page.locator('[data-tour="swaps-save"]')).toBeHidden()
+
+		const countdown = page.getByRole('timer')
+		const join = async (name: string) => {
+			const player = app.emu.world.connectPlayer(makePlayer({ name: ` ${name}`, teamId: 2 }))
+			await expect(panel.getByRole('row', { name: new RegExp(name) })).toBeVisible({ timeout: 20_000 })
+			return player
+		}
+
+		// 2v2 after the swaps. Two joiners make it 2v4, and one leaving again before the delay makes it 2v3
+		const joiners = [await join('cb_first'), await join('cb_brief')]
+		await expect(countdown).toBeVisible({ timeout: 20_000 })
+		app.emu.world.disconnectPlayer(joiners.pop()!)
+		await expect(countdown).toBeHidden({ timeout: 20_000 })
+		await page.waitForTimeout(10_000)
+		await expect(counterbalanced).toHaveCount(2)
+
+		// 2v4 again, and this time it stays that way until the countdown ends: one counterbalance swap is dropped
+		joiners.push(await join('cb_second'))
+		await expect(countdown).toBeVisible({ timeout: 20_000 })
+		await expect(counterbalanced).toHaveCount(1, { timeout: 30_000 })
+		await expect(countdown).toBeHidden()
+		await expect(
+			feed.getByText(/^Counterbalance re-picked the queued teamswaps \(−1\) after players joined, left or switched teams/),
+		).toBeVisible({ timeout: 20_000 })
+
+		// 3v5: re-picking now evens the teams without counterbalance, so the last counterbalance swap goes
+		joiners.push(await join('cb_third'), await join('cb_fourth'))
+		await countdown.getByText(/Re-picking in/).waitFor({ timeout: 20_000 })
+		await page.getByRole('button', { name: 'Re-pick now' }).click()
+		await expect(counterbalanced).toHaveCount(0, { timeout: 20_000 })
+		await expect(countdown).toBeHidden()
+		await expect(feed.getByText(/had counterbalance re-pick the queued teamswaps \(−1\)/)).toBeVisible({ timeout: 20_000 })
+
+		// 4v6: skipping keeps the queue as it is past the delay
+		joiners.push(await join('cb_fifth'), await join('cb_sixth'))
+		await expect(countdown).toBeVisible({ timeout: 20_000 })
+		await page.getByRole('button', { name: 'Skip' }).click()
+		await expect(countdown).toBeHidden({ timeout: 20_000 })
+		await page.waitForTimeout(10_000)
+		await expect(page.locator('[data-tour="swap-badge"]')).toHaveCount(1)
+
+		await page.locator('[data-tour="swap-badge"]', { hasText: 'loner' }).getByRole('button', { name: 'Delete swap' }).click()
+		await page.locator('[data-tour="swaps-save"]').click()
+		await expect(page.locator('[data-tour="swap-badge"]')).toHaveCount(0)
+		for (const player of joiners) app.emu.world.disconnectPlayer(player)
+		await expect(panel.getByRole('row', { name: /cb_sixth/ })).toBeHidden({ timeout: 20_000 })
 	})
 
 	test("adding a BattleMetrics note, then reading it in the player's details window", async ({ page }) => {
