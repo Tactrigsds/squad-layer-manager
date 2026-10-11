@@ -14,9 +14,8 @@ import type * as RC from './render-context'
  * Display names for the actors the given events attribute work to, for a render ctx.
  *
  * The app-event rows are inert templates, so a row cannot fetch its own actor's name. The ids are collected
- * from the events up front and fetched in one batch instead, which is the same work the rows used to do
- * individually -- only hoisted to where the ctx is built, since the ctx's identity is what says a built row
- * is stale.
+ * from the events up front and fetched in one batch where the ctx is built. The ctx's identity marks a built row
+ * as stale.
  */
 export function useActorLabels(events: readonly CHAT.EventEnriched[] | null | undefined): Pick<RC.RenderCtx, 'userLabel' | 'pluginName'> {
 	// keyed on the ids themselves, not the events array: an append that brings no new actor must leave the

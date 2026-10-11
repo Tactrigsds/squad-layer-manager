@@ -31,8 +31,7 @@ describe('help', () => {
 		expect(lines).toContain('[/to2h] <player> [reason|message]: Shortcut for "/timeout {{arg1}} 2h {{rest}}"')
 	})
 
-	// the command is only reachable through triggers that pin arguments, so there is no plain form to head the listing
-	// with -- and heading it with an empty [] was what the listing used to do
+	// the command is only reachable through triggers that pin arguments, so there is no plain form to head the listing with
 	it('describes a command with no plain trigger by the triggers it does have', () => {
 		const lines = helpLines(
 			withTimeout([

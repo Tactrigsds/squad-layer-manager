@@ -66,7 +66,6 @@ export class SftpTail extends EventEmitter {
 	constructor(options: SftpTailOptions) {
 		super()
 
-		// Set default options.
 		this.options = {
 			ftp: { ...options, encoding: 'utf-8', timeout: 10 * 1000 },
 			fetchInterval: options.pollInterval,
@@ -104,7 +103,6 @@ export class SftpTail extends EventEmitter {
 		// Connection failures are handled by the fetch loop's retry/reconnect logic, so let them propagate.
 		await this.connect()
 
-		// Get the size of the file on the SFTP server.
 		this.log.trace('Fetching size of file...')
 		const stats = await this.getFileStats(this.filePath!)
 		const fileSize = stats.size

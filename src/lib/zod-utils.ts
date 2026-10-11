@@ -150,7 +150,7 @@ export const PathSegment = z
 // in docs/developers/architecture.md.
 //
 // `overwrite` rather than `transform` because it returns the same schema class: a transformed literal becomes a
-// ZodPipe, which `z.discriminatedUnion` can no longer read a discriminator out of.
+// ZodPipe, which `z.discriminatedUnion` cannot read a discriminator out of.
 export function internedEnum<const T extends readonly string[]>(values: T) {
 	const canonical = new Map<string, T[number]>(values.map((v) => [v, v]))
 	return z.enum(values).overwrite((value) => canonical.get(value) ?? value)

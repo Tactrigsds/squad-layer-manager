@@ -90,8 +90,8 @@ export function revLookupCached<T extends { [key: string]: any }>(obj: T, key: T
 export type AttrValue = string | number | boolean
 
 // Only plain objects and arrays get walked. Dates, Errors, Maps and class instances have no own
-// enumerable keys worth flattening (a Date would previously walk to zero keys and vanish entirely),
-// so they are coerced to a leaf value instead.
+// enumerable keys worth flattening (a walked Date would vanish entirely), so they are coerced to a leaf value
+// instead.
 function isTraversable(v: unknown): boolean {
 	if (v === null || typeof v !== 'object') return false
 	if (Array.isArray(v)) return true
@@ -116,9 +116,8 @@ function toAttrValue(v: unknown): AttrValue | undefined {
 			if (v instanceof Date) return v.toISOString()
 			if (v instanceof Error) return v.stack ?? v.message
 			// reachable when a plain object/array sits at maxDepth, or for a Map/Set/class instance at any
-			// depth. JSON is lossy but legible; the previous String() here is what produced a literal
-			// "[object Object]". Object.prototype.toString at least names the type when JSON can't cope
-			// (circular refs, BigInt members).
+			// depth. JSON is lossy but legible, where String() yields a literal "[object Object]".
+			// Object.prototype.toString names the type when JSON can't cope (circular refs, BigInt members).
 			try {
 				return JSON.stringify(v) ?? Object.prototype.toString.call(v)
 			} catch {
@@ -189,8 +188,7 @@ export function filterRecord<O extends Record<string, any>, R>(
 export function isPartial(obj: object, target: object, exclude?: string[]) {
 	for (const key of Object.keys(trimUndefined(obj))) {
 		if (exclude && exclude.includes(key)) continue
-		// @ts-expect-error idgaf
-		if (obj[key] !== target[key]) return false
+		if ((obj as Record<string, unknown>)[key] !== (target as Record<string, unknown>)[key]) return false
 	}
 	return true
 }

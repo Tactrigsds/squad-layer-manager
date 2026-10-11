@@ -871,11 +871,11 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		// pre-disconnect response fails rather than arriving late. Using polledAt here would only risk discarding the
 		// first genuine post-connect poll (its request can be issued a hair before boundaryTime) and stalling sync.
 		if (pendingEvent.time < state.syncState.boundaryTime) break outerIf
-		// Snapshot only players already assigned to a team. We used to require EVERY listed player to be teamed,
-		// which let a single still-loading/spectating straggler defer sync indefinitely and widen the window in
-		// which connects are dropped. Team-less stragglers are instead added later by reconcileTeamsUpdate as they
-		// get sorted onto a team. Only defer a poll that has players but none teamed yet (a purely transitional
-		// snapshot); an empty server (no players at all) still syncs.
+		// Snapshot only players already assigned to a team. Requiring every listed player to be teamed would let a
+		// single still-loading/spectating straggler defer sync indefinitely and widen the window in which connects
+		// are dropped. Team-less stragglers are added later by reconcileTeamsUpdate as they get sorted onto a team.
+		// Only defer a poll that has players but none teamed yet (a purely transitional snapshot); an empty server
+		// (no players at all) still syncs.
 		const teamedPlayers = pendingEvent.teams.players.filter((p) => p.teamId != null)
 		if (pendingEvent.teams.players.length > 0 && teamedPlayers.length === 0) break outerIf
 		const stale = state.staleTeamsFromDisconnect
@@ -1087,12 +1087,15 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 					tickets: pendingEvent.events.ROUND_DECIDED_WINNER.tickets,
 					unit: pendingEvent.events.ROUND_DECIDED_WINNER.unit,
 				}
-				loser = {
-					faction: pendingEvent.events.ROUND_DECIDED_LOSER.faction,
-					team: pendingEvent.events.ROUND_DECIDED_LOSER.team as SM.TeamId,
-					tickets: pendingEvent.events.ROUND_DECIDED_LOSER.tickets,
-					unit: pendingEvent.events.ROUND_DECIDED_LOSER.unit,
-				}
+				const loserEvent = pendingEvent.events.ROUND_DECIDED_LOSER
+				loser = loserEvent
+					? {
+							faction: loserEvent.faction,
+							team: loserEvent.team as SM.TeamId,
+							tickets: loserEvent.tickets,
+							unit: loserEvent.unit,
+						}
+					: null
 			}
 			let outcome: MH.MatchOutcome
 			if (!winner) {

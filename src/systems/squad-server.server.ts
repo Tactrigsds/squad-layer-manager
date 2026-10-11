@@ -172,9 +172,9 @@ export function require(serverId: string): C.ManagedServer {
 }
 
 /**
- * The managed server ctx for an event handler, rebuilt at handle time from the serverId the event carries.
- * The emitter used to ship its whole ctx on the stream, which made the SQS.Ctx.Payload payload reference
- * C.ManagedServer and so pinned it to the server layer.
+ * The managed server ctx for an event handler, rebuilt at handle time from the serverId the event carries. Events
+ * carry only the id so that the SQS.Ctx.Payload payload does not reference C.ManagedServer, which would pin it to
+ * the server layer.
  */
 export function eventCtx(evtCtx: CS.Otel & CS.ServerId, signal: AbortSignal) {
 	return { ...resolveCtx({ ...getBaseCtx(), ...evtCtx }, evtCtx.serverId), signal }

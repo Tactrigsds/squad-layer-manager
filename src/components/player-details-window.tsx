@@ -790,8 +790,8 @@ function decodePageEvents(page: PlayerEventsPage): CHAT.EventEnriched[] {
 
 type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
 
-// This player's history, from the same engine the history page runs on -- so it reaches past the recent-match
-// window this window used to be limited to. Asked for as events rather than as rendered rows: they are
+// This player's history, from the same engine the history page runs on, so it reaches past the recent-match
+// window. Asked for as events rather than as rendered rows: they are
 // interleaved with the live match's own events and punctuated by match, which needs the events themselves.
 function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 	return RPC.orpc.history.query.infiniteOptions({

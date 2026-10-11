@@ -433,9 +433,8 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 	}
 }
 
-// Who made a layer change SLM is reconciling against. `unknown` is the honest answer for a change SLM found rather
-// than watched happen -- notably the layer already set when SLM connects, which used to be reported as another RCON
-// tool's doing on every startup.
+// Who made a layer change SLM is reconciling against. `unknown` covers a change SLM found rather than watched
+// happen, such as the layer already set when SLM connects.
 export function externalActor(source: SE.MapSet['source']): { type: 'player'; playerId: string } | { type: 'rcon' } | { type: 'unknown' } {
 	if (source?.type === 'player') return { type: 'player', playerId: SM.PlayerIds.getPlayerId(source.playerIds) }
 	if (source?.type === 'rcon') return { type: 'rcon' }

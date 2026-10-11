@@ -9,7 +9,7 @@ export type GenericForwardedRef<RefType, Props extends object> = <P extends Prop
 ) => React.ReactElement
 
 /**
- * A ref built once per mount, for when reevaluating the starting value on every render is too much psychic damage.
+ * A ref built once per mount, for a starting value too expensive to reevaluate on every render.
  *
  * Only reach for this when the box itself is written to. To construct a value once and read it,
  * `React.useState(() => value)[0]` is the same guarantee without a ref, and reading `.current` during render costs

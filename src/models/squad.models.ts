@@ -811,8 +811,6 @@ export namespace AdminList {
 		return out
 	}
 
-	// Every group name any of them defines. The merged view used to answer this by unioning the maps; nothing reads
-	// the perms a group carries off that union, so the names are all that has to be collected.
 	export function collectGroupNames(lists: AdminLists, out = new Set<string>()): Set<string> {
 		for (const list of lists.values()) {
 			for (const group of list.groups.keys()) out.add(group)
@@ -1999,7 +1997,7 @@ export namespace LogEvents {
 	type ChainItemOptions = { primary?: boolean; optional?: boolean }
 	const CHAIN_ITEM_OPTIONS_PROPS = ['primary', 'optional'] as const
 	type ChainItem = { event: EventSchema } & ChainItemOptions
-	type ChainDef = (EventSchema | ChainItem)[]
+	type ChainDef = readonly (EventSchema | ChainItem)[]
 
 	const LOG_CHAINS = {
 		PLAYER_CONNECTED_CHAIN: [
@@ -2020,7 +2018,7 @@ export namespace LogEvents {
 			{ event: IngameVoteStartedDef, primary: true },
 			{ event: IngameVoteChoicesDef, optional: true },
 		],
-	}
+	} as const satisfies Record<string, ChainDef>
 
 	type GetEventSchema<T> = T extends EventSchema ? T : T extends { event: infer E extends EventSchema } ? E : never
 

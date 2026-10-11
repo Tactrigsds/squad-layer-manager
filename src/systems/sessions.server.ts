@@ -67,50 +67,38 @@ async function loadValidSessionsIntoCache(ctx: C.Db) {
 	log.info(`Loaded ${validCount} valid sessions into cache`)
 }
 
-// Helper to update session in both cache and database
 async function updateSessionInCacheAndDb(ctx: C.Db, sessionId: string, updates: Partial<Pick<CachedSession, 'expiresAt'>>) {
-	// Update database first
 	await ctx.db({ redactParams: true }).update(Schema.sessions).set(updates).where(E.eq(Schema.sessions.id, sessionId))
 
-	// Update cache
 	const cached = sessionCache.get(sessionId)
 	if (cached) {
 		Object.assign(cached, updates)
 	}
 }
 
-// Helper to remove session from both cache and database
 async function removeSessionFromCacheAndDb(ctx: C.Db, sessionId: string) {
-	// Remove from database first
 	await ctx.db().delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionId))
 
-	// Remove from cache
 	sessionCache.delete(sessionId)
 }
 
-// Helper to add session to both cache and database
 async function addSessionToCacheAndDb(ctx: C.Db, session: CachedSession) {
-	// Add to database first
 	await ctx.db().insert(Schema.sessions).values({
 		id: session.id,
 		userId: session.userId,
 		expiresAt: session.expiresAt,
 	})
 
-	// Add to cache
 	sessionCache.set(session.id, session)
 }
 
-// Transaction-aware version for adding session to cache and database
 async function createSessionTx(ctx: C.Db & C.Tx, session: CachedSession) {
-	// Add to database first within transaction
 	await ctx.db().insert(Schema.sessions).values({
 		id: session.id,
 		userId: session.userId,
 		expiresAt: session.expiresAt,
 	})
 
-	// Add to cache (safe to do immediately since we're in a transaction)
 	sessionCache.set(session.id, session)
 }
 
@@ -138,10 +126,8 @@ export async function setup() {
 			const currentTime = new Date()
 
 			await DB.runTransaction(ctx, async (ctx) => {
-				// Delete all expired sessions from database
 				await ctx.db().delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, currentTime))
 
-				// Remove expired sessions from cache
 				for (const [sessionId, session] of sessionCache.entries()) {
 					if (currentTime > session.expiresAt) {
 						sessionCache.delete(sessionId)
@@ -235,7 +221,6 @@ export const validateAndUpdate = Instr.spanOp(
 
 		const currentTime = new Date()
 		if (currentTime > cachedSession.expiresAt) {
-			// Remove expired session from cache and database
 			await removeSessionFromCacheAndDb(ctx, sessionId)
 			return await errorOrBypass({ code: 'unauthorized:expired' as const })
 		}
@@ -372,7 +357,6 @@ export const getUser = Instr.spanOp(
 		const [row] = await q
 
 		if (row?.user) {
-			// Add back to cache if found
 			const session = await ctx
 				.db({ redactParams: true })
 				.select()
@@ -410,5 +394,4 @@ export function clearCache() {
 	sessionCache.clear()
 }
 
-// Export cache for other systems that might need to create sessions
 export { addSessionToCacheAndDb as createSession, createSessionTx, sessionCache }

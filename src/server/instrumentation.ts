@@ -214,9 +214,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			try {
 				const result = await run(...(args as Parameters<Cb>))
 				let statusString: string | undefined
-				// a returned `err:*` code. Captured rather than logged here so the op produces exactly one
-				// record: it used to emit an `OP : ... : value-error : <msg>` line and then fall through
-				// and emit an `op : ... : <code>` line for the same failure.
+				// a returned `err:*` code. Captured rather than logged here so the op produces exactly one record.
 				let valueError: { message: string; cause?: unknown } | undefined
 				if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
 					statusString = result.code

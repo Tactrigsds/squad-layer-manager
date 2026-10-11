@@ -11,9 +11,8 @@ import * as Settings from '@/systems/settings.server'
 
 import * as Env from './env.ts'
 
-// Delivers the public, deploy-time config to every connected client. There is no longer a JSONC config file:
-// the former deploy constants live in env vars (env.ts) and the admin-tunable `layerTable` lives in global
-// settings (settings.server.ts). This module just assembles and broadcasts the derived public view.
+// Delivers the public, deploy-time config to every connected client, assembled from env vars (env.ts) and the
+// admin-tunable `layerTable` in global settings (settings.server.ts).
 
 const envBuilder = Env.getEnvBuilder({
 	...Env.groups.general,

@@ -121,7 +121,6 @@ export const loadState = Instr.spanOp(
 		const userRows = new Map<bigint, Users.DbUser>()
 		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
-			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
 			state.recentMatches.push(details)
 
@@ -297,7 +296,6 @@ export const matchHistoryRouter = {
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 
-		// Check if trying to get events for current match - this should never happen
 		const currentMatch = await getCurrentMatch(ctx)
 		if (currentMatch && currentMatch.ordinal === ordinal) {
 			throw new Error(`Cannot call getMatchEvents for current match (ordinal ${ordinal}). Use live event stream instead.`)

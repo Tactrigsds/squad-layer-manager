@@ -645,7 +645,6 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 	}
 
 	const ctx: Ctx = { ...CS.init(), effectiveColsConfig: BASE_COLUMN_CONFIG }
-	// Get enumeration indices for each component
 	const layerIndex = assertedEnumDbValue('Layer', layer.Layer, ctx, components)
 	const faction1Index = assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components)
 	const unit1Index = assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components)

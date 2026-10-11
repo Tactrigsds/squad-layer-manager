@@ -350,7 +350,6 @@ export namespace Sel {
 					const blockedByPool = row.isOutOfPool && !canForceSelect
 					if (blockedByMods || blockedByPool) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }
 
-					// Check if unchecking would violate minSelected
 					if (isSelected) {
 						const wouldBeUnderMin = (minSelected ?? 0) > selectedCount - 1
 						if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool, blockedByMods }

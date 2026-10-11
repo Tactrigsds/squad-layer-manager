@@ -33,13 +33,9 @@ export function get(key: keyof typeof FEATURE_FLAGS) {
 	return Store.getState().flags[key]
 }
 
-// @ts-expect-error expose to console
-window.featureFlags = {}
-
-// Define getters and setters for each feature flag
+const consoleFeatureFlags = {}
 Object.keys(FEATURE_FLAGS).forEach((flag) => {
-	// @ts-expect-error idgaf
-	Object.defineProperty(window.featureFlags, flag, {
+	Object.defineProperty(consoleFeatureFlags, flag, {
 		get() {
 			return Store.getState().flags[flag as keyof typeof FEATURE_FLAGS]
 		},
@@ -50,6 +46,7 @@ Object.keys(FEATURE_FLAGS).forEach((flag) => {
 		configurable: true,
 	})
 })
+;(window as unknown as { featureFlags: object }).featureFlags = consoleFeatureFlags
 
 export function useFeatureFlags() {
 	return Store((state) => state.flags)

@@ -126,7 +126,6 @@ function makeRoundEndedChain(
 	return {
 		type: 'ROUND_ENDED_CHAIN',
 		time,
-		// @ts-expect-error idgaf
 		events: {
 			ROUND_ENDED: { type: 'ROUND_ENDED', time, chainID: 0, raw: '' },
 			ROUND_DECIDED_WINNER: {

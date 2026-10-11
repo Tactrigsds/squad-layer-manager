@@ -105,7 +105,6 @@ await Instr.spanOp('main', { module }, async () => {
 	// layer components/factionunit configs are consumed synchronously all over the app (including
 	// while parsing config), so they load before everything else
 	await LayerData.setup()
-	// Initialize all module loggers
 	CoreRcon.setup()
 	Commands.setup()
 	LayerQueries.setup()

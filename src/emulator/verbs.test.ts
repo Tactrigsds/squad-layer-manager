@@ -79,7 +79,7 @@ describe('execute', () => {
 	})
 
 	// an empty squad is a state a real server never reports, and the app rejects the pair as inconsistent and
-	// retries forever. Creating a second squad used to leave the first one behind like that.
+	// retries forever.
 	it('never leaves a squad behind with nobody in it', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		for (const squadName of ['Able', 'Baker', 'Charlie']) {
@@ -186,8 +186,7 @@ describe('execute', () => {
 		await expect(Verbs.execute(host, 'end', { winnerTeamId: 3 })).rejects.toThrow()
 	})
 
-	// Ending a match used to write only the round-end lines, leaving the server in WaitingPostMatch with no
-	// NEW_GAME ever following, so the map never rolled and the queue never advanced.
+	// without a NEW_GAME after the round-end lines, the map never rolls and the queue never advances
 	it('ends into WaitingPostMatch and then brings the next world up', async () => {
 		const rolled = new Promise<string[]>((resolve) => {
 			const lines: string[] = []
