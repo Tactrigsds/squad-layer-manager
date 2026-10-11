@@ -467,7 +467,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 						groupings={groupings}
 					/>
 					{matchPlayer && currentMatch ? (
-						<div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/50 px-3 py-1.5">
+						<div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/50 px-3 py-1.5 [contain:inline-size]">
 							<h3 className="fd-cond text-sm font-bold">{tr.text(SM_Msgs.thisMatch())}</h3>
 							<dl className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs [&>div]:flex [&>div]:min-w-0 [&>div]:items-baseline [&>div]:gap-1 [&_dd]:truncate [&_dd]:font-semibold [&_dt]:fd-lbl-k2">
 								<div>
