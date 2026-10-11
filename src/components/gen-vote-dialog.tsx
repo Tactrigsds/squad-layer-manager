@@ -79,6 +79,10 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
 	useFrameTeardownOnUnmount(frameKey, !props.stores.genVote)
 	const genVoteStores: GenVoteFrame.KeyProp = React.useMemo(() => ({ genVote: frameKey }), [frameKey])
+	const choiceConstraintStores = React.useMemo(
+		() => ({ genVote: frameKey, squadServer: props.stores.squadServer }),
+		[frameKey, props.stores.squadServer],
+	)
 	const phone = Browser.useIsSmallViewport()
 
 	const {
@@ -261,7 +265,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					<span key={key} className="inline-flex items-center gap-1.5">
 						<span className="text-xs text-text-2">{key}</span>
 						<ChoiceConstraintSelect
-							stores={genVoteStores}
+							stores={choiceConstraintStores}
 							constraintKey={key}
 							index={index}
 							value={choice.choiceConstraints[key] as string | undefined}
@@ -508,7 +512,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 })
 
 function ChoiceConstraintSelect(props: {
-	stores: GenVoteFrame.KeyProp & Partial<SquadServerFrame.KeyProp>
+	stores: GenVoteFrame.KeyProp & SquadServerFrame.KeyProp
 	constraintKey: V.GenVote.ChoiceConstraintKey
 	index: number
 	value: string | undefined
