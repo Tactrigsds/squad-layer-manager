@@ -501,6 +501,8 @@ export type VoteListItem = {
 	type: 'vote-list-item'
 	choices: SingleListItem[]
 	voteDecided: boolean
+	// the vote ran to an outcome: a winner, or too few votes to pick one. An aborted vote can be run again.
+	voteTookPlace: boolean
 	itemId: LL.ItemId
 	layerId: L.LayerId
 }
@@ -663,6 +665,12 @@ export function resolveTeamParityForCursor(state: LayerItemsState, cursor: Curso
 	return MH.getTeamParityForOffset({ ordinal: state.firstLayerItemParity }, index?.outerIndex ?? 0)
 }
 
+// The items a later item's repeat rules look back at. A vote that has not taken place may still play any of its
+// choices, so every choice counts.
+export function getLookbackItems(item: LayerItem): readonly LayerItem[] {
+	return item.type === 'vote-list-item' && !item.voteTookPlace ? item.choices : [item]
+}
+
 export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
 	if (isVoteListitem(item)) return false
 	return item.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(item.layerId)
@@ -683,6 +691,7 @@ export function getItemForLayerListItem(item: LL.Item): LayerItem {
 			type: 'vote-list-item',
 			itemId: item.itemId,
 			voteDecided,
+			voteTookPlace: voteDecided || item.endingVoteState?.code === 'ended:insufficient-votes',
 			layerId: item.layerId,
 			choices: item.choices.map((choice) => ({
 				type: 'single-list-item',

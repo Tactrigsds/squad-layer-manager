@@ -61,7 +61,7 @@ export type SolveRepeatsSpec = {
 	// per layer, per rule: the values in team slots 1 and 2. A rule that is not per-team reads slot 1 only.
 	layers: [number, number][][]
 	history: number[]
-	queue: { source: number; targets: number[]; swappable: boolean; pinned: boolean }[]
+	queue: { sources: number[]; targets: number[]; swappable: boolean; pinned: boolean }[]
 	firstParity: number
 	swapCost: number
 	moveCost: number

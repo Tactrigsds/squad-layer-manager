@@ -332,6 +332,15 @@ function offsetsFor(rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.
 const mapsRepeating = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, candidates: string[]) =>
 	candidates.filter((id) => offsetsFor(rule, list, cursor, id).length > 0).map((id) => L.toLayer(id).Map)
 
+const voteItem = (choices: string[], voteTookPlace: boolean, layerId = choices[0]): LQY.LayerItem => ({
+	type: 'vote-list-item',
+	itemId: 'vote',
+	layerId,
+	voteDecided: voteTookPlace,
+	voteTookPlace,
+	choices: choices.map((choiceLayerId, i) => ({ type: 'single-list-item', itemId: `vote-${i}`, layerId: choiceLayerId })),
+})
+
 describe('the window a repeat rule looks back over', () => {
 	const list = stateOf(historyItems(HISTORY))
 
@@ -371,34 +380,74 @@ describe('where the cursor sits in the queue', () => {
 	})
 })
 
+describe('a vote earlier in the list', () => {
+	const CHOICES = ['SM-RAAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA', 'AB-RAAS-V1:USA-CA:RGF-CA']
+	const hidden = (list: LQY.LayerItemsState) => CHOICES.filter((id) => evalIr(whereFor(mapRule, list), id)).map((id) => L.toLayer(id).Map)
+
+	it('counts every choice while the vote has yet to take place', () => {
+		const list = stateOf([...historyItems(HISTORY.slice(0, 1)), voteItem(CHOICES, false)])
+		expect(mapsRepeating(mapRule, list, { type: 'end' }, CHOICES)).toEqual(['Sumari', 'Tallil', 'AlBasrah'])
+		expect(hidden(list)).toEqual(['Sumari', 'Tallil', 'AlBasrah'])
+	})
+
+	it('points a repeat of a choice at that choice rather than at the vote', () => {
+		const list = stateOf([...historyItems(HISTORY.slice(0, 1)), voteItem(CHOICES, false)])
+		const [descriptor] = getRepeatRuleMatchDescriptors(list, 2, 'rule', mapRule, CHOICES[1])!
+		expect(descriptor).toMatchObject({ sourceItemId: 'vote-1', sourceLayerId: CHOICES[1], repeatOffset: 1 })
+	})
+
+	it('counts only the layer it settled on once it has taken place', () => {
+		const list = stateOf([...historyItems(HISTORY.slice(0, 1)), voteItem(CHOICES, true, CHOICES[1])])
+		expect(mapsRepeating(mapRule, list, { type: 'end' }, CHOICES)).toEqual(['Tallil'])
+		expect(hidden(list)).toEqual(['Tallil'])
+	})
+
+	it('has taken place once it picks a winner or ends with too few votes, but not once it is aborted', () => {
+		const tookPlace = (endingVoteState?: { code: string }) => {
+			const item = LQY.getItemForLayerListItem({
+				type: 'vote-list-item',
+				itemId: 'vote',
+				layerId: CHOICES[0],
+				choices: CHOICES.map((layerId, i) => ({ type: 'single-list-item', itemId: `vote-${i}`, layerId })),
+				endingVoteState,
+			} as unknown as LL.Item)
+			return (item as LQY.VoteListItem).voteTookPlace
+		}
+		expect(tookPlace()).toBe(false)
+		expect(tookPlace({ code: 'ended:winner' })).toBe(true)
+		expect(tookPlace({ code: 'ended:insufficient-votes' })).toBe(true)
+		expect(tookPlace({ code: 'ended:aborted' })).toBe(false)
+	})
+})
+
+function evalIr(ir: LE.Ir, layerId: string): boolean {
+	const layer = L.toLayer(layerId) as Record<string, string | undefined>
+	switch (ir.op) {
+		case 'true':
+			return true
+		case 'false':
+			return false
+		case 'and':
+			return ir.children.every((c) => evalIr(c, layerId))
+		case 'or':
+			return ir.children.some((c) => evalIr(c, layerId))
+		case 'not':
+			return !evalIr(ir.child, layerId)
+		case 'in_vals': {
+			const value = layer[COLUMNS[ir.col]]
+			if (!value) return false
+			const dbValue = LC.dbValue(COLUMNS[ir.col], value, ctx)
+			if (dbValue === null || LC.isUnmappedDbValue(dbValue)) return false
+			return ir.vals.includes(Number(dbValue))
+		}
+		default:
+			throw new Error(`unhandled ir op ${JSON.stringify(ir)}`)
+	}
+}
+
 // The filter hides a row and the indicator marks it. They are computed separately -- one lowers to engine IR, the
 // other compares layers in JS -- so a divergence would show a violation the "Hide Repeats" toggle cannot hide.
 describe('the Hide Repeats filter and the violation indicator', () => {
-	function evalIr(ir: LE.Ir, layerId: string): boolean {
-		const layer = L.toLayer(layerId) as Record<string, string | undefined>
-		switch (ir.op) {
-			case 'true':
-				return true
-			case 'false':
-				return false
-			case 'and':
-				return ir.children.every((c) => evalIr(c, layerId))
-			case 'or':
-				return ir.children.some((c) => evalIr(c, layerId))
-			case 'not':
-				return !evalIr(ir.child, layerId)
-			case 'in_vals': {
-				const value = layer[COLUMNS[ir.col]]
-				if (!value) return false
-				const dbValue = LC.dbValue(COLUMNS[ir.col], value, ctx)
-				if (dbValue === null || LC.isUnmappedDbValue(dbValue)) return false
-				return ir.vals.includes(Number(dbValue))
-			}
-			default:
-				throw new Error(`unhandled ir op ${JSON.stringify(ir)}`)
-		}
-	}
-
 	function mulberry32(seed: number) {
 		return () => {
 			seed = (seed + 0x6d2b79f5) | 0
@@ -437,6 +486,11 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 				...historyItems(Array.from({ length: 1 + Math.floor(rand() * 6) }, () => pick(LAYER_POOL))),
 				...queueItems(Array.from({ length: Math.floor(rand() * 4) }, () => pick(LAYER_POOL))),
 			]
+			if (rand() < 0.5) {
+				const choices = Array.from({ length: 2 + Math.floor(rand() * 2) }, () => pick(LAYER_POOL))
+				const tookPlace = rand() < 0.5
+				items.push(voteItem(choices, tookPlace, tookPlace ? pick(choices) : choices[0]))
+			}
 			const list = stateOf(items, Math.floor(rand() * 2))
 			const field = pick(FIELDS)
 			const rule: LQY.RepeatRule = {
@@ -453,7 +507,7 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 				const hidden = evalIr(where, candidate)
 				const indicated = (getRepeatRuleMatchDescriptors(list, cursorIndex, 'rule', rule, candidate) ?? []).length > 0
 				if (hidden !== indicated && mismatches.length < 10) {
-					mismatches.push(JSON.stringify({ rule, candidate, hidden, indicated, items: items.map((i) => i.layerId) }))
+					mismatches.push(JSON.stringify({ rule, candidate, hidden, indicated, items }))
 				}
 			}
 		}

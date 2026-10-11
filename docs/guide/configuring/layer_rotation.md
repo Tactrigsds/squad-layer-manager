@@ -75,6 +75,10 @@ Drag a rule by its grip to reorder the list.
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
 opt out of that.
 
+A repeat rule checks a layer against every choice of an earlier vote that has not taken place yet, because any of
+those choices could still be played. Once the vote picks a winner, or ends with too few votes, the rule checks only
+the layer the vote settled on. Aborting a vote puts all of its choices back in play.
+
 ## Randomization
 
 _Layer Generation Weights_ controls how SLM picks layers at random. It covers layer generation, which runs when
