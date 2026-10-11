@@ -49,6 +49,7 @@ function TeamswapsHelpWindow() {
 					<ul className="list-disc list-inside space-y-1.5">
 						<li>{tr.text(TSW_Msgs.helpCounterbalanceRules())}</li>
 						<li>{tr.text(TSW_Msgs.helpCounterbalanceParties())}</li>
+						<li>{tr.text(TSW_Msgs.helpCounterbalanceKeep())}</li>
 						<li>{tr.text(TSW_Msgs.helpCounterbalanceRoster())}</li>
 						<li>{tr.text(TSW_Msgs.helpCounterbalanceInGame())}</li>
 						<li>{tr.text(TSW_Msgs.helpCounterbalanceRemove())}</li>

@@ -1496,7 +1496,7 @@ export const PublicServerSettingsSchema = z.object({
 		SDoc.of({
 			label: t('Teamswap Counterbalance'),
 			description: t(
-				'Which players SLM picks when it counterbalances the swaps an admin queues, so that the teams end up the same size. Parties are always swapped together.',
+				'Which players SLM picks when it counterbalances the swaps an admin queues, so that the teams end up the same size. Parties are always swapped together. A player already picked stays picked for as long as the teams need them, whatever these rules say.',
 			),
 		}),
 	),

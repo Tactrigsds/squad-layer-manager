@@ -118,6 +118,8 @@ admin queues or removes a swap, SLM re-picks swaps from the other team so that t
 Counterbalance swaps carry a scale icon and a dashed outline.
 
 - A party is always swapped together.
+- SLM keeps the players it already picked for as long as the teams need them, even if they no longer match the
+  rules below.
 - If players joining, leaving or switching teams leave the saved swaps more than one player from even, a countdown
   appears under the _Counterbalance_ switch. When it ends, SLM re-picks the counterbalance swaps and records the re-pick
   in the activity feed. The countdown stops if the teams even out first. Use _Re-pick now_ to skip the wait, or _Skip_

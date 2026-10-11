@@ -187,8 +187,10 @@ function counterbalance(stores: SquadServerFrame.KeyProp, source: USR.GuiOrChatU
 	const chat = ChatPrt.Sel.chatState(frameState)
 	const players = TSWCB.candidates(chat.players.values(), chat.playerStats, match.ordinal, BattlemetricsClient.playerFactsNow)
 	const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>()
+	const current = new Set<SM.PlayerId>()
 	for (const [playerId, swap_] of state.editedSwaps) {
-		if (!swap_.counterbalance) manualSwaps.set(playerId, swap_.toTeam)
+		if (swap_.counterbalance) current.add(playerId)
+		else manualSwaps.set(playerId, swap_.toTeam)
 	}
 	const result = TSWCB.compute({
 		settings,
@@ -197,6 +199,7 @@ function counterbalance(stores: SquadServerFrame.KeyProp, source: USR.GuiOrChatU
 		manualSwaps,
 		skipped: frameState.teamswaps.counterbalanceSkipped,
 		pending: new Set(state.pendingSwaps.keys()),
+		current,
 	})
 	TeamswapsPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'set-counterbalance-swaps', source, swaps: result.swaps })
 }

@@ -324,8 +324,10 @@ async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db, s
 			PG.playerFacts(player, Battlemetrics.cachedPlayerFlags(playerId)),
 		)
 		const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>()
+		const current = new Set<SM.PlayerId>()
 		for (const [playerId, swap_] of state.savedSwaps) {
-			if (!swap_.counterbalance) manualSwaps.set(playerId, swap_.toTeam)
+			if (swap_.counterbalance) current.add(playerId)
+			else manualSwaps.set(playerId, swap_.toTeam)
 		}
 		const result = TSWCB.compute({
 			settings: ctx.serverSettings.settings.teamswapCounterbalance,
@@ -334,6 +336,7 @@ async function counterbalanceSavedSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db, s
 			manualSwaps,
 			skipped: new Set(),
 			pending: new Set(state.pendingSwaps.keys()),
+			current,
 		})
 		log.info('counterbalance re-pick after roster changes: %d swap(s), %d short of even', result.swaps.size, result.shortfall)
 		await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'set-counterbalance-swaps', saved: true, source, swaps: result.swaps }])

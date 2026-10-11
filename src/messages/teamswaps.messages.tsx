@@ -44,6 +44,10 @@ export const helpCounterbalanceRules = def(
 
 export const helpCounterbalanceParties = def('A party is always swapped together.')
 
+export const helpCounterbalanceKeep = def(
+	'SLM keeps the players it already picked for as long as the teams need them, even if they no longer match the rules.',
+)
+
 export const helpCounterbalanceRoster = def(
 	'If players joining, leaving or switching teams leave the saved swaps uneven, a countdown (2 minutes by default) appears under the switch. When it ends, SLM re-picks the counterbalance swaps. Use Re-pick now to skip the wait, or Skip to keep the current swaps. Unsaved edits are never changed.',
 )

@@ -31,7 +31,14 @@ function filler(team: MH.NormedTeamId, n: number, prefix: string): TSWCB.Candida
 }
 
 function compute(overrides: Partial<TSWCB.Input> & Pick<TSWCB.Input, 'players' | 'manualSwaps'>) {
-	return TSWCB.compute({ settings: SETTINGS, groupings: GROUPINGS, skipped: new Set(), pending: new Set(), ...overrides })
+	return TSWCB.compute({
+		settings: SETTINGS,
+		groupings: GROUPINGS,
+		skipped: new Set(),
+		pending: new Set(),
+		current: new Set(),
+		...overrides,
+	})
 }
 
 describe('counterbalance compute', () => {
@@ -134,5 +141,31 @@ describe('counterbalance compute', () => {
 		expect([...compute({ players, manualSwaps }).swaps.keys()]).toEqual(['first'])
 		expect([...compute({ players, manualSwaps, skipped: new Set(['first']) }).swaps.keys()]).toEqual(['second'])
 		expect(compute({ players, manualSwaps, skipped: new Set(['first']), pending: new Set(['second']) }).shortfall).toBe(1)
+	})
+
+	it('keeps players already counterbalanced ahead of better-ranked ones, and past the limits', () => {
+		const settings = TSWCB.SettingsSchema.parse({ enabled: true, neverPickAbove: { kills: 10 } })
+		const players = [
+			...filler('B', 2, 'b'),
+			player('kept', { team: 'A', kills: 20, deaths: 1 }),
+			player('better', { team: 'A', kills: 0, deaths: 5 }),
+			player('other', { team: 'A', kills: 1, deaths: 1 }),
+		]
+		const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>([['b0', 'A']])
+		// 4v1 after the swap: one goes to B. 'kept' is over the kill limit and ranks worst, but is already queued
+		const result = compute({ settings, players, manualSwaps, current: new Set(['kept']) })
+		expect([...result.swaps.keys()]).toEqual(['kept'])
+	})
+
+	it('drops the lowest-ranked current pick first when fewer swaps are needed', () => {
+		const players = [
+			...filler('B', 2, 'b'),
+			player('weak', { team: 'A', kills: 0, deaths: 5 }),
+			player('strong', { team: 'A', kills: 5, deaths: 1 }),
+			player('fresh', { team: 'A', kills: 0, deaths: 9 }),
+		]
+		const manualSwaps = new Map<SM.PlayerId, MH.NormedTeamId>([['b0', 'A']])
+		const result = compute({ players, manualSwaps, current: new Set(['weak', 'strong']) })
+		expect([...result.swaps.keys()]).toEqual(['weak'])
 	})
 })

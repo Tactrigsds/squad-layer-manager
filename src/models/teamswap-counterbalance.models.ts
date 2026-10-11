@@ -6,6 +6,9 @@
 // so a party is never split by a counterbalance swap. A unit is eligible only when no member is excluded, and is
 // ranked by the member who sorts last under each preference. Units are taken greedily in rank order, skipping any
 // that would overshoot even teams.
+//
+// Players already in a counterbalance swap are never excluded and rank ahead of every preference, so a re-pick keeps
+// them rather than trading them for whoever ranks best now. Each trade would warn both players in game.
 
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
@@ -131,6 +134,8 @@ export type Input = {
 	skipped: ReadonlySet<SM.PlayerId>
 	// players mid-execution, who cannot be queued
 	pending: ReadonlySet<SM.PlayerId>
+	// players already in a counterbalance swap
+	current: ReadonlySet<SM.PlayerId>
 }
 
 export type Result = {
@@ -196,11 +201,15 @@ function isExcluded(input: Input, player: Candidate): boolean {
 // Lower sorts first. Each key is the unit's worst member under that preference, so a party is never ranked above
 // what its weakest fit earns.
 function rankKey(input: Input, members: Candidate[]): number[] {
-	return input.settings.pickFirst.map((pref) => {
-		if (pref.type === 'group') return members.every((m) => inGroup(input.groupings, pref, m.facts)) ? 0 : 1
-		const values = members.map((m) => statValue(m.stats, pref.type))
-		return pref.order === 'lowest' ? Math.max(...values) : -Math.min(...values)
-	})
+	const current = members.every((m) => input.current.has(m.playerId)) ? 0 : 1
+	return [
+		current,
+		...input.settings.pickFirst.map((pref) => {
+			if (pref.type === 'group') return members.every((m) => inGroup(input.groupings, pref, m.facts)) ? 0 : 1
+			const values = members.map((m) => statValue(m.stats, pref.type))
+			return pref.order === 'lowest' ? Math.max(...values) : -Math.min(...values)
+		}),
+	]
 }
 
 function compareKeys(a: number[], b: number[]): number {
@@ -235,7 +244,7 @@ export function compute(input: Input): Result {
 			blocked.add(key)
 			continue
 		}
-		if (isExcluded(input, player)) blocked.add(key)
+		if (!input.current.has(player.playerId) && isExcluded(input, player)) blocked.add(key)
 		let unit = units.get(key)
 		if (!unit) {
 			unit = []
