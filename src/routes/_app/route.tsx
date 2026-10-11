@@ -23,7 +23,6 @@ export const Route = createFileRoute('/_app')({
 })
 
 function RouteComponent() {
-	// Check if we're on the server dashboard route
 	const isOnServerDashboard = useMatch({ from: '/_app/servers/$serverId', shouldThrow: false })
 	const isOnServers = useMatch({ from: '/_app/servers/', shouldThrow: false })
 	const isPhone = useIsSmallViewport()

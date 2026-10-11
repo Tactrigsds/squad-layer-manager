@@ -158,9 +158,6 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	if (!('span_name' in record) && sdkSpan.name) {
 		record.span_name = sdkSpan.name
 	}
-	// the root span name is already copied out of baggage by the MAPPED_ATTRS loop above, under
-	// ATTRS.Span.ROOT_NAME. It used to also be written to `root_span_name`, which meant every record
-	// carried the same value under two keys.
 }
 
 // Not toLocaleTimeString: passing it a locale or options misses V8's cached formatter and builds a

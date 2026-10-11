@@ -1,5 +1,5 @@
-// tanstack-form surfaces standard-schema issues, so a field error is an object rather than the plain
-// string it used to be. Rendering one directly yields "[object Object]".
+// tanstack-form surfaces standard-schema issues, so a field error is an object rather than a string. Rendering
+// one directly yields "[object Object]".
 export function formatFieldErrors(errors: unknown[]) {
 	return errors
 		.map((err) => {

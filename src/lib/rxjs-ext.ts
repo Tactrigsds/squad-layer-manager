@@ -165,11 +165,11 @@ export function filterTruthy() {
 }
 
 /**
- * Inserts a function with a custom name into the stack trace of an rxjs pipe to make it somewhat more useful. Confusingly doesn't actually log values passing through.
- * The existence of this function is why you should never use rxjs unless you're addicted like me, and should probably use the effect library instead {@link https://effect.website}
+ * Inserts a function named `tag` into the stack trace of an rxjs pipe, so a trace through the pipe names it. It does
+ * not log the values passing through.
  */
 export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
-	// surely this prevents all potential RCEs right???
+	// the tag is spliced into the source passed to `new Function`, so anything but an identifier could inject code
 	if (!/^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(tag)) {
 		throw new Error(`traceTag: tag "${tag}" is not a valid function name`)
 	}

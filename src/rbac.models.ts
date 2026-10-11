@@ -555,7 +555,7 @@ export namespace Access {
 
 // a permission-shaped value for the structural comparison/manipulation helpers. Looser than the discriminated
 // `Permission` on purpose: Obj.selectProps/exclude collapse the union, so their results (and callers passing them)
-// need a shape that no longer correlates type<->scope<->args.
+// need a shape that does not correlate type<->scope<->args.
 export type PermLike = { type: PermissionType; scope: string; args?: unknown } & Partial<PermissionTrace>
 
 export function arePermsEqual(perm1: PermLike, perm2: PermLike) {

@@ -1,3 +1,4 @@
+import type { InferSelectModel } from 'drizzle-orm'
 import type { SQLiteTableWithColumns, TableConfig } from 'drizzle-orm/sqlite-core'
 import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
@@ -42,7 +43,10 @@ export function superjsonify<C extends TableConfig, T extends Partial<SQLiteTabl
 	return out
 }
 
-export function unsuperjsonify<C extends TableConfig>(schema: SQLiteTableWithColumns<C>, obj: any) {
+export function unsuperjsonify<C extends TableConfig>(
+	schema: SQLiteTableWithColumns<C>,
+	obj: any,
+): InferSelectModel<SQLiteTableWithColumns<C>> {
 	const out = {} as Record<string, any>
 	const config = getTableConfig(schema)
 	for (const name of Object.keys(obj)) {
@@ -56,7 +60,7 @@ export function unsuperjsonify<C extends TableConfig>(schema: SQLiteTableWithCol
 			out[name] = obj[name]
 		}
 	}
-	return out
+	return out as InferSelectModel<SQLiteTableWithColumns<C>>
 }
 
 // assumes single row update

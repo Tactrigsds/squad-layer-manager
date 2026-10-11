@@ -649,7 +649,6 @@ function ScoreGrid({
 	const zScoreTypes = pairedScoreDimensions(scores)
 	const otherScores = Object.keys(scores.other)
 
-	// Get team roles for headers
 	const team1Role = layerDetails?.layerConfig?.teams[0]?.role
 	const team2Role = layerDetails?.layerConfig?.teams[1]?.role
 

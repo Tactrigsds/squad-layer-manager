@@ -256,7 +256,6 @@ describe('parseCommand', () => {
 		})
 	})
 
-	// what a command alias used to do, now reached without a second lookup or a precedence rule
 	it('feeds the words through a trigger that pins arguments', () => {
 		const cfgs = withTrigger('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest}}' })
 		expect(CMD.parseCommand(msg('!to2h Alice spamming chat'), cfgs, prefixes)).toMatchObject({

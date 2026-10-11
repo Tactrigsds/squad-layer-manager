@@ -38,7 +38,6 @@ console.log('\nFull response:', JSON.stringify(playersData, null, 2))
 
 // Process players and their flags
 if (playersData.data && Array.isArray(playersData.data)) {
-	// Create a map of playerFlags from included data
 	const playerFlagsMap = new Map()
 	if (playersData.included && Array.isArray(playersData.included)) {
 		for (const item of playersData.included) {
@@ -61,7 +60,6 @@ if (playersData.data && Array.isArray(playersData.data)) {
 		console.log(`  - ${player.attributes?.name} (ID: ${player.id})`)
 		console.log(`    Last seen: ${player.attributes?.updatedAt}`)
 
-		// Get flags for this player
 		const flagPlayers =
 			playersData.included?.filter((item: any) => item.type === 'flagPlayer' && item.relationships?.player?.data?.id === player.id) || []
 

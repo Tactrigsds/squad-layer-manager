@@ -583,7 +583,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					let newSwaps: State['editedSwaps'] | undefined
 					// A roster only proves where the players it lists are, never that anyone else has left: the roster
 					// on the other side of a map roll carries just the players already sorted onto a team, and the rest
-					// land a poll later. Absence used to drop a swap, which cancelled the entire queue on every roll,
+					// land a poll later. Dropping a swap on absence would cancel the entire queue on every roll,
 					// moments before it was due to fire. Departures are 'player-left' (PLAYER_DISCONNECTED)'s call.
 					if (!state.swapping) {
 						for (const [playerId, team] of op.players.entries()) {

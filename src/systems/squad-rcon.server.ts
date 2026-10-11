@@ -151,7 +151,7 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 
 	// ttl Infinity: take whatever is cached and never block on a refetch. This runs inside the teams poll, which
 	// event correlation waits on, so a slow admin-list fetch here stalls match ingestion. Resolved once for the whole
-	// roster rather than per player, which is what it used to be.
+	// roster rather than per player.
 	const adminLists = await AdminList.getListsForServerId(ctx, ctx.serverId, { ttl: Infinity })
 
 	const parsed = SR.parseListPlayers(res.data)

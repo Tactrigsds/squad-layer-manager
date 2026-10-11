@@ -64,7 +64,6 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	// carrying a back button. Dragging and resizing are off, and the body scrolls inside it.
 	const phone = Browser.useIsSmallViewport()
 
-	// Helper to update DOM position directly
 	const applyPosition = React.useCallback((pos: { x: number; y: number }) => {
 		const content = contentRef.current
 		if (!content) return
@@ -74,7 +73,6 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		positionRef.current = pos
 	}, [])
 
-	// Helper to clamp position to viewport
 	const clampToViewport = React.useCallback(() => {
 		const content = contentRef.current
 		const currentPos = positionRef.current

@@ -20,8 +20,8 @@ export const CHAT_GROUP_CHANNELS = {
 }
 
 // A string that runs a command. A bare string passes whatever follows it straight through as the command's arguments
-// (`/timeout Alice 2h spam`). An object pins some of them with a template over the words typed after it, which is what
-// used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest}}' }`. See docs/guide/configuring/command_triggers.md.
+// (`/timeout Alice 2h spam`). An object pins some of them with a template over the words typed after it:
+// `{ string: '/to2h', args: '{{arg1}} 2h {{rest}}' }`. See docs/guide/configuring/command_triggers.md.
 export type CommandTrigger = string | { string: string; args: string }
 
 // The indices count the words the CALLER TYPES after the trigger, not the words of the command that ends up running:
@@ -610,7 +610,7 @@ export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATI
 
 // the prefix a fresh install seeds command strings with, and what `defaultPrefix` starts as. An install migrated
 // from before prefixes were configurable keeps the '!' migration 0074 gave it; this is only what a new one starts
-// with, so the two deliberately no longer agree.
+// with, so the two deliberately disagree.
 export const DEFAULT_PREFIX = '/'
 
 // a command prefix: one or more ASCII special (punctuation/symbol) characters. Letters, digits, whitespace and

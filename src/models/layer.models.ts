@@ -874,8 +874,7 @@ export type ParseLayerStringSegmentResult<Collection extends string | null = str
 
 export function parseLayerStringSegment<C extends typeof StaticLayerComponents | null = typeof StaticLayerComponents>(
 	layer: string,
-	// @ts-expect-error idgaf
-	components: C = StaticLayerComponents,
+	components: C = StaticLayerComponents as C,
 ): ParseLayerStringSegmentResult<C extends null ? null : string> | null {
 	// the catalog is the authority. The regex below only reads back OWI's Map_Gamemode_vN convention, which no mod
 	// source follows: every Supermod/Resurgence/GC map name contains an underscore, so parsing one yields the wrong
@@ -1088,24 +1087,22 @@ export type BackwardsCompatMappings = Record<'factions' | 'units' | 'gamemodes' 
 	Record<'collectionAbbreviations', Record<string, string>>
 
 export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(layer: T, components = StaticLayerComponents) {
-	const updated = { ...layer }
+	const updated: Partial<KnownLayer> = { ...layer }
 	const mapping = {
 		Faction_1: components.backwardsCompat.factions,
 		Faction_2: components.backwardsCompat.factions,
 		Gamemode: components.backwardsCompat.gamemodes,
 		Map: components.backwardsCompat.maps,
-		Unit: components.backwardsCompat.units,
+		Unit_1: components.backwardsCompat.units,
+		Unit_2: components.backwardsCompat.units,
 		Collection: components.backwardsCompat.collections,
 	}
-	for (const [_key, value] of Object.entries(updated)) {
-		const key = _key as keyof KnownLayer
-		if (value === null) continue
-		if (key in mapping) {
-			// @ts-expect-error idgaf
-			updated[key] = mapping[key][value] ?? value
-		}
+	for (const key of Object.keys(mapping) as (keyof typeof mapping)[]) {
+		const value = updated[key]
+		if (value == null) continue
+		updated[key] = mapping[key][value] ?? value
 	}
-	return updated
+	return updated as T
 }
 
 export function applyBackwardsCompatMapping(

@@ -312,8 +312,8 @@ async function loadPackages(ctx: C.Db) {
 		try {
 			const loaded = plugins.get(pkg.id)
 			// A builtin owns its id outright; a package cannot take it. A package already loaded under that id
-			// is this same package, left in place by reloadPackages because nothing about it changed -- which
-			// is the common case for a reload, and used to be reported as the builtin collision below.
+			// is this same package, left in place by reloadPackages because nothing about it changed, which
+			// is the common case for a reload.
 			if (loaded && !loaded.entry.pkg) throw new Error(`a builtin plugin already uses the id '${pkg.id}'`)
 			if (loaded) continue
 			const overlapping = tablePrefixOverlap(pkg.id)

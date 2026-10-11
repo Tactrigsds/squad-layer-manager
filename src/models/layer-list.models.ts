@@ -369,7 +369,6 @@ export function* iterItems<T extends SparseItem>(...args: T[] | [T[], { reverse?
 	let itemsArray: T[]
 	let reverse = false
 
-	// Handle different argument patterns
 	if (Array.isArray(args[0]) && !('itemId' in args[0])) {
 		// Pattern: iterItems(items, opts)
 		itemsArray = args[0] as T[]

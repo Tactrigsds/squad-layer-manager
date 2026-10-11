@@ -452,7 +452,6 @@ export function closeCacheEntry<Config extends LoaderConfig, StoreState>(
 	const cacheEntry = loaderCache.find((e) => Obj.deepEqual(e.key, key))
 	if (!cacheEntry || !cacheEntry.active) return
 
-	// Call onLeave if defined
 	if (config.onLeave && cacheEntry.data) {
 		void config.onLeave({
 			key,

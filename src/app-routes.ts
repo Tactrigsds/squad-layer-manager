@@ -143,10 +143,8 @@ export function route<R extends KnownRouteId>(path: R) {
 }
 
 export function link<R extends KnownRouteId>(id: R, ...args: ToGenericStrings<RouteDefForId<R>['params']>) {
-	const route = routeForId(id)
-	const linkFn = routeForId(id).link
-	// @ts-expect-error idgaf
-	return linkFn(...args.map((arg, index) => (route.params[index] === '*' ? arg : encodeURIComponent(arg))))
+	const route: GenericRouteDefinition = routeForId(id)
+	return route.link(...args.map((arg, index) => (route.params[index] === '*' ? arg : encodeURIComponent(arg))))
 }
 
 export function checkResolvedRouteInIds<R extends KnownRouteId>(
@@ -194,7 +192,6 @@ export function resolveRoute(path: string, opts?: { expectedHandleType?: 'page' 
 }
 
 export function getRouteRegex(id: string): RegExp {
-	// Handle root path specially
 	if (id === '/') {
 		return new RegExp(`^/?(?:\\?.*)?$`)
 	}

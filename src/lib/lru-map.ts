@@ -48,7 +48,6 @@ export class FixedSizeMap<K, V> extends Map<K, V> {
 			this.evictOldest()
 		}
 
-		// Add the new entry (will be the newest)
 		super.set(key, value)
 		return this
 	}

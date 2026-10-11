@@ -1118,7 +1118,7 @@ export function Comparison(props: {
 	// directly in the column select rather than a separate dropdown
 	const TEAM_PREFIX = 'team:'
 	const teamColumnValue = (column: F.TeamColumn, quantifier: F.TeamQuantifier) => `${TEAM_PREFIX}${quantifier}:${column}`
-	// `id` is no longer a general subject; it is reachable only through the dedicated "select layers" node
+	// `id` is reachable only through the dedicated "select layers" node
 	const baseCols = (cfg ? Object.keys(cfg.defs) : (LC.COLUMN_KEYS as string[])).filter((c) => c !== 'id')
 	const allowedBaseCols = props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols
 	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({

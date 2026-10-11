@@ -21,8 +21,8 @@ describe('runCleanup', () => {
 		expect(order).toEqual(['third', 'second', 'first'])
 	})
 
-	// the reason concat has to be spread and each task deferred: an async task used to be started and abandoned,
-	// so runCleanup resolved before its teardown finished and the next task overlapped it
+	// an async task that is started and not awaited lets runCleanup resolve before its teardown finishes, and lets
+	// the next task overlap it
 	it('awaits async tasks and runs them in sequence', async () => {
 		const { ctx } = testCtx()
 		const order: string[] = []

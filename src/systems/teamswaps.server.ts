@@ -45,9 +45,8 @@ export const module = initModule('teamswaps')
 
 let log!: CS.Logger
 
-// The side effect used to be logged as-is, which flattened its whole payload into attributes: a
-// `save` carries two full TeamswapCollections, so every save wrote a key per swap per collection.
-// Only the identifying, bounded fields belong on the record; the payload itself is already in op$.
+// Only the identifying, bounded fields of a side effect go on the record; the payload itself is already in op$.
+// Logged as-is, a `save` would flatten its two full TeamswapCollections into a key per swap per collection.
 function sideEffectAttrs(se: TSW.SideEffect): Record<string, unknown> {
 	const attrs: Record<string, unknown> = { [ATTRS.Teamswap.SIDE_EFFECT]: se.code }
 	switch (se.code) {

@@ -127,7 +127,6 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 
 	const parts: string[] = []
 
-	// Handle map/gamemode/layer display
 	if (showLayer) {
 		// 'layer' shows the full layer string (map + gamemode + version)
 		parts.push(layer.Layer)
