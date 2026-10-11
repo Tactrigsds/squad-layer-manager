@@ -7,10 +7,8 @@ ships with a few, listed in the filters index:</p>
 <p><img src="/squad-layer-manager/next/assets/docs/images/configuring/filters_index.png" alt="filters_index" loading="lazy" decoding="async" width="1180" height="302"/></p>
 <p>Open one to see the expression that decides what it matches:</p>
 <p><img src="/squad-layer-manager/next/assets/docs/images/configuring/filter_edit.png" alt="filter_edit" loading="lazy" decoding="async" width="1236" height="510"/></p>
-<p>Each condition is one line, written out. Click a line to edit it, then click <em>Done</em> or press <em>Escape</em>. Only one line is
-open at a time. The buttons for commenting, copying and removing a line appear when the pointer is over it.</p>
-<p>The block at the top sets how the conditions under it combine. The four block types are <em>all of</em>, <em>any of</em>,
-<em>none of</em> and <em>not all of</em>. Opening one also names the operation it stands for. <em>No Mech on Hilly Maps</em> uses
+<p>Each condition is one line. The block at the top sets how the conditions under it combine: <em>all of</em>, <em>any of</em>,
+<em>none of</em> or <em>not all of</em>. <em>No Mech on Hilly Maps</em> uses
 <em>not all of</em>, so a layer matches unless both of these hold:</p>
 <ul>
 <li><code>Map</code> is Manicouagan, Skorpo or Lashkar</li>
@@ -27,10 +25,8 @@ data, and it marks the competitive pool. See <a href="/squad-layer-manager/next/
 <li>the layer is excluded from <em>Similar Factions</em></li>
 <li>the layer is included in <em>No Mech on Hilly Maps</em></li>
 </ul>
-<p>Switch a filter between <em>Builder</em> and <em>Text</em>. Use the text view to edit the expression as text, which is easier for
-changes that take a line at a time in the builder, such as changing how the conditions nest. Click <em>Reformat</em> to tidy
-the text up. A line&#x27;s comment shows up in the text view as a <code>#</code> line above it, and a <code>#</code> line written there becomes the
-comment on the line below.</p>
+<p>A filter can also be edited as text, from its <em>Text</em> tab, which is quicker for changes such as how the conditions
+nest.</p>
 <h2 id="pool-configuration" class="docs-heading">Pool configuration<a href="#pool-configuration" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_pool.md#pool-configuration" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p><em>Pool Configuration</em> decides which layers count as playable, which ones raise warnings, and how soon a map, layer
 or faction may be played again.</p>
@@ -56,7 +52,7 @@ layer through the whole app:</p>
 <em>Emoji</em> and an <em>Alert Message</em>. Edit them from the filter itself:</p>
 <p><img src="/squad-layer-manager/next/assets/docs/images/configuring/filter_extra_fields_edit_button.png" alt="filter_extra_fields_edit_button" loading="lazy" decoding="async" width="326" height="51"/>
 <img src="/squad-layer-manager/next/assets/docs/images/configuring/filter_extra_fields.png" alt="filter_extra_fields" loading="lazy" decoding="async" width="1188" height="350"/></p>
-<p>An emoji can be a standard one, or one from your discord server&#x27;s emoji library:</p>
+<p>An emoji can be a standard one, or one from your Discord server&#x27;s emoji library:</p>
 <p><img src="/squad-layer-manager/next/assets/docs/images/configuring/emoji_library.png" alt="emoji_library" loading="lazy" decoding="async" width="408" height="517"/></p>
 <p>The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
 everywhere it appears. The queue shows the emoji beside the layer:</p>
@@ -83,7 +79,7 @@ the request dialog starts with them applied, and they can be turned off for one 
 <p><img src="/squad-layer-manager/next/assets/docs/images/configuring/skip_warnings_for_tag.png" alt="skip_warnings_for_tag" loading="lazy" decoding="async" width="169" height="62"/>
 <img src="/squad-layer-manager/next/assets/docs/images/configuring/fogless_friday.png" alt="fogless_friday" loading="lazy" decoding="async" width="293" height="138"/></p>
 <p>A tag with <em>Prevent swaps</em> turned on stops <em>Fix Repeats</em> from swapping the teams of a layer carrying it. See
-<a href="/squad-layer-manager/next/layer-selection/#repeat-rules">Repeat rules</a>.</p>
+<a href="/squad-layer-manager/next/layer-rotation/#fixing-repeats">Fixing repeats</a>.</p>
 <h2 id="layer-table-columns" class="docs-heading">Layer table columns<a href="#layer-table-columns" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_pool.md#layer-table-columns" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>The layer table can show more about each layer than it does by default, and each column it shows is another way to
 filter. Configure the columns under <em>Layers &gt; Layer Table</em>. They apply to the layers table and to every layer

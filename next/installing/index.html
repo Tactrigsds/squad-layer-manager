@@ -29,7 +29,7 @@ exposed on your server.</li>
 </li>
 </ol>
 <h3 id="2-where-to-install" class="docs-heading">2. Where to install<a href="#2-where-to-install" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#2-where-to-install" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
-<p>SLM needs access to your squad server&#x27;s log files, and an RCON connection. There are three ways to achieve this:</p>
+<p>SLM needs access to your Squad server&#x27;s log files, and an RCON connection. There are three ways to achieve this:</p>
 <ul>
 <li>Install SLM where it&#x27;s possible to mount the log files into the container, and access RCON over a VLAN or the local
 network. This gives the lowest latency, and is relatively secure. It often costs some control over where SLM runs,
@@ -37,7 +37,7 @@ depending on your org&#x27;s game server host.</li>
 <li>Access the log files over SFTP, and access RCON remotely through an exposed port. Logs arrive with higher latency,
 and remote RCON access is insecure, because RCON is not encrypted.</li>
 <li><strong>Recommended:</strong> run the SLM server agent on the game host. It streams log data and proxies RCON over a secure
-websocket connection. Your squad server or hosting provider does not need to expose an additional port, and how and
+websocket connection. Your Squad server or hosting provider does not need to expose an additional port, and how and
 where SLM is hosted stays under your control. See <a href="/squad-layer-manager/next/server-agent/">Server agent</a>.</li>
 </ul>
 <h3 id="3-docker-compose" class="docs-heading">3. Docker Compose<a href="#3-docker-compose" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#3-docker-compose" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
@@ -60,7 +60,7 @@ where SLM is hosted stays under your control. See <a href="/squad-layer-manager/
 <p>It also creates <code>data/</code>, which holds the database file and any other persistent data, and is bind-mounted into the
 app container.</p>
 <h3 id="4-discord-app" class="docs-heading">4. Discord app<a href="#4-discord-app" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#4-discord-app" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
-<p>SLM authenticates users through your own discord app, installed on your org&#x27;s discord server.</p>
+<p>SLM authenticates users through your own Discord app, installed on your org&#x27;s Discord server.</p>
 <p>Create one at <a href="https://discord.com/developers/applications">discord.com/developers/applications</a>.</p>
 <p>Then make the settings match these screenshots:</p>
 <p><img src="/squad-layer-manager/next/assets/images/discord_1.png" alt="discord_1" loading="lazy" decoding="async" width="1405" height="905"/>
@@ -72,19 +72,19 @@ The <code>applications.commands</code> and <code>bot</code> scopes are both requ
 <p>Configure the bot&#x27;s intents like this:
 <img src="/squad-layer-manager/next/assets/images/discord_3.png" alt="discord_3" loading="lazy" decoding="async" width="1164" height="765"/></p>
 <p>Copy your bot token into <code>DISCORD_BOT_TOKEN</code> in <code>.env.secrets</code>.</p>
-<p>Like most discord apps, SLM must be configured with a public install link. This is not a security issue. Another
-server getting hold of the install link cannot perform any actions, and SLM automatically leaves any discord server
+<p>Like most Discord apps, SLM must be configured with a public install link. This is not a security issue. Another
+server getting hold of the install link cannot perform any actions, and SLM automatically leaves any Discord server
 that is not the one configured below.</p>
-<p>Set <code>DISCORD_HOME_GUILD_ID</code> to the id of your org&#x27;s discord server. To find it, enable Developer Mode in your
-discord settings and right-click the server icon. Only members of that server can be granted access to SLM.</p>
-<p>Set at least one <code>SUPER_USERS</code> id to your discord user id (click your profile picture with developer mode enabled), or
+<p>Set <code>DISCORD_HOME_GUILD_ID</code> to the id of your org&#x27;s Discord server. To find it, enable Developer Mode in your
+Discord settings and right-click the server icon. Only members of that server can be granted access to SLM.</p>
+<p>Set at least one <code>SUPER_USERS</code> id to your Discord user id (click your profile picture with developer mode enabled), or
 nobody can administer the app. Super users hold every permission unconditionally, so they cannot be locked out. This
-person must be a member of your org&#x27;s discord server.</p>
-<p>Next, install the app on your org&#x27;s discord server by visiting the install link on the <code>Installation</code> page. Make
+person must be a member of your org&#x27;s Discord server.</p>
+<p>Next, install the app on your org&#x27;s Discord server by visiting the install link on the <code>Installation</code> page. Make
 sure it is the same server as <code>DISCORD_HOME_GUILD_ID</code> in <code>.env</code>.</p>
 <h3 id="5-secrets" class="docs-heading">5. Secrets<a href="#5-secrets" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#5-secrets" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>Secrets that SLM needs at startup are in <code>.env.secrets</code>, and the rest of the base configuration is in <code>.env</code>.</p>
-<div class="docs-table"><table><thead><tr><th>variable</th><th>what it is</th></tr></thead><tbody><tr><td><code>SETTINGS_ENCRYPTION_KEY</code></td><td>encrypts sensitive settings at rest (see <a href="#7-encryption-key">Encryption key</a>)</td></tr><tr><td><code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code></td><td>the key being rotated away from, set only while rotating (see <a href="#7-encryption-key">Encryption key</a>)</td></tr><tr><td><code>DISCORD_CLIENT_SECRET</code></td><td>the discord app&#x27;s oauth2 client secret</td></tr><tr><td><code>DISCORD_BOT_TOKEN</code></td><td>the discord bot token</td></tr><tr><td><code>BACKUP_SFTP_PASSWORD</code></td><td>if backups upload to an sftp host</td></tr><tr><td><code>BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE</code></td><td>if that host authenticates with an encrypted key</td></tr></tbody></table></div>
+<div class="docs-table"><table><thead><tr><th>variable</th><th>what it is</th></tr></thead><tbody><tr><td><code>SETTINGS_ENCRYPTION_KEY</code></td><td>encrypts sensitive settings at rest (see <a href="#7-encryption-key">Encryption key</a>)</td></tr><tr><td><code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code></td><td>the key being rotated away from, set only while rotating (see <a href="#7-encryption-key">Encryption key</a>)</td></tr><tr><td><code>DISCORD_CLIENT_SECRET</code></td><td>the Discord app&#x27;s oauth2 client secret</td></tr><tr><td><code>DISCORD_BOT_TOKEN</code></td><td>the Discord bot token</td></tr><tr><td><code>BACKUP_SFTP_PASSWORD</code></td><td>if backups upload to an sftp host</td></tr><tr><td><code>BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE</code></td><td>if that host authenticates with an encrypted key</td></tr></tbody></table></div>
 <p>The BattleMetrics, Squad Browser and Steam credentials are not environment variables. Enter them on the settings
 page once SLM is running (see <a href="#11-integrations">Integrations</a>).</p>
 <p><code>install.sh</code> writes this file from <code>.env.secrets.example</code>, <code>chmod 600</code>, with a freshly generated
@@ -167,7 +167,7 @@ covers how the pieces fit together and the retention windows.</p>
 <div class="docs-code"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0"><code class="language-sh"><span class="line"><span style="color:var(--shiki-token-function)">docker</span><span style="color:var(--shiki-token-string)"> compose</span><span style="color:var(--shiki-token-string)"> up</span><span style="color:var(--shiki-token-string)"> -d</span></span></code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
 <p>If docker is configured to start on boot, the app starts automatically after a reboot.</p>
 <p>Stop everything with <code>docker compose down</code>. To stop only the app and leave grafana running, use <code>docker compose stop app</code>.</p>
-<p>Once the app is running, sign in with discord OAuth. Set up the integrations and the discord bot&#x27;s permissions below,
+<p>Once the app is running, sign in with Discord OAuth. Set up the integrations and the Discord bot&#x27;s permissions below,
 then move on to <a href="/squad-layer-manager/next/configuring/">configuring SLM</a>.</p>
 <h3 id="11-integrations" class="docs-heading">11. Integrations<a href="#11-integrations" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#11-integrations" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>SLM authenticates to three outside services: BattleMetrics, Squad Browser and Steam. All three are optional. Their
@@ -182,7 +182,7 @@ and profile beside the actions taken against them. Enter a personal access token
 <li>player notes: read and create</li>
 <li>rcon: read</li>
 </ul>
-<p>Set <em>Organization ID</em> to your org&#x27;s battlemetrics id. SLM shows only the flags that belong to it. With no token, SLM
+<p>Set <em>Organization ID</em> to your org&#x27;s BattleMetrics id. SLM shows only the flags that belong to it. With no token, SLM
 polls nothing and hides the parts of the app that show flags.</p>
 <p><strong>Join button.</strong> Use the join button on the server dashboard to open the server in Squad. SLM looks up the link through
 the Squad Browser or through Steam. Configure one of the two for the button to work. Configuring both is not required.</p>
@@ -190,14 +190,14 @@ the Squad Browser or through Steam. Configure one of the two for the button to w
 <li><strong>Squad Browser</strong> identifies a server by the name the server reports over RCON, and answers whether or not anyone is
 playing on the server. Enter a squad browser api key, which starts with <code>sqb_</code>.</li>
 <li><strong>Steam</strong> builds the link from the lobby of a player in game. Steam answers only while someone is on the server, and
-only for players whose steam profile makes game details public. Enter a web api key from
+only for players whose Steam profile makes game details public. Enter a web api key from
 <a href="https://steamcommunity.com/dev/apikey">https://steamcommunity.com/dev/apikey</a>.</li>
 </ul>
 <p>If both are configured, SLM asks the Squad Browser first, and Steam covers the servers the Squad Browser does not list.
 With neither, the button is hidden. The button never appears for a sandbox server, which nobody can join.</p>
 <h3 id="12-discord-bot-permissions" class="docs-heading">12. Discord bot permissions<a href="#12-discord-bot-permissions" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/installing.md#12-discord-bot-permissions" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>The SLM Discord bot replies to a link to a selection on the history page with the selected events as a text file. For
-that, switch on <code>Message Content Intent</code> on the <code>Bot</code> page of your discord app. Without it, the
+that, switch on <code>Message Content Intent</code> on the <code>Bot</code> page of your Discord app. Without it, the
 bot cannot read messages, and the <code>discord.expandHistoryLinks</code> setting shows a warning. To turn the replies off, switch
 that setting off. The bot only replies to people whose roles grant <code>history:query</code>, the permission the history page
 itself needs.</p>
