@@ -178,6 +178,8 @@ export const PROCEDURE_ACCESS = {
 
 	'teamswaps.watchUpdates': VIEW_SERVER,
 	'teamswaps.dispatchOp': onServer('squad-server:manage-players'),
+	'teamswaps.counterbalanceNow': onServer('squad-server:manage-players'),
+	'teamswaps.skipCounterbalance': onServer('squad-server:manage-players'),
 
 	'switchRequests.watchUpdates': VIEW_SERVER,
 	'switchRequests.switchNow': onServer('squad-server:manage-players'),

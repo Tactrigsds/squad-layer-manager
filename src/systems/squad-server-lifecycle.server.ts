@@ -655,6 +655,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	)
 
 	void LayerQueue.setupInstance({ ...ctx, ...managedServer })
+	Teamswaps.setupInstance({ ...ctx, ...managedServer })
 	// A sandbox's players are fabricated, so their eos ids belong to nobody. BattleMetrics is a real, org-wide
 	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
 	// the sandbox would land on the live org. It is left off entirely rather than stubbed.

@@ -111,6 +111,35 @@ Admins can do the same in game with `/swapnext`, `/swapnow`, `/swapsquadnext`, `
 `/clearswaps`. Turn on _Warn on GUI Teamswaps_ to warn your in-game admins whenever someone swaps players from the
 dashboard.
 
+### Counterbalance
+
+Turn on _Counterbalance_ in the swaps panel to keep the teams the same size while admins edit the swaps. Whenever an
+admin queues or removes a swap, SLM re-picks swaps from the other team so that the teams end up as even as possible.
+Counterbalance swaps carry a scale icon and a dashed outline.
+
+- A party is always swapped together.
+- SLM keeps the players it already picked for as long as the teams need them, even if they no longer match the
+  rules below.
+- If players joining, leaving or switching teams leave the saved swaps more than one player from even, a countdown
+  appears under the _Counterbalance_ switch. When it ends, SLM re-picks the counterbalance swaps and records the re-pick
+  in the activity feed. The countdown stops if the teams even out first. Use _Re-pick now_ to skip the wait, or _Skip_
+  to keep the current swaps until the roster or the swaps change again. Unsaved edits are never changed.
+  _Roster Change Delay_ sets the length of the countdown, 2 minutes by default.
+- Swaps queued with an in-game command are not counterbalanced.
+- Remove a counterbalance swap to have SLM pick a different player.
+
+Use the _Teamswap Counterbalance_ server settings to choose who SLM picks:
+
+- _Never Picked Groups_: players in these groups, from your
+  [player grouping modes](../guide/configuring/players.md#player-grouping-modes), are never picked.
+- _Never Picked Above_: a player with more kills or wounds, or a higher K/D, than the limit in the current match is
+  never picked.
+- _Picked First_: SLM ranks the remaining players by these lines, from top to bottom. A lower line only breaks ties
+  left by the lines above it. A line can prefer a group, or the lowest or highest K/D, kills or wounds.
+
+A party is skipped when any member may not be picked, and is ranked by the member who ranks lowest. A party that would
+make the teams uneven again is passed over for a smaller one.
+
 ## Switch requests
 
 Players ask to switch teams themselves with `/switch` (or a [trigger](ingame_commands.md#triggers-and-shortcuts) of

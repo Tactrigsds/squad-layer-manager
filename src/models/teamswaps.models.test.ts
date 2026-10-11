@@ -401,3 +401,109 @@ describe('reducer reset-players', () => {
 		expect([...next.players.entries()]).toEqual([['a', 'B']])
 	})
 })
+
+describe('reducer set-counterbalance-swaps', () => {
+	const players: [SM.PlayerId, MH.NormedTeamId][] = [
+		['a', 'A'],
+		['b', 'B'],
+		['c', 'B'],
+	]
+
+	it('replaces the previous counterbalance swaps and leaves admin swaps alone', () => {
+		let { state } = apply(
+			stateWith(players),
+			op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: false, source: SOURCE }),
+		)
+		;({ state } = apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['b', 'A']]) })))
+		;({ state } = apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['c', 'A']]) })))
+		expect([...state.editedSwaps]).toEqual([
+			['a', { toTeam: 'B', source: SOURCE }],
+			['c', { toTeam: 'A', source: SOURCE, counterbalance: true }],
+		])
+	})
+
+	it('never overrides an admin swap or a swap to the team a player is already on', () => {
+		let { state } = apply(
+			stateWith(players),
+			op({ code: 'add-player-teamswap', playerId: 'b', toTeam: 'A', saved: false, source: SOURCE }),
+		)
+		;({ state } = apply(
+			state,
+			op({
+				code: 'set-counterbalance-swaps',
+				source: SOURCE,
+				swaps: new Map<SM.PlayerId, MH.NormedTeamId>([
+					['b', 'A'],
+					['c', 'B'],
+					['a', 'B'],
+				]),
+			}),
+		))
+		expect(state.editedSwaps.get('b')?.counterbalance).toBeUndefined()
+		expect(state.editedSwaps.has('c')).toBe(false)
+		expect(state.editedSwaps.get('a')?.counterbalance).toBe(true)
+	})
+
+	it('is a no-op when the counterbalance swaps are unchanged, so a saved queue stays in sync', () => {
+		const state = stateWith(players)
+		state.savedSwaps = new Map([['b', { toTeam: 'A', source: SOURCE, counterbalance: true }]])
+		state.editedSwaps = state.savedSwaps
+		const rejection = rejectionOf(() =>
+			apply(state, op({ code: 'set-counterbalance-swaps', source: SOURCE, swaps: new Map([['b', 'A']]) })),
+		)
+		expect(rejection.code).toBe('noop')
+	})
+})
+
+describe('reducer set-counterbalance-swaps on the saved swaps', () => {
+	const players: [SM.PlayerId, MH.NormedTeamId][] = [
+		['a', 'A'],
+		['b', 'B'],
+		['c', 'B'],
+		['d', 'B'],
+	]
+
+	function savedWithCounterbalance() {
+		const state = stateWith(players, [['a', 'B']])
+		state.savedSwaps = new Map([...state.savedSwaps, ['b', { toTeam: 'A', source: SOURCE, counterbalance: true }]])
+		state.editedSwaps = state.savedSwaps
+		return state
+	}
+
+	it('replaces the saved counterbalance swaps, warns the dropped player and records the team sizes', () => {
+		const { state, sideEffects } = apply(
+			savedWithCounterbalance(),
+			op({ code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: new Map([['c', 'A']]) }),
+		)
+		expect(state.editedSwaps).toBe(state.savedSwaps)
+		expect([...state.savedSwaps.keys()]).toEqual(['a', 'c'])
+		expect(sideEffects.filter((se) => se.code === 'notify-teamswaps-cancelled').flatMap((se) => se.players)).toEqual(['b'])
+		expect(notifiedUpcoming(sideEffects)).toEqual(['c'])
+		const save = sideEffects.find((se) => se.code === 'save')
+		expect(save?.code === 'save' && save.trigger).toBe('counterbalance')
+		expect(save?.code === 'save' && save.balance).toEqual({ before: { A: 1, B: 3 }, after: { A: 1, B: 3 } })
+	})
+
+	it('leaves the swaps alone while someone has unsaved edits', () => {
+		let { state } = apply(
+			savedWithCounterbalance(),
+			op({ code: 'add-player-teamswap', playerId: 'd', toTeam: 'A', saved: false, source: SOURCE }),
+		)
+		const rejection = rejectionOf(() =>
+			apply(state, op({ code: 'set-counterbalance-swaps', saved: true, source: {}, swaps: new Map([['c', 'A']]) })),
+		)
+		expect(rejection.code).toBe('noop')
+		;({ state } = apply(state, op({ code: 'revert-to-saved', source: SOURCE })))
+		expect(state.savedSwaps.get('b')?.counterbalance).toBe(true)
+	})
+})
+
+describe('reducer init-saved-teamswaps', () => {
+	it('restores the queue in sync, so a restart does not read as unsaved edits', () => {
+		const state = TSW.initState()
+		state.players = new Map([['a', 'A']])
+		const { state: next } = apply(state, op({ code: 'init-saved-teamswaps', swaps: new Map([['a', { toTeam: 'B', source: SOURCE }]]) }))
+		expect(next.savedSwaps.size).toBe(1)
+		expect(next.editedSwaps).toBe(next.savedSwaps)
+	})
+})

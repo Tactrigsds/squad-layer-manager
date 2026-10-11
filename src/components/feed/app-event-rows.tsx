@@ -228,9 +228,22 @@ function TeamswapsUpdatedRow(props: {
 				: tr.richText(AppEvents_Msgs.teamswapsExecuted(actorLabel, removed))
 			: appEvent.trigger === 'roster-change'
 				? tr.text(AppEvents_Msgs.teamswapsDropped(removed))
-				: queued === 0
-					? tr.richText(AppEvents_Msgs.teamswapsCleared(actorLabel))
-					: tr.richText(AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued))
+				: appEvent.trigger === 'counterbalance' && matchId !== null
+					? tr.richText(
+							AppEvents_Msgs.teamswapsCounterbalanced(
+								added,
+								removed,
+								{
+									A: <Atoms.MatchTeamDisplay ctx={ctx} matchId={matchId} teamId="A" />,
+									B: <Atoms.MatchTeamDisplay ctx={ctx} matchId={matchId} teamId="B" />,
+								},
+								appEvent.balance,
+								appEvent.actor.type === 'slm-user' ? actorLabel : undefined,
+							),
+						)
+					: queued === 0
+						? tr.richText(AppEvents_Msgs.teamswapsCleared(actorLabel))
+						: tr.richText(AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued))
 	const icon = <EventIcon name="ArrowLeftRight" className="text-info" />
 
 	if (changes.length === 0 || matchId === null) {

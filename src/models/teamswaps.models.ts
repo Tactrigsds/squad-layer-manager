@@ -7,6 +7,7 @@ import type { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
+import type * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared.models'
@@ -21,6 +22,8 @@ export type TeamswapStatus = z.infer<typeof TeamswapStatusSchema>
 export const TeamswapSchema = z.object({
 	toTeam: MH.NormedTeamIdSchema,
 	source: USR.GuiOrChatUserIdSchema,
+	// queued by counterbalance (see teamswap-counterbalance.models) rather than picked by an admin
+	counterbalance: z.literal(true).optional(),
 })
 export type Teamswap = z.infer<typeof TeamswapSchema>
 export const TeamswapCollectionSchema = z.map(SM.PlayerIdSchema, TeamswapSchema)
@@ -60,6 +63,50 @@ function writeToSaved(state: State, mutate: (swaps: TeamswapCollection) => void)
 }
 
 export type PlayerCollection = Map<SM.PlayerId, MH.NormedTeamId>
+
+// `swaps` with its counterbalance entries replaced by `picks`. Admin swaps, pending players and picks that would leave
+// a player where they are are left alone. Returns `swaps` itself when nothing changes, which keeps a synced edit set
+// reference-equal to the saved one.
+function withCounterbalance(
+	state: State,
+	swaps: TeamswapCollection,
+	picks: Map<SM.PlayerId, MH.NormedTeamId>,
+	source: USR.GuiOrChatUserId,
+): TeamswapCollection {
+	const next: TeamswapCollection = new Map()
+	for (const [playerId, swap_] of swaps) {
+		if (!swap_.counterbalance) next.set(playerId, swap_)
+	}
+	for (const [playerId, toTeam] of picks) {
+		if (next.has(playerId) || state.pendingSwaps.has(playerId)) continue
+		const team = state.players.get(playerId)
+		if (!team || team === toTeam) continue
+		const existing = swaps.get(playerId)
+		next.set(playerId, existing?.toTeam === toTeam ? existing : { toTeam, source, counterbalance: true })
+	}
+	const changed = next.size !== swaps.size || [...next].some(([playerId, swap_]) => swaps.get(playerId) !== swap_)
+	return changed ? next : swaps
+}
+
+export type TeamCounts = Record<MH.NormedTeamId, number>
+
+export const TeamCountsSchema = z.object({ A: z.number(), B: z.number() })
+
+// Identifies a roster and saved queue by value. A roster backfill rebuilds the players map without changing anyone's
+// team, so references alone would read it as a change.
+export function counterbalanceKey(state: State): string {
+	const players = [...state.players].sort(([a], [b]) => a.localeCompare(b))
+	const swaps = [...state.savedSwaps]
+		.map(([playerId, swap_]) => [playerId, swap_.toTeam, swap_.counterbalance ?? false] as const)
+		.sort(([a], [b]) => a.localeCompare(b))
+	return JSON.stringify([players, swaps])
+}
+
+export function teamCountsAfterSwaps(players: PlayerCollection, swaps: TeamswapCollection): TeamCounts {
+	const counts: TeamCounts = { A: 0, B: 0 }
+	for (const [playerId, team] of players) counts[swaps.get(playerId)?.toTeam ?? team]++
+	return counts
+}
 
 export type EnrichedTeamswap = Teamswap & { player: SM.Player }
 
@@ -112,17 +159,22 @@ export type State = {
 	// the op that started the in-flight execution. lets a background watcher tell "the execution I started is still
 	// pending" from "it already resolved, or a different one is running now"
 	swappingOpId: string | null
+	// when the server will re-pick the saved counterbalance swaps after roster changes, or null when no re-pick is due
+	counterbalanceDueAt: number | null
 }
 
 export function initState(savedSwaps?: TeamswapCollection): State {
+	const saved = savedSwaps ?? initTeamswapCollection()
 	return {
-		editedSwaps: initTeamswapCollection(),
-		savedSwaps: savedSwaps ?? initTeamswapCollection(),
+		// the same collection, since an edit set that is reference-equal to the saved swaps is what "in sync" means
+		editedSwaps: saved,
+		savedSwaps: saved,
 		pendingSwaps: initTeamswapCollection(),
 		players: new Map(),
 		swapping: false,
 		swappingSource: null,
 		swappingOpId: null,
+		counterbalanceDueAt: null,
 	}
 }
 
@@ -184,6 +236,18 @@ export const OpSchema = z.discriminatedUnion('code', [
 		source: USR.GuiOrChatUserIdSchema,
 	}),
 
+	// replaces every counterbalance swap in the edit set, or with `saved` in the saved swaps, with `swaps`
+	z.object({
+		opId: z.string(),
+		code: z.literal('set-counterbalance-swaps'),
+		source: USR.GuiOrChatUserIdSchema,
+		swaps: z.map(SM.PlayerIdSchema, MH.NormedTeamIdSchema),
+		saved: z.boolean().optional(),
+	}),
+
+	// server only: the dispatch endpoint rejects an op without a source
+	z.object({ opId: z.string(), code: z.literal('counterbalance-timer'), dueAt: z.number().nullable() }),
+
 	z.object({ opId: z.string(), code: z.literal('teamswap-execution-completed') }),
 
 	z.discriminatedUnion('reason', [
@@ -232,7 +296,7 @@ export type OpError<OpCode extends Op['code'] = Op['code']> = { op: Extract<Op, 
 						? OpErrors.CurrentlyNotSwapping
 						: OpCode extends 'execute-teamswaps'
 							? OpErrors.CurrentlySwapping | OpErrors.SwapsNotSaved
-							: OpCode extends 'swap-now'
+							: OpCode extends 'swap-now' | 'set-counterbalance-swaps'
 								? OpErrors.CurrentlySwapping
 								: OpCode extends 'init-saved-teamswaps'
 									? OpErrors.CurrentlySwapping
@@ -249,7 +313,8 @@ export type Rejection = OpError | { code: 'noop' }
 //  - 'swapped-now': a player was swapped immediately, which drops them from the queue if they were in it. the
 //    swap itself is the action here, not the queue change, and it's already recorded as a TEAM_CHANGE_FORCED
 //  - 'roster-change': a queued player left or changed teams on their own, so their swap no longer applies
-export const SaveTriggerSchema = z.enum(['user-edit', 'executed', 'swapped-now', 'roster-change'])
+//  - 'counterbalance': roster changes left the saved swaps uneven, so the server re-picked the counterbalance swaps
+export const SaveTriggerSchema = z.enum(['user-edit', 'executed', 'swapped-now', 'roster-change', 'counterbalance'])
 export type SaveTrigger = z.infer<typeof SaveTriggerSchema>
 
 export type SideEffect =
@@ -272,6 +337,8 @@ export type SideEffect =
 			prevSaved: TeamswapCollection
 			source?: USR.GuiOrChatUserId
 			trigger: SaveTrigger
+			// for 'counterbalance': the team sizes after the saved swaps, before and after the re-pick
+			balance?: { before: TeamCounts; after: TeamCounts }
 	  }
 	| {
 			code: 'teamswaps-executed'
@@ -349,6 +416,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						emitOpError({ code: 'err:currently-swapping', op })
 						break
 					}
+					// the restored queue is what everyone is now looking at, unless someone already started editing
+					const synced = Obj.deepEqual(state.editedSwaps, state.savedSwaps)
 					state.savedSwaps = new Map(state.savedSwaps)
 					skipEmitSave = true
 					skipNotifyUpcoming = true
@@ -362,6 +431,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 							skipEmitSave = false
 						}
 					}
+					if (synced) state.editedSwaps = state.savedSwaps
 					break
 				}
 
@@ -551,6 +621,32 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					break
 				}
 
+				case 'set-counterbalance-swaps': {
+					if (state.swapping) {
+						emitOpError({ code: 'err:currently-swapping', op })
+						break
+					}
+					if (!op.saved) {
+						state.editedSwaps = withCounterbalance(state, state.editedSwaps, op.swaps, op.source)
+						break
+					}
+					// a saved re-pick only lands on a queue nobody is editing, so it never replaces unsaved work
+					if (state.editedSwaps !== state.savedSwaps) break
+					const next = withCounterbalance(state, state.savedSwaps, op.swaps, op.source)
+					if (next === state.savedSwaps) break
+					const cancelled = [...state.savedSwaps.keys()].filter((playerId) => !next.has(playerId))
+					if (cancelled.length > 0) emit({ code: 'notify-teamswaps-cancelled', players: cancelled })
+					state.savedSwaps = state.editedSwaps = next
+					saveSource = op.source
+					saveTrigger = 'counterbalance'
+					break
+				}
+
+				case 'counterbalance-timer': {
+					state.counterbalanceDueAt = op.dueAt
+					break
+				}
+
 				case 'teamswap-execution-failed': {
 					// a failure is reported as a side effect rather than an op error on purpose: an op error rejects the
 					// batch, and a rejected batch changes no state (see ODSM.Applied), so the pending swaps this op
@@ -620,6 +716,13 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 			prevSaved: oldState.savedSwaps,
 			source: saveSource,
 			trigger: saveTrigger ?? 'user-edit',
+			balance:
+				saveTrigger === 'counterbalance'
+					? {
+							before: teamCountsAfterSwaps(state.players, oldState.savedSwaps),
+							after: teamCountsAfterSwaps(state.players, state.savedSwaps),
+						}
+					: undefined,
 		})
 		if (!skipNotifyUpcoming && newSwappingPlayers.length > 0) {
 			emit({ code: 'notify-upcoming-teamswaps', players: newSwappingPlayers })
@@ -641,7 +744,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 		state.savedSwaps === oldState.savedSwaps &&
 		state.pendingSwaps === oldState.pendingSwaps &&
 		state.players === oldState.players &&
-		state.swapping === oldState.swapping
+		state.swapping === oldState.swapping &&
+		state.counterbalanceDueAt === oldState.counterbalanceDueAt
 	if (unchanged) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
 
 	return [state, sideEffects]
@@ -663,5 +767,10 @@ export namespace Ctx {
 		dispatchMtx: MutexInterface
 		teamswapExecutedAt: number | null
 		haveReadSavedSwapsFromDb: boolean
+		// pinged whenever the state or the settings might have changed whether a counterbalance re-pick is due
+		counterbalanceCheck$: Rx.Subject<void>
+		// the roster and saved swaps the last re-pick ran against
+		// counterbalanceKey of the roster and saved swaps the last re-pick ran against, or was skipped on
+		counterbalanceSettled: string | null
 	}
 }
