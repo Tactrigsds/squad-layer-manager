@@ -52,8 +52,9 @@ pub struct RuleSpec {
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueItemSpec {
-    /// the layer the rules look back at when this item is earlier in the list (a vote's current choice)
-    pub source: usize,
+    /// the layers the rules look back at when this item is earlier in the list: every choice of a vote that has not
+    /// taken place, otherwise the one layer the item plays
+    pub sources: Vec<usize>,
     /// the layers checked against what came before (a vote's choices). Empty for an item exempt from the rules.
     pub targets: Vec<usize>,
     pub swappable: bool,
@@ -129,8 +130,9 @@ struct Solver<'a> {
     fixed_pair: Vec<u64>,
     pinned_at: Vec<Option<u8>>,
     classes: Vec<Class>,
-    /// [entity * rules + rule] -> the class its source value falls in, or NO_CLASS
-    class_of: Vec<u32>,
+    /// [entity * rules + rule] -> the range of `class_ids` holding the classes its sources' values fall in
+    class_range: Vec<(u32, u32)>,
+    class_ids: Vec<u32>,
 
     // search state
     placed: u128,
@@ -150,8 +152,6 @@ struct Solver<'a> {
     stamp: u64,
 }
 
-const NO_CLASS: u32 = u32::MAX;
-
 pub fn solve(spec: &SolveSpec) -> Result<SolveResponse, String> {
     if spec.rules.len() > MAX_RULES {
         return Err(format!("at most {MAX_RULES} repeat rules"));
@@ -161,7 +161,7 @@ pub fn solve(spec: &SolveSpec) -> Result<SolveResponse, String> {
     }
     let layer_ok = |l: usize| spec.layers.get(l).is_some_and(|v| v.len() == spec.rules.len());
     let refs_ok = spec.history.iter().all(|&l| layer_ok(l))
-        && spec.queue.iter().all(|q| layer_ok(q.source) && q.targets.iter().all(|&l| layer_ok(l)));
+        && spec.queue.iter().all(|q| q.sources.iter().all(|&l| layer_ok(l)) && q.targets.iter().all(|&l| layer_ok(l)));
     if !refs_ok {
         return Err("layer reference out of range, or wrong number of rule values".into());
     }
@@ -191,12 +191,13 @@ impl<'a> Solver<'a> {
         let mut pair = vec![0u64; entities * 2 * n * 2];
         let mut fixed_pair = vec![!0u64; entities * n];
         for e in 0..entities {
-            let (src, src_orients): (usize, &[u32]) = if e < h {
+            let srcs = entity_sources(spec, h_start, h, e);
+            let src_orients: &[u32] = if e < h {
                 // a played match keeps its teams: its orientation is its parity
                 let parity = (spec.first_parity + h_start as u32 + e as u32) % 2;
-                (spec.history[h_start + e], [&[0], &[1]][parity as usize])
+                [&[0], &[1]][parity as usize]
             } else {
-                (spec.queue[e - h].source, &[0, 1])
+                &[0, 1]
             };
             for &os in src_orients {
                 for (t, item) in spec.queue.iter().enumerate() {
@@ -205,8 +206,10 @@ impl<'a> Solver<'a> {
                     }
                     for ot in 0..2u32 {
                         let mut mask = 0u64;
-                        for &target in &item.targets {
-                            mask |= rules_matched(spec, src, os, target, ot);
+                        for &src in srcs {
+                            for &target in &item.targets {
+                                mask |= rules_matched(spec, src, os, target, ot);
+                            }
                         }
                         pair[((e * 2 + os as usize) * n + t) * 2 + ot as usize] = mask;
                         fixed_pair[e * n + t] &= mask;
@@ -224,30 +227,38 @@ impl<'a> Solver<'a> {
 
         let rules = spec.rules.len();
         let mut classes: Vec<Class> = Vec::new();
-        let mut class_of = vec![NO_CLASS; entities * rules];
-        for (r, rule) in spec.rules.iter().enumerate() {
-            if rule.team || rule.within == 0 {
-                continue;
-            }
-            let mut by_value: IntMap<i32, u32> = IntMap::default();
-            for e in 0..entities {
-                let src = if e < h { spec.history[h_start + e] } else { spec.queue[e - h].source };
-                let value = spec.layers[src][r][0];
-                if value == NO_VALUE {
+        let mut class_range = vec![(0u32, 0u32); entities * rules];
+        let mut class_ids: Vec<u32> = Vec::new();
+        let mut by_value: Vec<IntMap<i32, u32>> = (0..rules).map(|_| IntMap::default()).collect();
+        for e in 0..entities {
+            let srcs = entity_sources(spec, h_start, h, e);
+            for (r, rule) in spec.rules.iter().enumerate() {
+                if rule.team || rule.within == 0 {
                     continue;
                 }
-                let class = *by_value.entry(value).or_insert_with(|| {
-                    classes.push(Class { within: rule.within as usize, members: 0 });
-                    (classes.len() - 1) as u32
-                });
-                class_of[e * rules + r] = class;
-                // a vote only counts when every choice shares the value, so that it repeats wherever it goes
-                if e >= h {
-                    let item = &spec.queue[e - h];
-                    if !item.targets.is_empty() && item.targets.iter().all(|&t| spec.layers[t][r][0] == value) {
-                        classes[class as usize].members |= 1 << (e - h);
+                let start = class_ids.len();
+                for &src in srcs {
+                    let value = spec.layers[src][r][0];
+                    if value == NO_VALUE {
+                        continue;
+                    }
+                    let class = *by_value[r].entry(value).or_insert_with(|| {
+                        classes.push(Class { within: rule.within as usize, members: 0 });
+                        (classes.len() - 1) as u32
+                    });
+                    if class_ids[start..].contains(&class) {
+                        continue;
+                    }
+                    class_ids.push(class);
+                    // a vote only counts when every choice shares the value, so that it repeats wherever it goes
+                    if e >= h {
+                        let item = &spec.queue[e - h];
+                        if !item.targets.is_empty() && item.targets.iter().all(|&t| spec.layers[t][r][0] == value) {
+                            classes[class as usize].members |= 1 << (e - h);
+                        }
                     }
                 }
+                class_range[e * rules + r] = (start as u32, class_ids.len() as u32);
             }
         }
         let class_count = classes.len();
@@ -262,7 +273,8 @@ impl<'a> Solver<'a> {
             fixed_pair,
             pinned_at,
             classes,
-            class_of,
+            class_range,
+            class_ids,
             placed: 0,
             order: Vec::with_capacity(n),
             cost: (0, 0),
@@ -362,12 +374,11 @@ impl<'a> Solver<'a> {
         for abs in lo..p + self.h {
             let entity = if abs < self.h { abs } else { self.h + self.order[abs - self.h].0 as usize };
             for r in 0..rules {
-                let class = self.class_of[entity * rules + r];
-                if class == NO_CLASS {
-                    continue;
+                let (lo_c, hi_c) = self.class_range[entity * rules + r];
+                for &class in &self.class_ids[lo_c as usize..hi_c as usize] {
+                    let start = (abs + self.classes[class as usize].within + 1).saturating_sub(self.h);
+                    self.class_start[class as usize] = (self.stamp, start.max(p));
                 }
-                let start = (abs + self.classes[class as usize].within + 1).saturating_sub(self.h);
-                self.class_start[class as usize] = (self.stamp, start.max(p));
             }
         }
         let mut floor = 0;
@@ -585,6 +596,15 @@ impl<'a> Solver<'a> {
     }
 }
 
+/// The layers an entity's rules look back at. Entities are the history still in reach, then the queue.
+fn entity_sources(spec: &SolveSpec, h_start: usize, h: usize, e: usize) -> &[usize] {
+    if e < h {
+        std::slice::from_ref(&spec.history[h_start + e])
+    } else {
+        &spec.queue[e - h].sources
+    }
+}
+
 /// Rules under which `target` (oriented `ot`) repeats `src` (oriented `os`). An orientation names the slot that is
 /// normalized team A.
 fn rules_matched(spec: &SolveSpec, src: usize, os: u32, target: usize, ot: u32) -> u64 {
@@ -647,20 +667,22 @@ mod tests {
             let mut broken = 0u64;
             for prev_abs in 0..abs {
                 let d = abs - prev_abs;
-                let (src, os) = if prev_abs < h {
-                    (spec.history[prev_abs], orient(prev_abs, false))
+                let (srcs, os) = if prev_abs < h {
+                    (std::slice::from_ref(&spec.history[prev_abs]), orient(prev_abs, false))
                 } else {
                     let prev = order[prev_abs - h];
-                    (spec.queue[prev].source, orient(prev_abs, swapped[prev]))
+                    (&spec.queue[prev].sources[..], orient(prev_abs, swapped[prev]))
                 };
-                for &target in &spec.queue[item].targets {
-                    let mut mask = rules_matched(spec, src, os, target, ot);
-                    for (r, rule) in spec.rules.iter().enumerate() {
-                        if (rule.within as usize) < d {
-                            mask &= !(1 << r);
+                for &src in srcs {
+                    for &target in &spec.queue[item].targets {
+                        let mut mask = rules_matched(spec, src, os, target, ot);
+                        for (r, rule) in spec.rules.iter().enumerate() {
+                            if (rule.within as usize) < d {
+                                mask &= !(1 << r);
+                            }
                         }
+                        broken |= mask;
                     }
-                    broken |= mask;
                 }
             }
             violations += broken.count_ones();
@@ -722,13 +744,19 @@ mod tests {
         let n = 2 + rng.below(5) as usize;
         let queue = (0..n)
             .map(|_| {
-                let source = rng.below(layer_count) as usize;
-                let targets = match rng.below(6) {
-                    0 => vec![],
-                    1 => vec![source, rng.below(layer_count) as usize],
-                    _ => vec![source],
+                let layer = rng.below(layer_count) as usize;
+                let (sources, targets) = match rng.below(6) {
+                    0 => (vec![layer], vec![]),
+                    // a vote that has taken place: only the winner is looked back at
+                    1 => (vec![layer], vec![layer, rng.below(layer_count) as usize]),
+                    // a vote that has not: every choice is, including one exempt from being a target
+                    2 => {
+                        let choices = vec![layer, rng.below(layer_count) as usize, rng.below(layer_count) as usize];
+                        (choices.clone(), choices[..2].to_vec())
+                    }
+                    _ => (vec![layer], vec![layer]),
                 };
-                QueueItemSpec { source, targets, swappable: rng.below(6) != 0, pinned: rng.below(8) == 0 }
+                QueueItemSpec { sources, targets, swappable: rng.below(6) != 0, pinned: rng.below(8) == 0 }
             })
             .collect();
         SolveSpec {
@@ -774,8 +802,8 @@ mod tests {
             layers: vec![vec![[0, 0]], vec![[1, 1]]],
             history: vec![0],
             queue: vec![
-                QueueItemSpec { source: 1, targets: vec![1], swappable: true, pinned: false },
-                QueueItemSpec { source: 0, targets: vec![0], swappable: true, pinned: false },
+                QueueItemSpec { sources: vec![1], targets: vec![1], swappable: true, pinned: false },
+                QueueItemSpec { sources: vec![0], targets: vec![0], swappable: true, pinned: false },
             ],
             first_parity: 0,
             swap_cost: 1,
@@ -810,7 +838,7 @@ mod tests {
             layers,
             history: vec![0, 1, 2, 3],
             queue: (4..n)
-                .map(|l| QueueItemSpec { source: l, targets: vec![l], swappable: true, pinned: false })
+                .map(|l| QueueItemSpec { sources: vec![l], targets: vec![l], swappable: true, pinned: false })
                 .collect(),
             first_parity: 1,
             swap_cost: 1,

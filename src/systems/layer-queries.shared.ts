@@ -215,41 +215,43 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
-		const layer = L.toLayer(previousLayers[i].layerId)
+		for (const source of LQY.getLookbackItems(previousLayers[i])) {
+			const layer = L.toLayer(source.layerId)
 
-		switch (rule.field) {
-			case 'Map':
-			case 'Gamemode':
-			case 'Size':
-			case 'Layer': {
-				const value = layer[rule.field]
-				if (value && (rule.targetValues?.includes(value) ?? true)) {
-					const dbValue = LC.dbValue(rule.field, value, ctx)
-					if (!LC.isUnmappedDbValue(dbValue) && dbValue !== null) values.add(Number(dbValue))
+			switch (rule.field) {
+				case 'Map':
+				case 'Gamemode':
+				case 'Size':
+				case 'Layer': {
+					const value = layer[rule.field]
+					if (value && (rule.targetValues?.includes(value) ?? true)) {
+						const dbValue = LC.dbValue(rule.field, value, ctx)
+						if (!LC.isUnmappedDbValue(dbValue) && dbValue !== null) values.add(Number(dbValue))
+					}
+					break
 				}
-				break
-			}
-			case 'Faction':
-			case 'Unit':
-			case 'Alliance': {
-				for (const team of ['A', 'B'] as const) {
-					const column = LQY.teamNormalizedRepeatRuleProp(rule.field, teamParity, team)
-					const value = layer[column]
-					if (!value || LQY.valueFilteredByTargetValues(rule, value)) continue
-					const dbValue = LC.dbValue(column, value, ctx)
-					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
-					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
+				case 'Faction':
+				case 'Unit':
+				case 'Alliance': {
+					for (const team of ['A', 'B'] as const) {
+						const column = LQY.teamNormalizedRepeatRuleProp(rule.field, teamParity, team)
+						const value = layer[column]
+						if (!value || LQY.valueFilteredByTargetValues(rule, value)) continue
+						const dbValue = LC.dbValue(column, value, ctx)
+						if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
+						;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
+					}
+					break
 				}
-				break
+				case 'UnitMatchup': {
+					const matchup = unitMatchupOf(layer, rule)
+					const pair = matchup && unitMatchupDbValues(ctx, layer, rule)
+					if (matchup && pair) matchups.set(matchup, pair)
+					break
+				}
+				default:
+					assertNever(rule.field)
 			}
-			case 'UnitMatchup': {
-				const matchup = unitMatchupOf(layer, rule)
-				const pair = matchup && unitMatchupDbValues(ctx, layer, rule)
-				if (matchup && pair) matchups.set(matchup, pair)
-				break
-			}
-			default:
-				assertNever(rule.field)
 		}
 	}
 
@@ -1031,7 +1033,7 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 				targets.push(layerIndex(choice.layerId))
 			}
 			return {
-				source: layerIndex(item.layerId),
+				sources: LQY.getLookbackItems(item).map((source) => layerIndex(source.layerId)),
 				targets,
 				// LL.swapFactions swaps a vote all-or-nothing
 				swappable:
@@ -1176,66 +1178,69 @@ export function getRepeatRuleMatchDescriptors(
 
 	const descriptors: LQY.RepeatMatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
-		const layerItem = previousLayers[i]
-		const layer = parse(layerItem.layerId)
-		// LQY.isLookbackTerminatingLayerItem, inlined so the layer is parsed once
-		if (layerItem.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(layer)) break
+		const previousItem = previousLayers[i]
+		// LQY.isLookbackTerminatingLayerItem, inlined so a played layer is parsed once
+		const playedLayer = previousItem.type === 'match-history-entry' ? parse(previousItem.layerId) : null
+		if (playedLayer && L.isSeedingOrTrainingLayer(playedLayer)) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
-		const getViolationDescriptor = (
-			field: LQY.RepeatMatchDescriptorField,
-			sourceField: LQY.RepeatMatchDescriptorField = field,
-		): LQY.RepeatMatchDescriptor => ({
-			type: 'repeat-rule',
-			itemId: targetItemId,
-			layerId: targetLayerId,
-			constraintId,
-			field: field,
-			repeatOffset: Math.abs(cursorIndex - i),
-			sourceItemId: layerItem.itemId,
-			sourceLayerId: layerItem.layerId,
-			sourceField,
-		})
+		for (const layerItem of LQY.getLookbackItems(previousItem)) {
+			const layer = playedLayer ?? parse(layerItem.layerId)
+			const getViolationDescriptor = (
+				field: LQY.RepeatMatchDescriptorField,
+				sourceField: LQY.RepeatMatchDescriptorField = field,
+			): LQY.RepeatMatchDescriptor => ({
+				type: 'repeat-rule',
+				itemId: targetItemId,
+				layerId: targetLayerId,
+				constraintId,
+				field: field,
+				repeatOffset: Math.abs(cursorIndex - i),
+				sourceItemId: layerItem.itemId,
+				sourceLayerId: layerItem.layerId,
+				sourceField,
+			})
 
-		switch (rule.field) {
-			case 'Map':
-			case 'Gamemode':
-			case 'Layer':
-			case 'Size':
-				if (
-					layer[rule.field] &&
-					targetLayer[rule.field] === layer[rule.field] &&
-					!LQY.valueFilteredByTargetValues(rule, layer[rule.field])
-				) {
-					descriptors.push(getViolationDescriptor(rule.field))
-				}
-				break
-			case 'Faction':
-			case 'Unit':
-			case 'Alliance': {
-				for (const team of ['A', 'B'] as const) {
-					const targetValue = targetLayer[LQY.teamNormalizedRepeatRuleProp(rule.field, targetLayerTeamParity, team)]
-					if (!targetValue) continue
-					// under crossTeam a target team can match either previous team, but it still yields a single descriptor.
-					// the team it matched is the source's own side, so prefer the target's side when both would match.
-					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? [team, team === 'A' ? 'B' : 'A'] : [team]
-					for (const previousTeam of previousTeams) {
-						const previousValue = layer[LQY.teamNormalizedRepeatRuleProp(rule.field, layerTeamParity, previousTeam)]
-						if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
-						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`, `${rule.field}_${previousTeam}`))
-						break
+			switch (rule.field) {
+				case 'Map':
+				case 'Gamemode':
+				case 'Layer':
+				case 'Size':
+					if (
+						layer[rule.field] &&
+						targetLayer[rule.field] === layer[rule.field] &&
+						!LQY.valueFilteredByTargetValues(rule, layer[rule.field])
+					) {
+						descriptors.push(getViolationDescriptor(rule.field))
 					}
+					break
+				case 'Faction':
+				case 'Unit':
+				case 'Alliance': {
+					for (const team of ['A', 'B'] as const) {
+						const targetValue = targetLayer[LQY.teamNormalizedRepeatRuleProp(rule.field, targetLayerTeamParity, team)]
+						if (!targetValue) continue
+						// under crossTeam a target team can match either previous team, but it still yields a single descriptor.
+						// the team it matched is the source's own side, so prefer the target's side when both would match.
+						const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? [team, team === 'A' ? 'B' : 'A'] : [team]
+						for (const previousTeam of previousTeams) {
+							const previousValue = layer[LQY.teamNormalizedRepeatRuleProp(rule.field, layerTeamParity, previousTeam)]
+							if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
+							descriptors.push(getViolationDescriptor(`${rule.field}_${team}`, `${rule.field}_${previousTeam}`))
+							break
+						}
+					}
+					break
 				}
-				break
+				case 'UnitMatchup': {
+					const previous = unitMatchupOf(layer, rule)
+					const target = unitMatchupOf(targetLayer, rule)
+					if (!previous || !target || previous !== target) break
+					descriptors.push(getViolationDescriptor('UnitMatchup_A'), getViolationDescriptor('UnitMatchup_B'))
+					break
+				}
+				default:
+					assertNever(rule.field)
 			}
-			case 'UnitMatchup': {
-				const previous = unitMatchupOf(layer, rule)
-				const target = unitMatchupOf(targetLayer, rule)
-				if (!previous || !target || previous !== target) break
-				descriptors.push(getViolationDescriptor('UnitMatchup_A'), getViolationDescriptor('UnitMatchup_B'))
-				break
-			}
-			default:
-				assertNever(rule.field)
 		}
 	}
 	return descriptors.length > 0 ? descriptors : undefined

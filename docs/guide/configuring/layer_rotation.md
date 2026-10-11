@@ -83,6 +83,10 @@ one place and swapping a layer's teams each count as one change. SLM never swaps
 
 A layer that another admin is editing stays where it is. The changes stay in the draft until the queue is saved.
 
+A repeat rule checks a layer against every choice of an earlier vote that has not taken place yet, because any of
+those choices could still be played. Once the vote picks a winner, or ends with too few votes, the rule checks only
+the layer the vote settled on. Aborting a vote puts all of its choices back in play.
+
 ## Randomization
 
 _Layer Generation Weights_ controls how SLM picks layers at random. It covers layer generation, which runs when
