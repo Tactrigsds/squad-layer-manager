@@ -81,6 +81,9 @@ test.describe('generation weights', () => {
 	test('weights the faction matchup it picks, in either team order', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
+			// mod layers bring thousands of pairings of their own, which together outweighed even 1,000,000 about once
+			// in 900 draws (always to a GC mod layer). The vanilla pool holds ~136, and 3000 draws never missed.
+			filters: [filter('vanilla', 'Vanilla', FB.and([FB.eq('Collection', 'OWI')]))],
 			globalSettings: (settings) => {
 				settings.layerGeneration = {
 					pickOrder: ['FactionMatchup'],
@@ -88,10 +91,9 @@ test.describe('generation weights', () => {
 					matchupWeights: {
 						AllianceMatchup: [],
 						// Unlisted pairings weigh LC.DEFAULT_GENERATION_WEIGHT (0.1) EACH, and weights are normalized
-						// against the sum of what's in the pool -- not against the largest one. With 17 factions there
-						// are ~136 other pairings, so what this competes with is their total (~13.6), not 0.1. At
-						// weight 1000 that left each draw ~1.3% likely to miss, i.e. ~4% over three draws: measured at
-						// 2 failures in 60 runs before this was raised. The margin has to cover the whole pool.
+						// against the sum of what's in the pool, not against the largest one. What this competes with is
+						// the total of every other pairing in the pool (~13.6 for the vanilla pool), not 0.1, so the
+						// margin has to cover the whole pool.
 						FactionMatchup: [{ teams: ['ADF', 'RGF'], weight: 1_000_000 }],
 						UnitMatchup: [],
 						FactionUnitMatchup: [],
@@ -99,6 +101,7 @@ test.describe('generation weights', () => {
 				}
 			},
 			serverSettings: (settings) => {
+				selectableFilter(settings.queue.mainPool, 'vanilla')
 				settings.queue.mainPool.repeatRules = []
 			},
 		})
