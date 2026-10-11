@@ -124,9 +124,9 @@ describe('server rolling: the roster across the roll', () => {
 			{ label: 'every finished match in the range counted' },
 		)
 		expect(range.bands.map((band) => band.ordinal)).toContain(ordinal)
-		expect(
-			Math.max(...range.buckets.total.map((sum, i) => (range.buckets.n[i] > 0 ? sum / range.buckets.n[i] : 0))),
-		).toBeGreaterThanOrEqual(2)
+		// the peak rather than the mean: a 6h bucket is a minute of wall clock, so it can also hold the samples of this
+		// file's earlier, smaller matches, depending on where the minute boundary falls
+		expect(Math.max(...range.buckets.max)).toBeGreaterThanOrEqual(2)
 	})
 })
 
