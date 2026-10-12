@@ -385,3 +385,54 @@ export function toNewItems(parsed: Parsed, mapping: TagMapping): LL.NewItem[] {
 		return vote
 	})
 }
+
+// -------- editing as text --------
+
+// the whole list in `format`, with every note, and with tags in YAML
+export function serialize(items: LL.List, format: Format, configuredTags: LTag.Tag[]): string {
+	return format === 'yaml' ? toYaml(items, { notes: true, tags: true, configuredTags }) : toPlainText(items, { notes: true })
+}
+
+// Gives each parsed item that repeats an item of `existing` what the text could not say about it: its id, the authors
+// of the notes it keeps, and the tags the format leaves out (all of them in plain text, rotation tags in YAML). A layer
+// repeats the first unclaimed existing layer with the same layer id, and a vote the first unclaimed vote with the same
+// choices.
+export function carryOver(existing: LL.List, items: LL.NewItem[], format: Format): LL.NewItem[] {
+	const singles = new Map<L.LayerId, LL.SingleItem[]>()
+	const votes = new Map<string, LL.VoteItem[]>()
+	for (const item of existing) {
+		if (item.type === 'single-list-item') claimable(singles, item.layerId).push(item)
+		else claimable(votes, voteKey(item.choices)).push(item)
+	}
+	const unsaid = (id: LTag.TagId) => format === 'text' || LTag.rotationIdOfTag(id) !== undefined
+	const merge = <T extends LL.NewSingleItem>(item: T, prev: LL.SingleItem): T => {
+		const out: T = { ...item, itemId: prev.itemId }
+		const tags = [...new Set([...(item.tags ?? []), ...(prev.tags ?? []).filter(unsaid)])]
+		if (tags.length > 0) out.tags = tags
+		else delete out.tags
+		if (item.notes) out.notes = item.notes.map((note) => prev.notes?.find((kept) => kept.text === note.text) ?? note)
+		return out
+	}
+	return items.map((item): LL.NewItem => {
+		if (item.type === 'single-list-item') {
+			const prev = singles.get(item.layerId)?.shift()
+			return prev ? merge(item, prev) : item
+		}
+		const prev = votes.get(voteKey(item.choices))?.shift()
+		if (!prev) return item
+		return {
+			...item,
+			choices: item.choices.map((choice, i) => ({ ...merge(choice, prev.choices[i]), source: prev.choices[i].source })),
+		}
+	})
+}
+
+function claimable<K, V>(map: Map<K, V[]>, key: K): V[] {
+	let list = map.get(key)
+	if (!list) map.set(key, (list = []))
+	return list
+}
+
+function voteKey(choices: { layerId: L.LayerId }[]): string {
+	return choices.map((choice) => choice.layerId).join('\n')
+}

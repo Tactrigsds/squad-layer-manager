@@ -142,6 +142,32 @@ describe('rotation exchange formats', () => {
 		expect(broken.errors[0].code).toBe('err:yaml')
 	})
 
+	it('keeps the ids, note authors and unwritten tags of the items an edit leaves in place', () => {
+		const authored = LL.createVoteItem(
+			[single(A), single(B, { notes: [{ id: 'note03', text: 'only above 80', author: '42' as never }] })],
+			SOURCE,
+		)
+		const existing: LL.List = [...LIST.slice(0, 2), authored]
+		const [, tagged] = existing as LL.SingleItem[]
+		const edit = (format: RFMT.Format, text: string) => {
+			const parsed = format === 'yaml' ? RFMT.parseYaml(text) : RFMT.parsePlainText(text)
+			return RFMT.carryOver(existing, RFMT.toNewItems(parsed, new Map([['event night', EVENT.id]])), format)
+		}
+
+		// plain text cannot say what tags a layer has, so every tag stays on it
+		const text = RFMT.toPlainText(existing.slice(1), { notes: true })
+		const [kept, vote] = edit('text', `${lineOf(A)}\n${text}`).slice(1)
+		if (kept.type !== 'single-list-item' || vote.type !== 'vote-list-item') throw new Error('types')
+		expect(kept.itemId).toBe(tagged.itemId)
+		expect(kept.tags).toEqual([EVENT.id, LTag.fromRotationTagId('weekend')])
+		expect(vote.choices.map((choice) => choice.itemId)).toEqual(authored.choices.map((choice) => choice.itemId))
+		expect(vote.choices[1].notes).toEqual([{ id: 'note03', text: 'only above 80', author: '42' }])
+
+		// YAML writes layer tags, so taking one out of the text takes it off. A rotation tag is never written, so it stays.
+		const [untagged] = edit('yaml', `- layer: ${lineOf(B)}\n  tags: []\n`)
+		expect(untagged.type === 'single-list-item' && untagged.tags).toEqual([LTag.fromRotationTagId('weekend')])
+	})
+
 	it('drops a tag label the mapping leaves out', () => {
 		const parsed = RFMT.parse(`- layer: ${lineOf(A)}\n  tags: [Rush Hour, event night]\n`)
 		expect(RFMT.tagLabels(parsed, [EVENT]).map((label) => [label.label, label.match?.id])).toEqual([

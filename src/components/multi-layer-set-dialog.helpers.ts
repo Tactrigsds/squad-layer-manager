@@ -24,7 +24,7 @@ export function usePastedLayers(installedMods: readonly string[] | undefined): P
 	const [validate, setValidate] = React.useState(true)
 	const knownIds = validate ? lines.flatMap((line) => (line.code === 'ok' ? [line.layer.id] : [])) : []
 	const existsRes = LayerQueriesClient.useLayerExists(knownIds, { enabled: knownIds.length > 0, usePlaceholderData: true })
-	const { errors, layers, pending } = resolveLines(lines, validate, existsRes.data)
+	const { errors, layers, pending } = L.resolveRawLayerLines(lines, validate, existsRes.data)
 	return {
 		lines,
 		validate,
@@ -35,42 +35,6 @@ export function usePastedLayers(installedMods: readonly string[] | undefined): P
 		layers,
 		pending,
 	}
-}
-
-// Splits parsed lines into what is added and what blocks the add. With validation on, a line that parsed to a known
-// layer is also checked against the layer database, the authority on what can be queued, and is pending until that
-// check answers. With validation off, only a missing mod blocks, since the server refuses it.
-export function resolveLines(lines: L.RawLayerLine[], validate: boolean, existence: { id: L.LayerId; exists: boolean }[] | undefined) {
-	const exists = new Map(existence?.map((res) => [res.id, res.exists]))
-	const errors: L.RawLayerLine[] = []
-	const layers: L.UnvalidatedLayer[] = []
-	let pending = false
-	for (const line of lines) {
-		switch (line.code) {
-			case 'ok': {
-				if (!validate) {
-					layers.push(line.layer)
-					break
-				}
-				const found = exists.get(line.layer.id)
-				if (found === undefined) pending = true
-				else if (found) layers.push(line.layer)
-				else errors.push({ ...line, code: 'err:unknown-layer', problems: [] })
-				break
-			}
-			case 'err:unparsable':
-			case 'err:unknown-layer':
-				if (validate) errors.push(line)
-				else if (line.layer) layers.push(line.layer)
-				break
-			case 'err:mod-not-installed':
-				errors.push(line)
-				break
-			default:
-				assertNever(line)
-		}
-	}
-	return { errors, layers, pending }
 }
 
 // why a pasted line cannot be added
