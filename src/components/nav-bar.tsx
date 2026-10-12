@@ -307,7 +307,7 @@ export default function NavBar() {
 		</span>
 	)
 
-	const navBorderStyle = selectedServer?.color ? { borderBottomColor: selectedServer.color } : undefined
+	const navBorderStyle = isOnServerDashboard && selectedServer?.color ? { borderBottomColor: selectedServer.color } : undefined
 
 	const serverPicker =
 		isOnServerDashboard &&
