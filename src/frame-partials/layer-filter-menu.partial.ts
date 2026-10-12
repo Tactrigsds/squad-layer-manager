@@ -52,6 +52,8 @@ type Input = {
 	// `emptyItems` should be the valueless counterparts; defaults to `items` as given.
 	items?: Record<string, F.EditableCompNode>
 	emptyItems?: Record<string, F.EditableCompNode>
+	// open on the Collection comparison last set in any picker that remembers it, and keep it up to date
+	rememberCollection?: boolean
 }
 type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
@@ -59,7 +61,9 @@ type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
 export function initLayerFilterMenuStore(args: Args) {
 	const set = Zus.toPartialSetter(args.set, 'filterMenu')
-	const defaultItems = args.input.items ?? getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
+	let defaultItems = args.input.items ?? getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
+	const rememberCollection = args.input.rememberCollection && 'Collection' in defaultItems
+	if (rememberCollection) defaultItems = { ...defaultItems, Collection: readRememberedCollection() }
 	const emptyItems =
 		args.input.emptyItems ?? (args.input.items ? args.input.items : getDefaultFilterMenuItemState({}, args.input.colConfig))
 	const filter = getFilterFromComparisons(defaultItems)
@@ -74,6 +78,45 @@ export function initLayerFilterMenuStore(args: Args) {
 	}
 
 	set(state)
+
+	if (rememberCollection) {
+		args.cleanup.push(
+			args.update$
+				.pipe(
+					Rx.map(([state]) => state.filterMenu.menuItems.Collection),
+					Rx.Ext.distinctDeepEquals(),
+				)
+				.subscribe(writeRememberedCollection),
+		)
+	}
+}
+
+// The catalog holds the mod collections alongside OWI, so a picker that opens unpinned buries the vanilla layers.
+// `rememberCollection` opens it on the default collection, then on whatever the user last set the Collection menu
+// item to in any picker that remembers it. The comparison is stored whole rather than as a bare collection name, so a
+// change of operator comes back with it. A value the catalog has since dropped is left alone, as a stale saved filter is.
+const REMEMBERED_COLLECTION_KEY = 'selectLayersCollection:v1'
+
+function readRememberedCollection(components = L.StaticLayerComponents): F.EditableCompNode {
+	try {
+		const stored = localStorage.getItem(REMEMBERED_COLLECTION_KEY)
+		if (stored !== null) {
+			const parsed = F.EditableCompNodeSchema.parse(JSON.parse(stored))
+			if (F.compAnchorColumn(parsed) === 'Collection') return parsed
+		}
+	} catch {
+		// fall through to the default: a key we cannot read is one the user can simply set again
+	}
+	return EFB.eq('Collection', L.getDefaultCollection(components))
+}
+
+function writeRememberedCollection(comp: F.EditableCompNode | undefined) {
+	if (!comp) return
+	try {
+		localStorage.setItem(REMEMBERED_COLLECTION_KEY, JSON.stringify(comp))
+	} catch {
+		// storage can be blocked; the picker still works, it just forgets
+	}
 }
 
 export function getDefaultFilterMenuItemState(

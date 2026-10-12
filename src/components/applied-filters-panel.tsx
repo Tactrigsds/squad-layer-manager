@@ -3,7 +3,7 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -21,17 +21,17 @@ import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 // scrollLeft runs from 0 toward negative values in RTL
 const inlineSign = () => (MessagesClient.textDirection() === 'rtl' ? -1 : 1)
 
-export default function AppliedFiltersPanel(props: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
+export default function AppliedFiltersPanel(props: { stores: Partial<ListHostPrt.KeyProp> & AppliedFiltersPrt.KeyProp }) {
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	const squadServer = props.stores.squadServer ?? null
+	const listHost = props.stores.listHost ?? null
 	const extraFilterIds = Zus.useStore(
 		props.stores.appliedFilters,
-		squadServer,
+		listHost,
 		AppliedFiltersPrt.ExtraFiltersStore,
 		AppliedFiltersPrt.Sel.extraFilterIds,
 	)
-	const selectableFilterIds = Zus.useStore(squadServer, AppliedFiltersPrt.Sel.selectableFilterIds)
-	const addableFilters = Zus.useStore(squadServer, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
+	const selectableFilterIds = Zus.useStore(listHost, AppliedFiltersPrt.Sel.selectableFilterIds)
+	const addableFilters = Zus.useStore(listHost, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
 	const [canScrollBack, setCanScrollBack] = React.useState(false)
 	const [canScrollForward, setCanScrollForward] = React.useState(false)
 	const canScroll = canScrollBack || canScrollForward
@@ -168,8 +168,8 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 
 // the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
 // users without queue:force-write, so no state needs to be locked away
-export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
-	const poolFilter = Zus.useStore(stores.squadServer ?? null, AppliedFiltersPrt.Sel.poolFilter)
+export function PoolFilterCheckbox({ stores }: { stores: Partial<ListHostPrt.KeyProp> & AppliedFiltersPrt.KeyProp }) {
+	const poolFilter = Zus.useStore(stores.listHost ?? null, AppliedFiltersPrt.Sel.poolFilter)
 	const poolApplyAs = Zus.useStore(stores.appliedFilters, (s) => s.appliedFilters.poolApplyAs)
 	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
 	if (!poolFilter || !filter) return

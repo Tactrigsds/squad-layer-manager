@@ -315,7 +315,7 @@ export namespace AddLayersSequence {
 		title: def('Submit'),
 		body: def(
 			rt(
-				"Choose <em>Play After</em> to add these layers to the end of the queue instead of the front. When you're happy with the selection, click <em>Submit</em>:",
+				"Choose <em>Add to end</em> to add these layers to the end of the queue instead of the start. When you're happy with the selection, click <em>Submit</em>:",
 			),
 		),
 	}

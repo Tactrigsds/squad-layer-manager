@@ -1,16 +1,21 @@
+import type { Page } from '@playwright/test'
+
+import * as FB from '@/models/filter-builders.models'
 import * as LTag from '@/models/layer-tags.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { LAYERS, layerText, queue, role } from '../harness/arrange'
+import { filter, LAYERS, layerText, queue, role, rotation } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
-import { savedQueue } from '../harness/inspect'
+import { savedQueue, savedRotation } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // Two people working on the same queue, against one app. Edits are operations broadcast between
 // clients and replayed against whatever state each one holds, so this is where an op that isn't
 // commutative -- or a client that misses one -- shows up as two people looking at different queues.
 // The annotations journey runs first: tags and notes ride the same op pipeline, notes carry an
-// ownership rule, and what it saves is the queue the collaborative journey then edits.
+// ownership rule, and what it saves is the queue the collaborative journey then edits. A rotation's items are
+// edited with the same list editor and ops, so the rotation journeys share this app. Only the last of them touches the
+// queue, replacing it with a rotation.
 
 const META = { id: LTag.createTagId('meta'), label: 'meta', description: 'Competitive layer', color: '#3b82f6' }
 const INFANTRY = { id: LTag.createTagId('inf'), label: 'inf', description: 'Infantry heavy', color: '#22c55e' }
@@ -29,6 +34,12 @@ let app: AppFixture
 test.beforeAll(async () => {
 	app = await createAppFixture({
 		layerQueue: queue(LAYERS.harjuRaas, LAYERS.sumariRaas, LAYERS.skorpoRaas),
+		rotations: [
+			rotation('weekend', 'Weekend Competitive', queue(LAYERS.gorodokRaas, LAYERS.narvaRaas), { description: 'Saturday night set' }),
+			rotation('midweek', 'Midweek Casual', queue(LAYERS.sumariRaas)),
+		],
+		// an extra filter for the pickers' applied filters, which no pool references
+		filters: [filter('narva-only', 'Narva Only', FB.eq('Map', 'Narva'))],
 		users: [WRITER, SECOND_USER],
 		globalSettings: (settings) => {
 			settings.layerTags = [META, INFANTRY]
@@ -234,5 +245,280 @@ test.describe('collaborative queue editing', () => {
 		} finally {
 			await second.close()
 		}
+	})
+})
+
+// a page on the app, once the login has landed
+async function openPath(p: Page, path: string) {
+	await p.goto(new URL(path, p.url()).href)
+}
+
+test.describe('collaborative rotation editing', () => {
+	test("one editor sees the other's rotation edits live, and the save writes them", async ({ page, browser }) => {
+		const second = await browser.newContext()
+		const pageB = await second.newPage()
+		try {
+			await page.goto(app.loginUrl())
+			await pageB.goto(app.loginUrl(SECOND_USER))
+			for (const p of [page, pageB]) {
+				await expect(p.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+				await openPath(p, '/rotations/weekend')
+				await expect(p.getByRole('heading', { name: 'Layers (2)' })).toBeVisible({ timeout: 15_000 })
+			}
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await expect(pageB.getByRole('status')).not.toContainText('Nobody is editing')
+
+			// A deletes an item from the draft; B is watching the same draft, so B sees it go
+			const listA = page.getByRole('region', { name: /Layers/ })
+			await listA
+				.getByRole('listitem')
+				.filter({ hasText: layerText('Narva_RAAS_v1') })
+				.getByRole('button', { name: 'Delete' })
+				.click()
+			await expect(pageB.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+			// nothing is written until the draft is saved
+			expect(savedRotation(app, 'weekend')?.items).toHaveLength(2)
+
+			// A is the only editor, so the button saves
+			await page.getByRole('button', { name: 'Save', exact: true }).click()
+			await app.waitFor(() => savedRotation(app, 'weekend')?.items.length === 1 || null, { label: 'the rotation lost its second item' })
+			expect(savedRotation(app, 'weekend')!.items[0].layerId).toBe(LAYERS.gorodokRaas)
+			await expect(pageB.getByRole('status')).toContainText('Nobody is editing')
+		} finally {
+			await second.close()
+		}
+	})
+
+	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+		await openPath(page, '/rotations')
+		await expect(page.getByRole('link', { name: 'Weekend Competitive' })).toBeVisible({ timeout: 15_000 })
+
+		// a search lists matches as rows, says what matched, and is kept in the url
+		await page.getByRole('textbox', { name: 'Search rotations' }).fill('gorodok')
+		await expect(page).toHaveURL(/[?&]q=gorodok/)
+		await expect(page.getByText('Match')).toBeVisible()
+		await page.getByRole('textbox', { name: 'Search rotations' }).fill('')
+		await expect(page).not.toHaveURL(/[?&]q=/)
+
+		// clone opens the copy, under the default id
+		await page
+			.getByRole('listitem')
+			.filter({ has: page.getByRole('link', { name: 'Weekend Competitive' }) })
+			.getByRole('button', { name: 'Clone' })
+			.click()
+		const cloneDialog = page.getByRole('dialog', { name: 'Clone Rotation' })
+		await expect(cloneDialog.getByLabel('ID')).toHaveValue('weekend-copy')
+		await cloneDialog.getByRole('button', { name: 'Clone and Open' }).click()
+		await expect(page).toHaveURL(/\/rotations\/weekend-copy/)
+		await app.waitFor(() => savedRotation(app, 'weekend-copy') ?? null, { label: 'the copy was written' })
+		expect(savedRotation(app, 'weekend-copy')!.items).toHaveLength(1)
+
+		// an archived rotation is listed only when asked for
+		await openPath(page, '/rotations')
+		const copyCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Weekend Competitive (copy)' }) })
+		await copyCard.getByRole('button', { name: 'More actions' }).click()
+		await page.getByRole('menuitem', { name: 'Archive' }).click()
+		await expect(copyCard).toBeHidden()
+		await page.getByRole('checkbox', { name: /Show archived/ }).click()
+		await expect(copyCard).toBeVisible()
+		await expect(page).toHaveURL(/[?&]archived=true/)
+
+		// deleting asks first
+		await copyCard.getByRole('button', { name: 'More actions' }).click()
+		await page.getByRole('menuitem', { name: 'Delete' }).click()
+		await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+		await expect(copyCard).toBeHidden()
+		await app.waitFor(() => savedRotation(app, 'weekend-copy') === undefined || null, { label: 'the copy was deleted' })
+	})
+
+	// replaces the queue, so it runs last
+	test('adding a saved rotation to the queue in place of what was there', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(Dash.queueSection(page)).toBeVisible({ timeout: 25_000 })
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Add Rotation' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Add Rotation' })
+		await dialog.getByRole('button', { name: 'Saved Rotation' }).click()
+		await dialog.getByRole('searchbox').fill('weekend')
+		await dialog.getByRole('button', { name: /Weekend Competitive/ }).click()
+		// the earlier journey saved the rotation down to its first layer
+		await expect(dialog.getByRole('list', { name: 'Weekend Competitive' }).getByRole('listitem')).toHaveCount(1)
+		await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
+		await dialog.getByRole('button', { name: 'Add 1 Item' }).click()
+		await expect(dialog).toHaveCount(0)
+
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
+		const item = Dash.queueSection(page).getByRole('listitem').first()
+		await expect(item).toContainText(layerText('Gorodok_RAAS_v1'))
+		// every added item carries the rotation's tag, which renders as the rotation's name
+		await expect(item).toContainText('Weekend Competitive')
+
+		// after the earlier journeys, Gorodok's RGF breaks the faction repeat rule, so the save asks to be confirmed
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await expect(page.getByText('Repeats Detected')).toBeVisible()
+		await page.getByRole('button', { name: 'Save Anyway' }).click()
+		await app.waitFor(
+			() => {
+				const list = savedQueue(app)
+				return (list.length === 1 && list[0].layerId === LAYERS.gorodokRaas) || null
+			},
+			{ label: 'the queue was replaced by the rotation' },
+		)
+		expect(savedQueue(app)[0].tags).toEqual([LTag.fromRotationTagId('weekend')])
+	})
+
+	test("exporting a rotation's layers, and importing YAML in their place", async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+		await openPath(page, '/rotations/weekend')
+		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Export', exact: true }).click()
+		const exportDialog = page.getByRole('dialog', { name: 'Export layers' })
+		await expect(exportDialog.getByLabel('Export', { exact: true })).toHaveText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n')
+
+		await page.keyboard.press('Escape')
+		await expect(exportDialog).toHaveCount(0)
+
+		await page.getByRole('button', { name: 'Import', exact: true }).click()
+		const dialog = page.getByRole('dialog', { name: 'Import layers' })
+		await dialog
+			.getByRole('textbox', { name: 'Import' })
+			.fill(
+				[
+					'# opener',
+					'- layer: Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+					'  tags: [meta, Rush Hour]',
+					'- vote:',
+					'    - Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+					'    - Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+				].join('\n'),
+			)
+		await expect(dialog.getByRole('status')).toHaveText('YAML: 2 items, 1 note')
+		await expect(dialog).toContainText('Tag meta matches an existing tag')
+		await dialog.getByRole('combobox', { name: 'What to do with Rush Hour' }).click()
+		await page.getByRole('option', { name: 'Drop it' }).click()
+		await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
+		await dialog.getByRole('button', { name: 'Import 2 Items' }).click()
+		await expect(dialog).toHaveCount(0)
+		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible()
+
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await app.waitFor(() => savedRotation(app, 'weekend')?.items.length === 2 || null, { label: 'the import was saved' })
+		const [narva, vote] = savedRotation(app, 'weekend')!.items
+		expect(narva.layerId).toBe(LAYERS.narvaRaas)
+		expect(narva.tags).toEqual([META.id])
+		expect(narva.notes?.map((note) => [note.text, note.author])).toEqual([['opener', undefined]])
+		expect(vote.choices?.map((choice) => choice.layerId)).toEqual([LAYERS.gorodokRaas, LAYERS.skorpoRaas])
+	})
+
+	test('the layer pickers keep the collection and the applied filters from Explore Layers and across rotations', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+
+		await page.getByRole('button', { name: 'Explore Layers' }).click()
+		const explore = page.getByRole('dialog', { name: 'Layers' })
+		await explore.getByRole('combobox', { name: 'Collection' }).click()
+		await page.getByRole('option', { name: 'GC', exact: true }).click()
+		await explore.getByRole('button', { name: 'Edit extra filters' }).click()
+		await page.getByRole('listbox').getByRole('option', { name: 'Narva Only' }).click()
+		await page.keyboard.press('Escape')
+		await explore.getByRole('checkbox', { name: 'Narva Only' }).click()
+		await expect(explore.getByRole('checkbox', { name: 'Narva Only' })).toHaveAttribute('aria-checked', 'true')
+		await page.keyboard.press('Escape')
+		await expect(explore).toHaveCount(0)
+
+		// in-app navigation throughout: the applied filters are shared in memory, so a page load would start them over
+		await page.getByRole('link', { name: 'Rotations', exact: true }).click()
+		await page.getByRole('link', { name: 'Weekend Competitive' }).click()
+		await page.getByRole('button', { name: 'Add Layers' }).click()
+		const weekendPicker = page.getByRole('dialog', { name: 'Add Layers' })
+		await expect(weekendPicker.getByRole('combobox', { name: 'Collection' })).toHaveText('GC')
+		const weekendExtra = weekendPicker.getByRole('checkbox', { name: 'Narva Only' })
+		await expect(weekendExtra).toHaveAttribute('aria-checked', 'true')
+		await weekendExtra.click()
+		await expect(weekendExtra).toHaveAttribute('aria-checked', 'false')
+		await page.keyboard.press('Escape')
+		await expect(weekendPicker).toHaveCount(0)
+
+		await page.getByRole('link', { name: 'Rotations', exact: true }).click()
+		await page.getByRole('link', { name: 'Midweek Casual' }).click()
+		await page.getByRole('button', { name: 'Add Layers' }).click()
+		const midweekPicker = page.getByRole('dialog', { name: 'Add Layers' })
+		await expect(midweekPicker.getByRole('combobox', { name: 'Collection' })).toHaveText('GC')
+		await expect(midweekPicker.getByRole('checkbox', { name: 'Narva Only' })).toHaveAttribute('aria-checked', 'false')
+		await page.keyboard.press('Escape')
+		await expect(midweekPicker).toHaveCount(0)
+
+		// Explore Layers stays set up while closed, and follows the change made in the rotation's picker
+		await page.getByRole('button', { name: 'Explore Layers' }).click()
+		await expect(explore.getByRole('checkbox', { name: 'Narva Only' })).toHaveAttribute('aria-checked', 'false')
+	})
+
+	test('a rotation tag can be made from the rotation editor and lands on the rotation', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible({ timeout: 25_000 })
+		await openPath(page, '/rotations/midweek')
+		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+
+		// none are defined yet, so the menu offers only a new one
+		await page.getByRole('button', { name: 'Add tag' }).first().click()
+		await expect(page.getByRole('menuitem', { name: 'No tags available' })).toBeVisible()
+		await page.getByRole('menuitem', { name: 'New tag...' }).click()
+		const dialog = page.getByRole('dialog', { name: 'New tag' })
+		await expect(dialog).toContainText('group rotations on the Rotations page')
+		await dialog.getByLabel('Label').fill('Casual Nights')
+		await dialog.getByRole('button', { name: 'Create' }).click()
+		await expect(dialog).toHaveCount(0)
+
+		await expect(page.getByText('Casual Nights', { exact: true })).toBeVisible()
+		await app.waitFor(() => savedRotation(app, 'midweek')?.tags.length === 1 || null, { label: 'the tag was put on the rotation' })
+		expect(savedRotation(app, 'midweek')!.tags[0]).toMatch(/^Casual Nights:/)
+	})
+
+	test("a queue item's menu switches its tags and manages its notes", async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible({ timeout: 25_000 })
+		await openPath(page, '/rotations/weekend')
+		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible({ timeout: 15_000 })
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+
+		const list = page.getByRole('region', { name: /Layers/ })
+		const narva = list
+			.getByRole('listitem')
+			.filter({ hasText: layerText('Narva_RAAS_v1') })
+			.first()
+		const openMenu = async () => {
+			await narva.getByText(layerText('Narva_RAAS_v1')).first().click({ button: 'right' })
+			await expect(page.getByRole('menuitem', { name: 'Clone' })).toBeVisible()
+		}
+
+		// the import gave Narva the meta tag, so the menu switches it off and back on
+		await openMenu()
+		await page.getByRole('menuitem', { name: 'Tags' }).hover()
+		await page.getByRole('menuitem', { name: 'meta' }).click()
+		await expect(narva.getByText('meta', { exact: true })).toHaveCount(0)
+		await openMenu()
+		await page.getByRole('menuitem', { name: 'Tags' }).hover()
+		await page.getByRole('menuitem', { name: 'meta' }).click()
+		await expect(narva.getByText('meta', { exact: true })).toBeVisible()
+
+		await openMenu()
+		await page.getByRole('menuitem', { name: 'Notes' }).hover()
+		await page.getByRole('menuitem', { name: 'Add note...' }).click()
+		const dialog = page.getByRole('dialog')
+		await dialog.getByRole('textbox').fill('from the menu')
+		await dialog.getByRole('button', { name: 'Add' }).click()
+		await expect(narva).toContainText('from the menu')
+
+		await openMenu()
+		await page.getByRole('menuitem', { name: 'Notes' }).hover()
+		await page.getByRole('menuitem', { name: 'from the menu' }).hover()
+		// the note's own submenu, the last one open: the item menu has a Delete of its own
+		await page.getByRole('menu').last().getByRole('menuitem', { name: 'Delete' }).click()
+		await expect(narva).not.toContainText('from the menu')
 	})
 })

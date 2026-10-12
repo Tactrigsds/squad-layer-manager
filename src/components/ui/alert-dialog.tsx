@@ -77,9 +77,10 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 
 const AlertDialogAction = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Action>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants({ variant: 'primary' }), className)} {...props} />
+	// destructive for an action that cannot be undone, such as a delete
+	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & { variant?: 'primary' | 'destructive' }
+>(({ className, variant, ...props }, ref) => (
+	<AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants({ variant: variant ?? 'primary' }), className)} {...props} />
 ))
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName
 

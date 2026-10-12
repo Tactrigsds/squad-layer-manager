@@ -29,6 +29,9 @@ export const InferredRoleSchema = z.discriminatedUnion('type', [
 		filterId: F.FilterEntityIdSchema,
 		roleId: z.string(),
 	}),
+	z.object({ type: z.literal('rotation-owner'), rotationId: z.string() }),
+	z.object({ type: z.literal('rotation-user-contributor'), rotationId: z.string() }),
+	z.object({ type: z.literal('rotation-role-contributor'), rotationId: z.string() }),
 ])
 
 export type InferredRole = z.infer<typeof InferredRoleSchema>
@@ -65,8 +68,10 @@ export namespace Role {
 	}
 }
 
+const INFERRED_ROLE_TYPES: ReadonlySet<string> = new Set(InferredRoleSchema.options.map((opt) => opt.shape.type.value))
+
 export function isInferredRoleType<R extends { type: Role['type'] }>(role: R): role is Extract<R, { type: InferredRole['type'] }> {
-	return role.type === 'filter-owner' || role.type === 'filter-user-contributor' || role.type === 'filter-role-contributor'
+	return INFERRED_ROLE_TYPES.has(role.type)
 }
 
 export const UserDefinedRoleIdSchema = z
@@ -98,6 +103,8 @@ export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-s
 export const PERM_SCOPE_ARGS = {
 	global: z.undefined(),
 	filter: z.object({ filterId: F.FilterEntityIdSchema }),
+	// a plain string rather than the rotation id schema, which would pull the layer-list models into this module
+	rotation: z.object({ rotationId: z.string().min(1).max(64) }),
 	// acts on one squad server's live state or its queue. null serverId = all servers, as everywhere below
 	server: z.object({ serverId: z.string().nullable() }),
 	// null = unlimited (Infinity doesn't serialize and zod rejects it)
@@ -148,6 +155,11 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('filters:write-all', 'global'),
 	...definePermission('filters:write', 'filter'),
 	...definePermission('filters:manage', 'filter'),
+
+	...definePermission('rotations:create', 'global'),
+	...definePermission('rotations:write-all', 'global'),
+	...definePermission('rotations:write', 'rotation'),
+	...definePermission('rotations:manage', 'rotation'),
 
 	...definePermission('squad-server:view', 'server'),
 	...definePermission('squad-server:end-match', 'server'),
@@ -584,6 +596,13 @@ export function getWritePermReqForFilterEntity(id: F.FilterEntityId): Req {
 }
 export function getManagePermReqForFilterEntity(id: F.FilterEntityId): Req {
 	return Req.any(perm('filters:manage', { filterId: id }), perm('filters:write-all'))
+}
+
+export function getWritePermReqForRotation(rotationId: string): Req {
+	return Req.any(perm('rotations:write', { rotationId }), perm('rotations:write-all'))
+}
+export function getManagePermReqForRotation(rotationId: string): Req {
+	return Req.any(perm('rotations:manage', { rotationId }), perm('rotations:write-all'))
 }
 
 // the effective max kick-timeout duration a set of perms grants on `serverId`: undefined = no grant at all,

@@ -10,6 +10,7 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
 import * as MapUtils from '@/lib/map-utils'
@@ -246,10 +247,10 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			// statuses lag an edit by a debounce plus a query, so the warnings in this closure can belong to a queue the
 			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
 			// the acknowledgement when the real statuses land.
-			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
+			await ListHostPrt.awaitCurrentStatuses(props.stores.squadServer!)
 			// only the warnings this session caused are worth stopping the save for, and telling them apart needs what
 			// the saved queue warns about on its own
-			await SquadServerFrame.refreshSavedQueueWarnings(props.stores.squadServer!)
+			await ListHostPrt.refreshSavedQueueWarnings(props.stores.squadServer!)
 			const currentWarnings = SquadServerFrame.Sel.queueWarnings(loggedInUser?.discordId)(Zus.getState(props.stores.squadServer!))
 			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
@@ -292,7 +293,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					className={idleHidden}
 					variant="ghost"
 					size="icon-sm"
-					onClick={() => void SquadServerFrame.Actions.fixRepeats(props.stores)}
+					onClick={() => void ListHostPrt.Actions.fixRepeats({ listHost: props.stores.squadServer! })}
 				>
 					{fixingRepeats ? <Spinner /> : <Icons.WandSparkles />}
 				</Button>
@@ -362,21 +363,21 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			{!phone && tr.text(LL_Msgs.genVote())}
 		</StartActivityInteraction>
 	)
-	const pasteRotationButton = (
+	const addRotationButton = (
 		<StartActivityInteraction
-			loaderName="pasteRotation"
-			createActivity={UP.createEditingQueueVariant({ code: 'PASTE_ROTATION' })}
-			matchKey={(key) => key.code === 'PASTE_ROTATION'}
+			loaderName="addRotation"
+			createActivity={UP.createEditingQueueVariant({ code: 'ADD_ROTATION' })}
+			matchKey={(key) => key.code === 'ADD_ROTATION'}
 			preload="intent"
 			render={Button}
 			className={idleHidden}
 			size={phone ? 'icon-sm' : 'sm'}
-			title={phone ? tr.text(LL_Msgs.pasteRotationTitle()) : undefined}
-			aria-label={tr.text(LL_Msgs.pasteRotationTitle())}
+			title={phone ? tr.text(LL_Msgs.addRotationTitle()) : undefined}
+			aria-label={tr.text(LL_Msgs.addRotationTitle())}
 			disabled={!isEditing}
 		>
 			<Icons.FileText />
-			{!phone && <span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>}
+			{!phone && <span>{tr.text(LL_Msgs.addRotationTitle())}</span>}
 		</StartActivityInteraction>
 	)
 	const resetButton = (
@@ -503,7 +504,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<div className="flex items-center gap-1.5 group-data-[status=idle]:hidden">
 					{addLayersButton}
 					{genVoteButton}
-					{pasteRotationButton}
+					{addRotationButton}
 					{clearButton}
 					{fixRepeatsButton}
 				</div>
@@ -518,7 +519,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				{fixRepeatsButton}
 				{addLayersButton}
 				{genVoteButton}
-				{pasteRotationButton}
+				{addRotationButton}
 				{resetButton}
 				{stateControls}
 				{settingsButton}
@@ -564,7 +565,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 			</div>
 			<StickyGroup stickyRef={headerRef}>
 				<div className="fd-well mx-2 mb-2">
-					<LayerList stores={props.stores} />
+					<LayerList stores={{ listHost: props.stores.squadServer! }} />
 				</div>
 			</StickyGroup>
 		</>

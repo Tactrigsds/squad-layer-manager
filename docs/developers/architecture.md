@@ -489,6 +489,13 @@ Three state machines are built on it today, each as a model/server/client trio:
 The layer queue is the fullest example. Presence is the outlier: its client half is held in a plain global store rather
 than a frame partial, because presence is app-global.
 
+A rotation's items run on the same shared layer list. `src/systems/rotation-edit.server.ts` keeps one SLL session per
+rotation being edited, accepts a whitelist of the queue's client ops, and writes the list to the `rotations` table on
+save. `LL.ListHost` names what a list belongs to, a server or a rotation. The list editor, the layer pickers and
+`LayerQueuePrt` take a host, and `ListHostPrt` (`src/frame-partials/list-host.partial.ts`) carries what each host
+supplies: its settings, its repeat rules and its item statuses. Server-only parts of a row, such as vote state and the
+next-layer badge, render only for a server host.
+
 ## The domain layer
 
 ### Filters
@@ -510,6 +517,19 @@ Builders are layered and each only knows the level below it: `filter-builders.mo
 server's pool configuration, transitively through the filters that configuration applies. The server recomputes the
 index whenever a filter or a server's settings change, streams it to clients, and refuses to delete a filter that
 has any reference, or to store an apply-filter loop (which has no fixed point once the references are inlined).
+
+### Repeat rulesets and rotations
+
+A repeat ruleset (`src/models/repeat-rulesets.models.ts`, `RRS`) is a named list of repeat rules, kept in the global
+settings under `repeatRulesets`. A server points at one with `queue.mainPool.repeatRulesetId`, and a rotation with its
+`repeatRulesetId` column, so several servers and rotations can share one. Code says "repeat ruleset" in full except
+where the context already does, such as inside `RRS`.
+
+A rotation (`src/models/rotations.models.ts`) is an ordered `LL.List` kept in the `rotations` table, with owner and
+contributor rows mirroring filters'. Its items are anonymized on save: no sources, tag attribution or note authors.
+`ROT.toQueueItems` turns them into new queue items with fresh ids, the virtual `from-rotation:<rotationId>` tag and
+notes stamped with `fromRotation`. The queue server accepts notes on a new item only in that shape, so nobody can
+file a note in someone else's name.
 
 ### Layers
 

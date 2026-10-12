@@ -1,6 +1,6 @@
 import type React from 'react'
 
-import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
@@ -32,7 +32,7 @@ export type Store = {
 	appliedFilters: AppliedFiltersSlice
 } & Predicates
 
-export type Predicates = Partial<SquadServerFrame.KeyProp>
+export type Predicates = Partial<ListHostPrt.KeyProp>
 
 export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { appliedFilters: Key }
@@ -40,6 +40,31 @@ export type KeyProp = { appliedFilters: Key }
 export type Context = 'add' | 'edit' | 'generate'
 
 export type Args = FRM.SetupArgs<{ context: Context; editedLayerId?: L.LayerId; extraFiltersScope?: 'global' | 'local' }, Store>
+
+// The applied filters shared by Explore Layers and the add and generate dialogs on rotations: the last state set in
+// any of them is where the next one starts, and an open one follows changes made in another. A dialog on a server's
+// queue stays out, since its filters start from that server's pool. Kept in memory: a reload starts from the
+// defaults again.
+type SharedFilters = Pick<AppliedFiltersSlice, 'poolApplyAs' | 'filterStates'>
+const SharedFiltersStore = Zus.createStore<{ shared: SharedFilters | null }>(() => ({ shared: null }))
+
+function sharesFilters(context: Context, listHost: ListHostPrt.Key | undefined, localScope: boolean) {
+	if (context === 'edit' || localScope) return false
+	return !listHost || Zus.getState(listHost).listHost.type === 'rotation'
+}
+
+// `own` with every filter it holds set as `shared` has it; filters `shared` does not know keep their state
+function withShared(own: SharedFilters, shared: SharedFilters): SharedFilters {
+	const filterStates: AppliedFiltersSlice['filterStates'] = new Map()
+	for (const [id, applyAs] of own.filterStates) filterStates.set(id, shared.filterStates.get(id) ?? applyAs)
+	return { poolApplyAs: shared.poolApplyAs, filterStates }
+}
+
+function sameFilters(a: SharedFilters, b: SharedFilters) {
+	if (a.poolApplyAs !== b.poolApplyAs || a.filterStates.size !== b.filterStates.size) return false
+	for (const [id, applyAs] of a.filterStates) if (b.filterStates.get(id) !== applyAs) return false
+	return true
+}
 
 export function initAppliedFiltersStore(args: Args) {
 	const set = Zus.toPartialSetter(args.set, 'appliedFilters')
@@ -56,11 +81,35 @@ export function initAppliedFiltersStore(args: Args) {
 	// life of the page, holding the frame state it captured
 	void (async () => {
 		await Rx.Ext.firstValueFrom(FilterEntityClient.initializedFilterEntities$(), args.signal)
-		const squadServer = args.get().squadServer
-		set(getInitialFilterStates(args.input.context, squadServer, localScope))
+		const listHost = args.get().listHost
+		const initial = getInitialFilterStates(args.input.context, listHost, localScope)
+		if (!sharesFilters(args.input.context, listHost, localScope)) {
+			set(initial)
+		} else {
+			const shared = SharedFiltersStore.getState().shared
+			set(shared ? withShared(initial, shared) : initial)
+			// subscribed only once seeded, so the empty initial state never overwrites what is shared
+			if (!args.signal.aborted) {
+				args.cleanup.push(
+					args.update$.pipe(Rx.map(([state]) => state.appliedFilters)).subscribe(({ poolApplyAs, filterStates }) => {
+						const own = { poolApplyAs, filterStates }
+						const current = SharedFiltersStore.getState().shared
+						if (!current || !sameFilters(current, own)) SharedFiltersStore.setState({ shared: own })
+					}),
+				)
+				args.cleanup.push(
+					SharedFiltersStore.subscribe(({ shared }) => {
+						if (!shared) return
+						const own = args.get().appliedFilters
+						const next = withShared(own, shared)
+						if (!sameFilters(own, next)) set(next)
+					}),
+				)
+			}
+		}
 
-		if (args.input.context !== 'edit' || !args.input.editedLayerId || !squadServer) return
-		const settings = SquadServerFrame.Sel.settings(Zus.getState(squadServer))
+		if (args.input.context !== 'edit' || !args.input.editedLayerId || !listHost) return
+		const settings = ListHostPrt.Sel.settings(Zus.getState(listHost))
 		const membershipConstraints = SETTINGS.getPoolMembershipConstraints(settings)
 		if (membershipConstraints.length === 0) return
 		// only apply the pool filter once we know the edited layer is in the pool; otherwise the layer being edited
@@ -79,7 +128,7 @@ export function initAppliedFiltersStore(args: Args) {
 	if (!localScope) {
 		const unsub = ExtraFiltersStore.subscribe((extraFiltersState) => {
 			// only extra filters are owned by this store -- the pool's configured filters keep their state
-			const poolFilterIds = getDefaultSelectableIds(args.get().squadServer)
+			const poolFilterIds = getDefaultSelectableIds(args.get().listHost)
 			set((state) => ({
 				filterStates: new Map(
 					Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id) || poolFilterIds.has(id)),
@@ -91,13 +140,13 @@ export function initAppliedFiltersStore(args: Args) {
 	}
 }
 
-function getDefaultSelectableIds(squadServer: SquadServerFrame.Key | undefined) {
-	if (!squadServer) return new Set<F.FilterEntityId>()
-	const pool = SquadServerFrame.Sel.settings(Zus.getState(squadServer)).queue.mainPool
+function getDefaultSelectableIds(listHost: ListHostPrt.Key | undefined) {
+	if (!listHost) return new Set<F.FilterEntityId>()
+	const pool = ListHostPrt.Sel.settings(Zus.getState(listHost)).queue.mainPool
 	return new Set(pool.defaultSelectable.map((c) => c.filterId))
 }
 
-function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.Key | undefined, localScope = false) {
+function getInitialFilterStates(context: Context, listHost: ListHostPrt.Key | undefined, localScope = false) {
 	const filterStates: AppliedFiltersSlice['filterStates'] = new Map()
 	// a locally-scoped instance starts with no extras rather than pulling in the user's saved set
 	const extraFilters = localScope ? new Set<F.FilterEntityId>() : ExtraFiltersStore.getState().extraFilters
@@ -105,8 +154,8 @@ function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.
 		filterStates.set(filterid, 'disabled')
 	}
 	let poolApplyAs: ApplyAs = 'regular'
-	if (squadServer) {
-		const pool = SquadServerFrame.Sel.settings(Zus.getState(squadServer)).queue.mainPool
+	if (listHost) {
+		const pool = ListHostPrt.Sel.settings(Zus.getState(listHost)).queue.mainPool
 		for (const { filterId, applyAs } of pool.defaultSelectable) {
 			// when editing an already saved layer, secondary filters start off so the current layer stays visible
 			filterStates.set(filterId, context === 'edit' ? 'disabled' : applyAs)
@@ -165,8 +214,8 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 
 type FilterEntities = ReadonlyMap<F.FilterEntityId, F.FilterEntity>
 
-function mainPool(squadServer: SquadServerFrame.State | undefined) {
-	return squadServer ? SquadServerFrame.Sel.settings(squadServer).queue.mainPool : undefined
+function mainPool(listHost: ListHostPrt.Store | undefined) {
+	return listHost ? ListHostPrt.Sel.settings(listHost).queue.mainPool : undefined
 }
 
 export namespace Sel {
@@ -188,9 +237,8 @@ export namespace Sel {
 
 	export const extraFilterIds = RSel.createSelector(
 		[
-			(store: Store, _squadServer: SquadServerFrame.State | undefined, extras: LQY.ExtraQueryFiltersStore) =>
-				extraFilters(store, extras),
-			(_store: Store, squadServer: SquadServerFrame.State | undefined) => selectableFilterIds(squadServer),
+			(store: Store, _listHost: ListHostPrt.Store | undefined, extras: LQY.ExtraQueryFiltersStore) => extraFilters(store, extras),
+			(_store: Store, listHost: ListHostPrt.Store | undefined) => selectableFilterIds(listHost),
 		],
 		(extras, selectable) => Array.from(extras).filter((id) => !selectable.includes(id)),
 	)
@@ -198,8 +246,8 @@ export namespace Sel {
 	// filters the user can still pull in as an extra: everything the pool does not already pin
 	export const addableFilters = RSel.createSelector(
 		[
-			(squadServer: SquadServerFrame.State | undefined, _filterEntities: FilterEntities) => pinnedFilterIds(squadServer),
-			(_squadServer: SquadServerFrame.State | undefined, filterEntities: FilterEntities) => filterEntities,
+			(listHost: ListHostPrt.Store | undefined, _filterEntities: FilterEntities) => pinnedFilterIds(listHost),
+			(_listHost: ListHostPrt.Store | undefined, filterEntities: FilterEntities) => filterEntities,
 		],
 		(pinned, filterEntities) => Array.from(Gen.filter(filterEntities.values(), (filter) => !pinned.has(filter.id))),
 	)
@@ -207,7 +255,7 @@ export namespace Sel {
 	export function constraints(store: Store): LQY.Constraint[] {
 		const constraints: LQY.Constraint[] = []
 		const filterEntities = FilterEntityClient.filterEntities
-		const settings = store.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(store.squadServer)) : undefined
+		const settings = store.listHost ? ListHostPrt.Sel.settings(Zus.getState(store.listHost)) : undefined
 
 		if (settings) {
 			const poolFilter = settings.queue.mainPool.poolFilter
@@ -264,9 +312,9 @@ export namespace Actions {
 		const state = Zus.getState(stores.appliedFilters)
 		const current = state.appliedFilters.localExtraFilters ?? ExtraFiltersStore.getState().extraFilters
 		let filterIds = typeof update === 'function' ? update(Array.from(current)) : update
-		const squadServer = state.squadServer
-		if (squadServer) {
-			const pool = SquadServerFrame.Sel.settings(Zus.getState(squadServer)).queue.mainPool
+		const listHost = state.listHost
+		if (listHost) {
+			const pool = ListHostPrt.Sel.settings(Zus.getState(listHost)).queue.mainPool
 			const configuredIds = new Set([
 				...(pool.poolFilter ? [pool.poolFilter.filterId] : []),
 				...pool.defaultSelectable.map((c) => c.filterId),
@@ -276,7 +324,7 @@ export namespace Actions {
 		if (state.appliedFilters.localExtraFilters) {
 			const localExtraFilters = new Set(filterIds)
 			// mirror the global-scope subscription: dropping an extra drops its applied state too
-			const poolFilterIds = getDefaultSelectableIds(squadServer)
+			const poolFilterIds = getDefaultSelectableIds(listHost)
 			Zus.toPartialStore(stores.appliedFilters, 'appliedFilters').setState((slice) => ({
 				localExtraFilters,
 				filterStates: new Map(Gen.filter(slice.filterStates, ([id]) => localExtraFilters.has(id) || poolFilterIds.has(id))),

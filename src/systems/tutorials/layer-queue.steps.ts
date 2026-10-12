@@ -7,8 +7,8 @@ import ShortLayerName from '@/components/short-layer-name'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { setGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as LQTUT_Msgs from '@/messages/tutorials/layer-queue-tutorial.messages'
@@ -237,8 +237,8 @@ function simAddNote(ctx: Tour.SimulateCtx) {
 // the first save press: surface the warnings the draft causes, without saving. The flag is component state behind
 // a global handle; the warnings must have computed first or the panel's own effect clears it again.
 async function simShowSaveWarnings(ctx: Tour.SimulateCtx) {
-	await SquadServerFrame.awaitCurrentStatuses(ctx.run.squadServer)
-	await SquadServerFrame.refreshSavedQueueWarnings(ctx.run.squadServer)
+	await ListHostPrt.awaitCurrentStatuses(ctx.run.squadServer)
+	await ListHostPrt.refreshSavedQueueWarnings(ctx.run.squadServer)
 	if (ctx.signal.aborted) return
 	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, true)
 }

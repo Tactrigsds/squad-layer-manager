@@ -24,6 +24,25 @@ export function PermissionDeniedPanel(props: { denied: RBAC.PermissionDeniedResp
 }
 
 /**
+ * Wraps children in a tooltip giving why they are unavailable when `reason` is set, styled as the permission tooltip is.
+ * For a reason other than a missing permission, such as a filter that something still references.
+ */
+export function ReasonTooltip(props: { heading: string; reason: string | null; children: React.ReactNode; triggerClassName?: string }) {
+	if (!props.reason) return props.children
+	return (
+		<Tooltip help>
+			<TooltipTrigger asChild>
+				<span className={props.triggerClassName}>{props.children}</span>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-xs">
+				<p className="font-semibold text-destructive mb-1">{props.heading}</p>
+				<p className="text-xs text-muted-foreground">{props.reason}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
+/**
  * Wraps children in a tooltip showing the permission denied reason when `denied` is non-null.
  * The trigger span is required so the tooltip works even when the child is a disabled button.
  */

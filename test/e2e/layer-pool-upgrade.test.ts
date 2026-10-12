@@ -46,11 +46,20 @@ test.afterAll(async () => {
 	if (layersDir) fs.rmSync(layersDir, { recursive: true, force: true })
 })
 
-// the readout of the Add Layers dialog is the one number on screen that the query worker produced
+// the readout of the Add Layers dialog is the one number on screen that the query worker produced. The dialog opens
+// on the remembered collection, which leaves out the mod collections the two pools differ by, so it is cleared first;
+// the cleared menu is remembered too, so later openings start unpinned.
 async function matchedLayers(page: Page) {
 	await page.getByRole('button', { name: 'Start Editing' }).click()
 	await page.getByRole('button', { name: 'Add Layers' }).click()
 	const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+	const collection = dialog.getByRole('combobox', { name: 'Collection' })
+	await expect(collection).toBeVisible()
+	if ((await collection.textContent()) !== 'Select Collection...') {
+		await collection.click()
+		await page.getByRole('option', { name: '-', exact: true }).click()
+		await expect(collection).toHaveText('Select Collection...')
+	}
 	const text = await settledText(dialog)
 	await page.keyboard.press('Escape')
 	return text

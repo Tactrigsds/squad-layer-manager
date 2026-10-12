@@ -12,6 +12,8 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as RotationEdit from '@/systems/rotation-edit.server'
+import * as Rotation from '@/systems/rotation.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
@@ -40,6 +42,8 @@ export const orpcAppRouter = {
 	history: History.router,
 	filters: FilterEntity.filtersRouter,
 	filterEdit: FilterEdit.orpcRouter,
+	rotations: Rotation.orpcRouter,
+	rotationEdit: RotationEdit.orpcRouter,
 	rbac: Rbac.orpcRouter,
 	users: Users.orpcRouter,
 	teamswaps: Teamswaps.orpcRouter,

@@ -629,7 +629,35 @@ async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[],
 			),
 		)
 
+	const rotationOwned = db
+		.select({
+			source: E.sql<Source>`'owner'`.as('source'),
+			rotationId: Schema.rotations.id,
+		})
+		.from(Schema.rotations)
+		.where(discordUserId ? E.eq(Schema.rotations.ownerUserId, discordUserId) : E.sql`false`)
+	const rotationUserContributed = db
+		.select({
+			source: E.sql<Source>`'user-contributor'`.as('source'),
+			rotationId: Schema.rotationUserContributors.rotationId,
+		})
+		.from(Schema.rotationUserContributors)
+		.where(discordUserId ? E.eq(Schema.rotationUserContributors.userId, discordUserId) : E.sql`false`)
+	const rotationRoleContributed = db
+		.select({
+			source: E.sql<Source>`'role-contributor'`.as('source'),
+			rotationId: Schema.rotationRoleContributors.rotationId,
+		})
+		.from(Schema.rotationRoleContributors)
+		.where(
+			E.inArray(
+				Schema.rotationRoleContributors.roleId,
+				baseRoles.map((r) => r.type),
+			),
+		)
+
 	const rows = await unionAll(owned, userContributed, roleContributed)
+	const rotationRows = await unionAll(rotationOwned, rotationUserContributed, rotationRoleContributed)
 
 	const roles: RBAC.Role[] = []
 	for (const row of rows) {
@@ -642,6 +670,21 @@ async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[],
 				break
 			case 'role-contributor':
 				RBAC.Role.push(roles, { type: 'filter-role-contributor', filterId: row.filterId })
+				break
+			default:
+				assertNever(row.source)
+		}
+	}
+	for (const row of rotationRows) {
+		switch (row.source) {
+			case 'owner':
+				RBAC.Role.push(roles, { type: 'rotation-owner', rotationId: row.rotationId })
+				break
+			case 'user-contributor':
+				RBAC.Role.push(roles, { type: 'rotation-user-contributor', rotationId: row.rotationId })
+				break
+			case 'role-contributor':
+				RBAC.Role.push(roles, { type: 'rotation-role-contributor', rotationId: row.rotationId })
 				break
 			default:
 				assertNever(row.source)
@@ -677,6 +720,14 @@ function permsFromRoles(roles: RBAC.Role[], index: RoleIndex = roleIndex): RBAC.
 				)
 			} else if (role.type === 'filter-role-contributor' || role.type === 'filter-user-contributor') {
 				RBAC.addTracedPerms(perms, RBAC.tracedPerm('filters:write', [role], {}, { filterId: role.filterId }))
+			} else if (role.type === 'rotation-owner') {
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm('rotations:manage', [role], {}, { rotationId: role.rotationId }),
+					RBAC.tracedPerm('rotations:write', [role], {}, { rotationId: role.rotationId }),
+				)
+			} else if (role.type === 'rotation-role-contributor' || role.type === 'rotation-user-contributor') {
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm('rotations:write', [role], {}, { rotationId: role.rotationId }))
 			} else {
 				assertNever(role)
 			}

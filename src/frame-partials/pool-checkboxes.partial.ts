@@ -3,6 +3,7 @@ import type * as FRM from '@/lib/frame'
 import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders.models'
 import type * as LQY from '@/models/layer-queries.models'
+import type * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 export type PoolCheckboxesState = {
 	dnr: SETTINGS.PoolFilterApplyAs
@@ -42,9 +43,8 @@ export namespace Actions {
 	}
 }
 
-export function getToggledRepeatRuleConstraints(settings: SETTINGS.PublicServerSettings, applyAs: SETTINGS.PoolFilterApplyAs) {
+export function getToggledRepeatRuleConstraints(repeatRules: readonly RRS.RepeatRuleConfig[], applyAs: SETTINGS.PoolFilterApplyAs) {
 	const dnrConstraints: LQY.Constraint[] = []
-	const repeatRules = settings.queue.mainPool.repeatRules
 	for (let i = 0; i < repeatRules.length; i++) {
 		const rule = repeatRules[i]
 		dnrConstraints.push(

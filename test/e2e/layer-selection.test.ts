@@ -285,11 +285,15 @@ test.describe('installed mods', () => {
 		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
 		lastCount = await settledTextAfter(dialog, lastCount)
 
+		// Add Layers opens on the collection last picked in any layer picker, which an earlier call may have left at
+		// `collection` already; picking it again would change nothing for the count to answer to
 		const collectionMenu = dialog.getByRole('combobox', { name: 'Collection' })
-		await collectionMenu.click()
-		await page.getByRole('option', { name: collection, exact: true }).click()
-		await expect(collectionMenu).toHaveText(collection)
-		await settledTextAfter(dialog, lastCount)
+		if ((await collectionMenu.textContent()) !== collection) {
+			await collectionMenu.click()
+			await page.getByRole('option', { name: collection, exact: true }).click()
+			await expect(collectionMenu).toHaveText(collection)
+			await settledTextAfter(dialog, lastCount)
+		}
 		return dialog
 	}
 
@@ -368,8 +372,8 @@ test.describe('pasting a rotation', () => {
 		await page.goto(app.loginUrl())
 		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 		await page.getByRole('button', { name: 'Start Editing' }).click()
-		await page.getByRole('button', { name: 'Paste Rotation' }).click()
-		const dialog = page.getByRole('dialog', { name: 'Paste Rotation' })
+		await page.getByRole('button', { name: 'Add Rotation' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Add Rotation' })
 
 		const textarea = dialog.getByRole('textbox')
 		const validate = dialog.getByRole('checkbox', { name: 'Validate layers' })
@@ -422,6 +426,17 @@ test.describe('pasting a rotation', () => {
 		await expect(dialog).toHaveCount(0)
 		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 		await expect(Dash.queueSection(page).getByRole('listitem').first()).toContainText('RFG')
+
+		// a rotation exported as YAML pastes in too, its notes becoming the paster's own
+		await page.getByRole('button', { name: 'Add Rotation' }).click()
+		await dialog.getByRole('textbox').fill(['# from yaml', '- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms'].join('\n'))
+		await expect(dialog.getByRole('status')).toHaveText('YAML: 1 item, 1 note')
+		await dialog.getByRole('button', { name: 'Add 1 Layer' }).click()
+		await expect(dialog).toHaveCount(0)
+		await expect(Dash.queueLabel(page, 'Queue (4)')).toBeVisible()
+		const fromYaml = Dash.queueSection(page).getByRole('listitem').first()
+		await expect(fromYaml).toContainText(layerText('Gorodok_RAAS_v1'))
+		await expect(fromYaml).toContainText('from yaml')
 	})
 })
 
@@ -541,7 +556,7 @@ test.describe('pool membership and force-write', () => {
 		await dialog.getByRole('button', { name: 'Submit' }).click()
 		await expect(dialog).toBeHidden()
 
-		// 'Play Next' is the default position, so it lands at the head
+		// 'Add to start' is the default placement, so it lands at the head
 		const queuePanel = Dash.queueSection(page)
 		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 		await expect(queuePanel.getByRole('listitem').first()).toContainText('Sumari_Seed_v1')

@@ -427,6 +427,41 @@ export const deleteBlockedByReferences = def('This filter cannot be deleted whil
 
 export const filtersHeading = def('Filters')
 
+export const pageBlurb = def(
+	'A filter is a named expression that picks a set of layers out of the catalog, such as "no mechanized units on hilly maps". A server\'s layer pool is built from filters, and a filter can mark the layers it matches with an emoji in the layer tables.',
+)
+
+export const searchLabel = def('Search filters')
+
+export const searchPlaceholder = def('Search by name or description')
+
+// the filters page's orders: pool filters first, then filters with an emoji, then by name; or by name alone
+export const sortDefault = def('Pool filters first')
+
+export const sortName = def('Name')
+
+export const shownCount = def('{shown} of {total} filters', (shown: number, total: number) => ({ shown, total }))
+
+export const noMatches = def('No filter matches this search.')
+
+export const clone = def('Clone')
+
+export const cloneTitle = def('Clone Filter')
+
+export const cloneBlurb = def(
+	"Copies the expression, description, emoji and alert messages of {name}. You become the copy's owner.",
+	(name: string) => ({ name }),
+)
+
+export const cloneIdLabel = def('ID')
+
+export const cloneNameLabel = def('Name')
+
+export const cloneAndOpen = def('Clone and Open')
+
+// heads the tooltip on a delete that is not allowed for a reason other than permissions
+export const cannotDelete = def('Cannot delete')
+
 export const newFilter = def('New Filter')
 
 // -------- the applied-filters panel --------

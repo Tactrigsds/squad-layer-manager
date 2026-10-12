@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
@@ -18,6 +18,7 @@ import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as LOG from '@/models/logs.models'
+import type * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -315,16 +316,20 @@ export function useLayerComponents(
 let catalogWideSettings: SETTINGS.PublicServerSettings | undefined
 
 export namespace Sel {
-	// recomputed only when the saved settings change, rather than on every squad-server frame update
+	const NO_RULES: readonly RRS.RepeatRuleConfig[] = []
+	// recomputed only when the saved settings or the server's rules change, rather than on every squad-server frame update
 	export const layerItemStatusConstraints = RSel.createDeepSelector(
-		[(state: SquadServerFrame.State | undefined | null) => state?.settings.saved],
-		(saved) => SETTINGS.getSettingsConstraints(saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings())),
+		[
+			(state: ListHostPrt.Store | undefined | null) => state?.settings.saved,
+			(state: ListHostPrt.Store | undefined | null) => state?.repeatRules ?? NO_RULES,
+		],
+		(saved, repeatRules) => SETTINGS.getSettingsConstraints(saved ?? (catalogWideSettings ??= SETTINGS.catalogSettings()), repeatRules),
 	)
 }
 
-// squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
-export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
-	return Zus.useStore(squadServerFrameKey ?? null, Sel.layerItemStatusConstraints)
+// listHost is optional so this can be used from contexts with no list (e.g. the filter editor)
+export function useLayerItemStatusConstraints(listHost?: ListHostPrt.Key) {
+	return Zus.useStore(listHost ?? null, Sel.layerItemStatusConstraints)
 }
 
 function filterAndReportInvalidDescriptors(allConstraints: LQY.Constraint[], matchDescriptors: LQY.MatchDescriptor[] | undefined) {
@@ -348,13 +353,12 @@ export type LayerItemStatusData = {
 	highlightedMatchDescriptors?: LQY.MatchDescriptor[]
 }
 
-export function useLayerItemStatusData(
-	layerItem: LQY.LayerItem | LQY.ItemId,
-	squadServerFrameKey?: SquadServerFrame.Key,
-): LayerItemStatusData | null {
-	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
-	const statuses = Zus.useStore(squadServerFrameKey, (s) => s?.layerItemStatuses)
+export function useLayerItemStatusData(layerItem: LQY.LayerItem | LQY.ItemId, listHost?: ListHostPrt.Key): LayerItemStatusData | null {
+	const queriedConstraints = useLayerItemStatusConstraints(listHost)
+	const statuses = Zus.useStore(listHost, (s) => s?.layerItemStatuses)
 	const itemId = LQY.resolveId(layerItem)
+	// stale statuses would flash an indicator for the item's previous layer, so none show until fresh ones land
+	const covered = Zus.useStore(listHost, (s) => (s ? LQY.statusesCoverItem(s.layerItemStatusesFor, s.layerItemsState, itemId) : true))
 
 	const allMatchDescriptors = statuses?.matchDescriptors
 	const presentLayers = statuses?.present
@@ -386,7 +390,7 @@ export function useLayerItemStatusData(
 	)
 
 	return React.useMemo(() => {
-		if (!allMatchDescriptors || !presentLayers) return null
+		if (!allMatchDescriptors || !presentLayers || !covered) return null
 		const matchingDescriptors = filterAndReportInvalidDescriptors(queriedConstraints, allMatchDescriptors.get(itemId)) ?? []
 
 		const matchingConstraintIds = matchingDescriptors.map((c) => c.constraintId)
@@ -398,7 +402,7 @@ export function useLayerItemStatusData(
 			matchingDescriptors,
 			highlightedMatchDescriptors,
 		}
-	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints])
+	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints, covered])
 }
 
 export async function fetchLayersOutOfPool(

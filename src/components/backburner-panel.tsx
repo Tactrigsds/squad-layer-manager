@@ -301,7 +301,7 @@ function QueueDropDialog(props: StoresProp & { drop: QueueDrop | null; onCommit:
 function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit: (items: LL.NewItem[]) => void; onClose: () => void }) {
 	// createInput mints an instanceId, so it has to run once per mount rather than once per render
 	const [frameInput] = React.useState(() =>
-		SelectLayersFrame.createInput({ startingTemplate: props.drop.filter, squadServer: props.stores.squadServer }),
+		SelectLayersFrame.createInput({ startingTemplate: props.drop.filter, listHost: props.stores.squadServer }),
 	)
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input: frameInput })
 	useFrameTeardownOnUnmount(frameKey)
@@ -311,7 +311,7 @@ function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit:
 			title={tr.text(BB_Msgs.addRequestedLayerTitle())}
 			open={true}
 			onOpenChange={(open) => !open && props.onClose()}
-			stores={{ selectLayers: frameKey, squadServer: props.stores.squadServer }}
+			stores={{ selectLayers: frameKey, listHost: props.stores.squadServer }}
 			selectQueueItems={props.onCommit}
 		/>
 	)
@@ -560,7 +560,7 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 		const item = props.itemId
 			? Zus.getState(props.stores.squadServer!).queue.backburner.find((i) => i.itemId === props.itemId)
 			: undefined
-		return RequestFrame.createInput({ startingFilter: item?.filter, squadServer: props.stores.squadServer })
+		return RequestFrame.createInput({ startingFilter: item?.filter, listHost: props.stores.squadServer })
 	})
 	const frameKey = useFrameLifecycle(RequestFrame.frame, { input: frameInput })
 	useFrameTeardownOnUnmount(frameKey)
@@ -722,7 +722,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 			<span className="text-sm font-medium">{tr.text(BB_Msgs.filtersHeading())}</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
-					<PoolFilterCheckbox stores={{ squadServer: props.stores.squadServer, appliedFilters: key }} />
+					<PoolFilterCheckbox stores={{ listHost: props.stores.squadServer, appliedFilters: key }} />
 					{selectableFilterIds.map((filterId) => (
 						<FilterCheckbox key={filterId} filterId={filterId} stores={appliedKey} />
 					))}

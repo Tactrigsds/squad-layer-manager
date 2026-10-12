@@ -7,7 +7,7 @@ import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
-import { GenerationPanel, PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
+import { GenerationPanel, PoolFiltersPanel, PoolRepeatRulesetPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { TextInputField } from '@/components/settings-form/controls'
 import {
@@ -19,6 +19,8 @@ import {
 	useReset,
 } from '@/components/settings-form/settings-form.helpers'
 import { InputGroup, InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
+import { useFrameLifecycle } from '@/frames/frame-manager'
+import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import { useDebounced } from '@/hooks/use-debounce'
 import { createId } from '@/lib/id'
 import * as Zus from '@/lib/zustand'
@@ -228,10 +230,15 @@ export function InstalledModsField({ value$, onChange }: OverrideProps) {
 
 export function MainPoolField(props: OverrideProps) {
 	const api = usePoolConfigApi(props)
+	// this form saves the server's settings as a whole, and a ruleset is part of the global settings, so the rules get
+	// a save button of their own
+	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, {
+		input: { source: { type: 'pool-draft', value$: props.value$ } },
+	})
 	return (
 		<div className="space-y-6">
 			<PoolFiltersPanel api={api} />
-			<RepeatRulesPanel api={api} />
+			<PoolRepeatRulesetPanel poolApi={api} repeatRulesetEditor={repeatRulesetEditor} inlineSave />
 			<GenerationPanel api={api} />
 		</div>
 	)

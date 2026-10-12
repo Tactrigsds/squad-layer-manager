@@ -609,7 +609,9 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
 		const serverState = await SquadServer.getServerState(ctx)
-		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
+		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
+			generatingLayers: true,
+		})
 		const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
 		const list = await LayerQueries.resolveLayerItemsState(ctx)
 		const templates = ctx.layerQueue.session.state.savedBackburner.map((item) => ({ itemId: item.itemId, filter: item.filter }))
@@ -720,7 +722,9 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 	const head = getSavedQueue(ctx)[0]
 	if (!head) return undefined
 	const serverState = await SquadServer.getServerState(ctx)
-	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
+		generatingLayers: false,
+	})
 	// statuses need the engine, so the query ctx is only resolved once there is a head to report on
 	const queryCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
 	const statusRes = await LayerQueriesShared.getLayerItemStatuses({
@@ -1143,6 +1147,16 @@ export async function isTemplateSatisfiable(
 // writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
 // else's is what the manage-all grant is for.
 async function tryDenyNoteOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: SLL.Operation) {
+	if (op.op === 'add') {
+		// a note may arrive with a new item only as an anonymous copy of a rotation's note, so nobody can file one in
+		// someone else's name
+		const notes = op.items
+			.flatMap((item) => (item.type === 'single-list-item' ? [item] : item.choices))
+			.flatMap((item) => item.notes ?? [])
+		if (notes.some((note) => !LNote.isRotationNote(note)))
+			return { code: 'err:invalid-op' as const, msg: 'New items can only carry notes copied from a rotation' }
+		return
+	}
 	if (op.op !== 'edit-note' && op.op !== 'delete-note') return
 	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
 	// a note that isn't there is left to the reducer, which no-ops on it

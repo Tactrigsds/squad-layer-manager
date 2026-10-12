@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import type { Focusable } from '@/lib/react'
@@ -349,8 +349,8 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 }
 
 export default function LayerTable(props: {
-	// squadServer is optional: supplied when rendered within a server context (for team-parity display), omitted elsewhere
-	stores: LayerTablePrt.KeyProp & Partial<SquadServerFrame.KeyProp>
+	// listHost is optional: supplied when rendered within a server context (for team-parity display), omitted elsewhere
+	stores: LayerTablePrt.KeyProp & Partial<ListHostPrt.KeyProp>
 	extraPanelItems?: React.ReactNode
 
 	enableForceSelect?: boolean
@@ -390,7 +390,7 @@ export default function LayerTable(props: {
 
 	// shared display state for all cells -- see LayerTableCellCtx
 	const displayLayersNormalized = Zus.useStore(ClientOnlySettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
-	const teamParity = Zus.useStore(props.stores.layerTable, props.stores.squadServer ?? null, LayerTablePrt.Sel.teamParity)
+	const teamParity = Zus.useStore(props.stores.layerTable, props.stores.listHost ?? null, LayerTablePrt.Sel.teamParity)
 	const cellDisplayCtx = React.useMemo(
 		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),
 		[teamParity, displayLayersNormalized],
@@ -605,7 +605,7 @@ export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: 
 }
 
 export function LayerTableControlPanel(props: {
-	stores: LayerTablePrt.KeyProp & Partial<SquadServerFrame.KeyProp>
+	stores: LayerTablePrt.KeyProp & Partial<ListHostPrt.KeyProp>
 	canToggleColumns?: boolean
 	table: CoreTable<LayerQueriesClient.RowData>
 	enableForceSelect?: boolean
@@ -628,8 +628,8 @@ export function LayerTableControlPanel(props: {
 
 	const showSelectedId = React.useId()
 	const installedMods = Zus.useStore(
-		props.stores.squadServer ?? null,
-		Zus.useShallow((s: SquadServerFrame.State | undefined) => s?.settings.saved.installedMods),
+		props.stores.listHost ?? null,
+		Zus.useShallow((s: ListHostPrt.Store | undefined) => s?.settings.saved.installedMods),
 	)
 
 	// while compact mode overrides visibility, toggling stored prefs would have no visible effect

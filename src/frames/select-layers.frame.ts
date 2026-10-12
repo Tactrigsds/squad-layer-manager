@@ -2,16 +2,15 @@ import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared.models'
-import * as EFB from '@/models/editable-filter-builders.models'
-import * as F from '@/models/filter.models'
+import type * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -36,8 +35,7 @@ export function createInput(
 		sharedInstanceId?: string
 		// seed the layer-select menu from a backburner template (matchup left -> Team 1, right -> Team 2)
 		startingTemplate?: F.FilterNode
-		rememberCollection?: boolean
-	} & Partial<SquadServerFrame.KeyProp>,
+	} & Partial<ListHostPrt.KeyProp>,
 ): Input {
 	const colConfig = ConfigClient.getColConfig()
 	const base: BaseInput = {
@@ -45,9 +43,8 @@ export function createInput(
 		initialEditedLayerId: opts.initialEditedLayerId,
 		instanceId: opts.sharedInstanceId ?? createId(4),
 		cursor: opts.cursor,
-		squadServer: opts.squadServer,
+		listHost: opts.listHost,
 		startingMenuItems: opts.startingTemplate ? LayerFilterMenuPrt.menuItemsFromTemplate(opts.startingTemplate, colConfig) : undefined,
-		rememberCollection: opts.rememberCollection,
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -72,8 +69,7 @@ type BaseInput = {
 	initialEditedLayerId?: L.LayerId
 	instanceId: string
 	startingMenuItems?: Record<string, F.EditableCompNode>
-	rememberCollection?: boolean
-} & Partial<SquadServerFrame.KeyProp>
+} & Partial<ListHostPrt.KeyProp>
 
 type Input = BaseInput & LayerTablePrt.Input
 
@@ -117,9 +113,9 @@ const setup: Frame['setup'] = (args) => {
 		filtersOnlyCount: { watchers: 0, value: null },
 	} satisfies Primary)
 
-	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
+	// the applied-filters partial reads listHost from state to seed the pool's configured filters; without
 	// this its predicate is unset and pool filters never apply in the select-layers dialog
-	set({ squadServer: input.squadServer } satisfies AppliedFiltersPrt.Predicates)
+	set({ listHost: input.listHost } satisfies AppliedFiltersPrt.Predicates)
 
 	set({
 		baseQueryInput: undefined,
@@ -143,15 +139,7 @@ const setup: Frame['setup'] = (args) => {
 		input: input.initialEditedLayerId ? { context: 'edit', editedLayerId: input.initialEditedLayerId } : { context: 'add' },
 	})
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'disabled' } } })
-	let startingMenuItems = input.startingMenuItems
-	if (!startingMenuItems && input.rememberCollection) {
-		startingMenuItems = LayerFilterMenuPrt.getDefaultFilterMenuItemState(
-			getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig),
-			input.colConfig,
-		)
-		startingMenuItems.Collection = readRememberedCollection()
-	}
-
+	const startingMenuItems = input.startingMenuItems
 	LayerFilterMenuPrt.initLayerFilterMenuStore({
 		...args,
 		input: startingMenuItems
@@ -160,19 +148,25 @@ const setup: Frame['setup'] = (args) => {
 					items: startingMenuItems,
 					emptyItems: LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, input.colConfig),
 				}
-			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
+			: {
+					colConfig: input.colConfig,
+					defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig),
+					// editing a layer opens on that layer's own neighbourhood, so only adding layers starts from the
+					// remembered collection
+					rememberCollection: !input.initialEditedLayerId,
+				},
 	})
 	LayerSearchPrt.initLayerSearch({ ...args, input: {} })
 	// set before the table starts querying, so its first query is not one built without the pool and repeat rules
-	set({ baseQueryInput: Sel.baseQueryInput(args.get(), input.squadServer ? Zus.getState(input.squadServer) : undefined) })
+	set({ baseQueryInput: Sel.baseQueryInput(args.get(), input.listHost ? Zus.getState(input.listHost) : undefined) })
 	LayerTablePrt.initLayerTable(args)
 
 	let baseQueryInput$: Rx.Observable<LQY.BaseQueryInput>
 
-	if (input.squadServer) {
-		baseQueryInput$ = Rx.combineLatest([args.update$, Zus.toObservable(input.squadServer, true)]).pipe(
-			Rx.map(([[state], [squadServer]]) => {
-				return Sel.baseQueryInput(state, squadServer)
+	if (input.listHost) {
+		baseQueryInput$ = Rx.combineLatest([args.update$, Zus.toObservable(input.listHost, true)]).pipe(
+			Rx.map(([[state], [listHost]]) => {
+				return Sel.baseQueryInput(state, listHost)
 			}),
 		)
 	} else {
@@ -184,13 +178,13 @@ const setup: Frame['setup'] = (args) => {
 		}),
 	)
 
-	const squadServer$ = input.squadServer ? Zus.toObservable(input.squadServer, true).pipe(Rx.map(([state]) => state)) : Rx.of(undefined)
+	const listHost$ = input.listHost ? Zus.toObservable(input.listHost, true).pipe(Rx.map(([state]) => state)) : Rx.of(undefined)
 	args.cleanup.push(
-		Rx.combineLatest([args.update$, squadServer$])
+		Rx.combineLatest([args.update$, listHost$])
 			.pipe(
-				Rx.map(([[state], squadServer]) =>
+				Rx.map(([[state], listHost]) =>
 					state.filtersOnlyCount.watchers > 0
-						? LayerQueriesClient.getQueryLayersInput(Sel.preMenuFilteredQueryInput(state, squadServer), {
+						? LayerQueriesClient.getQueryLayersInput(Sel.preMenuFilteredQueryInput(state, listHost), {
 								cfg: colConfig,
 								pageSize: 1,
 								sort: LQY.DEFAULT_SORT,
@@ -213,40 +207,6 @@ const setup: Frame['setup'] = (args) => {
 				set((state) => ({ filtersOnlyCount: { ...state.filtersOnlyCount, value } }))
 			}),
 	)
-
-	if (input.rememberCollection) {
-		args.cleanup.push(
-			args.update$
-				.pipe(
-					Rx.map(([state]) => state.filterMenu.menuItems.Collection),
-					Rx.Ext.distinctDeepEquals(),
-				)
-				.subscribe(writeRememberedCollection),
-		)
-	}
-}
-
-// The catalog holds the mod collections alongside OWI, so a dialog that opens unpinned buries the vanilla layers.
-// `rememberCollection` opens it on the default collection, then on whatever the user last set the Collection menu
-// item to. The comparison is stored whole rather than as a bare collection name, so a change of operator comes
-// back with it. A value the catalog has since dropped is left alone, as a stale saved filter is.
-const REMEMBERED_COLLECTION_KEY = 'selectLayersCollection:v1'
-
-function readRememberedCollection(components = L.StaticLayerComponents): F.EditableCompNode {
-	const stored = localStorage.getItem(REMEMBERED_COLLECTION_KEY)
-	if (stored !== null) {
-		try {
-			const parsed = F.EditableCompNodeSchema.parse(JSON.parse(stored))
-			if (F.compAnchorColumn(parsed) === 'Collection') return parsed
-		} catch {
-			// fall through to the default: a key we cannot read is one the user can simply set again
-		}
-	}
-	return EFB.eq('Collection', L.getDefaultCollection(components))
-}
-
-function writeRememberedCollection(comp: F.EditableCompNode) {
-	localStorage.setItem(REMEMBERED_COLLECTION_KEY, JSON.stringify(comp))
 }
 
 // const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
@@ -288,13 +248,16 @@ export namespace Sel {
 		return state.cursor !== undefined
 	}
 
-	export function preMenuFilteredQueryInput(state: State, squadServer?: SquadServerFrame.State): LQY.BaseQueryInput {
+	export function preMenuFilteredQueryInput(state: State, listHost?: ListHostPrt.Store): LQY.BaseQueryInput {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 
 		// should generally not do this, but we're going to move this into frames anyway and it's low impact
-		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
+		const settings = ListHostPrt.Sel.settingsOrDefault(listHost)
 
-		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
+		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(
+			ListHostPrt.Sel.repeatRulesOrNone(listHost),
+			state.poolCheckboxes.checkboxesState.dnr,
+		)
 
 		// left unapplied so an unsupported layer is still listed, greyed out with the reason, rather than absent
 		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'disabled' })
@@ -303,12 +266,12 @@ export namespace Sel {
 			cursor: state.cursor,
 			action: state.initialEditedLayerId ? 'edit' : 'add',
 			constraints: [installedMods, ...appliedConstraints, ...repeatRuleConstraints],
-			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
+			list: listHost?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 	}
 
-	export function baseQueryInput(state: State, squadServer: SquadServerFrame.State | undefined): LQY.BaseQueryInput {
-		const preFiltered = preMenuFilteredQueryInput(state, squadServer)
+	export function baseQueryInput(state: State, listHost: ListHostPrt.Store | undefined): LQY.BaseQueryInput {
+		const preFiltered = preMenuFilteredQueryInput(state, listHost)
 		const filterMenuConstraints = LayerFilterMenuPrt.Sel.filterMenuConstraints(state)
 		return LQY.mergeBaseInputs(preFiltered, { constraints: [...filterMenuConstraints, ...LayerSearchPrt.Sel.constraints(state)] })
 	}

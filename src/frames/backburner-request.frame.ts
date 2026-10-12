@@ -2,7 +2,7 @@ import type React from 'react'
 
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
@@ -42,14 +42,14 @@ type Input = {
 	colConfig: LQY.EffectiveColumnAndTableConfig
 	instanceId: string
 	startingFilter?: F.FilterNode
-} & Partial<SquadServerFrame.KeyProp>
+} & Partial<ListHostPrt.KeyProp>
 
-export function createInput(opts: { startingFilter?: F.FilterNode } & Partial<SquadServerFrame.KeyProp>): Input {
+export function createInput(opts: { startingFilter?: F.FilterNode } & Partial<ListHostPrt.KeyProp>): Input {
 	return {
 		colConfig: ConfigClient.getColConfig(),
 		instanceId: createId(4),
 		startingFilter: opts.startingFilter,
-		squadServer: opts.squadServer,
+		listHost: opts.listHost,
 	}
 }
 
@@ -114,8 +114,8 @@ const setup: Frame['setup'] = (args) => {
 		matchupSideOptions: null,
 	} satisfies Primary)
 
-	// the applied-filters partial reads squadServer from state (pool filter, configured selectable filters)
-	set({ squadServer: args.input.squadServer } satisfies AppliedFiltersPrt.Predicates)
+	// the applied-filters partial reads listHost from state (pool filter, configured selectable filters)
+	set({ listHost: args.input.listHost } satisfies AppliedFiltersPrt.Predicates)
 
 	set({
 		resetAllConstraints() {
@@ -149,7 +149,7 @@ const setup: Frame['setup'] = (args) => {
 		await Rx.Ext.firstValueFrom(FilterEntityClient.initializedFilterEntities$(), args.signal)
 		await Prom.sleep(0)
 		if (args.signal.aborted) return
-		const pool = args.input.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool : null
+		const pool = args.input.listHost ? ListHostPrt.Sel.settings(Zus.getState(args.input.listHost)).queue.mainPool : null
 		const seedStates = new Map<F.FilterEntityId, SETTINGS.AppliedFilterApplyAs>()
 		if (args.input.startingFilter) {
 			for (const id of parts.filterIds) seedStates.set(id, 'regular')
@@ -200,11 +200,9 @@ const setup: Frame['setup'] = (args) => {
 			}),
 		)
 
-	const squadServer = args.input.squadServer
-	const stateAndServer$: Rx.Observable<readonly [State, SquadServerFrame.State | undefined]> = squadServer
-		? Rx.combineLatest([args.update$, Zus.toObservable(squadServer, true)]).pipe(
-				Rx.map(([[state], [server]]) => [state, server] as const),
-			)
+	const listHost = args.input.listHost
+	const stateAndServer$: Rx.Observable<readonly [State, ListHostPrt.Store | undefined]> = listHost
+		? Rx.combineLatest([args.update$, Zus.toObservable(listHost, true)]).pipe(Rx.map(([[state], [server]]) => [state, server] as const))
 		: args.update$.pipe(Rx.map(([state]) => [state, undefined] as const))
 	args.cleanup.push(
 		stateAndServer$
@@ -287,8 +285,8 @@ export namespace Sel {
 		// applies nothing beyond them and the parts the dialog carries through untouched
 		const constraints: LQY.Constraint[] = [...AppliedFiltersPrt.Sel.constraints(state)]
 		// a request the server could never load is not worth offering: generation applies this constraint anyway
-		if (state.squadServer) {
-			const settings = SquadServerFrame.Sel.settings(Zus.getState(state.squadServer))
+		if (state.listHost) {
+			const settings = ListHostPrt.Sel.settings(Zus.getState(state.listHost))
 			constraints.push(SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'regular' }))
 		}
 		const preservedFilter = BB.buildTemplateFilter(state.preserved)
@@ -382,7 +380,7 @@ export namespace Sel {
 		}
 		// the pool checkbox writes pool membership into the template itself: 'regular' pins the request to the
 		// pool, 'inverted' to outside it, 'disabled' leaves it unconstrained
-		const poolFilter = state.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(state.squadServer)).queue.mainPool.poolFilter : null
+		const poolFilter = state.listHost ? ListHostPrt.Sel.settings(Zus.getState(state.listHost)).queue.mainPool.poolFilter : null
 		const poolApplyAs = state.appliedFilters.poolApplyAs
 		if (poolFilter && poolApplyAs !== 'disabled') {
 			const wantsPoolMatches = (poolFilter.mode === 'include') === (poolApplyAs === 'regular')

@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -30,13 +31,18 @@ import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as RotationClient from '@/systems/rotation.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-// The tag row shared by the queue item, the add-layers dialog and the paste-rotation dialog. It holds tag ids only:
+// The tag row shared by the queue item, the add-layers dialog and the add-rotation dialog. It holds tag ids only:
 // labels/colors are resolved against global settings at render, so an id whose tag has been deleted still renders
 // (as the raw id) and can be taken off the item.
 
+// which configured set a tag row draws on: layer tags for queue items, rotation tags for rotations
+export type TagKind = 'layer' | 'rotation'
+
 export function LayerTags(props: {
+	kind?: TagKind
 	tags: LTag.TagId[] | undefined
 	// who put each tag on this item, where that's known. Absent in the dialogs, which tag items that don't exist yet.
 	setBy?: LTag.Attribution
@@ -50,9 +56,11 @@ export function LayerTags(props: {
 	// no add button at all, where the item's menu adds tags instead; with no tags either, nothing renders
 	hideAdd?: boolean
 }) {
-	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
-	const resolved = LTag.resolveAll(props.tags, configured)
-	const canManage = useCanManageTags()
+	const kind = props.kind ?? 'layer'
+	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => configuredTags(s, kind))
+	const rotations = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotations)
+	const resolved = LTag.resolveAll(props.tags, configured, (rotationId) => rotations.get(rotationId)?.name)
+	const canManage = useCanManageTags(kind)
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
 
 	const tagIds = props.tags ?? []
@@ -86,7 +94,7 @@ export function LayerTags(props: {
 					revealOnHover={props.revealAddOnHover}
 				/>
 			)}
-			<LayerTagDialog state={editing} onClose={() => setEditing(null)} onCreated={add} />
+			<LayerTagDialog kind={kind} state={editing} onClose={() => setEditing(null)} onCreated={add} />
 		</span>
 	)
 }
@@ -107,6 +115,7 @@ function TagChip(props: {
 			className="inline-flex items-center rounded-sm border px-1 text-xs leading-4"
 			style={{ borderColor: `${tag.color}80`, backgroundColor: `${tag.color}1a`, color: tag.color }}
 		>
+			{tag.rotationId !== undefined && <Icons.RefreshCw className="me-1 h-3 w-3" aria-hidden />}
 			{label}
 			<button
 				type="button"
@@ -121,7 +130,25 @@ function TagChip(props: {
 	)
 	const card = (
 		<>
-			{tag.deleted ? (
+			{tag.rotationId !== undefined ? (
+				<p className="text-xs text-muted-foreground">
+					{tag.deleted ? (
+						tr.text(LTag_Msgs.fromDeletedRotation())
+					) : (
+						<>
+							{tr.text(LTag_Msgs.fromRotation())}{' '}
+							<Link
+								to="/rotations/$rotationId"
+								params={{ rotationId: tag.rotationId }}
+								className="font-medium"
+								style={{ color: tag.color }}
+							>
+								{tag.label}
+							</Link>
+						</>
+					)}
+				</p>
+			) : tag.deleted ? (
 				<p className="text-xs text-muted-foreground">{tr.text(LTag_Msgs.deletedTag())}</p>
 			) : (
 				<>
@@ -233,20 +260,32 @@ function AddTagDropdown(props: {
 	)
 }
 
-export function LayerTagDialog(props: { state: LTag.Tag | 'new' | null; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
+export function LayerTagDialog(props: {
+	kind?: TagKind
+	state: LTag.Tag | 'new' | null
+	onClose: () => void
+	onCreated: (id: LTag.TagId) => void
+}) {
 	const open = props.state !== null
 	// remounting per open is what regenerates the suggested colour for a new tag and reseeds the fields for an edit
 	return (
 		<Dialog open={open} onOpenChange={(next) => !next && props.onClose()}>
 			<DialogContent className="max-w-sm">
-				{props.state && <LayerTagDialogBody key={props.state === 'new' ? 'new' : props.state.id} {...props} state={props.state} />}
+				{props.state && (
+					<LayerTagDialogBody
+						key={props.state === 'new' ? 'new' : props.state.id}
+						{...props}
+						kind={props.kind ?? 'layer'}
+						state={props.state}
+					/>
+				)}
 			</DialogContent>
 		</Dialog>
 	)
 }
 
-function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
-	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
+function LayerTagDialogBody(props: { kind: TagKind; state: LTag.Tag | 'new'; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
+	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => configuredTags(s, props.kind))
 	const existing = props.state === 'new' ? undefined : props.state
 	const isNew = existing === undefined
 
@@ -261,21 +300,21 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 		if (hexRef.current) hexRef.current.value = next
 	}
 
-	const upsert = useMutation(
-		RPC.orpc.settings.global.upsertLayerTag.mutationOptions({
-			onSuccess: (res) => {
-				if (res.code === 'ok') {
-					if (isNew) props.onCreated(res.tag.id)
-					props.onClose()
-					return
-				}
-				if (res.code === 'err:duplicate-label') toast.error(...tr.toast(LTag_Msgs.duplicateLabel(res.message)))
-				else if (res.code === 'err:invalid-settings') toast.error(...tr.toast(LTag_Msgs.invalidTag(res.message)))
-				else RbacClient.handlePermissionDenied(res)
-			},
-			onError: () => toast.error(...tr.toast(LTag_Msgs.saveFailed())),
-		}),
-	)
+	const upsert = useMutation({
+		mutationFn: (tag: LTag.Tag) =>
+			props.kind === 'layer' ? RPC.orpc.settings.global.upsertLayerTag.call(tag) : RPC.orpc.settings.global.upsertRotationTag.call(tag),
+		onSuccess: (res) => {
+			if (res.code === 'ok') {
+				if (isNew) props.onCreated(res.tag.id)
+				props.onClose()
+				return
+			}
+			if (res.code === 'err:duplicate-label') toast.error(...tr.toast(LTag_Msgs.duplicateLabel(res.message)))
+			else if (res.code === 'err:invalid-settings') toast.error(...tr.toast(LTag_Msgs.invalidTag(res.message)))
+			else RbacClient.handlePermissionDenied(res)
+		},
+		onError: () => toast.error(...tr.toast(LTag_Msgs.saveFailed())),
+	})
 
 	const trimmed = label.trim()
 	const duplicate = LTag.labelConflict(configured, trimmed, existing?.id)
@@ -296,7 +335,11 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 		<>
 			<DialogHeader>
 				<DialogTitle>{isNew ? tr.text(LTag_Msgs.newTagTitle()) : tr.text(LTag_Msgs.editTag())}</DialogTitle>
-				<DialogDescription>{isNew ? tr.text(LTag_Msgs.newTagBlurb()) : tr.text(LTag_Msgs.editTagBlurb())}</DialogDescription>
+				<DialogDescription>
+					{props.kind === 'layer'
+						? tr.text(isNew ? LTag_Msgs.newTagBlurb() : LTag_Msgs.editTagBlurb())
+						: tr.text(isNew ? LTag_Msgs.newRotationTagBlurb() : LTag_Msgs.editRotationTagBlurb())}
+				</DialogDescription>
 			</DialogHeader>
 			<div
 				className="space-y-3"
@@ -351,7 +394,8 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 						</div>
 					</div>
 				</div>
-				<div className="flex items-start space-x-2">
+				{/* fixing repeats reads layer tags only */}
+				<div className={cn('flex items-start space-x-2', props.kind !== 'layer' && 'hidden')}>
 					<Checkbox
 						id="layer-tag-prevent-swaps"
 						className="mt-0.5"
@@ -376,6 +420,14 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 	)
 }
 
-function useCanManageTags() {
-	return !RbacClient.useAccess('settings.global.upsertLayerTag')
+function useCanManageTags(kind: TagKind) {
+	const layerDenied = RbacClient.useAccess('settings.global.upsertLayerTag')
+	const rotationDenied = RbacClient.useAccess('settings.global.upsertRotationTag')
+	return !(kind === 'layer' ? layerDenied : rotationDenied)
 }
+
+function configuredTags(settings: SettingsClient.PublicSettings | null | undefined, kind: TagKind): LTag.Tag[] {
+	return (kind === 'layer' ? settings?.layerTags : settings?.rotationTags) ?? EMPTY_TAGS
+}
+
+const EMPTY_TAGS: LTag.Tag[] = []

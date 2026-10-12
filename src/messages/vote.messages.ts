@@ -194,10 +194,6 @@ export const addChoiceHint = def('Add choice')
 
 export const addChoice = def('Add Choice')
 
-export const playNext = def('Play Next')
-
-export const playAfter = def('Play After')
-
 export const submit = def('Submit')
 
 // -------- the tally readout --------

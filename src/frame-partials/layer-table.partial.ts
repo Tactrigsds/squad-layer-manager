@@ -3,7 +3,7 @@ import type * as Im from 'immer'
 import React from 'react'
 
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object-utils'
@@ -422,7 +422,7 @@ export namespace Sel {
 	export const teamParity = RSel.createSelector(
 		[
 			(store: Store) => store.layerTable.pageData?.input.cursor,
-			(_store: Store, squadServer: SquadServerFrame.State | undefined) => squadServer?.layerItemsState,
+			(_store: Store, listHost: ListHostPrt.Store | undefined) => listHost?.layerItemsState,
 		],
 		(cursor, layerItemsState) => {
 			if (!cursor || !layerItemsState) return 0

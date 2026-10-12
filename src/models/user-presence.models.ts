@@ -11,6 +11,7 @@ import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import * as ROT from '@/models/rotations.models'
 import * as SS from '@/models/server-state.models'
 import * as USR from '@/models/users.models'
 
@@ -39,7 +40,7 @@ export const QueueEditingActivitySchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('MOVING_ITEM'), itemId: LL.ItemIdSchema }),
 	z.object({ code: z.literal('CONFIGURING_VOTE'), itemId: LL.ItemIdSchema }),
 	z.object({ code: z.literal('GENERATING_VOTE'), cursor: LL.CursorSchema }),
-	z.object({ code: z.literal('PASTE_ROTATION') }),
+	z.object({ code: z.literal('ADD_ROTATION') }),
 ])
 type AnyQueueEditingActivity = z.infer<typeof QueueEditingActivitySchema>
 export type QueueEditingCode = AnyQueueEditingActivity['code']
@@ -85,11 +86,20 @@ const FilterActivitySchema = z.object({
 	editingFilter: z.literal(true).optional(),
 })
 
+// A rotation's items are edited with the queue's list editor, so editing one is recorded the way editing a queue is:
+// as editingQueue, which also drives the item locks and the add-layers and vote dialogs.
+const RotationActivitySchema = z.object({
+	place: z.literal('rotation'),
+	rotationId: ROT.RotationIdSchema,
+	editingQueue: QueueEditingActivitySchema.optional(),
+})
+
 // A client is present in one place at a time, and the places have nothing in common: a server dashboard is
-// scoped by serverId, a filter page by filterId.
-export const RootActivitySchema = z.discriminatedUnion('place', [DashboardActivitySchema, FilterActivitySchema])
+// scoped by serverId, a filter page by filterId, a rotation page by rotationId.
+export const RootActivitySchema = z.discriminatedUnion('place', [DashboardActivitySchema, FilterActivitySchema, RotationActivitySchema])
 export type DashboardActivity = z.infer<typeof DashboardActivitySchema>
 export type FilterActivity = z.infer<typeof FilterActivitySchema>
+export type RotationActivity = z.infer<typeof RotationActivitySchema>
 export type RootActivity = z.infer<typeof RootActivitySchema>
 
 const IDLE: QueueEditingActivity<'IDLE'> = { code: 'IDLE' }
@@ -100,6 +110,23 @@ export function dashRoot(activity: RootActivity | null | undefined): DashboardAc
 
 export function filterRoot(activity: RootActivity | null | undefined): FilterActivity | null {
 	return activity?.place === 'filter' ? activity : null
+}
+
+export function rotationRoot(activity: RootActivity | null | undefined): RotationActivity | null {
+	return activity?.place === 'rotation' ? activity : null
+}
+
+export function activityRotationId(activity: RootActivity | null | undefined): ROT.RotationId | undefined {
+	return rotationRoot(activity)?.rotationId
+}
+
+// whose list the client is in front of: a server's queue on its dashboard, or a rotation's items on its page
+export function activityListHost(activity: RootActivity | null | undefined): LL.ListHost | undefined {
+	const serverId = activityServerId(activity)
+	if (serverId) return { type: 'server', serverId }
+	const rotationId = activityRotationId(activity)
+	if (rotationId) return { type: 'rotation', rotationId }
+	return undefined
 }
 
 // the server whose dashboard the client is on, or undefined if they are somewhere else entirely
@@ -114,7 +141,7 @@ export function activityFilterId(activity: RootActivity | null | undefined): F.F
 // What the client is doing in whatever place it is in, without having to name the server or filter first.
 // `Trans.editingX(id)` is for asking about a specific one.
 export function editingQueue(activity: RootActivity | null | undefined): QueueEditingActivity | undefined {
-	return dashRoot(activity)?.editingQueue
+	return dashRoot(activity)?.editingQueue ?? rotationRoot(activity)?.editingQueue
 }
 
 export function editingTeamswaps(activity: RootActivity | null | undefined): boolean {
@@ -164,6 +191,8 @@ export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('leave-filter') }),
 	z.object({ code: z.literal('set-editing-filter') }),
 	z.object({ code: z.literal('clear-editing-filter') }),
+	z.object({ code: z.literal('enter-rotation'), rotationId: ROT.RotationIdSchema }),
+	z.object({ code: z.literal('leave-rotation') }),
 ])
 export type ActivityUpdate = z.infer<typeof ActivityUpdateSchema>
 
@@ -178,7 +207,8 @@ export function toEditingQueueIdleOrNone(): ActivityUpdate {
 // updates aimed at a place the client is not in do nothing: the two places share no activities, so a
 // dashboard update reaching a client sitting on a filter page has nothing to apply.
 type FilterUpdate = Extract<ActivityUpdate, { code: 'enter-filter' | 'leave-filter' | 'set-editing-filter' | 'clear-editing-filter' }>
-type DashboardUpdate = Exclude<ActivityUpdate, FilterUpdate | { code: 'enter-server-dashboard' }>
+type RotationUpdate = Extract<ActivityUpdate, { code: 'enter-rotation' | 'leave-rotation' }>
+type DashboardUpdate = Exclude<ActivityUpdate, FilterUpdate | RotationUpdate | { code: 'enter-server-dashboard' }>
 
 export function applyActivityUpdate(activity: RootActivity | null, update: ActivityUpdate): RootActivity | null {
 	switch (update.code) {
@@ -199,8 +229,32 @@ export function applyActivityUpdate(activity: RootActivity | null, update: Activ
 			if (!filter) return activity
 			return withField(filter, 'editingFilter', update.code === 'set-editing-filter' || undefined)
 		}
-		default:
+		case 'enter-rotation': {
+			const rotation = rotationRoot(activity)
+			return rotation?.rotationId === update.rotationId ? rotation : { place: 'rotation', rotationId: update.rotationId }
+		}
+		case 'leave-rotation':
+			return rotationRoot(activity) ? null : activity
+		default: {
+			const rotation = rotationRoot(activity)
+			if (rotation) return applyRotationUpdate(rotation, update)
 			return applyDashboardUpdate(activity, update)
+		}
+	}
+}
+
+// a rotation page holds a list editor and nothing else, so only the list editing updates reach it
+function applyRotationUpdate(rotation: RotationActivity, update: DashboardUpdate): RotationActivity {
+	switch (update.code) {
+		case 'set-editing-queue':
+			return withField(rotation, 'editingQueue', update.activity)
+		case 'set-editing-queue-idle-if':
+			if (!rotation.editingQueue || !update.currentCodes.includes(rotation.editingQueue.code)) return rotation
+			return withField(rotation, 'editingQueue', IDLE)
+		case 'clear-editing-queue':
+			return withField(rotation, 'editingQueue', undefined)
+		default:
+			return rotation
 	}
 }
 
@@ -261,6 +315,7 @@ export type ActivityCode = ActiveActivity['code']
 // Everything the client is doing, outermost first.
 export function activeActivities(activity: RootActivity): ActiveActivity[] {
 	if (activity.place === 'filter') return activity.editingFilter ? [{ code: 'EDITING_FILTER' }] : []
+	if (activity.place === 'rotation') return activity.editingQueue ? [activity.editingQueue] : []
 	const active: ActiveActivity[] = []
 	const panel = activity.primaryPanel
 	if (panel?.code === 'VIEWING_QUEUE') {
@@ -292,7 +347,7 @@ export const DESCRIBED_ACTIVITIES = [
 	'ADDING_ITEM',
 	'GENERATING_VOTE',
 	'ADDING_ITEM_FROM_HISTORY',
-	'PASTE_ROTATION',
+	'ADD_ROTATION',
 	'EDITING_ITEM',
 	'CONFIGURING_VOTE',
 	'MOVING_ITEM',
@@ -309,6 +364,7 @@ export const QUEUE_PANEL_ACTIVITIES: ReadonlySet<ActivityCode> = new Set<Activit
 ])
 export const TEAMS_PANEL_ACTIVITIES: ReadonlySet<ActivityCode> = new Set<ActivityCode>([...PLAYER_DIALOGUE_ID.options, 'EDITING_TEAMSWAPS'])
 export const FILTER_PAGE_ACTIVITIES: ReadonlySet<ActivityCode> = new Set<ActivityCode>(['EDITING_FILTER'])
+export const ROTATION_PAGE_ACTIVITIES: ReadonlySet<ActivityCode> = new Set<ActivityCode>(QUEUE_EDITING_CODES)
 
 // itemName is only set for the activities that act on one queue item, and only when asked for
 export type ActivityDescriptor = { id: DescribedActivity; itemName?: string }
@@ -374,6 +430,30 @@ export namespace Trans {
 
 	export const onFilter = (filterId: F.FilterEntityId) =>
 		trans((root) => activityFilterId(root) === filterId, { code: 'enter-filter', filterId }, { code: 'leave-filter' })
+
+	export const onRotation = (rotationId: ROT.RotationId) =>
+		trans((root) => activityRotationId(root) === rotationId, { code: 'enter-rotation', rotationId }, { code: 'leave-rotation' })
+
+	export const editingRotation = (rotationId: ROT.RotationId) =>
+		trans(
+			(root) => {
+				const rotation = rotationRoot(root)
+				return rotation && (!rotationId || rotation.rotationId === rotationId) ? (rotation.editingQueue ?? null) : null
+			},
+			toEditingQueueIdleOrNone(),
+			{ code: 'clear-editing-queue' },
+		)
+
+	export const editingList = (host: LL.ListHost) => {
+		switch (host.type) {
+			case 'server':
+				return editingQueue(host.serverId)
+			case 'rotation':
+				return editingRotation(host.rotationId)
+			default:
+				assertNever(host)
+		}
+	}
 
 	export const editingFilter = (filterId: F.FilterEntityId) =>
 		trans(
@@ -508,6 +588,19 @@ export const OpSchema = z.discriminatedUnion('code', [
 		...serverOpBase,
 		code: z.literal('filter:removed'),
 		filterId: F.FilterEntityIdSchema,
+	}),
+
+	// a rotation's shared draft was saved or discarded, so nobody is editing it anymore
+	z.object({
+		...serverOpBase,
+		code: z.literal('rotation:end-all-editing'),
+		rotationId: ROT.RotationIdSchema,
+	}),
+
+	z.object({
+		...serverOpBase,
+		code: z.literal('rotation:removed'),
+		rotationId: ROT.RotationIdSchema,
 	}),
 
 	// the socket dropped without a clean close -- hold the client's activity (and locks) so a
@@ -683,6 +776,17 @@ function applyOp(state: State, op: Op): boolean {
 				if (activityFilterId(client.activityState) === op.filterId) patchClient(state, clientId, { activityState: null })
 			}
 			return true
+		case 'rotation:end-all-editing':
+			for (const [clientId, client] of state.presence) {
+				if (activityRotationId(client.activityState) === op.rotationId)
+					updateClientActivity(state, clientId, { code: 'clear-editing-queue' })
+			}
+			return true
+		case 'rotation:removed':
+			for (const [clientId, client] of state.presence) {
+				if (activityRotationId(client.activityState) === op.rotationId) patchClient(state, clientId, { activityState: null })
+			}
+			return true
 		case 'set-enabled-servers':
 			state.enabledServers = new Set(op.serverIds)
 			for (const [clientId, client] of state.presence) {
@@ -724,7 +828,12 @@ function applyOp(state: State, op: Op): boolean {
 			const activityState = gateActivityToEnabled(applyActivityUpdate(client.activityState, op.update), state.enabledServers)
 			if (!putClient(state, op.clientId, { ...client, away: false, activityState, lastSeen: op.time })) return false
 			if (USER_LEVEL_UPDATES.has(op.update.code)) {
-				for (const [clientId] of otherClientsOf(state, op)) updateClientActivity(state, clientId, op.update)
+				// a rotation's draft and a server's queue are different lists, so finishing one ends no editing of the other
+				const rotationId = activityRotationId(client.activityState)
+				for (const [clientId, other] of otherClientsOf(state, op)) {
+					if (activityRotationId(other.activityState) !== rotationId) continue
+					updateClientActivity(state, clientId, op.update)
+				}
 			}
 			return true
 		}
@@ -857,6 +966,7 @@ export type Ctx = CS.Ctx & {
 		abandoned$: IsolatedSubject<{ serverId: string; scope: Ctx.DraftScope }>
 		// filter drafts are keyed by filter rather than by server, so they get their own signal
 		filterAbandoned$: IsolatedSubject<string>
+		rotationAbandoned$: IsolatedSubject<string>
 	}
 }
 

@@ -4,12 +4,16 @@ import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as BB_Msgs from '@/messages/backburner.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
+import type * as LTag from '@/models/layer-tags.models'
+import type * as L from '@/models/layer.models'
+import * as ROT from '@/models/rotations.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import type * as UP from '@/models/user-presence.models'
 import * as V from '@/models/vote.models'
@@ -26,7 +30,7 @@ export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { queue: Key }
 
 export type State = {
-	serverId: string
+	host: LL.ListHost
 	rbSession: ODSM.Client.Session<SLL.Operation, SLL.State>
 
 	handleServerUpdate(update: SLL.Update): void
@@ -46,12 +50,11 @@ export type State = {
 	backburnerModified: boolean
 }
 
-export type Args = FRM.SetupArgs<{ serverId: string }, Store, Store>
+export type Args = FRM.SetupArgs<object, Store, Store>
 
-export function initLayerQueue(args: Args) {
+export function initLayerQueue(args: Args, host: LL.ListHost) {
 	const set = Zus.toPartialSetter(args.set, 'queue')
 	const get = Zus.toPartialGetter(args.get, 'queue')
-	const serverId = args.input.serverId
 	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
 	// side effects only fire when ops land on the synced timeline (incoming ops + acks of our own),
 	// so each op produces at most one presence event per client
@@ -120,7 +123,7 @@ export function initLayerQueue(args: Args) {
 	const initRbSession = ODSM.Client.initSession<SLL.Operation, SLL.State>(SLL.createNewState())
 
 	set({
-		serverId,
+		host,
 		rbSession: initRbSession,
 
 		syncedOp$: new Rx.Subject(),
@@ -175,15 +178,33 @@ export function initLayerQueue(args: Args) {
 		}),
 	)
 
-	args.cleanup.push(
-		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }), {
-			apply: (update$) =>
-				update$.pipe(
-					RPC.dropUnavailable(),
-					Rx.tap((update) => get().handleServerUpdate(update)),
-				),
-		}).subscribe(),
-	)
+	args.cleanup.push(watchOps(host).subscribe((update) => get().handleServerUpdate(update)))
+}
+
+function watchOps(host: LL.ListHost): Rx.Observable<SLL.Update> {
+	switch (host.type) {
+		case 'server':
+			return RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId: host.serverId }), {
+				apply: (update$) => update$.pipe(RPC.dropUnavailable()),
+			})
+		case 'rotation':
+			return RPC.observe(`rotationEdit.watchOps:${host.rotationId}`, () =>
+				RPC.orpc.rotationEdit.watchOps.call({ rotationId: host.rotationId }),
+			)
+		default:
+			assertNever(host)
+	}
+}
+
+async function dispatchToHost(host: LL.ListHost, op: SLL.Operation) {
+	switch (host.type) {
+		case 'server':
+			return await RPC.orpc.layerQueue.dispatchOp.call({ serverId: host.serverId, op })
+		case 'rotation':
+			return await RPC.orpc.rotationEdit.dispatchOp.call({ rotationId: host.rotationId, op })
+		default:
+			assertNever(host)
+	}
 }
 
 export type ItemState = {
@@ -347,7 +368,49 @@ export namespace Sel {
 // these ops run as an editing session is being finished, so they must not claim a new one
 const SESSION_CLOSING_OPS = new Set<SLL.OpCode>(['save', 'reset-to-saved', 'backburner-save', 'backburner-reset'])
 
+export type RotationToAdd =
+	| { type: 'paste'; layerIds: L.LayerId[] }
+	| { type: 'saved'; rotation: Pick<ROT.Rotation, 'id' | 'items'> }
+	| { type: 'items'; items: LL.NewItem[] }
+
+// where a batch of items goes: in place of every item, or ahead of or after them
+export type Placement = 'replace' | 'start' | 'end'
+
 export namespace Actions {
+	// adds a pasted or saved rotation to the list as one op, so the replaced items and the new ones change together
+	export async function addRotation(
+		stores: KeyProp,
+		args: { rotation: RotationToAdd; placement: Placement; tags: LTag.TagId[] },
+	): Promise<boolean> {
+		const source: LL.Source = { type: 'manual', userId: UsersClient.loggedInUserId! }
+		let items: LL.NewItem[]
+		switch (args.rotation.type) {
+			case 'paste':
+				items = args.rotation.layerIds.map((layerId) => ({ type: 'single-list-item', layerId }))
+				break
+			case 'saved':
+				items = ROT.toQueueItems(args.rotation.rotation, source)
+				break
+			case 'items':
+				items = args.rotation.items
+				break
+			default:
+				assertNever(args.rotation)
+		}
+		const list = Sel.layerList(Zus.getState(stores.queue))
+		if (args.placement === 'replace') {
+			return await dispatch(stores, {
+				op: 'add',
+				index: { outerIndex: 0, innerIndex: null },
+				items: LL.withTags(items, args.tags),
+				clearItemIds: list.map((item) => item.itemId),
+			})
+		}
+		const cursor: LL.Cursor = { type: args.placement }
+		const index = LL.resolveCursorIndex(list, cursor) ?? { outerIndex: 0, innerIndex: null }
+		return await dispatch(stores, { op: 'add', index, items: LL.withTags(items, args.tags) })
+	}
+
 	// try to call this such that react will batch the rerenders. Resolves to whether the server accepted the op.
 	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation): Promise<boolean> {
 		const slice = Zus.toPartialStore(stores.queue, 'queue')
@@ -367,6 +430,7 @@ export namespace Actions {
 					op: 'add',
 					index: newOp.index,
 					items,
+					...(newOp.clearItemIds ? { clearItemIds: newOp.clearItemIds } : {}),
 					...baseProps,
 				}
 				break
@@ -390,16 +454,16 @@ export namespace Actions {
 		}
 		slice.setState({ rbSession: outgoing.session })
 
-		const serverId = slice.getState().serverId
+		const host = slice.getState().host
 		// a draft edit registers the user as an editor, so no one has to press "Start Editing" first
 		if (!SESSION_CLOSING_OPS.has(op.op)) {
-			if (isBackburnerOp) UPClient.Actions.ensureEditingLayerRequests(serverId)
-			else UPClient.Actions.ensureEditingQueue(serverId)
+			if (isBackburnerOp && host.type === 'server') UPClient.Actions.ensureEditingLayerRequests(host.serverId)
+			else UPClient.Actions.ensureEditingList(host)
 		}
 
-		let res: Awaited<ReturnType<typeof RPC.orpc.layerQueue.dispatchOp.call>>
+		let res: Awaited<ReturnType<typeof dispatchToHost>>
 		try {
-			res = await RPC.orpc.layerQueue.dispatchOp.call({ serverId, op })
+			res = await dispatchToHost(host, op)
 		} catch (error) {
 			// the op will never be acked, so it must leave the pending set -- see dropPendingOps
 			rollbackOp(slice, op.opId)

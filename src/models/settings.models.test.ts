@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import * as AppEvents from './app-events.models'
 import type * as LQY from './layer-queries.models'
+import type * as RRS from './repeat-rulesets.models'
 import * as SETTINGS from './settings.models'
 
 function settingsWith(mainPool: Partial<SETTINGS.PoolConfiguration>) {
@@ -30,7 +31,7 @@ describe('pool configuration schema', () => {
 			layerRequestFilters: [{ filterId: 'b-filter', applyAs: 'inverted' }],
 			generateVotes: { enabled: true, displayProps: ['map', 'factions'] },
 			skipWarningsForTags: ['planned:aaaaaa'],
-			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
+			repeatRulesetId: 'emu-server',
 		}
 		const parsed = SETTINGS.PoolConfigurationSchema.parse(config)
 		expect(parsed).toEqual(config)
@@ -71,15 +72,15 @@ describe('getSettingsConstraints', () => {
 			{ filterId: 'd-filter', applyAs: 'regular' },
 		],
 		constrainGeneration: [{ filterId: 'e-filter', applyAs: 'inverted' }],
-		// deliberately sharing a label, which rules may do: only their position tells them apart
-		repeatRules: [
-			{ label: 'Repeats', field: 'Map', within: 4, warn: true, indicate: true },
-			{ label: 'Repeats', field: 'Layer', within: 2, autogen: true, warn: true, indicate: true },
-		],
 	})
+	// deliberately sharing a label, which rules may do: only their position tells them apart
+	const repeatRules: RRS.RepeatRuleConfig[] = [
+		{ label: 'Repeats', field: 'Map', within: 4, warn: true, indicate: true },
+		{ label: 'Repeats', field: 'Layer', within: 2, autogen: true, warn: true, indicate: true },
+	]
 
 	test('selection/status context: pool warns on a miss, lists merge into indication constraints', () => {
-		const constraints = SETTINGS.getSettingsConstraints(settings)
+		const constraints = SETTINGS.getSettingsConstraints(settings, repeatRules)
 		const byId = new Map(constraints.map((c) => [c.id, c]))
 
 		// include-mode pool filter warns when the layer does NOT match
@@ -100,7 +101,7 @@ describe('getSettingsConstraints', () => {
 	})
 
 	test('generation context: pool filter always constrains, constrainGeneration and autogen rules apply', () => {
-		const constraints = SETTINGS.getSettingsConstraints(settings, { generatingLayers: true })
+		const constraints = SETTINGS.getSettingsConstraints(settings, repeatRules, { generatingLayers: true })
 		const byId = new Map(constraints.map((c) => [c.id, c]))
 
 		expect(byId.get('pool-filter')).toMatchObject({ filterApplState: 'regular', warn: 'disabled' })
@@ -125,13 +126,13 @@ describe('installed mods', () => {
 
 	test('selection contexts indicate but do not filter, so an unsupported layer is shown greyed out', () => {
 		const settings = SETTINGS.PublicServerSettingsSchema.parse({ installedMods: ['OWI', 'GC'] })
-		const constraint = SETTINGS.getSettingsConstraints(settings).find((c) => c.type === 'installed-mods')
+		const constraint = SETTINGS.getSettingsConstraints(settings, []).find((c) => c.type === 'installed-mods')
 		expect(constraint).toMatchObject({ collections: ['OWI', 'GC'], filterApplState: 'disabled', showIndicator: 'both' })
 	})
 
 	test('generation filters unsupported layers out', () => {
 		const settings = SETTINGS.PublicServerSettingsSchema.parse({ installedMods: ['OWI'] })
-		const constraint = SETTINGS.getSettingsConstraints(settings, { generatingLayers: true }).find((c) => c.type === 'installed-mods')
+		const constraint = SETTINGS.getSettingsConstraints(settings, [], { generatingLayers: true }).find((c) => c.type === 'installed-mods')
 		expect(constraint).toMatchObject({ collections: ['OWI'], filterApplState: 'regular' })
 	})
 })

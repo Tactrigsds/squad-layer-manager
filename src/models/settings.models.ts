@@ -19,6 +19,7 @@ import * as L from '@/models/layer.models'
 import { t } from '@/models/messages.models'
 import * as Activity from '@/models/player-activity.models'
 import * as PG from '@/models/player-groupings.models'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SDoc from '@/models/schema-docs.models'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
@@ -748,6 +749,23 @@ export const GlobalSettingsSchema = z
 			],
 		}).meta(SDoc.of({ label: t('Layer Table'), description: t('Configures the appearance of the layers table and layer select menu') })),
 		layerTags: LTag.TagsSchema.meta(SDoc.of({ label: t('Layer Tags') })),
+		repeatRulesets: RRS.RulesetsSchema,
+		rotationTags: LTag.TagsSchema.meta(
+			SDoc.of({
+				label: t('Rotation Tags'),
+				description: t('Tags that group rotations on the Rotations page. They are separate from layer tags.'),
+			}),
+		),
+		defaultRotationRepeatRulesetId: RRS.RulesetIdSchema.nullable()
+			.prefault(null)
+			.meta(
+				SDoc.of({
+					label: t('Default Rotation Repeat Ruleset'),
+					description: t(
+						"The repeat ruleset a new rotation checks its repeats against. With none, a new rotation uses the default server's repeat ruleset.",
+					),
+				}),
+			),
 		layerGeneration: LC.LayerGenerationConfigSchema.prefault({
 			pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
 		}).meta(
@@ -818,19 +836,21 @@ export const GlobalSettingsSchema = z
 			})
 		}
 
-		const seenTagId = new Set<string>()
-		const seenTagLabel = new Set<string>()
-		val.layerTags?.forEach((tag, i) => {
-			if (seenTagId.has(tag.id)) {
-				ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: ['layerTags', i, 'id'] })
-			}
-			seenTagId.add(tag.id)
-			const label = tag.label.trim().toLowerCase()
-			if (seenTagLabel.has(label)) {
-				ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: ['layerTags', i, 'label'] })
-			}
-			seenTagLabel.add(label)
-		})
+		for (const key of ['layerTags', 'rotationTags'] as const) {
+			const seenTagId = new Set<string>()
+			const seenTagLabel = new Set<string>()
+			val[key]?.forEach((tag, i) => {
+				if (seenTagId.has(tag.id)) {
+					ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: [key, i, 'id'] })
+				}
+				seenTagId.add(tag.id)
+				const label = tag.label.trim().toLowerCase()
+				if (seenTagLabel.has(label)) {
+					ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: [key, i, 'label'] })
+				}
+				seenTagLabel.add(label)
+			})
+		}
 
 		const messageVariables = val.messageVariables ?? []
 		for (const cycle of Templating.templateVarCycles(messageVariables)) {
@@ -883,6 +903,8 @@ export function defaultRbacSettings() {
 		'vote:manage',
 		'filters:create',
 		'filters:write-all',
+		'rotations:create',
+		'rotations:write-all',
 		'squad-server:end-match',
 		'squad-server:turn-fog-off',
 		'squad-server:manage-players',
@@ -943,14 +965,6 @@ export function defaultRbacSettings() {
 // data is not loaded yet at that point.
 const DEFAULT_INSTALLED_MODS = ['OWI'] as const
 
-// autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
-// anyone wants, and the per-rule option is there to turn it off
-const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
-	{ field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
-	{ field: 'Faction', within: 3, autogen: true, warn: true, indicate: true },
-]
-
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
 export type PoolFilterApplyAs = z.infer<typeof POOL_FILTER_APPLY_AS>
 
@@ -994,30 +1008,6 @@ export const SelectableFilterSettingSchema = z.object({
 	),
 })
 export type SelectableFilterSetting = z.infer<typeof SelectableFilterSettingSchema>
-
-// warn and indicate default on rather than off: every rule warned and indicated before either was configurable, so
-// an existing rule that says nothing about them must keep doing both.
-export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
-	indicate: z
-		.boolean()
-		.prefault(true)
-		.meta(SDoc.of({ label: t('Indicate'), description: t('Mark layers violating this rule wherever layers are displayed') })),
-	warn: z
-		.boolean()
-		.prefault(true)
-		.meta(
-			SDoc.of({
-				label: t('Warn'),
-				description: t('Users should be warned before saving or before the layer violating this repeat rule is played'),
-			}),
-		),
-	autogen: z
-		.boolean()
-		.optional()
-		.meta(SDoc.of({ label: t('Apply to Generation'), description: t('Apply this rule when autogenerating layers') })),
-})
-
-export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
 
 export const PoolConfigurationSchema = z.object({
 	poolFilter: PoolFilterSettingSchema.nullable()
@@ -1116,14 +1106,16 @@ export const PoolConfigurationSchema = z.object({
 				),
 			}),
 		),
-	repeatRules: z.array(RepeatRuleConfigSchema).meta(
-		SDoc.of({
-			label: t('Repeat Rules'),
-			description: t(
-				'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is broken, constrain autogeneration, or both.',
-			),
-		}),
-	),
+	repeatRulesetId: RRS.RulesetIdSchema.nullable()
+		.prefault(null)
+		.meta(
+			SDoc.of({
+				label: t('Repeat Ruleset'),
+				description: t(
+					'The repeat ruleset whose rules this server applies to its queue and to generated layers. Repeat rulesets are defined in the global settings. With none, no repeat rules apply.',
+				),
+			}),
+		),
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
@@ -1329,7 +1321,7 @@ export const QueueSettingsSchema = z.object({
 			description: t('How often to remind admins to maintain the queue. Low queue warnings happen half as often.'),
 		}),
 	),
-	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).meta(
+	mainPool: PoolConfigurationSchema.prefault({}).meta(
 		SDoc.of({ label: t('Main Pool'), description: t('Which layers this server considers playable, and which of them it warns about.') }),
 	),
 	layerRequests: z
@@ -1422,10 +1414,8 @@ export const PublicServerSettingsSchema = z.object({
 				),
 			}),
 		),
-	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
-	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
-	// ServerSettingsSchema its encodability -- and the settings editor needs that to show ZodUtils.HumanTime fields as
-	// "5s" rather than 5000.
+	// no transform here: it would be one-way, which costs ServerSettingsSchema its encodability -- and the settings
+	// editor needs that to show ZodUtils.HumanTime fields as "5s" rather than 5000.
 	queue: QueueSettingsSchema.prefault({}).meta(SDoc.of({ label: t('Queue') })),
 	vote: z
 		.object({
@@ -1639,7 +1629,7 @@ export function getRepeatRuleConstraintId(poolName: string, index: number) {
 
 // the per-rule switches, in the shape CB.repeatRule takes. Every path that builds a rule's constraint goes through
 // here, so the switches cannot diverge between the queue view, the layer table and the save-time warnings.
-export function repeatRuleConstraintOpts(rule: PoolRepeatRuleConfig) {
+export function repeatRuleConstraintOpts(rule: RRS.RepeatRuleConfig) {
 	return { warn: rule.warn, showIndicator: rule.indicate ? ('regular' as const) : ('disabled' as const) }
 }
 
@@ -1704,7 +1694,12 @@ export function catalogSettings(components = L.StaticLayerComponents): PublicSer
 	return { ...PublicServerSettingsSchema.parse({}), installedMods: [...components.collections] }
 }
 
-export function getSettingsConstraints(settings: PublicServerSettings, opts?: { generatingLayers?: boolean }) {
+// repeatRules are the rules of the server's ruleset (queue.mainPool.repeatRulesetId), resolved by the caller
+export function getSettingsConstraints(
+	settings: PublicServerSettings,
+	repeatRules: readonly RRS.RepeatRuleConfig[],
+	opts?: { generatingLayers?: boolean },
+) {
 	const constraints: LQY.Constraint[] = []
 	const queue = settings.queue
 
@@ -1716,7 +1711,7 @@ export function getSettingsConstraints(settings: PublicServerSettings, opts?: { 
 		for (const { filterId, applyAs } of queue.mainPool.constrainGeneration) {
 			constraints.push(CB.filterEntity(`gen:${filterId}`, filterId, { filterApplState: applyAs }))
 		}
-		queue.mainPool.repeatRules.forEach((rule, index) => {
+		repeatRules.forEach((rule, index) => {
 			if (!rule.autogen) return
 			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', index), rule))
 		})
@@ -1724,7 +1719,7 @@ export function getSettingsConstraints(settings: PublicServerSettings, opts?: { 
 		const poolFilterConstraint = getPoolFilterConstraint(settings, { warn: true })
 		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
 		constraints.push(...getIndicationAndWarnConstraints(settings))
-		queue.mainPool.repeatRules.forEach((rule, index) => {
+		repeatRules.forEach((rule, index) => {
 			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', index), rule, repeatRuleConstraintOpts(rule)))
 		})
 	}

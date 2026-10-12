@@ -42,6 +42,11 @@ export const deletedTag = def(
 
 export const noDescription = def('No description')
 
+// on the card of the tag every item added from a saved rotation carries; the rotation's name follows as a link
+export const fromRotation = def('Added to the queue from the rotation')
+
+export const fromDeletedRotation = def('Added to the queue from a rotation that has since been deleted.')
+
 export const editTag = def('Edit tag')
 
 export const taggedBy = def('Tagged by')
@@ -52,6 +57,9 @@ export const addTag = def('Add tag')
 
 export const noTagsAvailable = def('No tags available')
 
+// the queue item menu's submenu that switches an item's tags on and off
+export const tagsSub = def('Tags')
+
 export const newTagItem = def('New tag...')
 
 // -------- the tag dialog --------
@@ -61,6 +69,10 @@ export const newTagTitle = def('New tag')
 export const newTagBlurb = def('Tags are shared by everyone and can be attached to any layer in the queue.')
 
 export const editTagBlurb = def('Renaming a tag keeps it attached to every layer already carrying it.')
+
+export const newRotationTagBlurb = def('Rotation tags are shared by everyone and group rotations on the Rotations page.')
+
+export const editRotationTagBlurb = def('Renaming a tag keeps it attached to every rotation already carrying it.')
 
 export const labelPlaceholder = def('e.g. meta')
 

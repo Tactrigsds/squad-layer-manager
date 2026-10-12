@@ -120,10 +120,26 @@ function countFilterEditingClients(state: UP.State): Map<string, number> {
 	return counts
 }
 
+// and for rotation drafts, keyed by rotation
+function countRotationEditingClients(state: UP.State): Map<string, number> {
+	const counts = new Map<string, number>()
+	for (const client of state.presence.values()) {
+		const rotationId = UP.activityRotationId(client.activityState)
+		if (!rotationId || !UP.editingQueue(client.activityState)) continue
+		counts.set(rotationId, (counts.get(rotationId) ?? 0) + 1)
+	}
+	return counts
+}
+
 // a save or an explicit "finish editing" ends the session on purpose, and commits (or has nothing to commit)
 // alongside it. Only an unannounced exit -- navigating off, disconnecting, timing out -- abandons the draft.
 function endsEditingDeliberately(op: UP.Op) {
-	if (op.code === 'sll:end-all-editing' || op.code === 'layer-requests:end-all-editing' || op.code === 'filter:end-all-editing') {
+	if (
+		op.code === 'sll:end-all-editing' ||
+		op.code === 'layer-requests:end-all-editing' ||
+		op.code === 'filter:end-all-editing' ||
+		op.code === 'rotation:end-all-editing'
+	) {
 		return true
 	}
 	if (op.code !== 'update-activity') return false
@@ -140,6 +156,7 @@ const dispatchOp = Instr.spanOp(
 	async (ops: UP.Op[], opts?: Omit<DispatchedOps, 'ops' | 'rejection'>) => {
 		const editorsBefore = countEditingClients(globalUserPresence.session.state)
 		const filterEditorsBefore = countFilterEditingClients(globalUserPresence.session.state)
+		const rotationEditorsBefore = countRotationEditingClients(globalUserPresence.session.state)
 		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
 		globalUserPresence.session = applied.session
 		if (applied.rejected) {
@@ -162,6 +179,11 @@ const dispatchOp = Instr.spanOp(
 			for (const filterId of filterEditorsBefore.keys()) {
 				if ((filterEditorsAfter.get(filterId) ?? 0) > 0) continue
 				globalUserPresence.filterAbandoned$.next(filterId)
+			}
+			const rotationEditorsAfter = countRotationEditingClients(globalUserPresence.session.state)
+			for (const rotationId of rotationEditorsBefore.keys()) {
+				if ((rotationEditorsAfter.get(rotationId) ?? 0) > 0) continue
+				globalUserPresence.rotationAbandoned$.next(rotationId)
 			}
 		}
 		for (const se of applied.sideEffects) {
@@ -279,6 +301,23 @@ export function dispatchFilterRemoved(filterId: string) {
 	dispatchOp([{ code: 'filter:removed', opId: UP.createOpId(), time: Date.now(), filterId }]).catch((error) => log.error(error))
 }
 
+export function editingRotationAbandoned$(rotationId: string): Rx.Observable<void> {
+	return globalUserPresence.rotationAbandoned$.pipe(
+		Rx.filter((id) => id === rotationId),
+		Rx.map(() => undefined),
+	)
+}
+
+export function dispatchEndAllRotationEditing(rotationId: string) {
+	dispatchOp([{ code: 'rotation:end-all-editing', opId: UP.createOpId(), time: Date.now(), rotationId }]).catch((error) =>
+		log.error(error),
+	)
+}
+
+export function dispatchRotationRemoved(rotationId: string) {
+	dispatchOp([{ code: 'rotation:removed', opId: UP.createOpId(), time: Date.now(), rotationId }]).catch((error) => log.error(error))
+}
+
 export function dispatchEndAllLayerQueueEditing(serverId: string) {
 	return dispatchOp([
 		{
@@ -324,11 +363,13 @@ export function setup() {
 		op$: new IsolatedSubject<DispatchedOps>(),
 		abandoned$: new IsolatedSubject<{ serverId: string; scope: UP.Ctx.DraftScope }>(),
 		filterAbandoned$: new IsolatedSubject<string>(),
+		rotationAbandoned$: new IsolatedSubject<string>(),
 	}
 	CleanupSys.register(() => {
 		globalUserPresence.op$.complete()
 		globalUserPresence.abandoned$.complete()
 		globalUserPresence.filterAbandoned$.complete()
+		globalUserPresence.rotationAbandoned$.complete()
 	})
 
 	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server

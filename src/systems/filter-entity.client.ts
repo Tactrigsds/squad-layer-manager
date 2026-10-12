@@ -102,13 +102,14 @@ export const [useFilterReferences, filterReferences$] = ReactRx.bindWithDefault(
 )
 
 // A user owner's name comes from `user`, which the caller resolves: only it knows whether the user is already in hand.
-export function useOwnerName(owner: F.FilterOwner, user: USR.User | undefined): string | undefined {
+// `user` defaults to the owning user as the parts store knows them
+export function useOwnerName(owner: F.FilterOwner, user?: USR.User): string | undefined {
 	const pluginName = Zus.useStore(PluginsClient.Store, (s) =>
 		owner.type === 'plugin' ? s.plugins.find((p) => p.id === owner.pluginId)?.name : undefined,
 	)
 	switch (owner.type) {
 		case 'slm-user':
-			return user?.displayName
+			return (user ?? PartsSys.findUser(owner.userId))?.displayName
 		case 'plugin':
 			return pluginName ?? owner.pluginId
 		case 'system':

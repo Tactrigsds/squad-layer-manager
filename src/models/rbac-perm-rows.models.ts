@@ -68,8 +68,8 @@ export const DEFAULT_MAX_TIMEOUT = '1h'
 // matches what the default admin/manager roles are seeded with
 export const DEFAULT_MAX_LAYER_REQUESTS = 5
 
-// permissions the table can add. `filters:write` is absent on purpose: it's granted by the inferred filter-owner /
-// filter-contributor roles, never by a role definition.
+// permissions the table can add. `filters:write` and `rotations:write` are absent on purpose: they are granted by the
+// inferred owner and contributor roles, never by a role definition.
 export const ADDABLE_TYPES: string[] = [
 	ALL_PERMISSIONS,
 	...RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options,
@@ -87,7 +87,7 @@ export function rowScope(type: string): RowScope {
 	const def = RBAC.PERMISSION_DEFINITION[type as keyof typeof RBAC.PERMISSION_DEFINITION]
 	if (!def) throw new Error(`unknown permission type: ${type}`)
 	const scope = def.scope
-	if (scope === 'filter') throw new Error(`${type} is inferred-only and cannot be a role permission row`)
+	if (scope === 'filter' || scope === 'rotation') throw new Error(`${type} is inferred-only and cannot be a role permission row`)
 	// named per plugin and per action, so it has its own grant list rather than a row in this table
 	if (scope === 'plugin-action') throw new Error(`${type} is granted under pluginGrants, not as a role permission row`)
 	return scope

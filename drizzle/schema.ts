@@ -505,6 +505,57 @@ export const filterRoleContributors = sqliteTable(
 export type Filter = typeof filters.$inferSelect
 export type NewFilter = typeof filters.$inferInsert
 
+// Owned like a filter: by at most one of a user or a plugin, and by SLM itself with neither (see ROT.Owner).
+export const rotations = sqliteTable(
+	'rotations',
+	{
+		id: text('id').primaryKey().notNull(),
+		name: text('name').notNull(),
+		description: text('description'),
+		// LL.List, anonymized (see ROT.anonymize)
+		items: json('items').notNull(),
+		repeatRulesetId: text('repeatRulesetId'),
+		// rotation tag ids (globalSettings.rotationTags)
+		tags: json('tags').notNull(),
+		archived: boolean('archived').notNull().default(false),
+		ownerUserId: bigintText('ownerUserId').references(() => users.discordId, { onDelete: 'set null' }),
+		ownerPluginId: text('ownerPluginId').references(() => plugins.id, { onDelete: 'set null' }),
+		createdAt: timestamp('createdAt').notNull(),
+		updatedAt: timestamp('updatedAt').notNull(),
+	},
+	(table) => ({
+		singleOwner: check('rotationsSingleOwner', sql`${table.ownerUserId} IS NULL OR ${table.ownerPluginId} IS NULL`),
+	}),
+)
+
+export const rotationUserContributors = sqliteTable(
+	'rotationUserContributors',
+	{
+		rotationId: text('rotationId')
+			.notNull()
+			.references(() => rotations.id, { onDelete: 'cascade' }),
+		userId: bigintText('userId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.rotationId, table.userId] }),
+	}),
+)
+
+export const rotationRoleContributors = sqliteTable(
+	'rotationRoleContributors',
+	{
+		rotationId: text('rotationId')
+			.notNull()
+			.references(() => rotations.id, { onDelete: 'cascade' }),
+		roleId: text('roleId').notNull(),
+	},
+	(table) => ({ pk: primaryKey({ columns: [table.rotationId, table.roleId] }) }),
+)
+
+export type Rotation = typeof rotations.$inferSelect
+
 export const servers = sqliteTable('servers', {
 	id: text('id').primaryKey(),
 	displayName: text('displayName').notNull(),

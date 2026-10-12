@@ -8,6 +8,15 @@ export function snakeCaseToTitleCase(str: string): string {
 	return str.toLowerCase().replace(/(^|_)(.)/g, (_, __, letter) => letter.toUpperCase())
 }
 
+// lowercased, with every run of characters outside [a-z0-9_-] made one hyphen and the ends trimmed of hyphens
+export function slugify(str: string, maxLength: number): string {
+	return str
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, maxLength)
+}
+
 export function kebabCaseToTitleCase(str: string): string {
 	return str.toLowerCase().replace(/(^|-)(.)/g, (_, __, letter) => letter.toUpperCase())
 }

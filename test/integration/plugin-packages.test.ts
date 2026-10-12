@@ -6,7 +6,9 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as LL from '@/models/layer-list.models'
 import * as SHIM from '@/models/plugin-api-shim.models'
+import * as SLL from '@/models/shared-layer-list.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { LAYERS, queue, role } from '../harness/arrange'
@@ -139,6 +141,9 @@ async function call<T>(path: string, input: unknown): Promise<T> {
 	if (res.code !== 'ok') throw new Error(`plugin rpc ${path} failed: ${res.code}`)
 	return res.data as T
 }
+
+// a rotation item as getRotation hands it back
+type StoredItem = { layerId: string; source: { type: string }; notes?: { id: string; author?: bigint; text: string }[] }
 
 async function leftoverData() {
 	const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
@@ -330,6 +335,145 @@ describe('packaged plugins', () => {
 			async () => ((await call<{ code: string }>('dropFilter', { id: 'hello-configured' })).code === 'ok' ? true : undefined),
 			{ label: 'the reference to be released' },
 		)
+	})
+
+	// Rotations follow the filters' ownership rules. A rotation the plugin makes names no person, so only blanket
+	// write access reaches it by hand, and one the plugin hands to an admin gives that admin the owner's role. The
+	// ROTATION_CHANGED rows prove the writes went through the host's path, and the stored items prove the host
+	// stripped who wrote them.
+	it('creates, clones, updates and deletes rotations, owned by the plugin unless it names an admin', async () => {
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const rotationRow = (id: string) =>
+			readRows<{ name: string; ownerUserId: string | null; ownerPluginId: string | null; items: string }>(
+				`SELECT name, ownerUserId, ownerPluginId, items FROM rotations WHERE id = ?`,
+				id,
+			)[0]
+
+		expect(await call('makeRotation', { id: 'hello-rot', layerIds: [LAYERS.gorodokRaas, LAYERS.harjuRaas] })).toMatchObject({
+			code: 'ok',
+		})
+		expect(rotationRow('hello-rot')).toMatchObject({ name: 'Hello rotation', ownerUserId: null, ownerPluginId: 'hello' })
+		expect(rotationRow('hello-rot').items).not.toContain(String(ADMIN_USER.discordId))
+		const stored = await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })
+		expect(stored.items.map((i) => i.layerId)).toEqual([LAYERS.gorodokRaas, LAYERS.harjuRaas])
+		expect(stored.items.map((i) => i.source.type)).toEqual(['unknown', 'unknown'])
+		expect(stored.items[0].notes).toEqual([{ id: 'hellonot', text: 'from hello' }])
+		expect(await call('rotationIds', {})).toContain('hello-rot')
+		expect(await call('makeRotation', { id: 'hello-rot', layerIds: [] })).toMatchObject({ code: 'err:already-exists' })
+
+		expect(await outsiderClient.rotations.updateMeta({ rotationId: 'hello-rot', patch: { name: 'Outsider edit' } })).toMatchObject({
+			code: 'err:permission-denied',
+		})
+		expect(await client.rotations.updateMeta({ rotationId: 'hello-rot', patch: { name: 'Admin edit' } })).toMatchObject({ code: 'ok' })
+
+		expect(
+			await call('makeRotation', { id: 'hello-rot-handed', owner: String(OUTSIDER.discordId), layerIds: [LAYERS.gorodokRaas] }),
+		).toMatchObject({ code: 'ok' })
+		expect(rotationRow('hello-rot-handed')).toMatchObject({ ownerUserId: String(OUTSIDER.discordId), ownerPluginId: null })
+		expect(await outsiderClient.rotations.updateMeta({ rotationId: 'hello-rot-handed', patch: { name: 'Outsider edit' } })).toMatchObject(
+			{ code: 'ok' },
+		)
+		expect(await outsiderClient.rotations.delete('hello-rot-handed')).toMatchObject({ code: 'ok' })
+
+		expect(await call('cloneRotation', { sourceId: 'hello-rot', id: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
+		expect(rotationRow('hello-rot-copy')).toMatchObject({ name: 'Hello rotation clone', ownerUserId: null, ownerPluginId: 'hello' })
+		expect(await outsiderClient.rotations.delete('hello-rot-copy')).toMatchObject({ code: 'err:permission-denied' })
+
+		expect(await call('updateRotation', { id: 'hello-rot', name: 'Hello rotation v2', layerIds: [LAYERS.sumariSeed] })).toMatchObject({
+			code: 'ok',
+		})
+		expect(rotationRow('hello-rot').name).toBe('Hello rotation v2')
+		const updated = await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })
+		expect(updated.items).toMatchObject([{ layerId: LAYERS.sumariSeed, source: { type: 'unknown' } }])
+		expect(updated.items[0].notes?.[0].author).toBeUndefined()
+
+		expect(await call('dropRotation', { id: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
+		expect(rotationRow('hello-rot-copy')).toBeUndefined()
+		expect(await call('dropRotation', { id: 'hello-rot-copy' })).toMatchObject({ code: 'err:not-found' })
+
+		expect(
+			readRows<{ action: string; rotationId: string }>(
+				`SELECT json_extract(data, '$.json.action') AS action, json_extract(data, '$.json.rotationId') AS rotationId FROM appEvents
+				 WHERE type = 'ROTATION_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
+			),
+		).toEqual([
+			{ action: 'created', rotationId: 'hello-rot' },
+			{ action: 'created', rotationId: 'hello-rot-handed' },
+			{ action: 'created', rotationId: 'hello-rot-copy' },
+			{ action: 'updated', rotationId: 'hello-rot' },
+			{ action: 'deleted', rotationId: 'hello-rot-copy' },
+		])
+		expect(await call('rotationChanges', {})).toEqual([
+			'add:hello-rot:plugin',
+			'update:hello-rot:slm-user',
+			'add:hello-rot-handed:plugin',
+			'update:hello-rot-handed:slm-user',
+			'delete:hello-rot-handed:slm-user',
+			'add:hello-rot-copy:plugin',
+			'update:hello-rot:plugin',
+			'delete:hello-rot-copy:plugin',
+		])
+	})
+
+	// An admin's open draft of the rotation's items holds its own copy of them. A plugin's new items are saved through
+	// that draft so its editors see them, and refused while the draft holds edits nobody has saved.
+	it("writes a rotation's items through an open draft, and refuses while the draft has unsaved edits", async () => {
+		const received: { code: string; state?: SLL.State; ops?: SLL.Operation[] }[] = []
+		const ac = new AbortController()
+		const watching = (async () => {
+			const stream = await client.rotationEdit.watchOps({ rotationId: 'hello-rot' }, { signal: ac.signal })
+			for await (const update of stream) received.push(update as (typeof received)[number])
+		})().catch(() => {})
+
+		try {
+			const init = await app.waitFor(() => received.find((u) => u.code === 'init'), { label: 'the draft' })
+			const editWindowSeqId = init.state!.editWindowSeqId
+			const userId = ADMIN_USER.discordId
+			expect(
+				await client.rotationEdit.dispatchOp({
+					rotationId: 'hello-rot',
+					op: {
+						op: 'add',
+						opId: SLL.createOpId(),
+						userId,
+						editWindowSeqId,
+						items: [
+							{ type: 'single-list-item', itemId: LL.createItemId(), layerId: LAYERS.harjuRaas, source: { type: 'manual', userId } },
+						],
+						index: { outerIndex: 0, innerIndex: null },
+					},
+				}),
+			).toMatchObject({ code: 'ok' })
+
+			expect(await call('updateRotation', { id: 'hello-rot', layerIds: [LAYERS.gorodokRaas] })).toMatchObject({
+				code: 'err:unsaved-edits',
+			})
+			// a write that leaves the items alone does not touch the draft
+			expect(await call('updateRotation', { id: 'hello-rot', name: 'Hello rotation v3' })).toMatchObject({ code: 'ok' })
+			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => i.layerId)).toEqual([
+				LAYERS.sumariSeed,
+			])
+
+			expect(
+				await client.rotationEdit.dispatchOp({
+					rotationId: 'hello-rot',
+					op: { op: 'reset-to-saved', opId: SLL.createOpId(), userId, editWindowSeqId },
+				}),
+			).toMatchObject({ code: 'ok' })
+			expect(await call('updateRotation', { id: 'hello-rot', layerIds: [LAYERS.gorodokRaas] })).toMatchObject({ code: 'ok' })
+			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => i.layerId)).toEqual([
+				LAYERS.gorodokRaas,
+			])
+			const save = await app.waitFor(() => received.find((u) => u.ops?.some((op) => op.op === 'save' && op.source?.type === 'plugin')), {
+				label: "the plugin's save reaching the draft",
+			})
+			expect(save.ops?.find((op) => op.op === 'add')).toMatchObject({ items: [{ layerId: LAYERS.gorodokRaas }] })
+		} finally {
+			ac.abort()
+			await watching
+		}
+
+		expect(await call('dropRotation', { id: 'hello-rot' })).toMatchObject({ code: 'ok' })
 	})
 
 	// A permission SLM knows nothing about: the plugin declares it, a role is granted it by id (plain strings,

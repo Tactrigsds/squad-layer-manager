@@ -39,6 +39,10 @@ export function isGeneratedSource(source: Source) {
 	return source.type === 'generated' || source.type === 'layer-request'
 }
 
+// what a list being edited belongs to: a server's queue, or a rotation's items. Both are edited with the same list
+// editor and the same ops (see SLL).
+export type ListHost = { type: 'server'; serverId: string } | { type: 'rotation'; rotationId: string }
+
 export const ItemIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{6,24}$/)
 export type ItemId = z.infer<typeof ItemIdSchema>
 
@@ -55,11 +59,13 @@ export const NewSingleItemSchema = z.object({
 	source: SourceSchema.optional(),
 	tags: z.array(LTag.TagIdSchema).optional(),
 	tagsSetBy: LTag.AttributionSchema.optional(),
+	// only a rotation's notes may arrive with a new item, anonymous and naming their rotation (checked where clients'
+	// ops are accepted, see isRotationNote). Every other note arrives through the note ops, which is what keeps its
+	// author trustworthy.
+	notes: LNote.NotesSchema.optional(),
 })
 export type NewSingleItem = z.infer<typeof NewSingleItemSchema>
 
-// notes are deliberately absent from NewSingleItemSchema: they can only arrive through the note ops, which is what
-// keeps their author trustworthy
 export const SingleItemSchema = NewSingleItemSchema.extend({
 	itemId: ItemIdSchema,
 	source: SourceSchema,

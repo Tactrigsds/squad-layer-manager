@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -10,12 +11,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { UserLabel } from '@/components/user-avatar'
 import * as Browser from '@/lib/browser'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import * as LNote_Msgs from '@/messages/layer-notes.messages'
+import type * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as RotationClient from '@/systems/rotation.client'
 import * as UsersClient from '@/systems/users.client'
 
 // Freeform notes on a queue item, rendered `<author>: <text>` on their own row under the layer name. A note belongs
@@ -24,7 +28,7 @@ import * as UsersClient from '@/systems/users.client'
 type Editing = { note: LNote.Note } | 'new' | null
 
 export function LayerNotes(props: {
-	serverId: string
+	host: LL.ListHost
 	notes: LNote.Note[] | undefined
 	onEdit: (noteId: LNote.NoteId, text: string) => void
 	onDelete: (noteId: LNote.NoteId) => void
@@ -46,7 +50,7 @@ export function LayerNotes(props: {
 			{recent.map((note) => (
 				<NoteChip
 					key={note.id}
-					serverId={props.serverId}
+					host={props.host}
 					note={note}
 					disabled={props.disabled}
 					onEdit={() => setEditing({ note })}
@@ -55,7 +59,7 @@ export function LayerNotes(props: {
 			))}
 			{older > 0 && (
 				<NoteListPopover
-					serverId={props.serverId}
+					host={props.host}
 					notes={notes}
 					older={older}
 					disabled={props.disabled}
@@ -105,16 +109,20 @@ export function AddNoteButton(props: {
 	)
 }
 
-function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
+function NoteChip(props: { host: LL.ListHost; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
 	// touch has no hover, so there a tap opens the card instead
 	const coarse = Browser.useCoarsePointer()
-	const body = (
-		<NoteBody serverId={props.serverId} note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
-	)
+	const body = <NoteBody host={props.host} note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
 	// one line each, whatever the length: the card carries the full text
 	const text = (
 		<>
-			<AuthorName userId={props.note.author} />: <RichText text={props.note.text} className="whitespace-nowrap" />
+			{props.note.fromRotation !== undefined && <RotationOrigin rotationId={props.note.fromRotation} />}
+			{props.note.author !== undefined && (
+				<>
+					<AuthorName userId={props.note.author} />:{' '}
+				</>
+			)}
+			<RichText text={props.note.text} className="whitespace-nowrap" />
 		</>
 	)
 	if (coarse) {
@@ -141,9 +149,32 @@ function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolea
 	)
 }
 
+// marks a note copied from a rotation, where an author would otherwise go
+function RotationOrigin(props: { rotationId: string }) {
+	const name = Zus.useStore(RotationClient.Store, (s) => RotationClient.Sel.rotation(props.rotationId)(s)?.name)
+	const label = name !== undefined ? tr.text(LNote_Msgs.fromRotation(name)) : tr.text(LNote_Msgs.fromDeletedRotation())
+	return <Icons.RefreshCw role="img" aria-label={label} className="me-1 inline h-3 w-3 align-[-2px] text-primary" />
+}
+
+function RotationOriginLine(props: { rotationId: string }) {
+	const name = Zus.useStore(RotationClient.Store, (s) => RotationClient.Sel.rotation(props.rotationId)(s)?.name)
+	return (
+		<p className="flex items-center gap-1 text-xs text-muted-foreground">
+			<Icons.RefreshCw className="h-3 w-3 text-primary" aria-hidden />
+			{name !== undefined ? (
+				<Link to="/rotations/$rotationId" params={{ rotationId: props.rotationId }} className="hover:underline">
+					{tr.text(LNote_Msgs.fromRotation(name))}
+				</Link>
+			) : (
+				tr.text(LNote_Msgs.fromDeletedRotation())
+			)}
+		</p>
+	)
+}
+
 // every note, newest first, behind the chip that counts the ones the row leaves out
 function NoteListPopover(props: {
-	serverId: string
+	host: LL.ListHost
 	notes: LNote.Note[]
 	older: number
 	disabled?: boolean
@@ -167,7 +198,7 @@ function NoteListPopover(props: {
 				{props.notes.toReversed().map((note) => (
 					<NoteBody
 						key={note.id}
-						serverId={props.serverId}
+						host={props.host}
 						note={note}
 						disabled={props.disabled}
 						onEdit={() => props.onEdit(note)}
@@ -179,11 +210,12 @@ function NoteListPopover(props: {
 	)
 }
 
-function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
-	const canManage = useCanManageNote(props.serverId, props.note)
+function NoteBody(props: { host: LL.ListHost; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
+	const canManage = useCanManageNote(props.host, props.note)
 	return (
 		<div role="group" aria-label={tr.text(LNote_Msgs.noteGroup())} className="space-y-1">
-			<UserLabel userId={props.note.author} />
+			{props.note.author !== undefined && <UserLabel userId={props.note.author} />}
+			{props.note.fromRotation !== undefined && <RotationOriginLine rotationId={props.note.fromRotation} />}
 			<p className="text-sm">
 				<RichText text={props.note.text} />
 			</p>
@@ -260,8 +292,13 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 	)
 }
 
-function useCanManageNote(serverId: string, note: LNote.Note) {
+// a rotation's notes are anonymous, so anyone who may edit the rotation may change any of them
+function useCanManageNote(host: LL.ListHost, note: LNote.Note) {
 	const user = UsersClient.useLoggedInUser()
-	const manageAllDenied = RbacClient.usePermsCheck(RBAC.perm('queue:manage-all-notes', { serverId }))
+	const manageAllDenied = RbacClient.usePermsCheck(
+		host.type === 'server'
+			? RBAC.perm('queue:manage-all-notes', { serverId: host.serverId })
+			: RBAC.getWritePermReqForRotation(host.rotationId),
+	)
 	return LNote.isAuthor(note, user?.discordId) || manageAllDenied === null
 }
