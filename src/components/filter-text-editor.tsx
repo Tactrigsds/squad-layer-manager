@@ -11,6 +11,8 @@ import * as Yaml from '@/lib/yaml'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
+import * as FilterEditClient from '@/systems/filter-edit.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 
 import { parseWithNodeComments, stringifyWithNodeComments } from './filter-text-editor.helpers'
@@ -26,6 +28,9 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	// re-rendering the buffer means parsing it first, so the switch is only offered while that can succeed
 	const [parsable, setParsable] = React.useState(true)
 	const [compact, setCompact] = React.useState(true)
+	const gridRef = React.useRef<HTMLDivElement>(null)
+	const dragging = React.useRef(false)
+	const [errorsFraction, setErrorsFraction] = React.useState(FilterEditClient.loadErrorsFraction)
 	// the editor is built once; the store subscription below reads the current mode without tearing it down
 	const compactRef = React.useRef(compact)
 	compactRef.current = compact
@@ -150,13 +155,46 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	}))
 
 	return (
-		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
+		<div
+			ref={gridRef}
+			className="grid h-[500px] w-full grid-rows-[min-content_minmax(0,1fr)] gap-y-2 rounded-md"
+			style={{ gridTemplateColumns: `minmax(0,${1 - errorsFraction}fr) auto minmax(0,${errorsFraction}fr)` }}
+		>
 			<div className="mb-2 ms-[45px] flex items-center gap-3">
 				<h3 className={Typo.Small}>{tr.text(F_Msgs.filterHeading())}</h3>
 				<YamlCompactSwitch className="ms-auto" compact={compact} disabled={!parsable} onChange={switchCompact} />
 			</div>
+			<span />
 			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
 			<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>
+			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label={tr.text(F_Msgs.resizeErrors())}
+				className="group flex w-2 cursor-col-resize touch-none justify-center"
+				onPointerDown={(e) => {
+					dragging.current = true
+					e.currentTarget.setPointerCapture(e.pointerId)
+				}}
+				onPointerMove={(e) => {
+					if (!dragging.current) return
+					const rect = gridRef.current!.getBoundingClientRect()
+					// the errors pane is at the inline end
+					const fromEnd = MessagesClient.textDirection() === 'rtl' ? e.clientX - rect.left : rect.right - e.clientX
+					setErrorsFraction(FilterEditClient.clampErrorsFraction(fromEnd / rect.width))
+				}}
+				onPointerUp={(e) => {
+					dragging.current = false
+					e.currentTarget.releasePointerCapture(e.pointerId)
+					FilterEditClient.saveErrorsFraction(errorsFraction)
+				}}
+				onDoubleClick={() => {
+					setErrorsFraction(FilterEditClient.ERRORS_FRACTION.default)
+					FilterEditClient.saveErrorsFraction(FilterEditClient.ERRORS_FRACTION.default)
+				}}
+			>
+				<div className="w-0.5 rounded-full bg-transparent group-hover:bg-line-soft" />
+			</div>
 			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive ltr-isolate">
 				{errorText}
 			</pre>
