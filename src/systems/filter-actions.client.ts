@@ -26,6 +26,7 @@ export namespace Actions {
 			alertMessage: source.alertMessage,
 			invertedEmoji: source.invertedEmoji,
 			invertedAlertMessage: source.invertedAlertMessage,
+			missExemption: source.missExemption,
 		})
 		switch (res.code) {
 			case 'ok':
