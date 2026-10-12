@@ -83,9 +83,11 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 		overrideAdminSetNextLayer: useStorePoolConfigApi(stores.squadServer!, ['overrideAdminSetNextLayer']),
 		warnOnNextLayerChange: useStorePoolConfigApi(stores.squadServer!, ['warnOnNextLayerChange']),
 	}
+	const autoStartApi = useStorePoolConfigApi(stores.squadServer!, ['vote', 'autoStartVoteDelay'])
 	// with write access to nothing in the window it is a read-only viewer: the panels disable their controls, and
 	// the save/reset affordances disappear (this is all public data, so viewing stays available)
-	const readOnly = !!mainPoolApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
+	const readOnly =
+		!!mainPoolApi.writeDenied && !!autoStartApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
 
 	const [tab, setTab] = useState_withGlobalHandle<'filters' | 'repeatRules' | 'generation' | 'nextLayer'>(
 		TUT.TOUR_HANDLES.poolConfigTab,
@@ -136,7 +138,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				) : tab === 'repeatRules' ? (
 					<PoolRepeatRulesetPanel poolApi={mainPoolApi} repeatRulesetEditor={repeatRulesetEditor} />
 				) : tab === 'generation' ? (
-					<GenerationPanel api={mainPoolApi} />
+					<GenerationPanel api={mainPoolApi} autoStartApi={autoStartApi} />
 				) : (
 					<NextLayerPanel apis={nextLayerApis} />
 				)}

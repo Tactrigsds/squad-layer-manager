@@ -293,7 +293,7 @@ export const nextLayerLabels: Record<SETTINGS.NextLayerSettingKey, TString> = {
 
 // -------- the generation panel --------
 
-export const generationTab = def('Generation')
+export const generationTab = def('Generation & Votes')
 
 export const generatedVotes = def('Generated Votes')
 
@@ -308,6 +308,18 @@ export const generatedVoteDisplayOptions = def('Vote Display Options')
 export const generatedVoteDisplayOptionsHelp = def(
 	'The parts of each layer that players see when a generated vote starts. The map is always shown, because it is the one part the choices are certain to differ by.',
 )
+
+export const startingVotes = def('Starting Votes')
+
+export const autoStartVotesLabel = def('Start votes automatically')
+
+export const autoStartVotesHelp = def(
+	'When the next item in the queue is a vote, SLM starts the vote once the match has run for the delay below. When the setting is off, an admin starts every vote.',
+)
+
+export const autoStartVoteDelay = def('Delay into the match')
+
+export const autoStartVoteDelayInvalid = def('Enter a number followed by s, m or h, such as 20m.')
 
 // -------- repeat rules --------
 

@@ -47,7 +47,7 @@ the usual route:
 
 ![pool_config_button](../../images/configuring/pool_config_button.png)
 
-It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
+It has four tabs: _Filters_, _Repeat Rules_, _Generation & Votes_ and _Next Layer_.
 
 ![pool_config_popover](../../images/configuring/pool_config_popover.png)
 

@@ -10,6 +10,7 @@ import type * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -445,33 +446,98 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 	)
 }
 
-export function GenerationPanel({ api }: { api: PoolConfigApi }) {
+// the settings page edits the vote settings in its own section, so only the pool configuration window passes autoStartApi
+export function GenerationPanel({ api, autoStartApi }: { api: PoolConfigApi; autoStartApi?: PoolConfigApi }) {
 	const enabled = usePoolValue(api, ['generateVotes', 'enabled']) === true
 	const displayProps = (usePoolValue(api, ['generateVotes', 'displayProps']) as DH.LayerDisplayProp[] | undefined) ?? []
 	return (
-		<div className="space-y-3">
-			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
-			<BooleanSettingRow
-				api={api}
-				path={['generateVotes', 'enabled']}
-				label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
-				description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
-			/>
-			<div className="space-y-2 ps-6">
-				<div className="space-y-1">
-					<h5 className="text-sm font-medium">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptions())}</h5>
-					<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptionsHelp())}</p>
-				</div>
-				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<div>
-						<VoteDisplayPropsCheckboxes
-							displayProps={displayProps}
-							onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
-							disabled={!enabled || !!api.writeDenied}
-							lockMap
-						/>
+		<div className="space-y-6">
+			<div className="space-y-3">
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
+				<BooleanSettingRow
+					api={api}
+					path={['generateVotes', 'enabled']}
+					label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
+					description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
+				/>
+				<div className="space-y-2 ps-6">
+					<div className="space-y-1">
+						<h5 className="text-sm font-medium">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptions())}</h5>
+						<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptionsHelp())}</p>
 					</div>
+					<PermissionDeniedTooltip denied={api.writeDenied}>
+						<div>
+							<VoteDisplayPropsCheckboxes
+								displayProps={displayProps}
+								onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
+								disabled={!enabled || !!api.writeDenied}
+								lockMap
+							/>
+						</div>
+					</PermissionDeniedTooltip>
+				</div>
+			</div>
+			{autoStartApi && <AutoStartVoteSection api={autoStartApi} />}
+		</div>
+	)
+}
+
+const DEFAULT_AUTO_START_VOTE_DELAY = SETTINGS.PublicServerSettingsSchema.parse({}).vote.autoStartVoteDelay ?? 0
+
+// api is rooted at vote.autoStartVoteDelay, which is null when votes are only started by hand
+function AutoStartVoteSection({ api }: { api: PoolConfigApi }) {
+	const checkboxId = React.useId()
+	const inputId = React.useId()
+	const delay = usePoolValue(api, ROOT_PATH) as number | null
+	const enabled = delay !== null
+	const [invalid, setInvalid] = React.useState(false)
+	const setDelay = useDebounced({
+		onChange: (text: string) => {
+			const ms = ZodUtils.tryParseHumanTimeToken(text.trim())
+			setInvalid(ms === undefined)
+			if (ms !== undefined) api.set(ROOT_PATH, ms)
+		},
+		delay: 250,
+	})
+	return (
+		<div data-tour="pool-auto-start-vote" className="space-y-3">
+			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.startingVotes())}</h4>
+			<div className="flex items-start gap-2.5">
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<Checkbox
+						id={checkboxId}
+						className="mt-0.5"
+						checked={enabled}
+						disabled={!!api.writeDenied}
+						onCheckedChange={(next) => {
+							setInvalid(false)
+							api.set(ROOT_PATH, next ? DEFAULT_AUTO_START_VOTE_DELAY : null)
+						}}
+					/>
 				</PermissionDeniedTooltip>
+				<div className="min-w-0 space-y-1">
+					<Label htmlFor={checkboxId} className="cursor-pointer font-medium">
+						{tr.text(SETTINGS_Msgs.autoStartVotesLabel())}
+					</Label>
+					<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.autoStartVotesHelp())}</p>
+				</div>
+			</div>
+			<div className="space-y-1 ps-6">
+				<Label htmlFor={inputId} className="text-sm font-medium">
+					{tr.text(SETTINGS_Msgs.autoStartVoteDelay())}
+				</Label>
+				{/* toggling remounts it, so the box re-seeds from the value the checkbox just wrote */}
+				<Input
+					key={`${api.resetKey}:${enabled}`}
+					id={inputId}
+					defaultValue={delay === null ? '' : ZodUtils.formatHumanTime(delay)}
+					placeholder={ZodUtils.formatHumanTime(DEFAULT_AUTO_START_VOTE_DELAY)}
+					disabled={!enabled || !!api.writeDenied}
+					aria-invalid={invalid}
+					onChange={(e) => setDelay(e.target.value)}
+					containerClassName="w-32"
+				/>
+				{invalid && <p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.autoStartVoteDelayInvalid())}</p>}
 			</div>
 		</div>
 	)
