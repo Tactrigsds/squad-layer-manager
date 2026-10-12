@@ -104,6 +104,7 @@ export function initState(entity: F.FilterEntity): State {
 			emoji: entity.emoji,
 			invertedAlertMessage: entity.invertedAlertMessage,
 			invertedEmoji: entity.invertedEmoji,
+			missExemption: entity.missExemption,
 		},
 		tree: toTree(entity.filter),
 	}
@@ -114,7 +115,16 @@ export function initState(entity: F.FilterEntity): State {
 // shape; its session simply never leaves the client that owns it.
 export function localState(filterId: F.FilterEntityId, filter: F.EditableFilterNode, meta?: Partial<Meta>): State {
 	const saved: Draft = {
-		meta: { name: '', description: null, alertMessage: null, emoji: null, invertedAlertMessage: null, invertedEmoji: null, ...meta },
+		meta: {
+			name: '',
+			description: null,
+			alertMessage: null,
+			emoji: null,
+			invertedAlertMessage: null,
+			invertedEmoji: null,
+			missExemption: F.DEFAULT_MISS_EXEMPTION,
+			...meta,
+		},
 		tree: toTree(filter),
 	}
 	return { filterId, draft: saved, saved }
