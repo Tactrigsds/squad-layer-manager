@@ -43,7 +43,7 @@ file and config, and SLM migrates its own database on upgrade. See [installing.m
 
 The compose file also includes an optional observability stack: Grafana, an OpenTelemetry collector and VictoriaMetrics.
 Its preconfigured dashboards chart SLM's metrics, logs and traces, such as RCON traffic and failures, log ingestion and
-the connection state of each server. See [installing.md](../installing.md#9-telemetry).
+the connection state of each server. See [Accessing telemetry](../installing.md#11-accessing-telemetry).
 
 ![a Grafana dashboard of RCON and log traffic](../images/features/grafana_dashboard.png)
 

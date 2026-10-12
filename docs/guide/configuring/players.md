@@ -49,7 +49,7 @@ by default.
 
 ## Player flagging
 
-Flagging needs the BattleMetrics integration (see [installing.md, Integrations](../../installing.md#11-integrations)).
+Flagging needs the BattleMetrics integration (see [BattleMetrics](integrations.md#battlemetrics)).
 
 A BattleMetrics flag can be applied to a player from in game with the `/flag` command, or from the SLM interface:
 
