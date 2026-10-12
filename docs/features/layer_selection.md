@@ -28,8 +28,7 @@ toward preferable layers. Each layer is marked when it falls outside your pool o
 
 ![the Add Layers dialog, with three RAAS layers selected](../images/features/add_layers.png)
 
-SLM works on a phone. The dialog lists layers as cards there, with the filters and the selected layers on tabs of their
-own. SLM can also be installed as an app, which opens in its own window. See
+SLM works on a phone, and can be installed to your homescreen. See
 [Can SLM be installed as an app?](../faq.md#can-slm-be-installed-as-an-app).
 
 ![the queue on a phone](../images/features/phone_queue.png)
