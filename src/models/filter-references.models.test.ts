@@ -19,6 +19,7 @@ function filter(id: string, node: F.FilterNode): F.FilterEntity {
 		emoji: null,
 		invertedAlertMessage: null,
 		invertedEmoji: null,
+		missExemption: null,
 	}
 }
 
@@ -33,6 +34,16 @@ describe('buildIndex', () => {
 		const index = FR.buildIndex([filter('base', FB.and([])), filter('user', FB.and([FB.includedIn('base')]))], [])
 		expect(index.get('base')).toEqual([{ type: 'filter-entity', filterId: 'user' }])
 		expect(index.get('user')).toBeUndefined()
+	})
+
+	// an exemption names the filter but never carries a pool's reach through to it
+	test('a miss exemption references the filters it applies, without extending a pool past its filter', () => {
+		const exempting = { ...filter('exempting', FB.and([])), missExemption: FB.or([FB.includedIn('base')]) }
+		const index = FR.buildIndex(
+			[filter('base', FB.and([])), exempting],
+			[poolConfig({ poolFilter: { filterId: 'exempting', mode: 'include' } })],
+		)
+		expect(index.get('base')).toEqual([{ type: 'filter-entity', filterId: 'exempting' }])
 	})
 
 	test('excluded-from counts the same as included-in', () => {

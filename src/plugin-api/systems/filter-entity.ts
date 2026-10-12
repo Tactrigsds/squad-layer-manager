@@ -27,15 +27,29 @@ export function get(id: F.FilterEntityId): F.FilterEntity | undefined {
 	return FilterEntity.state.filters.get(id)
 }
 
-/** Without `owner`, the calling plugin owns the filter. */
-export type NewFilter = Omit<F.FilterEntity, 'owner'> & { owner?: { type: 'slm-user'; userId: bigint } }
+/**
+ * Without `owner`, the calling plugin owns the filter. Without `missExemption`, seeding and training layers never
+ * show the filter's miss indicator.
+ */
+export type NewFilter = Omit<F.FilterEntity, 'owner' | 'missExemption'> & {
+	owner?: { type: 'slm-user'; userId: bigint }
+	missExemption?: F.FilterNode | null
+}
 
 export async function create(ctx: PluginsSys.Ctx<any>, filter: NewFilter) {
 	// rebuilt rather than passed through, so a plugin cannot hand the filter to SLM or to another plugin
 	const owner: F.FilterOwner = filter.owner
 		? { type: 'slm-user', userId: filter.owner.userId }
 		: { type: 'plugin', pluginId: ctx.plugin.id }
-	return await FilterEntity.createFilter(ctx, F.FilterEntitySchema.parse({ ...filter, owner }), actorFor(ctx))
+	return await FilterEntity.createFilter(
+		ctx,
+		F.FilterEntitySchema.parse({
+			...filter,
+			missExemption: filter.missExemption === undefined ? F.DEFAULT_MISS_EXEMPTION : filter.missExemption,
+			owner,
+		}),
+		actorFor(ctx),
+	)
 }
 
 export async function update(

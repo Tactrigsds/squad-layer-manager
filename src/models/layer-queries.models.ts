@@ -435,6 +435,13 @@ export type FilterEntityMatchDescriptor = {
 	itemId?: ItemId
 	layerId: L.LayerId
 }
+// the layer misses the constraint's filter, but matches that filter's miss exemption, so the miss is not indicated
+export type FilterEntityMissExemptDescriptor = {
+	type: 'filter-entity-miss-exempt'
+	constraintId: string
+	itemId?: ItemId
+	layerId: L.LayerId
+}
 // the layer's collection is not among the server's installed mods, so the server cannot load it
 export type UnsupportedModMatchDescriptor = {
 	type: 'installed-mods'
@@ -443,12 +450,26 @@ export type UnsupportedModMatchDescriptor = {
 	layerId: L.LayerId
 	collection: string
 }
-export type MatchDescriptor = RepeatMatchDescriptor | FilterEntityMatchDescriptor | UnsupportedModMatchDescriptor
+export type MatchDescriptor =
+	| RepeatMatchDescriptor
+	| FilterEntityMatchDescriptor
+	| FilterEntityMissExemptDescriptor
+	| UnsupportedModMatchDescriptor
+
+// whether `descriptors` say the layer matched constraint `constraintId`. An exempt miss is still a miss.
+export function isConstraintMatched(descriptors: readonly MatchDescriptor[] | undefined, constraintId: string) {
+	return !!descriptors?.some((d) => d.constraintId === constraintId && d.type !== 'filter-entity-miss-exempt')
+}
+
+export function isMissExempt(descriptors: readonly MatchDescriptor[] | undefined, constraintId: string) {
+	return !!descriptors?.some((d) => d.constraintId === constraintId && d.type === 'filter-entity-miss-exempt')
+}
 
 export function resolveRepeatedFieldToDescriptorMap(descriptors: MatchDescriptor[], teamParity: number) {
 	const violatedFields: Map<keyof L.KnownLayer, RepeatMatchDescriptor> = new Map()
 	for (const descriptor of descriptors) {
-		if (descriptor.type === 'filter-entity' || descriptor.type === 'installed-mods') continue
+		if (descriptor.type === 'filter-entity' || descriptor.type === 'filter-entity-miss-exempt' || descriptor.type === 'installed-mods')
+			continue
 		if (descriptor.type === 'repeat-rule') {
 			violatedFields.set(resolveLayerPropertyForRepeatDescriptorField(descriptor, teamParity), descriptor)
 			continue

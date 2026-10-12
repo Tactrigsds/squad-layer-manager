@@ -1,5 +1,5 @@
 import * as CMD from '@/models/command.models'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
 import type * as L from '@/models/layer.models'
@@ -71,7 +71,9 @@ export function filter(
 	id: F.FilterEntityId,
 	name: string,
 	node: F.FilterNode,
-	opts?: Partial<Pick<F.FilterEntity, 'description' | 'alertMessage' | 'emoji' | 'invertedAlertMessage' | 'invertedEmoji'>>,
+	opts?: Partial<
+		Pick<F.FilterEntity, 'description' | 'alertMessage' | 'emoji' | 'invertedAlertMessage' | 'invertedEmoji' | 'missExemption'>
+	>,
 ): F.FilterEntity {
 	return {
 		id,
@@ -83,6 +85,7 @@ export function filter(
 		emoji: opts?.emoji ?? null,
 		invertedAlertMessage: opts?.invertedAlertMessage ?? null,
 		invertedEmoji: opts?.invertedEmoji ?? null,
+		missExemption: opts?.missExemption === undefined ? F.DEFAULT_MISS_EXEMPTION : opts.missExemption,
 	}
 }
 

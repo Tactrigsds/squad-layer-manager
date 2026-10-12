@@ -192,6 +192,46 @@ test.describe('filter references', () => {
 			{ label: 'renamed filter persisted' },
 		)
 	})
+
+	// The exemption tree has an editor frame of its own, and reaches the shared draft only through the details
+	// form's save, so this follows it into the db both ways: emptied, and restored.
+	test('saves the miss exemption with the details, an emptied one as none', async ({ page }) => {
+		const savedExemption = () =>
+			(app.readDb().prepare('select missExemption from filters where id = ?').get('raas-only') as { missExemption: string | null })
+				.missExemption
+		const exemptionSaved = (expected: unknown, label: string) =>
+			app.waitFor(
+				() => {
+					const raw = savedExemption()
+					const saved = raw === null ? null : JSON.parse(raw)
+					return JSON.stringify(saved) === JSON.stringify(expected) ? true : null
+				},
+				{ label },
+			)
+
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+		await page.getByRole('button', { name: 'Edit Details' }).click()
+		const exemption = page.getByRole('group', { name: 'Exempt layers' })
+		await exemption.getByRole('button', { name: 'Exempt layers' }).click()
+
+		const rows = exemption.locator('[data-node-summary]')
+		await expect(rows).toHaveText(['any of', /^Gamemode.*Seed.*Training$/], { timeout: 20_000 })
+		await expect(exemption).toContainText(/\d+ layers?/)
+
+		await rows.nth(1).hover()
+		await exemption.getByRole('button', { name: 'Remove condition' }).click()
+		await expect(rows).toHaveText(['any of'])
+		await page.getByRole('button', { name: 'Save' }).click()
+		await exemptionSaved(null, 'emptied exemption persisted as none')
+
+		await page.getByRole('button', { name: 'Edit Details' }).click()
+		await exemption.getByRole('button', { name: 'Exempt layers' }).click()
+		await expect(rows).toHaveText(['any of'])
+		await exemption.getByRole('button', { name: 'Reset to default' }).click()
+		await expect(rows).toHaveText(['any of', /^Gamemode.*Seed.*Training$/])
+		await page.getByRole('button', { name: 'Save' }).click()
+		await exemptionSaved(FB.or([FB.inValues('Gamemode', ['Seed', 'Training'])]), 'default exemption restored')
+	})
 })
 
 // The filter's draft lives on the server, one session per filter entity, so two clients on the same page are

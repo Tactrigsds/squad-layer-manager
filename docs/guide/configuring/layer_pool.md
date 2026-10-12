@@ -78,6 +78,10 @@ An emoji can be a standard one, or one from your Discord server's emoji library:
 
 ![emoji_library](../../images/configuring/emoji_library.png)
 
+A layer that matches the filter's _Exempt layers_ conditions never shows the miss emoji or alert message, and SLM does
+not warn that it misses the filter. A new filter exempts seeding and training layers. To change the conditions, open
+_Exempt layers_ under the _Miss Indicator_. Use _Reset to default_ to restore the seeding and training exemption.
+
 The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
 everywhere it appears. The queue shows the emoji beside the layer:
 

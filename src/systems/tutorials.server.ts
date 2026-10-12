@@ -715,6 +715,7 @@ function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
 			alertMessage: 'In the tutorial pool',
 			invertedEmoji: TUT.TUTORIAL_FILTERS.pool.invertedEmoji,
 			invertedAlertMessage: 'Not in the tutorial pool',
+			missExemption: F.DEFAULT_MISS_EXEMPTION,
 		},
 		{
 			id: ids.indicator,
@@ -726,6 +727,7 @@ function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
 			alertMessage: 'A large layer',
 			invertedEmoji: null,
 			invertedAlertMessage: null,
+			missExemption: F.DEFAULT_MISS_EXEMPTION,
 		},
 	]
 }

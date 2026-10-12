@@ -43,6 +43,7 @@ import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import { FilterReferences } from './filter-references'
 import LayerTable from './layer-table'
+import { MissExemptionEditor } from './miss-exemption-editor'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
 import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
@@ -62,6 +63,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const [editingDetails, setEditingDetails] = useState(false)
 	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
+	const colConfig = Zus.useStore(stores.filterEditor, (s) => s.layerTable.colConfig)
 	const presenceEvent$ = Zus.useStore(stores.filterEditor, (s) => s.presenceEvent$)
 	const form = Form.useForm({
 		defaultValues: {
@@ -71,6 +73,8 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 			emoji: meta.emoji,
 			invertedAlertMessage: meta.invertedAlertMessage,
 			invertedEmoji: meta.invertedEmoji,
+			// unknown: the recursive node type sends the form's field path types into infinite instantiation
+			missExemption: meta.missExemption as unknown,
 		},
 		// the details and the tree are one draft and one save: both go out as a single dependent batch, so
 		// the meta the server persists is the meta this form is showing
@@ -86,6 +90,8 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 						alertMessage: value.alertMessage ?? null,
 						invertedEmoji: value.invertedEmoji ?? null,
 						invertedAlertMessage: value.invertedAlertMessage ?? null,
+						// the field's validator holds the form back until the exemption is complete
+						missExemption: value.missExemption as F.FilterNode | null,
 					},
 				},
 				{ code: 'save' },
@@ -399,6 +405,30 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 											}}
 										</form.Field>
 									</div>
+									<form.Field
+										name="missExemption"
+										validators={{
+											onChange: ({ value }) =>
+												value && !F.isValidFilterNode(value as F.EditableFilterNode)
+													? tr.text(F_Msgs.missExemptionIncomplete())
+													: undefined,
+										}}
+									>
+										{(field) => (
+											<div className="flex flex-col gap-2">
+												<MissExemptionEditor
+													defaultValue={meta.missExemption}
+													onChange={field.handleChange}
+													colConfig={colConfig}
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)}
+									</form.Field>
 								</div>
 							</div>
 

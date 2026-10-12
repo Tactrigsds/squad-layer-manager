@@ -12,6 +12,7 @@ import type * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
 import type * as Msgs from '@/models/messages.models'
 
+import * as FB from './filter-builders.models'
 import * as LC from './layer-columns.models'
 
 // -------- values & argument terms --------
@@ -737,7 +738,11 @@ export const BaseFilterEntitySchema = z.object({
 
 	invertedAlertMessage: AlertMessageSchema.nullable(),
 	invertedEmoji: z.string().nullable(),
+	// layers matching this never show the miss indicator. Null exempts nothing.
+	missExemption: FilterNodeSchema.nullable(),
 })
+
+export const DEFAULT_MISS_EXEMPTION: FilterNode = FB.or([FB.inValues('Gamemode', ['Seed', 'Training'])])
 
 // the filter entities this tree applies directly, via its apply-filter operators. Not transitive: a referenced
 // filter's own references are found by walking the entities (see filter-references.models.ts).
