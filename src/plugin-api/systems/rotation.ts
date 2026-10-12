@@ -1,11 +1,14 @@
 import * as Rx from '@/lib/rxjs'
 import type * as AppEvents from '@/models/app-events.models'
 import * as LL from '@/models/layer-list.models'
+import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import type * as SLL from '@/models/shared-layer-list.models'
+import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 import * as RotationEdit from '@/systems/rotation-edit.server'
 import * as Rotation from '@/systems/rotation.server'
+import * as Settings from '@/systems/settings.server'
 
 /**
  * The rotations admins see on the rotations page, and the same writes the web client makes. A write here lands the
@@ -85,6 +88,29 @@ export async function clone(ctx: PluginsSys.Ctx<any>, input: CloneInput): Promis
 export async function remove(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
 	const res = await Rotation.deleteRotation(ctx, id, actorFor(ctx))
 	return { code: res.code }
+}
+
+/**
+ * Adds a rotation's items to the server's saved queue, as Add Rotation does: in place of every queued item
+ * (`replace`), ahead of them (`start`) or after them (`end`). The items are sourced to the calling plugin, carry the
+ * rotation's `from-rotation:<id>` tag and any `tags` given, and their notes name the rotation.
+ *
+ * Refuses with `err:unsaved-edits` while anyone has queue edits open, as layer-queue's editSaved does.
+ */
+export async function addToQueue(
+	ctx: PluginsSys.ServerCtx<any>,
+	id: ROT.RotationId,
+	opts: { placement: LL.Placement; tags?: LTag.TagId[] },
+): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unsaved-edits' } | { code: 'err:unknown-tags'; message: string }> {
+	const rotation = Rotation.state.rotations.get(id)
+	if (!rotation) return { code: 'err:not-found' }
+	const tags = opts.tags ?? []
+	const unknownTags = Settings.unknownLayerTags(tags)
+	if (unknownTags.length > 0) return { code: 'err:unknown-tags', message: `Unknown layer tags: ${unknownTags.join(', ')}` }
+	const source: LL.Source = { type: 'plugin', pluginId: ctx.plugin.id }
+	const items = LL.withTags(ROT.toQueueItems(rotation, source), tags)
+	// see layer-queue's editSaved: the runtime object is the whole managed server, which the save path needs
+	return await LayerQueue.addToSaved(ctx as unknown as Parameters<typeof LayerQueue.addToSaved>[0], { source }, items, opts.placement)
 }
 
 export type RotationChange = { type: 'add' | 'update' | 'delete'; rotation: ROT.Rotation; actor: AppEvents.Actor }

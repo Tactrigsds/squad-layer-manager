@@ -474,10 +474,29 @@ export async function editSaved(
 	opts: { source: LL.Source },
 	mutate: (entries: QueueEntry[]) => (QueueEntry | L.LayerId)[],
 ): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' } | { code: 'err:unknown-item'; itemId: string }> {
+	return await retryAfterGeneration(ctx, () => editSavedNow(ctx, opts, mutate))
+}
+
+// Adds items to the saved queue at `placement` in one add op, and saves. Refuses with `err:unsaved-edits` as editSaved
+// does.
+export async function addToSaved(
+	ctx: SideEffectCtx,
+	opts: { source: LL.Source },
+	items: LL.NewItem[],
+	placement: LL.Placement,
+): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' }> {
+	return await retryAfterGeneration(ctx, () => addToSavedNow(ctx, opts, items, placement))
+}
+
+// a generation in flight would skip an edit, so the edit waits for it. Generation always ends in a
+// queue-item-generated op, falling back to a default layer when it fails.
+async function retryAfterGeneration<R extends { code: string }>(
+	ctx: SideEffectCtx,
+	attempt: () => Promise<R | { code: 'generating-queue-item' }>,
+): Promise<Exclude<R, { code: 'generating-queue-item' }>> {
 	while (true) {
-		const res = await editSavedNow(ctx, opts, mutate)
-		if (res.code !== 'generating-queue-item') return res
-		// generation always ends in a queue-item-generated op, falling back to a default layer when it fails
+		const res = await attempt()
+		if (res.code !== 'generating-queue-item') return res as Exclude<R, { code: 'generating-queue-item' }>
 		await Rx.Ext.firstValueFrom(
 			ctx.layerQueue.op$.pipe(
 				Rx.startWith(null),
@@ -487,6 +506,31 @@ export async function editSaved(
 		)
 	}
 }
+
+const addToSavedNow = Instr.spanOp(
+	'addToSavedNow',
+	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
+	async (
+		ctx: SideEffectCtx,
+		opts: { source: LL.Source },
+		items: LL.NewItem[],
+		placement: LL.Placement,
+	): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' } | { code: 'generating-queue-item' }> => {
+		const state = () => ctx.layerQueue.session.state
+		if (SLL.hasMutations(state())) return { code: 'err:unsaved-edits' }
+		if (state().requestingGeneratedQueueItem) return { code: 'generating-queue-item' }
+		const userId = opts.source.type === 'manual' ? opts.source.userId : undefined
+		const opBase = () => ({ opId: SLL.createOpId(), userId, source: opts.source, editWindowSeqId: state().editWindowSeqId })
+		await dispatchOp(ctx, {
+			op: 'add',
+			items: items.map((item) => LL.createItem(item, opts.source)),
+			...LL.placementTarget(state().list, placement),
+			...opBase(),
+		})
+		await dispatchOp(ctx, { op: 'save', ...opBase() })
+		return { code: 'ok' }
+	},
+)
 
 // Holds dispatchOp's locks across the read and all three ops, so nothing lands between them. Another op could move
 // the edit window, or a generation could start, and either would silently skip the rest of the edit. A generation

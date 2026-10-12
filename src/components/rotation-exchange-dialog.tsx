@@ -15,6 +15,7 @@ import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as ROT_Msgs from '@/messages/rotations.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import type * as LL from '@/models/layer-list.models'
 import * as RFMT from '@/models/rotation-format.models'
 import type * as ROT from '@/models/rotations.models'
 import { tr } from '@/systems/messages.client'
@@ -116,7 +117,7 @@ function ExportPanel(props: { rotationId: ROT.RotationId; queue: LayerQueuePrt.K
 
 function ImportPanel(props: { queue: LayerQueuePrt.KeyProp['queue']; onDone: () => void }) {
 	const importer = useLayerTextImport({})
-	const [placement, setPlacement] = React.useState<LayerQueuePrt.Placement>('end')
+	const [placement, setPlacement] = React.useState<LL.Placement>('end')
 	const [importing, setImporting] = React.useState(false)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 	const fileRef = React.useRef<HTMLInputElement>(null)

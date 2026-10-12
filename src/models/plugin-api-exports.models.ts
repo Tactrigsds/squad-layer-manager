@@ -190,6 +190,14 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'toNormedTeamProp',
 	],
 	'slm/models/rbac': ['Access', 'Req', 'describePermit', 'perm'],
+	'slm/models/repeat-ruleset': [
+		'DEFAULT_RULES',
+		'MAX_NAME_LENGTH',
+		'RepeatRuleConfigSchema',
+		'RulesetIdSchema',
+		'RulesetSchema',
+		'rulesFor',
+	],
 	'slm/models/rotation': [
 		'DescriptionSchema',
 		'MetaPatchSchema',
@@ -235,7 +243,8 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/systems/player-activity': ['idlePlayers', 'idleThresholdMs', 'isIdle', 'lastActive'],
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
-	'slm/systems/rotation': ['changes', 'clone', 'create', 'get', 'list', 'remove', 'update'],
+	'slm/systems/repeat-ruleset': ['changes', 'forServer', 'get', 'list', 'remove', 'save', 'setForServer'],
+	'slm/systems/rotation': ['addToQueue', 'changes', 'clone', 'create', 'get', 'list', 'remove', 'update'],
 	'slm/systems/squad-rcon': [
 		'MIN_TTL_MS',
 		'adminRenameSquad',

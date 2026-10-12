@@ -373,14 +373,11 @@ export type RotationToAdd =
 	| { type: 'saved'; rotation: Pick<ROT.Rotation, 'id' | 'items'> }
 	| { type: 'items'; items: LL.NewItem[] }
 
-// where a batch of items goes: in place of every item, or ahead of or after them
-export type Placement = 'replace' | 'start' | 'end'
-
 export namespace Actions {
 	// adds a pasted or saved rotation to the list as one op, so the replaced items and the new ones change together
 	export async function addRotation(
 		stores: KeyProp,
-		args: { rotation: RotationToAdd; placement: Placement; tags: LTag.TagId[] },
+		args: { rotation: RotationToAdd; placement: LL.Placement; tags: LTag.TagId[] },
 	): Promise<boolean> {
 		const source: LL.Source = { type: 'manual', userId: UsersClient.loggedInUserId! }
 		let items: LL.NewItem[]
@@ -397,18 +394,8 @@ export namespace Actions {
 			default:
 				assertNever(args.rotation)
 		}
-		const list = Sel.layerList(Zus.getState(stores.queue))
-		if (args.placement === 'replace') {
-			return await dispatch(stores, {
-				op: 'add',
-				index: { outerIndex: 0, innerIndex: null },
-				items: LL.withTags(items, args.tags),
-				clearItemIds: list.map((item) => item.itemId),
-			})
-		}
-		const cursor: LL.Cursor = { type: args.placement }
-		const index = LL.resolveCursorIndex(list, cursor) ?? { outerIndex: 0, innerIndex: null }
-		return await dispatch(stores, { op: 'add', index, items: LL.withTags(items, args.tags) })
+		const target = LL.placementTarget(Sel.layerList(Zus.getState(stores.queue)), args.placement)
+		return await dispatch(stores, { op: 'add', ...target, items: LL.withTags(items, args.tags) })
 	}
 
 	// try to call this such that react will batch the rerenders. Resolves to whether the server accepted the op.

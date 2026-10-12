@@ -573,6 +573,24 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 
 // stamps the tags chosen in a dialog's footer onto everything it created. A vote item holds no tags of its own, so its
 // choices take them instead.
+// where a batch of added items goes: in place of every item, or ahead of or after them
+export const PlacementSchema = z.enum(['replace', 'start', 'end'])
+export type Placement = z.infer<typeof PlacementSchema>
+
+// the index and the items to clear for an add op that places its items at `placement`
+export function placementTarget(list: List, placement: Placement): { index: ItemIndex; clearItemIds?: ItemId[] } {
+	switch (placement) {
+		case 'replace':
+			return { index: { outerIndex: 0, innerIndex: null }, clearItemIds: list.map((item) => item.itemId) }
+		case 'start':
+			return { index: { outerIndex: 0, innerIndex: null } }
+		case 'end':
+			return { index: { outerIndex: list.length, innerIndex: null } }
+		default:
+			assertNever(placement)
+	}
+}
+
 export function withTags(items: NewItem[], tags: LTag.TagId[]): NewItem[] {
 	if (tags.length === 0) return items
 	const merge = <T extends { tags?: LTag.TagId[] }>(item: T): T => ({ ...item, tags: [...new Set([...(item.tags ?? []), ...tags])] })

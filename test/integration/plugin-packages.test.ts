@@ -590,6 +590,57 @@ describe('packaged plugins', () => {
 		await call('dropFirstLayer', {})
 	})
 
+	// The plugin's counterpart to Add Rotation: one add op at the placement asked for, attributed to the plugin, with
+	// the items marked as the rotation's
+	it('adds a saved rotation to the queue, as Add Rotation does', async () => {
+		expect(await call('makeRotation', { id: 'hello-queue-rot', layerIds: [LAYERS.gorodokRaas] })).toMatchObject({ code: 'ok' })
+		const before = Inspect.savedQueue(app).map((i) => i.itemId)
+
+		expect(await call('addRotationToQueue', { id: 'hello-queue-rot', placement: 'end' })).toMatchObject({ code: 'ok' })
+		const atEnd = Inspect.savedQueue(app)
+		expect(atEnd.slice(0, -1).map((i) => i.itemId)).toEqual(before)
+		expect(atEnd.at(-1)).toMatchObject({ layerId: LAYERS.gorodokRaas, source: { type: 'plugin' } })
+		expect(atEnd.at(-1)?.tags).toContain('from-rotation:hello-queue-rot')
+
+		expect(await call('addRotationToQueue', { id: 'hello-queue-rot', placement: 'start' })).toMatchObject({ code: 'ok' })
+		const atStart = Inspect.savedQueue(app)
+		expect(atStart[0]).toMatchObject({ layerId: LAYERS.gorodokRaas, source: { type: 'plugin' } })
+		expect(atStart.slice(1, -1).map((i) => i.itemId)).toEqual(before)
+
+		expect(await call('addRotationToQueue', { id: 'no-such-rotation', placement: 'end' })).toMatchObject({ code: 'err:not-found' })
+		expect(await call('addRotationToQueue', { id: 'hello-queue-rot', placement: 'end', tags: ['nope:abcdef'] })).toMatchObject({
+			code: 'err:unknown-tags',
+		})
+
+		expect(await call('keepQueueItems', { itemIds: before })).toMatchObject({ code: 'ok' })
+		expect(Inspect.savedQueue(app).map((i) => i.itemId)).toEqual(before)
+		expect(await call('dropRotation', { id: 'hello-queue-rot' })).toMatchObject({ code: 'ok' })
+	})
+
+	it("creates and deletes repeat rulesets, and points the plugin's server at one", async () => {
+		const own = await call<string | null>('serverRulesetId', {})
+		expect(own).not.toBeNull()
+
+		expect(await call('saveRuleset', { id: 'hello-rules', name: 'Hello rules' })).toMatchObject({ code: 'ok' })
+		expect(await call('setServerRuleset', { id: 'hello-rules' })).toMatchObject({ code: 'ok' })
+		expect(await call('serverRulesetId', {})).toBe('hello-rules')
+		expect(
+			readRows<{ actorType: string; actor: string }>(
+				`SELECT actorType, actorPluginId AS actor FROM appEvents WHERE type = 'SETTINGS_UPDATED' AND serverId IS NOT NULL ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actorType: 'plugin', actor: 'hello' })
+		expect(await call('dropRuleset', { id: 'hello-rules' })).toMatchObject({ code: 'err:repeat-ruleset-in-use' })
+		expect(await call('setServerRuleset', { id: 'no-such-ruleset' })).toMatchObject({ code: 'err:unknown-repeat-ruleset' })
+
+		expect(await call('setServerRuleset', { id: own })).toMatchObject({ code: 'ok' })
+		expect(await call('dropRuleset', { id: 'hello-rules' })).toMatchObject({ code: 'ok' })
+		expect(await call('dropRuleset', { id: 'hello-rules' })).toMatchObject({ code: 'err:not-found' })
+
+		const seen = await call<string[][]>('rulesetChanges', {})
+		expect(seen.some((ids) => ids.includes('hello-rules'))).toBe(true)
+		expect(seen.at(-1)).not.toContain('hello-rules')
+	})
+
 	it('sees server events as they land', async () => {
 		const speaker = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_event_watcher', teamId: 1 }))
 		await app.waitForRosterSync()

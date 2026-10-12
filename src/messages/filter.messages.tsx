@@ -428,7 +428,7 @@ export const deleteBlockedByReferences = def('This filter cannot be deleted whil
 export const filtersHeading = def('Filters')
 
 export const pageBlurb = def(
-	'A filter is a named expression that picks a set of layers out of the catalog, such as "no mechanized units on hilly maps". A server\'s layer pool is built from filters, and a filter can mark the layers it matches with an emoji in the layer tables.',
+	'A filter is a named rule that picks a set of layers, such as "no mechanized units on hilly maps". Layer pools are built from filters.',
 )
 
 export const searchLabel = def('Search filters')

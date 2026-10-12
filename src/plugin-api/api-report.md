@@ -325,6 +325,18 @@ change; added lines are additive. Which component each has to move follows semve
 - `describePermit` — value: <T extends PermissionType>(permit: T | Permission<T>) => string
 - `perm` — value: <T extends PermissionType>(type: T, ...[scopeOpts]: undefined extends PermArgs<T> ? [scopeOpts?: PermArgs<T> | undefined] : [scopeOpts: PermArgs<T>]) => Permission<T>
 
+## slm/models/repeat-ruleset
+
+- `DEFAULT_RULES` — value: readonly { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]
+- `MAX_NAME_LENGTH` — value: 64
+- `RepeatRuleConfig` — type
+- `RepeatRuleConfigSchema` — value: ZodObject<{ indicate: ZodPrefault<ZodBoolean>; warn: ZodPrefault<ZodBoolean>; autogen: ZodOptional<ZodBoolean>; field: ZodEnum<{ Alliance: "Alliance"; Faction: "Faction"; Gamemode: "Gamemode"; Layer: "Layer"; Map: "Map"; Size: "Size"; Unit: "Unit"; UnitMatchup: "UnitMatchup"; }>; label: ZodOptional<ZodString>; targetValues: ZodOptional<ZodArray<ZodString>>; within: ZodNumber; crossTeam: ZodOptional<ZodBoolean>; }, $strip>
+- `Ruleset` — type
+- `RulesetId` — type
+- `RulesetIdSchema` — value: ZodString
+- `RulesetSchema` — value: ZodObject<{ id: ZodString; name: ZodString; ownerServerId: ZodOptional<ZodString>; rules: ZodPrefault<ZodArray<ZodObject<{ indicate: ZodPrefault<ZodBoolean>; warn: ZodPrefault<ZodBoolean>; autogen: ZodOptional<ZodBoolean>; field: ZodEnum<{ Alliance: "Alliance"; Faction: "Faction"; Gamemode: "Gamemode"; Layer: "Layer"; Map: "Map"; Size: "Size"; Unit: "Unit"; UnitMatchup: "UnitMatchup"; }>; label: ZodOptional<ZodString>; targetValues: ZodOptional<ZodArray<ZodString>>; within: ZodNumber; crossTeam: ZodOptional<ZodBoolean>; }, $strip>>>; }, $strip>
+- `rulesFor` — value: (rulesets: readonly { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; }[], id: string | null | undefined) => readonly { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]
+
 ## slm/models/rotation
 
 - `DescriptionSchema` — value: ZodString
@@ -557,6 +569,16 @@ change; added lines are additive. Which component each has to move follows semve
 - `checkPlayer` — value: (ctx: ServerCtx<any>, player: { ids: IdQuery<"eos" | "username">; teamId: 1 | 2 | null; squadId: number | null; isLeader: boolean; isAdmin: boolean; adminGroups?: string[] | undefined; discordRoles?: string[] | undefined; role: string; partyId?: string | null | undefined; vehicle?: string | null | undefined; }, req: ReqInput) => Promise<PermissionDeniedResponse | null>
 - `describe` — value: (ctx: Ctx, denial: PermissionDeniedResponse) => string
 
+## slm/systems/repeat-ruleset
+
+- `changes` — value: (ctx: Ctx<any>) => Observable<readonly { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; }[]>
+- `forServer` — value: (ctx: ServerCtx<any>) => { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; } | undefined
+- `get` — value: (id: string) => { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; } | undefined
+- `list` — value: () => readonly { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; }[]
+- `remove` — value: (ctx: Ctx<any>, id: string) => Promise<{ code: "ok"; } | { code: "err:not-found"; } | { code: "err:repeat-ruleset-in-use"; message: string; } | { code: "err:invalid-settings"; message: string; }>
+- `save` — value: (ctx: Ctx<any>, ruleset: { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; }) => Promise<{ code: "ok"; ruleset: { id: string; name: string; ownerServerId?: string | undefined; rules: { indicate: boolean; warn: boolean; autogen?: boolean | undefined; field: "Alliance" | "Faction" | "Gamemode" | "Layer" | "Map" | "Size" | "Unit" | "UnitMatchup"; label?: string | undefined; targetValues?: string[] | undefined; within: number; crossTeam?: boolean | undefined; }[]; }; } | { code: "err:invalid-settings"; message: string; }>
+- `setForServer` — value: (ctx: ServerCtx<any>, id: string) => Promise<{ code: "ok"; } | { code: "err:unknown-repeat-ruleset"; message: string; }>
+
 ## slm/systems/rotation
 
 - `CloneInput` — type
@@ -566,6 +588,7 @@ change; added lines are additive. Which component each has to move follows semve
 - `NewRotation` — type
 - `RotationChange` — type
 - `UpdatePatch` — type
+- `addToQueue` — value: (ctx: ServerCtx<any>, id: string, opts: { placement: "end" | "replace" | "start"; tags?: string[] | undefined; }) => Promise<{ code: "ok"; } | { code: "err:not-found"; } | { code: "err:unsaved-edits"; } | { code: "err:unknown-tags"; message: string; }>
 - `changes` — value: (ctx: Ctx<any>) => Observable<RotationChange>
 - `clone` — value: (ctx: Ctx<any>, input: CloneInput) => Promise<{ code: "err:not-found"; } | CreateResult>
 - `create` — value: (ctx: Ctx<any>, rotation: NewRotation) => Promise<CreateResult>

@@ -16,6 +16,7 @@ plugin is only safe to install if running it as a fork of SLM would be.
 - [Storing data](#storing-data)
 - [Filters](#filters)
 - [Rotations](#rotations)
+- [Repeat rulesets](#repeat-rulesets)
 - [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
@@ -303,6 +304,41 @@ plugin leaves its rotations behind. Find your plugin's rotations with
 `create`, `update` and `clone` refuse a `repeatRulesetId` or a tag that is not configured, with
 `err:unknown-repeat-ruleset` or `err:unknown-tags`. Rotation tags are configured in the global settings, separately
 from layer tags.
+
+`addToQueue` adds a rotation to the queue of your plugin's server, as _Add Rotation_ does for an admin:
+
+```ts
+await Rotations.addToQueue(ctx, 'weekend-mix', { placement: 'end' }) // or 'start', or 'replace'
+await Rotations.addToQueue(ctx, 'weekend-mix', { placement: 'replace', tags: ['seeding:a1b2c3'] })
+```
+
+`replace` takes the place of every queued item, `start` goes ahead of them and `end` after them. The new items are
+sourced to your plugin and carry the rotation's `from-rotation:<id>` tag, plus any layer `tags` given. Their notes name
+the rotation. While an admin has queue edits open, `addToQueue` refuses with `{ code: 'err:unsaved-edits' }`, as
+`editSaved` does. A layer tag that is not configured is refused with `err:unknown-tags`.
+
+## Repeat rulesets
+
+A repeat ruleset is a named list of repeat rules. Every server and rotation points at one. `slm/systems/repeat-ruleset`
+reads and writes the same rulesets admins pick in the pool configuration and the rotation editor.
+`slm/models/repeat-ruleset` exports the schemas, `DEFAULT_RULES` and `rulesFor`.
+
+```ts
+import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
+
+RepeatRulesets.list() // every ruleset
+RepeatRulesets.get('seeding') // one, or undefined
+RepeatRulesets.forServer(ctx) // the ruleset your plugin's server applies, or undefined
+await RepeatRulesets.save(ctx, { id: 'seeding', name: 'Seeding', rules: [{ field: 'Map', within: 2 }] })
+await RepeatRulesets.setForServer(ctx, 'seeding') // your plugin's server applies it from now on
+await RepeatRulesets.remove(ctx, 'seeding')
+RepeatRulesets.changes(ctx).subscribe((rulesets) => ...) // the rulesets after each change, yours included
+```
+
+`save` creates a ruleset, or replaces the one with the same id. A ruleset SLM made for a server when the server was
+created stays that server's. `remove` refuses a ruleset that a server or rotation still uses, with
+`err:repeat-ruleset-in-use`. `setForServer` refuses an id that names no ruleset, with `err:unknown-repeat-ruleset`.
+The audit log records each write as a `SETTINGS_UPDATED` naming your plugin.
 
 ## Layer queries
 
@@ -624,6 +660,7 @@ absent.
 | `slm/systems/match-history`                                | match reads                                  |
 | `slm/systems/filter-entity`                                | filter reads and writes                      |
 | `slm/systems/rotation`                                     | rotation reads and writes                    |
+| `slm/systems/repeat-ruleset`                               | repeat ruleset reads and writes              |
 | `slm/systems/layer-queries`                                | asking the layer table what matches          |
 | `slm/systems/app-events`                                   | writing to the audit log                     |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |
@@ -632,6 +669,7 @@ absent.
 | `slm/models/server-events`, `slm/models/squad`             | event and roster types, for `events$`        |
 | `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one           |
 | `slm/models/rotation`                                      | rotation types and schemas                   |
+| `slm/models/repeat-ruleset`                                | repeat ruleset types and schemas             |
 | `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
 | `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
 | `slm/models/rbac`                                          | the permission vocabulary                    |

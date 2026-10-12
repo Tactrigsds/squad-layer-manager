@@ -30,10 +30,20 @@ export const stateUpdateSource = def((source: SS.LQStateUpdate['source']) => {
 		'edit-settings': t('edited the queue settings'),
 	}
 
-	const text =
-		source.type === 'system'
-			? systemLabels[source.event]
-			: t('{displayName} {did}', { displayName: source.user.displayName, did: manualLabels[source.event] })
+	let text: TString
+	switch (source.type) {
+		case 'system':
+			text = systemLabels[source.event]
+			break
+		case 'manual':
+			text = t('{displayName} {did}', { displayName: source.user.displayName, did: manualLabels[source.event] })
+			break
+		case 'plugin':
+			text = t('Plugin {pluginId} edited the queue settings', { pluginId: source.pluginId })
+			break
+		default:
+			assertNever(source)
+	}
 
 	return { text, toast: [text] }
 })

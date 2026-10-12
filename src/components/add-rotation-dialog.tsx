@@ -35,7 +35,7 @@ export function AddRotationDialog(props: {
 	installedMods?: readonly string[]
 }) {
 	const [tab, setTab] = React.useState<Tab>('paste')
-	const [placement, setPlacement] = React.useState<LayerQueuePrt.Placement>('start')
+	const [placement, setPlacement] = React.useState<LL.Placement>('start')
 	const [tags, setTags] = React.useState<LTag.TagId[]>([])
 	const [selectedId, setSelectedId] = React.useState<ROT.RotationId | null>(null)
 	const pasted = useLayerTextImport({ installedMods: props.installedMods })
@@ -204,7 +204,7 @@ function SavedRotationPicker(props: {
 }
 
 // where the added layers go, as one button group
-export function PlacementButtons(props: { placement: LayerQueuePrt.Placement; onChange: (placement: LayerQueuePrt.Placement) => void }) {
+export function PlacementButtons(props: { placement: LL.Placement; onChange: (placement: LL.Placement) => void }) {
 	return (
 		<TabsList
 			variant="seg"

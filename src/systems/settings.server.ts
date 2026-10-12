@@ -593,6 +593,65 @@ export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.Glo
 	return { code: 'ok' as const }
 }
 
+// creates or replaces one ruleset. Ownership is decided by server creation, never by the writer, so `ownerServerId`
+// is kept from the ruleset being replaced.
+export async function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: AppEvents.Actor) {
+	const existing = GLOBAL_SETTINGS.repeatRulesets
+	const prior = RRS.find(existing, input.id)
+	const { ownerServerId: _ownerServerId, ...rest } = input
+	const ruleset: RRS.Ruleset = prior?.ownerServerId !== undefined ? { ...rest, ownerServerId: prior.ownerServerId } : rest
+	const rulesets = prior ? existing.map((r) => (r.id === input.id ? ruleset : r)) : [...existing, ruleset]
+	const res = await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, actor)
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const, ruleset }
+}
+
+export async function deleteRepeatRuleset(ctx: C.Db, id: RRS.RulesetId, actor: AppEvents.Actor) {
+	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) return { code: 'err:not-found' as const }
+	if (repeatRulesetIdsInUse().has(id)) {
+		return { code: 'err:repeat-ruleset-in-use' as const, message: `A server or rotation still uses the repeat ruleset "${id}"` }
+	}
+	const res = await patchGlobalSettings(ctx, { repeatRulesets: GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.id !== id) }, actor)
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const }
+}
+
+// points a server at a ruleset, on behalf of a plugin
+export async function setServerRepeatRuleset(ctx: C.Db & CS.ServerId, id: RRS.RulesetId, pluginId: string) {
+	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) {
+		return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
+	}
+	let changes: SettingChange[] = []
+	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+		const state = await SquadServer.getServerState(ctx)
+		if (state.settings.queue.mainPool.repeatRulesetId === id) return
+		const next = Obj.deepClone(state.settings)
+		next.queue.mainPool.repeatRulesetId = id
+		changes = diffSettings(state.settings, next)
+		await updateServerSettings(ctx, next, { type: 'plugin', event: 'edit-settings', pluginId })
+	})
+	if (changes.length > 0) {
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.SettingsUpdated>({
+				type: 'SETTINGS_UPDATED',
+				actor: { type: 'plugin', pluginId },
+				serverId: ctx.serverId,
+				matchId: null,
+				causeId: null,
+				changes: auditableSettingChanges(changes),
+			}),
+		)
+	}
+	return { code: 'ok' as const }
+}
+
+// the ids among `tags` that name no configured layer tag
+export function unknownLayerTags(tags: readonly LTag.TagId[]): LTag.TagId[] {
+	const known = new Set(GLOBAL_SETTINGS.layerTags.map((t) => t.id))
+	return tags.filter((id) => !known.has(id))
+}
+
 async function upsertTag(ctx: C.Db & USR.Ctx.Id, key: 'layerTags' | 'rotationTags', input: LTag.Tag) {
 	const existing = GLOBAL_SETTINGS[key]
 	if (LTag.labelConflict(existing, input.label, input.id)) {
@@ -791,17 +850,7 @@ const globalRouter = {
 	saveRepeatRuleset: orpcBase
 		.meta({ type: 'mutation' })
 		.input(RRS.RulesetSchema)
-		.handler(async ({ context: ctx, input }) => {
-			const existing = GLOBAL_SETTINGS.repeatRulesets
-			const prior = RRS.find(existing, input.id)
-			// ownership is decided by server creation, never by an editor
-			const ruleset: RRS.Ruleset = { ...input, ownerServerId: prior?.ownerServerId }
-			if (ruleset.ownerServerId === undefined) delete ruleset.ownerServerId
-			const rulesets = prior ? existing.map((r) => (r.id === input.id ? ruleset : r)) : [...existing, ruleset]
-			const res = await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, { type: 'slm-user', userId: ctx.user.discordId })
-			if (res.code !== 'ok') return res
-			return { code: 'ok' as const, ruleset }
-		}),
+		.handler(async ({ context: ctx, input }) => await saveRepeatRuleset(ctx, input, { type: 'slm-user', userId: ctx.user.discordId })),
 
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
 	// the whole settings object, which needs global-settings:read -- a queue editor holding queue:manage-tags may not have it.

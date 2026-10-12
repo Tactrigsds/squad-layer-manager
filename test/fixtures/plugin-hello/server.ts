@@ -18,6 +18,7 @@ import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
 import * as Rotations from 'slm/systems/rotation'
 import * as SquadServer from 'slm/systems/squad-server'
 
@@ -65,6 +66,8 @@ function attributedItem(layerId: string, userId: bigint): Rotations.NewItems[num
 
 // every rotation write the plugin saw, as `<type>:<id>:<actor type>`
 const rotationChanges: string[] = []
+// the ruleset ids after each change to the rulesets
+const rulesetChanges: string[][] = []
 
 export const router = {
 	stats: os
@@ -165,6 +168,40 @@ export const router = {
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
 		.handler(async () => rotationChanges),
+	addRotationToQueue: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string(), placement: z.enum(['replace', 'start', 'end']), tags: z.array(z.string()).optional() }))
+		.handler(async ({ context, input }) => Rotations.addToQueue(context, input.id, { placement: input.placement, tags: input.tags })),
+	// drops every saved queue item but these
+	keepQueueItems: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ itemIds: z.array(z.string()) }))
+		.handler(async ({ context, input }) =>
+			LayerQueue.editSaved(context, (entries) => entries.filter((e) => input.itemIds.includes(e.itemId))),
+		),
+
+	serverRulesetId: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => RepeatRulesets.forServer(context)?.id ?? null),
+	saveRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string(), name: z.string() }))
+		.handler(async ({ context, input }) =>
+			RepeatRulesets.save(context, { ...input, rules: [{ field: 'Map', within: 2, warn: true, indicate: true }] }),
+		),
+	setServerRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => RepeatRulesets.setForServer(context, input.id)),
+	dropRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => RepeatRulesets.remove(context, input.id)),
+	rulesetChanges: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => rulesetChanges),
 
 	// the filter the query is constrained by is one the plugin made itself, which is the pairing worth
 	// covering: neither half is much use to a plugin without the other
@@ -286,6 +323,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 	})
 	Rpc.register(ctx, router)
 	Rotations.changes(ctx).subscribe((c) => rotationChanges.push(`${c.type}:${c.rotation.id}:${c.actor.type}`))
+	RepeatRulesets.changes(ctx).subscribe((rulesets) => rulesetChanges.push(rulesets.map((r) => r.id)))
 
 	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can
 	// tell the handler ran with the right ctx and the right arguments
