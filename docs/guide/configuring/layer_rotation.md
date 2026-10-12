@@ -1,6 +1,7 @@
 # Layer rotation
 
-These settings decide what SLM plays next: the next layer, the repeat rules, and how SLM picks layers at random.
+These settings decide what SLM plays next: the next layer, the repeat rules, generated votes, saved rotations, and how
+SLM picks layers at random.
 
 ## Next layer
 
@@ -14,7 +15,7 @@ Off, SLM adopts the change instead, and puts that layer at the front of the queu
 _Warn admins when the next layer changes_ sends every in-game admin the new next layer whenever it changes. A change
 SLM overrides is not announced, so turning both on warns admins only about changes SLM accepted.
 
-![pool_configuration_next_layer](../../images/configuring/pool_configuration_next_layer.png)
+![the Next Layer tab of the pool configuration window](../../images/configuring/pool_configuration_next_layer.png)
 
 ## Generated and automatic votes
 
@@ -35,18 +36,18 @@ to stop SLM writing the next layer. The queue still runs and tracks what is play
 and stops sending the recurring reminders and announcements that describe the queue as the rotation. Disable
 updates to run SLM alongside something else that owns the rotation.
 
-![disable_slm_updates](../../images/configuring/disable_slm_updates.png)
+![Disable SLM Updates in the Server Actions menu](../../images/configuring/disable_slm_updates.png)
 
 While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off. Use
 _Re-enable SLM Updates_ to turn them back on. Both need `squad-server:disable-slm-updates`.
 
-![slm_updates_disabled](../../images/configuring/slm_updates_disabled.png)
+![the SLM Updates Disabled alert above the queue](../../images/configuring/slm_updates_disabled.png)
 
 SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or when it infers that
 voting was turned on with `AdminEnableVoting 1`. It reports that voting is enabled, and stops updating the next
 layer until someone turns updates back on. Turning them back on disables voting.
 
-![ingame_vote](../../images/features/ingame_vote.png)
+![the dashboard while an in-game vote decides the next layer](../../images/features/ingame_vote.png)
 
 ## Repeat rules
 
@@ -73,7 +74,7 @@ there, and only while no server or rotation uses it.
 
 These are the rules a new server's repeat ruleset starts with:
 
-![default_repeat_rules](../../images/configuring/default_repeat_rules.png)
+![the repeat rules a new server's repeat ruleset starts with](../../images/configuring/default_repeat_rules.png)
 
 They treat a layer as a repeat when it reuses:
 
@@ -86,7 +87,7 @@ still play a faction the other side played recently.
 
 Use _Target Values_ to narrow a rule to named values:
 
-![skorpo_repeat_rule](../../images/configuring/skorpo_repeat_rule.png)
+![a repeat rule narrowed to Skorpo, over 10 matches](../../images/configuring/skorpo_repeat_rule.png)
 
 That rule covers Skorpo alone, over 10 matches. A _Within_ of 0 turns a rule off.
 
@@ -123,6 +124,72 @@ A repeat rule checks a layer against every choice of an earlier vote that has no
 those choices could still be played. Once the vote picks a winner, or ends with too few votes, the rule checks only
 the layer the vote settled on. Aborting a vote puts all of its choices back in play.
 
+## Generated votes
+
+When the queue runs out of layers, SLM generates a single layer by default. Switch on _Generate votes_, in the
+_Generation & Votes_ tab of the pool configuration window, to have SLM generate a vote between 3 layers instead.
+
+![the Generation & Votes tab, with generated votes switched on](../../images/configuring/pool_config_generation.png)
+
+Each choice of a generated vote is on a different map. SLM draws the choices under the pool filter, the _Constrain
+generated pool for_ filters and the repeat rules, the same as a single generated layer. When a
+[layer request](../../features/layer_selection.md#layer-requests) is pending, SLM generates the requested layer on its
+own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer.
+
+_Vote Display Options_ sets which parts of each choice players see when a generated vote starts. The map is always
+shown, because the map is the one part the choices are certain to differ by.
+
+## Saved rotations
+
+Creating a rotation needs `rotations:create`. Whoever created a rotation can edit it, along with the users and roles
+added to it as contributors. `rotations:write-all` allows editing every rotation. Rotation tags, which group rotations on
+the _Rotations_ page, are defined on the settings page under _Rotation tags_.
+
+A note on an item added from a saved rotation shows a rotation icon in place of an author. Only an admin with
+`queue:manage-all-notes` can change such a note.
+
+### Rotation files
+
+Use _Export_ in the rotation editor to copy a rotation's layers out as YAML or plain text, and _Import_ to read layers
+in from either format. The file holds the layers alone, without the rotation's name, description, tags or repeat ruleset.
+Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a layer line copied from one format pastes
+into the other.
+
+```yaml
+# Opening layer. Keep it light while the server fills.
+- Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+- layer: Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
+  tags: [Event Night]
+- vote:
+     - GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
+     - Mutaha_TC_v1 TLF+Armored ADF+Mechanized
+  display: [map, factions]
+  duration: 3m
+```
+
+In YAML, each `#` line directly above a layer or a vote choice is a note on it. Tags are written by label. A vote's
+first choice is its default. `display` sets what the vote shows players, from `map`, `gamemode`, `layer`, `factions`
+and `units`, and `duration` sets how long the vote runs. A vote without them uses the server's vote settings.
+
+Plain text holds one layer per line, with `#` lines as notes on the next layer. A vote starts with a `# VOTE:` line,
+which takes the same `display` and `duration` settings, separated by `;`. The vote's choices follow it, indented, and
+the vote ends at the next line that is not indented. Plain text leaves tags out.
+
+```text
+# Opening layer. Keep it light while the server fills.
+Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
+# VOTE: display map, factions; duration 3m
+  GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
+  Mutaha_TC_v1 TLF+Armored ADF+Mechanized
+```
+
+SLM detects the format of an import, names every line it cannot read, and blocks the import until each one is fixed.
+A tag label that matches no tag can be created, dropped, or mapped onto an existing tag. The imported layers can
+replace the rotation's layers, go ahead of them, or follow them. Import is available once _Start Editing_ is pressed.
+
+_Add Rotation_ on the queue reads the same formats on its _Paste_ tab.
+
 ## Randomization
 
 _Layer Generation Weights_ controls how SLM picks layers at random. It covers layer generation, which runs when
@@ -130,12 +197,12 @@ the queue runs out of layers, vote generation, and the layer table's random sort
 
 Generation walks down a configurable pick order of layer columns and matchups:
 
-![layer_weights_pick_order](../../images/configuring/layer_weights_pick_order.png)
+![the pick order of Layer Generation Weights](../../images/configuring/layer_weights_pick_order.png)
 
 At each step it draws one value at random, using the weights configured for that column, and the draw narrows the pool
 the next step draws from:
 
-![layer_weights_maps](../../images/configuring/layer_weights_maps.png)
+![the weight of each map, and the share of picks it works out to](../../images/configuring/layer_weights_maps.png)
 
 An unlisted value weighs 0.1. Matchups are unordered, so `[ADF, PLA]` and `[PLA, ADF]` are one entry.
 

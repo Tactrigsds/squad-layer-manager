@@ -44,7 +44,7 @@ Once a trigger has pinned arguments, the command's card in _Settings > In-game C
 fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest}} <reason|message>`), including whether each
 one is required under the current reason settings.
 
-![command_trigger_settings](../../images/configuring/command_trigger_settings.png)
+![the triggers of /timeout, including a /to2h trigger that fills in a 2 hour duration](../../images/configuring/command_trigger_settings.png)
 
 ## Words the caller leaves out
 

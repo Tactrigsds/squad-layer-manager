@@ -184,6 +184,11 @@ Take screenshots at a device scale factor of 2, then mark them so the site shows
 node scripts/stamp-png-density.mjs 2 docs/images/configuring/new_shot.png
 ```
 
+An image in a paragraph of its own becomes a figure that opens full screen on a click. Its alt text doubles as its
+caption, so write the alt text as a short description: `![the Generation & Votes tab, with generated votes switched on](...)`.
+A markdown title (`![alt](src "caption")`) sets a caption that differs from the alt text. Alt text with no spaces, such
+as a file name, leaves the figure without a caption. Images inside a line of text, such as icons, stay inline.
+
 ## The changelog and app releases
 
 A pull request that changes something a user or operator can notice adds a fragment to `changes/`. The format,

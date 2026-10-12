@@ -1,5 +1,5 @@
 // The documentation site's only script (bundled by src/scripts/build-docs.ts). It opens search, fills the version
-// menu, and turns the landing page's video thumbnail into a player on click. Pagefind loads on the first search, so a
+// menu, turns the landing page's video thumbnail into a player on click, and opens figures in a lightbox. Pagefind loads on the first search, so a
 // page that is only read never fetches it. It imports nothing, so the version names below mirror
 // src/models/docs-site.models.ts.
 
@@ -191,6 +191,146 @@ function setupCopyButtons() {
 	}
 }
 
+// Opens a figure's image over the page, as large as fits the viewport. The wheel, a pinch, a click on the image and the
+// + - 0 keys zoom, a drag pans, and a click beside the image closes it.
+function setupLightbox() {
+	const dialog = document.getElementById('docs-lightbox') as HTMLDialogElement | null
+	if (!dialog) return
+	const stage = dialog.querySelector<HTMLElement>('.docs-lightbox-stage')!
+	const img = stage.querySelector('img')!
+	const caption = dialog.querySelector<HTMLElement>('.docs-lightbox-caption')!
+	const MAX_ZOOM = 8
+	const CLICK_ZOOM = 2.5
+	const KEY_ZOOM = 1.25
+	const DRAG_THRESHOLD = 4
+
+	// the image's unscaled size, its scale, and its offset from the stage's top left corner
+	let w = 1
+	let h = 1
+	let fit = 1
+	let scale = 1
+	let tx = 0
+	let ty = 0
+
+	const place = () => {
+		const sw = w * scale
+		const sh = h * scale
+		tx = sw <= stage.clientWidth ? (stage.clientWidth - sw) / 2 : Math.min(0, Math.max(stage.clientWidth - sw, tx))
+		ty = sh <= stage.clientHeight ? (stage.clientHeight - sh) / 2 : Math.min(0, Math.max(stage.clientHeight - sh, ty))
+		img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`
+		stage.toggleAttribute('data-zoomed', scale > fit * 1.001)
+	}
+	const fitToStage = () => {
+		fit = Math.min(stage.clientWidth / w, stage.clientHeight / h)
+		scale = fit
+		place()
+	}
+	// zooms to `next`, keeping the image point under (x, y) in place
+	const zoomAt = (next: number, x: number, y: number) => {
+		const clamped = Math.min(Math.max(next, fit), fit * MAX_ZOOM)
+		tx = x - (x - tx) * (clamped / scale)
+		ty = y - (y - ty) * (clamped / scale)
+		scale = clamped
+		place()
+	}
+	const stagePoint = (e: { clientX: number; clientY: number }) => {
+		const rect = stage.getBoundingClientRect()
+		return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+	}
+
+	const open = (link: HTMLAnchorElement) => {
+		const thumb = link.querySelector('img')
+		if (!thumb) return
+		w = Number(thumb.getAttribute('width')) || thumb.naturalWidth || 1
+		h = Number(thumb.getAttribute('height')) || thumb.naturalHeight || 1
+		img.style.width = `${w}px`
+		img.style.height = `${h}px`
+		img.src = link.href
+		img.alt = thumb.alt
+		caption.textContent = link.closest('figure')?.querySelector('figcaption')?.textContent ?? ''
+		dialog.showModal()
+		// the close button would take focus, and show its focus ring to a reader who clicked
+		dialog.focus()
+		fitToStage()
+	}
+	document.addEventListener('click', (e) => {
+		const link = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-lightbox]') : null
+		if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+		e.preventDefault()
+		open(link)
+	})
+	dialog.querySelector('[data-lightbox-close]')!.addEventListener('click', () => dialog.close())
+	window.addEventListener('resize', () => {
+		if (dialog.open) fitToStage()
+	})
+
+	stage.addEventListener(
+		'wheel',
+		(e) => {
+			e.preventDefault()
+			const p = stagePoint(e)
+			zoomAt(scale * Math.exp(-e.deltaY * (e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 0.05 : 0.0015)), p.x, p.y)
+		},
+		{ passive: false },
+	)
+
+	const pointers = new Map<number, { x: number; y: number }>()
+	let travelled = 0
+	let downOnImage = false
+	stage.addEventListener('pointerdown', (e) => {
+		stage.setPointerCapture(e.pointerId)
+		pointers.set(e.pointerId, stagePoint(e))
+		if (pointers.size === 1) {
+			travelled = 0
+			downOnImage = e.target === img
+		}
+	})
+	stage.addEventListener('pointermove', (e) => {
+		const prev = pointers.get(e.pointerId)
+		if (!prev) return
+		const cur = stagePoint(e)
+		if (pointers.size === 1) {
+			travelled += Math.hypot(cur.x - prev.x, cur.y - prev.y)
+			if (travelled > DRAG_THRESHOLD) {
+				stage.toggleAttribute('data-dragging', true)
+				tx += cur.x - prev.x
+				ty += cur.y - prev.y
+				place()
+			}
+		} else if (pointers.size === 2) {
+			const other = [...pointers].find(([id]) => id !== e.pointerId)![1]
+			const before = Math.hypot(prev.x - other.x, prev.y - other.y)
+			const after = Math.hypot(cur.x - other.x, cur.y - other.y)
+			travelled = Infinity
+			tx += (cur.x - prev.x) / 2
+			ty += (cur.y - prev.y) / 2
+			if (before > 0) zoomAt(scale * (after / before), (cur.x + other.x) / 2, (cur.y + other.y) / 2)
+		}
+		pointers.set(e.pointerId, cur)
+	})
+	const release = (e: PointerEvent) => {
+		const at = pointers.get(e.pointerId)
+		if (!pointers.delete(e.pointerId) || pointers.size > 0) return
+		stage.removeAttribute('data-dragging')
+		if (e.type === 'pointercancel' || travelled > DRAG_THRESHOLD || !at) return
+		if (!downOnImage) dialog.close()
+		else if (scale > fit * 1.001) fitToStage()
+		else zoomAt(scale * CLICK_ZOOM, at.x, at.y)
+	}
+	stage.addEventListener('pointerup', release)
+	stage.addEventListener('pointercancel', release)
+
+	dialog.addEventListener('keydown', (e) => {
+		const cx = stage.clientWidth / 2
+		const cy = stage.clientHeight / 2
+		if (e.key === '+' || e.key === '=') zoomAt(scale * KEY_ZOOM, cx, cy)
+		else if (e.key === '-') zoomAt(scale / KEY_ZOOM, cx, cy)
+		else if (e.key === '0') fitToStage()
+		else return
+		e.preventDefault()
+	})
+}
+
 // A released version's pages are frozen, so the list of versions, and whether this one is outdated, come from the root.
 // remembers whether the reader collapsed the table of contents, across pages and visits
 const TOC_COLLAPSED_KEY = 'docs-toc-collapsed'
@@ -279,5 +419,6 @@ redirectLegacyPath()
 setupSearch()
 setupVideo()
 setupCopyButtons()
+setupLightbox()
 setupTocToggle()
 void setupVersions()

@@ -220,6 +220,8 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 						[rehypeShikiFromHighlighter, highlighter, { theme: 'css-variables', addLanguageClass: true }],
 						() => (tree: HastNode) => collectHeadings(tree, headings),
 						() => (tree: HastNode) => markCallouts(tree),
+						() => (tree: HastNode) => markFigures(tree),
+						() => (tree: HastNode) => bindInlineImages(tree),
 					],
 					components: markdownComponents(site, page, { assets, pageLinks, problems }),
 				},
@@ -444,14 +446,22 @@ function markdownComponents(
 			const text = link.kind === 'page' && children === link.page.file.split('/').at(-1) ? link.page.label : children
 			return React.createElement('a', { ...rest, href: linkHref(site, link, sink.assets) }, text)
 		},
-		img: ({ node: _node, src, alt }) => {
+		img: ({ node, src, alt, title }) => {
 			const link = DS.resolveLink(page.file, src ?? '')
-			if (link.kind !== 'asset') return React.createElement('img', { src: linkHref(site, link, sink.assets), alt })
+			const className = node?.properties.className as string[] | undefined
+			if (link.kind !== 'asset')
+				return React.createElement('img', { src: linkHref(site, link, sink.assets), alt, className: className?.join(' ') })
 			sink.assets.add(link.file)
 			const size = fs.existsSync(path.join(ROOT, link.file)) ? imageSize(link.file) : {}
+			const href = DS.assetHref(site.assetBase, link.file)
+			if (node?.properties.dataFigure) {
+				const caption = figureCaption(alt ?? '', title)
+				return React.createElement(Site.DocFigure, { src: href, alt: alt ?? '', ...caption, ...size })
+			}
 			return React.createElement('img', {
-				src: DS.assetHref(site.assetBase, link.file),
+				src: href,
 				alt: alt ?? '',
+				className: className?.join(' '),
 				loading: 'lazy',
 				decoding: 'async',
 				...size,
@@ -462,6 +472,14 @@ function markdownComponents(
 			React.createElement('div', { className: 'docs-table' }, React.createElement('table', rest, children)),
 	}
 	return components
+}
+
+// A markdown title (`![alt](src "title")`) is the caption. Without one, alt text written as a description is the
+// caption, and alt text that is a file name (no spaces, like `pool_config_button`) leaves the figure without one.
+function figureCaption(alt: string, title: string | undefined): { caption: string | null; captionIsAlt: boolean } {
+	if (title) return { caption: title, captionIsAlt: false }
+	if (!/\s/.test(alt.trim())) return { caption: null, captionIsAlt: false }
+	return { caption: alt.charAt(0).toUpperCase() + alt.slice(1), captionIsAlt: true }
 }
 
 function linkHref(site: Site.SiteInfo, link: DS.Link, assets: Set<string>) {
@@ -503,6 +521,58 @@ function collectHeadings(tree: HastNode, out: Site.Heading[]) {
 	walk(tree, (node) => {
 		const m = node.type === 'element' ? /^h([1-6])$/.exec(node.tagName ?? '') : null
 		if (m && typeof node.properties?.id === 'string') out.push({ depth: Number(m[1]), id: node.properties.id, text: textOf(node) })
+	})
+}
+
+// A paragraph holding only screenshots becomes figures (see Site.DocFigure): one image stands alone, and several share a
+// row. Inline images, such as the icons in running text, stay as they are.
+function markFigures(tree: HastNode) {
+	const isShot = (n: HastNode) =>
+		n.tagName === 'img' && typeof n.properties?.src === 'string' && !n.properties.src.toLowerCase().endsWith('.svg')
+	const isFiller = (n: HastNode) => (n.type === 'text' && !n.value?.trim()) || n.tagName === 'br'
+	walk(tree, (node) => {
+		node.children = node.children?.map((child) => {
+			if (child.tagName !== 'p') return child
+			const kids = child.children ?? []
+			const shots = kids.filter((k) => !isFiller(k))
+			if (shots.length === 0 || !shots.every(isShot)) return child
+			for (const shot of shots) shot.properties = { ...shot.properties, dataFigure: true }
+			if (shots.length === 1) return shots[0]
+			return { type: 'element', tagName: 'div', properties: { className: ['docs-figures'] }, children: shots }
+		})
+	})
+}
+
+// An image inside a line of text, such as an icon, is wrapped with the word before it and whatever follows it up to the next
+// space, so a line never breaks on either side of the image.
+function bindInlineImages(tree: HastNode) {
+	walk(tree, (node) => {
+		const kids = node.children
+		if (!kids || (node.properties?.className as string[] | undefined)?.includes('docs-nowrap')) return
+		for (let i = 0; i < kids.length; i++) {
+			const img = kids[i]
+			if (img.tagName !== 'img' || img.properties?.dataFigure) continue
+			img.properties = { ...img.properties, className: ['docs-inline-image'] }
+			const bound: HastNode[] = []
+			const prev = kids[i - 1]
+			if (prev?.type === 'text') {
+				const m = /\S+$/.exec(prev.value ?? '')
+				if (m) {
+					prev.value = (prev.value ?? '').slice(0, m.index)
+					bound.push({ type: 'text', value: m[0] })
+				}
+			}
+			bound.push(img)
+			const next = kids[i + 1]
+			if (next?.type === 'text') {
+				const m = /^\S+/.exec(next.value ?? '')
+				if (m) {
+					next.value = (next.value ?? '').slice(m[0].length)
+					bound.push({ type: 'text', value: m[0] })
+				}
+			}
+			kids[i] = { type: 'element', tagName: 'span', properties: { className: ['docs-nowrap'] }, children: bound }
+		}
 	})
 }
 

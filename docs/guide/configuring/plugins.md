@@ -23,7 +23,7 @@ SLM ships with these plugins. They are installed but stopped by default.
 2. Paste it under _Install a plugin_ and click _Install_.
 3. Start the plugin with its toggle.
 
-![plugins_settings](../../images/configuring/plugins_settings.png)
+![the Plugins section of the settings page](../../images/configuring/plugins_settings.png)
 
 SLM downloads the plugin and runs its own copy, so the plugin keeps working if the author's site goes down. To
 upgrade the plugin, click _Refresh_ to download it again from the same url.

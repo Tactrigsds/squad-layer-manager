@@ -8,11 +8,11 @@ their defaults.
 
 Open the settings page from the header:
 
-![settings](../../images/configuring/settings_nav.png)
+![the Settings link in the header](../../images/configuring/settings_nav.png)
 
 Use the table of contents on the left to move between sections:
 
-![toc](../../images/configuring/toc.png)
+![the settings page's table of contents](../../images/configuring/toc.png)
 
 Any setting can also be edited as YAML. Settings that few installs change are kept under _Advanced_ at the bottom of
 their section. Any setting or section can carry a comment, to record why it is set the way it is.
@@ -32,7 +32,7 @@ The other pages in this section cover the remaining settings by topic.
 The _Links_ menu in the nav bar holds links for your users, such as your community's rules or a Discord invite. A
 fresh install starts with links to SLM on GitHub and to these docs.
 
-![nav_links](../../images/configuring/nav_links.png)
+![the Links menu, with links to SLM on GitHub and to these docs](../../images/configuring/nav_links.png)
 
 - Links for every server are under _Miscellaneous > Nav Links_ in the settings.
 - A server can add its own in its server settings. They show below the global ones while that server is selected.
