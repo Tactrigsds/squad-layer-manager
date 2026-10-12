@@ -1794,6 +1794,7 @@
 	"Reset to default ({value})": "Reset to default ({value})",
 	"Reset to saved value": "Reset to saved value",
 	"Resetting squad name": "Resetting squad name",
+	"Resize the errors pane": "Resize the errors pane",
 	"Resize the query builder": "Resize the query builder",
 	"Restart the SLM application": "Restart the SLM application",
 	"Restricted global-settings write grants: dotted setting paths the role may edit (e.g. \"vote.voteDuration\", or \"vote\" for the whole section). Any grant also lets the role view global settings. A \"!global-settings:write\" denial in permissions overrides these.": "Restricted global-settings write grants: dotted setting paths the role may edit (e.g. \"vote.voteDuration\", or \"vote\" for the whole section). Any grant also lets the role view global settings. A \"!global-settings:write\" denial in permissions overrides these.",

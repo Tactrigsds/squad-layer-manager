@@ -165,6 +165,8 @@ export const errorsHeading = def('Errors')
 
 export const filterHeading = def('Filter')
 
+export const resizeErrors = def('Resize the errors pane')
+
 // -------- one node --------
 
 export const operatorPicker = def('Operator')
