@@ -1,7 +1,7 @@
 # Layer rotation
 
-These settings decide what SLM plays next: the next layer, the repeat rules, generated votes, and how SLM picks layers
-at random.
+These settings decide what SLM plays next: the next layer, the repeat rules, generated votes, saved rotations, and how
+SLM picks layers at random.
 
 ## Next layer
 
@@ -126,6 +126,57 @@ own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer
 
 _Vote Display Options_ sets which parts of each choice players see when a generated vote starts. The map is always
 shown, because the map is the one part the choices are certain to differ by.
+
+## Saved rotations
+
+Creating a rotation needs `rotations:create`. Whoever created a rotation can edit it, along with the users and roles
+added to it as contributors. `rotations:write-all` allows editing every rotation. Rotation tags, which group rotations on
+the _Rotations_ page, are defined on the settings page under _Rotation tags_.
+
+A note on an item added from a saved rotation shows a rotation icon in place of an author. Only an admin with
+`queue:manage-all-notes` can change such a note.
+
+### Rotation files
+
+Use _Export_ in the rotation editor to copy a rotation's layers out as YAML or plain text, and _Import_ to read layers
+in from either format. The file holds the layers alone, without the rotation's name, description, tags or repeat ruleset.
+Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a layer line copied from one format pastes
+into the other.
+
+```yaml
+# Opening layer. Keep it light while the server fills.
+- Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+- layer: Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
+  tags: [Event Night]
+- vote:
+     - GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
+     - Mutaha_TC_v1 TLF+Armored ADF+Mechanized
+  display: [map, factions]
+  duration: 3m
+```
+
+In YAML, each `#` line directly above a layer or a vote choice is a note on it. Tags are written by label. A vote's
+first choice is its default. `display` sets what the vote shows players, from `map`, `gamemode`, `layer`, `factions`
+and `units`, and `duration` sets how long the vote runs. A vote without them uses the server's vote settings.
+
+Plain text holds one layer per line, with `#` lines as notes on the next layer. A vote starts with a `# VOTE:` line,
+which takes the same `display` and `duration` settings, separated by `;`. The vote's choices follow it, indented, and
+the vote ends at the next line that is not indented. Plain text leaves tags out.
+
+```text
+# Opening layer. Keep it light while the server fills.
+Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
+# VOTE: display map, factions; duration 3m
+  GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
+  Mutaha_TC_v1 TLF+Armored ADF+Mechanized
+```
+
+SLM detects the format of an import, names every line it cannot read, and blocks the import until each one is fixed.
+A tag label that matches no tag can be created, dropped, or mapped onto an existing tag. The imported layers can
+replace the rotation's layers, go ahead of them, or follow them. Import is available once _Start Editing_ is pressed.
+
+_Add Rotation_ on the queue reads the same formats on its _Paste_ tab.
 
 ## Randomization
 

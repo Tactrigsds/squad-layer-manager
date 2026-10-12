@@ -20,7 +20,7 @@ can carry colour-coded tags and freeform notes.
 Right-click a queue item, or use its ⋮ button, to open the queue item's menu. The menu leads with the layer's details,
 scores and SquadCalc link, followed by the queue item's edit, tag, note and placement actions.
 
-![the layer queue while editing, with a queue item's menu open beside a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
+![the layer queue while editing, with the first item's menu open, a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
 
 ## The layer selection dialog
 
@@ -72,79 +72,22 @@ many warnings as possible, with as few changes as possible. See [Fixing repeats]
 
 ## Saved rotations
 
-A _rotation_ is a saved, ordered list of queue items: single layers and votes, with their tags and notes. Rotations are
-kept on the _Rotations_ page, so a rotation can be added to any server's queue in one go. A note in a rotation names no
-author.
-
-Use the _Rotations_ page to search rotations by name, description or layer, to filter them by rotation tag or author,
-and to sort them by name or by when they were created or modified. Each rotation card provides _Clone_, which copies the
-rotation under a new name, and _Archive_ and _Delete_ in its menu. An archived rotation is listed only while _Show
-archived_ is ticked. Rotation tags group rotations on the page, and are defined on the settings page under _Rotation
-tags_.
+A _rotation_ is a saved, ordered list of layers and votes, with their tags and notes. Rotations are kept on the
+_Rotations_ page, where they can be searched, tagged, cloned and archived.
 
 ![the Rotations page, with rotation tag and author filters beside the rotation cards](../images/features/rotations_page.png)
 
-A rotation's layers are edited the same way as the queue's. Press _Start Editing_, change the layers, and press
-_Save_. Several admins can edit a rotation at once, and each one sees the others' changes as they are made. Each
-rotation uses a [repeat ruleset](../guide/configuring/layer_rotation.md#repeat-rules), and the editor marks every layer
-that breaks one of its repeat rules.
+A rotation is edited the same way as the queue, and several admins can edit one at once. Each rotation follows a
+[repeat ruleset](../guide/configuring/layer_rotation.md#repeat-rules), and the editor marks every layer that breaks one
+of the ruleset's rules. Rotations export and import as YAML or plain text.
+[Rotation files](../guide/configuring/layer_rotation.md#rotation-files) describes both formats.
 
 ![a rotation open for editing, with its rotation tags and repeat ruleset beside its layers](../images/features/rotation_editor.png)
 
-Use _Export_ in the rotation editor to copy a rotation's layers out as YAML or plain text, and _Import_ to read layers
-in from either format. The file holds the layers alone, without the rotation's name, description, tags or repeat ruleset.
-Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a layer line copied from one format pastes
-into the other.
-
-```yaml
-# Opening layer. Keep it light while the server fills.
-- Gorodok_RAAS_v1 USA+Motorized RGF+Armored
-- layer: Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
-  tags: [Event Night]
-- vote:
-     - GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
-     - Mutaha_TC_v1 TLF+Armored ADF+Mechanized
-  display: [map, factions]
-  duration: 3m
-```
-
-In YAML, each `#` line directly above a layer or a vote choice is a note on it. Tags are written by label. A vote's
-first choice is its default. `display` sets what the vote shows players, from `map`, `gamemode`, `layer`, `factions`
-and `units`, and `duration` sets how long the vote runs. A vote without them uses the server's vote settings.
-
-Plain text holds one layer per line, with `#` lines as notes on the next layer. A vote starts with a `# VOTE:` line,
-which takes the same `display` and `duration` settings, separated by `;`. The vote's choices follow it, indented, and
-the vote ends at the next line that is not indented. Plain text leaves tags out.
-
-```text
-# Opening layer. Keep it light while the server fills.
-Gorodok_RAAS_v1 USA+Motorized RGF+Armored
-Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
-# VOTE: display map, factions; duration 3m
-  GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
-  Mutaha_TC_v1 TLF+Armored ADF+Mechanized
-```
-
-SLM detects the format of an import, names every line it cannot read, and blocks the import until each one is fixed.
-A tag label that matches no tag can be created, dropped, or mapped onto an existing tag. The imported layers can
-replace the rotation's layers, go ahead of them, or follow them. Import is available once _Start Editing_ is pressed.
-
-Creating a rotation needs `rotations:create`. Whoever created a rotation can edit it, along with the users and roles
-added to it as contributors. `rotations:write-all` allows editing every rotation.
-
-To add a rotation to the queue:
-
-1. Press _Start Editing_ on the queue.
-2. Press _Add Rotation_.
-3. On the _Paste_ tab, paste layers one per line or a rotation exported as YAML or plain text. Or pick a rotation on
-   the _Saved Rotation_ tab.
-4. Pick _Replace_ to replace every layer in the queue, or _Add to start_ or _Add to end_.
-5. Press the add button, then save the queue.
+Use _Add Rotation_ on the queue to add a saved rotation to any server's queue in one step, or to paste one in. SLM
+tags each added item with the rotation's name.
 
 ![the Saved Rotation tab of Add Rotation, previewing where each item lands in the queue](../images/features/add_rotation.png)
-
-Every item added from a saved rotation carries a tag showing the rotation's name. Each of the rotation's notes shows a
-rotation icon in place of an author, and only an admin with `queue:manage-all-notes` can change one.
 
 ## Layer details and scores
 

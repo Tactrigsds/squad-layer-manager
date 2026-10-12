@@ -221,6 +221,7 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 						() => (tree: HastNode) => collectHeadings(tree, headings),
 						() => (tree: HastNode) => markCallouts(tree),
 						() => (tree: HastNode) => markFigures(tree),
+						() => (tree: HastNode) => bindInlineImages(tree),
 					],
 					components: markdownComponents(site, page, { assets, pageLinks, problems }),
 				},
@@ -447,7 +448,9 @@ function markdownComponents(
 		},
 		img: ({ node, src, alt, title }) => {
 			const link = DS.resolveLink(page.file, src ?? '')
-			if (link.kind !== 'asset') return React.createElement('img', { src: linkHref(site, link, sink.assets), alt })
+			const className = node?.properties.className as string[] | undefined
+			if (link.kind !== 'asset')
+				return React.createElement('img', { src: linkHref(site, link, sink.assets), alt, className: className?.join(' ') })
 			sink.assets.add(link.file)
 			const size = fs.existsSync(path.join(ROOT, link.file)) ? imageSize(link.file) : {}
 			const href = DS.assetHref(site.assetBase, link.file)
@@ -455,7 +458,14 @@ function markdownComponents(
 				const caption = figureCaption(alt ?? '', title)
 				return React.createElement(Site.DocFigure, { src: href, alt: alt ?? '', ...caption, ...size })
 			}
-			return React.createElement('img', { src: href, alt: alt ?? '', loading: 'lazy', decoding: 'async', ...size })
+			return React.createElement('img', {
+				src: href,
+				alt: alt ?? '',
+				className: className?.join(' '),
+				loading: 'lazy',
+				decoding: 'async',
+				...size,
+			})
 		},
 		pre: ({ node: _node, children, ...rest }) => React.createElement(Site.CodeBlock, rest, children),
 		table: ({ node: _node, children, ...rest }) =>
@@ -530,6 +540,39 @@ function markFigures(tree: HastNode) {
 			if (shots.length === 1) return shots[0]
 			return { type: 'element', tagName: 'div', properties: { className: ['docs-figures'] }, children: shots }
 		})
+	})
+}
+
+// An image inside a line of text, such as an icon, is wrapped with the word before it and whatever follows it up to the next
+// space, so a line never breaks on either side of the image.
+function bindInlineImages(tree: HastNode) {
+	walk(tree, (node) => {
+		const kids = node.children
+		if (!kids || (node.properties?.className as string[] | undefined)?.includes('docs-nowrap')) return
+		for (let i = 0; i < kids.length; i++) {
+			const img = kids[i]
+			if (img.tagName !== 'img' || img.properties?.dataFigure) continue
+			img.properties = { ...img.properties, className: ['docs-inline-image'] }
+			const bound: HastNode[] = []
+			const prev = kids[i - 1]
+			if (prev?.type === 'text') {
+				const m = /\S+$/.exec(prev.value ?? '')
+				if (m) {
+					prev.value = (prev.value ?? '').slice(0, m.index)
+					bound.push({ type: 'text', value: m[0] })
+				}
+			}
+			bound.push(img)
+			const next = kids[i + 1]
+			if (next?.type === 'text') {
+				const m = /^\S+/.exec(next.value ?? '')
+				if (m) {
+					next.value = (next.value ?? '').slice(m[0].length)
+					bound.push({ type: 'text', value: m[0] })
+				}
+			}
+			kids[i] = { type: 'element', tagName: 'span', properties: { className: ['docs-nowrap'] }, children: bound }
+		}
 	})
 }
 

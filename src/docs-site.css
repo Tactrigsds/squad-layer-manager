@@ -644,7 +644,18 @@
 		border-bottom: 1px solid var(--line-soft);
 		vertical-align: top;
 	}
-	.docs-prose img {
+	.docs-prose .docs-inline-image {
+		display: inline;
+		height: 1.2em;
+		width: auto;
+		vertical-align: -0.25em;
+		border: 0;
+		border-radius: 0;
+	}
+	.docs-nowrap {
+		white-space: nowrap;
+	}
+	.docs-prose img:not(.docs-inline-image) {
 		display: block;
 		max-width: 100%;
 		height: auto;
