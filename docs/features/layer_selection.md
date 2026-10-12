@@ -17,7 +17,10 @@ Several admins can edit the queue at once, and each one sees who else is editing
 a generated vote, or as a whole rotation, pasted in or picked from the [saved rotations](#saved-rotations). Queue items
 can carry colour-coded tags and freeform notes.
 
-![the layer queue while editing, with a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
+Right-click a queue item, or use its ⋮ button, to open the queue item's menu. The menu leads with the layer's details,
+scores and SquadCalc link, followed by the queue item's edit, tag, note and placement actions.
+
+![the layer queue while editing, with a queue item's menu open beside a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
 
 ## The layer selection dialog
 
@@ -162,8 +165,6 @@ its own.
 
 ![the Generate Vote dialog](../images/features/generate_vote.png)
 
-![the Generate Vote dialog on a phone](../images/features/phone_gen_vote.png)
-
 A vote starts from the dashboard, in game with `/startvote`, or by itself partway into a match. Players vote by typing
 a choice's number in chat, and SLM broadcasts the choices and reminders to the server. An internal vote polls only the
 admins.
@@ -183,8 +184,8 @@ it. The server's dashboard shows that an in-game vote is deciding the next layer
 
 ## Layer requests
 
-A layer request asks for a layer with specific characteristics, without editing the queue by hand. A request names any
-mix of map, gamemode, faction, unit or filter. `/reqlayer fallu raas usa rgf` requests Fallujah RAAS with USA against
+An admin can request a kind of layer instead of queuing a particular one. A request names any mix of map, gamemode,
+faction, unit or filter. `/reqlayer fallu raas usa rgf` requests Fallujah RAAS with USA against
 RGF. When the queue runs out of deliberately queued layers, SLM generates the next layer from the requests, and
 satisfies as many of them as it can at once. If one admin requests WPMC and another requests Narva, the generated layer
 can be WPMC on Narva.
