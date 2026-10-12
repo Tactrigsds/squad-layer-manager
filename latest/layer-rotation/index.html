@@ -50,7 +50,9 @@ Skorpo rule above.</li>
 it. Only a rule on a team-specific attribute can take it.</li>
 </ul>
 <p>A rule is named after its attribute, unless <em>Add label</em> gives it a name of its own.</p>
-<p>A repeat rule looks back only as far as the most recent seeding or training layer.</p>
+<p>A seeding or training layer never breaks a repeat rule. A repeat rule looks back only as far as the most recent
+seeding or training layer, whether played or queued. A vote ends the lookback the same way only when every choice is
+a seeding or training layer.</p>
 <h3 id="fixing-repeats" class="docs-heading">Fixing repeats<a href="#fixing-repeats" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#fixing-repeats" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>While editing the queue, use <em>Fix Repeats</em> (the wand icon) to clear repeat warnings automatically. SLM reorders the
 queue and swaps layers&#x27; teams to clear as many warnings as possible, with as few changes as possible. Moving a layer
