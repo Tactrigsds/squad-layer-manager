@@ -12,9 +12,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import TabsList from '@/components/ui/tabs-list'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
@@ -42,7 +44,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import { StartActivityInteraction } from './activity'
 import { DeleteRotationDialog, RotationFormDialog } from './rotation-dialogs'
 
-const RotationExchangeDialog = React.lazy(() => import('./rotation-exchange-dialog'))
+const RotationSourceEditor = React.lazy(() => import('./rotation-source-editor'))
 
 export default function RotationEdit(props: { rotationId: ROT.RotationId }) {
 	const rotation = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotation(props.rotationId))
@@ -110,9 +112,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 					aria-label={tr.text(ROT_Msgs.layers(rotation.items.length))}
 				>
 					<ListToolbar listHost={listHost} rotation={rotation} />
-					<div className="p-1">
-						<LayerList stores={{ listHost }} />
-					</div>
+					<ListBody listHost={listHost} rotationId={rotation.id} />
 				</section>
 
 				<aside className="flex min-w-0 flex-[1_1_320px] max-w-md flex-col gap-3">
@@ -235,11 +235,37 @@ function RotationTagsRow(props: { rotation: ROT.Rotation; disabled: boolean }) {
 	)
 }
 
+function ListBody(props: { listHost: RotationEditorFrame.Key; rotationId: ROT.RotationId }) {
+	const view = Zus.useStore(props.listHost, (s) => s.view)
+	const [isEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotationId))
+	if (view === 'builder') {
+		return (
+			<div className="p-1">
+				<LayerList stores={{ listHost: props.listHost }} />
+			</div>
+		)
+	}
+	return (
+		<React.Suspense fallback={<Spinner className="m-3 animate-spin" />}>
+			<RotationSourceEditor listHost={props.listHost} editing={isEditing} />
+		</React.Suspense>
+	)
+}
+
 function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.Rotation }) {
 	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotation.id))
-	const [layerCount, isModified, fixingRepeats] = Zus.useStore(
+	const [layerCount, isModified, fixingRepeats, view, problems] = Zus.useStore(
 		props.listHost,
-		Zus.useShallow((s) => [s.queue.layerList.length, s.queue.isModified, s.fixingRepeats] as const),
+		Zus.useShallow(
+			(s) =>
+				[
+					s.queue.layerList.length,
+					s.queue.isModified,
+					s.fixingRepeats,
+					s.view,
+					RotationEditorFrame.blockingProblems(s.source),
+				] as const,
+		),
 	)
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
 	const queue = { queue: props.listHost }
@@ -248,7 +274,8 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 		setIsEditing(true)
 		action()
 	}
-	const [exchange, setExchange] = React.useState<'export' | 'import' | null>(null)
+	const fileRef = React.useRef<HTMLInputElement>(null)
+	const switchBlocked = problems > 0 ? tr.text(ROT_Msgs.switchViewBlocked(problems)) : false
 
 	const clear = () => {
 		const itemIds = Zus.getState(props.listHost).queue.layerList.map((item) => item.itemId)
@@ -258,7 +285,78 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 	return (
 		<div className="flex flex-wrap items-center gap-1.5 border-b bg-panel px-2 py-1.5">
 			<h3 className="text-base font-bold">{tr.text(ROT_Msgs.layers(layerCount))}</h3>
+			<TabsList<RotationEditorFrame.View>
+				variant="seg"
+				className="ms-1.5"
+				options={(
+					[
+						['builder', ROT_Msgs.viewBuilder()],
+						['text', ROT_Msgs.viewText()],
+						['yaml', ROT_Msgs.formatYaml()],
+					] as const
+				).map(([value, label]) => ({ value, label: tr.text(label), disabled: value !== view && switchBlocked }))}
+				active={view}
+				setActive={(next) => void RotationEditorFrame.Actions.setView(props.listHost, next)}
+			/>
 			<span className="flex-1" />
+			{view === 'builder' ? (
+				<BuilderActions
+					writeDenied={writeDenied}
+					fixingRepeats={fixingRepeats}
+					onFixRepeats={editing(() => void ListHostPrt.Actions.fixRepeats({ listHost: props.listHost }))}
+					onClear={editing(clear)}
+				/>
+			) : (
+				<>
+					<input
+						ref={fileRef}
+						type="file"
+						accept=".yaml,.yml,.txt,text/plain"
+						className="hidden"
+						onChange={(e) => {
+							const file = e.target.files?.[0]
+							e.target.value = ''
+							if (file) void file.text().then((text) => RotationEditorFrame.Actions.loadSource(props.listHost, text))
+						}}
+					/>
+					<PermissionDeniedTooltip denied={writeDenied}>
+						<Button
+							variant="outline"
+							size="sm"
+							title={tr.text(ROT_Msgs.openFileHint())}
+							disabled={!!writeDenied}
+							onClick={editing(() => fileRef.current?.click())}
+						>
+							<Icons.FolderOpen />
+							{tr.text(ROT_Msgs.openFile())}
+						</Button>
+					</PermissionDeniedTooltip>
+				</>
+			)}
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				aria-label={tr.text(LL_Msgs.reset())}
+				title={tr.text(LL_Msgs.reset())}
+				disabled={!!writeDenied || !isModified}
+				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }))}
+			>
+				<Icons.Undo className="rtl:-scale-x-100" />
+			</Button>
+			<CopyDownloadButtons listHost={props.listHost} view={view} />
+		</div>
+	)
+}
+
+function BuilderActions(props: {
+	writeDenied: ReturnType<typeof RbacClient.usePermsCheck>
+	fixingRepeats: boolean
+	onFixRepeats: () => void
+	onClear: () => void
+}) {
+	const { writeDenied } = props
+	return (
+		<>
 			<StartActivityInteraction
 				loaderName="selectLayers"
 				createActivity={UP.createEditingQueueVariant({ code: 'ADDING_ITEM', cursor: { type: 'end' }, action: 'add' })}
@@ -285,13 +383,8 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 			</StartActivityInteraction>
 			<Tooltip help>
 				<TooltipTrigger asChild>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!!writeDenied || fixingRepeats}
-						onClick={editing(() => void ListHostPrt.Actions.fixRepeats({ listHost: props.listHost }))}
-					>
-						{fixingRepeats ? <Spinner /> : <Icons.WandSparkles />}
+					<Button size="sm" variant="outline" disabled={!!writeDenied || props.fixingRepeats} onClick={props.onFixRepeats}>
+						{props.fixingRepeats ? <Spinner /> : <Icons.WandSparkles />}
 						{tr.text(LL_Msgs.fixRepeats())}
 					</Button>
 				</TooltipTrigger>
@@ -303,43 +396,85 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 				aria-label={tr.text(ROT_Msgs.clearLayers())}
 				title={tr.text(ROT_Msgs.clearLayers())}
 				disabled={!!writeDenied}
-				onClick={editing(clear)}
+				onClick={props.onClear}
 			>
 				<Icons.Trash />
 			</Button>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label={tr.text(LL_Msgs.reset())}
-				title={tr.text(LL_Msgs.reset())}
-				disabled={!!writeDenied || !isModified}
-				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }))}
-			>
-				<Icons.Undo className="rtl:-scale-x-100" />
-			</Button>
-			<ButtonGroup>
-				<Button variant="outline" size="sm" onClick={() => setExchange('export')}>
-					<Icons.Upload />
-					{tr.text(ROT_Msgs.exportButton())}
+		</>
+	)
+}
+
+// In the builder, Copy and Download each ask for a format. A text view copies and downloads the text it shows.
+function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: RotationEditorFrame.View }) {
+	const { listHost, view } = props
+	const label = tr.text(ROT_Msgs.copyAndDownload())
+	if (view !== 'builder') {
+		return (
+			<ButtonGroup aria-label={label} className="ms-1.5">
+				<Button variant="outline" size="sm" onClick={() => void RotationEditorFrame.Actions.copyText(listHost, view)}>
+					<Icons.Copy />
+					{tr.text(ROT_Msgs.copy())}
 				</Button>
-				<PermissionDeniedTooltip denied={writeDenied}>
-					<Button variant="outline" size="sm" disabled={!!writeDenied} onClick={editing(() => setExchange('import'))}>
-						<Icons.Download />
-						{tr.text(ROT_Msgs.importButton())}
-					</Button>
-				</PermissionDeniedTooltip>
+				<Button variant="outline" size="sm" onClick={() => void RotationEditorFrame.Actions.downloadText(listHost, view)}>
+					<Icons.Download />
+					{tr.text(ROT_Msgs.download())}
+				</Button>
 			</ButtonGroup>
-			{exchange && (
-				<React.Suspense fallback={null}>
-					<RotationExchangeDialog
-						mode={exchange}
-						rotationId={props.rotation.id}
-						queue={props.listHost}
-						onClose={() => setExchange(null)}
-					/>
-				</React.Suspense>
-			)}
-		</div>
+		)
+	}
+	const option = (title: string, hint: string, onSelect: () => void) => (
+		<DropdownMenuItem onSelect={onSelect}>
+			<span className="flex flex-col">
+				<span>{title}</span>
+				<span className="text-xs text-muted-foreground">{hint}</span>
+			</span>
+		</DropdownMenuItem>
+	)
+	return (
+		<ButtonGroup aria-label={label} className="ms-1.5">
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
+					<Button variant="outline" size="sm">
+						<Icons.Copy />
+						{tr.text(ROT_Msgs.copy())}
+						<Icons.ChevronDown />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					{option(
+						tr.text(ROT_Msgs.copyAsText()),
+						tr.text(ROT_Msgs.leavesOutTags()),
+						() => void RotationEditorFrame.Actions.copyText(listHost, 'text'),
+					)}
+					{option(
+						tr.text(ROT_Msgs.copyAsYaml()),
+						tr.text(ROT_Msgs.keepsNotesAndTags()),
+						() => void RotationEditorFrame.Actions.copyText(listHost, 'yaml'),
+					)}
+				</DropdownMenuContent>
+			</DropdownMenu>
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
+					<Button variant="outline" size="sm">
+						<Icons.Download />
+						{tr.text(ROT_Msgs.download())}
+						<Icons.ChevronDown />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					{option(
+						tr.text(ROT_Msgs.downloadText()),
+						tr.text(ROT_Msgs.leavesOutTags()),
+						() => void RotationEditorFrame.Actions.downloadText(listHost, 'text'),
+					)}
+					{option(
+						tr.text(ROT_Msgs.downloadYaml()),
+						tr.text(ROT_Msgs.keepsNotesAndTags()),
+						() => void RotationEditorFrame.Actions.downloadText(listHost, 'yaml'),
+					)}
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</ButtonGroup>
 	)
 }
 
@@ -357,6 +492,7 @@ function EditingControls(props: { listHost: RotationEditorFrame.Key; rotationId:
 	const [forceSave, setForceSave] = React.useState(false)
 
 	const finish = async () => {
+		await RotationEditorFrame.Actions.flushSource(props.listHost)
 		const solo = UPClient.Sel.listEditorUserIds(host)(Zus.getState(UPClient.Store)).size <= 1
 		const modified = Zus.getState(props.listHost).queue.isModified
 		setIsEditing(false)

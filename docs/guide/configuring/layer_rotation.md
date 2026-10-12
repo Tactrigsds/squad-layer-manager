@@ -150,10 +150,10 @@ A note on an item added from a saved rotation shows a rotation icon in place of 
 
 ### Rotation files
 
-Use _Export_ in the rotation editor to copy a rotation's layers out as YAML or plain text, and _Import_ to read layers
-in from either format. The file holds the layers alone, without the rotation's name, description, tags or repeat ruleset.
-Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a layer line copied from one format pastes
-into the other.
+The toggle beside a rotation's _Layers_ heading switches between _Builder_, which shows the layers as a list, and _Text_
+and _YAML_, which show them as plain text or YAML. The text holds the layers alone, without the rotation's name,
+description, tags or repeat ruleset. Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a
+layer line copied from one format pastes into the other.
 
 ```yaml
 # Opening layer. Keep it light while the server fills.
@@ -184,9 +184,14 @@ Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
   Mutaha_TC_v1 TLF+Armored ADF+Mechanized
 ```
 
-SLM detects the format of an import, names every line it cannot read, and blocks the import until each one is fixed.
-A tag label that matches no tag can be created, dropped, or mapped onto an existing tag. The imported layers can
-replace the rotation's layers, go ahead of them, or follow them. Import is available once _Start Editing_ is pressed.
+The text can be edited once _Start Editing_ is pressed. A change applies to the rotation's layers when typing pauses.
+SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
+also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
+change is held back, the view cannot be switched. Plain text does not show tags, so a layer edited as plain text keeps
+its tags while it stays in the list. Use _Open File..._ to replace the text with a `.yaml` or `.txt` file.
+
+Use _Copy_ and _Download_ to take a rotation's layers out as text. In the _Builder_, each one asks for plain text or
+YAML. In _Text_ and _YAML_, _Copy_ and _Download_ use the text on screen.
 
 _Add Rotation_ on the queue reads the same formats on its _Paste_ tab.
 

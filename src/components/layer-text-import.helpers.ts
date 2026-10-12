@@ -3,12 +3,13 @@
 // with the page.
 import React from 'react'
 
-import { describeLayerLine, resolveLines } from '@/components/multi-layer-set-dialog.helpers'
+import { describeLayerLine } from '@/components/multi-layer-set-dialog.helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as ROT_Msgs from '@/messages/rotations.messages'
 import type * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
+import * as L from '@/models/layer.models'
 import type * as RFMT from '@/models/rotation-format.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
@@ -46,7 +47,7 @@ export function useLayerTextImport(opts: { installedMods?: readonly string[]; va
 	const lines = parsed && rfmt ? rfmt.layerLines(parsed) : []
 	const knownIds = validate ? lines.flatMap((line) => (line.code === 'ok' ? [line.layer.id] : [])) : []
 	const existsRes = LayerQueriesClient.useLayerExists(knownIds, { enabled: knownIds.length > 0, usePlaceholderData: true })
-	const resolved = resolveLines(lines, validate, existsRes.data)
+	const resolved = L.resolveRawLayerLines(lines, validate, existsRes.data)
 	const tagLabels = parsed && rfmt ? rfmt.tagLabels(parsed, configuredTags) : []
 	const choiceFor = (label: string): TagChoice => tagChoices.get(label.toLowerCase()) ?? { type: canCreateTags ? 'create' : 'drop' }
 
@@ -118,7 +119,7 @@ export function useLayerTextImport(opts: { installedMods?: readonly string[]; va
 	}
 }
 
-function describeParseError(error: RFMT.ParseError): string {
+export function describeParseError(error: RFMT.ParseError): string {
 	switch (error.code) {
 		case 'err:yaml':
 			return tr.text(ROT_Msgs.yamlError(error.text))

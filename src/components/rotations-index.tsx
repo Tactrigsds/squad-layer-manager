@@ -3,16 +3,29 @@ import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { LayerTagDialog } from '@/components/layer-tags'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+	ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -24,6 +37,7 @@ import * as Typo from '@/lib/typography'
 import { cn, STRETCHED_LINK } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
+import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as ROT_Msgs from '@/messages/rotations.messages'
 import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
@@ -212,18 +226,40 @@ function TagChips(props: { tagIds: string[]; dots?: boolean }) {
 	)
 }
 
+type RotationMenuItemProps = { children?: React.ReactNode; className?: string; disabled?: boolean; onClick?: () => void }
+
 type RotationMenuSlots = {
-	Item: React.FunctionComponent<{ children?: React.ReactNode; className?: string; disabled?: boolean; onClick?: () => void }>
+	Item: React.FunctionComponent<RotationMenuItemProps>
 	Separator: React.ComponentType
+	Sub: React.ComponentType<React.PropsWithChildren>
+	SubTrigger: React.FunctionComponent<RotationMenuItemProps>
+	SubContent: React.FunctionComponent<React.PropsWithChildren<{ className?: string }>>
 }
 
-const dropdownSlots: RotationMenuSlots = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator }
-const contextSlots: RotationMenuSlots = { Item: ContextMenuItem, Separator: ContextMenuSeparator }
+const dropdownSlots: RotationMenuSlots = {
+	Item: DropdownMenuItem,
+	Separator: DropdownMenuSeparator,
+	Sub: DropdownMenuSub,
+	SubTrigger: DropdownMenuSubTrigger,
+	SubContent: DropdownMenuSubContent,
+}
+const contextSlots: RotationMenuSlots = {
+	Item: ContextMenuItem,
+	Separator: ContextMenuSeparator,
+	Sub: ContextMenuSub,
+	SubTrigger: ContextMenuSubTrigger,
+	SubContent: ContextMenuSubContent,
+}
+
+// the dialogs the menus open, which live outside them so that closing a menu does not close its dialog
+type RotationMenuActions = { onDelete: () => void; onNewTag: () => void }
 
 // what can be done to a rotation from its card or row: the ellipsis menu and the right-click menu hold the same entries
-function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuSlots; onClone: () => void; onDelete: () => void }) {
+function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuSlots; onClone: () => void } & RotationMenuActions) {
 	const { rotation } = props
-	const { Item, Separator } = props.slots
+	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
+	const rotationTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.rotationTags ?? EMPTY_TAGS)
+	const canManageTags = !RbacClient.useAccess('settings.global.upsertRotationTag')
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(rotation.id))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.getManagePermReqForRotation(rotation.id))
@@ -248,6 +284,34 @@ function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuS
 				<Icons.Archive />
 				{tr.text(rotation.archived ? ROT_Msgs.unarchive() : ROT_Msgs.archive())}
 			</Item>
+			<Sub>
+				<SubTrigger disabled={!!writeDenied}>
+					<Icons.Tag />
+					{tr.text(LTag_Msgs.tagsSub())}
+				</SubTrigger>
+				<SubContent className="max-h-72 max-w-72 overflow-y-auto">
+					{rotationTags.map((tag) => {
+						const applied = rotation.tags.includes(tag.id)
+						return (
+							<Item key={tag.id} onClick={() => void RotationClient.Actions.setTag(rotation.id, tag.id, !applied)}>
+								{applied ? <Icons.Check /> : <span className="size-4 shrink-0" />}
+								<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+								<span className="truncate">{tag.label}</span>
+							</Item>
+						)
+					})}
+					{rotationTags.length === 0 && <Item disabled>{tr.text(LTag_Msgs.noTagsAvailable())}</Item>}
+					{canManageTags && (
+						<>
+							<Separator />
+							<Item onClick={props.onNewTag}>
+								<Icons.Plus />
+								{tr.text(LTag_Msgs.newTagItem())}
+							</Item>
+						</>
+					)}
+				</SubContent>
+			</Sub>
 			<Separator />
 			<Item disabled={!!manageDenied} className="text-destructive" onClick={props.onDelete}>
 				<Icons.Trash />
@@ -257,24 +321,35 @@ function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuS
 	)
 }
 
-// right-clicking the card or row opens the same entries as its ellipsis; the delete confirmation serves both
-function RotationMenus(props: { rotation: ROT.Rotation; onClone: () => void; children: (onDelete: () => void) => React.ReactNode }) {
-	const [deleting, setDeleting] = React.useState(false)
-	const onDelete = () => setDeleting(true)
+// right-clicking the card or row opens the same entries as its ellipsis; the dialogs they open serve both
+function RotationMenus(props: {
+	rotation: ROT.Rotation
+	onClone: () => void
+	children: (actions: RotationMenuActions) => React.ReactNode
+}) {
+	const { rotation } = props
+	const [dialog, setDialog] = React.useState<'delete' | 'new-tag' | null>(null)
+	const actions: RotationMenuActions = { onDelete: () => setDialog('delete'), onNewTag: () => setDialog('new-tag') }
 	return (
 		<>
 			<ContextMenu modal={false}>
-				<ContextMenuTrigger asChild>{props.children(onDelete)}</ContextMenuTrigger>
+				<ContextMenuTrigger asChild>{props.children(actions)}</ContextMenuTrigger>
 				<ContextMenuContent>
-					<RotationMenuItems rotation={props.rotation} slots={contextSlots} onClone={props.onClone} onDelete={onDelete} />
+					<RotationMenuItems rotation={rotation} slots={contextSlots} onClone={props.onClone} {...actions} />
 				</ContextMenuContent>
 			</ContextMenu>
-			<DeleteRotationDialog rotation={props.rotation} open={deleting} onOpenChange={setDeleting} />
+			<DeleteRotationDialog rotation={rotation} open={dialog === 'delete'} onOpenChange={(open) => setDialog(open ? 'delete' : null)} />
+			<LayerTagDialog
+				kind="rotation"
+				state={dialog === 'new-tag' ? 'new' : null}
+				onClose={() => setDialog(null)}
+				onCreated={(tagId) => void RotationClient.Actions.setTag(rotation.id, tagId, true)}
+			/>
 		</>
 	)
 }
 
-function RotationActions(props: { rotation: ROT.Rotation; onClone: () => void; onDelete: () => void }) {
+function RotationActions(props: { rotation: ROT.Rotation; onClone: () => void } & RotationMenuActions) {
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
 	return (
 		<span className="relative flex shrink-0 items-center gap-1">
@@ -299,7 +374,13 @@ function RotationActions(props: { rotation: ROT.Rotation; onClone: () => void; o
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					<RotationMenuItems rotation={props.rotation} slots={dropdownSlots} onClone={props.onClone} onDelete={props.onDelete} />
+					<RotationMenuItems
+						rotation={props.rotation}
+						slots={dropdownSlots}
+						onClone={props.onClone}
+						onDelete={props.onDelete}
+						onNewTag={props.onNewTag}
+					/>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</span>
@@ -323,7 +404,7 @@ function RotationCard(props: { rotation: ROT.Rotation; onClone: () => void }) {
 	const { rotation } = props
 	return (
 		<RotationMenus rotation={rotation} onClone={props.onClone}>
-			{(onDelete) => (
+			{(actions) => (
 				<li className="relative flex flex-col gap-2 rounded border bg-card p-3 hover:border-primary/50">
 					<div className="flex items-center gap-2 min-w-0">
 						<Link
@@ -336,7 +417,7 @@ function RotationCard(props: { rotation: ROT.Rotation; onClone: () => void }) {
 						<span className="shrink-0 font-mono text-xs text-muted-foreground">{rotation.id}</span>
 						{rotation.archived && <Badge variant="secondary">{tr.text(ROT_Msgs.archivedBadge())}</Badge>}
 						<span className="flex-1" />
-						<RotationActions rotation={rotation} onClone={props.onClone} onDelete={onDelete} />
+						<RotationActions rotation={rotation} onClone={props.onClone} {...actions} />
 					</div>
 					{rotation.description && <p className="line-clamp-2 text-sm text-muted-foreground">{rotation.description}</p>}
 					<TagChips tagIds={rotation.tags} />
@@ -381,7 +462,7 @@ function RotationRow(props: { rotation: ROT.Rotation; query: string; onClone: ()
 	const snippet = matchSnippet(rotation, props.query)
 	return (
 		<RotationMenus rotation={rotation} onClone={props.onClone}>
-			{(onDelete) => (
+			{(actions) => (
 				<li className="relative flex flex-wrap items-center gap-3 px-3 py-2 hover:bg-accent/40">
 					<div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-0.5">
 						<span className="flex min-w-0 items-baseline gap-2">
@@ -399,9 +480,11 @@ function RotationRow(props: { rotation: ROT.Rotation; query: string; onClone: ()
 					</div>
 					{snippet && <MatchSnippet {...snippet} />}
 					<RotationMeta rotation={rotation} />
-					<RotationActions rotation={rotation} onClone={props.onClone} onDelete={onDelete} />
+					<RotationActions rotation={rotation} onClone={props.onClone} {...actions} />
 				</li>
 			)}
 		</RotationMenus>
 	)
 }
+
+const EMPTY_TAGS: LTag.Tag[] = []

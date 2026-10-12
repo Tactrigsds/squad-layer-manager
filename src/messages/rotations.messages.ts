@@ -143,40 +143,55 @@ export const repeatRulesetHelp = def(
 	"The repeat ruleset that this rotation's layers are checked against. Saving its rules changes them for every server and rotation that uses it.",
 )
 
-// -------- export and import --------
+// -------- viewing as text, copying and downloading --------
 
-export const exportButton = def('Export')
+export const viewLabel = def('View')
 
-export const importButton = def('Import')
+export const viewBuilder = def('Builder')
 
-export const exportTitle = def('Export layers')
-
-export const importTitle = def('Import layers')
+export const viewText = def('Text')
 
 export const formatYaml = def('YAML')
 
 export const formatText = def('Plain text')
 
-export const includeNotes = def('Notes')
+export const switchViewBlocked = def('{count, plural, one {Fix # problem} other {Fix # problems}} to switch views', (count: number) => ({
+	count,
+}))
 
-export const includeTags = def('Tags')
+export const sourceLabel = def('Layers as {format}', (format: string) => ({ format }))
 
-export const download = def('Download')
+export const readOnlyHint = def('Read only. Start Editing to change the layers here.')
+
+export const appliesAsYouType = def('Changes apply to the list as you type.')
+
+export const plainTextKeepsTags = def('Plain text does not show tags. A layer keeps its tags while it stays in the list.')
 
 export const copy = def('Copy')
 
+export const download = def('Download')
+
+export const copyAndDownload = def('Copy and download')
+
+export const copyAsText = def('Copy as plain text')
+
+export const copyAsYaml = def('Copy as YAML')
+
+export const downloadText = def('Download .txt')
+
+export const downloadYaml = def('Download .yaml')
+
+export const leavesOutTags = def('Leaves out tags')
+
+export const keepsNotesAndTags = def('Keeps notes and tags')
+
 export const copied = def('Copied to the clipboard')
 
-export const nothingToExport = def('The rotation holds no layers to export.')
-
-export const plainTextDropsTags = def(
-	'Plain text leaves out the tags on {count, plural, one {# item} other {# items}}. Use YAML to keep them.',
-	(count: number) => ({ count }),
-)
-
-export const importPlaceholder = def('Paste YAML or plain text. The format is detected.')
-
 export const openFile = def('Open File...')
+
+export const openFileHint = def('Replace the text with a .yaml or .txt file')
+
+export const tagChoicePlaceholder = def('Choose...')
 
 export const importSummary = def(
 	'{format}: {items, plural, one {# item} other {# items}}, {notes, plural, one {# note} other {# notes}}',
@@ -194,8 +209,6 @@ export const tagCreate = def('Create it')
 export const tagDrop = def('Drop it')
 
 export const tagMapTo = def('Map to {label}', (label: string) => ({ label }))
-
-export const importItems = def('{count, plural, =0 {Import} one {Import # Item} other {Import # Items}}', (count: number) => ({ count }))
 
 export const yamlError = def('Not valid YAML: {message}', (message: string) => ({ message }))
 

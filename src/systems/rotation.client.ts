@@ -56,6 +56,12 @@ export namespace Actions {
 		return handleResult(await RPC.orpc.rotations.updateMeta.call({ rotationId, patch }))
 	}
 
+	export async function setTag(rotationId: ROT.RotationId, tagId: LTag.TagId, applied: boolean): Promise<boolean> {
+		const current = Store.getState().rotations.get(rotationId)?.tags ?? []
+		const tags = applied ? [...new Set([...current, tagId])] : current.filter((id) => id !== tagId)
+		return await updateMeta(rotationId, { tags })
+	}
+
 	export async function addContributor(rotationId: ROT.RotationId, who: { userId: USR.UserId } | { roleId: string }) {
 		const res = await RPC.orpc.rotations.addContributor.call({ rotationId, ...who })
 		if (res.code === 'err:already-exists') toast(...tr.toast(F_Msgs.contributorAlreadyAdded()))

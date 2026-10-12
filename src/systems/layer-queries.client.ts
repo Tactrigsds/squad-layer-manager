@@ -444,13 +444,15 @@ export function useLayerExists(input?: LQY.LayerExistsInput, options: { enabled?
 		enabled: input && options.enabled !== false,
 		placeholderData: options.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
-		queryFn: async ({ signal }: { signal: AbortSignal }) => {
-			const res = await sendWorkerRequest('layerExists', input!, signal)
-			if (res.code === 'err:missing-item-states') throw new Error('err:missing-item-states')
-			return res.results
-		},
+		queryFn: ({ signal }: { signal: AbortSignal }) => fetchLayersExist(input!, signal),
 		staleTime: Infinity,
 	})
+}
+
+export async function fetchLayersExist(input: LQY.LayerExistsInput, signal: AbortSignal) {
+	const res = await sendWorkerRequest('layerExists', input, signal)
+	if (res.code === 'err:missing-item-states') throw new Error('err:missing-item-states')
+	return res.results
 }
 
 export function useDepKey(input?: unknown) {

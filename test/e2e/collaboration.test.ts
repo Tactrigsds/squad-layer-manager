@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import * as fsp from 'node:fs/promises'
 
 import * as FB from '@/models/filter-builders.models'
 import * as LTag from '@/models/layer-tags.models'
@@ -269,6 +270,11 @@ test.describe('collaborative rotation editing', () => {
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await expect(pageB.getByRole('status')).not.toContainText('Nobody is editing')
 
+			// B reads the draft as text, which follows edits made in A's builder
+			await pageB.getByRole('button', { name: 'Text', exact: true }).click()
+			const textB = pageB.getByRole('textbox', { name: 'Layers as Plain text' })
+			await expect(textB).toContainText('Narva_RAAS_v1')
+
 			// A deletes an item from the draft; B is watching the same draft, so B sees it go
 			const listA = page.getByRole('region', { name: /Layers/ })
 			await listA
@@ -277,8 +283,11 @@ test.describe('collaborative rotation editing', () => {
 				.getByRole('button', { name: 'Delete' })
 				.click()
 			await expect(pageB.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+			await expect(textB).not.toContainText('Narva_RAAS_v1')
+			await expect(textB).toContainText('Gorodok_RAAS_v1')
 			// nothing is written until the draft is saved
 			expect(savedRotation(app, 'weekend')?.items).toHaveLength(2)
+			await pageB.getByRole('button', { name: 'Builder', exact: true }).click()
 
 			// A is the only editor, so the button saves
 			await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -316,9 +325,25 @@ test.describe('collaborative rotation editing', () => {
 		await app.waitFor(() => savedRotation(app, 'weekend-copy') ?? null, { label: 'the copy was written' })
 		expect(savedRotation(app, 'weekend-copy')!.items).toHaveLength(1)
 
-		// an archived rotation is listed only when asked for
 		await openPath(page, '/rotations')
 		const copyCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Weekend Competitive (copy)' }) })
+
+		// a rotation is tagged from its menus, with a new tag or an existing one
+		await copyCard.click({ button: 'right', position: { x: 300, y: 40 } })
+		await page.getByRole('menuitem', { name: 'Tags' }).hover()
+		await page.getByRole('menuitem', { name: 'New tag...' }).click()
+		const tagDialog = page.getByRole('dialog', { name: 'New tag' })
+		await tagDialog.getByLabel('Label').fill('Night Set')
+		await tagDialog.getByRole('button', { name: 'Create' }).click()
+		await expect(copyCard).toContainText('Night Set')
+		await app.waitFor(() => savedRotation(app, 'weekend-copy')?.tags.length === 1 || null, { label: 'the copy was tagged' })
+		await copyCard.getByRole('button', { name: 'More actions' }).click()
+		await page.getByRole('menuitem', { name: 'Tags' }).hover()
+		await page.getByRole('menuitem', { name: 'Night Set' }).click()
+		await expect(copyCard).not.toContainText('Night Set')
+		await app.waitFor(() => savedRotation(app, 'weekend-copy')?.tags.length === 0 || null, { label: 'the tag was taken off' })
+
+		// an archived rotation is listed only when asked for
 		await copyCard.getByRole('button', { name: 'More actions' }).click()
 		await page.getByRole('menuitem', { name: 'Archive' }).click()
 		await expect(copyCard).toBeHidden()
@@ -370,44 +395,47 @@ test.describe('collaborative rotation editing', () => {
 		expect(savedQueue(app)[0].tags).toEqual([LTag.fromRotationTagId('weekend')])
 	})
 
-	test("exporting a rotation's layers, and importing YAML in their place", async ({ page }) => {
+	test("downloading a rotation's layers, and editing them as YAML", async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
 		await openPath(page, '/rotations/weekend')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+
+		// the builder asks which format to download
+		const downloading = page.waitForEvent('download')
+		await page.getByRole('button', { name: 'Download', exact: true }).click()
+		await page.getByRole('menuitem', { name: /Download \.yaml/ }).click()
+		const download = await downloading
+		expect(download.suggestedFilename()).toBe('weekend.yaml')
+		expect(await fsp.readFile(await download.path(), 'utf8')).toBe('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n')
+
+		await page.getByRole('button', { name: 'YAML', exact: true }).click()
+		const editor = page.getByRole('textbox', { name: 'Layers as YAML' })
+		await expect(editor).toContainText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
 		await page.getByRole('button', { name: 'Start Editing' }).click()
-		await page.getByRole('button', { name: 'Export', exact: true }).click()
-		const exportDialog = page.getByRole('dialog', { name: 'Export layers' })
-		await expect(exportDialog.getByLabel('Export', { exact: true })).toHaveText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n')
-
-		await page.keyboard.press('Escape')
-		await expect(exportDialog).toHaveCount(0)
-
-		await page.getByRole('button', { name: 'Import', exact: true }).click()
-		const dialog = page.getByRole('dialog', { name: 'Import layers' })
-		await dialog
-			.getByRole('textbox', { name: 'Import' })
-			.fill(
-				[
-					'# opener',
-					'- layer: Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
-					'  tags: [meta, Rush Hour]',
-					'- vote:',
-					'    - Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
-					'    - Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
-				].join('\n'),
-			)
-		await expect(dialog.getByRole('status')).toHaveText('YAML: 2 items, 1 note')
-		await expect(dialog).toContainText('Tag meta matches an existing tag')
-		await dialog.getByRole('combobox', { name: 'What to do with Rush Hour' }).click()
+		await editor.click()
+		await page.keyboard.press('ControlOrMeta+a')
+		await page.keyboard.insertText(
+			[
+				'# opener',
+				'- layer: Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+				'  tags: [meta, Rush Hour]',
+				'- vote:',
+				'    - Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+				'    - Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+			].join('\n'),
+		)
+		const region = page.getByRole('region', { name: /Layers/ })
+		await expect(region.getByRole('status')).toHaveText('YAML: 2 items, 1 note')
+		// an unknown tag holds the text back, and keeps the view from being switched
+		await expect(region.getByRole('button', { name: 'Builder', exact: true })).toHaveAttribute('data-softdisabled', 'true')
+		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible()
+		await page.getByRole('combobox', { name: 'What to do with Rush Hour' }).click()
 		await page.getByRole('option', { name: 'Drop it' }).click()
-		await dialog.getByRole('button', { name: 'Replace', exact: true }).click()
-		await dialog.getByRole('button', { name: 'Import 2 Items' }).click()
-		await expect(dialog).toHaveCount(0)
 		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible()
 
 		await page.getByRole('button', { name: 'Save', exact: true }).click()
-		await app.waitFor(() => savedRotation(app, 'weekend')?.items.length === 2 || null, { label: 'the import was saved' })
+		await app.waitFor(() => savedRotation(app, 'weekend')?.items.length === 2 || null, { label: 'the edit was saved' })
 		const [narva, vote] = savedRotation(app, 'weekend')!.items
 		expect(narva.layerId).toBe(LAYERS.narvaRaas)
 		expect(narva.tags).toEqual([META.id])
@@ -464,9 +492,9 @@ test.describe('collaborative rotation editing', () => {
 		await openPath(page, '/rotations/midweek')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
 
-		// none are defined yet, so the menu offers only a new one
+		// the tag made on the rotations page is offered beside a new one
 		await page.getByRole('button', { name: 'Add tag' }).first().click()
-		await expect(page.getByRole('menuitem', { name: 'No tags available' })).toBeVisible()
+		await expect(page.getByRole('menuitem', { name: 'Night Set' })).toBeVisible()
 		await page.getByRole('menuitem', { name: 'New tag...' }).click()
 		const dialog = page.getByRole('dialog', { name: 'New tag' })
 		await expect(dialog).toContainText('group rotations on the Rotations page')

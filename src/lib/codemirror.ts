@@ -4,7 +4,7 @@
 import { indentWithTab } from '@codemirror/commands'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import type { Extension } from '@codemirror/state'
-import { Annotation, EditorState } from '@codemirror/state'
+import { Annotation, Compartment, EditorState } from '@codemirror/state'
 import { EditorView, hoverTooltip, keymap, type ViewUpdate } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
 import { stateExtensions, updateSchema } from 'codemirror-json-schema'
@@ -14,7 +14,7 @@ import type { JSONSchema7 } from 'json-schema'
 import { foundryTheme } from './codemirror-theme.ts'
 import { z } from './zod.ts'
 
-export { EditorState, EditorView, updateSchema }
+export { Compartment, EditorState, EditorView, updateSchema }
 export type { Extension }
 
 // codemirror-json-schema types its schema as json-schema's JSONSchema7.
@@ -42,12 +42,20 @@ export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[
 		// which YAML rejects as indentation. Ctrl-m (Shift-Alt-m on mac) still frees Tab to move focus.
 		keymap.of([indentWithTab]),
 		yaml(),
-		yamlLanguage.data.of({ autocomplete: yamlCompletion() }),
-		hoverTooltip(yamlSchemaHover()),
-		stateExtensions(schema),
+		...(schema
+			? [yamlLanguage.data.of({ autocomplete: yamlCompletion() }), hoverTooltip(yamlSchemaHover()), stateExtensions(schema)]
+			: []),
 		foundryTheme,
 		EditorView.lineWrapping,
 	]
+}
+
+export function plainTextEditorExtensions(): Extension[] {
+	return [basicSetup, foundryTheme, EditorView.lineWrapping]
+}
+
+export function readOnly(readOnly: boolean): Extension {
+	return [EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]
 }
 
 // marks a change made by setDoc rather than by the user
