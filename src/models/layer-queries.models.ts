@@ -671,9 +671,10 @@ export function getLookbackItems(item: LayerItem): readonly LayerItem[] {
 	return item.type === 'vote-list-item' && !item.voteTookPlace ? item.choices : [item]
 }
 
-export function isLookbackTerminatingLayerItem(item: LayerItem): boolean {
-	if (isVoteListitem(item)) return false
-	return item.type === 'match-history-entry' && L.isSeedingOrTrainingLayer(item.layerId)
+// A seeding or training layer ends lookback, whether played or queued: nothing before it counts as a repeat of
+// anything after it. A vote ends lookback only when every layer it may still play is one.
+export function isLookbackTerminatingLayerItem(item: LayerItem, parse: (layerId: L.LayerId) => L.UnvalidatedLayer = L.toLayer): boolean {
+	return getLookbackItems(item).every((lookbackItem) => L.isSeedingOrTrainingLayer(parse(lookbackItem.layerId)))
 }
 
 export function getAllLayerIds(items: OrderedLayerItems) {

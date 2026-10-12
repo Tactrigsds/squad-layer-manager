@@ -460,16 +460,24 @@ describe('seeding and training layers', () => {
 		expect(repeats(factionRule, stateOf(historyItems(['GD-RAAS-V1:WPMC-CA:TLF-CA'])), TRAINING)).toBe(false)
 	})
 
-	it('are never repeated by a later layer while queued', () => {
+	it('end lookback while queued, as a played one does', () => {
+		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
+		expect(repeats(mapRule, stateOf(historyItems([PREVIOUS])), GORODOK)).toBe(true)
+		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), GORODOK)).toBe(false)
 		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
 		// at the cursor team A plays the _2 slot, USA, as the seeding layer's team A did
 		expect(repeats(factionRule, stateOf(queueItems([SEED])), SAME_SIDES)).toBe(false)
 	})
 
-	it('are never repeated by a later layer as a choice in a vote', () => {
-		const list = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, 'NV-RAAS-V1:USA-CA:RGF-CA'], false)])
-		expect(repeats(mapRule, list, 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
-		expect(repeats(mapRule, list, 'NV-RAAS-V2:USA-CA:RGF-CA')).toBe(true)
+	it('end lookback from a pending vote only when every choice is one', () => {
+		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
+		const mixed = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, 'NV-RAAS-V1:USA-CA:RGF-CA'], false)])
+		expect(repeats(mapRule, mixed, 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
+		expect(repeats(mapRule, mixed, 'NV-RAAS-V2:USA-CA:RGF-CA')).toBe(true)
+		expect(repeats(mapRule, mixed, GORODOK)).toBe(true)
+
+		const onlySeedingAndTraining = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, TRAINING], false)])
+		expect(repeats(mapRule, onlySeedingAndTraining, GORODOK)).toBe(false)
 	})
 })
 
