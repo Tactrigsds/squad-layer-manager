@@ -24,8 +24,23 @@ layer until someone turns updates back on. Turning them back on disables voting.
 <p><img src="/squad-layer-manager/latest/assets/docs/images/features/ingame_vote.png" alt="ingame_vote" loading="lazy" decoding="async" width="984" height="129"/></p>
 <h2 id="repeat-rules" class="docs-heading">Repeat rules<a href="#repeat-rules" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#repeat-rules" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>A <em>repeat rule</em> sets how soon a map, layer or faction may be played again, counting across both the queue and the
-recent match history. Each rule covers one attribute. Set them on the <em>Repeat Rules</em> tab.</p>
-<p>These are the defaults:</p>
+recent match history. Each rule covers one attribute.</p>
+<p>Repeat rules are kept in <em>repeat rulesets</em>. A repeat ruleset is a named list of repeat rules that several servers and
+rotations can share. Each server uses one repeat ruleset, and a new server gets a repeat ruleset of its own, named after
+the server.</p>
+<p>To change a server&#x27;s repeat rules:</p>
+<ol>
+<li>Open the <em>Repeat Rules</em> tab of the pool configuration window.</li>
+<li>Pick a repeat ruleset under <em>Repeat ruleset</em>, or keep the one shown.</li>
+<li>Edit the rules.</li>
+<li>Press <em>Save Changes</em>.</li>
+</ol>
+<p><em>Save Changes</em> saves the rules into the repeat ruleset, so every server using that repeat ruleset gets the new rules.</p>
+<p>Use <em>New repeat ruleset</em>, beside the picker, to create a repeat ruleset. It starts with a copy of the rules shown, and
+the server switches to it once <em>Save Changes</em> is pressed. Use the pencil beside the picker to rename the repeat ruleset
+shown. The settings page lists every repeat ruleset under <em>Repeat Rulesets</em>. A repeat ruleset can only be deleted
+there, and only while no server or rotation uses it.</p>
+<p>These are the rules a new server&#x27;s repeat ruleset starts with:</p>
 <p><img src="/squad-layer-manager/latest/assets/docs/images/configuring/default_repeat_rules.png" alt="default_repeat_rules" loading="lazy" decoding="async" width="1025" height="157"/></p>
 <p>They treat a layer as a repeat when it reuses:</p>
 <ul>
