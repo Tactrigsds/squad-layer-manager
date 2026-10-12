@@ -287,12 +287,12 @@ function joinRepoPath(dir: string, rel: string) {
 }
 
 // where pages are served from: `base` is the version's folder, `root` the site root. `absent` holds the slugs of pages
-// that version does not have, such as a page added after it was released, which are linked in the next version instead.
+// that version does not have, such as a page added after it was released, which are linked in latest instead.
 export type Bases = { base: string; root: string; absent?: ReadonlySet<string> }
 
 export function pageHref(bases: Bases, page: Page, hash = '') {
 	if (page.unversioned) return `${bases.root}${page.slug}/${hash}`
-	if (bases.absent?.has(page.slug)) return `${bases.root}${NEXT_VERSION}/${page.slug}/${hash}`
+	if (bases.absent?.has(page.slug)) return `${bases.root}${LATEST_VERSION}/${page.slug}/${hash}`
 	return `${bases.base}${page.slug}/${hash}`
 }
 
@@ -304,23 +304,34 @@ export function unversionedPages() {
 	return PAGES.filter((p) => p.unversioned)
 }
 
-// the version folder built from main
-export const NEXT_VERSION = 'next'
+// The version folders mirror the image tags: latest is built from main, a release folder such as 2026.9.4 from its
+// tag, and stable is the newest release built a second time under its own name.
+export const LATEST_VERSION = 'latest'
+export const STABLE_VERSION = 'stable'
 
-const RELEASE = /^v\d+(?:\.\d+)*$/
+const RELEASE = /^\d+(?:\.\d+)*$/
+
+export function isRelease(name: string) {
+	return RELEASE.test(name)
+}
 
 export function isVersionName(name: string) {
-	return name === NEXT_VERSION || RELEASE.test(name)
+	return name === LATEST_VERSION || name === STABLE_VERSION || isRelease(name)
+}
+
+// the release a git ref names, such as 2026.9.4 for the tag v2026.9.4
+export function releaseOfRef(ref: string) {
+	const name = ref.replace(/^v/, '')
+	return isRelease(name) ? name : null
 }
 
 function releaseParts(name: string) {
-	return name.slice(1).split('.').map(Number)
+	return name.split('.').map(Number)
 }
 
-// next first, then releases newest first
-export function sortVersions(names: string[]) {
-	const releases = names.filter((n) => n !== NEXT_VERSION)
-	releases.sort((a, b) => {
+// releases, newest first
+export function sortReleases(names: string[]) {
+	return names.filter(isRelease).sort((a, b) => {
 		const x = releaseParts(a)
 		const y = releaseParts(b)
 		for (let i = 0; i < Math.max(x.length, y.length); i++) {
@@ -329,28 +340,29 @@ export function sortVersions(names: string[]) {
 		}
 		return 0
 	})
-	return names.includes(NEXT_VERSION) ? [NEXT_VERSION, ...releases] : releases
 }
 
-export function versionLabel(version: string) {
-	return version === NEXT_VERSION ? 'Unreleased' : version
+// `release` is the release a stable folder was built from
+export function versionLabel(version: string, release: string | null) {
+	return version === STABLE_VERSION && release ? `stable (${release})` : version
 }
 
-export function latestRelease(sorted: string[]) {
-	return sorted.find((n) => n !== NEXT_VERSION) ?? null
-}
+// The site root's versions.json, read by every page to list the versions and flag an outdated one, and by the app to
+// pick its docs. `stable` is the release the stable folder holds. `versions` lists every folder: latest, stable, then
+// releases newest first. App builds from before the folders were renamed read `versions` too.
+export type VersionIndex = { stable: string | null; versions: string[] }
 
-// the site root's versions.json, read by every page to list the versions and flag an outdated one
-export type VersionIndex = { latest: string | null; versions: string[] }
+export function sortVersions(names: string[]) {
+	return [LATEST_VERSION, STABLE_VERSION].filter((n) => names.includes(n)).concat(sortReleases(names))
+}
 
 // The docs an app build links to. A build past a release (`2026.9.4+2`) is main's code, the `:latest` image, so it
-// gets main's docs. A release, the `:stable` image, gets the site root while it is the newest release, since the root
-// follows the newest release, and its own folder once a newer one ships. A release the index does not list, or any
-// release while the index is unknown, gets the root too, rather than a folder that may not exist.
+// gets latest. A release gets stable while it is the newest release, and its own folder after. A release the index
+// does not list, or any release while the index is unknown, gets the site root, which opens stable.
 export function docsUrlFor(root: string, appVersion: string, index: VersionIndex | null) {
-	if (appVersion.includes('+')) return `${root}${NEXT_VERSION}/`
-	const folder = `v${appVersion}`
-	if (index && index.latest !== folder && index.versions.includes(folder)) return `${root}${folder}/`
+	if (appVersion.includes('+')) return `${root}${LATEST_VERSION}/`
+	if (index?.stable === appVersion) return `${root}${STABLE_VERSION}/`
+	if (index?.versions.includes(appVersion)) return `${root}${appVersion}/`
 	return root
 }
 

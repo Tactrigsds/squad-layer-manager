@@ -172,10 +172,10 @@ The build fails on a link to a heading that does not exist, and on a code block 
 grammar for. Add a grammar to `LANGS` in [src/scripts/build-docs.ts](src/scripts/build-docs.ts) to support a new
 language.
 
-The site keeps one folder per version. `/next/` is built from main. Each release is built once from its tag into its
-own folder (`/v2026.9.4/`) and never rebuilt. The landing page and the changelog are kept at the root, rebuilt from
-main, and link to the latest release. `docs:build` builds `/next/` and the root, so locally the root
-points at `/next/`. [.github/workflows/docs-pages.yml](.github/workflows/docs-pages.yml) publishes to the `gh-pages`
+The site keeps one folder per version, named like the image tags. `/latest/` is built from main. Each release is
+built once from its tag into its own folder (`/2026.9.4/`) and never rebuilt. The newest release is also built into
+`/stable/`. Each folder opens on its own landing page. The root redirects to `/stable/`, and holds the changelog,
+rebuilt from main. `docs:build` builds `/latest/` and the root, so locally the root redirects to `/latest/`. [.github/workflows/docs-pages.yml](.github/workflows/docs-pages.yml) publishes to the `gh-pages`
 branch on every change to the docs on main, on every release tag, and on a manual run.
 
 Take screenshots at a device scale factor of 2, then mark them so the site shows them at their on-screen size:

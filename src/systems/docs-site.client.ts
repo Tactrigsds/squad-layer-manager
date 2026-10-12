@@ -1,6 +1,7 @@
-// The documentation site's only script (bundled by src/scripts/build-docs.ts). It opens search and turns the landing
-// page's video thumbnail into a player on click. Pagefind loads on the first search, so a page that is only read
-// never fetches it.
+// The documentation site's only script (bundled by src/scripts/build-docs.ts). It opens search, fills the version
+// menu, and turns the landing page's video thumbnail into a player on click. Pagefind loads on the first search, so a
+// page that is only read never fetches it. It imports nothing, so the version names below mirror
+// src/models/docs-site.models.ts.
 
 type PagefindSubResult = { title: string; url: string; excerpt: string; weighted_locations: { balanced_score: number }[] }
 type PagefindData = {
@@ -15,13 +16,14 @@ type Pagefind = {
 	debouncedSearch(query: string, opts?: object, ms?: number): Promise<{ results: { data(): Promise<PagefindData> }[] } | null>
 }
 
-type VersionIndex = { latest: string | null; versions: string[] }
+type VersionIndex = { stable: string | null; versions: string[] }
 
 const MAX_RESULTS = 8
-const NEXT_VERSION = 'next'
+const LATEST_VERSION = 'latest'
+const STABLE_VERSION = 'stable'
 const base = document.documentElement.dataset.base ?? '/'
 const root = document.documentElement.dataset.root ?? '/'
-const version = document.documentElement.dataset.version ?? NEXT_VERSION
+const version = document.documentElement.dataset.version ?? LATEST_VERSION
 let pagefind: Promise<Pagefind> | null = null
 
 function loadPagefind() {
@@ -228,19 +230,20 @@ async function setupVersions() {
 	const index = (await res.json()) as VersionIndex
 	// the same page in another version, when this is a page inside a version folder
 	const inVersion = location.pathname.startsWith(base) ? location.pathname.slice(base.length) + location.hash : ''
-	const label = (v: string) => (v === NEXT_VERSION ? 'Unreleased' : v)
+	// the release stable holds is listed once, as stable
+	const shown = index.versions.filter((v) => v !== index.stable)
+	const current = version === index.stable ? STABLE_VERSION : version
 
 	for (const list of lists) {
-		const links = index.versions.map((v) => {
+		const links = shown.map((v) => {
 			const a = document.createElement('a')
 			a.href = `${root}${v}/${inVersion}`
-			a.textContent = label(v)
-			if (v === version) a.setAttribute('aria-current', 'page')
-			const tag = v === index.latest ? 'latest' : v === NEXT_VERSION ? 'main' : null
-			if (tag) {
+			a.textContent = v === STABLE_VERSION && index.stable ? `stable (${index.stable})` : v
+			if (v === current) a.setAttribute('aria-current', 'page')
+			if (v === LATEST_VERSION) {
 				const span = document.createElement('span')
 				span.className = 'docs-version-tag'
-				span.textContent = tag
+				span.textContent = 'main'
 				a.append(span)
 			}
 			return a
@@ -248,12 +251,12 @@ async function setupVersions() {
 		list.replaceChildren(...links)
 	}
 
-	if (banner && location.pathname.startsWith(base) && version !== index.latest && index.latest) {
+	if (banner && location.pathname.startsWith(base) && index.stable && current !== STABLE_VERSION) {
 		const link = document.createElement('a')
-		link.href = `${root}${index.latest}/${inVersion}`
-		link.textContent = `the ${index.latest} docs`
+		link.href = `${root}${STABLE_VERSION}/${inVersion}`
+		link.textContent = `the stable docs (${index.stable})`
 		banner.append(
-			version === NEXT_VERSION
+			version === LATEST_VERSION
 				? 'These docs describe unreleased changes on main. For the latest release, see '
 				: `These docs are for SLM ${version}, which is not the latest release. See `,
 			link,
@@ -263,6 +266,16 @@ async function setupVersions() {
 	}
 }
 
+// The version folders were once named next/ and v<release>/. App builds and pages from then still link to those
+// names, which land on the 404 page, so it sends them on to latest/ and <release>/.
+function redirectLegacyPath() {
+	if (!document.querySelector('[data-not-found]') || !location.pathname.startsWith(root)) return
+	const m = /^(?:next|v(\d+(?:\.\d+)*))(\/.*)?$/.exec(location.pathname.slice(root.length))
+	if (!m) return
+	location.replace(`${root}${m[1] ?? LATEST_VERSION}${m[2] ?? '/'}${location.search}${location.hash}`)
+}
+
+redirectLegacyPath()
 setupSearch()
 setupVideo()
 setupCopyButtons()

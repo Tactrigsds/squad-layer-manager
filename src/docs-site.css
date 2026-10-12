@@ -235,6 +235,19 @@
 		border-radius: 3px;
 		box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
 	}
+	/* the navigation menu scrolls and clips, so the list opens inline at its end instead of over it */
+	.docs-menu-panel .docs-version[open] {
+		flex-basis: 100%;
+	}
+	.docs-menu-panel .docs-version summary {
+		width: fit-content;
+	}
+	.docs-menu-panel .docs-version-panel {
+		position: static;
+		margin-top: 6px;
+		max-height: none;
+		box-shadow: none;
+	}
 	.docs-version-panel a {
 		display: flex;
 		justify-content: space-between;
