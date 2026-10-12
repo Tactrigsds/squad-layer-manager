@@ -10,6 +10,7 @@ import type * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -445,33 +446,98 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 	)
 }
 
-export function GenerationPanel({ api }: { api: PoolConfigApi }) {
+// the settings page edits the vote settings in its own section, so only the pool configuration window passes autoStartApi
+export function GenerationPanel({ api, autoStartApi }: { api: PoolConfigApi; autoStartApi?: PoolConfigApi }) {
 	const enabled = usePoolValue(api, ['generateVotes', 'enabled']) === true
 	const displayProps = (usePoolValue(api, ['generateVotes', 'displayProps']) as DH.LayerDisplayProp[] | undefined) ?? []
 	return (
-		<div className="space-y-3">
-			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
-			<BooleanSettingRow
-				api={api}
-				path={['generateVotes', 'enabled']}
-				label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
-				description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
-			/>
-			<div className="space-y-2 ps-6">
-				<div className="space-y-1">
-					<h5 className="text-sm font-medium">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptions())}</h5>
-					<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptionsHelp())}</p>
-				</div>
-				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<div>
-						<VoteDisplayPropsCheckboxes
-							displayProps={displayProps}
-							onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
-							disabled={!enabled || !!api.writeDenied}
-							lockMap
-						/>
+		<div className="space-y-6">
+			<div className="space-y-3">
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
+				<BooleanSettingRow
+					api={api}
+					path={['generateVotes', 'enabled']}
+					label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
+					description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
+				/>
+				<div className="space-y-2 ps-6">
+					<div className="space-y-1">
+						<h5 className="text-sm font-medium">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptions())}</h5>
+						<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.generatedVoteDisplayOptionsHelp())}</p>
 					</div>
+					<PermissionDeniedTooltip denied={api.writeDenied}>
+						<div>
+							<VoteDisplayPropsCheckboxes
+								displayProps={displayProps}
+								onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
+								disabled={!enabled || !!api.writeDenied}
+								lockMap
+							/>
+						</div>
+					</PermissionDeniedTooltip>
+				</div>
+			</div>
+			{autoStartApi && <AutoStartVoteSection api={autoStartApi} />}
+		</div>
+	)
+}
+
+const DEFAULT_AUTO_START_VOTE_DELAY = SETTINGS.PublicServerSettingsSchema.parse({}).vote.autoStartVoteDelay ?? 0
+
+// api is rooted at vote.autoStartVoteDelay, which is null when votes are only started by hand
+function AutoStartVoteSection({ api }: { api: PoolConfigApi }) {
+	const checkboxId = React.useId()
+	const inputId = React.useId()
+	const delay = usePoolValue(api, ROOT_PATH) as number | null
+	const enabled = delay !== null
+	const [invalid, setInvalid] = React.useState(false)
+	const setDelay = useDebounced({
+		onChange: (text: string) => {
+			const ms = ZodUtils.tryParseHumanTimeToken(text.trim())
+			setInvalid(ms === undefined)
+			if (ms !== undefined) api.set(ROOT_PATH, ms)
+		},
+		delay: 250,
+	})
+	return (
+		<div data-tour="pool-auto-start-vote" className="space-y-3">
+			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.startingVotes())}</h4>
+			<div className="flex items-start gap-2.5">
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<Checkbox
+						id={checkboxId}
+						className="mt-0.5"
+						checked={enabled}
+						disabled={!!api.writeDenied}
+						onCheckedChange={(next) => {
+							setInvalid(false)
+							api.set(ROOT_PATH, next ? DEFAULT_AUTO_START_VOTE_DELAY : null)
+						}}
+					/>
 				</PermissionDeniedTooltip>
+				<div className="min-w-0 space-y-1">
+					<Label htmlFor={checkboxId} className="cursor-pointer font-medium">
+						{tr.text(SETTINGS_Msgs.autoStartVotesLabel())}
+					</Label>
+					<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.autoStartVotesHelp())}</p>
+				</div>
+			</div>
+			<div className="space-y-1 ps-6">
+				<Label htmlFor={inputId} className="text-sm font-medium">
+					{tr.text(SETTINGS_Msgs.autoStartVoteDelay())}
+				</Label>
+				{/* toggling remounts it, so the box re-seeds from the value the checkbox just wrote */}
+				<Input
+					key={`${api.resetKey}:${enabled}`}
+					id={inputId}
+					defaultValue={delay === null ? '' : ZodUtils.formatHumanTime(delay)}
+					placeholder={ZodUtils.formatHumanTime(DEFAULT_AUTO_START_VOTE_DELAY)}
+					disabled={!enabled || !!api.writeDenied}
+					aria-invalid={invalid}
+					onChange={(e) => setDelay(e.target.value)}
+					containerClassName="w-32"
+				/>
+				{invalid && <p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.autoStartVoteDelayInvalid())}</p>}
 			</div>
 		</div>
 	)
@@ -516,7 +582,21 @@ function RuleDropSeparator({ position, panelId, idx }: { position: 'before' | 'a
 	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
 }
 
-const RULE_ROW_GRID = 'grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_60px_minmax(0,3fr)_minmax(240px,2fr)_auto] items-center gap-2'
+// On a phone each row is a card instead: the table's columns need ~1000px.
+const RULE_ROW_GRID = cn(
+	'grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_60px_minmax(0,3fr)_minmax(240px,2fr)_auto] items-center gap-2',
+	"max-phone:items-end max-phone:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] max-phone:[grid-template-areas:'grip_label_label_del'_'field_field_within_within'_'targets_targets_targets_targets'_'options_options_options_options']",
+)
+
+// a row's grid item on desktop; on a phone, a captioned block placed by grid area
+function RuleCell(props: { className: string; caption?: string; children: React.ReactNode }) {
+	return (
+		<div className={cn('contents max-phone:flex max-phone:min-w-0 max-phone:flex-col max-phone:gap-1', props.className)}>
+			{props.caption && <span className="hidden text-xs font-medium text-muted-foreground max-phone:block">{props.caption}</span>}
+			{props.children}
+		</div>
+	)
+}
 
 // A rule's name is its label, or its field when it has none. Most rules never get one, so the box only appears
 // once asked for; emptying it again unsets the label, and the button comes back when the row next re-seeds.
@@ -529,7 +609,7 @@ function RuleLabelCell(props: { label: string | undefined; disabled: boolean; on
 				variant="ghost"
 				disabled={props.disabled}
 				onClick={() => setOpen(true)}
-				className="h-8 w-full justify-start border border-dashed px-3 font-normal text-muted-foreground"
+				className="h-8 w-full justify-start border border-dashed px-3 font-normal text-muted-foreground max-phone:h-(--ctl)"
 			>
 				<Icons.Plus className="me-2 h-3 w-3" />
 				{tr.text(SETTINGS_Msgs.repeatRuleAddLabel())}
@@ -544,7 +624,7 @@ function RuleLabelCell(props: { label: string | undefined; disabled: boolean; on
 			defaultValue={props.label ?? ''}
 			disabled={props.disabled}
 			onChange={(e) => setLabel(e.target.value)}
-			className="h-8"
+			className="h-8 max-phone:h-(--ctl)"
 		/>
 	)
 }
@@ -651,71 +731,90 @@ function RepeatRuleRow(props: {
 		<li
 			ref={drag.ref}
 			data-dragging={drag.isDragging}
-			className={cn(RULE_ROW_GRID, 'rounded-md bg-background data-[dragging=true]:opacity-40')}
+			className={cn(RULE_ROW_GRID, 'rounded-md bg-background data-[dragging=true]:opacity-40 max-phone:border max-phone:p-2')}
 		>
 			<button
 				type="button"
 				ref={drag.handleRef}
 				disabled={!!api.writeDenied}
-				className="cursor-grab rounded text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+				className="cursor-grab rounded text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40 max-phone:self-center max-phone:[grid-area:grip]"
 				aria-label={tr.text(SETTINGS_Msgs.repeatRuleReorder())}
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
-			<RuleLabelCell label={rule.label} disabled={!!api.writeDenied} onChange={setLabel} />
-			<ComboBox
-				title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
-				options={LQY.RepeatRuleFieldSchema.options}
-				value={rule.field}
-				allowEmpty={false}
-				onSelect={(value) => {
-					if (!value) return
-					setField(value as LQY.RepeatRuleField)
-				}}
-				disabled={!!api.writeDenied}
-			/>
-			<Input
-				type="number"
-				defaultValue={rule.within}
-				disabled={!!api.writeDenied}
-				onChange={(e) => {
-					setWithin(Math.floor(Number(e.target.value)))
-				}}
-				className="h-8"
-			/>
-			<ComboBoxMulti
-				className="w-full min-w-0"
-				title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
-				selectOnClose
-				options={targetOptions}
-				groupings={targetValueColumn ? enumGroupings(targetValueColumn) : undefined}
-				disabled={!!api.writeDenied}
-				values={rule.targetValues ?? []}
-				onSelect={(updated) => {
-					setTargetValues(updated)
-				}}
-			/>
-			<ComboBoxMulti
-				className="w-full min-w-0 font-sans"
-				title={tr.text(SETTINGS_Msgs.repeatRuleOptionsPicker())}
-				emptyLabel={tr.text(SETTINGS_Msgs.repeatRuleNoOptions())}
-				sort={false}
-				options={RULE_OPTIONS.map((option) => ({
-					value: option,
-					label: tr.text(RULE_OPTION_LABELS[option]()),
-					description: tr.text(RULE_OPTION_HELP[option]()),
-					// a non-team-specific field has no per-team reading for cross-team to widen
-					disabled: option === 'crossTeam' && !teamSpecific,
-				}))}
-				disabled={!!api.writeDenied}
-				values={selectedOptions}
-				onSelect={setOptions}
-			/>
-			<PermissionDeniedTooltip denied={api.writeDenied}>
-				<Button size="icon" variant="outline" onClick={deleteRule} disabled={!!api.writeDenied} className="h-8 w-8">
-					<Icons.Minus className="h-4 w-4" />
-				</Button>
-			</PermissionDeniedTooltip>
+			<RuleCell className="max-phone:[grid-area:label]">
+				<RuleLabelCell label={rule.label} disabled={!!api.writeDenied} onChange={setLabel} />
+			</RuleCell>
+			<RuleCell className="max-phone:[grid-area:field]" caption={tr.text(SETTINGS_Msgs.repeatRuleField())}>
+				<ComboBox
+					className="max-phone:h-(--ctl) max-phone:w-full"
+					title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
+					options={LQY.RepeatRuleFieldSchema.options}
+					value={rule.field}
+					allowEmpty={false}
+					onSelect={(value) => {
+						if (!value) return
+						setField(value as LQY.RepeatRuleField)
+					}}
+					disabled={!!api.writeDenied}
+				/>
+			</RuleCell>
+			<RuleCell className="max-phone:[grid-area:within]" caption={tr.text(SETTINGS_Msgs.repeatRuleWithin())}>
+				<Input
+					type="number"
+					defaultValue={rule.within}
+					disabled={!!api.writeDenied}
+					onChange={(e) => {
+						setWithin(Math.floor(Number(e.target.value)))
+					}}
+					className="h-8 max-phone:h-(--ctl)"
+				/>
+			</RuleCell>
+			<RuleCell className="max-phone:[grid-area:targets]" caption={tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}>
+				<ComboBoxMulti
+					className="w-full min-w-0"
+					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
+					selectOnClose
+					options={targetOptions}
+					groupings={targetValueColumn ? enumGroupings(targetValueColumn) : undefined}
+					disabled={!!api.writeDenied}
+					values={rule.targetValues ?? []}
+					onSelect={(updated) => {
+						setTargetValues(updated)
+					}}
+				/>
+			</RuleCell>
+			<RuleCell className="max-phone:[grid-area:options]" caption={tr.text(SETTINGS_Msgs.repeatRuleOptions())}>
+				<ComboBoxMulti
+					className="w-full min-w-0 font-sans"
+					title={tr.text(SETTINGS_Msgs.repeatRuleOptionsPicker())}
+					emptyLabel={tr.text(SETTINGS_Msgs.repeatRuleNoOptions())}
+					sort={false}
+					options={RULE_OPTIONS.map((option) => ({
+						value: option,
+						label: tr.text(RULE_OPTION_LABELS[option]()),
+						description: tr.text(RULE_OPTION_HELP[option]()),
+						// a non-team-specific field has no per-team reading for cross-team to widen
+						disabled: option === 'crossTeam' && !teamSpecific,
+					}))}
+					disabled={!!api.writeDenied}
+					values={selectedOptions}
+					onSelect={setOptions}
+				/>
+			</RuleCell>
+			<RuleCell className="max-phone:[grid-area:del]">
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<Button
+						size="icon"
+						variant="outline"
+						onClick={deleteRule}
+						disabled={!!api.writeDenied}
+						className="h-8 w-8 max-phone:size-(--ctl)"
+					>
+						<Icons.Minus className="h-4 w-4" />
+					</Button>
+				</PermissionDeniedTooltip>
+			</RuleCell>
 		</li>
 	)
 }
@@ -763,8 +862,8 @@ function RepeatRulesTable(props: { api: PoolConfigApi }) {
 				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
 				<ConstraintViolationIcon />
 			</span>
-			<div className="border rounded-md p-3">
-				<div className={cn(RULE_ROW_GRID, 'text-sm font-medium text-muted-foreground')}>
+			<div className="border rounded-md p-3 max-phone:p-2">
+				<div className={cn(RULE_ROW_GRID, 'text-sm font-medium text-muted-foreground max-phone:hidden')}>
 					<span />
 					<span>{tr.text(SETTINGS_Msgs.repeatRuleLabel())}</span>
 					<span>{tr.text(SETTINGS_Msgs.repeatRuleField())}</span>

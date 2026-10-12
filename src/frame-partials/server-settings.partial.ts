@@ -25,6 +25,8 @@ export type SettingsPartial = {
 	modified: boolean
 	saved: SETTINGS.PublicServerSettings
 	edited: SETTINGS.PublicServerSettings
+	// bumped whenever `edited` is replaced rather than edited, so uncontrolled inputs know to re-seed
+	resetKey: number
 	saving: boolean
 
 	validationErrors: null | string[]
@@ -47,6 +49,7 @@ export function initServerSettings(args: Args) {
 
 		saved: defaultSettings,
 		edited: defaultSettings,
+		resetKey: 0,
 		validationErrors: null,
 	} satisfies SettingsPartial)
 
@@ -76,7 +79,7 @@ export function initServerSettings(args: Args) {
 			.pipe(RPC.dropUnavailable())
 			.subscribe(([settings, source]) => {
 				const updated = Obj.structuralMerge(get().saved, settings)
-				set({ saved: updated, edited: updated, ops: [] })
+				set({ saved: updated, edited: updated, ops: [], resetKey: get().resetKey + 1 })
 				if (source) {
 					toast(...tr.toast(SS_Msgs.stateUpdateSource(source)))
 				}
@@ -133,6 +136,6 @@ export namespace Actions {
 	}
 
 	export function reset(stores: KeyProp) {
-		Zus.toPartialStore(stores.settings, 'settings').setState((state) => ({ edited: state.saved, ops: [] }))
+		Zus.toPartialStore(stores.settings, 'settings').setState((state) => ({ edited: state.saved, ops: [], resetKey: state.resetKey + 1 }))
 	}
 }
