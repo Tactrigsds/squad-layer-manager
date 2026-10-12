@@ -73,6 +73,21 @@ function inVals(where: LE.Ir): { col: number; vals: number[] }[] {
 
 const ascending = (a: number, b: number) => a - b
 
+const exemptingSeedingAndTraining = (repeated: object) => ({
+	op: 'and',
+	children: [
+		{
+			op: 'not',
+			child: {
+				op: 'in_vals',
+				col: col('Gamemode'),
+				vals: L.SEEDING_OR_TRAINING_GAMEMODES.map((gamemode) => Number(LC.dbValue('Gamemode', gamemode, ctx))),
+			},
+		},
+		repeated,
+	],
+})
+
 describe('a Faction repeat rule', () => {
 	it('holds each team to its own history by default', () => {
 		const clauses = inVals(whereFor({ label: 'Faction', field: 'Faction', within: 3 }))
@@ -129,10 +144,12 @@ describe('a UnitMatchup repeat rule', () => {
 	})
 
 	it('matches the previous matchup in either orientation', () => {
-		expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }, unitList)).toEqual({
-			op: 'or',
-			children: [orientation('Mechanized', 'AirAssault'), orientation('AirAssault', 'Mechanized')],
-		})
+		expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }, unitList)).toEqual(
+			exemptingSeedingAndTraining({
+				op: 'or',
+				children: [orientation('Mechanized', 'AirAssault'), orientation('AirAssault', 'Mechanized')],
+			}),
+		)
 	})
 
 	it('is unaffected by crossTeam, having no per-team reading to widen', () => {
@@ -143,7 +160,7 @@ describe('a UnitMatchup repeat rule', () => {
 	it('collapses a mirror matchup to a single orientation', () => {
 		const mirrorList = listAfter(PREVIOUS_MIRROR_UNITS)
 		expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }, mirrorList)).toEqual(
-			orientation('CombinedArms', 'CombinedArms'),
+			exemptingSeedingAndTraining(orientation('CombinedArms', 'CombinedArms')),
 		)
 	})
 
@@ -158,10 +175,10 @@ describe('a UnitMatchup repeat rule', () => {
 	})
 
 	it('keeps a matchup a target value names, whichever way round it is written', () => {
-		const expected = {
+		const expected = exemptingSeedingAndTraining({
 			op: 'or',
 			children: [orientation('Mechanized', 'AirAssault'), orientation('AirAssault', 'Mechanized')],
-		}
+		})
 		for (const targetValue of [LQY.unitMatchupValue('Mechanized', 'AirAssault'), LQY.unitMatchupValue('AirAssault', 'Mechanized')]) {
 			expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3, targetValues: [targetValue] }, unitList)).toEqual(
 				expected,
@@ -420,6 +437,50 @@ describe('a vote earlier in the list', () => {
 	})
 })
 
+describe('seeding and training layers', () => {
+	const SEED = 'FL-SD-V1:USA-CA:RGF-CA'
+	const TRAINING = 'JR-TR:WPMC-CA:TLF-CA'
+	const factionRule: LQY.RepeatRule = { label: 'Faction', field: 'Faction', within: 4 }
+	const repeats = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, candidate: string) => {
+		const indicated =
+			(getRepeatRuleMatchDescriptors(list, cursorIndexOf(list, { type: 'end' }), 'rule', rule, candidate) ?? []).length > 0
+		const hidden = evalIr(whereFor(rule, list), candidate)
+		expect(hidden, 'the filter and the indicator agree').toBe(indicated)
+		return indicated
+	}
+
+	it('are seeding and training layers', () => {
+		expect([SEED, TRAINING].map((id) => L.isSeedingOrTrainingLayer(id))).toEqual([true, true])
+	})
+
+	it('never repeat an earlier layer', () => {
+		const list = stateOf([...historyItems(['FL-RAAS-V1:USA-CA:RGF-CA'])])
+		expect(repeats(mapRule, list, SEED)).toBe(false)
+		expect(repeats(factionRule, stateOf(historyItems([PREVIOUS])), SEED)).toBe(false)
+		expect(repeats(factionRule, stateOf(historyItems(['GD-RAAS-V1:WPMC-CA:TLF-CA'])), TRAINING)).toBe(false)
+	})
+
+	it('end lookback while queued, as a played one does', () => {
+		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
+		expect(repeats(mapRule, stateOf(historyItems([PREVIOUS])), GORODOK)).toBe(true)
+		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), GORODOK)).toBe(false)
+		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
+		// at the cursor team A plays the _2 slot, USA, as the seeding layer's team A did
+		expect(repeats(factionRule, stateOf(queueItems([SEED])), SAME_SIDES)).toBe(false)
+	})
+
+	it('end lookback from a pending vote only when every choice is one', () => {
+		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
+		const mixed = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, 'NV-RAAS-V1:USA-CA:RGF-CA'], false)])
+		expect(repeats(mapRule, mixed, 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
+		expect(repeats(mapRule, mixed, 'NV-RAAS-V2:USA-CA:RGF-CA')).toBe(true)
+		expect(repeats(mapRule, mixed, GORODOK)).toBe(true)
+
+		const onlySeedingAndTraining = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, TRAINING], false)])
+		expect(repeats(mapRule, onlySeedingAndTraining, GORODOK)).toBe(false)
+	})
+})
+
 function evalIr(ir: LE.Ir, layerId: string): boolean {
 	const layer = L.toLayer(layerId) as Record<string, string | undefined>
 	switch (ir.op) {
@@ -461,7 +522,7 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 		const teams = ['USA-CA', 'RGF-CA', 'USA-MT', 'PLA-AR', 'ADF-MZ', 'TLF-AR', 'BAF-CA', 'CAF-CA']
 		const pool: string[] = []
 		for (const map of ['GD', 'NV', 'FL', 'YH', 'CH', 'MT', 'SM', 'TL', 'AB', 'KD']) {
-			for (const gamemode of ['RAAS', 'AAS', 'TC']) {
+			for (const gamemode of ['RAAS', 'AAS', 'TC', 'SD']) {
 				for (const version of ['V1', 'V2']) {
 					for (let i = 0; i < teams.length; i++) {
 						const id = `${map}-${gamemode}-${version}:${teams[i]}:${teams[(i + 1) % teams.length]}`
@@ -470,7 +531,7 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 				}
 			}
 		}
-		return pool
+		return [...pool, 'JR-TR:WPMC-CA:TLF-CA']
 	})()
 
 	const FIELDS: LQY.RepeatRule['field'][] = ['Map', 'Layer', 'Gamemode', 'Size', 'Faction', 'Unit', 'Alliance', 'UnitMatchup']
