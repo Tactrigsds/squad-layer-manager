@@ -82,10 +82,10 @@ function Document({
 	)
 }
 
-function Lockup({ accent, tr }: { accent: string | null; tr: Msgs.Translator }) {
+function Lockup({ tr }: { tr: Msgs.Translator }) {
 	return (
 		<div className="flex flex-col items-center gap-3">
-			<LogoMark accent={accent} className="h-14 w-14" />
+			<LogoMark className="h-14 w-14" />
 			<div className="flex flex-col items-center gap-1.5">
 				<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{tr.text(APP_Msgs.productName())}</p>
 				<p className="text-center text-sm text-muted-foreground">{tr.text(APP_Msgs.tagline())}</p>
@@ -94,20 +94,10 @@ function Lockup({ accent, tr }: { accent: string | null; tr: Msgs.Translator }) 
 	)
 }
 
-function LandingPage({
-	repoUrl,
-	guildName,
-	accent,
-	tr,
-}: {
-	repoUrl: string
-	guildName: string | null
-	accent: string | null
-	tr: Msgs.Translator
-}) {
+function LandingPage({ repoUrl, guildName, tr }: { repoUrl: string; guildName: string | null; tr: Msgs.Translator }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-			<Lockup accent={accent} tr={tr} />
+			<Lockup tr={tr} />
 			<h1 className="mt-4 text-2xl font-bold tracking-tight">{tr.text(USR_Msgs.landingHeading(guildName))}</h1>
 			<p className="mt-3 text-muted-foreground">{tr.text(USR_Msgs.landingBlurb(guildName))}</p>
 			<a
@@ -122,10 +112,10 @@ function LandingPage({
 	)
 }
 
-function NoAuthPage({ repoUrl, error, accent, tr }: { repoUrl: string; error: string | null; accent: string | null; tr: Msgs.Translator }) {
+function NoAuthPage({ repoUrl, error, tr }: { repoUrl: string; error: string | null; tr: Msgs.Translator }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
-			<Lockup accent={accent} tr={tr} />
+			<Lockup tr={tr} />
 			<h1 className="mt-4 text-center text-2xl font-bold tracking-tight">{tr.text(USR_Msgs.pickANameHeading())}</h1>
 			<p className="mt-3 text-center text-muted-foreground">{tr.text(USR_Msgs.pickANameBlurb())}</p>
 			<form action="/login/no-auth" method="POST" className="mt-6 flex flex-col gap-3">
@@ -196,7 +186,6 @@ export function LandingDocument({
 	error,
 	head,
 	inlineCss,
-	accent,
 	tr,
 }: {
 	variant: USR_Msgs.LandingVariant
@@ -205,7 +194,6 @@ export function LandingDocument({
 	error: string | null
 	head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
 	inlineCss: string
-	accent: string | null
 	tr: Msgs.Translator
 }) {
 	return (
@@ -216,8 +204,8 @@ export function LandingDocument({
 			assetLinks={head.assetLinks}
 			inlineCss={inlineCss}
 		>
-			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} accent={accent} tr={tr} />}
-			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} accent={accent} tr={tr} />}
+			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} tr={tr} />}
+			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} tr={tr} />}
 			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} tr={tr} />}
 		</Document>
 	)

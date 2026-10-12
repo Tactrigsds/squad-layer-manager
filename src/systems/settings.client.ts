@@ -1,3 +1,5 @@
+import type * as React from 'react'
+
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
@@ -23,6 +25,11 @@ export function useReasonRequired(action: AAR.RequirableAdminActionType): boolea
 // disabled/broken servers still appear in the registry (e.g. for admin UI) but their dashboard can't be loaded.
 export function isServerUsable(entry: PublicSettings['servers'][number] | undefined): entry is PublicSettings['servers'][number] {
 	return !!entry && entry.enabled && !entry.broken
+}
+
+// the inline style the `fd-tint` class reads a server's color from; undefined for a server without one
+export function serverTintStyle(color: string | null): React.CSSProperties | undefined {
+	return color === null ? undefined : ({ '--tint': color } as React.CSSProperties)
 }
 
 export async function fetchSettings() {

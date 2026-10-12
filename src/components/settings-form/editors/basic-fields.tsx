@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { BmFlagMultiSelect } from '@/components/bm-flag-picker'
+import { ColorHexInput } from '@/components/color-picker'
 import ComboBox from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
@@ -48,6 +49,27 @@ export function LocaleField({ value$, onChange }: OverrideProps) {
 			value={value}
 			options={tags.map((tag) => ({ value: tag, label: MessagesClient.endonym(tag), keywords: [tag] }))}
 			onSelect={(tag) => tag !== undefined && onChange(tag)}
+		/>
+	)
+}
+
+// the same swatch and hex control as a player group's color. An emptied hex field unsets the color.
+export function ServerColorField({ value$, reset$, onChange }: OverrideProps) {
+	const hexRef = React.useRef<HTMLInputElement>(null)
+	const value = useFieldValue(value$) as string | undefined
+	const seedHex = (hex: string) => {
+		if (hexRef.current && hexRef.current.value !== hex) hexRef.current.value = hex
+	}
+	useReset(reset$, () => seedHex((value$.getValue() as string | undefined) ?? ''))
+	return (
+		<ColorHexInput
+			hexRef={hexRef}
+			color={value ?? ''}
+			pickLabel={tr.text(SETTINGS_Msgs.pickServerColor())}
+			onChange={(hex, fromHexField) => {
+				if (!fromHexField) seedHex(hex)
+				onChange(hex === '' ? undefined : hex)
+			}}
 		/>
 	)
 }

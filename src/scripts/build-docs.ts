@@ -17,7 +17,6 @@ import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 
 import * as Paths from '$root/paths'
 import * as Site from '@/components/docs-site/site'
-import * as Logo from '@/lib/logo'
 import { assertNever } from '@/lib/type-guards'
 import * as DS from '@/models/docs-site.models'
 import * as PLG from '@/models/plugins.models'
@@ -313,7 +312,7 @@ async function buildRoot(highlighter: Highlighter) {
 		for (const p of problems) console.error(`docs: ${p.file}: ${p.message}`)
 		throw new Error(`${problems.length} problem(s) in the root pages`)
 	}
-	fs.writeFileSync(path.join(OUT, 'favicon.svg'), Logo.themedSvg({ accent: null }))
+	fs.copyFileSync('public/favicon.svg', path.join(OUT, 'favicon.svg'))
 	// GitHub Pages runs Jekyll over a branch unless this file exists, and Jekyll drops anything starting with "_"
 	fs.writeFileSync(path.join(OUT, '.nojekyll'), '')
 	if (CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), `${CNAME}\n`)

@@ -65,7 +65,10 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp;
 						<Icons.Server />
 					</Button>
 				) : (
-					<Button size="sm">{tr.text(SS_Msgs.serverActions())}</Button>
+					<Button size="sm">
+						<Icons.Server />
+						{tr.text(SS_Msgs.serverActions())}
+					</Button>
 				)}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>

@@ -1,6 +1,7 @@
 import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema.ts'
+import * as Color from '@/lib/color'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
@@ -164,6 +165,8 @@ export type ServerEntry = {
 	// mirrored out of this server's settings so that "which admin lists speak for this server" can be answered without a
 	// db read: it is asked on every roster poll and every in-game permission check
 	adminLists: readonly SM.AdminListId[]
+	// mirrored out of this server's settings; null when the settings leave it unset or are broken
+	color: string | null
 	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
 	sandbox: boolean
 	// 'scoped' entries are delivered to and usable by only their owner (ownerDiscordId); see ServerVisibility and the
@@ -258,6 +261,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			defaultServer: row.defaultServer,
 			broken,
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
+			color: (settingsRes.success && settingsRes.data.color) || null,
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
 			visibility: row.visibility,
 			ownerDiscordId: row.ownerDiscordId,
@@ -292,6 +296,7 @@ export async function createServerEntry(
 
 	const visibility = input.visibility ?? 'public'
 	const ownerDiscordId = input.ownerDiscordId ?? null
+	settingsRes.data.color ??= pickServerColor(ownerDiscordId)
 	const newServer: SS.ServerState = {
 		id: input.id,
 		displayName: input.displayName,
@@ -316,6 +321,7 @@ export async function createServerEntry(
 		defaultServer: false,
 		broken: false,
 		adminLists: newServer.settings.adminLists,
+		color: newServer.settings.color ?? null,
 		sandbox: newServer.settings.connections.type === 'sandbox',
 		visibility,
 		ownerDiscordId,
@@ -324,6 +330,16 @@ export async function createServerEntry(
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s created', newServer.id)
 	return { code: 'ok' as const }
+}
+
+// distinct from the servers the new one will be listed beside: every public server, and the owner's own scoped ones
+function pickServerColor(ownerDiscordId: bigint | null): string {
+	const taken: string[] = []
+	for (const entry of serverRegistry.values()) {
+		if (entry.color === null) continue
+		if (entry.visibility === 'public' || entry.ownerDiscordId === ownerDiscordId) taken.push(entry.color)
+	}
+	return Color.pickDistinct(taken)
 }
 
 export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
@@ -370,9 +386,11 @@ function syncServerEntry(serverId: SS.ServerId, settings: SETTINGS.ServerSetting
 	if (!entry) return
 	const adminListsChanged = !Obj.deepEqual(entry.adminLists, settings.adminLists)
 	const sandbox = settings.connections.type === 'sandbox'
-	if (!adminListsChanged && entry.sandbox === sandbox) return
+	const color = settings.color ?? null
+	if (!adminListsChanged && entry.sandbox === sandbox && entry.color === color) return
 	entry.adminLists = settings.adminLists
 	entry.sandbox = sandbox
+	entry.color = color
 	// permissions resolved against the lists this server used to name are cached per player
 	if (adminListsChanged) Rbac.invalidateAll()
 	settings$.next({ scope: 'registry' })
@@ -503,7 +521,6 @@ export const settings$ = new Rx.Subject<SettingsEvent>()
 export type PublicServerEntry = Omit<ServerEntry, 'ownerDiscordId'>
 
 export type PublicSettings = {
-	topBarColor: SETTINGS.GlobalSettings['topBarColor']
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
@@ -527,7 +544,6 @@ export type PublicSettings = {
 
 function buildPublicSettings(): PublicSettings {
 	return {
-		topBarColor: GLOBAL_SETTINGS.topBarColor,
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,

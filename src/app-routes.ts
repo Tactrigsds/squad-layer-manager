@@ -42,15 +42,6 @@ export const routes = [
 	defRoute('/login/no-auth', [], 'custom', { authed: false }),
 	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
 	defRoute('/logout', [], 'custom', { authed: false }),
-	// the mark is rendered from the instance's topBarColor rather than served out of dist/, and is unauthed so it
-	// also loads on the landing and 403 pages (see logo.server.ts)
-	defRoute('/favicon.ico', [], 'custom', { authed: false }),
-	defRoute('/favicon.svg', [], 'custom', { authed: false }),
-	defRoute('/icon-192.png', [], 'custom', { authed: false }),
-	defRoute('/icon-512.png', [], 'custom', { authed: false }),
-	defRoute('/apple-touch-icon.png', [], 'custom', { authed: false }),
-	defRoute('/maskable-icon.png', [], 'custom', { authed: false }),
-	defRoute('/manifest.webmanifest', [], 'custom', { authed: false }),
 
 	// the shim modules a packaged plugin's bundles import `slm/*` and the shared packages through, and
 	// the browser-facing files of a packaged plugin. See models/plugin-api-shim.models.ts.
@@ -229,6 +220,17 @@ export const COOKIE_KEY = z.enum([
 // site still arrives signed in
 export const COOKIE_DEFAULTS = { path: '/', httpOnly: true, sameSite: 'lax' } as const
 export type CookieKey = z.infer<typeof COOKIE_KEY>
+
+// files in public/ that are served without a session, so the landing and 403 pages show the icon too
+export const PUBLIC_FILES: ReadonlySet<string> = new Set([
+	'/favicon.ico',
+	'/favicon.svg',
+	'/icon-192.png',
+	'/icon-512.png',
+	'/apple-touch-icon.png',
+	'/maskable-icon.png',
+	'/manifest.webmanifest',
+])
 
 // the close code of a websocket whose session ended (logout, expiry, or losing site access) while it was open
 export const SESSION_ENDED_CLOSE_CODE = 4001

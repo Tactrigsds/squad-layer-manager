@@ -10,6 +10,7 @@ import {
 	MainPoolField,
 	PasswordField,
 	ServerAgentTokenField,
+	ServerColorField,
 } from '@/components/settings-form/editors/basic-fields'
 import { AllowedPrefixesField, CommandCard } from '@/components/settings-form/editors/commands'
 import { PlayerGroupingsField } from '@/components/settings-form/editors/player-groupings'
@@ -54,6 +55,7 @@ export function overrideFor(path: Path, _node: SchemaNode): React.FC<OverridePro
 	if (path.length === 1 && last === 'installedMods') return InstalledModsField
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	if (path.length === 1 && last === 'locale') return LocaleField
+	if (path.length === 1 && last === 'color') return ServerColorField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField

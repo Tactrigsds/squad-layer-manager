@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 
 import { makePlayer } from '@/emulator'
+import * as Color from '@/lib/color'
 import * as FB from '@/models/filter-builders.models'
 import type * as L from '@/models/layer.models'
 import type * as SC from '@/models/server-console.models'
@@ -399,6 +400,45 @@ describe('integration credentials', () => {
 
 // A grant over the roles or the admin lists is not a grant of everything: a save may grant nobody a permission its
 // author lacks. Each refused save is checked against the stored settings, so a refusal that still wrote fails here.
+// A saved color reaches every client's copy of the server list, and a new server's color is picked to stand apart from
+// the existing ones. Deletes the server it creates.
+describe('server colors', () => {
+	const NEW_SERVER_ID = 'colored'
+
+	async function deliveredColor(serverId: string) {
+		const settings = await firstYield((signal) => adminClient.settings.public.watchPublicSettings(undefined, { signal }), {
+			label: 'public settings',
+		})
+		return settings.servers.find((s) => s.id === serverId)?.color
+	}
+
+	it('delivers a saved color', async () => {
+		const res = await adminClient.settings.server.updateSettings({
+			serverId: app.serverId,
+			ops: [{ path: ['color'], value: Color.SWATCHES.red }],
+		})
+		// the handler returns a result only on failure
+		expect(res).toBeUndefined()
+		expect(await deliveredColor(app.serverId)).toBe(Color.SWATCHES.red)
+	})
+
+	it('picks a different color for a new server', async () => {
+		const res = await adminClient.settings.admin.createServer({
+			id: NEW_SERVER_ID,
+			displayName: 'Colored',
+			settings: { connections: { type: 'sandbox' } },
+		})
+		expect(res.code).toBe('ok')
+		try {
+			const color = await deliveredColor(NEW_SERVER_ID)
+			expect(color).toMatch(/^#[0-9a-f]{6}$/)
+			expect(color).not.toBe(Color.SWATCHES.red)
+		} finally {
+			expect(await adminClient.settings.admin.deleteServer({ serverId: NEW_SERVER_ID })).toMatchObject({ code: 'ok' })
+		}
+	})
+})
+
 describe('role settings escalation', () => {
 	async function editorSettings() {
 		const current = await firstYield((signal) => roleEditorClient.settings.global.watchSettings(undefined, { signal }), {

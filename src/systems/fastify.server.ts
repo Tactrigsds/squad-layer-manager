@@ -39,7 +39,6 @@ import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
-import * as LogoSys from '@/systems/logo.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -229,23 +228,6 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		return res.redirect(AR.route('/'), 302)
 	})
 
-	for (const kind of LogoSys.KINDS) {
-		instance.get(AR.route(`/${kind}`), async (req, res) => {
-			for (const [key, value] of Object.entries(BASE_HEADERS)) {
-				res = res.header(key, value)
-			}
-			const logo = LogoSys.artifact({ ...CS.init(), log }, kind)
-			res.header('ETag', logo.etag)
-			// the accent follows a setting an admin can change at any time, so the cache always revalidates
-			res.header('Cache-Control', 'no-cache')
-			// an svg opened as a document runs any script in it on our origin; the mark only needs its inline style
-			if (logo.contentType === 'image/svg+xml')
-				res.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
-			if (req.headers['if-none-match'] === logo.etag) return res.code(304).send()
-			return res.type(logo.contentType).send(logo.body)
-		})
-	}
-
 	// One generated module per specifier a packaged plugin can import, each re-exporting from the app's
 	// own instance. Not files on disk: the names come from the generated table for slm/* and from the
 	// live namespace for a shared package.
@@ -356,7 +338,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 
 	instance.addHook('preValidation', async (req, reply) => {
 		const baseCtx = buildFastifyRequestContext(req)
-		if (baseCtx.route?.def.authed === false) return
+		if (baseCtx.route?.def.authed === false || AR.PUBLIC_FILES.has(req.url.split('?', 1)[0])) return
 		const authRes = await authorizeRequest(baseCtx, reply)
 		const servesPage = baseCtx.route?.def.handle === 'page' && !wantsHistoryRaw(req, baseCtx.route)
 		switch (authRes.code) {

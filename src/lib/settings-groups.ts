@@ -28,7 +28,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{ slug: 'layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',
-		keys: ['topBarColor', 'navLinks', 'warnOnSlmStart', 'discord', 'logFilePollInterval', 'tickRateThresholds'],
+		keys: ['navLinks', 'warnOnSlmStart', 'discord', 'logFilePollInterval', 'tickRateThresholds'],
 	},
 ]
 
@@ -42,7 +42,6 @@ export const SERVER_SETTINGS_PRIORITY_KEYS: string[] = ['connections']
 // path, so a whole subtree can be tucked away by naming its root. Presentation-only, like the groups above: the field
 // itself is unchanged, and the TOC still lists it (navigating to one opens the disclosure it sits in).
 export const ADVANCED_GLOBAL_SETTINGS_PATHS: ReadonlySet<string> = new Set([
-	'topBarColor',
 	'warnOnSlmStart',
 	'allowedPrefixes',
 	'logFilePollInterval',

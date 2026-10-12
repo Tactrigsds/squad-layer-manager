@@ -533,18 +533,6 @@ export function integrationEnabled(config: IntegrationConfig): boolean {
 
 export const GlobalSettingsSchema = z
 	.object({
-		topBarColor: z
-			.string()
-			.prefault('green')
-			.nullable()
-			.meta(
-				SDoc.of({
-					label: t('Top Bar Color'),
-					description: t(
-						"Any CSS colour. Draws the top navigation bar's bottom border, and the accent under the letters of the logo and the favicon, so instances are distinguishable at a glance and in the browser tab. Set to null for the plain mark and a default border.",
-					),
-				}),
-			),
 		adminActionReasons: AAR.AdminActionReasonsSchema.meta(
 			SDoc.of({
 				label: t('Admin Action Reasons'),
@@ -1375,6 +1363,14 @@ export function locale(ctx: Ctx) {
 }
 
 export const PublicServerSettingsSchema = z.object({
+	color: LTag.ColorSchema.optional().meta(
+		SDoc.of({
+			label: t('Color'),
+			description: t(
+				"Marks this server across the app: the navigation bar's bottom border while the server is selected, and its entry in server lists. New servers get a color that stands apart from the existing ones.",
+			),
+		}),
+	),
 	locale: z
 		.string()
 		.prefault('en')
