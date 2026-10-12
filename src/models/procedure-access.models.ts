@@ -91,6 +91,8 @@ export const PROCEDURE_ACCESS = {
 		Req.holdsAnyGrant('global-settings:write'),
 	),
 	'settings.global.upsertLayerTag': global('queue:manage-tags'),
+	'settings.global.upsertRotationTag': global('rotations:create'),
+	'settings.global.saveRepeatRuleset': Access.req(SETTINGS.Grants.writeGlobalSettingsPaths([['repeatRulesets']])),
 	'settings.server.watchSettings': VIEW_SERVER,
 	'settings.server.updateSettings': Access.req((i: ServerInput & { ops: { path: (string | number)[] }[] }) =>
 		SETTINGS.Grants.writeServerSettingsPaths(
@@ -144,6 +146,17 @@ export const PROCEDURE_ACCESS = {
 	'filters.watchFilters': Access.PUBLIC,
 	'filters.watchFilterReferences': Access.PUBLIC,
 	'filters.changeFilterOwner': Access.req((i: { filterId: string }) => RBAC.getManagePermReqForFilterEntity(i.filterId)),
+
+	'rotations.watchRotations': Access.PUBLIC,
+	'rotations.create': global('rotations:create'),
+	'rotations.clone': global('rotations:create'),
+	'rotations.updateMeta': Access.req((i: { rotationId: string }) => RBAC.getWritePermReqForRotation(i.rotationId)),
+	'rotations.delete': Access.req((id: string) => RBAC.getManagePermReqForRotation(id)),
+	'rotations.getContributors': Access.PUBLIC,
+	'rotations.addContributor': Access.inHandler('needs the rotation to know its owner'),
+	'rotations.removeContributor': Access.inHandler('needs the rotation to know its owner'),
+	'rotationEdit.watchOps': Access.PUBLIC,
+	'rotationEdit.dispatchOp': Access.req((i: { rotationId: string }) => RBAC.getWritePermReqForRotation(i.rotationId)),
 
 	'filterEdit.watchUpdates': Access.PUBLIC,
 	'filterEdit.dispatchOps': Access.req((i: { filterId: string }) => RBAC.getWritePermReqForFilterEntity(i.filterId)),

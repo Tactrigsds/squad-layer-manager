@@ -54,8 +54,8 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 				filter('no-training', 'No Training', FB.and([FB.neq('Gamemode', 'Training')])),
 				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
 			],
+			repeatRules: [],
 			serverSettings: (s) => {
-				s.queue.mainPool.repeatRules = []
 				s.queue.mainPool.poolFilter = { filterId: 'no-training', mode: 'include' }
 				s.queue.mainPool.layerRequestFilters = [
 					{ filterId: 'no-training', applyAs: 'regular' },
@@ -177,9 +177,7 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 					createdAt: 3000,
 				},
 			],
-			serverSettings: (s) => {
-				s.queue.mainPool.repeatRules = []
-			},
+			repeatRules: [],
 		})
 	})
 
@@ -257,9 +255,7 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 					createdAt: 1000,
 				},
 			],
-			serverSettings: (s) => {
-				s.queue.mainPool.repeatRules = []
-			},
+			repeatRules: [],
 		})
 	})
 

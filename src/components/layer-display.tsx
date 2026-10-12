@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils.ts'
@@ -15,9 +16,7 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
-import LayerContextMenuOptions from './layer-context-menu-options.tsx'
 import ShortLayerName from './short-layer-name.tsx'
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu.tsx'
 
 export default function LayerDisplay({
 	ref,
@@ -45,17 +44,16 @@ export default function LayerDisplay({
 	trailing?: React.ReactNode
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
-	// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
+	// the list the layer is shown in: a server's queue (the squad server frame is a list host) or a rotation. Omit it
 	// elsewhere (e.g. the filter editor) and queue-status badges/parity are simply not shown
-	stores?: Partial<SquadServerFrame.KeyProp>
+	stores?: Partial<ListHostPrt.KeyProp & SquadServerFrame.KeyProp>
 }) {
 	const item = props.item
+	const listHost: ListHostPrt.Key | undefined = props.stores?.listHost ?? props.stores?.squadServer
 	const teamParity =
-		Zus.useStore(props.stores?.squadServer, (s: SquadServerFrame.State | undefined) =>
-			s ? LQY.getParityForLayerItem(s.layerItemsState, item) : 0,
-		) ?? 0
+		Zus.useStore(listHost, (s: ListHostPrt.Store | undefined) => (s ? LQY.getParityForLayerItem(s.layerItemsState, item) : 0)) ?? 0
 
-	const statusData = LayerQueriesClient.useLayerItemStatusData(props.item, props.stores?.squadServer)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(props.item, listHost)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {
@@ -108,66 +106,55 @@ export default function LayerDisplay({
 	}
 
 	return (
-		<ContextMenu modal={false}>
-			<ContextMenuTrigger
-				asChild
-				// the queue item this sits inside has its own menu -- right-clicking the layer is about the layer
-				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
-			>
-				<div className={cn('flex flex-col gap-0.5', props.className)} ref={ref}>
-					{props.stacked ? (
-						<>
-							<ShortLayerName
-								tourId={props.layerNameTourId}
-								ref={(props.droppable && dropRef) || undefined}
-								className={cn('min-w-0 [&>*]:whitespace-nowrap', isDropTarget && 'bg-secondary')}
-								layerId={props.item.layerId}
-								teamParity={teamParity}
-								backfillLayerId={props.backfillLayerId}
-								matchDescriptors={statusData?.highlightedMatchDescriptors}
-								allowShowInfo={props.allowShowInfo}
-							/>
-							{(props.tags || props.addNote || badges.length > 0 || props.trailing) && (
-								<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-									{props.tags}
-									{props.addNote}
-									{badges.length > 0 && <span className="flex items-center gap-1">{badges}</span>}
-									{props.trailing}
-								</div>
-							)}
-						</>
-					) : (
-						<div className="flex space-x-2 items-center">
-							<span
-								data-over={(props.droppable && isDropTarget) || undefined}
-								className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
-							>
-								<ShortLayerName
-									tourId={props.layerNameTourId}
-									ref={(props.droppable && dropRef) || undefined}
-									className={cn('flex-nowrap shrink-0 whitespace-nowrap', isDropTarget && 'bg-secondary')}
-									layerId={props.item.layerId}
-									teamParity={teamParity}
-									backfillLayerId={props.backfillLayerId}
-									matchDescriptors={statusData?.highlightedMatchDescriptors}
-									allowShowInfo={props.allowShowInfo}
-								/>
-								{(props.tags || props.addNote) && (
-									<span className="flex items-center gap-2">
-										{props.tags}
-										{props.addNote}
-									</span>
-								)}
-							</span>
-							<span className="flex items-center gap-1">{badges}</span>
+		<div className={cn('flex flex-col gap-0.5', props.className)} ref={ref}>
+			{props.stacked ? (
+				<>
+					<ShortLayerName
+						tourId={props.layerNameTourId}
+						ref={(props.droppable && dropRef) || undefined}
+						className={cn('min-w-0 [&>*]:whitespace-nowrap', isDropTarget && 'bg-secondary')}
+						layerId={props.item.layerId}
+						teamParity={teamParity}
+						backfillLayerId={props.backfillLayerId}
+						matchDescriptors={statusData?.highlightedMatchDescriptors}
+						allowShowInfo={props.allowShowInfo}
+					/>
+					{(props.tags || props.addNote || badges.length > 0 || props.trailing) && (
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+							{props.tags}
+							{props.addNote}
+							{badges.length > 0 && <span className="flex items-center gap-1">{badges}</span>}
+							{props.trailing}
 						</div>
 					)}
-					{props.notes}
+				</>
+			) : (
+				<div className="flex space-x-2 items-center">
+					<span
+						data-over={(props.droppable && isDropTarget) || undefined}
+						className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
+					>
+						<ShortLayerName
+							tourId={props.layerNameTourId}
+							ref={(props.droppable && dropRef) || undefined}
+							className={cn('flex-nowrap shrink-0 whitespace-nowrap', isDropTarget && 'bg-secondary')}
+							layerId={props.item.layerId}
+							teamParity={teamParity}
+							backfillLayerId={props.backfillLayerId}
+							matchDescriptors={statusData?.highlightedMatchDescriptors}
+							allowShowInfo={props.allowShowInfo}
+						/>
+						{(props.tags || props.addNote) && (
+							<span className="flex items-center gap-2">
+								{props.tags}
+								{props.addNote}
+							</span>
+						)}
+					</span>
+					<span className="flex items-center gap-1">{badges}</span>
 				</div>
-			</ContextMenuTrigger>
-			<ContextMenuContent>
-				<LayerContextMenuOptions layerIds={[props.item.layerId]} />
-			</ContextMenuContent>
-		</ContextMenu>
+			)}
+			{props.notes}
+		</div>
 	)
 }

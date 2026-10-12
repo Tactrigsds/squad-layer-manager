@@ -41,6 +41,9 @@ function formatRoleName(role: RBAC.Role) {
 	if (role.type === 'filter-owner') {
 		return `${role.type}: (${role.filterId})`
 	}
+	if (role.type === 'rotation-owner' || role.type === 'rotation-user-contributor' || role.type === 'rotation-role-contributor') {
+		return `${role.type}: (${role.rotationId})`
+	}
 
 	assertNever(role)
 }

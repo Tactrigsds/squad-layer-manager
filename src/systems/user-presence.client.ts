@@ -1,8 +1,10 @@
 import type * as Im from 'immer'
 import React from 'react'
 
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { frameManager } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
+import * as RotationEditorFrame from '@/frames/rotation-editor.frame'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Lifecycle from '@/lib/lifecycle'
@@ -11,6 +13,7 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence.models'
@@ -40,11 +43,30 @@ export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.Load
 // reads the currently-active squadServer frame from non-component code. Relies on the frame already being alive (set
 // up by the servers/$serverId route loader), and peeks rather than taking a reference: this runs on every presence
 // update.
-function getCurrentLayerList(): LL.Item[] {
-	const serverId = SquadServerClient.SelectedServerStore.getState().selectedServerId
-	const serverConfig = SettingsClient.getSettings()?.servers.find((s) => s.id === serverId)
-	if (!SettingsClient.isServerUsable(serverConfig)) return []
-	return frameManager.peekState(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))?.queue.layerList ?? []
+function getCurrentLayerList(host: LL.ListHost): LL.Item[] {
+	switch (host.type) {
+		case 'server': {
+			const serverConfig = SettingsClient.getSettings()?.servers.find((s) => s.id === host.serverId)
+			if (!SettingsClient.isServerUsable(serverConfig)) return []
+			return frameManager.peekState(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))?.queue.layerList ?? []
+		}
+		case 'rotation':
+			return frameManager.peekState(RotationEditorFrame.frame, RotationEditorFrame.createInput(host.rotationId))?.queue.layerList ?? []
+		default:
+			assertNever(host)
+	}
+}
+
+// the frame holding the list a loader's activity is about, set up if it is not already
+function ensureListHost(host: LL.ListHost): ListHostPrt.Key {
+	switch (host.type) {
+		case 'server':
+			return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(host.serverId))
+		case 'rotation':
+			return frameManager.ensureSetup(RotationEditorFrame.frame, RotationEditorFrame.createInput(host.rotationId))
+		default:
+			assertNever(host)
+	}
 }
 
 export type ConfiguredLoaders = typeof ACTIVITY_LOADER_CONFIGS
@@ -63,9 +85,9 @@ function createActivityLoaderConfig<Name extends string, Key extends object>(
 
 export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig('selectLayers', (s) => {
-		const serverId = UP.activityServerId(s)
+		const host = UP.activityListHost(s)
 		const edit = UP.editingQueue(s)
-		if (serverId && (edit?.code === 'ADDING_ITEM' || edit?.code === 'EDITING_ITEM')) return { serverId, ...edit }
+		if (host && (edit?.code === 'ADDING_ITEM' || edit?.code === 'EDITING_ITEM')) return { host, ...edit }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -73,18 +95,17 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		staleTime: 30_000,
 
 		load(args) {
-			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
-			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
+			const listHost = ensureListHost(args.key.host)
 			let editedLayerId: string | undefined
 			if (args.key.code === 'EDITING_ITEM') {
-				const layerList = frameManager.getState(squadServer)?.queue.layerList ?? []
+				const layerList = frameManager.getState(listHost)?.queue.layerList ?? []
 				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.itemId))
 				if (item) editedLayerId = item.layerId
 			}
 			const input = SelectLayersFrame.createInput({
 				cursor: args.key.cursor,
 				initialEditedLayerId: editedLayerId,
-				squadServer: squadServer,
+				listHost,
 			})
 			const frameKey = frameManager.ensureSetup(SelectLayersFrame.frame, input)
 			return { selectLayersFrame: frameKey, activity: args.key }
@@ -96,13 +117,13 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		checkShouldUnload(args) {
 			if (args.key.cursor.type !== 'item-relative') return false
 			const itemId = args.key.cursor.itemId
-			return !LL.findItemById(getCurrentLayerList(), itemId)
+			return !LL.findItemById(getCurrentLayerList(args.key.host), itemId)
 		},
 	}),
 	createActivityLoaderConfig('genVote', (s) => {
-		const serverId = UP.activityServerId(s)
+		const host = UP.activityListHost(s)
 		const edit = UP.editingQueue(s)
-		if (serverId && edit?.code === 'GENERATING_VOTE') return { serverId, ...edit }
+		if (host && edit?.code === 'GENERATING_VOTE') return { host, ...edit }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -110,9 +131,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		// squadServer frame its input holds
 		staleTime: 30_000,
 		load(args) {
-			const squadServerInput = SquadServerFrame.createInput(args.key.serverId)
-			const squadServer = frameManager.ensureSetup(SquadServerFrame.frame, squadServerInput)
-			const input = GenVoteFrame.createInput({ cursor: { type: 'start' }, server: squadServer })
+			const input = GenVoteFrame.createInput({ cursor: { type: 'start' }, server: ensureListHost(args.key.host) })
 			const frameKey = frameManager.ensureSetup(GenVoteFrame.frame, input)
 			return { genVoteFrame: frameKey, activity: args.key }
 		},
@@ -120,9 +139,9 @@ export const ACTIVITY_LOADER_CONFIGS = [
 			if (args.data) void requestIdleCallback(() => frameManager.teardown(args.data!.genVoteFrame))
 		},
 	}),
-	createActivityLoaderConfig('pasteRotation', (s) => {
+	createActivityLoaderConfig('addRotation', (s) => {
 		const edit = UP.editingQueue(s)
-		if (edit?.code === 'PASTE_ROTATION') return edit
+		if (edit?.code === 'ADD_ROTATION') return edit
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -201,7 +220,8 @@ function createPresenceStore() {
 				const layerRequestEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					const activity = client.activityState
-					if (UP.editingQueue(activity)) editors.add(client.userId)
+					// the queue's editors; a rotation's are counted by Sel.listEditorUserIds
+					if (UP.dashRoot(activity)?.editingQueue) editors.add(client.userId)
 					if (UP.editingTeamswaps(activity)) teamswapEditors.add(client.userId)
 					if (UP.editingLayerRequests(activity)) layerRequestEditors.add(client.userId)
 				}
@@ -350,6 +370,18 @@ export namespace Actions {
 		ensureEditing(UP.Trans.editingQueue(serverId))
 	}
 
+	export function ensureEditingList(host: LL.ListHost) {
+		ensureEditing(UP.Trans.editingList(host))
+	}
+
+	export function ensureOnRotation(rotationId: string) {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		if (UP.Trans.onRotation(rotationId).match(activity)) return
+		updateActivity({ code: 'enter-rotation', rotationId })
+	}
+
 	// Holding an editing session is what keeps a filter's shared draft alive: once the last one goes away the
 	// server discards it (see editingFilterAbandoned$).
 	export function ensureEditingFilter(filterId: string) {
@@ -456,6 +488,16 @@ export namespace Sel {
 			if (presence.activityState && trans.match(presence.activityState)) count++
 		}
 		return count
+	}
+
+	// the users holding an editing session on the given list, whichever client they hold it from
+	export const listEditorUserIds = (host: LL.ListHost) => (state: Store) => {
+		const trans = UP.Trans.editingList(host)
+		const ids = new Set<USR.UserId>()
+		for (const presence of state.presence.values()) {
+			if (presence.activityState && trans.match(presence.activityState)) ids.add(presence.userId)
+		}
+		return ids
 	}
 
 	export const userPresence = (userId: USR.UserId) => (store: Store) => {

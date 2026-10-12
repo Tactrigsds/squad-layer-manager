@@ -19,6 +19,11 @@ export const noteGroup = def('Note')
 
 export const edit = def('Edit')
 
+export const deleteNote = def('Delete')
+
+// the queue item menu's submenu of an item's notes
+export const notesSub = def('Notes')
+
 export const cancel = def('Cancel')
 
 export const save = def('Save')
@@ -29,3 +34,8 @@ export const placeholder = def('Anything worth knowing about this layer. Links a
 
 // the author of a note whose account no longer resolves
 export const unknownAuthor = def('unknown')
+
+// where a note copied onto a queue item from a saved rotation would show its author
+export const fromRotation = def('From the rotation {name}', (name: string) => ({ name }))
+
+export const fromDeletedRotation = def('From a rotation that has since been deleted')

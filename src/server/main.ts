@@ -35,6 +35,8 @@ import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as RotationEdit from '@/systems/rotation-edit.server'
+import * as Rotation from '@/systems/rotation.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Seed from '@/systems/seed.server'
 import * as ServerAgent from '@/systems/server-agent.server'
@@ -134,6 +136,8 @@ await Instr.spanOp('main', { module }, async () => {
 	await FilterEntity.setup()
 	// after FilterEntity, whose filter table it reads when provisioning a session
 	FilterEdit.setup()
+	await Rotation.setup()
+	RotationEdit.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	SquadBrowser.setup()

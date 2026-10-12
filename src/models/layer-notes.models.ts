@@ -3,7 +3,9 @@ import { z } from '@/lib/zod'
 import * as USR from '@/models/users.models'
 
 // Freeform notes on a layer item. A note belongs to whoever wrote it: nobody else can reword or drop it without
-// queue:manage-all-notes (enforced in layer-queue.server, mirrored in the UI).
+// queue:manage-all-notes (enforced in layer-queue.server, mirrored in the UI). A rotation's notes have no author, and
+// keep none when the rotation is added to a queue: there they carry the rotation they came from instead, and only
+// queue:manage-all-notes can change them.
 
 export const ID_LENGTH = 8
 export const MAX_LENGTH = 280
@@ -15,10 +17,17 @@ export const TextSchema = z.string().trim().min(1).max(MAX_LENGTH)
 
 export const NoteSchema = z.object({
 	id: NoteIdSchema,
-	author: USR.UserIdSchema,
+	author: USR.UserIdSchema.optional(),
 	text: TextSchema,
+	// the rotation the note was copied from, on a queue item added from one
+	fromRotation: z.string().min(1).max(64).optional(),
 })
 export type Note = z.infer<typeof NoteSchema>
+
+// a note copied onto a queue item from a rotation: anonymous, naming the rotation
+export function isRotationNote(note: Note): boolean {
+	return note.author === undefined && note.fromRotation !== undefined
+}
 
 export const NotesSchema = z.array(NoteSchema)
 

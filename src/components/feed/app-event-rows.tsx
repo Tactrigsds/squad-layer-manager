@@ -539,6 +539,8 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		appEvent.type === 'SERVER_REGISTRY_CHANGED' ||
 		appEvent.type === 'FILTER_CHANGED' ||
 		appEvent.type === 'FILTER_CONTRIBUTOR_CHANGED' ||
+		appEvent.type === 'ROTATION_CHANGED' ||
+		appEvent.type === 'ROTATION_CONTRIBUTOR_CHANGED' ||
 		appEvent.type === 'USER_ACCOUNT_CHANGED' ||
 		appEvent.type === 'PLAYER_FLAGS_UPDATED' ||
 		appEvent.type === 'PLAYER_NOTE_ADDED' ||

@@ -1,11 +1,11 @@
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 import * as Im from 'immer'
 
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as DH from '@/lib/display-helpers'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator-utils'
@@ -29,7 +29,7 @@ export type Input = {
 	instanceId: string
 	cursor?: LL.Cursor
 	colConfig: LQY.EffectiveColumnAndTableConfig
-	server: SquadServerFrame.Key
+	server: ListHostPrt.Key
 }
 export type Types = {
 	name: 'genVote'
@@ -38,7 +38,7 @@ export type Types = {
 	state: Store
 }
 
-export function createInput(opts: { cursor?: LL.Cursor; server: SquadServerFrame.Key }): Input {
+export function createInput(opts: { cursor?: LL.Cursor; server: ListHostPrt.Key }): Input {
 	return {
 		instanceId: createId(4),
 		colConfig: ConfigClient.getColConfig(),
@@ -54,7 +54,7 @@ export type Result = {
 
 type Primary = {
 	cursor?: LL.Cursor
-	server: SquadServerFrame.Key
+	server: ListHostPrt.Key
 	choices: V.GenVote.Choice[]
 	chosenLayers: Record<string, LayerQueriesClient.RowData | undefined>
 	choiceErrors: (string | undefined)[]
@@ -118,11 +118,14 @@ const setup: Frame['setup'] = (args) => {
 			LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
 		},
 	} satisfies LayerFilterMenuPrt.Predicates)
-	LayerFilterMenuPrt.initLayerFilterMenuStore({ ...args, input: { colConfig: args.input.colConfig, defaultFields: {} } })
+	LayerFilterMenuPrt.initLayerFilterMenuStore({
+		...args,
+		input: { colConfig: args.input.colConfig, defaultFields: {}, rememberCollection: true },
+	})
 
-	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
+	// the applied-filters partial reads listHost from state to seed the pool's configured filters; without
 	// this its predicate is unset and pool filters never apply in the gen-vote dialog
-	set({ squadServer: args.input.server } satisfies AppliedFiltersPrt.Predicates)
+	set({ listHost: args.input.server } satisfies AppliedFiltersPrt.Predicates)
 	AppliedFiltersPrt.initAppliedFiltersStore({ ...args, input: { context: 'generate' } })
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'inverted' } } })
 }
@@ -135,10 +138,13 @@ export const frame: Frame = frameManager.createFrame<Types>({
 
 export namespace Sel {
 	const EMPTY_LAYER_ITEMS = LQY.initLayerItemsState()
-	export function baseQueryInput(state: Store, squadServer?: SquadServerFrame.State) {
+	export function baseQueryInput(state: Store, listHost?: ListHostPrt.Store) {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
-		const settings = SquadServerFrame.Sel.settingsOrDefault(squadServer)
-		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, state.poolCheckboxes.checkboxesState.dnr)
+		const settings = ListHostPrt.Sel.settingsOrDefault(listHost)
+		const repeatRuleConstraints = PoolCheckboxesPrt.getToggledRepeatRuleConstraints(
+			ListHostPrt.Sel.repeatRulesOrNone(listHost),
+			state.poolCheckboxes.checkboxesState.dnr,
+		)
 
 		// applied, not indicated: a vote choice the server cannot load is not a choice
 		const installedMods = SETTINGS.getInstalledModsConstraint(settings, { applyAs: 'regular' })
@@ -147,13 +153,13 @@ export namespace Sel {
 			cursor: state.cursor,
 			action: 'add',
 			constraints: [installedMods, ...appliedConstraints, ...repeatRuleConstraints],
-			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
+			list: listHost?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 		return LQY.mergeBaseInputs(base, { constraints: LayerFilterMenuPrt.Sel.filterMenuConstraints(state) })
 	}
 
-	export function queryInput(state: Store, squadServer: SquadServerFrame.State | undefined, omitIndex: number): LQY.GenVote.Input {
-		const base = baseQueryInput(state, squadServer)
+	export function queryInput(state: Store, listHost: ListHostPrt.Store | undefined, omitIndex: number): LQY.GenVote.Input {
+		const base = baseQueryInput(state, listHost)
 		const startingChoices = state.choices.map((c, i) => (omitIndex === undefined || i === omitIndex ? { ...c, layerId: undefined } : c))
 
 		return {

@@ -18,6 +18,8 @@ import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
+import * as Rotations from 'slm/systems/rotation'
 import * as SquadServer from 'slm/systems/squad-server'
 
 import manifest from './plugin.ts'
@@ -51,6 +53,21 @@ const os = Rpc.os<typeof manifest>()
 // several times over the journey, and a filter written at activation would collide with its own last run.
 // without an owner, the plugin owns the filter
 const FilterInput = z.object({ id: z.string(), owner: z.string().optional() })
+const RotationInput = z.object({ id: z.string(), owner: z.string().optional(), layerIds: z.array(z.string()) })
+
+function attributedItem(layerId: string, userId: bigint): Rotations.NewItems[number] {
+	return {
+		type: 'single-list-item',
+		layerId,
+		source: { type: 'manual', userId },
+		notes: [{ id: 'hellonot', author: userId, text: 'from hello' }],
+	}
+}
+
+// every rotation write the plugin saw, as `<type>:<id>:<actor type>`
+const rotationChanges: string[] = []
+// the ruleset ids after each change to the rulesets
+const rulesetChanges: string[][] = []
 
 export const router = {
 	stats: os
@@ -106,6 +123,85 @@ export const router = {
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
 		.handler(async () => Filters.list().map((f) => f.id)),
+
+	// each item names the caller as its source and note author, which the host has to strip
+	makeRotation: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(RotationInput)
+		.handler(async ({ context, input }) =>
+			Rotations.create(context, {
+				id: input.id,
+				name: 'Hello rotation',
+				description: null,
+				repeatRulesetId: null,
+				tags: [],
+				items: input.layerIds.map((layerId) => attributedItem(layerId, context.user.discordId)),
+				owner: input.owner === undefined ? undefined : { type: 'slm-user', userId: BigInt(input.owner) },
+			}),
+		),
+	updateRotation: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string(), name: z.string().optional(), layerIds: z.array(z.string()).optional() }))
+		.handler(async ({ context, input }) =>
+			Rotations.update(context, input.id, {
+				name: input.name,
+				items: input.layerIds?.map((layerId) => attributedItem(layerId, context.user.discordId)),
+			}),
+		),
+	cloneRotation: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ sourceId: z.string(), id: z.string() }))
+		.handler(async ({ context, input }) => Rotations.clone(context, { ...input, name: 'Hello rotation clone' })),
+	dropRotation: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => Rotations.remove(context, input.id)),
+	getRotation: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ input }) => Rotations.get(input.id) ?? null),
+	rotationIds: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => Rotations.list().map((r) => r.id)),
+	rotationChanges: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => rotationChanges),
+	addRotationToQueue: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string(), placement: z.enum(['replace', 'start', 'end']), tags: z.array(z.string()).optional() }))
+		.handler(async ({ context, input }) => Rotations.addToQueue(context, input.id, { placement: input.placement, tags: input.tags })),
+	// drops every saved queue item but these
+	keepQueueItems: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ itemIds: z.array(z.string()) }))
+		.handler(async ({ context, input }) =>
+			LayerQueue.editSaved(context, (entries) => entries.filter((e) => input.itemIds.includes(e.itemId))),
+		),
+
+	serverRulesetId: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => RepeatRulesets.forServer(context)?.id ?? null),
+	saveRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string(), name: z.string() }))
+		.handler(async ({ context, input }) =>
+			RepeatRulesets.save(context, { ...input, rules: [{ field: 'Map', within: 2, warn: true, indicate: true }] }),
+		),
+	setServerRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => RepeatRulesets.setForServer(context, input.id)),
+	dropRuleset: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ id: z.string() }))
+		.handler(async ({ context, input }) => RepeatRulesets.remove(context, input.id)),
+	rulesetChanges: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => rulesetChanges),
 
 	// the filter the query is constrained by is one the plugin made itself, which is the pairing worth
 	// covering: neither half is much use to a plugin without the other
@@ -226,6 +322,8 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		greet: { scope: 'server', description: 'Send the greeting on a server' },
 	})
 	Rpc.register(ctx, router)
+	Rotations.changes(ctx).subscribe((c) => rotationChanges.push(`${c.type}:${c.rotation.id}:${c.actor.type}`))
+	RepeatRulesets.changes(ctx).subscribe((rulesets) => rulesetChanges.push(rulesets.map((r) => r.id)))
 
 	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can
 	// tell the handler ran with the right ctx and the right arguments

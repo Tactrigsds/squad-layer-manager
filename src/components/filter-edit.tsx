@@ -37,19 +37,19 @@ import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
+import { ContributorsPopover } from './contributors-popover'
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
+import { CloneFilterDialog } from './filter-clone-dialog'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import { FilterReferences } from './filter-references'
 import LayerTable from './layer-table'
 import { MissExemptionEditor } from './miss-exemption-editor'
+import { PermissionDeniedTooltip, ReasonTooltip } from './permission-denied-tooltip'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
-import { CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { Command, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Label } from './ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel'
@@ -152,6 +152,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 							onClick={() => form.handleSubmit()}
 							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
 						>
+							<Icons.Save />
 							{tr.text(F_Msgs.save())}
 						</Button>
 					)
@@ -165,33 +166,53 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const deleteBtn = React.useMemo(
 		() => (
-			<DeleteFilterDialog onDelete={onDelete}>
-				<Button
-					variant="destructive"
-					disabled={!permitEdit || referenceCount > 0}
-					title={referenceCount > 0 ? tr.text(F_Msgs.deleteBlockedByReferences()) : undefined}
+			<PermissionDeniedTooltip denied={canEditRes}>
+				<ReasonTooltip
+					heading={tr.text(F_Msgs.cannotDelete())}
+					reason={permitEdit && referenceCount > 0 ? tr.text(F_Msgs.deleteBlockedByReferences()) : null}
 				>
-					{tr.text(F_Msgs.deleteAction())}
-				</Button>
-			</DeleteFilterDialog>
+					<DeleteFilterDialog onDelete={onDelete}>
+						<Button variant="destructive" disabled={!permitEdit || referenceCount > 0}>
+							<Icons.Trash />
+							{tr.text(F_Msgs.deleteAction())}
+						</Button>
+					</DeleteFilterDialog>
+				</ReasonTooltip>
+			</PermissionDeniedTooltip>
 		),
-		[onDelete, permitEdit, referenceCount],
+		[onDelete, permitEdit, referenceCount, canEditRes],
+	)
+
+	const createDenied = RbacClient.useAccess('filters.createFilter')
+	const [cloning, setCloning] = React.useState(false)
+	const cloneBtn = React.useMemo(
+		() => (
+			<PermissionDeniedTooltip denied={createDenied}>
+				<Button variant="outline" disabled={!!createDenied} onClick={() => setCloning(true)}>
+					<Icons.Copy />
+					{tr.text(F_Msgs.clone())}
+				</Button>
+			</PermissionDeniedTooltip>
+		),
+		[createDenied],
 	)
 
 	const filterCard = React.useMemo(
 		() => (
 			<FilterCard stores={stores}>
 				{saveBtn}
+				{cloneBtn}
 				{deleteBtn}
 			</FilterCard>
 		),
-		[stores, deleteBtn, saveBtn],
+		[stores, deleteBtn, saveBtn, cloneBtn],
 	)
 
 	const _nodeMapStore = Zus.useStore(stores.filterEditor, (s) => s.nodeMapStore)
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
+			{cloning && <CloneFilterDialog source={props.entity} onClose={() => setCloning(false)} />}
 			<div className="flex justify-between">
 				{!editingDetails ? (
 					<div className="flex w-full flex-col space-y-2">
@@ -249,7 +270,10 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 									filterId={props.entity.id}
 									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
 								>
-									<Button variant="outline">{tr.text(F_Msgs.showContributors())}</Button>
+									<Button variant="outline">
+										<Icons.Users />
+										{tr.text(F_Msgs.showContributors())}
+									</Button>
 								</FilterContributors>
 							</span>
 						</div>
@@ -529,74 +553,18 @@ function FilterContributors(props: {
 			},
 		}),
 	)
-	function addUser(user: USR.User) {
-		addMutation.mutate({ filterId: props.filterId, userId: user.discordId })
-	}
-
 	return (
-		<Popover>
-			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent className="p-0">
-				<CardHeader>
-					<CardTitle>{tr.text(F_Msgs.contributorsHeading())}</CardTitle>
-					<CardDescription>{tr.text(F_Msgs.contributorsBlurb())}</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div id="users">
-						<div className="flex items-center space-x-2">
-							<h4 className="leading-none">{tr.text(F_Msgs.usersHeading())}</h4>
-							{props.canManage && (
-								<SelectUserPopover selectUser={addUser}>
-									<Button variant="outline" size="icon">
-										<Icons.Plus />
-									</Button>
-								</SelectUserPopover>
-							)}
-						</div>
-						<ul>
-							{contributors?.users.map((user) => (
-								<li key={user.discordId} className="flex items-center space-x-1">
-									{props.canManage && (
-										<Icons.Minus
-											onClick={() => removeMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
-											className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-										/>
-									)}
-									<Badge>{user.displayName}</Badge>
-								</li>
-							))}
-						</ul>
-					</div>
-					<div id="roles">
-						<div>
-							<Label htmlFor="roles">{tr.text(F_Msgs.rolesHeading())}</Label>
-							{props.canManage && (
-								<SelectUserDefinedRolePopover
-									selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}
-								>
-									<Button variant="outline" size="icon">
-										<Icons.Plus />
-									</Button>
-								</SelectUserDefinedRolePopover>
-							)}
-						</div>
-						<ul>
-							{contributors?.roles.map((role) => (
-								<li key={role} className="flex items-center space-x-1">
-									{props.canManage && (
-										<Icons.Minus
-											onClick={() => removeMutation.mutate({ filterId: props.filterId, roleId: role })}
-											className="text-destructive hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-										/>
-									)}
-									<Badge>{role}</Badge>
-								</li>
-							))}
-						</ul>
-					</div>
-				</CardContent>
-			</PopoverContent>
-		</Popover>
+		<ContributorsPopover
+			contributors={contributors}
+			description={tr.text(F_Msgs.contributorsBlurb())}
+			canManage={props.canManage}
+			onAddUser={(user) => addMutation.mutate({ filterId: props.filterId, userId: user.discordId })}
+			onAddRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}
+			onRemoveUser={(userId) => removeMutation.mutate({ filterId: props.filterId, userId })}
+			onRemoveRole={(roleId) => removeMutation.mutate({ filterId: props.filterId, roleId })}
+		>
+			{props.children}
+		</ContributorsPopover>
 	)
 }
 
@@ -622,64 +590,12 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 				<AlertDialogFooter>
 					<AlertDialogCancel onClick={onCancel}>{tr.text(F_Msgs.cancel())}</AlertDialogCancel>
 					<Button variant="destructive" onClick={onDelete}>
+						<Icons.Trash />
 						{tr.text(F_Msgs.deleteAction())}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
-	)
-}
-
-function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user: USR.User) => void }) {
-	const usersRes = UsersClient.useUsers()
-	const [isOpen, setIsOpen] = useState(false)
-	function onSelect(user: USR.User) {
-		props.selectUser(user)
-		setIsOpen(false)
-	}
-	return (
-		<Popover modal open={isOpen} onOpenChange={setIsOpen}>
-			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent>
-				<Command>
-					<CommandInput placeholder={tr.text(F_Msgs.searchUsers())} />
-					<CommandList>
-						{usersRes.data?.code === 'ok' &&
-							usersRes.data.users.map((user) => (
-								<CommandItem key={user.discordId} onSelect={() => onSelect(user)}>
-									{user.displayName}
-								</CommandItem>
-							))}
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
-	)
-}
-
-export function SelectUserDefinedRolePopover(props: { children: React.ReactNode; selectRole: (role: RBAC.GenericRole) => void }) {
-	const rolesRes = RbacClient.useUserDefinedRoles()
-	const [isOpen, setIsOpen] = useState(false)
-	function onSelect(role: RBAC.Role) {
-		props.selectRole(role)
-		setIsOpen(false)
-	}
-	return (
-		<Popover open={isOpen} onOpenChange={setIsOpen} modal>
-			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
-			<PopoverContent>
-				<Command>
-					<CommandInput placeholder={tr.text(F_Msgs.searchRoles())} />
-					<CommandList>
-						{rolesRes.data?.map((role) => (
-							<CommandItem key={role.type} onSelect={() => onSelect(role)}>
-								{role.type}
-							</CommandItem>
-						))}
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
 	)
 }
 

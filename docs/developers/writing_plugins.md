@@ -15,6 +15,8 @@ plugin is only safe to install if running it as a fork of SLM would be.
 - [The server entry](#the-server-entry)
 - [Storing data](#storing-data)
 - [Filters](#filters)
+- [Rotations](#rotations)
+- [Repeat rulesets](#repeat-rulesets)
 - [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
@@ -72,7 +74,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.13',
+	apiVersion: '^0.14',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -247,6 +249,96 @@ delete the pool config first.
 
 `remove` refuses to delete a filter anything still points at, and hands back the references so the plugin can report
 what.
+
+## Rotations
+
+A rotation is a saved, ordered list of queue items that admins add to a server's queue in one go.
+`slm/systems/rotation` reads and writes the same rotations admins see on the _Rotations_ page. `slm/models/rotation`
+exports the rotation types and schemas.
+
+```ts
+import * as Rotations from 'slm/systems/rotation'
+
+await Rotations.create(ctx, {
+	id: 'weekend-mix',
+	name: 'Weekend mix',
+	description: null,
+	repeatRulesetId: null,
+	tags: [],
+	items: [
+		{ type: 'single-list-item', layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' },
+		{ type: 'single-list-item', layerId: 'HJ-RAAS-V1:RGF-MZ:PLA-AA' },
+	],
+})
+
+Rotations.list() // every rotation, archived ones included
+Rotations.get('weekend-mix') // one, or undefined
+await Rotations.update(ctx, 'weekend-mix', { name: 'Weekend mix v2', archived: true })
+await Rotations.clone(ctx, { sourceId: 'weekend-mix', id: 'weekend-mix-2', name: 'Weekend mix 2', copyTags: true })
+await Rotations.remove(ctx, 'weekend-mix')
+Rotations.changes(ctx).subscribe((c) => ...) // every write, yours included, with the actor that made it
+```
+
+An item without an `itemId` or `source` is given one. SLM strips attribution from every item before storing it: the
+source becomes `unknown`, tag attribution is dropped and notes lose their `author`. The layers, tags and note text are
+kept.
+
+The ownership rules match the filters' rules. A rotation that `create` or `clone` makes is owned by your plugin. Admins
+with `rotations:write-all` can edit and delete it by hand, and contributors that an admin adds can edit it too. To make
+an admin the owner instead, pass `owner: { type: 'slm-user', userId: 123456789012345678n }`. That admin gets the
+rotation-owner role over the rotation, and can edit and delete it and manage its contributors. `clone` copies the
+source's items, description and repeat ruleset, and its tags when `copyTags` is set. It never copies contributors.
+
+Your writes are ordinary writes. Every open page updates, and the audit log records a `ROTATION_CHANGED` naming your
+plugin rather than a person. Writing the `rotations` table through `ctx.db()` skips all of that.
+
+An admin editing a rotation's items works on a shared draft. New items from `update` are saved through that draft, so
+the admins editing it see them. While the draft holds edits nobody has saved, `update` refuses new items with
+`{ code: 'err:unsaved-edits' }` instead of discarding the admins' work. Try again later. An `update` without `items`
+is never refused for this reason.
+
+Owning a rotation does not lock it. A plugin can write any rotation, including one an admin made. Deactivating your
+plugin leaves its rotations behind. Find your plugin's rotations with
+`Rotations.list().filter((r) => r.owner.type === 'plugin' && r.owner.pluginId === ctx.plugin.id)`.
+
+`create`, `update` and `clone` refuse a `repeatRulesetId` or a tag that is not configured, with
+`err:unknown-repeat-ruleset` or `err:unknown-tags`. Rotation tags are configured in the global settings, separately
+from layer tags.
+
+`addToQueue` adds a rotation to the queue of your plugin's server, as _Add Rotation_ does for an admin:
+
+```ts
+await Rotations.addToQueue(ctx, 'weekend-mix', { placement: 'end' }) // or 'start', or 'replace'
+await Rotations.addToQueue(ctx, 'weekend-mix', { placement: 'replace', tags: ['seeding:a1b2c3'] })
+```
+
+`replace` takes the place of every queued item, `start` goes ahead of them and `end` after them. The new items are
+sourced to your plugin and carry the rotation's `from-rotation:<id>` tag, plus any layer `tags` given. Their notes name
+the rotation. While an admin has queue edits open, `addToQueue` refuses with `{ code: 'err:unsaved-edits' }`, as
+`editSaved` does. A layer tag that is not configured is refused with `err:unknown-tags`.
+
+## Repeat rulesets
+
+A repeat ruleset is a named list of repeat rules. Every server and rotation points at one. `slm/systems/repeat-ruleset`
+reads and writes the same rulesets admins pick in the pool configuration and the rotation editor.
+`slm/models/repeat-ruleset` exports the schemas, `DEFAULT_RULES` and `rulesFor`.
+
+```ts
+import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
+
+RepeatRulesets.list() // every ruleset
+RepeatRulesets.get('seeding') // one, or undefined
+RepeatRulesets.forServer(ctx) // the ruleset your plugin's server applies, or undefined
+await RepeatRulesets.save(ctx, { id: 'seeding', name: 'Seeding', rules: [{ field: 'Map', within: 2 }] })
+await RepeatRulesets.setForServer(ctx, 'seeding') // your plugin's server applies it from now on
+await RepeatRulesets.remove(ctx, 'seeding')
+RepeatRulesets.changes(ctx).subscribe((rulesets) => ...) // the rulesets after each change, yours included
+```
+
+`save` creates a ruleset, or replaces the one with the same id. A ruleset SLM made for a server when the server was
+created stays that server's. `remove` refuses a ruleset that a server or rotation still uses, with
+`err:repeat-ruleset-in-use`. `setForServer` refuses an id that names no ruleset, with `err:unknown-repeat-ruleset`.
+The audit log records each write as a `SETTINGS_UPDATED` naming your plugin.
 
 ## Layer queries
 
@@ -567,6 +659,8 @@ absent.
 | `slm/systems/layer-queue`                                  | queue reads and edits                        |
 | `slm/systems/match-history`                                | match reads                                  |
 | `slm/systems/filter-entity`                                | filter reads and writes                      |
+| `slm/systems/rotation`                                     | rotation reads and writes                    |
+| `slm/systems/repeat-ruleset`                               | repeat ruleset reads and writes              |
 | `slm/systems/layer-queries`                                | asking the layer table what matches          |
 | `slm/systems/app-events`                                   | writing to the audit log                     |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |
@@ -574,6 +668,8 @@ absent.
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers           |
 | `slm/models/server-events`, `slm/models/squad`             | event and roster types, for `events$`        |
 | `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one           |
+| `slm/models/rotation`                                      | rotation types and schemas                   |
+| `slm/models/repeat-ruleset`                                | repeat ruleset types and schemas             |
 | `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
 | `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
 | `slm/models/rbac`                                          | the permission vocabulary                    |

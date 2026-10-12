@@ -22,6 +22,7 @@ export function savedQueue(
 	layerId?: string
 	source: { type: string; requesters?: { steamId?: string }[] }
 	choices?: { layerId: string }[]
+	tags?: string[]
 	voteConfig?: { displayProps?: string[] }
 }[] {
 	const db = app.readDb()
@@ -57,7 +58,7 @@ export function savedBackburner(app: AppFixture): { itemId: string; filter: Para
 
 export function savedPool(app: AppFixture): {
 	skipWarningsForTags?: string[]
-	repeatRules: { field: string; label?: string; autogen?: boolean; targetValues?: string[] }[]
+	repeatRulesetId: string | null
 	generateVotes?: { enabled: boolean; displayProps: string[] }
 } {
 	const db = app.readDb()
@@ -135,6 +136,57 @@ export function savedGlobalSettings(app: AppFixture): Record<string, any> {
 	} finally {
 		db.close()
 	}
+}
+
+// a rotation's row, its json columns decoded, or undefined when there is none
+export function savedRotation(
+	app: AppFixture,
+	id: string,
+):
+	| {
+			name: string
+			archived: boolean
+			tags: string[]
+			items: {
+				type: string
+				layerId: string
+				tags?: string[]
+				notes?: { text: string; author?: string }[]
+				choices?: { layerId: string }[]
+			}[]
+	  }
+	| undefined {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT name, archived, items, tags FROM rotations WHERE id = ?`).get(id) as
+			| { name: string; archived: number; items: string; tags: string }
+			| undefined
+		if (!row) return undefined
+		return { name: row.name, archived: row.archived === 1, items: JSON.parse(row.items).json, tags: JSON.parse(row.tags).json }
+	} finally {
+		db.close()
+	}
+}
+
+export type SavedRepeatRuleset = {
+	id: string
+	name: string
+	ownerServerId?: string
+	rules: {
+		field: string
+		label?: string
+		within: number
+		autogen?: boolean
+		warn?: boolean
+		indicate?: boolean
+		targetValues?: string[]
+	}[]
+}
+
+// the ruleset the test server points at, as the global settings row holds it
+export function savedServerRepeatRuleset(app: AppFixture): SavedRepeatRuleset | undefined {
+	const id = savedPool(app).repeatRulesetId
+	return (savedGlobalSettings(app).repeatRulesets as SavedRepeatRuleset[] | undefined)?.find((r) => r.id === id)
 }
 
 // every SETTINGS_UPDATED event's payload as persisted, serialized, for asserting what the audit log never holds

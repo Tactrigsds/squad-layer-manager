@@ -5,7 +5,7 @@ import * as FB from '@/models/filter-builders.models'
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
-import { savedPool } from '../harness/inspect'
+import { savedPool, savedServerRepeatRuleset } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
@@ -13,9 +13,9 @@ import { expect, test } from './fixtures'
 // independent sources -- the pool's repeat rules and its filters -- so both are exercised here, on a queue
 // arranged so that each item carries a different combination of them.
 
-// rules carry no id, so the seeded pool's one Map rule is found by its field
-function mapRuleSaved(app: Parameters<typeof savedPool>[0]) {
-	return savedPool(app).repeatRules.find((rule) => rule.field === 'Map')!
+// rules carry no id, so the seeded ruleset's one Map rule is found by its field
+function mapRuleSaved(app: Parameters<typeof savedServerRepeatRuleset>[0]) {
+	return savedServerRepeatRuleset(app)!.rules.find((rule) => rule.field === 'Map')!
 }
 
 async function saveSettings(page: Page) {
@@ -39,11 +39,11 @@ test.describe('queue item constraints', () => {
 				}),
 				filter('seed-layers', 'Seed Layers', FB.and([FB.eq('Gamemode', 'Seed')]), { emoji: '🌱', alertMessage: 'A seeding layer' }),
 			],
+			// just the one rule, so an item's indicators are attributable to it and nothing else
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only', { indicate: 'both' })
 				settings.queue.mainPool.indicateMatches.push('seed-layers')
-				// just the one rule, so an item's indicators are attributable to it and nothing else
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 			},
 		})
 		try {
@@ -94,13 +94,11 @@ test.describe('queue item constraints', () => {
 	test('leaves a violation of a rule that does not indicate off the item', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
-			serverSettings: (settings) => {
-				// both rules are broken by the second Gorodok, so what the tooltip omits is down to `indicate` alone
-				settings.queue.mainPool.repeatRules = [
-					{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true },
-					{ label: 'Recent map', field: 'Map', within: 4, warn: true, indicate: false },
-				]
-			},
+			// both rules are broken by the second Gorodok, so what the tooltip omits is down to `indicate` alone
+			repeatRules: [
+				{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true },
+				{ label: 'Recent map', field: 'Map', within: 4, warn: true, indicate: false },
+			],
 		})
 		try {
 			await page.goto(app.loginUrl())
@@ -122,9 +120,7 @@ test.describe('queue item constraints', () => {
 	test('warns before saving a queue that violates a repeat rule the pool warns on', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
-			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
-			},
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 		})
 		try {
 			await page.goto(app.loginUrl())
@@ -186,9 +182,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			// Gorodok twice, two apart: already repeating before anyone starts editing
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
-			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
-			},
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 		})
 		try {
 			await page.goto(app.loginUrl())
@@ -240,9 +234,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			// the two Gorodoks are three apart, one past the rule's window, so the saved queue repeats nothing
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.narvaRaas, LAYERS.gorodokAas),
-			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 2, warn: true, indicate: true }]
-			},
+			repeatRules: [{ label: 'Map', field: 'Map', within: 2, warn: true, indicate: true }],
 		})
 		try {
 			await page.goto(app.loginUrl())
@@ -295,8 +287,8 @@ test.describe('queue item constraints', () => {
 			globalSettings: (settings) => {
 				settings.layerTags = [planned]
 			},
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
 				settings.queue.mainPool.skipWarningsForTags = [planned.id]
 			},
 		})
@@ -354,12 +346,18 @@ test.describe('queue item constraints', () => {
 
 	// The exemption is only useful if an admin can set it up without editing settings by hand, so the pool
 	// configuration window has to both render the control and persist what is picked in it. The repeat-rule leg
-	// covers unsetting an optional field, which the window writes as a mutation with no value at all.
+	// covers unsetting an optional field, which the window writes as a mutation with no value at all, and saving the
+	// rules into the server's ruleset. The last leg points the server at another ruleset.
 	test('persists pool configuration edits made in the window', async ({ page }) => {
 		const planned = layerTag('planned', 'aaaaaa')
 		const app = await createAppFixture({
 			globalSettings: (settings) => {
 				settings.layerTags = [planned]
+				settings.repeatRulesets.push({
+					id: 'strict',
+					name: 'Strict',
+					rules: [{ field: 'Gamemode', within: 2, warn: true, indicate: true }],
+				})
 			},
 		})
 		try {
@@ -410,6 +408,13 @@ test.describe('queue item constraints', () => {
 			await mapRule.getByRole('textbox', { name: 'Label' }).fill('')
 			await saveSettings(page)
 			await app.waitFor(() => mapRuleSaved(app).label === undefined, { label: 'the Map rule gave its label back' })
+
+			await page.getByRole('combobox', { name: 'Choose a repeat ruleset' }).click()
+			await page.getByRole('option', { name: 'Strict', exact: true }).click()
+			// the rules shown are the chosen ruleset's, before anything is saved
+			await expect(page.getByRole('combobox', { name: 'Rule', exact: true })).toHaveText('Gamemode')
+			await saveSettings(page)
+			await app.waitFor(() => savedPool(app).repeatRulesetId === 'strict', { label: 'the server took the Strict ruleset' })
 		} finally {
 			await app.dispose()
 		}

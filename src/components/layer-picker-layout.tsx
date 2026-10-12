@@ -10,8 +10,8 @@ import {
 } from '@/components/ui/headless-dialog'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -30,7 +30,7 @@ const MIN_DIALOG_WIDTH_PX = 1090
 
 type LayerPickerLayoutProps = {
 	frameKey: SelectLayersFrame.Key
-	squadServer?: SquadServerFrame.Key
+	listHost?: ListHostPrt.Key
 	title: string
 	description?: React.ReactNode
 	// data-tour anchors are `${tourPrefix}-dialog`, `${tourPrefix}-pick` and `${tourPrefix}-filters`
@@ -53,7 +53,7 @@ export default function LayerPickerLayout(props: LayerPickerLayoutProps) {
 		return (
 			<LayerPickerPhone
 				frameKey={props.frameKey}
-				squadServer={props.squadServer}
+				listHost={props.listHost}
 				title={props.title}
 				description={props.description}
 				tourPrefix={props.tourPrefix}
@@ -98,7 +98,7 @@ function LayerPickerDesktop(props: LayerPickerLayoutProps) {
 				</Button>
 			</HeadlessDialogHeader>
 			<div className="flex items-center gap-2 min-h-[calc(var(--ctl)+6px)] px-2.5 border-b border-line shadow-[inset_0_1px_0_var(--line-soft)] overflow-x-auto">
-				<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.squadServer }} />
+				<AppliedFiltersPanel stores={{ appliedFilters: frameKey, listHost: props.listHost }} />
 			</div>
 			<div className="flex min-h-0 flex-1 gap-2.5 p-2.5 overflow-auto">
 				<div className="flex min-w-0 flex-1 flex-col gap-2">

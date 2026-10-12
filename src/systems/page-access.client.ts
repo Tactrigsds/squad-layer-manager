@@ -39,6 +39,8 @@ export const PAGE_ACCESS = {
 	'/_app/servers/$serverId': Access.req((params: { serverId: string }) => Req.viewServer(params.serverId)),
 	'/layers/$layerId/$tab': Access.PUBLIC,
 	'/_app/filters/': Access.PUBLIC,
+	'/_app/rotations/': Access.PUBLIC,
+	'/_app/rotations/$rotationId': Access.PUBLIC,
 	'/_app/servers/': Access.PUBLIC,
 } satisfies { [K in RouteId]: RBAC.Access<any> }
 

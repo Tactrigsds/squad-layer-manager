@@ -313,6 +313,66 @@ export const generatedVoteDisplayOptionsHelp = def(
 
 export const repeatRules = def('Repeat Rules')
 
+export const editRepeatRules = def('Edit repeat rules ({count})', (count: number) => ({ count }))
+
+export const viewRepeatRules = def('View repeat rules ({count})', (count: number) => ({ count }))
+
+export const repeatRulesOf = def('Repeat rules of {name}', (name: string) => ({ name }))
+
+export const repeatRulesetUnsaved = def('Unsaved rule changes')
+
+export const newRepeatRuleset = def('New repeat ruleset')
+
+// the name a new repeat ruleset is offered, made unique with a numeric suffix
+export const newRepeatRulesetName = def('New repeat ruleset')
+
+export const renameRepeatRuleset = def('Rename repeat ruleset')
+
+export const repeatRulesetName = def('Name')
+
+export const newRepeatRulesetCopies = def('The new repeat ruleset starts with a copy of the rules of {name}.', (name: string) => ({ name }))
+
+export const newRepeatRulesetDefaults = def('The new repeat ruleset starts with the default repeat rules.')
+
+export const repeatRulesetNameTaken = def('Another repeat ruleset is already named {name}.', (name: string) => ({ name }))
+
+export const createRepeatRuleset = def('Create')
+
+export const saveRepeatRulesetName = def('Save')
+
+// -------- repeat rulesets --------
+
+export const repeatRuleset = def('Repeat ruleset')
+
+export const repeatRulesetHelp = def(
+	'The repeat ruleset whose rules this server applies to its queue and to generated layers. Other servers can use the same repeat ruleset. Saving its rules changes them for every server that uses it.',
+)
+
+export const repeatRulesetPicker = def('Choose a repeat ruleset')
+
+export const noRepeatRuleset = def('No repeat ruleset')
+
+export const noRepeatRulesetBlurb = def('No repeat rules apply until a repeat ruleset is chosen.')
+
+// a badge beside the repeat ruleset picker
+// the repeat ruleset SLM created for a server when the server was added
+export const ownRepeatRuleset = def('Made for the server {server}', (server: string) => ({ server }))
+
+export const repeatRulesetSharedWith = def(
+	'Also used by {count, plural, one {# other server} other {# other servers}}',
+	(count: number) => ({
+		count,
+	}),
+)
+
+export const repeatRulesetConflict = def(
+	'Someone else saved this repeat ruleset since you started editing it. Saving replaces their rules with yours.',
+)
+
+export const saveRepeatRuleset = def('Save Repeat Ruleset')
+
+export const unknownRepeatRuleset = def('The repeat ruleset "{id}" does not exist. Choose another.', (id: string) => ({ id }))
+
 export const addRepeatRule = def('Add Repeat Rule')
 
 export const repeatRuleLabel = def('Label')

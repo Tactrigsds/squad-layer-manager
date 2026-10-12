@@ -113,6 +113,9 @@ function buildOperationSchema<
 			op: z.literal('add'),
 			items: z.array(itemSchema),
 			index: LL.ItemIndexSchema,
+			// replaces these items with the new ones in the same op, so nobody watching sees the list empty in between.
+			// The new items go in at `index` as it stands once these are gone.
+			clearItemIds: z.array(LL.ItemIdSchema).optional(),
 		}),
 		z.object({
 			...opPropsBase,
@@ -306,6 +309,9 @@ export type State = {
 	saving: boolean
 	mutations: ItemMut.Mutations
 	requestingGeneratedQueueItem: boolean
+	// a server's queue is never left empty: saving an empty one asks for a generated item first. A rotation's list
+	// may be empty, so its session turns this off.
+	generateWhenEmpty: boolean
 	lastSaveOpId: null | string
 	// the layer backburner (in-game "layer requests"), sharing this session so ops can atomically span both
 	// collections. draft vs saved works like the queue's list/savedList. Its editing session is separate from
@@ -510,6 +516,11 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'add': {
+			for (const itemId of newOp.clearItemIds ?? []) {
+				if (!LL.findItemById(list, itemId)) continue
+				LL.deleteItem(list, itemId)
+				ItemMut.tryApplyMutation('removed', [itemId], mutations)
+			}
 			const items = LL.withTagAttribution(newOp.items, source)
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
 			ItemMut.tryApplyMutation(
@@ -845,7 +856,7 @@ function saveList(
 	// before the empty-list bail-out: the draft this save consumed is gone either way, and leaving mutations
 	// behind for the generated item to clear strands them if generation never lands
 	closeEditWindow(session)
-	if (list.length === 0) {
+	if (list.length === 0 && session.generateWhenEmpty) {
 		session.requestingGeneratedQueueItem = true
 		onSideEffect?.({ code: 'request-queue-item-generation' })
 		return
@@ -873,7 +884,7 @@ export function mergeMutations(base: ItemMut.Mutations, additions: ItemMut.Mutat
 	return result
 }
 
-export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[]): State {
+export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[], opts?: { generateWhenEmpty?: boolean }): State {
 	return {
 		list: list ? [...list] : [],
 		editWindowSeqId: 0,
@@ -881,6 +892,7 @@ export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[])
 		mutations: ItemMut.initMutations(),
 		savedList: list ? [...list] : [],
 		requestingGeneratedQueueItem: false,
+		generateWhenEmpty: opts?.generateWhenEmpty ?? true,
 		lastSaveOpId: null,
 		backburner: backburner ? [...backburner] : [],
 		savedBackburner: backburner ? [...backburner] : [],

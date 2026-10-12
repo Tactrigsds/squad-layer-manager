@@ -4,6 +4,7 @@ import * as FB from '@/models/filter-builders.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queue, role } from '../harness/arrange'
+import { filterOwner } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
@@ -497,5 +498,40 @@ test.describe('contributors', { tag: '@firefox' }, () => {
 			await users.first().locator('svg').click()
 			await expect(users).toHaveCount(remaining)
 		}
+	})
+})
+
+// runs last: the clone it makes is a filter no test above expects
+test.describe('the filters page', () => {
+	test('searches into rows kept in the url, refuses deleting a referenced filter, and clones from a card menu', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters'))
+		const main = page.getByRole('main')
+		// earlier journeys renamed RAAS Only and deleted AAS Only
+		await expect(main.getByRole('link', { name: 'Text Mode' })).toBeVisible({ timeout: 20_000 })
+
+		await page.getByRole('textbox', { name: 'Search filters' }).fill('harju')
+		await expect(page).toHaveURL(/[?&]q=harju/)
+		await expect(main.getByRole('link', { name: 'RAAS on Harju' })).toBeVisible()
+		await expect(main.getByRole('link', { name: 'Text Mode' })).toHaveCount(0)
+		await expect(main.getByText('Match')).toBeVisible()
+		await page.getByRole('textbox', { name: 'Search filters' }).fill('')
+		await expect(page).not.toHaveURL(/[?&]q=/)
+
+		// RAAS on Harju applies RAAS Only, so RAAS Only cannot go
+		const raasOnly = main.getByRole('listitem').filter({ has: page.getByRole('link', { name: /^RAAS Only/ }) })
+		await raasOnly.getByRole('button', { name: 'More actions' }).click()
+		await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeDisabled()
+		await page.keyboard.press('Escape')
+
+		const textMode = main.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Text Mode', exact: true }) })
+		await textMode.getByRole('button', { name: 'More actions' }).click()
+		await page.getByRole('menuitem', { name: 'Clone' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Clone Filter' })
+		await expect(dialog.getByLabel('ID')).toHaveValue('text-mode-copy')
+		await expect(dialog.getByLabel('Name')).toHaveValue('Text Mode (copy)')
+		await dialog.getByRole('button', { name: 'Clone and Open' }).click()
+		await expect(page).toHaveURL(/\/filters\/text-mode-copy$/)
+		await app.waitFor(() => filterOwner(app, 'text-mode-copy') ?? null, { label: 'the copy was written' })
+		expect(filterOwner(app, 'text-mode-copy')!.ownerUserId).toBe(String(app.adminUser.discordId))
 	})
 })

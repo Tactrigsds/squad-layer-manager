@@ -553,7 +553,7 @@ export namespace Actions {
 						RbacClient.handlePermissionDenied(res)
 						return false
 					}
-					if (res.code === 'err:invalid-settings') {
+					if (res.code === 'err:invalid-settings' || res.code === 'err:repeat-ruleset-in-use') {
 						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}
@@ -568,7 +568,7 @@ export namespace Actions {
 						RbacClient.handlePermissionDenied(res)
 						return false
 					}
-					if (res.code === 'err:invalid-settings') {
+					if (res.code === 'err:invalid-settings' || res.code === 'err:unknown-repeat-ruleset') {
 						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}
@@ -634,7 +634,7 @@ export namespace Actions {
 						toast.error(...tr.toast(SETTINGS_Msgs.serverIdTaken()))
 						return false
 					}
-					if (res.code === 'err:invalid-settings') {
+					if (res.code === 'err:invalid-settings' || res.code === 'err:unknown-repeat-ruleset') {
 						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}

@@ -9,8 +9,8 @@ import {
 	HeadlessDialogTitle,
 } from '@/components/ui/headless-dialog'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -29,7 +29,7 @@ type Tab = 'filters' | 'results' | 'summary'
 // has focus, since the on-screen keyboard covers it.
 export default function LayerPickerPhone(props: {
 	frameKey: SelectLayersFrame.Key
-	squadServer?: SquadServerFrame.Key
+	listHost?: ListHostPrt.Key
 	title: string
 	description?: React.ReactNode
 	tourPrefix: string
@@ -95,11 +95,9 @@ export default function LayerPickerPhone(props: {
 				</Button>
 			</HeadlessDialogHeader>
 			<div className="flex min-h-0 flex-1 flex-col">
-				{tab === 'filters' && (
-					<PhoneFiltersTab frameKey={frameKey} squadServer={props.squadServer} onShowResults={() => goTo('results')} />
-				)}
+				{tab === 'filters' && <PhoneFiltersTab frameKey={frameKey} listHost={props.listHost} onShowResults={() => goTo('results')} />}
 				{tab === 'results' && (
-					<PhoneResultsTab frameKey={frameKey} squadServer={props.squadServer} view={view} setView={setView} footer={resultsFooter} />
+					<PhoneResultsTab frameKey={frameKey} listHost={props.listHost} view={view} setView={setView} footer={resultsFooter} />
 				)}
 				{tab === 'summary' && props.summary && (
 					<SummaryTab frameKey={frameKey} summary={props.summary} onShowResults={() => goTo('results')} />

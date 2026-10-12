@@ -20,6 +20,8 @@ import { Route as AppTutorialsRouteImport } from './routes/_app/tutorials'
 import { Route as AppFiltersIndexRouteImport } from './routes/_app/filters/index'
 import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$filterId'
 import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
+import { Route as AppRotationsIndexRouteImport } from './routes/_app/rotations/index'
+import { Route as AppRotationsRotationIdRouteImport } from './routes/_app/rotations/$rotationId'
 import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
 import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
 import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
@@ -78,6 +80,16 @@ const AppFiltersNewRoute = AppFiltersNewRouteImport.update({
   path: '/filters/new',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppRotationsIndexRoute = AppRotationsIndexRouteImport.update({
+  id: '/rotations/',
+  path: '/rotations/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppRotationsRotationIdRoute = AppRotationsRotationIdRouteImport.update({
+  id: '/rotations/$rotationId',
+  path: '/rotations/$rotationId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppServersIndexRoute = AppServersIndexRouteImport.update({
   id: '/servers/',
   path: '/servers/',
@@ -104,9 +116,11 @@ export interface FileRoutesByFullPath {
   '/tutorials': typeof AppTutorialsRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
+  '/rotations/$rotationId': typeof AppRotationsRotationIdRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters/': typeof AppFiltersIndexRoute
+  '/rotations/': typeof AppRotationsIndexRoute
   '/servers/': typeof AppServersIndexRoute
 }
 export interface FileRoutesByTo {
@@ -119,9 +133,11 @@ export interface FileRoutesByTo {
   '/tutorials': typeof AppTutorialsRoute
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
+  '/rotations/$rotationId': typeof AppRotationsRotationIdRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
+  '/rotations': typeof AppRotationsIndexRoute
   '/servers': typeof AppServersIndexRoute
 }
 export interface FileRoutesById {
@@ -136,9 +152,11 @@ export interface FileRoutesById {
   '/_app/tutorials': typeof AppTutorialsRoute
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/_app/filters/new': typeof AppFiltersNewRoute
+  '/_app/rotations/$rotationId': typeof AppRotationsRotationIdRoute
   '/_app/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/_app/filters/': typeof AppFiltersIndexRoute
+  '/_app/rotations/': typeof AppRotationsIndexRoute
   '/_app/servers/': typeof AppServersIndexRoute
 }
 export interface FileRouteTypes {
@@ -153,9 +171,11 @@ export interface FileRouteTypes {
     | '/tutorials'
     | '/filters/$filterId'
     | '/filters/new'
+    | '/rotations/$rotationId'
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters/'
+    | '/rotations/'
     | '/servers/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -168,9 +188,11 @@ export interface FileRouteTypes {
     | '/tutorials'
     | '/filters/$filterId'
     | '/filters/new'
+    | '/rotations/$rotationId'
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
+    | '/rotations'
     | '/servers'
   id:
     | '__root__'
@@ -184,9 +206,11 @@ export interface FileRouteTypes {
     | '/_app/tutorials'
     | '/_app/filters/$filterId'
     | '/_app/filters/new'
+    | '/_app/rotations/$rotationId'
     | '/_app/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/_app/filters/'
+    | '/_app/rotations/'
     | '/_app/servers/'
   fileRoutesById: FileRoutesById
 }
@@ -275,6 +299,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFiltersNewRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/rotations/': {
+      id: '/_app/rotations/'
+      path: '/rotations'
+      fullPath: '/rotations/'
+      preLoaderRoute: typeof AppRotationsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/rotations/$rotationId': {
+      id: '/_app/rotations/$rotationId'
+      path: '/rotations/$rotationId'
+      fullPath: '/rotations/$rotationId'
+      preLoaderRoute: typeof AppRotationsRotationIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/servers/': {
       id: '/_app/servers/'
       path: '/servers'
@@ -308,8 +346,10 @@ interface AppRouteRouteChildren {
   AppTutorialsRoute: typeof AppTutorialsRoute
   AppFiltersFilterIdRoute: typeof AppFiltersFilterIdRoute
   AppFiltersNewRoute: typeof AppFiltersNewRoute
+  AppRotationsRotationIdRoute: typeof AppRotationsRotationIdRoute
   AppServersServerIdRoute: typeof AppServersServerIdRoute
   AppFiltersIndexRoute: typeof AppFiltersIndexRoute
+  AppRotationsIndexRoute: typeof AppRotationsIndexRoute
   AppServersIndexRoute: typeof AppServersIndexRoute
 }
 
@@ -322,8 +362,10 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppTutorialsRoute: AppTutorialsRoute,
   AppFiltersFilterIdRoute: AppFiltersFilterIdRoute,
   AppFiltersNewRoute: AppFiltersNewRoute,
+  AppRotationsRotationIdRoute: AppRotationsRotationIdRoute,
   AppServersServerIdRoute: AppServersServerIdRoute,
   AppFiltersIndexRoute: AppFiltersIndexRoute,
+  AppRotationsIndexRoute: AppRotationsIndexRoute,
   AppServersIndexRoute: AppServersIndexRoute,
 }
 

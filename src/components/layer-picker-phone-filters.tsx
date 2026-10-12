@@ -5,8 +5,8 @@ import ComboBoxMulti from '@/components/combo-box/combo-box-multi.tsx'
 import { Button } from '@/components/ui/button'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -23,22 +23,18 @@ type ApplyAs = AppliedFiltersPrt.ApplyAs
 
 // The picker's Filters tab on a phone: the server's default filters and the user's extra filters, each a card with
 // an explicit Off / Match / Exclude control in place of the tri-state checkbox the desktop rail cycles through.
-export default function PhoneFiltersTab(props: {
-	frameKey: SelectLayersFrame.Key
-	squadServer?: SquadServerFrame.Key
-	onShowResults: () => void
-}) {
+export default function PhoneFiltersTab(props: { frameKey: SelectLayersFrame.Key; listHost?: ListHostPrt.Key; onShowResults: () => void }) {
 	const { frameKey } = props
-	const stores = { appliedFilters: frameKey, squadServer: props.squadServer }
-	const squadServer = props.squadServer ?? null
+	const stores = { appliedFilters: frameKey, listHost: props.listHost }
+	const listHost = props.listHost ?? null
 
 	React.useEffect(() => SelectLayersFrame.Actions.watchFiltersOnlyCount({ selectLayers: frameKey }), [frameKey])
 
-	const poolFilter = Zus.useStore(squadServer, AppliedFiltersPrt.Sel.poolFilter)
+	const poolFilter = Zus.useStore(listHost, AppliedFiltersPrt.Sel.poolFilter)
 	const poolApplyAs = Zus.useStore(frameKey, (s) => s.appliedFilters.poolApplyAs)
-	const selectableFilterIds = Zus.useStore(squadServer, AppliedFiltersPrt.Sel.selectableFilterIds)
-	const extraFilterIds = Zus.useStore(frameKey, squadServer, AppliedFiltersPrt.ExtraFiltersStore, AppliedFiltersPrt.Sel.extraFilterIds)
-	const addableFilters = Zus.useStore(squadServer, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
+	const selectableFilterIds = Zus.useStore(listHost, AppliedFiltersPrt.Sel.selectableFilterIds)
+	const extraFilterIds = Zus.useStore(frameKey, listHost, AppliedFiltersPrt.ExtraFiltersStore, AppliedFiltersPrt.Sel.extraFilterIds)
+	const addableFilters = Zus.useStore(listHost, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
 	const filterStates = Zus.useStore(frameKey, (s) => s.appliedFilters.filterStates)
 
 	const addOptions = addableFilters.map((filter) => ({ value: filter.id, label: <FilterEntityLabel filter={filter} /> }))

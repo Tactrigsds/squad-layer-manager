@@ -10,6 +10,7 @@ import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
 import * as LTag from '@/models/layer-tags.models'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -169,6 +170,9 @@ export type ServerEntry = {
 	color: string | null
 	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
 	sandbox: boolean
+	// mirrored out of this server's settings so the ruleset editors can say which servers share a ruleset, and so a
+	// ruleset in use is not deleted from under a server
+	repeatRulesetId: RRS.RulesetId | null
 	// 'scoped' entries are delivered to and usable by only their owner (ownerDiscordId); see ServerVisibility and the
 	// RBAC scoping in rbac.server. 'public' is every other server. ownerDiscordId is null for public entries.
 	visibility: SS.ServerVisibility
@@ -263,6 +267,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
 			color: (settingsRes.success && settingsRes.data.color) || null,
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
+			repeatRulesetId: settingsRes.success ? settingsRes.data.queue.mainPool.repeatRulesetId : null,
 			visibility: row.visibility,
 			ownerDiscordId: row.ownerDiscordId,
 		})
@@ -295,6 +300,22 @@ export async function createServerEntry(
 	}
 
 	const visibility = input.visibility ?? 'public'
+	// a public server that names no ruleset gets one of its own, so its rules can be edited without touching
+	// another server's. Scoped servers are tutorials, which name theirs.
+	if (visibility === 'public' && settingsRes.data.queue.mainPool.repeatRulesetId === null) {
+		const rulesets = GLOBAL_SETTINGS.repeatRulesets
+		const own: RRS.Ruleset = {
+			id: RRS.ownIdForServer(rulesets, input.id),
+			name: RRS.freeName(rulesets, input.displayName),
+			ownerServerId: input.id,
+			rules: [...RRS.DEFAULT_RULES],
+		}
+		const writeRes = await patchGlobalSettings(ctx, { repeatRulesets: [...rulesets, own] }, { type: 'system' })
+		if (writeRes.code !== 'ok') return writeRes
+		settingsRes.data.queue.mainPool.repeatRulesetId = own.id
+	}
+	const repeatRulesetError = unknownRepeatRulesetError(settingsRes.data)
+	if (repeatRulesetError) return repeatRulesetError
 	const ownerDiscordId = input.ownerDiscordId ?? null
 	settingsRes.data.color ??= pickServerColor(ownerDiscordId)
 	const newServer: SS.ServerState = {
@@ -323,6 +344,7 @@ export async function createServerEntry(
 		adminLists: newServer.settings.adminLists,
 		color: newServer.settings.color ?? null,
 		sandbox: newServer.settings.connections.type === 'sandbox',
+		repeatRulesetId: newServer.settings.queue.mainPool.repeatRulesetId,
 		visibility,
 		ownerDiscordId,
 	})
@@ -346,6 +368,18 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
 	await ctx.db({ redactParams: true }).delete(Schema.servers).where(E.eq(Schema.servers.id, serverId))
 	serverRegistry.delete(serverId)
+	// the server's own ruleset goes with it, unless another server has come to use it, which keeps it ownerless
+	const owned = GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.ownerServerId === serverId)
+	if (owned.length > 0) {
+		const inUse = repeatRulesetIdsInUse()
+		const rulesets = GLOBAL_SETTINGS.repeatRulesets.flatMap((r) => {
+			if (r.ownerServerId !== serverId) return [r]
+			if (!inUse.has(r.id)) return []
+			const { ownerServerId: _ownerServerId, ...rest } = r
+			return [rest]
+		})
+		await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, { type: 'system' })
+	}
 	// the console outlives a stopped server, so deleting the server is what finally drops its tail
 	ServerConsole.disposeFor(serverId)
 	pushScopedServersToRbac()
@@ -386,10 +420,12 @@ function syncServerEntry(serverId: SS.ServerId, settings: SETTINGS.ServerSetting
 	if (!entry) return
 	const adminListsChanged = !Obj.deepEqual(entry.adminLists, settings.adminLists)
 	const sandbox = settings.connections.type === 'sandbox'
+	const repeatRulesetId = settings.queue.mainPool.repeatRulesetId
 	const color = settings.color ?? null
-	if (!adminListsChanged && entry.sandbox === sandbox && entry.color === color) return
+	if (!adminListsChanged && entry.sandbox === sandbox && entry.repeatRulesetId === repeatRulesetId && entry.color === color) return
 	entry.adminLists = settings.adminLists
 	entry.sandbox = sandbox
+	entry.repeatRulesetId = repeatRulesetId
 	entry.color = color
 	// permissions resolved against the lists this server used to name are cached per player
 	if (adminListsChanged) Rbac.invalidateAll()
@@ -503,6 +539,130 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // an admin in it), so the lists have to be refetched rather than just re-selected
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
+// the rules of the ruleset a server's settings point at
+export function repeatRulesFor(settings: SETTINGS.PublicServerSettings): readonly RRS.RepeatRuleConfig[] {
+	return RRS.rulesFor(GLOBAL_SETTINGS.repeatRulesets, settings.queue.mainPool.repeatRulesetId)
+}
+
+function unknownRepeatRulesetError(settings: SETTINGS.PublicServerSettings) {
+	const id = settings.queue.mainPool.repeatRulesetId
+	if (id === null || RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) return undefined
+	return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
+}
+
+const repeatRulesetUsers: (() => Iterable<RRS.RulesetId>)[] = []
+
+// for systems this one cannot import without a cycle (rotations), whose rulesets must survive a settings save
+export function registerRepeatRulesetUsers(read: () => Iterable<RRS.RulesetId>) {
+	repeatRulesetUsers.push(read)
+}
+
+// the ids of the rulesets some server or rotation points at
+function repeatRulesetIdsInUse(): Set<RRS.RulesetId> {
+	const ids = new Set<RRS.RulesetId>()
+	for (const entry of serverRegistry.values()) {
+		if (entry.repeatRulesetId) ids.add(entry.repeatRulesetId)
+	}
+	for (const read of repeatRulesetUsers) {
+		for (const id of read()) ids.add(id)
+	}
+	return ids
+}
+
+// replaces some top-level fields of the global settings, for writers that hold only those fields: server creation and
+// deletion, tutorials, the ruleset editors and inline tag creation
+export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.GlobalSettings>, actor: AppEvents.Actor) {
+	const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, ...patch })
+	if (!parseRes.success) return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+	const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+	if (changes.length === 0) return { code: 'ok' as const }
+	GLOBAL_SETTINGS = parseRes.data
+	await persistGlobalSettings(ctx)
+	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.SettingsUpdated>({
+			type: 'SETTINGS_UPDATED',
+			actor,
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			changes: auditableSettingChanges(changes),
+		}),
+	)
+	return { code: 'ok' as const }
+}
+
+// creates or replaces one ruleset. Ownership is decided by server creation, never by the writer, so `ownerServerId`
+// is kept from the ruleset being replaced.
+export async function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: AppEvents.Actor) {
+	const existing = GLOBAL_SETTINGS.repeatRulesets
+	const prior = RRS.find(existing, input.id)
+	const { ownerServerId: _ownerServerId, ...rest } = input
+	const ruleset: RRS.Ruleset = prior?.ownerServerId !== undefined ? { ...rest, ownerServerId: prior.ownerServerId } : rest
+	const rulesets = prior ? existing.map((r) => (r.id === input.id ? ruleset : r)) : [...existing, ruleset]
+	const res = await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, actor)
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const, ruleset }
+}
+
+export async function deleteRepeatRuleset(ctx: C.Db, id: RRS.RulesetId, actor: AppEvents.Actor) {
+	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) return { code: 'err:not-found' as const }
+	if (repeatRulesetIdsInUse().has(id)) {
+		return { code: 'err:repeat-ruleset-in-use' as const, message: `A server or rotation still uses the repeat ruleset "${id}"` }
+	}
+	const res = await patchGlobalSettings(ctx, { repeatRulesets: GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.id !== id) }, actor)
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const }
+}
+
+// points a server at a ruleset, on behalf of a plugin
+export async function setServerRepeatRuleset(ctx: C.Db & CS.ServerId, id: RRS.RulesetId, pluginId: string) {
+	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) {
+		return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
+	}
+	let changes: SettingChange[] = []
+	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+		const state = await SquadServer.getServerState(ctx)
+		if (state.settings.queue.mainPool.repeatRulesetId === id) return
+		const next = Obj.deepClone(state.settings)
+		next.queue.mainPool.repeatRulesetId = id
+		changes = diffSettings(state.settings, next)
+		await updateServerSettings(ctx, next, { type: 'plugin', event: 'edit-settings', pluginId })
+	})
+	if (changes.length > 0) {
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.SettingsUpdated>({
+				type: 'SETTINGS_UPDATED',
+				actor: { type: 'plugin', pluginId },
+				serverId: ctx.serverId,
+				matchId: null,
+				causeId: null,
+				changes: auditableSettingChanges(changes),
+			}),
+		)
+	}
+	return { code: 'ok' as const }
+}
+
+// the ids among `tags` that name no configured layer tag
+export function unknownLayerTags(tags: readonly LTag.TagId[]): LTag.TagId[] {
+	const known = new Set(GLOBAL_SETTINGS.layerTags.map((t) => t.id))
+	return tags.filter((id) => !known.has(id))
+}
+
+async function upsertTag(ctx: C.Db & USR.Ctx.Id, key: 'layerTags' | 'rotationTags', input: LTag.Tag) {
+	const existing = GLOBAL_SETTINGS[key]
+	if (LTag.labelConflict(existing, input.label, input.id)) {
+		return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
+	}
+	const tags = existing.some((t) => t.id === input.id) ? existing.map((t) => (t.id === input.id ? input : t)) : [...existing, input]
+	const res = await patchGlobalSettings(ctx, { [key]: tags }, { type: 'slm-user', userId: ctx.user.discordId })
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const, tag: input }
+}
+
 // ============================== unified settings bus ==============================
 
 export type SettingsEvent =
@@ -534,6 +694,11 @@ export type PublicSettings = {
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
 	// every client rendering the queue needs these to resolve the tag ids stored on layer items
 	layerTags: SETTINGS.GlobalSettings['layerTags']
+	// the repeat rules a server applies are looked up here by its ruleset id
+	repeatRulesets: SETTINGS.GlobalSettings['repeatRulesets']
+	// the rotations pages resolve the tag ids on a rotation against these
+	rotationTags: SETTINGS.GlobalSettings['rotationTags']
+	defaultRotationRepeatRulesetId: SETTINGS.GlobalSettings['defaultRotationRepeatRulesetId']
 	tickRateThresholds: SETTINGS.GlobalSettings['tickRateThresholds']
 	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
 	// the commands page lists these as the presets the broadcast command accepts. Their text is broadcast to the whole
@@ -555,6 +720,9 @@ function buildPublicSettings(): PublicSettings {
 		playerActivity: GLOBAL_SETTINGS.playerActivity,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
 		layerTags: GLOBAL_SETTINGS.layerTags,
+		repeatRulesets: GLOBAL_SETTINGS.repeatRulesets,
+		rotationTags: GLOBAL_SETTINGS.rotationTags,
+		defaultRotationRepeatRulesetId: GLOBAL_SETTINGS.defaultRotationRepeatRulesetId,
 		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
@@ -629,6 +797,15 @@ const globalRouter = {
 
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 
+			const keptRepeatRulesetIds = new Set(parseRes.data.repeatRulesets.map((r) => r.id))
+			const removedInUse = [...repeatRulesetIdsInUse()].filter((id) => !keptRepeatRulesetIds.has(id))
+			if (removedInUse.length > 0) {
+				return {
+					code: 'err:repeat-ruleset-in-use' as const,
+					message: `A server or rotation still uses the repeat ruleset(s) ${removedInUse.map((id) => `"${id}"`).join(', ')}`,
+				}
+			}
+
 			const changePaths = changes.map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths(changePaths))
 			if (denyRes) return denyRes
@@ -667,43 +844,27 @@ const globalRouter = {
 			return { code: 'ok' as const, changes }
 		}),
 
+	// creates or replaces one ruleset, for the ruleset editors beside a server's pool configuration. A separate
+	// endpoint for the same reason as upsertLayerTag: those editors do not hold the whole settings object.
+	// Deletion is left to the settings page, which can see what uses a ruleset.
+	saveRepeatRuleset: orpcBase
+		.meta({ type: 'mutation' })
+		.input(RRS.RulesetSchema)
+		.handler(async ({ context: ctx, input }) => await saveRepeatRuleset(ctx, input, { type: 'slm-user', userId: ctx.user.discordId })),
+
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
 	// the whole settings object, which needs global-settings:read -- a queue editor holding queue:manage-tags may not have it.
 	// Deletion is deliberately absent: tags are only removed from the settings page (see LTag.TagsSchema).
 	upsertLayerTag: orpcBase
 		.meta({ type: 'mutation' })
 		.input(LTag.TagSchema)
-		.handler(async ({ context: ctx, input }) => {
-			const existing = GLOBAL_SETTINGS.layerTags
-			if (LTag.labelConflict(existing, input.label, input.id)) {
-				return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
-			}
-			const idx = existing.findIndex((t) => t.id === input.id)
-			const layerTags = idx === -1 ? [...existing, input] : existing.map((t) => (t.id === input.id ? input : t))
+		.handler(async ({ context: ctx, input }) => await upsertTag(ctx, 'layerTags', input)),
 
-			const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, layerTags })
-			if (!parseRes.success) {
-				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
-			}
-			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
-			GLOBAL_SETTINGS = parseRes.data
-
-			await persistGlobalSettings(ctx)
-
-			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
-			await AppEventsSys.persistAppEvent(
-				ctx,
-				AppEvents.create<AppEvents.SettingsUpdated>({
-					type: 'SETTINGS_UPDATED',
-					actor: { type: 'slm-user', userId: ctx.user.discordId },
-					serverId: null,
-					matchId: null,
-					causeId: null,
-					changes: auditableSettingChanges(changes),
-				}),
-			)
-			return { code: 'ok' as const, tag: input }
-		}),
+	// the same, for rotation tags created from the rotation editor
+	upsertRotationTag: orpcBase
+		.meta({ type: 'mutation' })
+		.input(LTag.TagSchema)
+		.handler(async ({ context: ctx, input }) => await upsertTag(ctx, 'rotationTags', input)),
 }
 
 // one server's settings, never including its connections
@@ -738,6 +899,8 @@ const serverRouter = {
 				if (!res.success) {
 					return { code: 'err:invalid-settings' as const, message: res.error.message }
 				}
+				const repeatRulesetError = unknownRepeatRulesetError(res.data)
+				if (repeatRulesetError) return repeatRulesetError
 				changes = diffSettings(prior, res.data)
 
 				await updateServerSettings(ctx, res.data, {
@@ -898,6 +1061,8 @@ const adminRouter = {
 			if (!parseRes.success) {
 				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 			}
+			const repeatRulesetError = unknownRepeatRulesetError(parseRes.data)
+			if (repeatRulesetError) return repeatRulesetError
 
 			const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parseRes.data.connections)
 

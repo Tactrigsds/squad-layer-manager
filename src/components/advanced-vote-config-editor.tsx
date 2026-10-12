@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { VoteDisplayPropsCheckboxes } from '@/components/vote-display-props-checkboxes'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
@@ -14,7 +14,7 @@ import { tr } from '@/systems/messages.client'
 
 export type AdvancedVoteConfigEditorProps = {
 	// vote defaults are per-server, so the editor needs the server whose defaults it is filling in
-	stores: SquadServerFrame.KeyProp
+	stores: ListHostPrt.KeyProp
 	config: Partial<V.AdvancedVoteConfig> | null
 	choices: L.LayerId[]
 	onChange: (config: Partial<V.AdvancedVoteConfig> | null) => void
@@ -24,7 +24,7 @@ export type AdvancedVoteConfigEditorProps = {
 }
 
 export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
-	const voteDefaults = Zus.useStore(props.stores.squadServer, (s) => SquadServerFrame.Sel.settings(s).vote)
+	const voteDefaults = Zus.useStore(props.stores.listHost, (s) => ListHostPrt.Sel.settings(s).vote)
 	const displayProps = props.config?.displayProps ?? voteDefaults.voteDisplayProps
 	const duration = props.config?.duration ?? voteDefaults.voteDuration
 	const usingDefault = !props.config?.displayProps && !props.config?.duration

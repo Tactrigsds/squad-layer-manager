@@ -3,6 +3,7 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Verbs from '@/emulator/verbs'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
@@ -15,6 +16,7 @@ import type * as LQ from '@/models/layer-queue.models'
 import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import type * as SR from '@/models/squad-rcon.models'
@@ -619,6 +621,34 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string, owner: bigin
 	return { ...SquadServer.resolveCtx(base, serverId), sandbox, owner }
 }
 
+// Every tutorial server shares this ruleset, rather than adding one per reader to the rulesets list. The add
+// walkthrough asks for one faction on both of its picks, so the reader's own additions repeat it within three. That
+// is what the warnings-on-save step demonstrates: a queue that already violated a rule before the edit session warns
+// about nothing, since only new violations stop a save. crossTeam, because consecutive items swap sides and the
+// repeat would otherwise fall on the other persistent team.
+const TUTORIAL_REPEAT_RULESET: RRS.Ruleset = {
+	id: 'slm-tutorial',
+	name: 'SLM Tutorial',
+	rules: [
+		{ field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
+		{ field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
+		{ field: 'Faction', within: 3, autogen: true, warn: true, indicate: true, crossTeam: true },
+	],
+}
+
+// restores the tutorial ruleset if an admin removed or edited it, since the walkthrough's steps depend on its rules
+async function ensureTutorialRepeatRuleset(ctx: C.Db) {
+	const rulesets = Settings.GLOBAL_SETTINGS.repeatRulesets
+	const existing = RRS.find(rulesets, TUTORIAL_REPEAT_RULESET.id)
+	if (existing && Obj.deepEqual(existing.rules, TUTORIAL_REPEAT_RULESET.rules)) return
+	const name = existing?.name ?? RRS.freeName(rulesets, TUTORIAL_REPEAT_RULESET.name)
+	const next = existing
+		? rulesets.map((r) => (r.id === TUTORIAL_REPEAT_RULESET.id ? { ...TUTORIAL_REPEAT_RULESET, name } : r))
+		: [...rulesets, { ...TUTORIAL_REPEAT_RULESET, name }]
+	const res = await Settings.patchGlobalSettings(ctx, { repeatRulesets: next }, { type: 'system' })
+	if (res.code !== 'ok') throw new Error(`could not write the tutorial repeat ruleset: ${res.message}`)
+}
+
 function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, nextLayerId: L.LayerId | null) {
 	const pacing = scenario.pacing
 	const settings = SETTINGS.PublicServerSettingsSchema.parse({})
@@ -640,15 +670,7 @@ function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, next
 				...settings.queue.mainPool,
 				poolFilter: { filterId: ids.pool, mode: 'include' as const },
 				indicateMatches: [ids.indicator],
-				// The add walkthrough asks for one faction on both of its picks, so the reader's own additions repeat it
-				// within three. That is what the warnings-on-save step demonstrates: a queue that already violated a
-				// rule before the edit session warns about nothing, since only new violations stop a save. crossTeam,
-				// because consecutive items swap sides and the repeat would otherwise fall on the other persistent team.
-				repeatRules: [
-					{ field: 'Map' as const, within: 4, autogen: true },
-					{ field: 'Layer' as const, within: 7, autogen: true },
-					{ field: 'Faction' as const, within: 3, autogen: true, warn: true, crossTeam: true },
-				],
+				repeatRulesetId: TUTORIAL_REPEAT_RULESET.id,
 			},
 		},
 		switchRequests: {
@@ -823,6 +845,7 @@ const start = Instr.spanOp(
 			const scenario = SCENARIOS[scenarioId]
 			const initialQueue = scenario.initialQueue(owner)
 			await FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
+			await ensureTutorialRepeatRuleset(ctx)
 			const created = await Settings.createServerEntry(ctx, {
 				id: serverId,
 				displayName: DISPLAY_NAME,

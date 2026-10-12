@@ -48,10 +48,10 @@ beforeAll(async () => {
 		globalSettings: (s) => {
 			s.rbac.roles['requesters'] = role([], { users: [REQUESTER] }, { maxLayerRequests: 1 })
 		},
+		repeatRules: [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }],
 		serverSettings: (s) => {
 			s.queue.mainPool.constrainGeneration = [{ filterId: 'gen-pool', applyAs: 'regular' }]
 			s.queue.mainPool.layerRequestFilters = [{ filterId: 'gen-pool', applyAs: 'regular' }]
-			s.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 			s.queue.mainPool.generateVotes = { enabled: true, displayProps: ['map', 'gamemode'] }
 		},
 	})

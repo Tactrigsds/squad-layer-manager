@@ -489,6 +489,17 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const who = e.contributor?.type === 'role' ? `role ${e.contributor.roleId}` : 'a contributor'
 			return e.action === 'added' ? `added ${who} to filter ${name}` : `removed ${who} from filter ${name}`
 		}
+		case 'ROTATION_CHANGED': {
+			const name = e.rotationName ? `"${e.rotationName}"` : e.rotationId
+			if (e.action === 'created' && e.clonedFrom) return `cloned rotation ${e.clonedFrom} as ${name}`
+			const fields = e.action === 'updated' && e.changedFields?.length ? ` (${e.changedFields.join(', ')})` : ''
+			return `${e.action} rotation ${name}${fields}`
+		}
+		case 'ROTATION_CONTRIBUTOR_CHANGED': {
+			const name = e.rotationName ? `"${e.rotationName}"` : e.rotationId
+			const who = e.contributor?.type === 'role' ? `role ${e.contributor.roleId}` : 'a contributor'
+			return e.action === 'added' ? `added ${who} to rotation ${name}` : `removed ${who} from rotation ${name}`
+		}
 		case 'USER_ACCOUNT_CHANGED': {
 			const count = e.steamIds?.length ?? 0
 			const accounts = count > 1 ? `${count} Steam accounts` : 'their Steam account'

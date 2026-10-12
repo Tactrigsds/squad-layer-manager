@@ -3,9 +3,9 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog } from '@/components/ui/headless-dialog'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,7 @@ type SelectLayersDialogProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected?: L.LayerId[]
-	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & ListHostPrt.KeyProp>
 	open: boolean
 	onOpenChange: (isOpen: boolean) => void
 	// rendered beside the vote/set-layer switch, e.g. the play next / play after switch
@@ -46,7 +46,7 @@ type SelectLayersDialogContentProps = {
 	pinMode?: SelectMode
 	selectQueueItems?: (queueItems: LL.NewItem[]) => void
 	defaultSelected: L.LayerId[]
-	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & ListHostPrt.KeyProp>
 	modeSwitchAdditions?: React.ReactNode
 	footerBeforeSubmit?: React.ReactNode
 	modeSwitchAdditionsLabel?: string
@@ -177,7 +177,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	return (
 		<LayerPickerLayout
 			frameKey={frameKey}
-			squadServer={props.stores?.squadServer}
+			listHost={props.stores?.listHost}
 			title={props.title}
 			description={props.description}
 			tourPrefix="add"

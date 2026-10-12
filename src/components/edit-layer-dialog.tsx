@@ -2,9 +2,9 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { HeadlessDialog } from '@/components/ui/headless-dialog'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
@@ -23,14 +23,14 @@ export type EditLayerDialogProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & ListHostPrt.KeyProp>
 }
 
 type EditLayerDialogContentProps = {
 	layerId?: L.LayerId
 	onSelectLayer: (layerId: L.LayerId) => void
 	cursor?: LL.Cursor
-	stores?: Partial<SelectLayersFrame.KeyProp & SquadServerFrame.KeyProp>
+	stores?: Partial<SelectLayersFrame.KeyProp & ListHostPrt.KeyProp>
 	onClose: () => void
 }
 
@@ -44,7 +44,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			selected: defaultLayerId ? [defaultLayerId] : [],
 			maxSelected: 1,
 			minSelected: defaultLayerId ? 1 : 0,
-			squadServer: props.stores?.squadServer,
+			listHost: props.stores?.listHost,
 		})
 	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
@@ -71,12 +71,12 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 	return (
 		<LayerPickerLayout
 			frameKey={frameKey}
-			squadServer={props.stores?.squadServer}
+			listHost={props.stores?.listHost}
 			title={tr.text(L_Msgs.editLayerTitle())}
 			tourPrefix="edit-layer"
 			canToggleColumns={false}
 			footer={
-				<Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit} className={cn(phone ? 'w-full' : 'self-end')}>
+				<Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit} className={cn(phone ? 'w-full' : 'ms-auto')}>
 					{tr.text(L_Msgs.submit())}
 				</Button>
 			}

@@ -262,7 +262,36 @@ export const settingNextLayer = def('Setting Next Layer')
 
 export const settingNextLayerBlurb = def('SLM is writing this layer to the game server.')
 
-export const pasteRotationTitle = def('Paste Rotation')
+export const addRotationTitle = def('Add Rotation')
+
+// where new layers go: in place of every layer in the list, ahead of them, or after them
+export const placeReplace = def('Replace')
+
+export const placeStart = def('Add to start')
+
+export const placeEnd = def('Add to end')
+
+// heads the queue item menu's entries about the item, under the ones about its layer
+export const queueItemGroup = def('Queue item')
+
+// the Add Rotation dialog's tabs: layers pasted one per line, or a rotation saved on the rotations page
+export const addRotationPasteTab = def('Paste')
+
+export const addRotationSavedTab = def('Saved Rotation')
+
+export const pasteRotationPlaceholder = def(
+	'One layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id), or a rotation exported as YAML or plain text',
+)
+
+export const searchRotations = def('Search rotations')
+
+export const noRotationsMatch = def('No rotations match.')
+
+export const pickRotationToPreview = def('Select a rotation to see its layers.')
+
+export const addRotationItems = def('{count, plural, =0 {Add Rotation} one {Add # Item} other {Add # Items}}', (count: number) => ({
+	count,
+}))
 
 // -------- the queue panel --------
 

@@ -39,9 +39,27 @@ layer until someone turns updates back on. Turning them back on disables voting.
 ## Repeat rules
 
 A _repeat rule_ sets how soon a map, layer or faction may be played again, counting across both the queue and the
-recent match history. Each rule covers one attribute. Set them on the _Repeat Rules_ tab.
+recent match history. Each rule covers one attribute.
 
-These are the defaults:
+Repeat rules are kept in _repeat rulesets_. A repeat ruleset is a named list of repeat rules that several servers and
+rotations can share. Each server uses one repeat ruleset, and a new server gets a repeat ruleset of its own, named after
+the server.
+
+To change a server's repeat rules:
+
+1. Open the _Repeat Rules_ tab of the pool configuration window.
+2. Pick a repeat ruleset under _Repeat ruleset_, or keep the one shown.
+3. Edit the rules.
+4. Press _Save Changes_.
+
+_Save Changes_ saves the rules into the repeat ruleset, so every server using that repeat ruleset gets the new rules.
+
+Use _New repeat ruleset_, beside the picker, to create a repeat ruleset. It starts with a copy of the rules shown, and
+the server switches to it once _Save Changes_ is pressed. Use the pencil beside the picker to rename the repeat ruleset
+shown. The settings page lists every repeat ruleset under _Repeat Rulesets_. A repeat ruleset can only be deleted
+there, and only while no server or rotation uses it.
+
+These are the rules a new server's repeat ruleset starts with:
 
 ![default_repeat_rules](../../images/configuring/default_repeat_rules.png)
 

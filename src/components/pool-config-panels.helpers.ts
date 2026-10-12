@@ -1,4 +1,5 @@
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
@@ -7,7 +8,7 @@ import * as RbacClient from '@/systems/rbac.client'
 // Data access abstraction for the shared pool-configuration panels (see pool-config-panels.tsx). The same UI is
 // mounted against two very different editing substrates: the dashboard popover's ops-based settings store, and the
 // settings page's draft BehaviorSubject (SettingsForm override). Paths are relative to the pool object
-// (queue.mainPool).
+// (queue.mainPool), except for the repeat rules panel, whose api is rooted at a list of rules (useRepeatRulesetRulesApi).
 export type PoolConfigApi = {
 	// the substrate the panels read from, plus how to project a pool-relative path out of its state
 	source: Zus.AnyInput<any>
@@ -37,6 +38,34 @@ export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS
 		writeDenied,
 		resetKey: 0,
 	}
+}
+
+// api over a ruleset editor's draft rules. Writing them needs write access to the rulesets setting, the same check
+// settings.global.saveRepeatRuleset makes.
+export function useRepeatRulesetRulesApi(key: RepeatRulesetEditorFrame.Key): PoolConfigApi {
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
+	const resetKey = Zus.useStore(key, (s) => s.resetKey)
+	const writeDenied = RBAC.settingsPathAllowed(RBAC.globalSettingsWriteAccess(perms), ['repeatRulesets'])
+		? null
+		: RBAC.permissionDenied('all', ['global-settings:write on rulesets'])
+	const stores = { repeatRulesetEditor: key }
+	return {
+		source: key,
+		read: (s, path) => getAt(s.draft, path),
+		getValue: (path) => getAt(Zus.getState(key).draft, path),
+		set: (path, value) => RepeatRulesetEditorFrame.Actions.set(stores, path, value),
+		writeDenied,
+		resetKey,
+	}
+}
+
+function getAt(root: unknown, path: SETTINGS.SettingsPath): unknown {
+	let cur: any = root
+	for (const key of path) {
+		if (cur === null || cur === undefined) return undefined
+		cur = cur[key]
+	}
+	return cur
 }
 
 // subscribes to the value at `path`, re-rendering when it changes. A module-scope hook rather than a method on the

@@ -5,8 +5,10 @@ import type * as ODSM from '@/lib/odsm'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders.models'
 import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'
 import * as L from '@/models/layer.models'
+import * as ROT from '@/models/rotations.models'
 import * as SLL from '@/models/shared-layer-list.models'
 
 const USER = 5n
@@ -389,5 +391,55 @@ describe('copy-on-write', () => {
 		expect(next.savedList).toBe(state.savedList)
 		expect(next.mutations).toBe(state.mutations)
 		expect(next.savedBackburner).toBe(state.savedBackburner)
+	})
+})
+
+describe('adding a saved rotation', () => {
+	const source: LL.Source = { type: 'manual', userId: USER }
+	const rotation: Pick<ROT.Rotation, 'id' | 'items'> = {
+		id: 'weekend',
+		items: [
+			{
+				...LL.createItem({ type: 'single-list-item', layerId: L.DEFAULT_LAYER_ID }, { type: 'unknown' }),
+				notes: [{ id: 'note01', text: 'watch the middle cap' }],
+			},
+			LL.createVoteItem([L.DEFAULT_LAYER_ID, OTHER_LAYER_ID], { type: 'unknown' }),
+		],
+	}
+
+	it('replaces the queue in one op when clearing what was there', () => {
+		const existing = [
+			LL.createItem({ type: 'single-list-item', layerId: OTHER_LAYER_ID }, source),
+			LL.createItem({ type: 'single-list-item', layerId: OTHER_LAYER_ID }, source),
+		]
+		const initial = SLL.createNewState(existing)
+		const items = ROT.toQueueItems(rotation, source).map((item) => LL.createItem(item, source))
+		const { state } = apply(initial, {
+			op: 'add',
+			index: { outerIndex: 0, innerIndex: null },
+			items,
+			clearItemIds: existing.map((item) => item.itemId),
+			opId: `op-${counter++}`,
+			userId: USER,
+			editWindowSeqId: initial.editWindowSeqId,
+		})
+		expect(state.list.map((item) => item.itemId)).toEqual(items.map((item) => item.itemId))
+		for (const item of existing) expect(state.mutations.removed.has(item.itemId)).toBe(true)
+	})
+
+	it('gives every item a fresh id, the rotation tag and notes that name the rotation', () => {
+		const tag = LTag.fromRotationTagId('weekend')
+		const [single, vote] = ROT.toQueueItems(rotation, source)
+		const again = ROT.toQueueItems(rotation, source)
+		expect(single.itemId).not.toBe(rotation.items[0].itemId)
+		expect(single.itemId).not.toBe(again[0].itemId)
+		if (single.type !== 'single-list-item' || vote.type !== 'vote-list-item') throw new Error('item types changed')
+		expect(single.tags).toEqual([tag])
+		expect(single.notes).toEqual([expect.objectContaining({ text: 'watch the middle cap', fromRotation: 'weekend' })])
+		expect(LNote.isRotationNote(single.notes![0])).toBe(true)
+		for (const choice of vote.choices) {
+			expect(choice.tags).toEqual([tag])
+			expect(choice.source).toEqual(source)
+		}
 	})
 })

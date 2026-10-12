@@ -29,9 +29,9 @@ test.beforeAll(async () => {
 				invertedAlertMessage: 'Not in the RAAS pool',
 			}),
 		],
+		repeatRules: [],
 		serverSettings: (settings) => {
 			selectableFilter(settings.queue.mainPool, 'raas-only', { indicate: 'both' })
-			settings.queue.mainPool.repeatRules = []
 		},
 	})
 })

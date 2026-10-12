@@ -302,6 +302,31 @@ export const FilterContributorChangedSchema = event('FILTER_CONTRIBUTOR_CHANGED'
 })
 export type FilterContributorChanged = z.infer<typeof FilterContributorChangedSchema>
 
+export const RotationChangedSchema = event('ROTATION_CHANGED', {
+	action: z.enum(['created', 'updated', 'deleted']),
+	rotationId: z.string(),
+	// the rotation's name at the time of the action: ids are opaque, and the rotation may since have been renamed or deleted
+	rotationName: z.string().optional(),
+	// for 'created': the rotation it was cloned from, if any
+	clonedFrom: z.string().optional(),
+	// for 'updated': which fields the edit touched (name, items, repeatRulesetId, ...)
+	changedFields: z.array(z.string()).optional(),
+})
+export type RotationChanged = z.infer<typeof RotationChangedSchema>
+
+export const RotationContributorChangedSchema = event('ROTATION_CONTRIBUTOR_CHANGED', {
+	action: z.enum(['added', 'removed']),
+	rotationId: z.string(),
+	rotationName: z.string().optional(),
+	contributor: z
+		.discriminatedUnion('type', [
+			z.object({ type: z.literal('user'), userId: USR.UserIdSchema }),
+			z.object({ type: z.literal('role'), roleId: z.string() }),
+		])
+		.optional(),
+})
+export type RotationContributorChanged = z.infer<typeof RotationContributorChangedSchema>
+
 // a user acting on their own account
 export const UserAccountChangedSchema = event('USER_ACCOUNT_CHANGED', {
 	action: z.enum(['steam-linked', 'steam-unlinked', 'nickname-updated', 'bm-token-set', 'bm-token-removed']),
@@ -465,6 +490,8 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	ServerRegistryChangedSchema,
 	FilterChangedSchema,
 	FilterContributorChangedSchema,
+	RotationChangedSchema,
+	RotationContributorChangedSchema,
 	UserAccountChangedSchema,
 	PlayerFlagsUpdatedSchema,
 	PlayerNoteAddedSchema,
@@ -549,6 +576,8 @@ export const APP_EVENT_META = {
 	SERVER_REGISTRY_CHANGED: EM.meta<ServerRegistryChanged>(),
 	FILTER_CHANGED: EM.meta<FilterChanged>(),
 	FILTER_CONTRIBUTOR_CHANGED: EM.meta<FilterContributorChanged>(),
+	ROTATION_CHANGED: EM.meta<RotationChanged>(),
+	ROTATION_CONTRIBUTOR_CHANGED: EM.meta<RotationContributorChanged>(),
 	USER_ACCOUNT_CHANGED: EM.meta<UserAccountChanged>(),
 	APP_STARTED: EM.meta<AppStarted>(),
 	APP_RESTARTED: EM.meta<AppRestarted>(),

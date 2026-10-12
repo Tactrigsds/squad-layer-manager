@@ -54,9 +54,9 @@ test.describe('generation weights', () => {
 					matchupWeights: { AllianceMatchup: [], FactionMatchup: [], UnitMatchup: [], FactionUnitMatchup: [] },
 				}
 			},
+			repeatRules: [],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'vanilla')
-				settings.queue.mainPool.repeatRules = []
 			},
 		})
 		try {
@@ -100,9 +100,9 @@ test.describe('generation weights', () => {
 					},
 				}
 			},
+			repeatRules: [],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'vanilla')
-				settings.queue.mainPool.repeatRules = []
 			},
 		})
 		try {
@@ -133,9 +133,9 @@ test.describe('repeat rules', () => {
 			filters: [
 				filter('three-maps', 'Three Maps', FB.and([FB.eq('Collection', 'OWI'), FB.inValues('Map', ['Gorodok', 'Narva', 'Sumari'])])),
 			],
+			repeatRules: [{ label: 'Map', field: 'Map', within: 1, warn: false, indicate: true }],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'three-maps')
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 1, warn: false, indicate: true }]
 			},
 		})
 		try {
@@ -146,7 +146,7 @@ test.describe('repeat rules', () => {
 			await page.getByRole('button', { name: 'Gen Vote' }).click()
 			const dialog = page.getByRole('dialog', { name: 'Generate Vote' })
 			// after the queued Gorodok, so it is the layer the rule looks back on
-			await dialog.getByRole('button', { name: 'Play After' }).click()
+			await dialog.getByRole('button', { name: 'Add to end' }).click()
 			const hideRepeats = dialog.getByRole('checkbox', { name: 'Hide Repeats' })
 			await expect(hideRepeats).toHaveAttribute('aria-checked', 'true')
 

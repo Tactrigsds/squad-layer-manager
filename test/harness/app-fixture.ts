@@ -14,6 +14,8 @@ import type * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
+import * as RRS from '@/models/repeat-rulesets.models'
+import * as ROT from '@/models/rotations.models'
 import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -151,12 +153,16 @@ export type AppFixtureOptions = {
 	// the test timings below already applied), so durations are milliseconds, not '3m' strings.
 	globalSettings?: (settings: SETTINGS.GlobalSettings) => void
 	serverSettings?: (settings: SETTINGS.ServerSettings) => void
+	// the rules of the test server's own ruleset (TEST_REPEAT_RULESET_ID). Defaults to the rules a new server gets.
+	repeatRules?: RRS.RepeatRuleConfig[]
 	// the queue the server starts with. Generation only fires when the saved list would be empty, so a
 	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing.
 	layerQueue?: LL.List
 	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.
 	filters?: F.FilterEntity[]
+	// rotations to seed (see arrange.rotation)
+	rotations?: ROT.Rotation[]
 	// saved layer requests (backburner) to seed
 	backburner?: BB.BackburnerItem[]
 	// steam ids that are admins in game. Written to an Admins.cfg the app reads as a `local` admin
@@ -247,6 +253,8 @@ const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
 // the single admin list the harness defines; tests name it when assigning roles to in-game admins
 export const TEST_ADMIN_LIST = 'test-admins'
+// the test server's own ruleset, holding opts.repeatRules
+export const TEST_REPEAT_RULESET_ID = 'emu-server'
 // a group holding no admin-identifying permission, for reserveAdmins
 const RESERVE_GROUP = 'SlmTestReserve'
 const RESERVE_PERM: SM.PlayerPerm = 'reserve'
@@ -426,6 +434,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		squadBrowser: { enabled: true, token: '' },
 		steam: { enabled: true, token: '' },
 	}
+	globalSettings.repeatRulesets = [
+		...globalSettings.repeatRulesets,
+		{ id: TEST_REPEAT_RULESET_ID, name: 'Emulated Server', ownerServerId: serverId, rules: [...(opts.repeatRules ?? RRS.DEFAULT_RULES)] },
+	]
 	opts.globalSettings?.(globalSettings)
 	await db
 		.insert(Schema.globalSettings)
@@ -451,6 +463,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	applyTestServerTimings(serverSettings)
 	// the harness's list applies to the test server, or nothing in it would recognise an admin
 	serverSettings.adminLists = [TEST_ADMIN_LIST]
+	serverSettings.queue.mainPool.repeatRulesetId = TEST_REPEAT_RULESET_ID
 	opts.serverSettings?.(serverSettings)
 
 	// Put the emulated server's next layer where a steady-state server's would be: on the head of
@@ -581,6 +594,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// holds plain json (unlike servers.layerQueue and the settings columns).
 	if (opts.filters && opts.filters.length > 0) {
 		await db.insert(Schema.filters).values(opts.filters)
+	}
+	// written the way rotation.server writes them: items and tags are superjson-encoded json columns
+	if (opts.rotations && opts.rotations.length > 0) {
+		await db.insert(Schema.rotations).values(opts.rotations.map((r) => superjsonify(Schema.rotations, ROT.toRow(r))))
 	}
 	driver.close()
 

@@ -43,6 +43,7 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
+import * as ROT_Msgs from '@/messages/rotations.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as Project from '@/models/project.models'
 import * as RPC from '@/orpc.client'
@@ -146,6 +147,7 @@ export default function NavBar() {
 			: { key: 'server', label: tr.text(APP_Msgs.navServer()), to: '/servers' },
 		{ key: 'commands', label: tr.text(APP_Msgs.navCommands()), to: '/commands' },
 		{ key: 'filters', label: tr.text(APP_Msgs.navFilters()), to: '/filters' },
+		{ key: 'rotations', label: tr.text(ROT_Msgs.navRotations()), to: '/rotations' },
 		...(historyDenied
 			? []
 			: [{ key: 'history', label: tr.text(APP_Msgs.navHistory()), to: '/history', search: { type: 'events', mode: 'basic' } }]),
@@ -640,7 +642,7 @@ function useHoverIntent(onIntent: () => void) {
 }
 
 function ExploreLayersDialogBody(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
-	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID, rememberCollection: true })
+	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
 

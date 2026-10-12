@@ -75,7 +75,7 @@ export const activity = def((a: UP.ActivityDescriptor) => {
 			return t('Generating vote')
 		case 'ADDING_ITEM_FROM_HISTORY':
 			return t('Adding layer from History')
-		case 'PASTE_ROTATION':
+		case 'ADD_ROTATION':
 			return t('Pasting rotation')
 		case 'EDITING_ITEM':
 			return a.itemName === undefined ? t('Editing') : t('Editing {item}', { item: a.itemName })
@@ -119,7 +119,7 @@ export const attributedActivity = def((name: string, a: UP.ActivityDescriptor) =
 			return t('{name} is generating vote...', { name })
 		case 'ADDING_ITEM_FROM_HISTORY':
 			return t('{name} is adding layer from history...', { name })
-		case 'PASTE_ROTATION':
+		case 'ADD_ROTATION':
 			return t('{name} is pasting rotation...', { name })
 		case 'EDITING_ITEM':
 			return a.itemName === undefined

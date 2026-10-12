@@ -81,4 +81,5 @@ export type LQStateUpdate = {
 				event: 'edit-queue' | 'edit-settings'
 				user: USR.MiniUser
 		  }
+		| { type: 'plugin'; event: 'edit-settings'; pluginId: string }
 }

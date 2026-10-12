@@ -747,6 +747,20 @@ export function getLayerItemForMatchHistoryEntry(entry: MH.MatchDetails): LayerI
 	}
 }
 
+// whether statuses computed for `statusesFor` hold for the item as `current` has it: the item holds the same layers in
+// both. An item just edited or added is not covered until the next status query answers.
+export function statusesCoverItem(statusesFor: LayerItemsState | null, current: LayerItemsState, itemId: ItemId): boolean {
+	if (!statusesFor) return false
+	if (statusesFor === current) return true
+	const layersOf = (items: OrderedLayerItems) => {
+		const { item } = Obj.destrNullable(LL.findItemById(items, itemId))
+		if (!item) return undefined
+		return isVoteListitem(item) ? item.choices.map((choice) => choice.layerId).join(',') : item.layerId
+	}
+	const layers = layersOf(current.layerItems)
+	return layers !== undefined && layers === layersOf(statusesFor.layerItems)
+}
+
 export function getParityForLayerItem(state: LayerItemsState, item: LayerItem | string) {
 	if (!state.layerItems) return 0
 	const itemId = typeof item === 'string' ? item : item.itemId

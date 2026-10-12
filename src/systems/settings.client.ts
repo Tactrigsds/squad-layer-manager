@@ -4,8 +4,11 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as RRS from '@/models/repeat-rulesets.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
+
+export type { PublicSettings }
 
 // ============================== public settings: safe global settings + server registry, for any connected client ==============================
 
@@ -13,6 +16,16 @@ export const PublicSettingsStore = Zus.createStore<PublicSettings | undefined>((
 
 export function getSettings() {
 	return PublicSettingsStore.getState()
+}
+
+const NO_REPEAT_RULESETS: readonly RRS.Ruleset[] = []
+
+export function getRepeatRulesets(): readonly RRS.Ruleset[] {
+	return PublicSettingsStore.getState()?.repeatRulesets ?? NO_REPEAT_RULESETS
+}
+
+export function selectRepeatRulesets(s: PublicSettings | undefined): readonly RRS.Ruleset[] {
+	return s?.repeatRulesets ?? NO_REPEAT_RULESETS
 }
 
 // whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).

@@ -755,6 +755,31 @@ export function appliedFilterIds(node: FilterNode | EditableFilterNode, ids = ne
 	return ids
 }
 
+// the id a copy of `id` takes by default: `<id>-copy`, then `<id>-copy-2`, ...
+export function cloneId(taken: ReadonlySet<string>, id: string): string {
+	const base = `${id.slice(0, 58)}-copy`
+	if (!taken.has(base)) return base
+	for (let i = 2; ; i++) if (!taken.has(`${base}-${i}`)) return `${base}-${i}`
+}
+
+export function cloneName(name: string): string {
+	return `${name.slice(0, 120)} (copy)`
+}
+
+// the owner as one string, for a url or a select
+export function ownerKey(owner: FilterOwner): string {
+	switch (owner.type) {
+		case 'slm-user':
+			return `user:${owner.userId}`
+		case 'plugin':
+			return `plugin:${owner.pluginId}`
+		case 'system':
+			return 'system'
+		default:
+			assertNever(owner)
+	}
+}
+
 export const FilterEntitySchema = BaseFilterEntitySchema
 	// direct self-reference only. A loop through other filters is caught where the whole set is known, on the
 	// write path (see filter-references.models.ts, findCycle)

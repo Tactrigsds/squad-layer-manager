@@ -1,5 +1,6 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import * as SRQPrt from '@/frame-partials/switch-requests.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
@@ -9,25 +10,20 @@ import * as ODSM from '@/lib/odsm'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
-import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import * as LL_Msgs from '@/messages/layer-list.messages'
-import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
-import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as SRQClient from '@/systems/switch-requests.client'
-import * as UPClient from '@/systems/user-presence.client'
 import * as VoteClient from '@/systems/vote.client'
 
 import { frameManager } from './frame-manager'
@@ -37,24 +33,10 @@ export type Input = { serverId: string }
 export type State = ChatPrt.Store &
 	ServerSettingsPrt.Store &
 	LayerQueuePrt.Store &
+	ListHostPrt.Store &
 	TeamswapsPrt.Store &
 	SRQPrt.Store &
 	TeamsPanelPrt.Store & {
-		layerItemsState: LQY.LayerItemsState
-		layerItemStatuses: LQY.LayerItemStatuses | null
-		// the queue the statuses above were computed for. Statuses lag an edit by a debounce plus a query, so a caller that
-		// has to be right about them (the save flow gates on warnings) can tell current answers from stale ones. Display
-		// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
-		layerItemStatusesFor: LQY.LayerItemsState | null
-
-		// what the last saved queue warns about on its own. The save flow subtracts these from the draft's warnings to
-		// find the ones the current edit session is answerable for. Refreshed on demand at save time rather than watched:
-		// a second standing status query starves the one the indicators read (see refreshSavedQueueWarnings).
-		savedQueueWarnings: LQY.QueueWarning[] | null
-
-		// a Fix Repeats run is searching or applying its edits
-		fixingRepeats: boolean
-
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
 		// the selection once it stops moving. drag-to-select writes playerSelection once per row the cursor crosses, and
@@ -82,7 +64,7 @@ export const frame = frameManager.createFrame<Types>({
 	setup(args) {
 		ChatPrt.initChat(args)
 		ServerSettingsPrt.initServerSettings(args)
-		LayerQueuePrt.initLayerQueue(args)
+		LayerQueuePrt.initLayerQueue(args, { type: 'server', serverId: args.input.serverId })
 		TeamswapsPrt.initTeamswaps(args)
 		SRQPrt.initSwitchRequests(args)
 
@@ -93,11 +75,8 @@ export const frame = frameManager.createFrame<Types>({
 		MatchHistoryClient.watchServer(args.input.serverId, args.cleanup)
 		LayerQueueClient.watchServer(args.input.serverId, args.cleanup)
 		args.set({
-			layerItemsState: LQY.initLayerItemsState(),
-			layerItemStatuses: null,
-			layerItemStatusesFor: null,
-			savedQueueWarnings: null,
-			fixingRepeats: false,
+			...ListHostPrt.INITIAL,
+			listHost: { type: 'server', serverId: args.input.serverId },
 			playerSelection: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
@@ -128,36 +107,13 @@ export const frame = frameManager.createFrame<Types>({
 		args.cleanup.push(
 			Rx.combineLatest([
 				state$.pipe(
-					Rx.map(([state]) => state.layerItemsState),
+					Rx.map(([state]) => state.settings.saved.queue.mainPool.repeatRulesetId),
 					Rx.distinctUntilChanged(),
 				),
-				state$.pipe(
-					Rx.map(([state]) => state.settings.saved),
-					Rx.distinctUntilChanged(),
-				),
-				// filter edits invalidate previously computed statuses
-				Zus.toObservable(LayerQueriesClient.Store, true).pipe(
-					Rx.map(([state]) => state.backgroundStateEpoch),
-					Rx.distinctUntilChanged(),
-				),
-			])
-				.pipe(
-					Rx.debounceTime(250),
-					Rx.switchMap(([list, settings]) =>
-						LayerQueriesClient.layerItemStatuses$({
-							constraints: SETTINGS.getSettingsConstraints(settings),
-							skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-							list,
-						}).pipe(
-							Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
-							Rx.catchError(() => Rx.EMPTY),
-						),
-					),
-				)
-				.subscribe(([layerItemStatuses, list]) => {
-					if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
-				}),
+				Zus.toStream(SettingsClient.PublicSettingsStore, SettingsClient.selectRepeatRulesets, { fireImmediately: true }),
+			]).subscribe(([repeatRulesetId, rulesets]) => args.set({ repeatRules: [...RRS.rulesFor(rulesets, repeatRulesetId)] })),
 		)
+		ListHostPrt.initStatuses(args)
 	},
 })
 
@@ -169,6 +125,12 @@ export namespace Sel {
 	// describes every layer that exists, not the ones a hypothetical vanilla server could load
 	export function settingsOrDefault(s: State | undefined) {
 		return s?.settings.saved ?? SETTINGS.catalogSettings()
+	}
+
+	const NO_RULES: readonly RRS.RepeatRuleConfig[] = []
+	// with no server, no repeat rules apply
+	export function repeatRulesOrNone(s: State | undefined) {
+		return s?.repeatRules ?? NO_RULES
 	}
 
 	export function playerSelection(s: State) {
@@ -283,65 +245,6 @@ function visiblePlayerSet(stores: KeyProp): Set<SM.PlayerId> | null {
 export namespace Actions {
 	function store(stores: KeyProp) {
 		return Zus.resolveStore<State>(stores.squadServer!)
-	}
-
-	// Rearranges the draft queue to clear repeat warnings. The queue has no batch op, so the edits go out one at a time
-	// and stop at the first one the server refuses.
-	export async function fixRepeats(stores: KeyProp) {
-		const s = store(stores)
-		if (s.getState().fixingRepeats) return
-		s.setState({ fixingRepeats: true })
-		try {
-			const state = s.getState()
-			const settings = state.settings.saved
-			const list = state.layerItemsState
-			const layerTags = SettingsClient.PublicSettingsStore.getState()?.layerTags ?? []
-			const presence = UPClient.Store.getState()
-			const res = await LayerQueriesClient.solveRepeatViolations({
-				list,
-				constraints: SETTINGS.getSettingsConstraints(settings),
-				skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-				noSwapTags: layerTags.filter((tag) => tag.preventSwaps).map((tag) => tag.id),
-				poolConstraints: SETTINGS.getPoolMembershipConstraints(settings),
-				// another editor is working on these
-				pinnedItemIds: state.queue.layerList
-					.map((item) => item.itemId)
-					.filter((itemId) => UPClient.Sel.isSllItemLocked(itemId)(presence)),
-			})
-			if (res?.code !== 'ok') {
-				toast.error(...tr.toast(LL_Msgs.fixRepeatsFailed()))
-				return
-			}
-			if (res.baselineViolations === 0) {
-				toast(...tr.toast(LL_Msgs.noRepeatsToFix()))
-				return
-			}
-			if (res.violations === res.baselineViolations) {
-				toast(...tr.toast(LL_Msgs.repeatsUnfixable()))
-				return
-			}
-			if (s.getState().layerItemsState !== list) {
-				toast.error(...tr.toast(LL_Msgs.queueChangedDuringFix()))
-				return
-			}
-
-			const queue = { queue: stores.squadServer! }
-			const current = s.getState().queue.layerList.map((item) => item.itemId)
-			const moves = LL.movesToOrder(current, res.order as LL.ItemId[])
-			for (const itemId of res.swapped) {
-				if (!(await LayerQueuePrt.Actions.dispatch(queue, { op: 'swap-factions', itemId: itemId as LL.ItemId }))) return
-			}
-			for (const move of moves) {
-				const op = { op: 'move' as const, itemId: move.itemId, cursor: move.cursor, newFirstItemId: LL.createItemId() }
-				if (!(await LayerQueuePrt.Actions.dispatch(queue, op))) return
-			}
-			const affected = new Set([...res.swapped, ...moves.map((move) => move.itemId)])
-			toast.success(
-				...tr.toast(LL_Msgs.repeatsFixed(res.baselineViolations, res.violations, res.swapped.length + moves.length, affected.size)),
-			)
-		} finally {
-			s.setState({ fixingRepeats: false })
-		}
 	}
 
 	export function setSelection(
@@ -512,42 +415,4 @@ export namespace Actions {
 		const settings = SettingsClient.PublicSettingsStore.getState()
 		return TeamsPanelModels.Sel.allEnrichedPlayers(frameState, currentMatch, bmData, bmStore, settings)
 	}
-}
-
-// ---------------------------- layer item statuses ----------------------------
-
-export function statusesAreCurrent(state: State) {
-	return state.layerItemStatusesFor === state.layerItemsState
-}
-
-// The baseline Sel.queueWarnings subtracts: what the saved queue warns about with nobody's edits applied. Run on
-// demand, from the save flow, rather than watched alongside the draft's statuses -- both queries go to the same
-// worker, and a second standing one starves the draft query the indicators read.
-export async function refreshSavedQueueWarnings(key: Zus.AnyStore<State>): Promise<void> {
-	const store = Zus.resolveStore<State>(key)
-	const state = store.getState()
-	const settings = state.settings.saved
-	const recentMatches = await Rx.firstValueFrom(MatchHistoryClient.recentMatches$(state.queue.serverId))
-	const savedList = LQY.resolveLayerItemsState(state.queue.rbSession.localState.savedList, recentMatches)
-	const statuses = await LayerQueriesClient.fetchLayerItemStatuses({
-		constraints: SETTINGS.getSettingsConstraints(settings),
-		skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-		list: savedList,
-	})
-	// a failed query leaves the baseline null, which reports every warning rather than dropping one on a guess
-	store.setState({ savedQueueWarnings: statuses?.warns ?? null })
-}
-
-// Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
-// computed for a list the user has already edited away from -- which is how a stale warning could both block a save
-// and then vanish, leaving the editor stuck. Wait for the statuses that belong to the queue as it is now.
-export async function awaitCurrentStatuses(key: Zus.AnyStore<State>, timeoutMs = 5000): Promise<void> {
-	if (statusesAreCurrent(Zus.getState(key))) return
-	await Rx.firstValueFrom(
-		Zus.toObservable(key, true).pipe(
-			Rx.filter(([state]) => statusesAreCurrent(state)),
-			// a query that never lands must not strand the editor: fall through and gate on what we have
-			Rx.timeout({ first: timeoutMs, with: () => Rx.of(null) }),
-		),
-	)
 }

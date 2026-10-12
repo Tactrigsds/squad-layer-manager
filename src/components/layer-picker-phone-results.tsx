@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial.ts'
+import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -40,7 +40,7 @@ export type ResultsView = 'list' | 'search' | 'advanced'
 // Leaving the input returns to the list. Advanced search is the full filter menu, editing the same constraints.
 export default function PhoneResultsTab(props: {
 	frameKey: SelectLayersFrame.Key
-	squadServer?: SquadServerFrame.Key
+	listHost?: ListHostPrt.Key
 	view: ResultsView
 	setView: (view: ResultsView) => void
 	// pinned under the list view, e.g. the way on to the Summary tab or a dialog's own submit button
@@ -87,7 +87,7 @@ function ListView(props: ViewProps) {
 							</Button>
 						</div>
 					)}
-					<LayerRows frameKey={frameKey} squadServer={props.squadServer} />
+					<LayerRows frameKey={frameKey} listHost={props.listHost} />
 					<Pagination frameKey={frameKey} />
 				</div>
 			</div>
@@ -212,9 +212,9 @@ const DIRECTION_LABELS: Record<LQY.LayersQuerySortDirection, () => string> = {
 	'DESC:ABS': () => tr.text(L_Msgs.sortDescendingByMagnitude()),
 }
 
-function LayerRows(props: { frameKey: SelectLayersFrame.Key; squadServer?: SquadServerFrame.Key; keepFocus?: boolean }) {
+function LayerRows(props: { frameKey: SelectLayersFrame.Key; listHost?: ListHostPrt.Key; keepFocus?: boolean }) {
 	const layers = Zus.useStore(props.frameKey, (s) => s.layerTable.pageData?.layers)
-	const teamParity = Zus.useStore(props.frameKey, props.squadServer ?? null, LayerTablePrt.Sel.teamParity)
+	const teamParity = Zus.useStore(props.frameKey, props.listHost ?? null, LayerTablePrt.Sel.teamParity)
 	const sortColumn = Zus.useStore(props.frameKey, (s) => (s.layerTable.sort?.type === 'column' ? s.layerTable.sort.sortBy : null))
 	if (!layers) return null
 	return (
@@ -408,7 +408,7 @@ function SearchView(props: ViewProps) {
 					<SearchErrors frameKey={frameKey} inputRef={inputRef} setInput={setInput} />
 					<SearchSuggestions frameKey={frameKey} setInput={setInput} />
 					<ResultCount frameKey={frameKey} />
-					<LayerRows frameKey={frameKey} squadServer={props.squadServer} keepFocus />
+					<LayerRows frameKey={frameKey} listHost={props.listHost} keepFocus />
 					<Pagination frameKey={frameKey} />
 				</div>
 			</div>

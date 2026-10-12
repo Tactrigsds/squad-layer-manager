@@ -3,6 +3,7 @@ import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
 import type * as L from '@/models/layer.models'
+import * as ROT from '@/models/rotations.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
 
@@ -63,6 +64,29 @@ export function queue(...layerIds: L.LayerId[]): LL.List {
 export function voteQueueItem(choices: L.LayerId[], opts?: { itemId?: string }): LL.Item {
 	const item = LL.createVoteItem(choices, { type: 'manual', userId: ADMIN_USER.discordId })
 	return opts?.itemId ? { ...item, itemId: opts.itemId } : item
+}
+
+// A rotation, owned by the seeded admin, holding the given items (build them with queue / voteQueueItem).
+export function rotation(
+	id: ROT.RotationId,
+	name: string,
+	items: LL.List,
+	opts?: Partial<Omit<ROT.Rotation, 'id' | 'name' | 'items'>>,
+): ROT.Rotation {
+	const now = Date.now()
+	return {
+		id,
+		name,
+		items: ROT.anonymize(items),
+		description: null,
+		repeatRulesetId: null,
+		tags: [],
+		archived: false,
+		owner: { type: 'slm-user', userId: ADMIN_USER.discordId },
+		createdAt: now,
+		updatedAt: now,
+		...opts,
+	}
 }
 
 // A filter entity, owned by the seeded admin. `filter` is a validated FilterNode -- build it with the

@@ -3,23 +3,29 @@ import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
+import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import { useDebounced } from '@/hooks/use-debounce.ts'
 import * as Arr from '@/lib/array-utils.ts'
 import type * as DH from '@/lib/display-helpers.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as F from '@/models/filter.models.ts'
 import type * as LC from '@/models/layer-columns.models.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as L from '@/models/layer.models'
 import type * as Msgs from '@/models/messages.models.ts'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -28,11 +34,14 @@ import EmojiDisplay from './emoji-display.tsx'
 import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
 import { LayerTags } from './layer-tags.tsx'
-import { type PoolConfigApi, usePoolValue } from './pool-config-panels.helpers.ts'
+import { type PoolConfigApi, usePoolValue, useRepeatRulesetRulesApi } from './pool-config-panels.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
+import { Badge } from './ui/badge'
 import { Checkbox } from './ui/checkbox.tsx'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input.tsx'
 import { Label } from './ui/label.tsx'
+import { Spinner } from './ui/spinner.tsx'
 import { Toggle } from './ui/toggle.tsx'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
@@ -548,10 +557,9 @@ function RepeatRuleRow(props: {
 	onStructural: () => void
 }) {
 	const { index, api, onStructural } = props
-	const rulesPath = ['repeatRules']
-	const rulePath = [...rulesPath, index]
+	const rulePath = [index]
 
-	const rule = usePoolValue(api, rulePath) as SETTINGS.PoolRepeatRuleConfig
+	const rule = usePoolValue(api, rulePath) as RRS.RepeatRuleConfig
 	const drag = DndKit.useDraggable({ type: 'repeat-rule', id: ruleDragId(props.panelId, index) }, { feedback: 'default' })
 
 	// an empty box is how a label is taken away again, so it unsets rather than saving ''
@@ -587,9 +595,9 @@ function RepeatRuleRow(props: {
 	}
 
 	const deleteRule = () => {
-		const rules = api.getValue(rulesPath) as LQY.RepeatRule[]
+		const rules = api.getValue([]) as LQY.RepeatRule[]
 		api.set(
-			rulesPath,
+			[],
 			rules.filter((_, i) => i !== index),
 		)
 		onStructural()
@@ -712,18 +720,18 @@ function RepeatRuleRow(props: {
 	)
 }
 
-export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi }) {
+// api is rooted at the list of rules (see useRepeatRulesetRulesApi)
+function RepeatRulesTable(props: { api: PoolConfigApi }) {
 	const { api } = props
 	const panelId = React.useId()
-	const rulesPath = ['repeatRules']
-	const rulesLength = ((usePoolValue(api, rulesPath) as LQY.RepeatRule[] | null) ?? []).length
+	const rulesLength = ((usePoolValue(api, []) as LQY.RepeatRule[] | null) ?? []).length
 	// remounts the uncontrolled rows after edits that shift or rewrite their seeded values
 	const [structuralKey, setStructuralKey] = React.useState(0)
 	const onStructural = () => setStructuralKey((k) => k + 1)
 
 	const addRule = () => {
-		const rules = (api.getValue(rulesPath) as LQY.RepeatRule[] | null) ?? []
-		api.set(rulesPath, [...rules, { field: 'Map', within: 0, indicate: true, warn: true }])
+		const rules = (api.getValue([]) as LQY.RepeatRule[] | null) ?? []
+		api.set([], [...rules, { field: 'Map', within: 0, indicate: true, warn: true }])
 	}
 
 	// drag-to-reorder via the shared dnd-kit provider (see dndkit.client). The handler is registered once and reads
@@ -741,28 +749,20 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 			const to = parseRuleDragId(String(slot.dragItem.id))
 			const { panelId, api, onStructural } = stateRef.current
 			if (from.panelId !== panelId || to.panelId !== panelId) return
-			const rules = (api.getValue(['repeatRules']) as SETTINGS.PoolRepeatRuleConfig[] | null) ?? []
+			const rules = (api.getValue([]) as RRS.RepeatRuleConfig[] | null) ?? []
 			const reordered = Arr.moveItem(rules, from.idx, to.idx, slot.position)
 			if (reordered === rules) return
-			api.set(['repeatRules'], reordered)
+			api.set([], reordered)
 			onStructural()
 		}, []),
 	)
 
 	return (
-		<div data-tour="pool-repeat-rules" className={cn('space-y-3', props.className)}>
-			<div className="flex items-center justify-between">
-				<span className="flex items-center gap-2">
-					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
-					<ConstraintViolationIcon />
-				</span>
-				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<Button size="sm" variant="outline" disabled={!!api.writeDenied} onClick={addRule}>
-						<Icons.Plus className="h-4 w-4 me-2" />
-						{tr.text(SETTINGS_Msgs.addRepeatRule())}
-					</Button>
-				</PermissionDeniedTooltip>
-			</div>
+		<div data-tour="pool-repeat-rules" className="space-y-3">
+			<span className="flex items-center gap-2">
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
+				<ConstraintViolationIcon />
+			</span>
 			<div className="border rounded-md p-3">
 				<div className={cn(RULE_ROW_GRID, 'text-sm font-medium text-muted-foreground')}>
 					<span />
@@ -783,7 +783,276 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 					))}
 					{rulesLength > 0 && <RuleDropSeparator position="after" panelId={panelId} idx={rulesLength - 1} />}
 				</ol>
+				<PermissionDeniedTooltip denied={api.writeDenied}>
+					<Button size="sm" variant="ghost" className="mt-2" disabled={!!api.writeDenied} onClick={addRule}>
+						<Icons.Plus className="h-4 w-4" />
+						{tr.text(SETTINGS_Msgs.addRepeatRule())}
+					</Button>
+				</PermissionDeniedTooltip>
 			</div>
+		</div>
+	)
+}
+
+// The ruleset a server uses, read and written through poolApi as part of the server's (unsaved) settings.
+export function PoolRepeatRulesetPanel(props: {
+	className?: string
+	poolApi: PoolConfigApi
+	repeatRulesetEditor: RepeatRulesetEditorFrame.Key
+	inlineSave?: boolean
+}) {
+	const { poolApi } = props
+	const repeatRulesetId = (usePoolValue(poolApi, ['repeatRulesetId']) as RRS.RulesetId | null) ?? null
+	return (
+		<RepeatRulesetPanel
+			className={props.className}
+			title={tr.text(SETTINGS_Msgs.repeatRuleset())}
+			help={tr.text(SETTINGS_Msgs.repeatRulesetHelp())}
+			repeatRulesetId={repeatRulesetId}
+			selectDisabled={!!poolApi.writeDenied}
+			onSelect={(id) => poolApi.set(['repeatRulesetId'], id)}
+			repeatRulesetEditor={props.repeatRulesetEditor}
+			inlineSave={props.inlineSave}
+		/>
+	)
+}
+
+// A ruleset picker and the rules in the chosen ruleset. The rules are a draft in the ruleset editor frame, saved by
+// the host alongside its own changes, or by the panel's own save button when `inlineSave` is set.
+export function RepeatRulesetPanel(props: {
+	className?: string
+	title: string
+	help: string
+	repeatRulesetId: RRS.RulesetId | null
+	onSelect: (id: RRS.RulesetId | null) => void
+	selectDisabled: boolean
+	repeatRulesetEditor: RepeatRulesetEditorFrame.Key
+	inlineSave?: boolean
+	// the rules, Save Ruleset and reset open in a dialog instead of rendering in the panel, for narrow hosts
+	rulesInDialog?: boolean
+}) {
+	const { repeatRulesetEditor, repeatRulesetId } = props
+	const [rulesOpen, setRulesOpen] = React.useState(false)
+	const [nameDialog, setNameDialog] = React.useState<'new' | 'rename' | null>(null)
+	const canWriteRepeatRulesets = !RbacClient.useAccess('settings.global.saveRepeatRuleset')
+	const rulesApi = useRepeatRulesetRulesApi(repeatRulesetEditor)
+	const rulesets = Zus.useStore(SettingsClient.PublicSettingsStore, SettingsClient.selectRepeatRulesets)
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const [saved, modified, conflict, saving] = Zus.useStore(
+		repeatRulesetEditor,
+		Zus.useShallow((s) => [s.saved, s.modified, s.conflict, s.saving] as const),
+	)
+
+	const otherServers =
+		repeatRulesetId === null
+			? 0
+			: (servers ?? []).filter((server) => server.repeatRulesetId === repeatRulesetId && server.id !== saved?.ownerServerId).length
+	const owner = saved?.ownerServerId ? servers?.find((server) => server.id === saved.ownerServerId) : undefined
+	const options = rulesets.map((r) => ({ value: r.id, label: r.name }))
+	const unknown = repeatRulesetId !== null && !saved
+
+	return (
+		<div className={cn('space-y-4', props.className)}>
+			<div className="space-y-2">
+				<span className="flex items-center gap-2">
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{props.title}</h4>
+					<HelpTooltip label={props.title}>{props.help}</HelpTooltip>
+				</span>
+				<div className="flex flex-wrap items-center gap-2">
+					<ComboBox
+						className="w-72 max-w-full"
+						title={tr.text(SETTINGS_Msgs.repeatRulesetPicker())}
+						placeholder={tr.text(SETTINGS_Msgs.noRepeatRuleset())}
+						options={options}
+						value={repeatRulesetId ?? undefined}
+						allowEmpty
+						disabled={props.selectDisabled}
+						onSelect={(value) => props.onSelect(value ?? null)}
+					/>
+					{canWriteRepeatRulesets && saved && (
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							aria-label={tr.text(SETTINGS_Msgs.renameRepeatRuleset())}
+							title={tr.text(SETTINGS_Msgs.renameRepeatRuleset())}
+							onClick={() => setNameDialog('rename')}
+						>
+							<Icons.Pencil />
+						</Button>
+					)}
+					{canWriteRepeatRulesets && !props.selectDisabled && (
+						<Button variant="outline" size="sm" onClick={() => setNameDialog('new')}>
+							<Icons.Plus />
+							{tr.text(SETTINGS_Msgs.newRepeatRuleset())}
+						</Button>
+					)}
+					{owner && (
+						<span className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+							{tr.text(SETTINGS_Msgs.ownRepeatRuleset(owner.displayName))}
+						</span>
+					)}
+					{otherServers > 0 && (
+						<span className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.repeatRulesetSharedWith(otherServers))}</span>
+					)}
+				</div>
+				{repeatRulesetId === null && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noRepeatRulesetBlurb())}</p>}
+				{unknown && (
+					<Alert variant="destructive">
+						<AlertDescription>{tr.text(SETTINGS_Msgs.unknownRepeatRuleset(repeatRulesetId))}</AlertDescription>
+					</Alert>
+				)}
+				{conflict && (
+					<Alert variant="warning">
+						<AlertDescription>{tr.text(SETTINGS_Msgs.repeatRulesetConflict())}</AlertDescription>
+					</Alert>
+				)}
+			</div>
+			{saved && props.rulesInDialog && (
+				<div className="flex flex-wrap items-center gap-2">
+					<Button variant="outline" size="sm" onClick={() => setRulesOpen(true)}>
+						<Icons.Repeat2 />
+						{tr.text(
+							rulesApi.writeDenied
+								? SETTINGS_Msgs.viewRepeatRules(saved.rules.length)
+								: SETTINGS_Msgs.editRepeatRules(saved.rules.length),
+						)}
+					</Button>
+					{/* the draft outlives the dialog, so edits left unsaved are flagged here */}
+					{modified && <Badge variant="edited">{tr.text(SETTINGS_Msgs.repeatRulesetUnsaved())}</Badge>}
+				</div>
+			)}
+			{saved && props.rulesInDialog && (
+				<Dialog open={rulesOpen} onOpenChange={setRulesOpen}>
+					<DialogContent className="max-w-5xl min-w-[min(1040px,95vw)]">
+						<DialogHeader>
+							<DialogTitle>{tr.text(SETTINGS_Msgs.repeatRulesOf(saved.name))}</DialogTitle>
+						</DialogHeader>
+						{conflict && (
+							<Alert variant="warning">
+								<AlertDescription>{tr.text(SETTINGS_Msgs.repeatRulesetConflict())}</AlertDescription>
+							</Alert>
+						)}
+						<RepeatRulesTable api={rulesApi} />
+						{props.inlineSave && !rulesApi.writeDenied && (
+							<RepeatRulesetSaveRow repeatRulesetEditor={repeatRulesetEditor} modified={modified} saving={saving} />
+						)}
+					</DialogContent>
+				</Dialog>
+			)}
+			{nameDialog && (
+				<RepeatRulesetNameDialog
+					mode={nameDialog}
+					rulesets={rulesets}
+					current={saved}
+					onClose={() => setNameDialog(null)}
+					onSubmit={async (name) => {
+						if (nameDialog === 'rename') return await RepeatRulesetEditorFrame.Actions.rename({ repeatRulesetEditor }, name)
+						const rules = saved ? Zus.getState(repeatRulesetEditor).draft : RRS.DEFAULT_RULES
+						const id = await RepeatRulesetEditorFrame.Actions.create(name, rules)
+						if (id) props.onSelect(id)
+						return id !== null
+					}}
+				/>
+			)}
+			{saved && !props.rulesInDialog && <RepeatRulesTable api={rulesApi} />}
+			{saved && !props.rulesInDialog && props.inlineSave && !rulesApi.writeDenied && (
+				<RepeatRulesetSaveRow repeatRulesetEditor={repeatRulesetEditor} modified={modified} saving={saving} />
+			)}
+		</div>
+	)
+}
+
+// names a new ruleset, or renames the one being edited
+function RepeatRulesetNameDialog(props: {
+	mode: 'new' | 'rename'
+	rulesets: readonly RRS.Ruleset[]
+	current: RRS.Ruleset | undefined
+	onClose: () => void
+	onSubmit: (name: string) => Promise<boolean>
+}) {
+	const initial =
+		props.mode === 'rename' ? (props.current?.name ?? '') : RRS.freeName(props.rulesets, tr.text(SETTINGS_Msgs.newRepeatRulesetName()))
+	const [name, setName] = React.useState(initial)
+	const [submitting, setSubmitting] = React.useState(false)
+	const nameId = React.useId()
+	const trimmed = name.trim()
+	const taken = RRS.nameTaken(props.rulesets, trimmed, props.mode === 'rename' ? props.current?.id : undefined)
+	const canSubmit = trimmed.length > 0 && !taken && !submitting && (props.mode === 'new' || trimmed !== props.current?.name)
+
+	const submit = async () => {
+		if (!canSubmit) return
+		setSubmitting(true)
+		try {
+			if (await props.onSubmit(trimmed)) props.onClose()
+		} finally {
+			setSubmitting(false)
+		}
+	}
+
+	return (
+		<Dialog open onOpenChange={(open) => !open && props.onClose()}>
+			<DialogContent className="max-w-sm">
+				<DialogHeader>
+					<DialogTitle>
+						{tr.text(props.mode === 'new' ? SETTINGS_Msgs.newRepeatRuleset() : SETTINGS_Msgs.renameRepeatRuleset())}
+					</DialogTitle>
+					{props.mode === 'new' && (
+						<DialogDescription>
+							{tr.text(
+								props.current ? SETTINGS_Msgs.newRepeatRulesetCopies(props.current.name) : SETTINGS_Msgs.newRepeatRulesetDefaults(),
+							)}
+						</DialogDescription>
+					)}
+				</DialogHeader>
+				<div className="space-y-1">
+					<Label htmlFor={nameId}>{tr.text(SETTINGS_Msgs.repeatRulesetName())}</Label>
+					<Input
+						id={nameId}
+						autoFocus
+						defaultValue={initial}
+						maxLength={RRS.MAX_NAME_LENGTH}
+						onChange={(e) => setName(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') void submit()
+						}}
+					/>
+					{taken && <p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.repeatRulesetNameTaken(trimmed))}</p>}
+				</div>
+				<DialogFooter>
+					<Button variant="outline" onClick={props.onClose}>
+						{tr.text(UI_Msgs.cancel())}
+					</Button>
+					<Button variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
+						{submitting && <Spinner className="animate-spin" />}
+						{tr.text(props.mode === 'new' ? SETTINGS_Msgs.createRepeatRuleset() : SETTINGS_Msgs.saveRepeatRulesetName())}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
+function RepeatRulesetSaveRow(props: { repeatRulesetEditor: RepeatRulesetEditorFrame.Key; modified: boolean; saving: boolean }) {
+	const stores = { repeatRulesetEditor: props.repeatRulesetEditor }
+	return (
+		<div className="flex items-center justify-end gap-2">
+			<Button
+				size="icon"
+				variant="ghost"
+				disabled={!props.modified || props.saving}
+				onClick={() => RepeatRulesetEditorFrame.Actions.reset(stores)}
+			>
+				<Icons.Undo className="h-4 w-4 rtl:-scale-x-100" />
+				<span className="sr-only">{tr.text(SETTINGS_Msgs.resetChanges())}</span>
+			</Button>
+			<Button
+				variant="primary"
+				disabled={!props.modified || props.saving}
+				onClick={() => void RepeatRulesetEditorFrame.Actions.save(stores)}
+			>
+				{props.saving && <Spinner className="animate-spin" />}
+				{tr.text(SETTINGS_Msgs.saveRepeatRuleset())}
+			</Button>
 		</div>
 	)
 }

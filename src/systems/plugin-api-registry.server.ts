@@ -22,6 +22,8 @@ import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as modelsRbac from '@/plugin-api/models/rbac'
+import * as modelsRepeatRuleset from '@/plugin-api/models/repeat-ruleset'
+import * as modelsRotation from '@/plugin-api/models/rotation'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginCommands from '@/plugin-api/plugin/commands'
 import * as pluginConfig from '@/plugin-api/plugin/config'
@@ -40,6 +42,8 @@ import * as systemsMatchHistory from '@/plugin-api/systems/match-history'
 import * as systemsPlayerActivity from '@/plugin-api/systems/player-activity'
 import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-reminders'
 import * as systemsRbac from '@/plugin-api/systems/rbac'
+import * as systemsRepeatRuleset from '@/plugin-api/systems/repeat-ruleset'
+import * as systemsRotation from '@/plugin-api/systems/rotation'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
 import * as systemsSquadServer from '@/plugin-api/systems/squad-server'
 
@@ -70,6 +74,8 @@ export function setup() {
 		'slm/models/layer-queries': modelsLayerQueries,
 		'slm/models/match-history': modelsMatchHistory,
 		'slm/models/rbac': modelsRbac,
+		'slm/models/repeat-ruleset': modelsRepeatRuleset,
+		'slm/models/rotation': modelsRotation,
 		'slm/plugin': plugin,
 		'slm/plugin/commands': pluginCommands,
 		'slm/plugin/config': pluginConfig,
@@ -87,6 +93,8 @@ export function setup() {
 		'slm/systems/match-history': systemsMatchHistory,
 		'slm/systems/post-roll-reminders': systemsPostRollReminders,
 		'slm/systems/rbac': systemsRbac,
+		'slm/systems/repeat-ruleset': systemsRepeatRuleset,
+		'slm/systems/rotation': systemsRotation,
 		'slm/systems/player-activity': systemsPlayerActivity,
 		'slm/systems/squad-rcon': systemsSquadRcon,
 		'slm/systems/squad-server': systemsSquadServer,

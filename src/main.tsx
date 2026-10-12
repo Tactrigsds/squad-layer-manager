@@ -16,6 +16,7 @@ import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import * as MessagesClient from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
+import * as RotationClient from '@/systems/rotation.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SiteMode from '@/systems/site-mode.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -51,6 +52,7 @@ if (import.meta.env.DEV) await Catalogues.registerPseudo()
 	SquadServerClient.setup()
 	SettingsClient.setup()
 	FilterEntityClient.setup()
+	RotationClient.setup()
 	BattlemetricsClient.setup()
 	UsersClient.setup()
 	ChangelogClient.setup()
