@@ -8,6 +8,8 @@ console shows the traffic itself. Use the console when the dashboard does not ma
 Open it from **Server Actions -> Server Console**. It is a draggable window, so it can stay open beside the dashboard
 while a problem is reproduced.
 
+![the console, showing a switch-request trade as RCON commands and log lines](../../images/operations/server_console.png)
+
 ## Channels
 
 There are four channels. Read them together (**All**) or one at a time.

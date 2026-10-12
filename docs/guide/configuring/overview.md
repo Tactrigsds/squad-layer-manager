@@ -32,6 +32,8 @@ The other pages in this section cover the remaining settings by topic.
 The _Links_ menu in the nav bar holds links for your users, such as your community's rules or a Discord invite. A
 fresh install starts with links to SLM on GitHub and to these docs.
 
+![nav_links](../../images/configuring/nav_links.png)
+
 - Links for every server are under _Miscellaneous > Nav Links_ in the settings.
 - A server can add its own in its server settings. They show below the global ones while that server is selected.
 

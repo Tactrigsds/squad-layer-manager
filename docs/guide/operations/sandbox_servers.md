@@ -14,6 +14,8 @@ Sandbox Controls**, which appears only on sandbox servers, and only for users ho
 From there, connect fabricated players, speak as them in all or admin chat, form squads, end matches, and drop the RCON
 connection to watch SLM reconnect.
 
+![Sandbox Controls with six fabricated players](../../images/operations/sandbox_controls.png)
+
 The window also embeds the [server console](server_console.md). Check the roster, chat and queue on the dashboard.
 
 ## Seeding

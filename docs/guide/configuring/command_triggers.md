@@ -44,6 +44,8 @@ Once a trigger has pinned arguments, the command's card in _Settings > In-game C
 fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest}} <reason|message>`), including whether each
 one is required under the current reason settings.
 
+![command_trigger_settings](../../images/configuring/command_trigger_settings.png)
+
 ## Words the caller leaves out
 
 A word the caller leaves out renders as nothing, and its token drops out. This makes it optional: `/to2h Alice` runs
