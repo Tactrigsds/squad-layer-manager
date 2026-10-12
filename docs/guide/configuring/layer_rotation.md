@@ -73,7 +73,9 @@ A rule always hides its repeats behind the layer table's _Hide Repeats_. _Option
 
 A rule is named after its attribute, unless _Add label_ gives it a name of its own.
 
-A repeat rule looks back only as far as the most recent seeding or training layer.
+Seeding and training layers are exempt from repeat rules. A seeding or training layer never breaks a repeat rule, and
+no layer counts as a repeat of one. A repeat rule looks back only as far as the most recently played seeding or
+training layer.
 
 ### Fixing repeats
 

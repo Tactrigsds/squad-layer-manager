@@ -202,7 +202,20 @@ function splitIndicators(compiled: CompiledConstraints) {
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
+// Seeding and training layers are exempt from repeat rules, both as the layer that repeats and as the one repeated.
 function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
+	const repeated = repeatedValuesIr(ctx, list, cursorIndex, rule)
+	if (repeated.op === 'false') return repeated
+	const exemptGamemodes: number[] = []
+	for (const gamemode of L.SEEDING_OR_TRAINING_GAMEMODES) {
+		const dbValue = LC.dbValue('Gamemode', gamemode, ctx)
+		if (!LC.isUnmappedDbValue(dbValue) && dbValue !== null) exemptGamemodes.push(Number(dbValue))
+	}
+	if (exemptGamemodes.length === 0) return repeated
+	return LE.and([LE.not({ op: 'in_vals', col: ctx.engine.columnIndex('Gamemode'), vals: exemptGamemodes }), repeated])
+}
+
+function repeatedValuesIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
 	if (rule.within <= 0) return { op: 'false' }
 	const col = (name: string) => ctx.engine.columnIndex(name)
 
@@ -217,6 +230,7 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		for (const source of LQY.getLookbackItems(previousLayers[i])) {
 			const layer = L.toLayer(source.layerId)
+			if (L.isSeedingOrTrainingLayer(layer)) continue
 
 			switch (rule.field) {
 				case 'Map':
@@ -1033,7 +1047,9 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 				targets.push(layerIndex(choice.layerId))
 			}
 			return {
-				sources: LQY.getLookbackItems(item).map((source) => layerIndex(source.layerId)),
+				sources: LQY.getLookbackItems(item).flatMap((source) =>
+					L.isSeedingOrTrainingLayer(parse(source.layerId)) ? [] : [layerIndex(source.layerId)],
+				),
 				targets,
 				// LL.swapFactions swaps a vote all-or-nothing
 				swappable:
@@ -1173,6 +1189,7 @@ export function getRepeatRuleMatchDescriptors(
 	parse: LayerParser = L.toLayer,
 ) {
 	const targetLayer = parse(targetLayerId)
+	if (L.isSeedingOrTrainingLayer(targetLayer)) return undefined
 	const previousLayers = list.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
@@ -1185,6 +1202,7 @@ export function getRepeatRuleMatchDescriptors(
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		for (const layerItem of LQY.getLookbackItems(previousItem)) {
 			const layer = playedLayer ?? parse(layerItem.layerId)
+			if (L.isSeedingOrTrainingLayer(layer)) continue
 			const getViolationDescriptor = (
 				field: LQY.RepeatMatchDescriptorField,
 				sourceField: LQY.RepeatMatchDescriptorField = field,
