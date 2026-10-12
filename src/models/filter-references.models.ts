@@ -68,7 +68,7 @@ export function buildGraph(filters: Iterable<F.FilterEntity>): FilterGraph {
 }
 
 export function buildIndex(
-	filters: Iterable<F.FilterEntity>,
+	filters: readonly F.FilterEntity[],
 	servers: Iterable<ServerPoolConfig>,
 	plugins: Iterable<PluginFilterRefs> = [],
 ): Index {
@@ -102,6 +102,16 @@ export function buildIndex(
 	for (const [filterId, applied] of graph) {
 		for (const appliedId of applied) {
 			add(appliedId, { type: 'filter-entity', filterId })
+		}
+	}
+
+	// kept out of the graph: an exemption is never part of another filter's evaluation, so it can neither close a
+	// cycle nor carry a pool's reach any further
+	for (const entity of filters) {
+		if (!entity.missExemption) continue
+		for (const appliedId of F.appliedFilterIds(entity.missExemption)) {
+			if (graph.get(entity.id)?.has(appliedId)) continue
+			add(appliedId, { type: 'filter-entity', filterId: entity.id })
 		}
 	}
 

@@ -18,7 +18,7 @@ import { initModule } from '@/server/logger'
 const module = initModule('seed')
 let log!: ReturnType<typeof module.getLogger>
 
-type SeededFilter = Omit<F.FilterEntity, 'owner'>
+type SeededFilter = Omit<F.FilterEntity, 'owner' | 'missExemption'>
 
 // Derived from the pool a real server runs. Ids are stable: the seeded pool configuration names them, and
 // main-pool composes the other two rather than restating what they say.
@@ -203,6 +203,6 @@ export async function setup(ctx: C.Db) {
 	await ctx
 		.db()
 		.insert(Schema.filters)
-		.values(SEEDED_FILTERS.map((filter) => F.toRow({ ...filter, owner: F.SYSTEM_OWNER })))
+		.values(SEEDED_FILTERS.map((filter) => F.toRow({ ...filter, missExemption: F.DEFAULT_MISS_EXEMPTION, owner: F.SYSTEM_OWNER })))
 	log.info('Seeded %d filters for a fresh install', SEEDED_FILTERS.length)
 }

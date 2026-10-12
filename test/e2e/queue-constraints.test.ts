@@ -25,13 +25,22 @@ async function saveSettings(page: Page) {
 }
 
 test.describe('queue item constraints', () => {
-	test('indicates repeat-rule violations and filter matches on the items that carry them', async ({ page }) => {
+	test('indicates repeat-rule violations, filter matches and unexempt misses on the items that carry them', async ({ page }) => {
 		const app = await createAppFixture({
 			// Gorodok twice, two apart: within the Map repeat rule's window of 4
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.gorodokAas),
-			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' })],
+			filters: [
+				// exempts seeding and training layers from its miss indicator, as every filter does by default
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), {
+					alertMessage: 'RAAS layers are in the pool',
+					invertedEmoji: '⛔',
+					invertedAlertMessage: 'Not a RAAS layer',
+				}),
+				filter('seed-layers', 'Seed Layers', FB.and([FB.eq('Gamemode', 'Seed')]), { emoji: '🌱', alertMessage: 'A seeding layer' }),
+			],
 			serverSettings: (settings) => {
-				selectableFilter(settings.queue.mainPool, 'raas-only')
+				selectableFilter(settings.queue.mainPool, 'raas-only', { indicate: 'both' })
+				settings.queue.mainPool.indicateMatches.push('seed-layers')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
 				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 			},
@@ -48,8 +57,10 @@ test.describe('queue item constraints', () => {
 			const repeatTooltip = page.getByRole('tooltip')
 			await expect(repeatTooltip).toContainText('Map Gorodok repeats')
 			await expect(repeatTooltip).toContainText('2 ago')
-			// AAS is not RAAS: the pool filter doesn't match it, so it is not indicated as one that does
-			await expect(repeatTooltip).not.toContainText('RAAS Only')
+			// AAS is not RAAS, and nothing exempts it, so it carries the filter's miss indicator
+			await expect(repeatTooltip).toContainText('Not in RAAS Only')
+			await expect(repeatTooltip).toContainText('Not a RAAS layer')
+			await expect(repeatTooltip).not.toContainText('Exempt')
 
 			// dismiss the open tooltip before opening the next, so the assertions below can't read this one
 			await page.keyboard.press('Escape')
@@ -62,8 +73,16 @@ test.describe('queue item constraints', () => {
 			await expect(filterTooltip).toContainText('RAAS layers are in the pool')
 			await expect(filterTooltip).not.toContainText('repeats')
 
-			// Sumari matches nothing and repeats nothing, so it carries no indicator at all
-			await expect(indicators('Sumari_Seed_v1')).toHaveCount(0)
+			await page.keyboard.press('Escape')
+			await expect(page.getByRole('tooltip')).toHaveCount(0)
+
+			// Sumari misses RAAS Only too, but as a seeding layer it is exempt: the miss is listed without its alert
+			await indicators('Sumari_Seed_v1').hover()
+			const exemptTooltip = page.getByRole('tooltip')
+			await expect(exemptTooltip).toContainText('In Seed Layers')
+			await expect(exemptTooltip).toContainText('Not in RAAS Only')
+			await expect(exemptTooltip).toContainText('Exempt')
+			await expect(exemptTooltip).not.toContainText('Not a RAAS layer')
 		} finally {
 			await app.dispose()
 		}

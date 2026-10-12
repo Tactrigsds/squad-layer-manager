@@ -66,7 +66,8 @@ const triggerClass =
 // (=, [..], not in), so it gets tight padding, a collapsed chevron gap, and a smaller chevron. px-1 is
 // important so container padding rules (e.g. the filter menu grid) can't stretch it back out.
 const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
-export default function FilterCard(props: FilterCardProps & { children: React.ReactNode }) {
+// `builderOnly` drops the text mode and the toolbar, for a filter edited as one field of a larger form
+export default function FilterCard(props: FilterCardProps & ({ children: React.ReactNode; builderOnly?: false } | { builderOnly: true })) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 
@@ -77,6 +78,8 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
 		if (!slot) return
 		const slotId = slot.dragItem.id.toString()
+		// every card on the page hears every drop, so a drag that started or landed in another card is not this one's
+		if (!tree.nodes.has(event.active.id) || !tree.nodes.has(slotId)) return
 
 		let parentId: string
 		let index: number
@@ -137,6 +140,17 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 			</NodePortal>
 		)
 	})
+
+	if (props.builderOnly) {
+		return (
+			<>
+				<div className="w-full min-w-0 overflow-x-auto">
+					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
+				</div>
+				{leafNodes}
+			</>
+		)
+	}
 
 	const rendered = (
 		<div defaultValue="builder" className="w-full space-x-2 flex">
@@ -840,6 +854,7 @@ export function LeafFilterNode(props: NodeProps) {
 			<Button
 				size="icon"
 				variant="ghost"
+				aria-label={tr.text(F_Msgs.removeNode())}
 				onClick={() => {
 					actions.common.delete()
 				}}

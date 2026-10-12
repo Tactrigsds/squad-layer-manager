@@ -80,6 +80,8 @@ type CompiledConstraints = {
 	where: LE.Ir
 	// per constraint, the condition to report against each returned layer (null when it shows no indicator)
 	indicators: (LE.Ir | null)[]
+	// per constraint, its filter's miss exemption (null when it has none, or shows no indicator)
+	missExemptions: (LE.Ir | null)[]
 	// per filter-menu field that asked for them, the condition its possible values are computed under
 	menuItemConditions?: Record<string, LE.Ir>
 }
@@ -97,6 +99,7 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 
 	const baseConditions: LE.Ir[] = []
 	const indicators: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+	const missExemptions: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
 	// a layer is a repeat when it breaks *any* repeat rule, so the rules are one disjunction rather than a condition
 	// each. Negating them individually and anding the results happens to say the same thing, but applying them
 	// regularly does not: that would ask for a layer repeating every rule at once.
@@ -154,6 +157,9 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		// a repeat rule's indicator is filled in per item during post-processing, because a violation carries which
 		// earlier match it repeats, which is not something a condition over the table can say
 		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') indicators[i] = ir
+		if (constraint.type === 'filter-entity' && constraint.showIndicator !== 'disabled') {
+			missExemptions[i] = lowerMissExemption(ctx, lower, constraint.filterId, [i.toString(), 'missExemption'])
+		}
 	}
 
 	if (repeatIrs.regular.length > 0) baseConditions.push(LE.or(repeatIrs.regular))
@@ -186,19 +192,37 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		}
 	}
 
-	return { code: 'ok', where: LE.and(conditions), indicators, menuItemConditions }
+	return { code: 'ok', where: LE.and(conditions), indicators, missExemptions, menuItemConditions }
 }
 
-// the engine takes indicators as a dense list, so keep which constraint each answer belongs to alongside it
+// An exemption that no longer lowers, such as one applying a filter that has since been deleted, exempts nothing
+// rather than failing the query it is evaluated alongside.
+function lowerMissExemption(ctx: QueryCtx, lower: LE.LowerCtx, filterId: F.FilterEntityId, path: string[]): LE.Ir | null {
+	const exemption = ctx.filters.get(filterId)?.missExemption
+	if (!exemption) return null
+	const res = LE.lowerFilterNode(lower, exemption, path)
+	if (res.code === 'ok') return res.ir
+	console.warn(`miss exemption of filter ${filterId} does not lower, so it exempts nothing:`, res.errors)
+	return null
+}
+
+// the engine takes indicators as a dense list, so keep which constraint each answer belongs to alongside it. Miss
+// exemptions ride along at the end of the same list.
 function splitIndicators(compiled: CompiledConstraints) {
 	const indicators: LE.Ir[] = []
 	const indicatorConstraints: number[] = []
+	const exemptionConstraints: number[] = []
 	compiled.indicators.forEach((ir, idx) => {
 		if (ir === null) return
 		indicators.push(ir)
 		indicatorConstraints.push(idx)
 	})
-	return { indicators, indicatorConstraints }
+	compiled.missExemptions.forEach((ir, idx) => {
+		if (ir === null) return
+		indicators.push(ir)
+		exemptionConstraints.push(idx)
+	})
+	return { indicators, indicatorConstraints, exemptionConstraints }
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
@@ -338,7 +362,7 @@ export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; 
 
 	const names = layerColumns(ctx)
 	const columns = columnIndexes(ctx, names)
-	const { indicators, indicatorConstraints } = splitIndicators(compiled)
+	const { indicators, indicatorConstraints, exemptionConstraints } = splitIndicators(compiled)
 
 	const res =
 		input.sort?.type === 'random'
@@ -361,7 +385,11 @@ export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; 
 					columns,
 				})
 
-	const layers = postProcessLayers(ctx, { rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints }, input)
+	const layers = postProcessLayers(
+		ctx,
+		{ rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints, exemptionConstraints },
+		input,
+	)
 	yield {
 		code: 'layers-page' as const,
 		layers,
@@ -532,7 +560,7 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
 	const names = layerColumns(ctx)
 	const columns = columnIndexes(ctx, names)
-	const { indicators, indicatorConstraints } = splitIndicators(base)
+	const { indicators, indicatorConstraints, exemptionConstraints } = splitIndicators(base)
 	const seed = input.seed ?? LQY.getSeed()
 
 	for (let i = 0; i < choices.length; i++) {
@@ -554,7 +582,7 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 		})
 		const [layer] = postProcessLayers(
 			ctx,
-			{ rows: generated.rows, names, indicatorResults: generated.indicators, indicatorConstraints },
+			{ rows: generated.rows, names, indicatorResults: generated.indicators, indicatorConstraints, exemptionConstraints },
 			input,
 		)
 		if (layer) {
@@ -658,7 +686,11 @@ export async function generateWithBackburner(args: {
 		pageSize: 1,
 		columns,
 	})
-	const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
+	const [layer] = postProcessLayers(
+		ctx,
+		{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [], exemptionConstraints: [] },
+		input,
+	)
 	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds }
 }
 
@@ -767,6 +799,15 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		if (res.code !== 'ok') return res
 		filterIrs.push(res.ir)
 	}
+	// queried after the filters themselves, one per filter rather than per constraint
+	const exemptionSlots = new Map<F.FilterEntityId, number>()
+	for (const constraint of filterConstraints) {
+		if (exemptionSlots.has(constraint.filterId)) continue
+		const ir = lowerMissExemption(ctx, lower, constraint.filterId, [constraint.id, 'missExemption'])
+		if (!ir) continue
+		exemptionSlots.set(constraint.filterId, filterIrs.length)
+		filterIrs.push(ir)
+	}
 
 	const parse = layerParser()
 	const layerIds: L.LayerId[] = []
@@ -785,12 +826,15 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 
 	const present = new Set<L.LayerId>()
 	const matchesByFilter = new Map<F.FilterEntityId, Map<L.LayerId, boolean>>()
+	const exemptByFilter = new Map<F.FilterEntityId, Map<L.LayerId, boolean>>()
 	for (const constraint of filterConstraints) matchesByFilter.set(constraint.filterId, new Map())
+	for (const filterId of exemptionSlots.keys()) exemptByFilter.set(filterId, new Map())
 	for (let i = 0; i < layerIds.length; i++) {
 		if (res.exists[i]) present.add(layerIds[i])
 		for (let f = 0; f < filterConstraints.length; f++) {
 			matchesByFilter.get(filterConstraints[f].filterId)!.set(layerIds[i], res.matches[f][i])
 		}
+		for (const [filterId, slot] of exemptionSlots) exemptByFilter.get(filterId)!.set(layerIds[i], res.matches[slot][i])
 	}
 
 	const matchDescriptors: Map<LQY.ItemId, LQY.MatchDescriptor[]> = new Map()
@@ -825,6 +869,13 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 						if (matchesByFilter.get(constraint.filterId)?.get(item.layerId)) {
 							itemDescriptors.push({
 								type: 'filter-entity',
+								constraintId: constraint.id,
+								layerId: item.layerId,
+								itemId: item.itemId,
+							})
+						} else if (exemptByFilter.get(constraint.filterId)?.get(item.layerId)) {
+							itemDescriptors.push({
+								type: 'filter-entity-miss-exempt',
 								constraintId: constraint.id,
 								layerId: item.layerId,
 								itemId: item.itemId,
@@ -871,17 +922,22 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 				constraintId: descriptor.constraintId,
 			})
 		}
-		// seeding and training layers are played outside the pool and repeat rules by design
-		if (L.isSeedingOrTrainingLayer(parse(item.layerId))) continue
 		if (LQY.getTags(item)?.some((tag) => skipWarningsForTags.includes(tag))) continue
+		// seeding and training layers are played outside the repeat rules by design. Which layers a filter's miss
+		// skips is up to that filter's miss exemption.
+		const seedingOrTraining = L.isSeedingOrTrainingLayer(parse(item.layerId))
+		const itemDescriptors = matchDescriptors.get(item.itemId)
 		for (const constraint of constraints) {
-			const descriptors = matchDescriptors.get(item.itemId)?.filter((d) => d.constraintId === constraint.id)
-			const matched = descriptors?.length !== undefined && descriptors.length > 0
+			const matched = LQY.isConstraintMatched(itemDescriptors, constraint.id)
 			if (constraint.type === 'filter-entity') {
-				if ((constraint.warn === 'regular' && matched) || (constraint.warn === 'inverted' && !matched)) {
+				const warnMatch = constraint.warn === 'regular' && matched && !seedingOrTraining
+				const warnMiss = constraint.warn === 'inverted' && !matched && !LQY.isMissExempt(itemDescriptors, constraint.id)
+				if (warnMatch || warnMiss) {
 					warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
 				}
 			} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
+				if (seedingOrTraining) continue
+				const descriptors = itemDescriptors?.filter((d) => d.constraintId === constraint.id)
 				if (matched) {
 					warns.push({
 						itemId: item.itemId,
@@ -1101,7 +1157,13 @@ function decodeRow(ctx: LC.Ctx, row: (number | null)[], names: string[]) {
 
 function postProcessLayers(
 	ctx: LC.Ctx,
-	page: { rows: (number | null)[][]; names: string[]; indicatorResults: boolean[][]; indicatorConstraints: number[] },
+	page: {
+		rows: (number | null)[][]
+		names: string[]
+		indicatorResults: boolean[][]
+		indicatorConstraints: number[]
+		exemptionConstraints: number[]
+	},
 	baseInput: LQY.BaseQueryInput,
 ) {
 	const list = baseInput.list ?? LQY.initLayerItemsState()
@@ -1137,6 +1199,14 @@ function postProcessLayers(
 			} else if (matched) {
 				matchDescriptors.push({ type: 'filter-entity', constraintId: constraint.id, layerId })
 			}
+		}
+
+		const exemptionOffset = page.indicatorConstraints.length
+		for (let i = 0; i < page.exemptionConstraints.length; i++) {
+			const constraintIdx = page.exemptionConstraints[i]
+			if (constraintResults[constraintIdx]) continue
+			if (!page.indicatorResults[rowIndex]?.[exemptionOffset + i]) continue
+			matchDescriptors.push({ type: 'filter-entity-miss-exempt', constraintId: constraints[constraintIdx].id, layerId })
 		}
 
 		// repeat rules are evaluated per item: a violation says which earlier match it repeats, which is not something

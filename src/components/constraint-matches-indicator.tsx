@@ -1,6 +1,7 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { TrackingTooltip } from '@/components/ui/tooltip'
 import { useFollowTooltip } from '@/hooks/use-follow-tooltip'
@@ -43,6 +44,8 @@ type FilterRow = {
 	constraintId: string
 	filter: F.FilterEntity
 	matched: boolean
+	// a miss the filter's miss exemption covers: listed, but contributes no icon
+	exempt: boolean
 	emoji: string | null | undefined
 	alertMessage: string | null | undefined
 }
@@ -130,7 +133,7 @@ function useIndicatorModel(props: ConstraintEvalTooltipProps) {
 	const descriptorsForItem = props.matchDescriptors?.filter((desc) => {
 		if (desc.itemId && desc.itemId !== itemId) return false
 		if (layerId && !L.layersEqual(desc.layerId, layerId)) return false
-		if (desc.type === 'filter-entity' || desc.type === 'installed-mods') {
+		if (desc.type === 'filter-entity' || desc.type === 'filter-entity-miss-exempt' || desc.type === 'installed-mods') {
 			return !!layerId
 		} else if (desc.type === 'repeat-rule') {
 			return desc.itemId === itemId
@@ -148,7 +151,7 @@ function useIndicatorModel(props: ConstraintEvalTooltipProps) {
 	const renderedFilterIds = new Set<string>()
 	for (const constraint of props.queriedConstraints) {
 		if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-		const matched = !!descriptorsForItem?.some((desc) => desc.constraintId === constraint.id)
+		const matched = LQY.isConstraintMatched(descriptorsForItem, constraint.id)
 		if (constraint.showIndicator === 'disabled') continue
 		if ((constraint.showIndicator === 'regular' && !matched) || (constraint.showIndicator === 'inverted' && matched)) continue
 		if (constraint.type === 'do-not-repeat') {
@@ -191,9 +194,10 @@ function useIndicatorModel(props: ConstraintEvalTooltipProps) {
 			const emoji = matched ? filter.emoji : filter.invertedEmoji
 			const alertMessage = matched ? filter.alertMessage : filter.invertedAlertMessage
 			if (!matched && (!emoji || !alertMessage)) continue
+			const exempt = !matched && LQY.isMissExempt(descriptorsForItem, constraint.id)
 			renderedFilterIds.add(constraint.filterId)
-			filterRows.push({ constraintId: constraint.id, filter, matched, emoji, alertMessage })
-			if (emoji) {
+			filterRows.push({ constraintId: constraint.id, filter, matched, exempt, emoji, alertMessage })
+			if (emoji && !exempt) {
 				indicatorIcons.push(<EmojiDisplay key={constraint.id} showTooltip={false} emoji={emoji} size={iconSize} />)
 			}
 			continue
@@ -201,10 +205,12 @@ function useIndicatorModel(props: ConstraintEvalTooltipProps) {
 		assertNever(constraint)
 	}
 
-	const empty = filterRows.length === 0 && repeatRows.length === 0 && !unsupportedCollection
+	// exempt rows only add detail to an indicator that something else raised
+	const indicatedFilterRows = filterRows.filter((row) => !row.exempt)
+	const empty = indicatedFilterRows.length === 0 && repeatRows.length === 0 && !unsupportedCollection
 
 	// repeat icon always appears at the start
-	if (filterRows.length > 0 && indicatorIcons.length === 0) {
+	if (indicatedFilterRows.length > 0 && indicatorIcons.length === 0) {
 		indicatorIcons.push(<Icons.Filter key="__filtered__" className="bg-warn" />)
 	}
 	if (repeatRows.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
@@ -260,18 +266,10 @@ function IndicatorRows(props: { model: IndicatorModel; linkAsButton?: boolean })
 						rel="noreferrer"
 						className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-2.5 items-center p-2 rounded-sm text-foreground no-underline hover:bg-accent"
 					>
-						{row.emoji ? (
-							<EmojiDisplay emoji={row.emoji} showTooltip={false} size={18} />
-						) : (
-							<Icons.Filter className="size-4.5 text-warn" />
-						)}
+						<FilterRowIcon row={row} />
 						<div className="flex flex-col gap-px">
-							<div>
-								{row.matched
-									? tr.richText(F_Msgs.filterRowIn(strong(row.filter.name)))
-									: tr.richText(F_Msgs.filterRowNotIn(strong(row.filter.name)))}
-							</div>
-							{row.alertMessage && <div className="text-muted-foreground whitespace-normal">{row.alertMessage}</div>}
+							<FilterRowTitle row={row} />
+							{row.alertMessage && !row.exempt && <div className="text-muted-foreground whitespace-normal">{row.alertMessage}</div>}
 						</div>
 						<Icons.ArrowUpRight className="size-4 text-muted-foreground" />
 					</a>
@@ -281,19 +279,43 @@ function IndicatorRows(props: { model: IndicatorModel; linkAsButton?: boolean })
 	)
 }
 
-function FilterRowWithLinkButton(props: { row: FilterRow }) {
+function FilterRowIcon(props: { row: FilterRow }) {
+	const { row } = props
+	if (!row.emoji) return <Icons.Filter className={cn('size-4.5 text-warn', row.exempt && 'opacity-40')} />
+	return (
+		<span className={cn('flex', row.exempt && 'opacity-40')}>
+			<EmojiDisplay emoji={row.emoji} showTooltip={false} size={18} />
+		</span>
+	)
+}
+
+function FilterRowTitle(props: { row: FilterRow }) {
 	const { row } = props
 	const strong = (value: React.ReactNode) => <span className="font-semibold">{value}</span>
 	return (
+		<div className={cn('flex flex-wrap items-center gap-x-2 gap-y-0.5', row.exempt && 'text-muted-foreground')}>
+			<span>
+				{row.matched
+					? tr.richText(F_Msgs.filterRowIn(strong(row.filter.name)))
+					: tr.richText(F_Msgs.filterRowNotIn(strong(row.filter.name)))}
+			</span>
+			{row.exempt && (
+				<Badge variant="secondary" title={tr.text(F_Msgs.missExemptHint())}>
+					{tr.text(F_Msgs.missExempt())}
+				</Badge>
+			)}
+		</div>
+	)
+}
+
+function FilterRowWithLinkButton(props: { row: FilterRow }) {
+	const { row } = props
+	return (
 		<div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-2.5 items-center p-2">
-			{row.emoji ? <EmojiDisplay emoji={row.emoji} showTooltip={false} size={18} /> : <Icons.Filter className="size-4.5 text-warn" />}
+			<FilterRowIcon row={row} />
 			<div className="flex flex-col gap-px">
-				<div>
-					{row.matched
-						? tr.richText(F_Msgs.filterRowIn(strong(row.filter.name)))
-						: tr.richText(F_Msgs.filterRowNotIn(strong(row.filter.name)))}
-				</div>
-				{row.alertMessage && <div className="text-muted-foreground whitespace-normal">{row.alertMessage}</div>}
+				<FilterRowTitle row={row} />
+				{row.alertMessage && !row.exempt && <div className="text-muted-foreground whitespace-normal">{row.alertMessage}</div>}
 			</div>
 			<a
 				href={`/filters/${row.filter.id}`}

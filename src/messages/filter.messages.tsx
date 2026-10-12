@@ -187,6 +187,8 @@ export const insertCondition = def('Insert condition here')
 
 export const duplicateNode = def('Duplicate')
 
+export const removeNode = def('Remove condition')
+
 export const nodeComment = def('Node comment')
 
 export const nodeCommentPlaceholder = def('Comment. Links are clickable.')
@@ -367,6 +369,21 @@ export const searchRoles = def('Search for a role...')
 export const matchIndicator = def('Match Indicator')
 
 export const missIndicator = def('Miss Indicator')
+
+export const missExemptionTitle = def('Exempt layers')
+
+export const missExemptionDescription = def('Layers that match these conditions never show the miss emoji or alert message.')
+
+export const missExemptionCount = def('{count, plural, one {# layer} other {# layers}}', (count: number) => ({ count }))
+
+export const missExemptionReset = def('Reset to default')
+
+export const missExemptionIncomplete = def('Finish or remove the incomplete exemption condition.')
+
+// marks a tooltip row for a miss that the filter's miss exemption covers
+export const missExempt = def('Exempt')
+
+export const missExemptHint = def('This layer misses the filter, and the filter exempts it from the miss indicator.')
 
 export const confirmDeleteTitle = def('Delete Filter')
 

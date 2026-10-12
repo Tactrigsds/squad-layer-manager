@@ -469,6 +469,7 @@ export const filters = sqliteTable(
 		invertedAlertMessage: text('invertedAlertMessage'),
 		// either a unicode emoji or a custom emoji (prefix discord_)
 		invertedEmoji: text('invertedEmoji'),
+		missExemption: json('missExemption'),
 	},
 	(table) => ({
 		singleOwner: check('filtersSingleOwner', sql`${table.ownerUserId} IS NULL OR ${table.ownerPluginId} IS NULL`),
