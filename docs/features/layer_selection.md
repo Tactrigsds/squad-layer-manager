@@ -97,6 +97,10 @@ created by community member ZERO, and refined through feedback on the TacTrig se
 replace the scores. See [Building custom layer data](../developers/custom_layer_data.md). The current scores predate recent game changes. A
 revised scoring system is in progress.
 
+Right-click a layer wherever it appears to open its details or scores:
+
+![a layer's menu, opened from its name in the match history](../images/features/layer_menu.png)
+
 ![a layer's details: each team's unit, tickets and vehicles](../images/features/layer_details.png)
 ![a layer's scores: balance, asymmetry and each category compared](../images/features/layer_scores.png)
 
