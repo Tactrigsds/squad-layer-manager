@@ -74,14 +74,11 @@ The install link must be public. SLM leaves any Discord server other than the on
 ## 5. Secrets
 
 `.env.secrets` holds the credentials SLM needs at startup. `install.sh` creates it with `chmod 600` and a generated
-`SETTINGS_ENCRYPTION_KEY`, the key that encrypts your servers' passwords and tokens in the database.
+`SETTINGS_ENCRYPTION_KEY`, the key that encrypts your servers' passwords and tokens in the database. Keep
+`.env.secrets` mounted into the container, as `docker-compose.yaml` does, and do not move its values into `.env`.
 
-- Keep `.env.secrets` mounted into the container, as `docker-compose.yaml` does. Do not move its values into `.env`.
-- Store a copy of `SETTINGS_ENCRYPTION_KEY` with your backups. A backup restored without its key comes up with every
-  server disabled and every integration token unset.
-
-[Secrets and the encryption key](guide/operations/secrets.md) lists every secret, and describes secrets managers and
-rotating the key.
+[Secrets and the encryption key](guide/operations/secrets.md) lists every secret, and describes secrets managers,
+backing up the key and rotating it.
 
 ## 6. Backups
 
@@ -150,3 +147,6 @@ retention.
 ## 12. Complete
 
 SLM is installed. Continue with [Configuring SLM](guide/configuring/overview.md).
+
+To connect BattleMetrics, the Squad Browser or Steam, see [Integrations](guide/configuring/integrations.md).
+BattleMetrics is _highly_ recommended.

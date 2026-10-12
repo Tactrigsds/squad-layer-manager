@@ -1,11 +1,9 @@
 # Integrations
 
 SLM connects to BattleMetrics, the Squad Browser and Steam, and to Discord through its bot. The first three are
-optional. Enter their credentials under _Integrations_ on the settings page. A saved token is encrypted at rest and
+optional, though BattleMetrics is _highly_ recommended. Each service's API token is stored in SLM's settings, under
+_Integrations_ on the settings page, rather than in an environment variable. A saved token is encrypted at rest and
 cannot be read back from the settings page.
-
-Editing _Integrations_ takes a `global-settings:write` grant covering `integrations`. The default `managers` role
-lacks it (see [Default roles](permissions.md#default-roles)).
 
 ## BattleMetrics
 
