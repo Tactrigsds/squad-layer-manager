@@ -51,7 +51,7 @@ export default function AboutPage() {
 	)
 
 	return (
-		<div className="w-full max-w-lg mx-auto py-6 space-y-4 overflow-y-auto">
+		<div className="w-full max-w-2xl mx-auto py-6 space-y-4 overflow-y-auto">
 			<div className="flex flex-col items-center gap-3 pb-2">
 				<LogoMark className="h-14 w-14" />
 				<div className="flex flex-col items-center gap-1.5">
