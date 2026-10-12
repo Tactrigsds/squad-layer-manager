@@ -929,4 +929,22 @@
 		font-family: var(--font-mono);
 		font-size: calc(var(--fs) - 1px);
 	}
+
+	/* Washes a control or row in --tint, with a solid edge in the full color. The wash is the tint darkened to 40%, so
+	   text on the foundry backgrounds keeps at least 6.5:1 contrast whatever --tint is, white included. Kept last so it
+	   lands over the states above that reset the background. */
+	.fd-tint {
+		--tint-wash: color-mix(in oklab, var(--tint) 40%, black);
+		border-inline-start: 3px solid var(--tint);
+		background-image: linear-gradient(
+			color-mix(in oklab, var(--tint-wash) 40%, transparent),
+			color-mix(in oklab, var(--tint-wash) 40%, transparent)
+		);
+	}
+	.fd-tint:is(:hover, :focus-visible, [data-highlighted], [data-state='open']) {
+		background-image: linear-gradient(
+			color-mix(in oklab, var(--tint-wash) 50%, transparent),
+			color-mix(in oklab, var(--tint-wash) 50%, transparent)
+		);
+	}
 }

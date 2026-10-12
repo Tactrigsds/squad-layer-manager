@@ -1,3 +1,4 @@
+import * as Color from '@/lib/color'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
@@ -90,14 +91,19 @@ export type Types = {
 export type Frame = FRM.Frame<Types>
 
 // minimal input-shape seed for a brand-new server. Typed as the schema's input so the seed is checked against it:
-// prefaulted fields (queue, the rest of the public settings) may be omitted and are filled in at save time.
-export const NEW_SERVER_DRAFT: z.input<typeof SETTINGS.ServerSettingsSchema> = {
-	connections: {
-		type: 'local',
-		logFile: '',
-		rcon: { host: '', port: 21114, password: '' },
-	},
-	adminLists: [],
+// prefaulted fields (queue, the rest of the public settings) may be omitted and are filled in at save time. The color
+// stands apart from every server the user can see.
+function newServerDraft(): z.input<typeof SETTINGS.ServerSettingsSchema> {
+	const taken = (SettingsClient.getSettings()?.servers ?? []).flatMap((server) => (server.color === null ? [] : [server.color]))
+	return {
+		color: Color.pickDistinct(taken),
+		connections: {
+			type: 'local',
+			logFile: '',
+			rcon: { host: '', port: 21114, password: '' },
+		},
+		adminLists: [],
+	}
 }
 
 // A plugin section edits the plugin's config and its command overrides as one document. Cached per manifest, since a
@@ -222,6 +228,7 @@ const setup: Frame['setup'] = (args) => {
 	const set = args.set as Zus.Setter<SettingsEditor>
 
 	const isNew = input.kind === 'new-server'
+	const newDraft = isNew ? newServerDraft() : undefined
 	set({
 		sub: new Rx.Subscription(),
 		kind: input.kind,
@@ -229,9 +236,9 @@ const setup: Frame['setup'] = (args) => {
 		pluginId: input.kind === 'plugin' ? input.pluginId : null,
 		mode: 'gui',
 		reset$: new Rx.Subject<void>(),
-		saved: isNew ? NEW_SERVER_DRAFT : undefined,
-		draft: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : undefined,
-		yamlValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
+		saved: newDraft,
+		draft: newDraft && Obj.deepClone(newDraft),
+		yamlValid: newDraft ? Obj.deepClone(newDraft) : null,
 		loading: input.kind === 'server' || input.kind === 'plugin',
 		loadFailed: null,
 		denied: false,
@@ -518,8 +525,8 @@ export namespace Actions {
 		const state = s.getState()
 		if (state.kind === 'new-server') {
 			s.setState({
-				draft: Obj.deepClone(NEW_SERVER_DRAFT),
-				yamlValid: Obj.deepClone(NEW_SERVER_DRAFT),
+				draft: Obj.deepClone(state.saved),
+				yamlValid: Obj.deepClone(state.saved),
 				newId: '',
 				newDisplayName: '',
 			})

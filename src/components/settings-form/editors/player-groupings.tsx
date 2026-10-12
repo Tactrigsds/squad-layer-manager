@@ -3,7 +3,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { BmFlagSelect } from '@/components/bm-flag-picker'
-import { ColorPicker } from '@/components/color-picker'
+import { ColorHexInput } from '@/components/color-picker'
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { DiscordRoleSelect } from '@/components/discord-picker'
@@ -11,9 +11,7 @@ import { TextInputField } from '@/components/settings-form/controls'
 import { type OverrideProps, scopeValue, useFieldValue, useReset, type ValueState } from '@/components/settings-form/settings-form.helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InputGroup, InputGroupAddon, InputGroupButton } from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import * as Arr from '@/lib/array-utils'
 import * as Color from '@/lib/color'
@@ -640,31 +638,12 @@ function GroupColorRow({
 			<span className="min-w-0 truncate text-xs" title={group}>
 				{group}
 			</span>
-			<InputGroup className="h-8 w-[9.5rem]">
-				<InputGroupAddon align="inline-start">
-					<Popover>
-						<PopoverTrigger asChild>
-							<InputGroupButton size="icon-xs" title={tr.text(PG_Msgs.pickColor())} aria-label={tr.text(PG_Msgs.pickColor())}>
-								<span className="size-4 rounded-sm border" style={{ backgroundColor: resolved }} />
-							</InputGroupButton>
-						</PopoverTrigger>
-						<PopoverContent className="w-auto p-2">
-							<ColorPicker color={resolved} onChange={(c) => setCustom(c)} />
-						</PopoverContent>
-					</Popover>
-				</InputGroupAddon>
-				{/* a bare input (not InputGroupInput, whose custom Input wraps the control in a div that breaks the flex row) */}
-				<input
-					ref={hexRef}
-					data-slot="input-group-control"
-					defaultValue={resolved}
-					maxLength={7}
-					autoComplete="off"
-					spellCheck={false}
-					onChange={(e) => setCustom(e.currentTarget.value.trim(), true)}
-					className="w-full min-w-0 bg-transparent py-1 pe-2 font-mono text-xs outline-none ltr-isolate"
-				/>
-			</InputGroup>
+			<ColorHexInput
+				hexRef={hexRef}
+				color={resolved}
+				pickLabel={tr.text(PG_Msgs.pickColor())}
+				onChange={(hex, fromHexField) => setCustom(hex, fromHexField)}
+			/>
 			{flags.length > 0 && (
 				<span className="flex min-w-0 items-center gap-2">
 					<span className="shrink-0 text-xs text-muted-foreground">{tr.text(PG_Msgs.trackingFlag())}</span>

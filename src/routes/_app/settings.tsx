@@ -405,7 +405,7 @@ function ServerStatusBadge({ state }: { state: SETTINGS_Msgs.ServerLifecycleStat
 	}
 }
 
-type PublicServer = { id: string; displayName: string; enabled: boolean; broken: boolean; defaultServer: boolean }
+type PublicServer = { id: string; displayName: string; enabled: boolean; broken: boolean; defaultServer: boolean; color: string | null }
 
 // the sentinel selection value for the (unsaved) new-server form
 const NEW_SERVER_SELECTION = '__new__'
@@ -625,7 +625,9 @@ function ServerRow({
 			className={cn(
 				'flex scroll-mt-2 flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-2.5 py-2',
 				selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
+				server.color && 'fd-tint border-s-(--tint)',
 			)}
+			style={SettingsClient.serverTintStyle(server.color)}
 		>
 			<button
 				type="button"
@@ -835,7 +837,7 @@ function ServerSettingsSection({
 function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame.KeyProp; onCancel: () => void }) {
 	const key = stores.settingsEditor
 	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
-	const { mode, draft, issues, newId, newDisplayName } = state
+	const { mode, draft, saved, issues, newId, newDisplayName } = state
 
 	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
@@ -905,7 +907,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							value$={value$}
 							reset$={reset$}
 							onChange={onFormChange}
-							saved={SettingsEditorFrame.NEW_SERVER_DRAFT}
+							saved={saved}
 							idPrefix="setting:server:__new__:"
 							priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
 							advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}

@@ -17,7 +17,6 @@ import * as MsgFmt from '@/messages/format'
 import * as Project from '@/models/project.models'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
-import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
 function LinkRow({ heading, url }: { heading: string; url: string }) {
@@ -37,7 +36,7 @@ function NameList({ names }: { names: readonly string[] }) {
 
 export default function AboutPage() {
 	const config = Zus.useStore(ConfigClient.Store)
-	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+
 	const user = UsersClient.useLoggedInUser()
 	const docsUrl = ConfigClient.useDocsUrl()
 	if (!config || !user) return null
@@ -54,7 +53,7 @@ export default function AboutPage() {
 	return (
 		<div className="w-full max-w-lg mx-auto py-6 space-y-4 overflow-y-auto">
 			<div className="flex flex-col items-center gap-3 pb-2">
-				<LogoMark accent={settings?.topBarColor ?? null} className="h-14 w-14" />
+				<LogoMark className="h-14 w-14" />
 				<div className="flex flex-col items-center gap-1.5">
 					<h1 className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{tr.text(APP_Msgs.productName())}</h1>
 					<p className="text-center text-sm text-muted-foreground">{tr.text(APP_Msgs.tagline())}</p>

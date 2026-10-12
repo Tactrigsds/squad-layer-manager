@@ -220,18 +220,6 @@ describe('the icon renditions', () => {
 		// a size the shell claims but the ico lacks leaves the browser upscaling another entry
 		expect(packed).toEqual(advertised)
 	})
-
-	it('revalidates rather than pinning a stale accent, and answers a matching etag with 304', async () => {
-		const first = await fetchIcon('/favicon.svg')
-		expect(first.headers.get('cache-control')).toBe('no-cache')
-		// opened as a document, the svg must not be able to run script on the app's origin
-		expect(first.headers.get('content-security-policy')).toContain("default-src 'none'")
-		const etag = first.headers.get('etag')!
-		await first.arrayBuffer()
-
-		const res = await fetch(`${base}/favicon.svg`, { headers: { 'if-none-match': etag }, redirect: 'manual' })
-		expect(res.status).toBe(304)
-	})
 })
 
 // Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the

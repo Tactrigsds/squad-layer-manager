@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import { parseArgs } from 'node:util'
 
 import * as Schema from '$root/drizzle/schema.ts'
+import * as Color from '@/lib/color'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import * as CS from '@/models/context-shared.models'
@@ -159,7 +160,11 @@ async function seed(driver: Database) {
 	}
 
 	const settings = Seed.applyInitialPoolConfig(
-		SETTINGS.ServerSettingsSchema.parse({ connections: emulatorConnection(), adminLists: [DEV_ADMIN_LIST] }),
+		SETTINGS.ServerSettingsSchema.parse({
+			color: Color.pickDistinct([]),
+			connections: emulatorConnection(),
+			adminLists: [DEV_ADMIN_LIST],
+		}),
 	)
 	await db.insert(Schema.servers).values(
 		superjsonify(Schema.servers, {

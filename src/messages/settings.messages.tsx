@@ -205,6 +205,7 @@ export const poolFilterMissingIndicators = def(
 
 // names the language picker on a server's settings, whose options are the languages themselves
 export const localePicker = def('Language')
+export const pickServerColor = def('Pick color')
 
 // names the picker for the layer collections a server has installed, whose options are the collections
 export const installedModsPicker = def('Installed Mods')

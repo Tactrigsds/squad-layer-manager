@@ -26,7 +26,6 @@ import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
-import * as LogoSys from '@/systems/logo.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as MatchLayers from '@/systems/match-layers.server'
@@ -197,7 +196,6 @@ await Instr.spanOp('main', { module }, async () => {
 			version: formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA),
 		}),
 	)
-	LogoSys.setup({ ...CS.init(), log })
 	await Landing.setup()
 	const { serverClosed } = await Fastify.setup()
 	if (ENV.NODE_ENV === 'development') {

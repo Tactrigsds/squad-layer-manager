@@ -121,7 +121,7 @@ function SiteHeader({ site, section, sidebar }: { site: SiteInfo; section: DS.Se
 				</div>
 			</details>
 			<a href={site.base} className="flex items-center gap-2.5 text-text no-underline">
-				<LogoMark accent={null} className="size-7" />
+				<LogoMark className="size-7" />
 				<span className="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span>
 			</a>
 			<VersionMenu site={site} className="max-sm:hidden" />

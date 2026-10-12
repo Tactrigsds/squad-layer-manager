@@ -307,6 +307,8 @@ export default function NavBar() {
 		</span>
 	)
 
+	const navBorderStyle = selectedServer?.color ? { borderBottomColor: selectedServer.color } : undefined
+
 	const serverPicker =
 		isOnServerDashboard &&
 		selectedServer &&
@@ -321,7 +323,12 @@ export default function NavBar() {
 					<Button
 						data-tour="server-name"
 						size="sm"
-						className={cn('fd-sel font-semibold', isDesktop ? 'w-[190px]' : isMedium ? 'w-[150px]' : 'w-[120px]')}
+						className={cn(
+							'fd-sel font-semibold',
+							selectedServer.color && 'fd-tint',
+							isDesktop ? 'w-[190px]' : isMedium ? 'w-[150px]' : 'w-[120px]',
+						)}
+						style={SettingsClient.serverTintStyle(selectedServer.color)}
 					>
 						<span className="truncate">{selectedServer.displayName}</span>
 						<Icons.ChevronDown />
@@ -364,7 +371,7 @@ export default function NavBar() {
 
 	if (isSmall) {
 		return (
-			<nav className="fd-nav gap-2 px-2">
+			<nav className="fd-nav gap-2 px-2" style={navBorderStyle}>
 				<PhoneMenu
 					open={openState !== null}
 					onOpenChange={onPrimaryDropdownOpenChange}
@@ -392,13 +399,13 @@ export default function NavBar() {
 	}
 
 	return (
-		<nav className="fd-nav gap-3 px-2.5" style={settings?.topBarColor ? { borderBottomColor: settings.topBarColor } : undefined}>
+		<nav className="fd-nav gap-3 px-2.5" style={navBorderStyle}>
 			<TSR.Link
 				to="/about"
 				aria-label={tr.text(APP_Msgs.about())}
 				className="shrink-0 grid place-items-center pointer-coarse:size-(--ctl)"
 			>
-				<LogoMark accent={settings?.topBarColor ?? null} className="size-6" />
+				<LogoMark className="size-6" />
 			</TSR.Link>
 			{/* on the dashboard's single-column layout the tab switcher takes over the "Server" nav slot at every width */}
 			{showDashboardTabs && (
@@ -492,7 +499,7 @@ function CurrentPageTitle(props: { links: PageLink[] }) {
 }
 
 function ServerMenuItems(props: {
-	servers: { id: string; displayName: string; enabled: boolean; broken?: boolean }[]
+	servers: { id: string; displayName: string; enabled: boolean; broken?: boolean; color: string | null }[]
 	selectedServerId: string
 }) {
 	return (
@@ -500,7 +507,12 @@ function ServerMenuItems(props: {
 			{props.servers
 				.filter((server) => server.id !== props.selectedServerId)
 				.map((server) => (
-					<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
+					<DropdownMenuItem
+						className={cn('cursor-pointer', server.color && 'fd-tint')}
+						style={SettingsClient.serverTintStyle(server.color)}
+						asChild
+						key={server.id}
+					>
 						<TSR.Link disabled={!server.enabled || server.broken} to="/servers/$serverId" params={{ serverId: server.id }}>
 							{server.displayName} <Icons.Dot className={cn(server.enabled ? 'text-ok' : 'text-danger')} />
 						</TSR.Link>
@@ -654,13 +666,14 @@ function PhoneMenu(props: {
 	onExploreLayersIntent: () => void
 	serverName?: string
 	squadServerKey?: SquadServerFrame.Key
-	servers: { id: string; displayName: string; enabled: boolean; broken?: boolean }[]
+	servers: { id: string; displayName: string; enabled: boolean; broken?: boolean; color: string | null }[]
 	selectedServerId?: string
 	globalLinks?: { label: string; url: string }[]
 	serverLinks?: { label: string; url: string }[]
 	children?: React.ReactNode
 }) {
 	const hasLinks = (props.globalLinks?.length ?? 0) + (props.serverLinks?.length ?? 0) > 0
+	const serverColor = props.servers.find((server) => server.id === props.selectedServerId)?.color ?? null
 	return (
 		<DropdownMenu modal={false} open={props.open} onOpenChange={props.onOpenChange}>
 			<DropdownMenuTrigger asChild>
@@ -682,7 +695,12 @@ function PhoneMenu(props: {
 				{props.serverName && props.squadServerKey && (
 					<>
 						<DropdownMenuSeparator />
-						<DropdownMenuLabel className="truncate">{props.serverName}</DropdownMenuLabel>
+						<DropdownMenuLabel
+							className={cn('truncate', serverColor && 'fd-tint')}
+							style={SettingsClient.serverTintStyle(serverColor)}
+						>
+							{props.serverName}
+						</DropdownMenuLabel>
 						<DropdownMenuAccordion label={tr.text(SS_Msgs.serverActions())}>
 							<ServerActionMenuItems stores={{ squadServer: props.squadServerKey }} slots={dropdownMenuSlots} />
 						</DropdownMenuAccordion>
