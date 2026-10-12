@@ -18,7 +18,8 @@ import { initModule } from '@/server/logger'
 const module = initModule('seed')
 let log!: ReturnType<typeof module.getLogger>
 
-type SeededFilter = Omit<F.FilterEntity, 'owner' | 'missExemption'>
+// without a missExemption, a seeded filter takes the default
+type SeededFilter = Omit<F.FilterEntity, 'owner' | 'missExemption'> & { missExemption?: F.FilterNode | null }
 
 // Derived from the pool a real server runs. Ids are stable: the seeded pool configuration names them, and
 // main-pool composes the other two rather than restating what they say.
@@ -68,8 +69,9 @@ const SEEDED_FILTERS: SeededFilter[] = [
 		]),
 		emoji: '🌱',
 		alertMessage: 'Seeding layer',
-		invertedEmoji: '🌳',
-		invertedAlertMessage: 'Not a seeding layer',
+		invertedEmoji: null,
+		invertedAlertMessage: null,
+		missExemption: null,
 	},
 	{
 		id: 'no-mech-on-hilly',
@@ -203,6 +205,14 @@ export async function setup(ctx: C.Db) {
 	await ctx
 		.db()
 		.insert(Schema.filters)
-		.values(SEEDED_FILTERS.map((filter) => F.toRow({ ...filter, missExemption: F.DEFAULT_MISS_EXEMPTION, owner: F.SYSTEM_OWNER })))
+		.values(
+			SEEDED_FILTERS.map((filter) =>
+				F.toRow({
+					...filter,
+					missExemption: filter.missExemption === undefined ? F.DEFAULT_MISS_EXEMPTION : filter.missExemption,
+					owner: F.SYSTEM_OWNER,
+				}),
+			),
+		)
 	log.info('Seeded %d filters for a fresh install', SEEDED_FILTERS.length)
 }

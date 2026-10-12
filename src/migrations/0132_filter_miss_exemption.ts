@@ -3,7 +3,8 @@ import type { MigrationDriver } from '@/server/migrate'
 // filters += missExemption: the layers that never show the filter's miss indicator, as a filter node.
 //
 // Every existing filter is given the default, seeding and training layers, which is the set that queue warnings
-// already skipped for every filter.
+// already skipped for every filter. The exception is the `seeding` filter a fresh install seeds: a seeding or
+// training layer outside it is the miss it exists to point out, so it exempts nothing.
 
 const DEFAULT_MISS_EXEMPTION = {
 	type: 'or',
@@ -27,5 +28,5 @@ function hasColumn(db: MigrationDriver, table: string, column: string): boolean 
 export async function up(db: MigrationDriver): Promise<void> {
 	if (hasColumn(db, 'filters', 'missExemption')) return
 	db.exec(`ALTER TABLE filters ADD COLUMN missExemption text`)
-	db.prepare(`UPDATE filters SET missExemption = ?`).run(JSON.stringify(DEFAULT_MISS_EXEMPTION))
+	db.prepare(`UPDATE filters SET missExemption = ? WHERE id != 'seeding'`).run(JSON.stringify(DEFAULT_MISS_EXEMPTION))
 }
