@@ -101,6 +101,8 @@ out-of-pool, and its indicators still display.
 _Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top, and one filter can appear
 in several of the lists at once.
 
+![secondary_filters](../../images/configuring/secondary_filters.png)
+
 | List                           | What it does                                                              |
 | ------------------------------ | ------------------------------------------------------------------------- |
 | _Indicate matches for_         | Matching layers display the filter's match emoji                          |

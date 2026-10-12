@@ -98,6 +98,8 @@ SLM also works on a server that uses Squad's own in-game voting system. When an 
 voting was turned on with `AdminEnableVoting 1`, SLM stops setting the next layer, so SLM and the vote never fight over
 it. The server's dashboard shows that an in-game vote is deciding the next layer.
 
+![the dashboard while an in-game vote decides the next layer](../images/features/ingame_vote.png)
+
 ## Layer requests
 
 A layer request asks for a layer with specific characteristics, without editing the queue by hand. A request names any

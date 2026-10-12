@@ -83,6 +83,8 @@ To add a note:
 - in the player details window, click the notebook button beside the flags
 - right-click a player, a squad or a selection, and pick _Add Note..._
 
+![add_note](../../images/features/add_note.png)
+
 To read a player's notes, click _Load notes_ in the player details window. SLM fetches a player's notes only when
 asked, since each fetch counts against your organization's BattleMetrics rate limit. SLM shows a note only when it is shared with
 your organization, has no clearance level and has not expired.
@@ -97,6 +99,8 @@ BattleMetrics account:
 2. Create a token on BattleMetrics with the scopes the dialog lists: adding and removing player flags, and creating
    player notes.
 3. Paste the token and click _Save_.
+
+![bm_token_dialog](../../images/configuring/bm_token_dialog.png)
 
 The token then applies to every change made from the web interface. In-game `/flag` and `/note` use it only when the
 admin's Steam account is [linked](permissions.md#assigning-roles) to their Discord account.
@@ -117,6 +121,8 @@ appears under the _Counterbalance_ switch. When it ends, SLM re-picks the counte
 the activity feed. The countdown stops if the teams even out first. Use _Re-pick now_ to skip the wait, or _Skip_ to keep
 the current swaps until the roster or the swaps change again. Unsaved edits are never changed.
 
+![counterbalance_countdown](../../images/configuring/counterbalance_countdown.png)
+
 The _Teamswap Counterbalance_ server settings choose who SLM picks:
 
 - _Never Picked Groups_: players in these groups, from your [player grouping modes](#player-grouping-modes), are never
@@ -126,6 +132,8 @@ The _Teamswap Counterbalance_ server settings choose who SLM picks:
 - _Picked First_: SLM ranks the remaining players by these lines, from top to bottom. A lower line only breaks ties
   left by the lines above it. A line can prefer a group, or the lowest or highest K/D, kills or wounds.
 - _Roster Change Delay_: the length of the re-pick countdown, 2 minutes by default.
+
+![counterbalance_settings](../../images/configuring/counterbalance_settings.png)
 
 A party is skipped when any member may not be picked, and is ranked by the member who ranks lowest. A party that would
 make the teams uneven again is passed over for a smaller one.

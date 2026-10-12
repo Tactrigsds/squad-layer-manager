@@ -9,12 +9,14 @@ mode_ sorts players into coloured groups by [BattleMetrics](integrations_and_hos
 role, a pattern on their name, or their group in a standard Squad admin list. A player's username takes their group's
 colour wherever it is shown. Two grouping modes cover the common needs: one for balance and one for admin purposes.
 
+![the teams panel](../images/features/teams_panel.png)
+
 The built-in _Party_ grouping mode groups players by the in-game party they queued with, so admins can filter, sort and
 select a team by party.
 
 The _Teams Breakdown_ chart counts each team's players by group. See [Charts](server_monitoring.md#charts).
 
-![the teams panel](../images/features/teams_panel.png)
+![each team's players counted by admin list group](../images/features/teams_breakdown.png)
 
 ## Player details
 
@@ -91,6 +93,8 @@ SLM picks swaps from the other team so that the teams end up as even as possible
 Counterbalance swaps carry a scale icon and a dashed outline. When players joining, leaving or switching teams unbalance
 the saved swaps, SLM re-picks them after a countdown.
 
+![two swaps queued by an admin, and the two counterbalance swaps SLM picked from the other team](../images/features/counterbalance.png)
+
 Each server chooses who SLM may pick, such as never picking players in a group or players with a high K/D in the
 current match. See [Teamswap counterbalance](../guide/configuring/players.md#teamswap-counterbalance).
 
@@ -109,3 +113,5 @@ for the current match.
 A player leaves the line with `/cancelswitch`, and the line clears at every map roll. The _Switch requests_ window
 shows both lines, with each player's place and the next pair to trade, and lets admins switch any player in it
 straight away.
+
+![three players waiting to switch from one team](../images/features/switch_requests.png)

@@ -28,9 +28,13 @@ updates to run SLM alongside something else that owns the rotation.
 While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off. Use
 _Re-enable SLM Updates_ to turn them back on. Both need `squad-server:disable-slm-updates`.
 
+![slm_updates_disabled](../../images/configuring/slm_updates_disabled.png)
+
 SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or when it infers that
 voting was turned on with `AdminEnableVoting 1`. It reports that voting is enabled, and stops updating the next
 layer until someone turns updates back on. Turning them back on disables voting.
+
+![ingame_vote](../../images/features/ingame_vote.png)
 
 ## Repeat rules
 
