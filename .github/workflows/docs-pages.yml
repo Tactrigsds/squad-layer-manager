@@ -1,10 +1,11 @@
 # Publishes the documentation site to the gh-pages branch, which GitHub Pages serves.
 #
-# A push to main rebuilds /next/, a release tag builds that release's folder once, and a manual run rebuilds any ref.
-# CI's tag-release job starts a manual run for each tag it makes, because its tag push cannot trigger this workflow.
-# Every run then rebuilds the unversioned root (landing page, changelog, versions.json) from main, so it always points
-# at the newest release. Folders already on gh-pages are left alone, which is what keeps each release's docs frozen.
-# A tag from before the site existed has no build script, so it gets no folder.
+# The folders are named like the image tags. A push to main rebuilds /latest/, a release tag builds /<version>/ once,
+# and the newest release also rebuilds /stable/. A manual run rebuilds any ref. CI's tag-release job starts a manual run
+# for each tag it makes, because its tag push cannot trigger this workflow. Every run then rebuilds the unversioned root
+# (the redirect to stable, the changelog, versions.json) from main. Other folders already on gh-pages are left alone,
+# which is what keeps each release's docs frozen. A tag from before the site existed has no build script, so it gets no
+# folder, and a tag from before the folders took the image tags' names cannot be rebuilt.
 
 name: Docs site
 
@@ -55,7 +56,7 @@ jobs:
               REF: ${{ inputs.ref || github.ref_name }}
            run: |
               echo "ref=$REF" >> "$GITHUB_OUTPUT"
-              if [ "$REF" = main ]; then echo "version=next" >> "$GITHUB_OUTPUT"; else echo "version=$REF" >> "$GITHUB_OUTPUT"; fi
+              if [ "$REF" = main ]; then echo "version=latest" >> "$GITHUB_OUTPUT"; else echo "version=${REF#v}" >> "$GITHUB_OUTPUT"; fi
 
          - name: Check out the ref being published
            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,6 +99,16 @@ jobs:
            run: |
               pnpm install --frozen-lockfile
               pnpm run docs:build --version-only
+
+         - name: Build stable, if this is the newest release
+           if: hashFiles('ref/src/scripts/build-docs.ts') != '' && steps.pick.outputs.version != 'latest'
+           working-directory: ref
+           env:
+              VERSION: ${{ steps.pick.outputs.version }}
+              DOCS_REF: ${{ steps.pick.outputs.ref }}
+           run: |
+              newest=$(ls "$DOCS_OUT" | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1)
+              if [ "$newest" = "$VERSION" ]; then DOCS_VERSION=stable pnpm run docs:build --version-only; fi
 
          - name: Build the root
            working-directory: main

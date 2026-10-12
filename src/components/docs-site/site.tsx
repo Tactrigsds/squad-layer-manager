@@ -24,16 +24,18 @@ import * as DS from '@/models/docs-site.models'
 import * as Project from '@/models/project.models'
 
 export type SiteInfo = {
-	// the version folder the pages link into, e.g. /v2026.9.4/
+	// the version folder the pages link into, e.g. /2026.9.4/
 	base: string
-	// the site root, which holds the landing page, the unversioned pages and versions.json
+	// the site root, which holds the unversioned pages and versions.json, and redirects to stable
 	root: string
 	// where the pages' images and other copied files are served from
 	assetBase: string
-	// pages the version at `base` does not have, which are linked in the next version instead
+	// pages the version at `base` does not have, which are linked in latest instead
 	absent?: ReadonlySet<string>
 	// the version these pages belong to, or the one the root points at
 	version: string
+	// the release the pages were built from, or null for latest
+	release: string | null
 	repoUrl: string
 	// git ref the source links point at
 	ref: string
@@ -77,7 +79,7 @@ export function DocsDocument(props: {
 }) {
 	const { site } = props
 	return (
-		<html lang="en" data-base={site.base} data-root={site.root} data-version={site.version}>
+		<html lang="en" data-base={site.base} data-root={site.root} data-version={site.version} data-release={site.release ?? undefined}>
 			<head>
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -118,7 +120,7 @@ function SiteHeader({ site, section, sidebar }: { site: SiteInfo; section: DS.Se
 					</div>
 				</div>
 			</details>
-			<a href={site.root} className="flex items-center gap-2.5 text-text no-underline">
+			<a href={site.base} className="flex items-center gap-2.5 text-text no-underline">
 				<LogoMark accent={null} className="size-7" />
 				<span className="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span>
 			</a>
@@ -162,8 +164,8 @@ function SupportLink({ className }: { className: string }) {
 function VersionMenu({ site, className }: { site: SiteInfo; className: string }) {
 	return (
 		<details className={`docs-version ${className}`} data-version-menu="">
-			<summary aria-label={`Documentation version: ${DS.versionLabel(site.version)}`}>
-				{DS.versionLabel(site.version)}
+			<summary aria-label={`Documentation version: ${DS.versionLabel(site.version, site.release)}`}>
+				{DS.versionLabel(site.version, site.release)}
 				<ChevronDown className="size-3.5" aria-hidden="true" />
 			</summary>
 			<div className="docs-version-panel" data-version-list="">
@@ -575,10 +577,10 @@ export function RedirectDocument({ to }: { to: string }) {
 
 export function NotFoundPage({ site }: { site: SiteInfo }) {
 	return (
-		<main id="content" className="docs-landing">
+		<main id="content" className="docs-landing" data-not-found="">
 			<h1 className="font-cond text-[44px] font-extrabold">Page not found</h1>
 			<p className="text-text-2">
-				This page does not exist, or has moved. Try searching, or go to the <a href={site.root}>start page</a>.
+				This page does not exist, or has moved. Try searching, or go to the <a href={site.base}>start page</a>.
 			</p>
 		</main>
 	)

@@ -25,17 +25,18 @@ import * as Project from '@/models/project.models'
 
 // Builds the documentation site. Run with `pnpm docs:build`, or `pnpm docs:dev` to rebuild on change and serve it.
 //
-// The site holds one folder per version of the docs, and an unversioned root:
+// The site holds one folder per version of the docs, named like the image tags, and an unversioned root:
 //
-//   <root>/next/...        the docs on main
-//   <root>/v2026.9.4/...   the docs of a release, built once from its tag and never rebuilt
-//   <root>/index.html      the landing page, the 404 page, versions.json, all pointing at the latest release
+//   <root>/latest/...      the docs on main
+//   <root>/2026.9.4/...    the docs of a release, built once from its tag and never rebuilt
+//   <root>/stable/...      the newest release, built from its tag a second time, and rebuilt by each new release
+//   <root>/index.html      a redirect to stable, beside the 404 page, the changelog and versions.json
 //
-// `--version-only` builds DOCS_VERSION's folder, `--root-only` rebuilds the root from the version folders already in
-// DOCS_OUT; neither flag does both. The publishing workflow (.github/workflows/docs-pages.yml) runs the version half
-// from the ref being published and the root half from main.
+// Each version folder opens on its own landing page. `--version-only` builds DOCS_VERSION's folder, `--root-only`
+// rebuilds the root from the version folders already in DOCS_OUT; neither flag does both. The publishing workflow
+// (.github/workflows/docs-pages.yml) runs the version half from the ref being published and the root half from main.
 //
-// DOCS_ROOT is the path the site is served under (default "/"), DOCS_VERSION the folder to build (default "next"),
+// DOCS_ROOT is the path the site is served under (default "/"), DOCS_VERSION the folder to build (default "latest"),
 // DOCS_REF the git ref its source links point at (default "main"), DOCS_OUT the site directory (default dist-docs),
 // DOCS_CNAME a custom domain for GitHub Pages. The build fails on a link to a page or heading that does not exist, and
 // on a code block in a language it has no grammar for.
@@ -43,7 +44,7 @@ import * as Project from '@/models/project.models'
 const ROOT = Paths.PROJECT_ROOT
 const OUT = path.resolve(ROOT, process.env.DOCS_OUT ?? 'dist-docs')
 const SITE_ROOT = normalizeBase(process.env.DOCS_ROOT ?? '/')
-const VERSION = process.env.DOCS_VERSION ?? DS.NEXT_VERSION
+const VERSION = process.env.DOCS_VERSION ?? DS.LATEST_VERSION
 const REF = process.env.DOCS_REF ?? 'main'
 const CNAME = process.env.DOCS_CNAME || null
 const VERSION_ONLY = process.argv.includes('--version-only')
@@ -154,7 +155,8 @@ type LinkProblem = { file: string; message: string }
 
 async function main() {
 	const started = performance.now()
-	if (!DS.isVersionName(VERSION)) throw new Error(`DOCS_VERSION "${VERSION}" is not "${DS.NEXT_VERSION}" or a release tag`)
+	if (!DS.isVersionName(VERSION))
+		throw new Error(`DOCS_VERSION "${VERSION}" is not "${DS.LATEST_VERSION}", "${DS.STABLE_VERSION}" or a release`)
 	fs.mkdirSync(OUT, { recursive: true })
 	const highlighter = await createHighlighter()
 	if (!ROOT_ONLY) await buildVersion(highlighter)
@@ -164,18 +166,31 @@ async function main() {
 
 type Highlighter = Awaited<ReturnType<typeof createHighlighter>>
 
-// one version's folder: every page in DS.PAGES, the images they embed, and a search index over them alone
+// one version's folder: its landing page, every versioned page in DS.PAGES, the images they embed, and a search index
+// over them alone
 async function buildVersion(highlighter: Highlighter) {
+	const release = VERSION === DS.LATEST_VERSION ? null : VERSION === DS.STABLE_VERSION ? DS.releaseOfRef(REF) : VERSION
+	if (VERSION === DS.STABLE_VERSION && !release) throw new Error(`DOCS_REF "${REF}" is not a release tag, so it cannot be stable`)
 	const dir = path.join(OUT, VERSION)
 	fs.rmSync(dir, { recursive: true, force: true })
 	fs.mkdirSync(dir, { recursive: true })
 	const base = `${SITE_ROOT}${VERSION}/`
-	const site = { ...(await buildStatic(dir, base)), base, root: SITE_ROOT, assetBase: base, version: VERSION, ref: REF }
+	const site = { ...(await buildStatic(dir, base)), base, root: SITE_ROOT, assetBase: base, version: VERSION, release, ref: REF }
 
 	const problems: LinkProblem[] = []
 	const assets = renderPages(DS.versionedPages(), dir, site, highlighter, problems)
-	// the bare version url opens its first page
-	writePage(dir, 'index.html', React.createElement(Site.RedirectDocument, { to: DS.pageHref(site, DS.versionedPages()[0]) }))
+	checkHighlights(dir, problems)
+	for (const h of LANDING.highlights) if (h.media.kind === 'shot') assets.add(h.media.file)
+	const sidebar = React.createElement(Site.Sidebar, { site, page: DS.pagesIn('guide')[0] })
+	writePage(
+		dir,
+		'index.html',
+		React.createElement(
+			Site.DocsDocument,
+			{ site, title: DS.tabTitle(null), description: LANDING.tagline, section: null, sidebar },
+			React.createElement(Site.LandingPage, { site, ...LANDING, highlights: LANDING.highlights.map(withImageSize) }),
+		),
+	)
 	copyAssets(dir, assets, problems)
 	if (problems.length > 0) {
 		for (const p of problems) console.error(`docs: ${p.file}: ${p.message}`)
@@ -244,8 +259,9 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 	return assets
 }
 
-// the unversioned root: landing page, 404 page and versions.json, all pointing at the latest release
+// the unversioned root: a redirect to stable, the 404 page, the unversioned pages and versions.json
 async function buildRoot(highlighter: Highlighter) {
+	migrateLegacyFolders()
 	const versions = DS.sortVersions(
 		fs
 			.readdirSync(OUT, { withFileTypes: true })
@@ -253,8 +269,9 @@ async function buildRoot(highlighter: Highlighter) {
 			.map((d) => d.name),
 	)
 	if (versions.length === 0) throw new Error(`no version folders in ${OUT}: build one first`)
-	const index: DS.VersionIndex = { latest: DS.latestRelease(versions), versions }
-	const shown = index.latest ?? DS.NEXT_VERSION
+	const shown = versions.includes(DS.STABLE_VERSION) ? DS.STABLE_VERSION : versions[0]
+	const release = shown === DS.STABLE_VERSION ? stableRelease() : DS.isRelease(shown) ? shown : null
+	const index: DS.VersionIndex = { stable: shown === DS.STABLE_VERSION ? release : null, versions }
 	fs.writeFileSync(path.join(OUT, 'versions.json'), JSON.stringify(index))
 
 	const dir = path.join(OUT, 'static')
@@ -272,26 +289,16 @@ async function buildRoot(highlighter: Highlighter) {
 		root: SITE_ROOT,
 		assetBase: `${SITE_ROOT}static/`,
 		version: shown,
-		ref: shown === DS.NEXT_VERSION ? 'main' : shown,
+		release,
+		ref: release ? `v${release}` : 'main',
 	}
 
 	const problems: LinkProblem[] = []
 	for (const page of DS.unversionedPages()) fs.rmSync(path.join(OUT, page.slug), { recursive: true, force: true })
 	const pageSite = { ...site, ref: 'main' }
 	const assets = renderPages(DS.unversionedPages(), OUT, pageSite, highlighter, problems)
-	checkHighlights(absent, shown, problems)
-	for (const h of LANDING.highlights) if (h.media.kind === 'shot') assets.add(h.media.file)
-	const firstGuide = DS.pagesIn('guide')[0]
-	const sidebar = React.createElement(Site.Sidebar, { site, page: firstGuide })
-	writePage(
-		OUT,
-		'index.html',
-		React.createElement(
-			Site.DocsDocument,
-			{ site, title: DS.tabTitle(null), description: LANDING.tagline, section: null, sidebar },
-			React.createElement(Site.LandingPage, { site, ...LANDING, highlights: LANDING.highlights.map(withImageSize) }),
-		),
-	)
+	writePage(OUT, 'index.html', React.createElement(Site.RedirectDocument, { to: site.base }))
+	const sidebar = React.createElement(Site.Sidebar, { site, page: DS.pagesIn('guide')[0] })
 	writePage(
 		OUT,
 		'404.html',
@@ -304,12 +311,70 @@ async function buildRoot(highlighter: Highlighter) {
 	copyAssets(dir, assets, problems)
 	if (problems.length > 0) {
 		for (const p of problems) console.error(`docs: ${p.file}: ${p.message}`)
-		throw new Error(`${problems.length} problem(s) in the landing page`)
+		throw new Error(`${problems.length} problem(s) in the root pages`)
 	}
 	fs.writeFileSync(path.join(OUT, 'favicon.svg'), Logo.themedSvg({ accent: null }))
 	// GitHub Pages runs Jekyll over a branch unless this file exists, and Jekyll drops anything starting with "_"
 	fs.writeFileSync(path.join(OUT, '.nojekyll'), '')
 	if (CNAME) fs.writeFileSync(path.join(OUT, 'CNAME'), `${CNAME}\n`)
+}
+
+// the release the stable folder was built from, read back from its pages. A folder moved by migrateLegacyFolders
+// records it on its pages, but not on its index.html, which only redirects.
+function stableRelease() {
+	const dir = path.join(OUT, DS.STABLE_VERSION)
+	const pages = ['index.html', ...fs.readdirSync(dir).map((d) => path.join(d, 'index.html'))]
+	for (const page of pages) {
+		const file = path.join(dir, page)
+		if (!fs.existsSync(file)) continue
+		const release = /data-release="([^"]+)"/.exec(fs.readFileSync(file, 'utf8'))?.[1]
+		if (release) return release
+	}
+	throw new Error(`${DS.STABLE_VERSION}/ does not record the release it was built from`)
+}
+
+// The folders were once named next/ for main and v<release>/ for a release, and links into those names remain in app
+// builds and in pages published back then (docs-site.client.ts redirects them). A release tag from then cannot be
+// rebuilt under the new names, so each such folder is moved by rewriting the paths and version its pages carry. The
+// newest of them also becomes stable, unless a newer release already built stable. next/ is dropped once latest/
+// exists, and moved like a release until then.
+function migrateLegacyFolders() {
+	const legacy = fs.readdirSync(OUT).filter((n) => n === 'next' || /^v\d+(?:\.\d+)*$/.test(n))
+	const newest = DS.sortReleases(legacy.map((n) => n.slice(1)))[0]
+	for (const name of legacy) {
+		const release = name === 'next' ? null : name.slice(1)
+		const targets = release ? [release, ...(release === newest ? [DS.STABLE_VERSION] : [])] : [DS.LATEST_VERSION]
+		for (const target of targets) {
+			if (fs.existsSync(path.join(OUT, target))) continue
+			copyRewritten(path.join(OUT, name), path.join(OUT, target), [
+				[`${SITE_ROOT}${name}/`, `${SITE_ROOT}${target}/`],
+				[`${SITE_ROOT}next/`, `${SITE_ROOT}${DS.LATEST_VERSION}/`],
+				[`data-version="${name}"`, `data-version="${target}"${release ? ` data-release="${release}"` : ''}`],
+				[`Documentation version: ${name}`, `Documentation version: ${DS.versionLabel(target, release)}`],
+				[`>${name === 'next' ? 'Unreleased' : name}<`, `>${DS.versionLabel(target, release)}<`],
+			])
+			console.log(`docs: moved ${name}/ to ${target}/`)
+		}
+		fs.rmSync(path.join(OUT, name), { recursive: true, force: true })
+	}
+}
+
+const TEXT_EXTENSIONS = new Set(['.html', '.js', '.css', '.json'])
+
+function copyRewritten(from: string, to: string, replacements: [string, string][]) {
+	for (const entry of fs.readdirSync(from, { withFileTypes: true, recursive: true })) {
+		if (!entry.isFile()) continue
+		const src = path.join(entry.parentPath, entry.name)
+		const dest = path.join(to, path.relative(from, src))
+		fs.mkdirSync(path.dirname(dest), { recursive: true })
+		if (!TEXT_EXTENSIONS.has(path.extname(src))) {
+			fs.copyFileSync(src, dest)
+			continue
+		}
+		let text = fs.readFileSync(src, 'utf8')
+		for (const [a, b] of replacements) text = text.replaceAll(a, b)
+		fs.writeFileSync(dest, text)
+	}
 }
 
 function withImageSize(h: Site.Highlight): Site.SizedHighlight {
@@ -319,8 +384,8 @@ function withImageSize(h: Site.Highlight): Site.SizedHighlight {
 	return { ...h, media: { ...h.media, size: { width, height } } }
 }
 
-// every landing highlight must link to a published page, and to a heading that page has
-function checkHighlights(absent: ReadonlySet<string>, shown: string, problems: LinkProblem[]) {
+// every landing highlight must link to a page this version publishes, and to a heading that page has
+function checkHighlights(dir: string, problems: LinkProblem[]) {
 	for (const h of LANDING.highlights) {
 		const page = DS.PAGE_BY_FILE.get(h.page)
 		if (!page) {
@@ -328,8 +393,7 @@ function checkHighlights(absent: ReadonlySet<string>, shown: string, problems: L
 			continue
 		}
 		if (!h.anchor) continue
-		const version = absent.has(page.slug) ? DS.NEXT_VERSION : shown
-		const html = fs.readFileSync(path.join(OUT, version, page.slug, 'index.html'), 'utf8')
+		const html = fs.readFileSync(path.join(dir, page.slug, 'index.html'), 'utf8')
 		if (!html.includes(` id="${h.anchor}"`)) problems.push({ file: h.page, message: `no heading for the landing highlight #${h.anchor}` })
 	}
 }
