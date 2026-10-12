@@ -1,6 +1,7 @@
 # Layer rotation
 
-These settings decide what SLM plays next: the next layer, the repeat rules, and how SLM picks layers at random.
+These settings decide what SLM plays next: the next layer, the repeat rules, generated votes, and how SLM picks layers
+at random.
 
 ## Next layer
 
@@ -110,6 +111,21 @@ A layer that another admin is editing stays where it is. The changes stay in the
 A repeat rule checks a layer against every choice of an earlier vote that has not taken place yet, because any of
 those choices could still be played. Once the vote picks a winner, or ends with too few votes, the rule checks only
 the layer the vote settled on. Aborting a vote puts all of its choices back in play.
+
+## Generated votes
+
+When the queue runs out of layers, SLM generates a single layer by default. Switch on _Generate votes_, in the
+_Generation_ tab of the pool configuration window, to have SLM generate a vote between 3 layers instead.
+
+![pool_config_generation](../../images/configuring/pool_config_generation.png)
+
+Each choice of a generated vote is on a different map. SLM draws the choices under the pool filter, the _Constrain
+generated pool for_ filters and the repeat rules, the same as a single generated layer. When a
+[layer request](../../features/layer_selection.md#layer-requests) is pending, SLM generates the requested layer on its
+own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer.
+
+_Vote Display Options_ sets which parts of each choice players see when a generated vote starts. The map is always
+shown, because the map is the one part the choices are certain to differ by.
 
 ## Randomization
 

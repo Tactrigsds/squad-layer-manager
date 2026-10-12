@@ -25,6 +25,9 @@ squad, and their recent chat.
 
 ![a player's details](../images/features/player_details.png)
 
+Use the expand button beside the activity filter to give the player's server activity the whole window. Press it again
+to bring back the rest of the player's details.
+
 ## Admin actions
 
 Admins can warn, kick, time out, kill or swap a player from the player's context menu, wherever the player's name or

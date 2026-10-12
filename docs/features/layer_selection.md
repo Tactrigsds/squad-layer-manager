@@ -80,10 +80,14 @@ rotation under a new name, and _Archive_ and _Delete_ in its menu. An archived r
 archived_ is ticked. Rotation tags group rotations on the page, and are defined on the settings page under _Rotation
 tags_.
 
+![the Rotations page, with rotation tag and author filters beside the rotation cards](../images/features/rotations_page.png)
+
 A rotation's layers are edited the same way as the queue's. Press _Start Editing_, change the layers, and press
 _Save_. Several admins can edit a rotation at once, and each one sees the others' changes as they are made. Each
 rotation uses a [repeat ruleset](../guide/configuring/layer_rotation.md#repeat-rules), and the editor marks every layer
 that breaks one of its repeat rules.
+
+![a rotation open for editing, with its rotation tags and repeat ruleset beside its layers](../images/features/rotation_editor.png)
 
 Use _Export_ in the rotation editor to copy a rotation's layers out as YAML or plain text, and _Import_ to read layers
 in from either format. The file holds the layers alone, without the rotation's name, description, tags or repeat ruleset.
@@ -134,6 +138,8 @@ To add a rotation to the queue:
    the _Saved Rotation_ tab.
 4. Pick _Replace_ to replace every layer in the queue, or _Add to start_ or _Add to end_.
 5. Press the add button, then save the queue.
+
+![the Saved Rotation tab of Add Rotation, previewing where each item lands in the queue](../images/features/add_rotation.png)
 
 Every item added from a saved rotation carries a tag showing the rotation's name. Each of the rotation's notes shows a
 rotation icon in place of an author, and only an admin with `queue:manage-all-notes` can change one.

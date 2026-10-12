@@ -25,6 +25,14 @@ Each server uses one of three connection modes:
 If a server does not behave as expected, open the [server console](../operations/server_console.md). It shows the RCON traffic and the
 log lines as SLM receives them, which shows whether the connection or SLM is at fault.
 
+## Server color
+
+SLM marks each server with a color. While a server's dashboard is open, the navigation bar's bottom border takes that
+server's color. The server switcher and the server lists show each server in its own color. A new server gets a color
+that stands apart from the existing servers' colors. Change the color under _Color_ in the server's settings:
+
+![server_color](../../images/configuring/server_color.png)
+
 ## Server admin lists
 
 Name which of your [configured admin lists](permissions.md#admin-lists) apply to this server:

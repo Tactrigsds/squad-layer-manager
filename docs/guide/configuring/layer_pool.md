@@ -10,7 +10,11 @@ ships with a few, listed in the filters index:
 
 ![filters_index](../../images/configuring/filters_index.png)
 
-Open one to see the expression that decides what it matches:
+Use the _Filters_ page to search filters by name or description, to narrow the list to one author, and to sort it. A
+filter card's menu provides _Clone_, which copies the filter under a new name, and _Delete_. Right-click a card to open
+the same menu.
+
+Open a filter to see the expression that decides what it matches:
 
 ![filter_edit](../../images/configuring/filter_edit.png)
 
@@ -47,7 +51,7 @@ the usual route:
 
 ![pool_config_button](../../images/configuring/pool_config_button.png)
 
-It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
+It has four tabs: _Filters_, _Repeat Rules_, _Generation_ and _Next Layer_.
 
 ![pool_config_popover](../../images/configuring/pool_config_popover.png)
 
@@ -81,6 +85,8 @@ An emoji can be a standard one, or one from your Discord server's emoji library:
 A layer that matches the filter's _Exempt layers_ conditions never shows the miss emoji or alert message, and SLM does
 not warn that it misses the filter. A new filter exempts seeding and training layers. To change the conditions, open
 _Exempt layers_ under the _Miss Indicator_. Use _Reset to default_ to restore the seeding and training exemption.
+
+![exempt_layers](../../images/configuring/miss_exemption.png)
 
 The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
 everywhere it appears. The queue shows the emoji beside the layer:
