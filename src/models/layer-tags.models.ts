@@ -109,18 +109,21 @@ export function rotationIdOfTag(id: TagId): string | undefined {
 // rotationId is set on a from-rotation tag; deleted then means the rotation no longer exists
 export type Resolved = { id: TagId; label: string; description: string; color: string; deleted: boolean; rotationId?: string }
 
-export function resolve(id: TagId, tags: Tag[], rotationName?: (rotationId: string) => string | undefined): Resolved {
+// rotationName gives null for a rotation that does not exist, and undefined for one whose name is not known yet
+export type RotationNameLookup = (rotationId: string) => string | null | undefined
+
+export function resolve(id: TagId, tags: Tag[], rotationName?: RotationNameLookup): Resolved {
 	const rotationId = rotationIdOfTag(id)
 	if (rotationId !== undefined) {
 		const name = rotationName?.(rotationId)
-		return { id, label: name ?? rotationId, description: '', color: FROM_ROTATION_COLOR, deleted: name === undefined, rotationId }
+		return { id, label: name ?? rotationId, description: '', color: FROM_ROTATION_COLOR, deleted: name === null, rotationId }
 	}
 	const tag = tags.find((t) => t.id === id)
 	if (tag) return { ...tag, deleted: false }
 	return { id, label: id, description: '', color: DELETED_TAG_COLOR, deleted: true }
 }
 
-export function resolveAll(ids: TagId[] | undefined, tags: Tag[], rotationName?: (rotationId: string) => string | undefined): Resolved[] {
+export function resolveAll(ids: TagId[] | undefined, tags: Tag[], rotationName?: RotationNameLookup): Resolved[] {
 	if (!ids) return []
 	return ids.map((id) => resolve(id, tags, rotationName))
 }

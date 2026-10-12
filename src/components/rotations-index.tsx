@@ -1,3 +1,4 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
@@ -39,6 +40,7 @@ import * as Zus from '@/lib/zustand'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as ROT_Msgs from '@/messages/rotations.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import * as RBAC from '@/rbac.models'
@@ -51,8 +53,6 @@ import * as SettingsClient from '@/systems/settings.client'
 import { MatchSnippet, OwnerFilter, SortControl } from './entity-index'
 import { DeleteRotationDialog, RotationFormDialog, type RotationFormMode } from './rotation-dialogs'
 
-const PREVIEW_ITEMS = 3
-
 type Props = {
 	search: ROT.IndexSearch
 	onSearchChange: (search: ROT.IndexSearch) => void
@@ -60,21 +60,17 @@ type Props = {
 
 export default function RotationsIndex(props: Props) {
 	const { search, onSearchChange } = props
-	const rotations = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotations)
-	const initialized = Zus.useStore(RotationClient.Store, (s) => s.initialized)
+	const searchRes = useInfiniteQuery(RotationClient.searchQuery(search))
+	const facets = useQuery(RotationClient.facetsQuery()).data
 	const rotationTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.rotationTags ?? [])
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
 	const [dialog, setDialog] = React.useState<RotationFormMode | null>(null)
 
-	const shown = ROT.searchRotations(rotations.values(), search, DH.toShortLayerNameFromId)
+	const shown = searchRes.data?.pages.flatMap((page) => page.rotations) ?? []
+	const matched = searchRes.data?.pages[0]?.matched ?? 0
 	const searching = !!search.q?.trim()
-	let archivedCount = 0
-	const tagCounts = new Map<LTag.TagId, number>()
-	for (const rotation of rotations.values()) {
-		if (rotation.archived) archivedCount++
-		for (const tag of rotation.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
-	}
-	const total = search.archived ? rotations.size : rotations.size - archivedCount
+	const archivedCount = facets?.archived ?? 0
+	const total = (facets?.unarchived ?? 0) + (search.archived ? archivedCount : 0)
 
 	const setSearch = (patch: Partial<ROT.IndexSearch>) => onSearchChange({ ...search, ...patch })
 	const setQ = useDebounced({ delay: 200, onChange: (q: string) => setSearch({ q }) })
@@ -104,7 +100,7 @@ export default function RotationsIndex(props: Props) {
 								<li key={tag.id}>
 									<TagFilter
 										tag={tag}
-										count={tagCounts.get(tag.id) ?? 0}
+										count={facets?.tagCounts[tag.id] ?? 0}
 										checked={search.tags?.includes(tag.id) ?? false}
 										onCheckedChange={(checked) => {
 											const tags = new Set(search.tags ?? [])
@@ -122,11 +118,7 @@ export default function RotationsIndex(props: Props) {
 							<span className="text-xs">({archivedCount})</span>
 						</label>
 					</section>
-					<OwnerFilter
-						owners={Array.from(rotations.values(), (r) => r.owner)}
-						value={search.author}
-						onChange={(author) => setSearch({ author })}
-					/>
+					<OwnerFilter owners={facets?.owners ?? []} value={search.author} onChange={(author) => setSearch({ author })} />
 				</aside>
 
 				<main className="flex-[999_1_560px] min-w-0 space-y-3">
@@ -140,10 +132,10 @@ export default function RotationsIndex(props: Props) {
 						/>
 						<RotationSortControl search={search} setSearch={setSearch} />
 					</div>
-					<p className="text-sm text-muted-foreground">{tr.text(ROT_Msgs.shownCount(shown.length, total))}</p>
+					<p className="text-sm text-muted-foreground">{tr.text(ROT_Msgs.shownCount(matched, total))}</p>
 
-					{initialized && shown.length === 0 && (
-						<p className="text-muted-foreground">{tr.text(rotations.size === 0 ? ROT_Msgs.noRotations() : ROT_Msgs.noMatches())}</p>
+					{searchRes.isSuccess && shown.length === 0 && (
+						<p className="text-muted-foreground">{tr.text(total === 0 ? ROT_Msgs.noRotations() : ROT_Msgs.noMatches())}</p>
 					)}
 					{searching ? (
 						<ul className="flex flex-col divide-y rounded border bg-card">
@@ -166,6 +158,16 @@ export default function RotationsIndex(props: Props) {
 								/>
 							))}
 						</ul>
+					)}
+					{searchRes.hasNextPage && (
+						<Button
+							variant="outline"
+							className="w-full"
+							disabled={searchRes.isFetchingNextPage}
+							onClick={() => void searchRes.fetchNextPage()}
+						>
+							{tr.text(UI_Msgs.showMore())}
+						</Button>
 					)}
 				</main>
 			</div>
@@ -255,7 +257,7 @@ const contextSlots: RotationMenuSlots = {
 type RotationMenuActions = { onDelete: () => void; onNewTag: () => void }
 
 // what can be done to a rotation from its card or row: the ellipsis menu and the right-click menu hold the same entries
-function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuSlots; onClone: () => void } & RotationMenuActions) {
+function RotationMenuItems(props: { rotation: ROT.Summary; slots: RotationMenuSlots; onClone: () => void } & RotationMenuActions) {
 	const { rotation } = props
 	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
 	const rotationTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.rotationTags ?? EMPTY_TAGS)
@@ -293,7 +295,7 @@ function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuS
 					{rotationTags.map((tag) => {
 						const applied = rotation.tags.includes(tag.id)
 						return (
-							<Item key={tag.id} onClick={() => void RotationClient.Actions.setTag(rotation.id, tag.id, !applied)}>
+							<Item key={tag.id} onClick={() => void RotationClient.Actions.setTag(rotation, tag.id, !applied)}>
 								{applied ? <Icons.Check /> : <span className="size-4 shrink-0" />}
 								<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
 								<span className="truncate">{tag.label}</span>
@@ -322,11 +324,7 @@ function RotationMenuItems(props: { rotation: ROT.Rotation; slots: RotationMenuS
 }
 
 // right-clicking the card or row opens the same entries as its ellipsis; the dialogs they open serve both
-function RotationMenus(props: {
-	rotation: ROT.Rotation
-	onClone: () => void
-	children: (actions: RotationMenuActions) => React.ReactNode
-}) {
+function RotationMenus(props: { rotation: ROT.Summary; onClone: () => void; children: (actions: RotationMenuActions) => React.ReactNode }) {
 	const { rotation } = props
 	const [dialog, setDialog] = React.useState<'delete' | 'new-tag' | null>(null)
 	const actions: RotationMenuActions = { onDelete: () => setDialog('delete'), onNewTag: () => setDialog('new-tag') }
@@ -343,13 +341,13 @@ function RotationMenus(props: {
 				kind="rotation"
 				state={dialog === 'new-tag' ? 'new' : null}
 				onClose={() => setDialog(null)}
-				onCreated={(tagId) => void RotationClient.Actions.setTag(rotation.id, tagId, true)}
+				onCreated={(tagId) => void RotationClient.Actions.setTag(rotation, tagId, true)}
 			/>
 		</>
 	)
 }
 
-function RotationActions(props: { rotation: ROT.Rotation; onClone: () => void } & RotationMenuActions) {
+function RotationActions(props: { rotation: ROT.Summary; onClone: () => void } & RotationMenuActions) {
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
 	return (
 		<span className="relative flex shrink-0 items-center gap-1">
@@ -387,12 +385,12 @@ function RotationActions(props: { rotation: ROT.Rotation; onClone: () => void } 
 	)
 }
 
-function RotationMeta(props: { rotation: ROT.Rotation }) {
+function RotationMeta(props: { rotation: ROT.Summary }) {
 	const { rotation } = props
 	const ownerName = FilterEntityClient.useOwnerName(rotation.owner) ?? ''
 	return (
 		<span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-			<span>{tr.text(ROT_Msgs.itemCount(rotation.items.length))}</span>
+			<span>{tr.text(ROT_Msgs.itemCount(rotation.itemCount))}</span>
 			<span>{tr.text(ROT_Msgs.byOwner(ownerName))}</span>
 			<span>{tr.text(ROT_Msgs.modifiedAgo(dateFns.formatDistanceToNow(rotation.updatedAt, { addSuffix: true })))}</span>
 			<span>{tr.text(ROT_Msgs.createdOn(dateFns.format(rotation.createdAt, 'd MMM yyyy')))}</span>
@@ -400,7 +398,7 @@ function RotationMeta(props: { rotation: ROT.Rotation }) {
 	)
 }
 
-function RotationCard(props: { rotation: ROT.Rotation; onClone: () => void }) {
+function RotationCard(props: { rotation: ROT.Summary; onClone: () => void }) {
 	const { rotation } = props
 	return (
 		<RotationMenus rotation={rotation} onClone={props.onClone}>
@@ -421,16 +419,18 @@ function RotationCard(props: { rotation: ROT.Rotation; onClone: () => void }) {
 					</div>
 					{rotation.description && <p className="line-clamp-2 text-sm text-muted-foreground">{rotation.description}</p>}
 					<TagChips tagIds={rotation.tags} />
-					{rotation.items.length > 0 && (
+					{rotation.itemCount > 0 && (
 						<ol className="flex flex-col gap-0.5 rounded bg-background px-2 py-1.5 text-xs">
-							{rotation.items.slice(0, PREVIEW_ITEMS).map((item, i) => (
-								<li key={item.itemId} className="flex gap-2 truncate">
+							{rotation.previewItems.map(({ itemId, layerId }, i) => (
+								<li key={itemId} className="flex gap-2 truncate">
 									<span className="w-4 shrink-0 text-end text-muted-foreground">{i + 1}</span>
-									<span className="truncate">{DH.toShortLayerNameFromId(item.layerId)}</span>
+									<span className="truncate">{DH.toShortLayerNameFromId(layerId)}</span>
 								</li>
 							))}
-							{rotation.items.length > PREVIEW_ITEMS && (
-								<li className="ps-6 text-muted-foreground">{tr.text(ROT_Msgs.moreItems(rotation.items.length - PREVIEW_ITEMS))}</li>
+							{rotation.itemCount > rotation.previewItems.length && (
+								<li className="ps-6 text-muted-foreground">
+									{tr.text(ROT_Msgs.moreItems(rotation.itemCount - rotation.previewItems.length))}
+								</li>
 							)}
 						</ol>
 					)}
@@ -441,23 +441,18 @@ function RotationCard(props: { rotation: ROT.Rotation; onClone: () => void }) {
 	)
 }
 
-// the first part of the rotation that matches the query, with the match marked
-function matchSnippet(rotation: ROT.Rotation, query: string): { prefix: string; before: string; hit: string; after: string } | null {
+// the first of the name and the description that matches the query, with the match marked
+function matchSnippet(rotation: ROT.Summary, query: string): { before: string; hit: string; after: string } | null {
 	const q = query.toLowerCase()
-	const candidates: { prefix: string; text: string }[] = [
-		{ prefix: '', text: rotation.name },
-		{ prefix: '', text: rotation.description ?? '' },
-		...rotation.items.map((item, i) => ({ prefix: `#${i + 1}`, text: DH.toShortLayerNameFromId(item.layerId) })),
-	]
-	for (const { prefix, text } of candidates) {
+	for (const text of [rotation.name, rotation.description ?? '']) {
 		const at = text.toLowerCase().indexOf(q)
 		if (at === -1) continue
-		return { prefix, before: text.slice(0, at), hit: text.slice(at, at + q.length), after: text.slice(at + q.length) }
+		return { before: text.slice(0, at), hit: text.slice(at, at + q.length), after: text.slice(at + q.length) }
 	}
 	return null
 }
 
-function RotationRow(props: { rotation: ROT.Rotation; query: string; onClone: () => void }) {
+function RotationRow(props: { rotation: ROT.Summary; query: string; onClone: () => void }) {
 	const { rotation } = props
 	const snippet = matchSnippet(rotation, props.query)
 	return (

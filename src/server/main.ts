@@ -136,7 +136,7 @@ await Instr.spanOp('main', { module }, async () => {
 	await FilterEntity.setup()
 	// after FilterEntity, whose filter table it reads when provisioning a session
 	FilterEdit.setup()
-	await Rotation.setup()
+	Rotation.setup()
 	RotationEdit.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

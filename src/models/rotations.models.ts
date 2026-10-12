@@ -166,59 +166,81 @@ export function defaultDir(sort: IndexSort): 'asc' | 'desc' {
 	return sort === 'name' ? 'asc' : 'desc'
 }
 
-// what the search box matches: the name, the description and the layers' names
-function haystack(rotation: Rotation, layerName: (layerId: string) => string): string {
-	const parts = [rotation.name, rotation.description ?? '']
-	for (const item of rotation.items) {
-		parts.push(layerName(item.layerId))
-		if (item.type === 'vote-list-item') for (const choice of item.choices) parts.push(layerName(choice.layerId))
-	}
-	return parts.join('\n').toLowerCase()
+// -------- listing without items --------
+// Rotations are unbounded in number and size, so lists, pickers and live updates carry summaries, and only a rotation
+// that is open is sent in full.
+
+export const PREVIEW_ITEMS = 3
+
+// what a rotation and a summary of it share
+export type Meta = Omit<Rotation, 'items'>
+
+export type Summary = Meta & {
+	itemCount: number
+	// the first PREVIEW_ITEMS items
+	previewItems: { itemId: string; layerId: string }[]
 }
 
-// the rotations a search shows, in the order it shows them. An archived rotation is shown only when asked for.
-export function searchRotations(rotations: Iterable<Rotation>, search: IndexSearch, layerName: (layerId: string) => string): Rotation[] {
-	const q = search.q?.trim().toLowerCase()
-	const tags = search.tags ?? []
-	const out: Rotation[] = []
-	for (const rotation of rotations) {
-		if (rotation.archived && !search.archived) continue
-		if (!tags.every((tag) => rotation.tags.includes(tag))) continue
-		if (search.author && F.ownerKey(rotation.owner) !== search.author) continue
-		if (q && !haystack(rotation, layerName).includes(q)) continue
-		out.push(rotation)
+export function toSummary({ items, ...rest }: Rotation): Summary {
+	return {
+		...rest,
+		itemCount: items.length,
+		previewItems: items.slice(0, PREVIEW_ITEMS).map(({ itemId, layerId }) => ({ itemId, layerId })),
 	}
-	const sort = search.sort ?? 'modified'
-	const sign = (search.dir ?? defaultDir(sort)) === 'asc' ? 1 : -1
-	out.sort((a, b) => {
-		switch (sort) {
-			case 'name':
-				return sign * a.name.localeCompare(b.name)
-			case 'created':
-				return sign * (a.createdAt - b.createdAt)
-			case 'modified':
-				return sign * (a.updatedAt - b.updatedAt)
-			default:
-				assertNever(sort)
-		}
-	})
-	return out
+}
+
+export const SEARCH_PAGE_SIZE = 60
+
+// where the next page starts: the sort column's value and the id of the last rotation on the page
+export const SearchCursorSchema = z.object({ sortValue: z.union([z.number(), z.string()]), id: RotationIdSchema })
+export type SearchCursor = z.infer<typeof SearchCursorSchema>
+
+// `q` matches the name and the description. An archived rotation matches only when `archived` is set.
+export const SearchInputSchema = IndexSearchSchema.extend({
+	cursor: SearchCursorSchema.optional(),
+	limit: z.number().int().min(1).max(200).optional(),
+})
+export type SearchInput = z.infer<typeof SearchInputSchema>
+
+// `matched` counts every rotation the search matches, and is given only on the first page
+export type SearchPage = { rotations: Summary[]; nextCursor: SearchCursor | null; matched?: number }
+
+// counts over every rotation, for the rotations page's filters
+export type Facets = {
+	unarchived: number
+	archived: number
+	// rotations per tag, archived ones included
+	tagCounts: Record<LTag.TagId, number>
+	owners: Owner[]
+}
+
+export function sortValue(summary: Summary, sort: IndexSort): number | string {
+	switch (sort) {
+		case 'name':
+			return summary.name
+		case 'created':
+			return summary.createdAt
+		case 'modified':
+			return summary.updatedAt
+		default:
+			assertNever(sort)
+	}
 }
 
 // a row as unsuperjsonify hands it back
 export function fromRow(row: SchemaModels.Rotation): Rotation {
-	const owner: Owner =
-		row.ownerUserId !== null
-			? { type: 'slm-user', userId: row.ownerUserId }
-			: row.ownerPluginId !== null
-				? { type: 'plugin', pluginId: row.ownerPluginId }
-				: F.SYSTEM_OWNER
 	return RotationSchema.parse({
 		...row,
 		createdAt: row.createdAt.getTime(),
 		updatedAt: row.updatedAt.getTime(),
-		owner,
+		owner: ownerFromColumns(row),
 	})
+}
+
+export function ownerFromColumns(row: Pick<SchemaModels.Rotation, 'ownerUserId' | 'ownerPluginId'>): Owner {
+	if (row.ownerUserId !== null) return { type: 'slm-user', userId: row.ownerUserId }
+	if (row.ownerPluginId !== null) return { type: 'plugin', pluginId: row.ownerPluginId }
+	return F.SYSTEM_OWNER
 }
 
 // a row for superjsonify, which encodes the json columns
@@ -230,4 +252,11 @@ export type Mutation = {
 	type: 'add' | 'update' | 'delete'
 	key: RotationId
 	value: Rotation
+}
+
+// a Mutation as clients receive it
+export type SummaryMutation = {
+	type: Mutation['type']
+	key: RotationId
+	value: Summary
 }

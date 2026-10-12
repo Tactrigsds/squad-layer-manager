@@ -477,11 +477,11 @@ export async function editSaved(
 	return await retryAfterGeneration(ctx, () => editSavedNow(ctx, opts, mutate))
 }
 
-// Adds items to the saved queue at `placement` in one add op, and saves. Refuses with `err:unsaved-edits` as editSaved
-// does.
+// Adds items to the saved queue at `placement` in one add op, and saves. Items `clear` accepts are removed by the same
+// op, and `placement` is read against what remains. Refuses with `err:unsaved-edits` as editSaved does.
 export async function addToSaved(
 	ctx: SideEffectCtx,
-	opts: { source: LL.Source },
+	opts: { source: LL.Source; clear?: (item: LL.Item) => boolean },
 	items: LL.NewItem[],
 	placement: LL.Placement,
 ): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' }> {
@@ -512,7 +512,7 @@ const addToSavedNow = Instr.spanOp(
 	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
 	async (
 		ctx: SideEffectCtx,
-		opts: { source: LL.Source },
+		opts: { source: LL.Source; clear?: (item: LL.Item) => boolean },
 		items: LL.NewItem[],
 		placement: LL.Placement,
 	): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' } | { code: 'generating-queue-item' }> => {
@@ -521,10 +521,18 @@ const addToSavedNow = Instr.spanOp(
 		if (state().requestingGeneratedQueueItem) return { code: 'generating-queue-item' }
 		const userId = opts.source.type === 'manual' ? opts.source.userId : undefined
 		const opBase = () => ({ opId: SLL.createOpId(), userId, source: opts.source, editWindowSeqId: state().editWindowSeqId })
+		const cleared = opts.clear
+			? state()
+					.list.filter(opts.clear)
+					.map((item) => item.itemId)
+			: []
+		const remaining = cleared.length > 0 ? state().list.filter((item) => !cleared.includes(item.itemId)) : state().list
+		const target = LL.placementTarget(remaining, placement)
 		await dispatchOp(ctx, {
 			op: 'add',
 			items: items.map((item) => LL.createItem(item, opts.source)),
-			...LL.placementTarget(state().list, placement),
+			index: target.index,
+			clearItemIds: [...cleared, ...(target.clearItemIds ?? [])],
 			...opBase(),
 		})
 		await dispatchOp(ctx, { op: 'save', ...opBase() })

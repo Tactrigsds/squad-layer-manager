@@ -618,6 +618,12 @@ export const serverPicker = def('Server')
 
 export const serversPicker = def('Servers')
 
+// -------- rotation tag pickers --------
+
+export const rotationTagPicker = def('Rotation tag')
+
+export const rotationTagUnresolved = def('The rotation tag named here no longer exists. The raw id is shown; pick another or clear it.')
+
 // -------- setting and group names in the settings form and its table of contents --------
 
 export const settingsGroupNames: Record<SettingsGroupSlug, TString> = {

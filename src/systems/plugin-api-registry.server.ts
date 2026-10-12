@@ -46,6 +46,7 @@ import * as systemsRepeatRuleset from '@/plugin-api/systems/repeat-ruleset'
 import * as systemsRotation from '@/plugin-api/systems/rotation'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
 import * as systemsSquadServer from '@/plugin-api/systems/squad-server'
+import * as systemsTags from '@/plugin-api/systems/tags'
 
 // Makes `slm/*` and the shared packages resolvable inside a packaged plugin, which is a standalone
 // esm bundle loaded from the plugins directory and so has neither our tsconfig paths nor our
@@ -98,6 +99,7 @@ export function setup() {
 		'slm/systems/player-activity': systemsPlayerActivity,
 		'slm/systems/squad-rcon': systemsSquadRcon,
 		'slm/systems/squad-server': systemsSquadServer,
+		'slm/systems/tags': systemsTags,
 		'@orpc/server': orpcServer,
 		'@orpc/client': orpcClient,
 		'drizzle-orm': drizzle,

@@ -67,9 +67,7 @@ function repeatRulesetId$(source: Source): Rx.Observable<RRS.RulesetId | null> {
 		case 'pool-draft':
 			return source.value$.pipe(Rx.map((pool) => pool?.repeatRulesetId ?? null))
 		case 'rotation':
-			return Zus.toStream(RotationClient.Store, (s) => s.rotations.get(source.rotationId)?.repeatRulesetId ?? null, {
-				fireImmediately: true,
-			})
+			return RotationClient.rotation$(source.rotationId).pipe(Rx.map((rotation) => rotation?.repeatRulesetId ?? null))
 		default:
 			assertNever(source)
 	}

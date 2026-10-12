@@ -22,13 +22,18 @@ import * as Settings from '@/systems/settings.server'
  * Deactivating a plugin leaves its rotations in place.
  */
 
-/** Every rotation, archived ones included. Live objects: read them, do not mutate them. */
-export function list(): ROT.Rotation[] {
-	return Array.from(Rotation.state.rotations.values())
+/**
+ * One page of rotations, without their items, as the rotations page lists them. `q` matches the name and the
+ * description, and `author` takes an owner key such as `plugin:<id>` or `user:<discordId>`. Archived rotations are
+ * left out unless `archived` is set. Pass the page's `nextCursor` back as `cursor` for the next page; it is null on the
+ * last page.
+ */
+export async function search(ctx: PluginsSys.Ctx<any>, input: ROT.SearchInput = {}): Promise<ROT.SearchPage> {
+	return await Rotation.searchSummaries(ctx, ROT.SearchInputSchema.parse(input))
 }
 
-export function get(id: ROT.RotationId): ROT.Rotation | undefined {
-	return Rotation.state.rotations.get(id)
+export async function get(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<ROT.Rotation | undefined> {
+	return await Rotation.getRotation(ctx, id)
 }
 
 /** A refusal any write that sets a repeat ruleset or tags can return. */
@@ -95,14 +100,17 @@ export async function remove(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Prom
  * (`replace`), ahead of them (`start`) or after them (`end`). The items are sourced to the calling plugin, carry the
  * rotation's `from-rotation:<id>` tag and any `tags` given, and their notes name the rotation.
  *
+ * `clear` removes the queued items it accepts in the same edit, before `placement` is applied to what remains. To keep
+ * only the training layers, for example, clear every item that is not one, and place the rotation at the `end`.
+ *
  * Refuses with `err:unsaved-edits` while anyone has queue edits open, as layer-queue's editSaved does.
  */
 export async function addToQueue(
 	ctx: PluginsSys.ServerCtx<any>,
 	id: ROT.RotationId,
-	opts: { placement: LL.Placement; tags?: LTag.TagId[] },
+	opts: { placement: LL.Placement; tags?: LTag.TagId[]; clear?: (item: LL.Item) => boolean },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unsaved-edits' } | { code: 'err:unknown-tags'; message: string }> {
-	const rotation = Rotation.state.rotations.get(id)
+	const rotation = await Rotation.getRotation(ctx, id)
 	if (!rotation) return { code: 'err:not-found' }
 	const tags = opts.tags ?? []
 	const unknownTags = Settings.unknownLayerTags(tags)
@@ -110,7 +118,12 @@ export async function addToQueue(
 	const source: LL.Source = { type: 'plugin', pluginId: ctx.plugin.id }
 	const items = LL.withTags(ROT.toQueueItems(rotation, source), tags)
 	// see layer-queue's editSaved: the runtime object is the whole managed server, which the save path needs
-	return await LayerQueue.addToSaved(ctx as unknown as Parameters<typeof LayerQueue.addToSaved>[0], { source }, items, opts.placement)
+	return await LayerQueue.addToSaved(
+		ctx as unknown as Parameters<typeof LayerQueue.addToSaved>[0],
+		{ source, clear: opts.clear },
+		items,
+		opts.placement,
+	)
 }
 
 export type RotationChange = { type: 'add' | 'update' | 'delete'; rotation: ROT.Rotation; actor: AppEvents.Actor }

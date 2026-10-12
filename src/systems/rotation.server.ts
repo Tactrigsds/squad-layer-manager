@@ -1,5 +1,7 @@
-// Rotations: their rows, who may edit them, and the live set every client watches. The shared draft of one rotation's
-// items is in rotation-edit.server.ts, which writes here when a draft is saved.
+// Rotations: their rows, who may edit them, and what clients watch of them. Rotations are unbounded in number and
+// size, so nothing holds all of them: clients search summaries page by page, are told which rotation changed, and
+// watch an open rotation in full. The shared draft of one rotation's items is in rotation-edit.server.ts, which writes
+// here when a draft is saved.
 import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema.ts'
@@ -22,7 +24,6 @@ import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
-import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as Users from '@/systems/users.server'
@@ -31,16 +32,16 @@ const module = initModule('rotation')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export const rotationMutation$ = new IsolatedSubject<[C.Db & CS.Otel, ROT.Mutation & { actor: AppEvents.Actor }]>()
+const T = Schema.rotations
 
-export let state!: {
-	rotations: Map<ROT.RotationId, ROT.Rotation>
-}
+export const rotationMutation$ = new IsolatedSubject<[C.Db & CS.Otel, ROT.Mutation & { actor: AppEvents.Actor }]>()
 
 const ToggleContributorInputSchema = z
 	.object({ rotationId: ROT.RotationIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, { error: 'Either userId or role must be provided' })
 type ToggleContributorInput = z.infer<typeof ToggleContributorInputSchema>
+
+const MAX_NAME_LOOKUPS = 200
 
 async function recordChange(
 	ctx: C.Db,
@@ -71,13 +72,14 @@ async function recordContributor(
 	action: AppEvents.RotationContributorChanged['action'],
 	input: ToggleContributorInput,
 ) {
+	const [row] = await ctx.db().select({ name: T.name }).from(T).where(E.eq(T.id, input.rotationId)).limit(1)
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.RotationContributorChanged>({
 			type: 'ROTATION_CONTRIBUTOR_CHANGED',
 			action,
 			rotationId: input.rotationId,
-			rotationName: state.rotations.get(input.rotationId)?.name,
+			rotationName: row?.name,
 			contributor: input.userId !== undefined ? { type: 'user', userId: input.userId } : { type: 'role', roleId: input.roleId! },
 			actor: { type: 'slm-user', userId: ctx.user.discordId },
 			serverId: null,
@@ -107,11 +109,163 @@ function unknownTagsError(tags: readonly string[] | undefined) {
 // Managing who can contribute is an ownership concern, so it's restricted to the owner, or anyone with blanket write
 // access, rather than any contributor who merely has rotations:write for the rotation.
 async function denyUnlessOwner(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, rotationId: ROT.RotationId) {
-	const rotation = state.rotations.get(rotationId)
-	if (rotation && F.ownerUserId(rotation.owner) === ctx.user.discordId) return null
+	const [row] = await ctx.db().select({ ownerUserId: T.ownerUserId }).from(T).where(E.eq(T.id, rotationId)).limit(1)
+	if (row && row.ownerUserId === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('rotations:write-all'))
 }
 
+export async function getRotation(ctx: C.Db, id: ROT.RotationId): Promise<ROT.Rotation | undefined> {
+	const [row] = await ctx.db().select().from(T).where(E.eq(T.id, id)).limit(1)
+	return row ? ROT.fromRow(unsuperjsonify(T, row)) : undefined
+}
+
+// -------- summaries --------
+
+// a row without its items, with what the summary keeps of them computed by sqlite
+const SUMMARY_COLUMNS = {
+	id: T.id,
+	name: T.name,
+	description: T.description,
+	repeatRulesetId: T.repeatRulesetId,
+	tags: E.sql<string>`json_extract(${T.tags}, '$.json')`,
+	archived: T.archived,
+	ownerUserId: T.ownerUserId,
+	ownerPluginId: T.ownerPluginId,
+	createdAt: T.createdAt,
+	updatedAt: T.updatedAt,
+	itemCount: E.sql<number>`json_array_length(${T.items}, '$.json')`,
+	previewItems: E.sql<string>`(SELECT json_group_array(json_object('itemId', json_extract(value, '$.itemId'), 'layerId', json_extract(value, '$.layerId'))) FROM json_each(${T.items}, '$.json') WHERE key < ${ROT.PREVIEW_ITEMS})`,
+}
+
+type SummaryRow = {
+	id: string
+	name: string
+	description: string | null
+	repeatRulesetId: string | null
+	tags: string
+	archived: boolean
+	ownerUserId: bigint | null
+	ownerPluginId: string | null
+	createdAt: Date
+	updatedAt: Date
+	itemCount: number
+	previewItems: string
+}
+
+function toSummary(row: SummaryRow): ROT.Summary {
+	return {
+		id: row.id,
+		name: row.name,
+		description: row.description,
+		repeatRulesetId: row.repeatRulesetId,
+		tags: JSON.parse(row.tags),
+		archived: row.archived,
+		owner: ROT.ownerFromColumns(row),
+		createdAt: row.createdAt.getTime(),
+		updatedAt: row.updatedAt.getTime(),
+		itemCount: row.itemCount,
+		previewItems: JSON.parse(row.previewItems),
+	}
+}
+
+function ownerCondition(ownerKey: string): E.SQL {
+	if (ownerKey === 'system') return E.and(E.isNull(T.ownerUserId), E.isNull(T.ownerPluginId))!
+	const [type, id] = [ownerKey.slice(0, ownerKey.indexOf(':')), ownerKey.slice(ownerKey.indexOf(':') + 1)]
+	if (type === 'user' && /^\d+$/.test(id)) return E.eq(T.ownerUserId, BigInt(id))
+	if (type === 'plugin') return E.eq(T.ownerPluginId, id)
+	return E.sql`false`
+}
+
+function searchCondition(search: ROT.IndexSearch): E.SQL | undefined {
+	const conds: E.SQL[] = []
+	if (!search.archived) conds.push(E.eq(T.archived, false))
+	for (const tag of search.tags ?? []) {
+		conds.push(E.sql`EXISTS (SELECT 1 FROM json_each(${T.tags}, '$.json') WHERE value = ${tag})`)
+	}
+	if (search.author) conds.push(ownerCondition(search.author))
+	const q = search.q?.trim()
+	if (q) {
+		const needle = `%${q.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+		conds.push(E.or(E.sql`${T.name} LIKE ${needle} ESCAPE '\\'`, E.sql`${T.description} LIKE ${needle} ESCAPE '\\'`)!)
+	}
+	return E.and(...conds)
+}
+
+// the sort column, compared as the cursor's sortValue is
+function sortColumn(sort: ROT.IndexSort): E.SQL {
+	switch (sort) {
+		case 'name':
+			return E.sql`${T.name} COLLATE NOCASE`
+		case 'created':
+			return E.sql`${T.createdAt}`
+		case 'modified':
+			return E.sql`${T.updatedAt}`
+		default:
+			assertNever(sort)
+	}
+}
+
+// Pages by keyset rather than offset, so a rotation saved while someone pages through doesn't shift the pages after it.
+export async function searchSummaries(ctx: C.Db, input: ROT.SearchInput): Promise<ROT.SearchPage> {
+	const sort = input.sort ?? 'modified'
+	const dir = input.dir ?? ROT.defaultDir(sort)
+	const limit = input.limit ?? ROT.SEARCH_PAGE_SIZE
+	const col = sortColumn(sort)
+	const where = searchCondition(input)
+	const after = input.cursor
+		? dir === 'asc'
+			? E.sql`(${col} > ${input.cursor.sortValue} OR (${col} = ${input.cursor.sortValue} AND ${T.id} > ${input.cursor.id}))`
+			: E.sql`(${col} < ${input.cursor.sortValue} OR (${col} = ${input.cursor.sortValue} AND ${T.id} < ${input.cursor.id}))`
+		: undefined
+	const order = dir === 'asc' ? [E.asc(col), E.asc(T.id)] : [E.desc(col), E.desc(T.id)]
+	const rows = (await ctx
+		.db()
+		.select(SUMMARY_COLUMNS)
+		.from(T)
+		.where(E.and(where, after))
+		.orderBy(...order)
+		.limit(limit + 1)) as SummaryRow[]
+	const rotations = rows.slice(0, limit).map(toSummary)
+	const last = rotations.at(-1)
+	const nextCursor = rows.length > limit && last ? { sortValue: ROT.sortValue(last, sort), id: last.id } : null
+	if (input.cursor) return { rotations, nextCursor }
+	const [{ matched }] = await ctx.db().select({ matched: E.count() }).from(T).where(where)
+	return { rotations, nextCursor, matched }
+}
+
+export async function getFacets(ctx: C.Db): Promise<ROT.Facets> {
+	const [counts] = await ctx
+		.db()
+		.select({
+			unarchived: E.sql<number>`coalesce(sum(${T.archived} = 0), 0)`,
+			archived: E.sql<number>`coalesce(sum(${T.archived} = 1), 0)`,
+		})
+		.from(T)
+	const tagRows = ctx
+		.db()
+		.all<{ tag: string; n: number }>(
+			E.sql`SELECT j.value AS tag, count(*) AS n FROM ${T}, json_each(${T.tags}, '$.json') AS j GROUP BY j.value`,
+		)
+	const ownerRows = await ctx.db().selectDistinct({ ownerUserId: T.ownerUserId, ownerPluginId: T.ownerPluginId }).from(T)
+	return {
+		unarchived: counts.unarchived,
+		archived: counts.archived,
+		tagCounts: Object.fromEntries(tagRows.map((r) => [r.tag, r.n])),
+		owners: ownerRows.map(ROT.ownerFromColumns),
+	}
+}
+
+async function usersOf(ctx: C.Db, owners: Iterable<ROT.Owner>, extra: Iterable<bigint> = []) {
+	const ids = new Set<bigint>(extra)
+	for (const owner of owners) {
+		const userId = F.ownerUserId(owner)
+		if (userId !== null) ids.add(userId)
+	}
+	const dbUsers = ids.size > 0 ? await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, [...ids])) : []
+	return await Users.buildUsers(dbUsers)
+}
+
+// -------- writes --------
 // The write paths below take no permission check, which stays with the rpc handlers: the editing session and plugins
 // write a rotation the same way a person does.
 
@@ -141,8 +295,8 @@ export async function createRotation(
 	const res = await returnInsertErrors(
 		ctx
 			.db()
-			.insert(Schema.rotations)
-			.values(superjsonify(Schema.rotations, ROT.toRow(rotation))),
+			.insert(T)
+			.values(superjsonify(T, ROT.toRow(rotation))),
 	)
 	if (res.code !== 'ok') return { code: res.code }
 	emit(ctx, { type: 'add', key: rotation.id, value: rotation }, actor)
@@ -154,32 +308,38 @@ export async function createRotation(
 }
 
 export async function updateRotation(ctx: C.Db & CS.AbortSignal, id: ROT.RotationId, patch: ROT.UpdatePatch, actor: AppEvents.Actor) {
-	const prev = state.rotations.get(id)
-	if (!prev) return { code: 'err:not-found' as const }
 	const repeatRulesetError = unknownRepeatRulesetError(patch.repeatRulesetId)
 	if (repeatRulesetError) return repeatRulesetError
 	const tagsError = unknownTagsError(patch.tags)
 	if (tagsError) return tagsError
-	const next: ROT.Rotation = {
-		...prev,
-		...Obj.trimUndefined(patch),
-		...(patch.items ? { items: ROT.anonymize(patch.items) } : {}),
-		updatedAt: Date.now(),
-	}
-	const changedFields = (Object.keys(patch) as (keyof ROT.UpdatePatch)[]).filter(
-		(field) => patch[field] !== undefined && !Obj.deepEqual(prev[field], next[field]),
-	)
-	if (changedFields.length === 0) return { code: 'ok' as const, rotation: prev }
-	const { id: _id, ...row } = ROT.toRow(next)
-	await ctx.db().update(Schema.rotations).set(superjsonify(Schema.rotations, row)).where(E.eq(Schema.rotations.id, id))
-	emit(ctx, { type: 'update', key: id, value: next }, actor)
-	await recordChange(ctx, actor, 'updated', next, { changedFields })
-	return { code: 'ok' as const, rotation: next }
+	// the transaction lock serializes this read-modify-write against every other rotation write
+	const res = await DB.runTransaction(ctx, async (ctx) => {
+		const prev = await getRotation(ctx, id)
+		if (!prev) return { code: 'err:not-found' as const }
+		const next: ROT.Rotation = {
+			...prev,
+			...Obj.trimUndefined(patch),
+			...(patch.items ? { items: ROT.anonymize(patch.items) } : {}),
+			updatedAt: Date.now(),
+		}
+		const changedFields = (Object.keys(patch) as (keyof ROT.UpdatePatch)[]).filter(
+			(field) => patch[field] !== undefined && !Obj.deepEqual(prev[field], next[field]),
+		)
+		if (changedFields.length === 0) return { code: 'ok' as const, rotation: prev, changedFields }
+		const { id: _id, ...row } = ROT.toRow(next)
+		await ctx.db().update(T).set(superjsonify(T, row)).where(E.eq(T.id, id))
+		return { code: 'ok' as const, rotation: next, changedFields }
+	})
+	if (res.code !== 'ok') return res
+	if (res.changedFields.length === 0) return { code: 'ok' as const, rotation: res.rotation }
+	emit(ctx, { type: 'update', key: id, value: res.rotation }, actor)
+	await recordChange(ctx, actor, 'updated', res.rotation, { changedFields: res.changedFields })
+	return { code: 'ok' as const, rotation: res.rotation }
 }
 
 export async function deleteRotation(ctx: C.Db & CS.AbortSignal, id: ROT.RotationId, actor: AppEvents.Actor) {
 	const res = await DB.runTransaction(ctx, async (ctx) => {
-		const rotation = state.rotations.get(id)
+		const rotation = await getRotation(ctx, id)
 		if (!rotation) return { code: 'err:not-found' as const }
 		// captured before the delete so the affected inferred-role holders can be invalidated after commit
 		const userContributors = await ctx
@@ -193,7 +353,7 @@ export async function deleteRotation(ctx: C.Db & CS.AbortSignal, id: ROT.Rotatio
 			.from(Schema.rotationRoleContributors)
 			.where(E.eq(Schema.rotationRoleContributors.rotationId, id))
 			.limit(1)
-		await ctx.db().delete(Schema.rotations).where(E.eq(Schema.rotations.id, id))
+		await ctx.db().delete(T).where(E.eq(T.id, id))
 		return {
 			code: 'ok' as const,
 			rotation,
@@ -214,7 +374,7 @@ export async function deleteRotation(ctx: C.Db & CS.AbortSignal, id: ROT.Rotatio
 }
 
 export async function cloneRotation(ctx: C.Db & CS.AbortSignal, input: ROT.CloneInput, owner: ROT.Owner, actor: AppEvents.Actor) {
-	const source = state.rotations.get(input.sourceId)
+	const source = await getRotation(ctx, input.sourceId)
 	if (!source) return { code: 'err:not-found' as const }
 	const res = await createRotation(
 		ctx,
@@ -254,8 +414,58 @@ export async function cloneRotation(ctx: C.Db & CS.AbortSignal, input: ROT.Clone
 }
 
 export const orpcRouter = {
-	watchRotations: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
-		yield* watchRotations({ ctx: context, signal })
+	// every change as a summary. A client caches what it fetched and refetches what a change touches.
+	watchChanges: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
+		yield* watchChanges(signal)
+	}),
+
+	watchRotation: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ rotationId: ROT.RotationIdSchema }))
+		.handler(async function* ({ context, signal, input }) {
+			yield* watchRotation({ ctx: context, signal }, input.rotationId)
+		}),
+
+	search: orpcBase.input(ROT.SearchInputSchema).handler(async ({ input, context: ctx }) => {
+		const page = await searchSummaries(ctx, input)
+		return {
+			...page,
+			parts: {
+				users: await usersOf(
+					ctx,
+					page.rotations.map((r) => r.owner),
+				),
+			},
+		}
+	}),
+
+	getFacets: orpcBase.handler(async ({ context: ctx }) => {
+		const facets = await getFacets(ctx)
+		return { ...facets, parts: { users: await usersOf(ctx, facets.owners) } }
+	}),
+
+	get: orpcBase.input(ROT.RotationIdSchema).handler(async ({ input, context: ctx }) => {
+		const rotation = (await getRotation(ctx, input)) ?? null
+		return { rotation, parts: { users: await usersOf(ctx, rotation ? [rotation.owner] : []) } }
+	}),
+
+	// the names of the rotations that exist among `ids`
+	getNames: orpcBase.input(z.array(ROT.RotationIdSchema).max(MAX_NAME_LOOKUPS)).handler(async ({ input, context: ctx }) => {
+		if (input.length === 0) return {}
+		const rows = await ctx.db().select({ id: T.id, name: T.name }).from(T).where(E.inArray(T.id, input))
+		return Object.fromEntries(rows.map((r) => [r.id, r.name])) as Record<ROT.RotationId, string>
+	}),
+
+	// the first of `<sourceId>-copy`, `<sourceId>-copy-2`, ... that no rotation has
+	suggestCloneId: orpcBase.input(ROT.RotationIdSchema).handler(async ({ input, context: ctx }) => {
+		const base = F.cloneId(new Set(), input)
+		const needle = `${base.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}-%`
+		const rows = await ctx
+			.db()
+			.select({ id: T.id })
+			.from(T)
+			.where(E.or(E.eq(T.id, base), E.sql`${T.id} LIKE ${needle} ESCAPE '\\'`))
+		return F.cloneId(new Set(rows.map((r) => r.id)), input)
 	}),
 
 	create: orpcBase
@@ -361,60 +571,60 @@ export const orpcRouter = {
 		}),
 }
 
-export type RotationChange =
-	| { code: 'initial-value'; rotations: ROT.Rotation[] }
-	| { code: 'mutation'; mutation: ROT.Mutation & { actor: AppEvents.Actor } }
+// `subscribed` comes first on every (re)subscription: the client missed any change made while it was away
+export type RotationChange = { code: 'subscribed' } | { code: 'mutation'; mutation: ROT.SummaryMutation & { actor: AppEvents.Actor } }
 
-export async function* watchRotations({
-	ctx,
-	signal,
-}: {
-	ctx: C.Db
-	signal?: AbortSignal
-}): AsyncGenerator<RotationChange & Parts<USR.UserPart>, void, unknown> {
-	const ids = [...new Set(Array.from(state.rotations.values()).flatMap((r) => F.ownerUserId(r.owner) ?? []))]
-	const dbUsers = ids.length > 0 ? await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids)) : []
-	yield {
-		code: 'initial-value' as const,
-		rotations: Array.from(state.rotations.values()),
-		parts: { users: await Users.buildUsers(dbUsers) },
-	}
-	yield* Rx.Ext.toAsyncGenerator(mutationWithParts$.pipe(Rx.Ext.withAbortSignal(signal!)))
+export async function* watchChanges(signal?: AbortSignal): AsyncGenerator<RotationChange & Partial<Parts<USR.UserPart>>, void, unknown> {
+	yield { code: 'subscribed' as const }
+	yield* Rx.Ext.toAsyncGenerator(summaryMutation$.pipe(Rx.Ext.withAbortSignal(signal!)))
 }
 
 // the users a mutation names, built once for every watcher rather than once per watcher
-const mutationWithParts$ = rotationMutation$.pipe(
+const mutationUsers$ = rotationMutation$.pipe(
 	Rx.concatMap(async ([ctx, mutation]) => {
-		const userIds = new Set<bigint>()
-		const ownerUserId = F.ownerUserId(mutation.value.owner)
-		if (ownerUserId !== null) userIds.add(ownerUserId)
-		if (mutation.actor.type === 'slm-user') userIds.add(mutation.actor.userId)
-		const dbUsers = userIds.size > 0 ? await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, [...userIds])) : []
-		return { code: 'mutation' as const, mutation, parts: { users: await Users.buildUsers(dbUsers) } }
+		const actorIds = mutation.actor.type === 'slm-user' ? [mutation.actor.userId] : []
+		return { mutation, users: await usersOf(ctx, [mutation.value.owner], actorIds) }
 	}),
 	Rx.share(),
 )
 
-export async function setup() {
-	log = module.getLogger()
-	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	const rows = await ctx.db().select().from(Schema.rotations)
-	state = {
-		rotations: new Map(rows.map((row) => ROT.fromRow(unsuperjsonify(Schema.rotations, row))).map((r) => [r.id, r])),
-	}
-	Settings.registerRepeatRulesetUsers(() => Array.from(state.rotations.values()).flatMap((r) => r.repeatRulesetId ?? []))
+const summaryMutation$ = mutationUsers$.pipe(
+	Rx.map(({ mutation, users }) => ({
+		code: 'mutation' as const,
+		mutation: { type: mutation.type, key: mutation.key, value: ROT.toSummary(mutation.value), actor: mutation.actor },
+		parts: { users },
+	})),
+	Rx.share(),
+)
 
-	rotationMutation$.subscribe(([, mutation]) => {
-		switch (mutation.type) {
-			case 'add':
-			case 'update':
-				state.rotations.set(mutation.key, mutation.value)
-				break
-			case 'delete':
-				state.rotations.delete(mutation.key)
-				break
-			default:
-				assertNever(mutation.type)
-		}
+// the rotation in full, then again on every change to it; null while it does not exist
+export async function* watchRotation(
+	{ ctx, signal }: { ctx: C.Db; signal?: AbortSignal },
+	rotationId: ROT.RotationId,
+): AsyncGenerator<{ rotation: ROT.Rotation | null } & Parts<USR.UserPart>, void, unknown> {
+	const rotation$ = Rx.defer(() => {
+		// a change that lands while the initial read is in flight is newer than what the read returns
+		let changed = false
+		const changes$ = mutationUsers$.pipe(
+			Rx.filter(({ mutation }) => mutation.key === rotationId),
+			Rx.tap(() => {
+				changed = true
+			}),
+			Rx.map(({ mutation, users }) => ({ rotation: mutation.type === 'delete' ? null : mutation.value, parts: { users } })),
+		)
+		const initial$ = Rx.defer(async () => {
+			const rotation = (await getRotation(ctx, rotationId)) ?? null
+			return { rotation, parts: { users: await usersOf(ctx, rotation ? [rotation.owner] : []) } }
+		}).pipe(Rx.filter(() => !changed))
+		return Rx.merge(changes$, initial$)
+	})
+	yield* Rx.Ext.toAsyncGenerator(rotation$.pipe(Rx.Ext.withAbortSignal(signal!)))
+}
+
+export function setup() {
+	log = module.getLogger()
+	Settings.registerRepeatRulesetUsers(async (ctx) => {
+		const rows = await ctx.db().selectDistinct({ repeatRulesetId: T.repeatRulesetId }).from(T).where(E.isNotNull(T.repeatRulesetId))
+		return rows.flatMap((r) => r.repeatRulesetId ?? [])
 	})
 }

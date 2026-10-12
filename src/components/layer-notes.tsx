@@ -11,7 +11,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { UserLabel } from '@/components/user-avatar'
 import * as Browser from '@/lib/browser'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
-import * as Zus from '@/lib/zustand'
 import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
@@ -151,19 +150,19 @@ function NoteChip(props: { host: LL.ListHost; note: LNote.Note; disabled?: boole
 
 // marks a note copied from a rotation, where an author would otherwise go
 function RotationOrigin(props: { rotationId: string }) {
-	const name = Zus.useStore(RotationClient.Store, (s) => RotationClient.Sel.rotation(props.rotationId)(s)?.name)
-	const label = name !== undefined ? tr.text(LNote_Msgs.fromRotation(name)) : tr.text(LNote_Msgs.fromDeletedRotation())
+	const name = RotationClient.useName(props.rotationId)
+	const label = name !== null ? tr.text(LNote_Msgs.fromRotation(name ?? props.rotationId)) : tr.text(LNote_Msgs.fromDeletedRotation())
 	return <Icons.RefreshCw role="img" aria-label={label} className="me-1 inline h-3 w-3 align-[-2px] text-primary" />
 }
 
 function RotationOriginLine(props: { rotationId: string }) {
-	const name = Zus.useStore(RotationClient.Store, (s) => RotationClient.Sel.rotation(props.rotationId)(s)?.name)
+	const name = RotationClient.useName(props.rotationId)
 	return (
 		<p className="flex items-center gap-1 text-xs text-muted-foreground">
 			<Icons.RefreshCw className="h-3 w-3 text-primary" aria-hidden />
-			{name !== undefined ? (
+			{name !== null ? (
 				<Link to="/rotations/$rotationId" params={{ rotationId: props.rotationId }} className="hover:underline">
-					{tr.text(LNote_Msgs.fromRotation(name))}
+					{tr.text(LNote_Msgs.fromRotation(name ?? props.rotationId))}
 				</Link>
 			) : (
 				tr.text(LNote_Msgs.fromDeletedRotation())

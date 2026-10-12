@@ -6,6 +6,7 @@ import React from 'react'
 
 import { DiscordChannelMultiSelect, DiscordChannelSelect } from '@/components/discord-picker'
 import { FilterMultiSelect, FilterSelect } from '@/components/filter-entity-select'
+import { RotationTagSelect } from '@/components/rotation-tag-select'
 import { ServerMultiSelect, ServerSelect } from '@/components/server-select'
 import { DEBOUNCE_MS, type OverrideProps, useFieldValue, useReset } from '@/components/settings-form/settings-form.helpers'
 import { Textarea } from '@/components/ui/textarea'
@@ -39,6 +40,11 @@ export function PluginChannelField({ value$, onChange }: OverrideProps) {
 export function PluginChannelMultiField({ value$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$) as string[] | undefined
 	return <DiscordChannelMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+export function PluginRotationTagField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <RotationTagSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
 }
 
 // uncontrolled and debounced like TextInputField; a template is long enough that a one-line input hides most

@@ -361,6 +361,15 @@ describe('packaged plugins', () => {
 		expect(await call('rotationIds', {})).toContain('hello-rot')
 		expect(await call('makeRotation', { id: 'hello-rot', layerIds: [] })).toMatchObject({ code: 'err:already-exists' })
 
+		// a tag is created once and found by its label after that, whatever the case
+		const created = await call<{ code: string; tag: { id: string; label: string } }>('ensureTag', {
+			kind: 'rotation',
+			label: 'Hello Tag',
+		})
+		expect(created).toMatchObject({ code: 'ok', tag: { label: 'Hello Tag' } })
+		expect(await call('ensureTag', { kind: 'rotation', label: 'hello tag' })).toMatchObject({ code: 'ok', tag: { id: created.tag.id } })
+		expect(await call('ensureTag', { kind: 'layer', label: 'no:colons' })).toMatchObject({ code: 'err:invalid-label' })
+
 		expect(await outsiderClient.rotations.updateMeta({ rotationId: 'hello-rot', patch: { name: 'Outsider edit' } })).toMatchObject({
 			code: 'err:permission-denied',
 		})
@@ -606,6 +615,16 @@ describe('packaged plugins', () => {
 		const atStart = Inspect.savedQueue(app)
 		expect(atStart[0]).toMatchObject({ layerId: LAYERS.gorodokRaas, source: { type: 'plugin' } })
 		expect(atStart.slice(1, -1).map((i) => i.itemId)).toEqual(before)
+
+		// clearing in the same edit: the two copies added above go, the kept items stay ahead, and the new copy follows
+		const added = [atStart[0].itemId, atStart.at(-1)!.itemId]
+		expect(await call('addRotationToQueue', { id: 'hello-queue-rot', placement: 'end', keepItemIds: before })).toMatchObject({
+			code: 'ok',
+		})
+		const cleared = Inspect.savedQueue(app)
+		expect(cleared.slice(0, -1).map((i) => i.itemId)).toEqual(before)
+		expect(cleared.at(-1)).toMatchObject({ layerId: LAYERS.gorodokRaas, source: { type: 'plugin' } })
+		expect(added).not.toContain(cleared.at(-1)!.itemId)
 
 		expect(await call('addRotationToQueue', { id: 'no-such-rotation', placement: 'end' })).toMatchObject({ code: 'err:not-found' })
 		expect(await call('addRotationToQueue', { id: 'hello-queue-rot', placement: 'end', tags: ['nope:abcdef'] })).toMatchObject({

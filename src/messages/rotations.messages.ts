@@ -12,7 +12,7 @@ export const navRotations = def('Rotations')
 
 export const newRotation = def('New Rotation')
 
-export const searchPlaceholder = def('Search by name, description, map or faction')
+export const searchPlaceholder = def('Search by name or description')
 
 export const searchLabel = def('Search rotations')
 
