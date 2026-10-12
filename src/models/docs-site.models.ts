@@ -77,13 +77,6 @@ export const PAGES: Page[] = [
 		group: 'Features',
 	},
 	{ file: 'docs/installing.md', slug: 'installing', label: 'Installing', section: 'guide', group: 'Start here' },
-	{
-		file: 'docs/guide/server_dashboard.md',
-		slug: 'server-dashboard',
-		label: 'Learning how to use SLM',
-		section: 'guide',
-		group: 'Start here',
-	},
 	{ file: 'docs/guide/configuring/overview.md', slug: 'configuring', label: 'Configuring SLM', section: 'guide', group: 'Configuring' },
 	{
 		file: 'docs/guide/configuring/permissions.md',
@@ -122,7 +115,28 @@ export const PAGES: Page[] = [
 		section: 'guide',
 		group: 'Configuring',
 	},
+	{
+		file: 'docs/guide/configuring/integrations.md',
+		slug: 'integrations',
+		label: 'Integrations',
+		section: 'guide',
+		group: 'Configuring',
+	},
 	{ file: 'docs/guide/configuring/plugins.md', slug: 'plugins', label: 'Plugins', section: 'guide', group: 'Configuring' },
+	{
+		file: 'docs/guide/operations/upgrading.md',
+		slug: 'upgrading',
+		label: 'Upgrading and downgrading',
+		section: 'guide',
+		group: 'Operational details',
+	},
+	{
+		file: 'docs/guide/operations/secrets.md',
+		slug: 'secrets',
+		label: 'Secrets and the encryption key',
+		section: 'guide',
+		group: 'Operational details',
+	},
 	{
 		file: 'docs/guide/operations/backups.md',
 		slug: 'backups',

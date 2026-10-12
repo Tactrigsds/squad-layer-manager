@@ -46,3 +46,10 @@ Run a demo instance with no authentication:
 ```sh
 docker run --rm -p 127.0.0.1:3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
 ```
+
+Open http://localhost:3000 and sign in with any username. The demo starts with example data and needs no Discord
+server. Everything in it is discarded when the container stops.
+
+Anyone who can open the demo signs in as an admin, and the demo encrypts its settings with a key published in the SLM
+repository. Enter no real credential into it, and do not publish its port to a network you do not control. The command
+above accepts connections from this machine only.

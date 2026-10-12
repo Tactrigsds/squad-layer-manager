@@ -42,8 +42,9 @@ or as markdown here:
   permissions, plugins and self-hosting
 - [Installing](docs/installing.md): get SLM running
 - [Configuring](docs/guide/configuring/overview.md): configure SLM for your squad server
-- [Learning how to use SLM](docs/guide/server_dashboard.md): the in-app tutorials for running a live server
+- [Learning SLM](docs/features/learning_slm.md): the in-app tutorials and the sandbox server
 - [FAQ](docs/faq.md): short answers to common questions, with links to the full docs
+- [Upgrading and downgrading](docs/guide/operations/upgrading.md): release channels, migrations and rolling back
 - [Backups and restoring](docs/guide/operations/backups.md): what gets backed up, uploading it offsite, and putting one back
 - [Server agent](docs/guide/operations/server_agent.md): stream a game host's logs and proxy its RCON to SLM
 - [Layer data](docs/guide/operations/layer_data.md): the layer artifact pair, how it is resolved, and building your own

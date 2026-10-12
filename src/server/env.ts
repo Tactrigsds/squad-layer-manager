@@ -36,7 +36,7 @@ declare module 'zod' {
 	interface GlobalMeta {
 		envExample?: EnvExampleMeta
 		// the var holds a credential: it is read from the secrets file or directory (see readSecrets) and written
-		// to .env.secrets.example rather than .env.example. docs/installing.md covers why.
+		// to .env.secrets.example rather than .env.example. docs/guide/operations/secrets.md covers why.
 		secret?: true
 		// the var moved elsewhere. Still read, so a value can be carried over once (see legacyIntegrationSettings),
 		// and reported at boot with this note; left out of the example files.

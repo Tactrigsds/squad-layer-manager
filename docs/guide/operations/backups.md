@@ -1,7 +1,7 @@
 # Backups and restoring
 
 Where backups come from, what the files mean, and how to put one back. Turning them on is part of
-[installing](../../installing.md#8-backups).
+[installing](../../installing.md#6-backups).
 
 ## When backups happen
 
@@ -83,7 +83,7 @@ every server disabled and every integration token unset, and each has to be re-e
 key wherever the backups are kept, and restore the two together. If the backup belongs to an older key that is still
 available, set that key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` for the first boot after restoring. That boot re-encrypts
 everything under the current key, and the variable can be removed again (see
-[installing.md, encryption key](../../installing.md#7-encryption-key)).
+[The encryption key](secrets.md#the-encryption-key)).
 
 The database being replaced is kept next to it, renamed to `db.sqlite3.replaced-<timestamp>`, so the restore can be
 undone. Delete it once the restore is confirmed.
@@ -93,7 +93,7 @@ over the restored file, and the old database silently comes back.
 
 ## Pinning a version
 
-`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see [installing.md, Upgrading](../../installing.md#13-upgrading)).
+`SLM_IMAGE_TAG` in `.env` sets which image tag the app runs (see [Release channels](upgrading.md#release-channels)).
 Pinning means setting it to a tag that names a single build, so `docker compose up -d` keeps running the same one.
 
 A release such as `2026.9.4` is one build. CI also publishes every commit as `commit-<short sha>`, so any build that
