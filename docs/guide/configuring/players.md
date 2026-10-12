@@ -19,11 +19,11 @@ A rule can match on:
 
 Here is a grouping mode keyed on admin list groups:
 
-![player_groupings](../../images/configuring/player_groupings.png)
+![a grouping mode keyed on admin list groups](../../images/configuring/player_groupings.png)
 
 And here is TacTrig's grouping mode for monitoring balance:
 
-![player_groupings_balance](../../images/configuring/player_groupings_balance.png)
+![TacTrig's Balance grouping mode](../../images/configuring/player_groupings_balance.png)
 
 > [!NOTE]
 > Maintaining Discord to Steam account links is a manual process today. A REST api that lets external tools manage
@@ -31,12 +31,12 @@ And here is TacTrig's grouping mode for monitoring balance:
 
 SLM then colour-codes the usernames of grouped players wherever they appear:
 
-![color_coded_usernames](../../images/configuring/color_coded_usernames.png)
+![usernames colour-coded by group in the teams panel](../../images/configuring/color_coded_usernames.png)
 
 Choose which grouping mode to show in the players panel and the _Charts_ panel. The _Teams Breakdown_ chart breaks the population
 down by the chosen mode:
 
-![teams_breakdown](../../images/configuring/teams_breakdown.png)
+![each team's players counted by group](../../images/configuring/teams_breakdown.png)
 
 ## Idle players
 
@@ -53,22 +53,22 @@ Flagging needs the BattleMetrics integration (see [BattleMetrics](integrations.m
 
 A BattleMetrics flag can be applied to a player from in game with the `/flag` command, or from the SLM interface:
 
-![flag_command](../../images/configuring/flag_command.png)
-![flag_gui](../../images/configuring/flag_gui.png)
+![the details of /flag](../../images/configuring/flag_command.png)
+![the Manage Flags dialog](../../images/configuring/flag_gui.png)
 
 A user can add a reason for the flag, which SLM posts as a note on the player's BattleMetrics profile. The note is
 freeform text, and is not connected to the [admin action reasons](admin_actions.md#warns-broadcasts-and-admin-actions).
 
 To require a note for a particular flag, name it in _Player Flags Requiring Note_:
 
-![player_flags_requiring_note](../../images/configuring/player_flags_requiring_note.png)
-![player_flags_requiring_note_enforced](../../images/configuring/player_flags_requiring_note_enforced.png)
+![Player Flags Requiring a Note, set to Seeder](../../images/configuring/player_flags_requiring_note.png)
+![a flag that requires a reason, in the Manage Flags dialog](../../images/configuring/player_flags_requiring_note_enforced.png)
 
 A flag set from the BattleMetrics interface can take a while to appear in SLM, which caches BattleMetrics data
 aggressively to stay inside their rate limits. To see a change immediately, purge the cache for that player with the
 _refresh_ button:
 
-![flags_refresh](../../images/configuring/flags_refresh.png)
+![the refresh button in a player's details window](../../images/configuring/flags_refresh.png)
 
 SLM refreshes a player's flags automatically when it changes them itself.
 
@@ -83,7 +83,7 @@ To add a note:
 - in the player details window, click the notebook button beside the flags
 - right-click a player, a squad or a selection, and pick _Add Note..._
 
-![add_note](../../images/features/add_note.png)
+![the dialog for adding a BattleMetrics note](../../images/features/add_note.png)
 
 To read a player's notes, click _Load notes_ in the player details window. SLM fetches a player's notes only when
 asked, since each fetch counts against your organization's BattleMetrics rate limit. SLM shows a note only when it is shared with
@@ -100,7 +100,7 @@ BattleMetrics account:
    player notes.
 3. Paste the token and click _Save_.
 
-![bm_token_dialog](../../images/configuring/bm_token_dialog.png)
+![the BattleMetrics Token dialog](../../images/configuring/bm_token_dialog.png)
 
 The token then applies to every change made from the web interface. In-game `/flag` and `/note` use it only when the
 admin's Steam account is [linked](permissions.md#assigning-roles) to their Discord account.
@@ -121,7 +121,7 @@ appears under the _Counterbalance_ switch. When it ends, SLM re-picks the counte
 the activity feed. The countdown stops if the teams even out first. Use _Re-pick now_ to skip the wait, or _Skip_ to keep
 the current swaps until the roster or the swaps change again. Unsaved edits are never changed.
 
-![counterbalance_countdown](../../images/configuring/counterbalance_countdown.png)
+![the counterbalance re-pick countdown in the swaps panel](../../images/configuring/counterbalance_countdown.png)
 
 The _Teamswap Counterbalance_ server settings choose who SLM picks:
 
@@ -133,7 +133,7 @@ The _Teamswap Counterbalance_ server settings choose who SLM picks:
   left by the lines above it. A line can prefer a group, or the lowest or highest K/D, kills or wounds.
 - _Roster Change Delay_: the length of the re-pick countdown, 2 minutes by default.
 
-![counterbalance_settings](../../images/configuring/counterbalance_settings.png)
+![the counterbalance settings](../../images/configuring/counterbalance_settings.png)
 
 A party is skipped when any member may not be picked, and is ranked by the member who ranks lowest. A party that would
 make the teams uneven again is passed over for a smaller one.

@@ -31,13 +31,13 @@ SLM marks each server with a color. While a server's dashboard is open, the navi
 server's color. The server switcher and the server lists show each server in its own color. A new server gets a color
 that stands apart from the existing servers' colors. Change the color under _Color_ in the server's settings:
 
-![server_color](../../images/configuring/server_color.png)
+![a server's Color setting](../../images/configuring/server_color.png)
 
 ## Server admin lists
 
 Name which of your [configured admin lists](permissions.md#admin-lists) apply to this server:
 
-![server_adminlists](../../images/configuring/server_adminlists.png)
+![the admin lists a server applies](../../images/configuring/server_adminlists.png)
 
 A player counts as an admin on this server, and picks up roles from an admin list group, only through a list named here.
 If none is named, SLM recognises no in-game admins on this server.

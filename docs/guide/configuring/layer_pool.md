@@ -8,7 +8,7 @@ The base game has about 730,000 possible layers, counting every map, gamemode, f
 about 2.7 million with the popular mods. A _filter_ is a named expression that picks a subset of them out. SLM
 ships with a few, listed in the filters index:
 
-![filters_index](../../images/configuring/filters_index.png)
+![the Filters page](../../images/configuring/filters_index.png)
 
 Use the _Filters_ page to search filters by name or description, to narrow the list to one author, and to sort it. A
 filter card's menu provides _Clone_, which copies the filter under a new name, and _Delete_. Right-click a card to open
@@ -16,7 +16,7 @@ the same menu.
 
 Open a filter to see the expression that decides what it matches:
 
-![filter_edit](../../images/configuring/filter_edit.png)
+![a filter in the builder, above the layers it matches](../../images/configuring/filter_edit.png)
 
 Each condition is one line. The block at the top sets how the conditions under it combine: _all of_, _any of_,
 _none of_ or _not all of_. _No Mech on Hilly Maps_ uses
@@ -28,8 +28,8 @@ _not all of_, so a layer matches unless both of these hold:
 A filter does nothing on its own: other settings point at it, and one filter can be used inside another.
 _Main Pool_ is built out of two of the others:
 
-![main_pool](../../images/configuring/main_pool_card.png)
-![main_pool_edit](../../images/configuring/main_pool_edit.png)
+![the Main Pool filter's card](../../images/configuring/main_pool_card.png)
+![the Main Pool filter, built out of other filters](../../images/configuring/main_pool_edit.png)
 
 It uses _all of_, so a layer has to meet every one of:
 
@@ -49,11 +49,11 @@ or faction may be played again.
 Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear is
 the usual route:
 
-![pool_config_button](../../images/configuring/pool_config_button.png)
+![the gear above the queue, which opens the pool configuration window](../../images/configuring/pool_config_button.png)
 
 It has four tabs: _Filters_, _Repeat Rules_, _Generation_ and _Next Layer_.
 
-![pool_config_popover](../../images/configuring/pool_config_popover.png)
+![the Filters tab of the pool configuration window](../../images/configuring/pool_config_popover.png)
 
 ## The pool filter
 
@@ -75,32 +75,32 @@ Use the toggle in front of the filter to set whether matching layers are in-pool
 A filter carries a name, a description, a _Match Indicator_ and a _Miss Indicator_. Each indicator has an
 _Emoji_ and an _Alert Message_. Edit them from the filter itself:
 
-![filter_extra_fields_edit_button](../../images/configuring/filter_extra_fields_edit_button.png)
-![filter_extra_fields](../../images/configuring/filter_extra_fields.png)
+![the Edit Details button beside a filter's name](../../images/configuring/filter_extra_fields_edit_button.png)
+![a filter's details, with its match and miss indicators](../../images/configuring/filter_extra_fields.png)
 
 An emoji can be a standard one, or one from your Discord server's emoji library:
 
-![emoji_library](../../images/configuring/emoji_library.png)
+![picking an emoji from a Discord server's emoji library](../../images/configuring/emoji_library.png)
 
 A layer that matches the filter's _Exempt layers_ conditions never shows the miss emoji or alert message, and SLM does
 not warn that it misses the filter. A new filter exempts seeding and training layers. To change the conditions, open
 _Exempt layers_ under the _Miss Indicator_. Use _Reset to default_ to restore the seeding and training exemption.
 
-![exempt_layers](../../images/configuring/miss_exemption.png)
+![Exempt layers, set to seeding and training layers](../../images/configuring/miss_exemption.png)
 
 The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
 everywhere it appears. The queue shows the emoji beside the layer:
 
-![main_pool_indicator_matched](../../images/configuring/main_pool_indicator_matched.png)
+![the Main Pool emoji on a queued layer, with the filter's alert message](../../images/configuring/main_pool_indicator_matched.png)
 
 The pool filter is also enabled by default in the _Add Layers_ dialog:
 
-![add_layers_pool_filter_enabled](../../images/configuring/add_layers_pool_filter_enabled.png)
+![the pool filter, ticked by default in the Add Layers dialog](../../images/configuring/add_layers_pool_filter_enabled.png)
 
 Anyone can turn it off, but only a user holding `queue:force-write` can save an out-of-pool layer. Queue one, or
 edit a queued layer until it no longer matches, and SLM raises _Filter Warnings_ before it saves:
 
-![filter_warnings](../../images/configuring/filter_warnings.png)
+![Filter Warnings before saving a queued layer that misses the pool filter](../../images/configuring/filter_warnings.png)
 
 While the next layer carries a warning, SLM repeats it to in-game admins. To silence the warnings on one queue item,
 tag the item and name that tag in _Skip warnings for_. The item still needs `queue:force-write` to save if it is
@@ -111,7 +111,7 @@ out-of-pool, and its indicators still display.
 _Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top, and one filter can appear
 in several of the lists at once.
 
-![secondary_filters](../../images/configuring/secondary_filters.png)
+![the secondary filter lists](../../images/configuring/secondary_filters.png)
 
 | List                           | What it does                                                              |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -133,8 +133,8 @@ the request dialog starts with them applied, and they can be turned off for one 
 
 Individual layers in the layer queue can be tagged. Layers with certain tags can be configured to skip warnings:
 
-![skip_warnings_for_tag](../../images/configuring/skip_warnings_for_tag.png)
-![fogless_friday](../../images/configuring/fogless_friday.png)
+![Skip warnings for, set to the fogless-friday tag](../../images/configuring/skip_warnings_for_tag.png)
+![tagging a queued layer with fogless-friday](../../images/configuring/fogless_friday.png)
 
 A tag with _Prevent swaps_ turned on stops _Fix Repeats_ from swapping the teams of a layer carrying it. See
 [Fixing repeats](layer_rotation.md#fixing-repeats).
@@ -145,7 +145,7 @@ The layer table can show more about each layer than it does by default, and each
 filter. Configure the columns under _Layers > Layer Table_. They apply to the layers table and to every layer
 select menu, such as the _Explore Layers_ and _Add Layers_ dialogs:
 
-![layer_table_columns](../../images/configuring/layer_table_columns.png)
+![the layer table's columns, in order, with whether each is visible](../../images/configuring/layer_table_columns.png)
 
 Drag a column to reorder it, and use its toggle to set whether it is visible by default. The same setting holds the
 table's default sort and the extra comparison controls its filter menu offers.

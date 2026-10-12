@@ -1,5 +1,5 @@
 // The documentation site's pages, rendered to static HTML by src/scripts/build-docs.ts and never mounted in the app.
-// The only script a page loads is docs-site.client.ts, for search and the video facade.
+// The only script a page loads is docs-site.client.ts, for search, the video facade and the image lightbox.
 import {
 	ArrowRight,
 	Check,
@@ -12,9 +12,11 @@ import {
 	Copy,
 	Heart,
 	Link as LinkIcon,
+	Maximize2,
 	Menu,
 	Pencil,
 	Search,
+	X,
 } from 'lucide-react'
 import * as React from 'react'
 
@@ -99,6 +101,7 @@ export function DocsDocument(props: {
 				<SiteHeader site={site} section={props.section} sidebar={props.sidebar} />
 				{props.children}
 				<SearchDialog />
+				<Lightbox />
 			</body>
 		</html>
 	)
@@ -583,5 +586,42 @@ export function NotFoundPage({ site }: { site: SiteInfo }) {
 				This page does not exist, or has moved. Try searching, or go to the <a href={site.base}>start page</a>.
 			</p>
 		</main>
+	)
+}
+
+// A markdown image that stands in a paragraph of its own. Without the script, the link opens the image file. A caption
+// taken from the alt text is hidden from screen readers, which already read the alt text.
+export function DocFigure(props: {
+	src: string
+	alt: string
+	caption: string | null
+	captionIsAlt: boolean
+	width?: number
+	height?: number
+}) {
+	return (
+		<figure className="docs-figure">
+			<a href={props.src} className="docs-zoom" data-lightbox="" aria-label={`View full screen: ${props.caption ?? props.alt}`}>
+				<img src={props.src} alt={props.alt} loading="lazy" decoding="async" width={props.width} height={props.height} />
+				<span className="docs-zoom-icon" aria-hidden="true">
+					<Maximize2 className="size-4" />
+				</span>
+			</a>
+			{props.caption && <figcaption aria-hidden={props.captionIsAlt || undefined}>{props.caption}</figcaption>}
+		</figure>
+	)
+}
+
+function Lightbox() {
+	return (
+		<dialog id="docs-lightbox" className="docs-lightbox" aria-label="Image viewer" tabIndex={-1}>
+			<div className="docs-lightbox-stage">
+				<img alt="" draggable={false} />
+			</div>
+			<p className="docs-lightbox-caption" />
+			<button type="button" className="docs-lightbox-close" data-lightbox-close="" aria-label="Close">
+				<X className="size-6" aria-hidden="true" />
+			</button>
+		</dialog>
 	)
 }

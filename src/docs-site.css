@@ -651,18 +651,58 @@
 		border-radius: 3px;
 		border: 1px solid var(--line);
 	}
-	/* consecutive images in one paragraph share a row, each shrunk in proportion to its width */
-	.docs-prose p:has(> img + img) {
+	.docs-figure {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+	.docs-figure figcaption {
+		font-size: 14px;
+		line-height: 1.45;
+		color: var(--text-2);
+	}
+	.docs-zoom {
+		position: relative;
+		align-self: flex-start;
+		max-width: 100%;
+		cursor: zoom-in;
+		border-radius: 3px;
+	}
+	.docs-zoom-icon {
+		position: absolute;
+		inset-block-end: 8px;
+		inset-inline-start: 8px;
+		display: flex;
+		padding: 5px;
+		color: #fff;
+		background: rgba(12, 12, 13, 0.72);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: 3px;
+		opacity: 0;
+		transition: opacity 120ms;
+		pointer-events: none;
+	}
+	.docs-zoom:hover .docs-zoom-icon,
+	.docs-zoom:focus-visible .docs-zoom-icon {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.docs-zoom-icon {
+			opacity: 0.85;
+		}
+	}
+	/* the figures of one paragraph share a row, each shrunk in proportion to its width */
+	.docs-figures {
 		display: flex;
 		gap: 12px;
 		align-items: flex-start;
 	}
-	.docs-prose p:has(> img + img) > img {
+	.docs-figures > .docs-figure {
 		flex: 1 1 auto;
-		min-width: 0;
 	}
 	@media (width < 768px) {
-		.docs-prose p:has(> img + img) {
+		.docs-figures {
 			flex-direction: column;
 		}
 	}
@@ -721,6 +761,83 @@
 	}
 
 	/* search */
+	.docs-lightbox {
+		width: 100vw;
+		height: 100dvh;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		color: #fff;
+		background: rgba(8, 8, 9, 0.97);
+		overflow: hidden;
+	}
+	.docs-lightbox:focus {
+		outline: none;
+	}
+	.docs-lightbox[open] {
+		display: flex;
+		flex-direction: column;
+	}
+	.docs-lightbox::backdrop {
+		background: transparent;
+	}
+	html:has(.docs-lightbox[open]) {
+		overflow: hidden;
+	}
+	.docs-lightbox-stage {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+		touch-action: none;
+	}
+	.docs-lightbox-stage img {
+		cursor: zoom-in;
+	}
+	.docs-lightbox-stage[data-zoomed] img {
+		cursor: grab;
+	}
+	.docs-lightbox-stage[data-dragging] img {
+		cursor: grabbing;
+	}
+	/* physical: the script places the image with a translate measured from the stage's top left corner */
+	.docs-lightbox-stage img {
+		position: absolute;
+		top: 0;
+		left: 0;
+		max-width: none;
+		transform-origin: 0 0;
+		user-select: none;
+		-webkit-user-drag: none;
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+	}
+	.docs-lightbox-caption {
+		margin: 0;
+		padding: 10px 16px 14px;
+		text-align: center;
+		font-size: 15px;
+		line-height: 1.45;
+	}
+	.docs-lightbox-caption:empty {
+		display: none;
+	}
+	.docs-lightbox-close {
+		position: absolute;
+		inset-block-start: 12px;
+		inset-inline-end: 12px;
+		display: flex;
+		padding: 8px;
+		color: #fff;
+		background: rgba(12, 12, 13, 0.72);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: 999px;
+		cursor: pointer;
+	}
+	.docs-lightbox-close:hover {
+		background: rgba(40, 40, 42, 0.9);
+	}
 	.docs-search {
 		width: min(640px, calc(100vw - 32px));
 		max-height: min(640px, calc(100dvh - 96px));

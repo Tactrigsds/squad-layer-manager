@@ -10,7 +10,7 @@ more.
 Configure reasons such as teamkilling, spamming or soloing under _Admin Action Reasons_. Each reason carries one
 text per action, where an action is a warn, a broadcast, a kick, a timeout, and so on:
 
-![admin_action_reasons](../../images/configuring/admin_action_reasons.png)
+![the admin action reasons, each with its keywords and a text for every action](../../images/configuring/admin_action_reasons.png)
 
 Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the same
 section holds reusable snippets. A message variable can be used in several texts, or inside another message variable.
@@ -27,33 +27,33 @@ Put the section inside a message variable to reuse it across reasons.
 
 _Require a Reason_ makes a reason mandatory for the actions listed in it:
 
-![actions_requiring_reason](../../images/configuring/actions_requiring_reason.png)
+![Require a Reason, listing the actions that need one](../../images/configuring/actions_requiring_reason.png)
 
 The user can still type a freeform reason instead of choosing a configured one.
 
 Admins then use a configured reason with the in-game `/warn`, `/broadcast`, `/kick`, `/timeout` and other commands,
 as long as that reason has text for the action: a reason with no kick text cannot be used to kick.
 
-![warn_details](../../images/configuring/warn_details.png)
+![the details of /warn, listing the configured reasons](../../images/configuring/warn_details.png)
 
 Reasons are also selectable when an action is performed from the interface:
 
-![kick_dialog](../../images/configuring/kick_dialog.png)
-![kick_text_insert](../../images/configuring/kick_text_insert.png)
+![choosing a reason in the Kick Players dialog](../../images/configuring/kick_dialog.png)
+![inserting a reason's text into a message](../../images/configuring/kick_text_insert.png)
 
 ## In-game commands
 
 SLM has a large set of in-game commands. The commands page in your own install documents each command and how to use
 it:
 
-![commands_page](../../images/configuring/commands_page.png)
+![the commands page](../../images/configuring/commands_page.png)
 
 ### Command prefixes
 
 By default, every command has the prefix `/`. Change this prefix, or add another, in _Allowed Prefixes_, under
 _Advanced_ in the _In-game Commands_ section:
 
-![allowed_prefixes](../../images/configuring/allowed_prefixes.png)
+![Allowed Prefixes, with / as the default prefix](../../images/configuring/allowed_prefixes.png)
 
 If an existing prefix is changed, SLM moves every [trigger](#command-triggers) with that prefix to the new one.
 

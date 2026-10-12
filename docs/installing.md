@@ -50,16 +50,16 @@ SLM signs users in through a Discord app of your own.
 1. Create an app at [discord.com/developers/applications](https://discord.com/developers/applications).
 2. Under _Installation_, keep only _Guild Install_ checked, and give it the `applications.commands` and `bot` scopes:
 
-   ![discord_1](../images/discord_1.png)
+   ![the Guild Install scopes, under Installation](../images/discord_1.png)
 
 3. Under _OAuth2_, add `<ORIGIN>/login/callback` as a redirect, where `<ORIGIN>` is the address SLM will be served
    from:
 
-   ![discord_2](../images/discord_2.png)
+   ![the login redirect, under OAuth2](../images/discord_2.png)
 
 4. Under _Bot_, turn on _Server Members Intent_ and _Message Content Intent_:
 
-   ![discord_3](../images/discord_3.png)
+   ![the privileged intents, under Bot](../images/discord_3.png)
 
 5. In `.env`, set `ORIGIN` to that address, without `/login/callback`, and `DISCORD_CLIENT_ID` to the app's client ID.
 6. In `.env.secrets`, set `DISCORD_CLIENT_SECRET` and `DISCORD_BOT_TOKEN`.

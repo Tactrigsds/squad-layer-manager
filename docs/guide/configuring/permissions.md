@@ -18,7 +18,7 @@ container, or at a copy hosted over SFTP or HTTP(S). A local file must be inside
 By default, SLM treats a player with the `canseeadminchat` role as an admin. If your list uses a different role,
 change this setting:
 
-![adminlist](../../images/configuring/adminlist.png)
+![an admin list read from a local Admins.cfg](../../images/configuring/adminlist.png)
 
 An admin list identifies a player by Steam ID or EOS ID, and one list can use a mix of the two.
 
@@ -39,7 +39,7 @@ A fresh install has no role assignments of its own, so the `SUPER_USERS` and `SU
 the bootstrap. They hold every permission unconditionally, including unlimited kick timeouts, and cannot be changed from
 the settings page:
 
-![super_users](../../images/configuring/super_users.png)
+![the super users, set through environment variables](../../images/configuring/super_users.png)
 
 Keep at least one after real roles are assigned, so someone can still sign in if an assignment goes wrong.
 
@@ -94,8 +94,8 @@ A role can be assigned to a user or to a player:
 
 A user can link their Discord account to their in-game account, and the permissions from both then combine for
 every action:
-![linked_steam_account_button](../../images/configuring/linked_steam_accounts_button.png)
-![linked_steam_account_dialog](../../images/configuring/linked_steam_accounts_dialog.png)
+![Linked Steam Accounts in the user menu](../../images/configuring/linked_steam_accounts_button.png)
+![the Linked Steam Accounts dialog](../../images/configuring/linked_steam_accounts_dialog.png)
 
 Linking is optional. It matters to someone who holds elevated permissions on their user account and wants to use them
 in game.
@@ -110,22 +110,22 @@ The _Assignments_ subsection of a role holds five sources. Two of them cover in-
 The other three cover users, and take an individual Discord user, a Discord role, or every member of your Discord
 server:
 
-![discord_roles](../../images/configuring/discord_roles.png)
+![a role's assignments: Discord roles, Discord users, in-game admins and admin-list groups](../../images/configuring/discord_roles.png)
 
 ## Testing assigned permissions
 
 Every user can see the permissions they hold, in the permissions info dialog:
 
-![permissions_info_item](../../images/configuring/permissions_info_item.png)
-![permissions_info_dialog](../../images/configuring/permissions_info_dialog.png)
+![Permissions in the user menu](../../images/configuring/permissions_info_item.png)
+![the permissions dialog](../../images/configuring/permissions_info_dialog.png)
 
 The dialog groups permissions by role or by permission, and traces each one back to the role that granted it.
 
 Click _Simulate Permissions_ to check and uncheck roles, and see how the interface behaves for someone who holds
 them:
 
-![simulate_permissions_1](../../images/configuring/simulate_permissions_1.png)
-![simulate_permissions_2](../../images/configuring/simulate_permissions_2.png)
+![the Simulate toggle in the permissions dialog](../../images/configuring/simulate_permissions_1.png)
+![the Simulating indicator in the header, with an X to stop simulating](../../images/configuring/simulate_permissions_2.png)
 
 The simulation runs in your browser only. The server still checks your real permissions on any action the interface does
 not gate.
