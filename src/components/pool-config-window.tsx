@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
+import * as Browser from '@/lib/browser'
 import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
@@ -91,6 +92,21 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 		'filters',
 	)
 
+	const phone = Browser.useIsSmallViewport()
+	const tabs = (
+		<TabsList
+			options={[
+				{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
+				{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
+				{ label: tr.text(SETTINGS_Msgs.generationTab()), value: 'generation' },
+				{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
+			]}
+			active={tab}
+			setActive={setTab}
+			className={phone ? 'w-max min-w-full flex-nowrap [&>button]:flex-1' : undefined}
+		/>
+	)
+
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
@@ -104,21 +120,16 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						)}
 					</span>
 				</DraggableWindowTitle>
-				<span data-tour="pool-config-tabs">
-					<TabsList
-						options={[
-							{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
-							{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
-							{ label: tr.text(SETTINGS_Msgs.generationTab()), value: 'generation' },
-							{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
-						]}
-						active={tab}
-						setActive={setTab}
-					/>
-				</span>
+				{!phone && <span data-tour="pool-config-tabs">{tabs}</span>}
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
+			{/* the phone title bar is one fixed-height row with no room for tabs, so the tabs get their own row and scroll rather than wrap */}
+			{phone && (
+				<span data-tour="pool-config-tabs" className="shrink-0 overflow-x-auto border-b pt-1">
+					{tabs}
+				</span>
+			)}
 			<div data-tour="pool-config-body" className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
 				{tab === 'filters' ? (
 					<PoolFiltersPanel api={mainPoolApi} />
