@@ -467,7 +467,8 @@ export default function NavBar() {
 					{...exploreLayersIntent}
 					onClick={openExploreLayers}
 				>
-					{isMedium ? tr.text(APP_Msgs.exploreLayers()) : <Icons.Search />}
+					<Icons.Map />
+					{isMedium && tr.text(APP_Msgs.exploreLayers())}
 				</Button>
 			</div>
 			<ExploreLayersDialog mounted={exploreLayersMounted} open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
@@ -692,6 +693,7 @@ function PhoneMenu(props: {
 				{props.pageItems}
 				<DropdownMenuSeparator />
 				<DropdownMenuItem className="cursor-pointer" onFocus={props.onExploreLayersIntent} onClick={props.onExploreLayers}>
+					<Icons.Map />
 					{tr.text(APP_Msgs.exploreLayers())}
 				</DropdownMenuItem>
 				{props.serverName && props.squadServerKey && (
