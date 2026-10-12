@@ -563,6 +563,8 @@ export function areLayersCompatible(
 	)
 }
 
+export const SEEDING_OR_TRAINING_GAMEMODES = ['Seed', 'Training'] as const
+
 export function isSeedingOrTrainingLayer(layerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents) {
 	const layer = toLayer(layerOrId, components)
 	return layer.Gamemode === 'Seed' || layer.Gamemode === 'Training'

@@ -125,4 +125,20 @@ describe.skipIf(!fs.existsSync(WASM_PATH))('solveRepeatViolations', () => {
 		expect(res.swapped).not.toContain('pinned')
 		expect(res.swapped).not.toContain('repeat')
 	})
+
+	it('keeps a queued seeding layer in place, and counts no repeat across it', async () => {
+		const [fallujah, seed] = ['FL-RAAS-V1:USA-CA:RGF-CA', 'FL-SD-V1:USA-CA:RGF-CA']
+		const queue = [fallujah, fallujah, seed, fallujah, fallujah].map((layerId, i) => ({
+			type: 'single-list-item' as const,
+			itemId: `item-${i}`,
+			layerId,
+		}))
+		const list: LQY.LayerItemsState = { layerItems: queue, firstLayerItemParity: 0 }
+		const res = await solveRepeatViolations({ ctx, input: { list, constraints: CONSTRAINTS } })
+		if (res.code !== 'ok') throw new Error(res.code)
+		expect(res.order[2]).toBe('item-2')
+		// each pair repeats inside its own segment, and nothing repeats across the seeding layer
+		expect(res.baselineViolations).toBe(await repeatWarnings(list))
+		expect(res.baselineViolations).toBe(2 * (await repeatWarnings({ layerItems: queue.slice(0, 2), firstLayerItemParity: 0 })))
+	})
 })

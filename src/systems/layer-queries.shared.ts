@@ -202,7 +202,20 @@ function splitIndicators(compiled: CompiledConstraints) {
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
+// Seeding and training layers are exempt from repeat rules, both as the layer that repeats and as the one repeated.
 function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
+	const repeated = repeatedValuesIr(ctx, list, cursorIndex, rule)
+	if (repeated.op === 'false') return repeated
+	const exemptGamemodes: number[] = []
+	for (const gamemode of L.SEEDING_OR_TRAINING_GAMEMODES) {
+		const dbValue = LC.dbValue('Gamemode', gamemode, ctx)
+		if (!LC.isUnmappedDbValue(dbValue) && dbValue !== null) exemptGamemodes.push(Number(dbValue))
+	}
+	if (exemptGamemodes.length === 0) return repeated
+	return LE.and([LE.not({ op: 'in_vals', col: ctx.engine.columnIndex('Gamemode'), vals: exemptGamemodes }), repeated])
+}
+
+function repeatedValuesIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
 	if (rule.within <= 0) return { op: 'false' }
 	const col = (name: string) => ctx.engine.columnIndex(name)
 
@@ -217,6 +230,8 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 		const teamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		for (const source of LQY.getLookbackItems(previousLayers[i])) {
 			const layer = L.toLayer(source.layerId)
+			// a pending vote's seeding or training choice: the vote may still play another choice, so lookback goes on
+			if (L.isSeedingOrTrainingLayer(layer)) continue
 
 			switch (rule.field) {
 				case 'Map':
@@ -920,6 +935,8 @@ const MAX_SOLVABLE_QUEUE_LENGTH = 128
 // Reorders the queue and swaps teams to break as few warning repeat rules as possible, preferring the arrangement
 // closest to the queue as it is. The engine runs the search. This side encodes what each rule compares, mirroring
 // getRepeatRuleMatchDescriptors for the comparison and getLayerItemStatuses for which items are exempt from warnings.
+// A queued item that ends lookback stays where it is, and splits the queue into segments the engine solves
+// separately: no repeat crosses it, so moving a layer across it would change which repeats count.
 export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; input: LQY.SolveRepeatViolationsInput }) {
 	const list = input.list ?? LQY.initLayerItemsState()
 	const items = list.layerItems
@@ -929,15 +946,14 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 	if (queueStart === -1) queueStart = items.length
 	const queueItems = items.slice(queueStart)
 	if (queueItems.length > MAX_SOLVABLE_QUEUE_LENGTH) return { code: 'err:queue-too-long' as const }
+	const parse = layerParser()
 	let historyStart = 0
 	for (let i = queueStart - 1; i >= 0; i--) {
-		if (LQY.isLookbackTerminatingLayerItem(items[i])) {
+		if (LQY.isLookbackTerminatingLayerItem(items[i], parse)) {
 			historyStart = i + 1
 			break
 		}
 	}
-
-	const parse = layerParser()
 	const interned = new Map<string, number>()
 	const intern = (rule: LQY.RepeatRule, value: string | number | null | undefined) => {
 		if (value === null || value === undefined || value === '') return LE.NO_RULE_VALUE
@@ -1014,50 +1030,73 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 	const noSwapTags = input.noSwapTags ?? []
 	const pinned = new Set<LQY.ItemId>(input.pinnedItemIds ?? [])
 
-	const res = ctx.engine.query<LE.SolveRepeatsResponse>({
-		kind: 'solveRepeats',
-		rules: rules.map((rule) => ({
-			within: rule.within,
-			team: LQY.isTeamSpecificRepeatRuleField(rule.field),
-			crossTeam: !!rule.crossTeam,
-		})),
-		layers,
-		history: items.slice(historyStart, queueStart).map((item) => layerIndex(item.layerId)),
-		queue: queueItems.map((item) => {
-			const choices = LQY.coalesceLayerItems(item)
-			const targets: number[] = []
-			for (const choice of choices) {
-				if (!present.has(choice.layerId)) continue
-				if (L.isSeedingOrTrainingLayer(parse(choice.layerId))) continue
-				if (LQY.getTags(choice)?.some((tag) => skipWarningsForTags.includes(tag))) continue
-				targets.push(layerIndex(choice.layerId))
-			}
-			return {
-				sources: LQY.getLookbackItems(item).map((source) => layerIndex(source.layerId)),
-				targets,
-				// LL.swapFactions swaps a vote all-or-nothing
-				swappable:
-					canSwap(item.layerId) &&
-					choices.every((choice) => canSwap(choice.layerId) && !LQY.getTags(choice)?.some((tag) => noSwapTags.includes(tag))),
-				pinned: pinned.has(item.itemId),
-			}
-		}),
-		firstParity: MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, historyStart),
-		swapCost: input.swapCost ?? 1,
-		moveCost: input.moveCost ?? 1,
-		maxNodes: input.maxNodes,
-	})
-
-	return {
+	const ruleSpecs = rules.map((rule) => ({
+		within: rule.within,
+		team: LQY.isTeamSpecificRepeatRuleField(rule.field),
+		crossTeam: !!rule.crossTeam,
+	}))
+	const result = {
 		code: 'ok' as const,
-		status: res.status,
-		order: res.order.map((i) => queueItems[i].itemId),
-		swapped: queueItems.filter((_, i) => res.swapped[i]).map((item) => item.itemId),
-		violations: res.violations,
-		baselineViolations: res.baselineViolations,
-		swaps: res.swaps,
-		moves: res.moves,
+		status: 'optimal' as LE.SolveRepeatsResponse['status'],
+		order: [] as LQY.ItemId[],
+		swapped: [] as LQY.ItemId[],
+		violations: 0,
+		baselineViolations: 0,
+		swaps: 0,
+		moves: 0,
 	}
+	let segmentStart = 0
+	for (let i = 0; i <= queueItems.length; i++) {
+		const terminator = i < queueItems.length && LQY.isLookbackTerminatingLayerItem(queueItems[i], parse)
+		if (i < queueItems.length && !terminator) continue
+		const segment = queueItems.slice(segmentStart, i)
+		if (segment.length > 0) {
+			const res = ctx.engine.query<LE.SolveRepeatsResponse>({
+				kind: 'solveRepeats',
+				rules: ruleSpecs,
+				layers,
+				history: segmentStart === 0 ? items.slice(historyStart, queueStart).map((item) => layerIndex(item.layerId)) : [],
+				queue: segment.map((item) => {
+					const choices = LQY.coalesceLayerItems(item)
+					const targets: number[] = []
+					for (const choice of choices) {
+						if (!present.has(choice.layerId)) continue
+						if (L.isSeedingOrTrainingLayer(parse(choice.layerId))) continue
+						if (LQY.getTags(choice)?.some((tag) => skipWarningsForTags.includes(tag))) continue
+						targets.push(layerIndex(choice.layerId))
+					}
+					return {
+						sources: LQY.getLookbackItems(item).flatMap((source) =>
+							L.isSeedingOrTrainingLayer(parse(source.layerId)) ? [] : [layerIndex(source.layerId)],
+						),
+						targets,
+						// LL.swapFactions swaps a vote all-or-nothing
+						swappable:
+							canSwap(item.layerId) &&
+							choices.every((choice) => canSwap(choice.layerId) && !LQY.getTags(choice)?.some((tag) => noSwapTags.includes(tag))),
+						pinned: pinned.has(item.itemId),
+					}
+				}),
+				firstParity: MH.getTeamParityForOffset(
+					{ ordinal: list.firstLayerItemParity },
+					segmentStart === 0 ? historyStart : queueStart + segmentStart,
+				),
+				swapCost: input.swapCost ?? 1,
+				moveCost: input.moveCost ?? 1,
+				maxNodes: input.maxNodes,
+			})
+			if (res.status !== 'optimal') result.status = res.status
+			result.order.push(...res.order.map((j) => segment[j].itemId))
+			result.swapped.push(...segment.filter((_, j) => res.swapped[j]).map((item) => item.itemId))
+			result.violations += res.violations
+			result.baselineViolations += res.baselineViolations
+			result.swaps += res.swaps
+			result.moves += res.moves
+		}
+		if (terminator) result.order.push(queueItems[i].itemId)
+		segmentStart = i + 1
+	}
+	return result
 }
 
 export async function getLayerInfo({ ctx, input }: { ctx: LE.Ctx; input: { layerId: L.LayerId } }) {
@@ -1173,18 +1212,19 @@ export function getRepeatRuleMatchDescriptors(
 	parse: LayerParser = L.toLayer,
 ) {
 	const targetLayer = parse(targetLayerId)
+	if (L.isSeedingOrTrainingLayer(targetLayer)) return undefined
 	const previousLayers = list.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
 	const descriptors: LQY.RepeatMatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		const previousItem = previousLayers[i]
-		// LQY.isLookbackTerminatingLayerItem, inlined so a played layer is parsed once
-		const playedLayer = previousItem.type === 'match-history-entry' ? parse(previousItem.layerId) : null
-		if (playedLayer && L.isSeedingOrTrainingLayer(playedLayer)) break
+		if (LQY.isLookbackTerminatingLayerItem(previousItem, parse)) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		for (const layerItem of LQY.getLookbackItems(previousItem)) {
-			const layer = playedLayer ?? parse(layerItem.layerId)
+			const layer = parse(layerItem.layerId)
+			// a pending vote's seeding or training choice: the vote may still play another choice, so lookback goes on
+			if (L.isSeedingOrTrainingLayer(layer)) continue
 			const getViolationDescriptor = (
 				field: LQY.RepeatMatchDescriptorField,
 				sourceField: LQY.RepeatMatchDescriptorField = field,

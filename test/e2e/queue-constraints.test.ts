@@ -27,8 +27,9 @@ async function saveSettings(page: Page) {
 test.describe('queue item constraints', () => {
 	test('indicates repeat-rule violations and filter matches on the items that carry them', async ({ page }) => {
 		const app = await createAppFixture({
-			// Gorodok twice, two apart: within the Map repeat rule's window of 4
-			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.gorodokAas),
+			// Gorodok twice, back to back: within the Map repeat rule's window of 4. A seeding layer between them would
+			// end the rule's lookback, so Sumari's seeding layer comes last.
+			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.gorodokAas, LAYERS.sumariSeed),
 			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' })],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
@@ -43,11 +44,11 @@ test.describe('queue item constraints', () => {
 			const items = Dash.queueSection(page).getByRole('listitem')
 			const indicators = (layerName: string) => items.filter({ hasText: layerName }).getByRole('button', { name: 'Layer indicators' })
 
-			// the second Gorodok repeats the first, two matches later
+			// the second Gorodok repeats the first, one match later
 			await indicators('Gorodok_AAS_v1').hover()
 			const repeatTooltip = page.getByRole('tooltip')
 			await expect(repeatTooltip).toContainText('Map Gorodok repeats')
-			await expect(repeatTooltip).toContainText('2 ago')
+			await expect(repeatTooltip).toContainText('1 ago')
 			// AAS is not RAAS: the pool filter doesn't match it, so it is not indicated as one that does
 			await expect(repeatTooltip).not.toContainText('RAAS Only')
 
@@ -62,7 +63,7 @@ test.describe('queue item constraints', () => {
 			await expect(filterTooltip).toContainText('RAAS layers are in the pool')
 			await expect(filterTooltip).not.toContainText('repeats')
 
-			// Sumari matches nothing and repeats nothing, so it carries no indicator at all
+			// Sumari's seeding layer matches no filter and is exempt from repeat rules, so it carries no indicator at all
 			await expect(indicators('Sumari_Seed_v1')).toHaveCount(0)
 		} finally {
 			await app.dispose()
@@ -271,7 +272,7 @@ test.describe('queue item constraints', () => {
 	test("skips warnings for an item tagged with one of the pool's skipWarningsForTags", async ({ page }) => {
 		const planned = layerTag('planned', 'aaaaaa')
 		const app = await createAppFixture({
-			layerQueue: [queueItem(LAYERS.gorodokRaas), queueItem(LAYERS.sumariSeed), queueItem(LAYERS.gorodokAas, { tags: [planned.id] })],
+			layerQueue: [queueItem(LAYERS.gorodokRaas), queueItem(LAYERS.harjuRaas), queueItem(LAYERS.gorodokAas, { tags: [planned.id] })],
 			globalSettings: (settings) => {
 				settings.layerTags = [planned]
 			},
