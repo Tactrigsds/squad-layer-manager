@@ -17,6 +17,18 @@ SLM overrides is not announced, so turning both on warns admins only about chang
 
 ![the Next Layer tab of the pool configuration window](../../images/configuring/pool_configuration_next_layer.png)
 
+## Generated and automatic votes
+
+Use the _Generation & Votes_ tab to set whether SLM generates votes when the queue runs out, and when votes start.
+
+With _Generate votes_ on, SLM generates a vote between 3 layers instead of a single layer when the queue runs out.
+Each choice is on a different map. Use _Vote Display Options_ to choose the parts of each layer that players see when
+a generated vote starts.
+
+With _Start votes automatically_ on, SLM starts the vote at the front of the queue once the match has run for _Delay
+into the match_, 20 minutes by default. Write the delay as a number and a unit, such as `90s`, `20m` or `1h`. Turn
+the setting off to leave every vote for an admin to start.
+
 ## Disabling SLM updates
 
 SLM normally writes the next layer to the server over RCON. Use _Disable SLM Updates_, in the _Server Actions_ menu,
@@ -115,9 +127,9 @@ the layer the vote settled on. Aborting a vote puts all of its choices back in p
 ## Generated votes
 
 When the queue runs out of layers, SLM generates a single layer by default. Switch on _Generate votes_, in the
-_Generation_ tab of the pool configuration window, to have SLM generate a vote between 3 layers instead.
+_Generation & Votes_ tab of the pool configuration window, to have SLM generate a vote between 3 layers instead.
 
-![the Generation tab, with generated votes switched on](../../images/configuring/pool_config_generation.png)
+![the Generation & Votes tab, with generated votes switched on](../../images/configuring/pool_config_generation.png)
 
 Each choice of a generated vote is on a different map. SLM draws the choices under the pool filter, the _Constrain
 generated pool for_ filters and the repeat rules, the same as a single generated layer. When a

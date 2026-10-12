@@ -185,7 +185,7 @@ node scripts/stamp-png-density.mjs 2 docs/images/configuring/new_shot.png
 ```
 
 An image in a paragraph of its own becomes a figure that opens full screen on a click. Its alt text doubles as its
-caption, so write the alt text as a short description: `![the Generation tab, with generated votes switched on](...)`.
+caption, so write the alt text as a short description: `![the Generation & Votes tab, with generated votes switched on](...)`.
 A markdown title (`![alt](src "caption")`) sets a caption that differs from the alt text. Alt text with no spaces, such
 as a file name, leaves the figure without a caption. Images inside a line of text, such as icons, stay inline.
 

@@ -51,7 +51,7 @@ the usual route:
 
 ![the gear above the queue, which opens the pool configuration window](../../images/configuring/pool_config_button.png)
 
-It has four tabs: _Filters_, _Repeat Rules_, _Generation_ and _Next Layer_.
+It has four tabs: _Filters_, _Repeat Rules_, _Generation & Votes_ and _Next Layer_.
 
 ![the Filters tab of the pool configuration window](../../images/configuring/pool_config_popover.png)
 
