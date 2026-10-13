@@ -4,6 +4,7 @@ import * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import type * as SLL from '@/models/shared-layer-list.models'
+import * as RBAC from '@/rbac.models'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 import * as RotationEdit from '@/systems/rotation-edit.server'
@@ -99,7 +100,30 @@ export async function copyContributors(
 	sourceId: ROT.RotationId,
 	targetId: ROT.RotationId,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	return await Rotation.copyContributors(ctx, sourceId, targetId)
+	return await Rotation.copyContributors(ctx, sourceId, targetId, actorFor(ctx))
+}
+
+/** The users and roles that can edit the rotation without owning it. Empty for a rotation that does not exist. */
+export async function getContributors(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<RBAC.Contributor[]> {
+	return await Rotation.listContributors(ctx, id)
+}
+
+/** `err:unknown-user` means the user has never signed in to SLM. */
+export async function addContributor(
+	ctx: PluginsSys.Ctx<any>,
+	id: ROT.RotationId,
+	contributor: RBAC.Contributor,
+): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unknown-user' } | { code: 'err:already-exists' }> {
+	return await Rotation.addContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
+}
+
+/** `err:not-found` means the rotation does not exist, or does not have that contributor. */
+export async function removeContributor(
+	ctx: PluginsSys.Ctx<any>,
+	id: ROT.RotationId,
+	contributor: RBAC.Contributor,
+): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
+	return await Rotation.removeContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
 }
 
 export async function remove(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {

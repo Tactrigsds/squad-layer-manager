@@ -11,8 +11,9 @@
  * `Access` declares what a procedure or command requires, for the host to check before it runs. The check itself
  * is in slm/systems/rbac. Nothing here reads any state.
  */
-export { Access, describePermit, perm, Req } from '@/rbac.models'
+export { Access, ContributorSchema, describePermit, perm, Req } from '@/rbac.models'
 export type {
+	Contributor,
 	GlobalPermissionType,
 	Permission,
 	PermissionDeniedResponse,

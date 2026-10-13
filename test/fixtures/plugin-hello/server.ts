@@ -67,6 +67,15 @@ function attributedItem(layerId: string, userId: bigint): Rotations.NewItems[num
 	}
 }
 
+// filters and rotations take the same contributor calls
+const contributed = { filter: Filters, rotation: Rotations }
+const ContributedKind = z.enum(['filter', 'rotation'])
+const ContributorInput = z.object({ kind: ContributedKind, id: z.string(), userId: z.string().optional(), roleId: z.string().optional() })
+
+function contributorOf(input: { userId?: string; roleId?: string }): RBAC.Contributor {
+	return input.userId !== undefined ? { type: 'user', userId: BigInt(input.userId) } : { type: 'role', roleId: input.roleId! }
+}
+
 // every rotation write the plugin saw, as `<type>:<id>:<actor type>`
 const rotationChanges: string[] = []
 // the ruleset ids after each change to the rulesets
@@ -162,8 +171,25 @@ export const router = {
 		.handler(async ({ context, input }) => Rotations.clone(context, { ...input, name: 'Hello rotation clone' })),
 	copyContributors: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ sourceId: z.string(), targetId: z.string() }))
-		.handler(async ({ context, input }) => Rotations.copyContributors(context, input.sourceId, input.targetId)),
+		.input(z.object({ kind: ContributedKind, sourceId: z.string(), targetId: z.string() }))
+		.handler(async ({ context, input }) => contributed[input.kind].copyContributors(context, input.sourceId, input.targetId)),
+	// user ids as strings, to survive the trip back to the test as json
+	getContributors: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ kind: ContributedKind, id: z.string() }))
+		.handler(async ({ context, input }) =>
+			(await contributed[input.kind].getContributors(context, input.id)).map((c) =>
+				c.type === 'user' ? { ...c, userId: String(c.userId) } : c,
+			),
+		),
+	addContributor: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(ContributorInput)
+		.handler(async ({ context, input }) => contributed[input.kind].addContributor(context, input.id, contributorOf(input))),
+	removeContributor: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(ContributorInput)
+		.handler(async ({ context, input }) => contributed[input.kind].removeContributor(context, input.id, contributorOf(input))),
 	dropRotation: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ id: z.string() }))

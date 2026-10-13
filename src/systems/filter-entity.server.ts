@@ -74,10 +74,11 @@ async function denyUnlessFilterOwner(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, fi
 }
 
 async function recordFilterContributor(
-	ctx: C.Db & USR.Ctx.Id,
+	ctx: C.Db,
 	action: AppEvents.FilterContributorChanged['action'],
-	filterId: string,
-	input: ToggleFilterContributorInput,
+	filterId: F.FilterEntityId,
+	contributor: RBAC.Contributor,
+	actor: AppEvents.Actor,
 ) {
 	const [filter] = await ctx.db().select({ name: Schema.filters.name }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId))
 	await AppEventsSys.persistAppEvent(
@@ -87,13 +88,147 @@ async function recordFilterContributor(
 			action,
 			filterId,
 			filterName: filter?.name,
-			contributor: input.userId !== undefined ? { type: 'user', userId: input.userId } : { type: 'role', roleId: input.roleId! },
-			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			contributor,
+			actor,
 			serverId: null,
 			matchId: null,
 			causeId: null,
 		}),
 	)
+}
+
+function toContributor(input: ToggleFilterContributorInput): RBAC.Contributor {
+	return input.userId !== undefined ? { type: 'user', userId: input.userId } : { type: 'role', roleId: input.roleId! }
+}
+
+// a user contributor gains or loses the filter-user-contributor inferred role; a role contributor changes it for
+// every holder of the role
+function invalidateContributor(contributor: RBAC.Contributor) {
+	if (contributor.type === 'user') Rbac.invalidateUser(contributor.userId)
+	else Rbac.invalidateAll()
+}
+
+async function filterExists(ctx: C.Db, filterId: F.FilterEntityId) {
+	const [row] = await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.id, filterId)).limit(1)
+	return !!row
+}
+
+export async function listFilterContributors(ctx: C.Db, filterId: F.FilterEntityId): Promise<RBAC.Contributor[]> {
+	const users = await ctx
+		.db()
+		.select({ userId: Schema.filterUserContributors.userId })
+		.from(Schema.filterUserContributors)
+		.where(E.eq(Schema.filterUserContributors.filterId, filterId))
+	const roles = await ctx
+		.db()
+		.select({ roleId: Schema.filterRoleContributors.roleId })
+		.from(Schema.filterRoleContributors)
+		.where(E.eq(Schema.filterRoleContributors.filterId, filterId))
+	return [
+		...users.map((u): RBAC.Contributor => ({ type: 'user', userId: u.userId })),
+		...roles.map((r): RBAC.Contributor => ({ type: 'role', roleId: r.roleId })),
+	]
+}
+
+// checked up front because a missing filter or user would otherwise fail the insert's foreign key
+export async function addFilterContributor(ctx: C.Db, filterId: F.FilterEntityId, contributor: RBAC.Contributor, actor: AppEvents.Actor) {
+	if (!(await filterExists(ctx, filterId))) return { code: 'err:not-found' as const }
+	let res
+	switch (contributor.type) {
+		case 'user': {
+			const [user] = await ctx
+				.db()
+				.select({ id: Schema.users.discordId })
+				.from(Schema.users)
+				.where(E.eq(Schema.users.discordId, contributor.userId))
+				.limit(1)
+			if (!user) return { code: 'err:unknown-user' as const }
+			res = await returnInsertErrors(ctx.db().insert(Schema.filterUserContributors).values({ filterId, userId: contributor.userId }))
+			break
+		}
+		case 'role':
+			res = await returnInsertErrors(ctx.db().insert(Schema.filterRoleContributors).values({ filterId, roleId: contributor.roleId }))
+			break
+		default:
+			assertNever(contributor)
+	}
+	if (res.code === 'err:already-exists') return { code: 'err:already-exists' as const }
+	await recordFilterContributor(ctx, 'added', filterId, contributor, actor)
+	invalidateContributor(contributor)
+	return { code: 'ok' as const }
+}
+
+export async function removeFilterContributor(
+	ctx: C.Db,
+	filterId: F.FilterEntityId,
+	contributor: RBAC.Contributor,
+	actor: AppEvents.Actor,
+) {
+	let resultSet
+	switch (contributor.type) {
+		case 'user':
+			resultSet = await ctx
+				.db()
+				.delete(Schema.filterUserContributors)
+				.where(
+					E.and(
+						E.eq(Schema.filterUserContributors.filterId, filterId),
+						E.eq(Schema.filterUserContributors.userId, contributor.userId),
+					),
+				)
+			break
+		case 'role':
+			resultSet = await ctx
+				.db()
+				.delete(Schema.filterRoleContributors)
+				.where(
+					E.and(
+						E.eq(Schema.filterRoleContributors.filterId, filterId),
+						E.eq(Schema.filterRoleContributors.roleId, contributor.roleId),
+					),
+				)
+			break
+		default:
+			assertNever(contributor)
+	}
+	if (resultSet.changes === 0) return { code: 'err:not-found' as const }
+	await recordFilterContributor(ctx, 'removed', filterId, contributor, actor)
+	invalidateContributor(contributor)
+	return { code: 'ok' as const }
+}
+
+/**
+ * Adds the source's contributors to the target's, keeping any the target already has. Records an event only for the
+ * contributors it actually added.
+ */
+export async function copyFilterContributors(ctx: C.Db, sourceId: F.FilterEntityId, targetId: F.FilterEntityId, actor: AppEvents.Actor) {
+	if (!(await filterExists(ctx, sourceId)) || !(await filterExists(ctx, targetId))) return { code: 'err:not-found' as const }
+	const users = await ctx.db().select().from(Schema.filterUserContributors).where(E.eq(Schema.filterUserContributors.filterId, sourceId))
+	const roles = await ctx.db().select().from(Schema.filterRoleContributors).where(E.eq(Schema.filterRoleContributors.filterId, sourceId))
+	const added: RBAC.Contributor[] = []
+	if (users.length > 0) {
+		const inserted = await ctx
+			.db()
+			.insert(Schema.filterUserContributors)
+			.values(users.map((u) => ({ filterId: targetId, userId: u.userId })))
+			.onConflictDoNothing()
+			.returning({ userId: Schema.filterUserContributors.userId })
+		for (const u of inserted) added.push({ type: 'user', userId: u.userId })
+	}
+	if (roles.length > 0) {
+		const inserted = await ctx
+			.db()
+			.insert(Schema.filterRoleContributors)
+			.values(roles.map((r) => ({ filterId: targetId, roleId: r.roleId })))
+			.onConflictDoNothing()
+			.returning({ roleId: Schema.filterRoleContributors.roleId })
+		for (const r of inserted) added.push({ type: 'role', roleId: r.roleId })
+	}
+	for (const contributor of added) {
+		await recordFilterContributor(ctx, 'added', targetId, contributor, actor)
+		invalidateContributor(contributor)
+	}
+	return { code: 'ok' as const }
 }
 
 // Filters SLM owns rather than a person: the tutorial stands its own up alongside its scoped server,
@@ -323,44 +458,7 @@ export const filtersRouter = {
 			if (denyRes) {
 				return denyRes
 			}
-
-			if (input.userId) {
-				const res = await returnInsertErrors(
-					ctx.db().insert(Schema.filterUserContributors).values({
-						filterId: input.filterId,
-						userId: input.userId,
-					}),
-				)
-				switch (res.code) {
-					case 'err:already-exists':
-						return { code: 'err:already-exists' as const }
-					case 'ok':
-						await recordFilterContributor(ctx, 'added', input.filterId, input)
-						// this user gained the filter-user-contributor inferred role
-						Rbac.invalidateUser(input.userId)
-						return { code: 'ok' as const }
-					default:
-						assertNever(res)
-				}
-			} else {
-				const res = await returnInsertErrors(
-					ctx.db().insert(Schema.filterRoleContributors).values({
-						filterId: input.filterId,
-						roleId: input.roleId!,
-					}),
-				)
-				switch (res.code) {
-					case 'err:already-exists':
-						return { code: 'err:already-exists' as const }
-					case 'ok':
-						await recordFilterContributor(ctx, 'added', input.filterId, input)
-						// every holder of this role gains the filter-role-contributor inferred role
-						Rbac.invalidateAll()
-						return { code: 'ok' as const }
-					default:
-						assertNever(res)
-				}
-			}
+			return await addFilterContributor(ctx, input.filterId, toContributor(input), { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 	removeFilterContributor: orpcBase
 		.meta({ type: 'mutation' })
@@ -370,39 +468,7 @@ export const filtersRouter = {
 			if (denyRes) {
 				return denyRes
 			}
-			let query: any
-			if (input.userId) {
-				query = ctx
-					.db()
-					.delete(Schema.filterUserContributors)
-					.where(
-						E.and(
-							E.eq(Schema.filterUserContributors.filterId, input.filterId),
-							E.eq(Schema.filterUserContributors.userId, input.userId!),
-						),
-					)
-			} else {
-				query = ctx
-					.db()
-					.delete(Schema.filterRoleContributors)
-					.where(
-						E.and(
-							E.eq(Schema.filterRoleContributors.filterId, input.filterId),
-							E.eq(Schema.filterRoleContributors.roleId, input.roleId!),
-						),
-					)
-			}
-
-			const resultSet = await query
-			if (resultSet.changes === 0) {
-				return { code: 'err:not-found' as const }
-			}
-
-			await recordFilterContributor(ctx, 'removed', input.filterId, input)
-			// mirror addFilterContributor: a user contributor is targeted, a role contributor affects every holder
-			if (input.userId) Rbac.invalidateUser(input.userId)
-			else Rbac.invalidateAll()
-			return { code: 'ok' as const }
+			return await removeFilterContributor(ctx, input.filterId, toContributor(input), { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 	createFilter: orpcBase
 		.meta({ type: 'mutation' })

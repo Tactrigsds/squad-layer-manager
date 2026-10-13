@@ -524,6 +524,9 @@ function FilterContributors(props: {
 						return RbacClient.handlePermissionDenied(res)
 					case 'err:already-exists':
 						return toast(...tr.toast(F_Msgs.contributorAlreadyAdded()))
+					case 'err:not-found':
+					case 'err:unknown-user':
+						return toast.error(...tr.toast(F_Msgs.addContributorFailed(res.code)))
 					case 'ok':
 						break
 					default:
