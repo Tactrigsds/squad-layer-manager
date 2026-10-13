@@ -6,11 +6,13 @@ import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as F_Msgs from '@/messages/filter.messages'
 import type * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
+import * as AppEventsClient from '@/systems/app-events.client'
 import * as ConfigClient from '@/systems/config.client'
 import type { FilterEntityChange } from '@/systems/filter-entity.server'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -75,6 +77,7 @@ export const filterMutation$ = new Rx.Observable<F.FilterEntityMutation & { prev
 							break
 						case 'delete':
 							filterEntities.delete(output.mutation.key)
+							reportDeletion(output.mutation)
 							break
 						default:
 							assertNever(output.mutation.type)
@@ -143,6 +146,21 @@ export function useFilterUpdate() {
 	return useMutation(RPC.orpc.filters.updateFilter.mutationOptions())
 }
 
-export function useFilterDelete() {
-	return useMutation(RPC.orpc.filters.deleteFilter.mutationOptions())
+// filters this tab is deleting, which report their own deletion
+const deletingHere = new Set<F.FilterEntityId>()
+
+export async function deleteFilter(filterId: F.FilterEntityId) {
+	deletingHere.add(filterId)
+	const res = await RPC.orpc.filters.deleteFilter.call(filterId)
+	if (res.code !== 'ok') deletingHere.delete(filterId)
+	return res
+}
+
+function reportDeletion(mutation: F.FilterEntityMutation) {
+	if (deletingHere.delete(mutation.key)) return
+	void AppEventsClient.reportDeletion({
+		item: { index: '/filters', to: '/filters/$filterId', params: { filterId: mutation.key } },
+		actor: mutation.actor,
+		describe: (actorName) => tr.toast(F_Msgs.deletedBy(mutation.value.name, actorName)),
+	})
 }

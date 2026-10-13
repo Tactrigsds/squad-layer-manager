@@ -979,6 +979,22 @@ export function RepeatRulesetPanel(props: {
 							<Icons.Pencil />
 						</Button>
 					)}
+					{saved && props.rulesInDialog && (
+						<>
+							<Button variant="outline" size="sm" onClick={() => setRulesOpen(true)}>
+								<Icons.Repeat2 />
+								{tr.text(
+									rulesApi.writeDenied
+										? SETTINGS_Msgs.viewRepeatRules(saved.rules.length)
+										: SETTINGS_Msgs.editRepeatRules(saved.rules.length),
+								)}
+							</Button>
+							{/* the draft outlives the dialog, so edits left unsaved are flagged here */}
+							{modified && <Badge variant="edited">{tr.text(SETTINGS_Msgs.repeatRulesetUnsaved())}</Badge>}
+						</>
+					)}
+				</div>
+				<div className="flex flex-wrap items-center gap-2 empty:hidden">
 					{canWriteRepeatRulesets && !props.selectDisabled && (
 						<Button variant="outline" size="sm" onClick={() => setNameDialog('new')}>
 							<Icons.Plus />
@@ -1006,20 +1022,6 @@ export function RepeatRulesetPanel(props: {
 					</Alert>
 				)}
 			</div>
-			{saved && props.rulesInDialog && (
-				<div className="flex flex-wrap items-center gap-2">
-					<Button variant="outline" size="sm" onClick={() => setRulesOpen(true)}>
-						<Icons.Repeat2 />
-						{tr.text(
-							rulesApi.writeDenied
-								? SETTINGS_Msgs.viewRepeatRules(saved.rules.length)
-								: SETTINGS_Msgs.editRepeatRules(saved.rules.length),
-						)}
-					</Button>
-					{/* the draft outlives the dialog, so edits left unsaved are flagged here */}
-					{modified && <Badge variant="edited">{tr.text(SETTINGS_Msgs.repeatRulesetUnsaved())}</Badge>}
-				</div>
-			)}
 			{saved && props.rulesInDialog && (
 				<Dialog open={rulesOpen} onOpenChange={setRulesOpen}>
 					<DialogContent className="max-w-5xl min-w-[min(1040px,95vw)]">

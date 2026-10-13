@@ -105,17 +105,17 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 				</div>
 			</div>
 
-			{/* wrap-reverse puts the aside above the layers once the row wraps. It also swaps the cross axis, so items-end
-			    aligns both columns to the top. */}
-			<div className="flex flex-wrap-reverse items-end gap-4">
-				<ListSection listHost={listHost} rotation={rotation}>
-					<ListToolbar listHost={listHost} rotation={rotation} />
-					<ListBody listHost={listHost} rotationId={rotation.id} />
-				</ListSection>
-				<OpenedFileDialog listHost={listHost} />
+			{/* one column puts the actions above the layers and the repeat ruleset below them. Two columns put both beside
+			    the layers. */}
+			<div className="@container">
+				<div className="grid gap-4 [grid-template-areas:'actions'_'layers'_'ruleset'] @[960px]:grid-cols-[minmax(0,1fr)_fit-content(40%)] @[960px]:grid-rows-[auto_1fr] @[960px]:[grid-template-areas:'layers_actions'_'layers_ruleset']">
+					<ListSection listHost={listHost} rotation={rotation}>
+						<ListToolbar listHost={listHost} rotation={rotation} />
+						<ListBody listHost={listHost} rotationId={rotation.id} />
+					</ListSection>
+					<OpenedFileDialog listHost={listHost} />
 
-				<aside className="flex min-w-0 flex-[1_1_320px] max-w-md flex-col gap-3">
-					<div className="flex flex-wrap gap-1.5">
+					<div className="flex flex-wrap content-start gap-1.5 [grid-area:actions]">
 						<EditingControls listHost={listHost} rotationId={rotation.id} />
 						<PermissionDeniedTooltip denied={createDenied}>
 							<Button variant="outline" disabled={!!createDenied} onClick={() => setDialog('clone')}>
@@ -140,7 +140,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 							</Button>
 						</PermissionDeniedTooltip>
 					</div>
-					<section className="rounded border bg-card p-3">
+					<section className="min-w-0 self-start rounded border bg-card p-3 [grid-area:ruleset]">
 						<RepeatRulesetPanel
 							title={tr.text(ROT_Msgs.repeatRuleset())}
 							help={tr.text(ROT_Msgs.repeatRulesetHelp())}
@@ -152,7 +152,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 							rulesInDialog
 						/>
 					</section>
-				</aside>
+				</div>
 			</div>
 
 			{(dialog === 'name' || dialog === 'description') && (
@@ -168,7 +168,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 				rotation={rotation}
 				open={dialog === 'delete'}
 				onOpenChange={(open) => setDialog(open ? 'delete' : null)}
-				onDeleted={() => void navigate({ to: '/rotations' })}
+				onDeleted={() => void navigate({ to: '/rotations', ignoreBlocker: true })}
 			/>
 		</div>
 	)
@@ -246,7 +246,7 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
 	return (
 		<section
-			className="relative flex-[999_1_620px] min-w-0 rounded border bg-card"
+			className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
 			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
 			onDragEnter={(e) => {
 				if (!carriesFiles(e) || writeDenied) return

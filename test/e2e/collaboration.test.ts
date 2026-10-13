@@ -299,7 +299,7 @@ test.describe('collaborative rotation editing', () => {
 		}
 	})
 
-	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page }) => {
+	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page, browser }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
 		await openPath(page, '/rotations')
@@ -352,12 +352,37 @@ test.describe('collaborative rotation editing', () => {
 		await expect(copyCard).toBeVisible()
 		await expect(page).toHaveURL(/[?&]archived=true/)
 
-		// deleting asks first
-		await copyCard.getByRole('button', { name: 'More actions' }).click()
-		await page.getByRole('menuitem', { name: 'Delete' }).click()
-		await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
-		await expect(copyCard).toBeHidden()
-		await app.waitFor(() => savedRotation(app, 'weekend-copy') === undefined || null, { label: 'the copy was deleted' })
+		// another user has the copy open with unsaved edits, and the list open in a second tab
+		const second = await browser.newContext()
+		try {
+			const editorTab = await second.newPage()
+			await editorTab.goto(app.loginUrl(SECOND_USER))
+			await expect(editorTab.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+			const indexTab = await second.newPage()
+			await indexTab.goto(app.loginUrl(SECOND_USER))
+			await openPath(indexTab, '/rotations')
+			await expect(indexTab.getByRole('link', { name: 'Weekend Competitive' })).toBeVisible({ timeout: 15_000 })
+			await openPath(editorTab, '/rotations/weekend-copy')
+			await expect(editorTab.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+			await editorTab.getByRole('button', { name: 'Clear layers' }).click()
+			await expect(editorTab.getByRole('heading', { name: 'Layers (0)' })).toBeVisible()
+
+			// deleting asks first
+			await copyCard.getByRole('button', { name: 'More actions' }).click()
+			await page.getByRole('menuitem', { name: 'Delete' }).click()
+			await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+			await expect(copyCard).toBeHidden()
+			await expect(page.getByText('Deleted Weekend Competitive (copy)')).toBeVisible()
+			await app.waitFor(() => savedRotation(app, 'weekend-copy') === undefined || null, { label: 'the copy was deleted' })
+
+			// the other user is sent back to the list past the unsaved edits, and both tabs say who deleted the copy
+			await expect(editorTab).toHaveURL(/\/rotations\/?(\?|$)/)
+			for (const tab of [editorTab, indexTab]) {
+				await expect(tab.getByText(/deleted Weekend Competitive \(copy\)/)).toBeVisible()
+			}
+		} finally {
+			await second.close()
+		}
 	})
 
 	// replaces the queue, so it runs last

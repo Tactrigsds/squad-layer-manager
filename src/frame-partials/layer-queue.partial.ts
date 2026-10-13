@@ -188,8 +188,10 @@ function watchOps(host: LL.ListHost): Rx.Observable<SLL.Update> {
 				apply: (update$) => update$.pipe(RPC.dropUnavailable()),
 			})
 		case 'rotation':
-			return RPC.observe(`rotationEdit.watchOps:${host.rotationId}`, () =>
-				RPC.orpc.rotationEdit.watchOps.call({ rotationId: host.rotationId }),
+			return RPC.observe(
+				`rotationEdit.watchOps:${host.rotationId}`,
+				() => RPC.orpc.rotationEdit.watchOps.call({ rotationId: host.rotationId }),
+				{ apply: (update$) => update$.pipe(RPC.holdWhenNotFound()) },
 			)
 		default:
 			assertNever(host)

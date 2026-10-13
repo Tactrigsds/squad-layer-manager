@@ -7,7 +7,7 @@ import * as RPC from '@/orpc.client'
 
 export function watchUpdates$(filterId: F.FilterEntityId, handle?: (update: FE.Update) => void) {
 	return RPC.observe(`filterEdit.watchUpdates.${filterId}`, () => RPC.orpc.filterEdit.watchUpdates.call(filterId), {
-		apply: handle ? Rx.tap(handle) : undefined,
+		apply: (update$) => update$.pipe(RPC.holdWhenNotFound(), handle ? Rx.tap(handle) : Rx.identity),
 	})
 }
 

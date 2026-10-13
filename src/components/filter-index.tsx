@@ -100,9 +100,8 @@ function FilterMenus(props: { filter: F.FilterEntity; children: (actions: MenuAc
 	const [deleting, setDeleting] = React.useState(false)
 	const [cloning, setCloning] = React.useState(false)
 	const actions: MenuActions = { onClone: () => setCloning(true), onDelete: () => setDeleting(true) }
-	const deleteMutation = FilterEntityClient.useFilterDelete()
 	const confirmDelete = async () => {
-		const res = await deleteMutation.mutateAsync(props.filter.id)
+		const res = await FilterEntityClient.deleteFilter(props.filter.id)
 		if (res.code === 'ok') toast(...tr.toast(F_Msgs.deleted(props.filter.name)))
 		else toast.error(...tr.toast(F_Msgs.deleteFailed(props.filter.name, res)))
 	}
