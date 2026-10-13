@@ -45,8 +45,9 @@ the server.</p>
 <li>Press <em>Save Changes</em>.</li>
 </ol>
 <p><em>Save Changes</em> saves the rules into the repeat ruleset, so every server using that repeat ruleset gets the new rules.</p>
-<p>Use <em>New repeat ruleset</em>, beside the picker, to create a repeat ruleset. It starts with a copy of the rules shown, and
-the server switches to it once <em>Save Changes</em> is pressed. Use the pencil beside the picker to rename the repeat ruleset
+<p>Use <em>New repeat ruleset</em>, beside the picker, to create a repeat ruleset. It starts with a copy of the rules of the
+repeat ruleset picked under <em>Copy rules from</em>, which is the one shown unless another is picked, or with the default
+repeat rules. The server switches to the new repeat ruleset once <em>Save Changes</em> is pressed. Use the pencil beside the picker to rename the repeat ruleset
 shown. The settings page lists every repeat ruleset under <em>Repeat Rulesets</em>. A repeat ruleset can only be deleted
 there, and only while no server or rotation uses it.</p>
 <p>These are the rules a new server&#x27;s repeat ruleset starts with:</p>
@@ -109,7 +110,7 @@ the <em>Rotations</em> page, are defined on the settings page under <em>Rotation
 <h3 id="rotation-files" class="docs-heading">Rotation files<a href="#rotation-files" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#rotation-files" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>The toggle beside a rotation&#x27;s <em>Layers</em> heading switches between <em>Builder</em>, which shows the layers as a list, and <em>Text</em>
 and <em>YAML</em>, which show them as plain text or YAML. The text holds the layers alone, without the rotation&#x27;s name,
-description, tags or repeat ruleset. Both formats write a layer as the line SLM sends with <code>AdminSetNextLayer</code>, so a
+description, rotation tags or repeat ruleset. Both formats write a layer as the line SLM sends with <code>AdminSetNextLayer</code>, so a
 layer line copied from one format pastes into the other.</p>
 <div class="docs-code"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0"><code class="language-yaml"><span class="line"><span style="color:var(--shiki-token-comment)"># Opening layer. Keep it light while the server fills.</span></span>
 <span class="line"><span style="color:var(--shiki-foreground)">- </span><span style="color:var(--shiki-token-string-expression)">Gorodok_RAAS_v1 USA+Motorized RGF+Armored</span></span>
@@ -123,11 +124,13 @@ layer line copied from one format pastes into the other.</p>
 <p>In YAML, each <code>#</code> line directly above a layer or a vote choice is a note on it. Tags are written by label. A vote&#x27;s
 first choice is its default. <code>display</code> sets what the vote shows players, from <code>map</code>, <code>gamemode</code>, <code>layer</code>, <code>factions</code>
 and <code>units</code>, and <code>duration</code> sets how long the vote runs. A vote without them uses the server&#x27;s vote settings.</p>
-<p>Plain text holds one layer per line, with <code>#</code> lines as notes on the next layer. A vote starts with a <code># VOTE:</code> line,
-which takes the same <code>display</code> and <code>duration</code> settings, separated by <code>;</code>. The vote&#x27;s choices follow it, indented, and
-the vote ends at the next line that is not indented. Plain text leaves tags out.</p>
+<p>Plain text holds one layer per line, with <code>#</code> lines as notes on the next layer. A <code># TAGS:</code> line names the next
+layer&#x27;s tags by label, separated by <code>,</code>. A vote starts with a <code># VOTE:</code> line, which takes the same <code>display</code> and
+<code>duration</code> settings, separated by <code>;</code>. The vote&#x27;s choices follow it, indented, and the vote ends at the next line that
+is not indented.</p>
 <div class="docs-code"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0"><code class="language-text"><span class="line"><span># Opening layer. Keep it light while the server fills.</span></span>
 <span class="line"><span>Gorodok_RAAS_v1 USA+Motorized RGF+Armored</span></span>
+<span class="line"><span># TAGS: Event Night</span></span>
 <span class="line"><span>Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault</span></span>
 <span class="line"><span># VOTE: display map, factions; duration 3m</span></span>
 <span class="line"><span>  GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry</span></span>
@@ -135,10 +138,13 @@ the vote ends at the next line that is not indented. Plain text leaves tags out.
 <p>The text can be edited once <em>Start Editing</em> is pressed. A change applies to the rotation&#x27;s layers when typing pauses.
 SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
 also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
-change is held back, the view cannot be switched. Plain text does not show tags, so a layer edited as plain text keeps
-its tags while it stays in the list. Use <em>Open File...</em> to replace the text with a <code>.yaml</code> or <code>.txt</code> file.</p>
+change is held back, the view cannot be switched.</p>
+<p>Use <em>Open File...</em>, or drop a <code>.yaml</code>, <code>.cfg</code> or <code>.txt</code> file onto a rotation&#x27;s layers, to add the file&#x27;s layers. Pick
+<em>Add to start</em> or <em>Add to end</em> to put them before or after the rotation&#x27;s layers, or <em>Replace</em> to replace the
+rotation&#x27;s layers with them. A rotation with no layers takes the file&#x27;s layers without asking. The result is shown as
+text in the file&#x27;s format, so any line SLM cannot read is listed there.</p>
 <p>Use <em>Copy</em> and <em>Download</em> to take a rotation&#x27;s layers out as text. In the <em>Builder</em>, each one asks for plain text or
-YAML. In <em>Text</em> and <em>YAML</em>, <em>Copy</em> and <em>Download</em> use the text on screen.</p>
+YAML. In <em>Text</em> and <em>YAML</em>, <em>Copy</em> and <em>Download</em> use the text on screen. Plain text downloads as a <code>.cfg</code> file.</p>
 <p><em>Add Rotation</em> on the queue reads the same formats on its <em>Paste</em> tab.</p>
 <h2 id="randomization" class="docs-heading">Randomization<a href="#randomization" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#randomization" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p><em>Layer Generation Weights</em> controls how SLM picks layers at random. It covers layer generation, which runs when
