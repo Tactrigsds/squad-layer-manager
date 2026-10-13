@@ -7,10 +7,11 @@ These settings control the messages SLM sends to players, and how admins reach S
 The _Warns & Broadcasts_ section holds the messages SLM shows to players: admin warnings, kicks, broadcasts, and
 more.
 
-Configure reasons such as teamkilling, spamming or soloing under _Admin Action Reasons_. Each reason carries one
-text per action, where an action is a warn, a broadcast, a kick, a timeout, and so on:
+A message shorthand is a preset message for a common offence, such as teamkilling, spamming or soloing. Configure
+shorthands under _Message Shorthands_. Each shorthand carries one text per action, where an action is a warn, a
+broadcast, a kick, a timeout, and so on:
 
-![the admin action reasons, each with its keywords and a text for every action](../../images/configuring/admin_action_reasons.png)
+![the message shorthands, each with its keywords and a text for every action](../../images/configuring/message_shorthands.png)
 
 Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the same
 section holds reusable snippets. A message variable can be used in several texts, or inside another message variable.
@@ -23,23 +24,23 @@ a section can switch the wording:
 teamkilling.
 ```
 
-Put the section inside a message variable to reuse it across reasons.
+Put the section inside a message variable to reuse it across shorthands.
 
 _Require a Reason_ makes a reason mandatory for the actions listed in it:
 
 ![Require a Reason, listing the actions that need one](../../images/configuring/actions_requiring_reason.png)
 
-The user can still type a freeform reason instead of choosing a configured one.
+A shorthand satisfies the requirement, and so does a freeform reason typed instead.
 
-Admins then use a configured reason with the in-game `/warn`, `/broadcast`, `/kick`, `/timeout` and other commands,
-as long as that reason has text for the action: a reason with no kick text cannot be used to kick.
+Admins use a shorthand's keyword as the reason in the in-game `/warn`, `/broadcast`, `/kick`, `/timeout` and other
+commands, as long as that shorthand has text for the action: a shorthand with no kick text cannot be used to kick.
 
-![the details of /warn, listing the configured reasons](../../images/configuring/warn_details.png)
+![the details of /warn, listing the configured shorthands](../../images/configuring/warn_details.png)
 
-Reasons are also selectable when an action is performed from the interface:
+Shorthands can also be selected when an action is performed from the interface:
 
-![choosing a reason in the Kick Players dialog](../../images/configuring/kick_dialog.png)
-![inserting a reason's text into a message](../../images/configuring/kick_text_insert.png)
+![choosing a shorthand in the Kick Players dialog](../../images/configuring/kick_dialog.png)
+![inserting a shorthand's text into a message](../../images/configuring/kick_text_insert.png)
 
 ## In-game commands
 

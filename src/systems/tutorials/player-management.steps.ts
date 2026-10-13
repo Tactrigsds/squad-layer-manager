@@ -146,7 +146,7 @@ function withCommands(
 	}
 }
 
-const WARN_COMMANDS: CMD.CommandId[] = ['warn', 'listWarnReasons']
+const WARN_COMMANDS: CMD.CommandId[] = ['warn', 'listMessageShorthands']
 const SQUAD_COMMANDS: CMD.CommandId[] = ['warnSquad', 'kickSquad', 'timeoutSquad', 'swapSquadNow', 'swapSquadNext']
 const KICK_COMMANDS: CMD.CommandId[] = ['kick']
 const TIMEOUT_COMMANDS: CMD.CommandId[] = ['timeout', 'clearTimeout']
@@ -499,7 +499,7 @@ function resetClient(run: Tour.RunStores, plan: GroupingPlan) {
 
 export function buildSteps(plan: GroupingPlan) {
 	const settings = Zus.getState(SettingsClient.PublicSettingsStore) as any
-	const warnPresets = (settings?.adminActionReasons ?? []).some((r: any) => !r.actions || r.actions.includes('warn'))
+	const warnPresets = (settings?.adminMessageShorthands ?? []).some((r: any) => !r.actions || r.actions.includes('warn'))
 	const switchEnabled = !!settings?.commands?.requestSwitch?.enabled
 	const groupStepsPossible = plan.groupingId !== null && plan.group !== null
 

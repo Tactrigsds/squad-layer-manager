@@ -1,7 +1,7 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { AdminReasonPicker } from '@/components/admin-reason-picker'
+import { AdminShorthandPicker } from '@/components/admin-shorthand-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
@@ -67,7 +67,7 @@ export default function WarnChatBox({
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
-		// the admin-action-reason path applies whenever the box still holds the preset verbatim; the sender prefix
+		// the message shorthand path applies whenever the box still holds the preset verbatim; the sender prefix
 		// is the server's job on both paths, so it no longer rules the preset out
 		const asPreset = draft.match(text)
 		try {
@@ -135,9 +135,9 @@ export default function WarnChatBox({
 					rows={2}
 					className={cn('min-h-0 h-auto text-xs flex-1 min-w-0 resize-none px-2 py-1', accent)}
 				/>
-				<AdminReasonPicker
+				<AdminShorthandPicker
 					tourId="warn-presets"
-					reasons={draft.reasons}
+					shorthands={draft.reasons}
 					preview={draft.render}
 					onPick={(reason) => {
 						setMessage(draft.pick(reason))

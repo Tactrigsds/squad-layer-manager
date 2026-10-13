@@ -132,14 +132,14 @@ export const descriptions = {
 	cancelSwitch: t('Cancel your pending switch request'),
 	pingAdmins: t('Request support from the admins'),
 	warn: t('Warn a player'),
-	listWarnReasons: t('List the configured admin action reasons and their keywords'),
+	listMessageShorthands: t('List the configured message shorthands and their keywords'),
 	warnSquad: t('Warn every member of a squad'),
 	kill: t('Kill a player'),
 	killSquad: t('Kill every member of a squad'),
 	removeFromSquad: t('Remove a player from their squad'),
 	disbandSquad: t('Disband a squad'),
 	demoteCommander: t('Demote a player from commander'),
-	broadcast: t('Send an admin broadcast: one word picks a preset, more words broadcast the message verbatim'),
+	broadcast: t('Send an admin broadcast: one word picks a message shorthand, more words broadcast the message verbatim'),
 	kick: t('Kick a player from the server; they may rejoin immediately'),
 	kickSquad: t('Kick every member of a squad from the server'),
 	timeout: t('Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires'),
@@ -424,7 +424,7 @@ export const personalTokenRejected = def(
 // A reason is optional on every one of these, and the clause that names it belongs to the sentence rather than to
 // the caller, so each pattern carries both readings.
 
-export const noReasonsConfigured = def('No admin action reasons are configured')
+export const noShorthandsConfigured = def('No message shorthands are configured')
 
 export const warned = def('Warned {username}: "{message}"', (username: string | undefined, message: string) => ({ username, message }))
 

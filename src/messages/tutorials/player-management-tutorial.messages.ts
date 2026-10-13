@@ -350,9 +350,9 @@ export namespace Warn {
 		body: def(rt('Choose whether other admins are told about the warning, and whether your name is shown at the start of it.')),
 	}
 	export const presets = {
-		title: def('Preset reasons'),
+		title: def('Message shorthands'),
 		body: def(
-			rt('Preset warnings are listed here. Users with sufficient permissions can edit them in the settings. Pick one and send it.'),
+			rt('Message shorthands are listed here. Users with sufficient permissions can edit them in the settings. Pick one and send it.'),
 		),
 	}
 	export const ingame = {
@@ -395,7 +395,7 @@ export namespace Kick {
 		body: def((player: string) =>
 			rt(
 				`<p><em>{player}</em> has been abusive in all chat. You can see it in the activity log.</p>
-<p>Right-click <em>{player}</em> and pick <em>Kick</em>. Adding a reason is optional, and preset reasons are available.</p>`,
+<p>Right-click <em>{player}</em> and pick <em>Kick</em>. Adding a reason is optional, and message shorthands are available.</p>`,
 				{ player },
 			),
 		),

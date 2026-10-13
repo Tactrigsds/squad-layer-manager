@@ -21,7 +21,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	},
 	{
 		slug: 'warns-and-broadcasts',
-		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
+		keys: ['adminMessageShorthands', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
 	{ slug: 'players', keys: ['playerGroupings', 'playerActivity', 'playerFlagsRequiringNote'] },
@@ -71,7 +71,7 @@ export const LOCAL_YAML_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	// global
 	'rbac',
 	'commands',
-	'adminActionReasons',
+	'adminMessageShorthands',
 	'messageVariables',
 	'playerGroupings',
 	'layerTags',
@@ -100,7 +100,7 @@ export const TOC_LEAF_PATHS: ReadonlySet<string> = new Set([
 
 // global list settings whose entries each get an anchor in the form and a row in the TOC, named and searchable by the
 // entry's own label (see tocEntries in settings-toc.tsx)
-export const TOC_ENTRY_PATHS: ReadonlySet<string> = new Set(['adminActionReasons', 'messageVariables'])
+export const TOC_ENTRY_PATHS: ReadonlySet<string> = new Set(['adminMessageShorthands', 'messageVariables'])
 
 // partition a section's child keys into the ones it renders directly and the ones that belong in its "Advanced"
 // disclosure, preserving the incoming order within each. `parentPath` is the dotted path of the section itself ('' at

@@ -28,7 +28,7 @@ test.beforeAll(async () => {
 	app = await createAppFixture({
 		layerQueue: queue(LAYERS.gorodokRaas),
 		globalSettings: (s) => {
-			s.adminActionReasons = REASONS as typeof s.adminActionReasons
+			s.adminMessageShorthands = REASONS as typeof s.adminMessageShorthands
 			// only the kick insists on a reason, so the other dialogs keep their immediate confirm
 			s.requireReasonFor = ['kick'] as typeof s.requireReasonFor
 			// a configured grouping is the mode in effect, so the group column shows parties only once Party is picked
@@ -71,7 +71,7 @@ test.describe('admin actions from the teams panel', () => {
 		await row.click({ button: 'right' })
 		// warn is a submenu offering the warn box (Custom) or the preset-reason dialog
 		await page.getByRole('menuitem', { name: 'Warn' }).hover()
-		await page.getByRole('menuitem', { name: 'Preset Reason' }).click()
+		await page.getByRole('menuitem', { name: 'Message Shorthand' }).click()
 		const dialog = page.getByRole('alertdialog', { name: 'Warn Player' })
 		// the reason list opens with the dialog, and warning is held until one is picked
 		const confirm = dialog.getByRole('button', { name: 'Warn', exact: true })

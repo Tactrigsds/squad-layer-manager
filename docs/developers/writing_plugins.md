@@ -75,7 +75,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.15',
+	apiVersion: '^0.16',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),

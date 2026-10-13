@@ -129,7 +129,7 @@ const SEEDED_MESSAGE_VARIABLES: SETTINGS.GlobalSettings['messageVariables'] = [
 // Enough of a starting set that the reason picker is not empty and `/warn <player> tk` works out of the box. The
 // text reaches the player verbatim, so it is addressed to them; keywords are what an admin types in chat, and are
 // matched as a single token (never whitespace).
-const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons'] = [
+const SEEDED_ADMIN_MESSAGE_SHORTHANDS: SETTINGS.GlobalSettings['adminMessageShorthands'] = [
 	{
 		label: 'Teamkilling',
 		keywords: ['tk', 'teamkill'],
@@ -183,7 +183,7 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): SETTINGS.GlobalSettings {
 	return {
 		...defaults,
-		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
+		adminMessageShorthands: SEEDED_ADMIN_MESSAGE_SHORTHANDS,
 		messageVariables: SEEDED_MESSAGE_VARIABLES,
 		// the sandbox this same boot creates seeds its admin list with exactly these groups, so the teams panel and
 		// the stats breakdown have something to say about it before anyone configures anything

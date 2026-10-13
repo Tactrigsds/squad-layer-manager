@@ -36,7 +36,7 @@ beforeAll(async () => {
 		},
 		globalSettings: (s) => {
 			// a configured reason, so a mistyped keyword has something to be a near miss of
-			s.adminActionReasons = [
+			s.adminMessageShorthands = [
 				{ label: 'Teamkilling', keywords: ['tk'], actionTexts: { warn: 'Do not teamkill' } },
 				{ label: 'Seeding Rules', keywords: ['seedrules'], actionTexts: { broadcast: 'Middle flag only' } },
 			]

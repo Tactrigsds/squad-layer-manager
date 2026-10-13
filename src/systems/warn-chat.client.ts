@@ -2,17 +2,19 @@ import React from 'react'
 
 import * as Templating from '@/lib/templating'
 import * as Zus from '@/lib/zustand'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as SettingsClient from '@/systems/settings.client'
 
 // Backs the "drop a preset into the box" pickers. The box stays free text, so the picked label is only a claim
 // that has to be re-checked at send time: `match` hands back the preset iff the text is still its verbatim
-// render, which is what lets the caller route through the admin-action-reason codepath instead of custom text.
+// render, which is what lets the caller route through the message shorthand codepath instead of custom text.
 // extraVars carries per-target standard variables (e.g. squadName for a squad warn box); squadName always
 // resolves, defaulting to empty so {{#squadName}} sections drop out for player targets, mirroring the server.
-export function useAdminReasonDraft(action: AAR.AdminActionType, extraVars?: Record<string, string>) {
-	const [picked, setPicked] = React.useState<{ action: AAR.AdminActionType; label: string } | null>(null)
-	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => (s ? AAR.reasonsForAction(s.adminActionReasons, action) : []))
+export function useAdminReasonDraft(action: AMS.AdminActionType, extraVars?: Record<string, string>) {
+	const [picked, setPicked] = React.useState<{ action: AMS.AdminActionType; label: string } | null>(null)
+	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
+		s ? AMS.shorthandsForAction(s.adminMessageShorthands, action) : [],
+	)
 	const vars = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
 		Templating.resolveTemplateVars(s?.messageVariables ?? [], { squadName: '', ...extraVars }),
 	)
@@ -20,11 +22,11 @@ export function useAdminReasonDraft(action: AAR.AdminActionType, extraVars?: Rec
 	const pickedLabel = picked?.action === action ? picked.label : null
 
 	// untagged: the server prepends the "@..." audience tag to whatever it's given
-	const render = (reason: AAR.AdminActionReason) => AAR.formatAppliedReason(action, reason, { vars }).trim()
+	const render = (reason: AMS.AdminMessageShorthand) => AMS.formatShorthand(action, reason, { vars }).trim()
 	return {
 		reasons,
 		render,
-		pick(reason: AAR.AdminActionReason) {
+		pick(reason: AMS.AdminMessageShorthand) {
 			setPicked({ action, label: reason.label })
 			return render(reason)
 		},

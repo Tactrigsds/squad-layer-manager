@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import * as I18n from '@/messages/i18n'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import * as RBAC from '@/rbac.models'
 
-function reason(label: string, actions: AAR.AdminActionType[]): AAR.AdminActionReason {
+function reason(label: string, actions: AMS.AdminActionType[]): AMS.AdminMessageShorthand {
 	return {
 		label,
 		keywords: [label.toLowerCase().replace(/[^a-z0-9]+/g, '-')],

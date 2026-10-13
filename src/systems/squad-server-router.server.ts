@@ -4,7 +4,7 @@ import * as Arr from '@/lib/array-utils'
 import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
 import * as SS_Msgs from '@/messages/server-state.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models.ts'
 import type * as CS from '@/models/context-shared.models'
@@ -296,7 +296,7 @@ export const orpcRouter = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the input refine guarantees a reason was provided; narrow without asserting
 			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
-			const tagged = AAR.renderAppliedReason(reasonRes.applied, {
+			const tagged = AMS.renderAppliedReason(reasonRes.applied, {
 				audienceTag: await SquadServerActions.resolveWarnAudienceTag(ctx, input.playerIds, input.taggedSquad),
 			})
 			// the sender's name leads the whole thing, ahead of the audience tag: "grey275: @Alice ..."
@@ -377,8 +377,8 @@ export const orpcRouter = {
 			if (input.presetReasonLabel) {
 				const res = SquadServerActions.resolvePresetReason('broadcast', input.presetReasonLabel)
 				if (res.code !== 'ok') return res
-				template = AAR.reasonText('broadcast', res.reason)
-				presetLabel = res.reason.label
+				template = AMS.shorthandText('broadcast', res.shorthand)
+				presetLabel = res.shorthand.label
 			}
 			// broadcastAction renders the template, so the sender prefix wraps the raw text and rides through with it
 			if (input.prefixSenderName) template = `${await Users.resolveDisplayName(ctx, ctx.user.discordId)}: ${template!}`
@@ -497,7 +497,7 @@ export const orpcRouter = {
 			)
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / ctx.tr.warn(SM_Msgs.notifyKilled()))
-			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
+			const reason = reasonRes.applied && AMS.renderAppliedReason(reasonRes.applied)
 			await SquadServerActions.killPlayersAction(
 				ctx,
 				input.playerIds,

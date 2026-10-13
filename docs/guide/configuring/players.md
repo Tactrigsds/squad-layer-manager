@@ -57,7 +57,7 @@ A BattleMetrics flag can be applied to a player from in game with the `/flag` co
 ![the Manage Flags dialog](../../images/configuring/flag_gui.png)
 
 A user can add a reason for the flag, which SLM posts as a note on the player's BattleMetrics profile. The note is
-freeform text, and is not connected to the [admin action reasons](admin_actions.md#warns-broadcasts-and-admin-actions).
+freeform text, and is not connected to the [message shorthands](admin_actions.md#warns-broadcasts-and-admin-actions).
 
 To require a note for a particular flag, name it in _Player Flags Requiring Note_:
 

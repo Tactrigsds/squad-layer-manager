@@ -5,7 +5,7 @@ import React from 'react'
 import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import type * as Tgt from '@/messages/target'
 import type * as BM from '@/models/battlemetrics.models'
@@ -69,11 +69,11 @@ function FlagRow(props: {
 				<div className="grid gap-1">
 					<Label className="text-xs font-normal text-muted-foreground">
 						{tr.richText(
-							AAR_Msgs.reasonLabel(
+							AMS_Msgs.reasonLabel(
 								props.requiresReason ? (
-									<span className="text-destructive">{tr.text(AAR_Msgs.reasonRequired())}</span>
+									<span className="text-destructive">{tr.text(AMS_Msgs.reasonRequired())}</span>
 								) : (
-									tr.text(AAR_Msgs.reasonOptional())
+									tr.text(AMS_Msgs.reasonOptional())
 								),
 							),
 						)}

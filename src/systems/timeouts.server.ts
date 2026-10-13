@@ -9,7 +9,7 @@ import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as SM_Msgs from '@/messages/squad.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared.models'
@@ -60,7 +60,7 @@ export type ActiveTimeoutRow = SchemaModels.Timeout & {
 }
 
 // reconstructs the AppliedReason snapshot from a timeout row (see the reasonTemplate/reasonVars columns)
-function appliedReasonFromRow(t: SchemaModels.Timeout): AAR.AppliedReason | null {
+function appliedReasonFromRow(t: SchemaModels.Timeout): AMS.AppliedReason | null {
 	if (t.reasonTemplate === null) return null
 	return {
 		label: t.reasonLabel ?? undefined,
@@ -101,7 +101,7 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 			steamId: row.steamId,
 			actor,
 			actorUsername: row.actorUsername,
-			reasonMessage: applied && AAR.renderAppliedReason(applied),
+			reasonMessage: applied && AMS.renderAppliedReason(applied),
 		}
 	})
 }
@@ -110,7 +110,7 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 // unrendered template + vars (with the ORIGINAL duration); enforcement re-renders with the remaining one.
 export async function kickWithTimeout(
 	ctx: C.Db & C.ManagedServer & CS.AbortSignal,
-	opts: { target: SM.RecentPlayer; durationMs: number; actor: AppEvents.Actor; reason?: AAR.AppliedReason },
+	opts: { target: SM.RecentPlayer; durationMs: number; actor: AppEvents.Actor; reason?: AMS.AppliedReason },
 ): Promise<{ code: 'ok'; timeoutId: string } | { code: 'err:already-timed-out'; msg: string }> {
 	const targetId = SM.PlayerIds.getPlayerId(opts.target.ids)
 	// stacking timeouts on one player is almost always a mistake (two admins reacting to the same incident);
@@ -168,7 +168,7 @@ export async function kickWithTimeout(
 		})
 	// ahead of the kick and the admin notice, so watchers list the timeout without waiting on rcon
 	update$.next()
-	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)))
+	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AMS.renderAppliedReason(opts.reason)))
 	await SquadServerActions.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServerActions.notifyAdminsOfWebAction(ctx, appEvent)
 	return { code: 'ok', timeoutId }
@@ -213,7 +213,7 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 		const remainingMs = timeout.expiresAt.getTime() - Date.now()
 		const rendered =
 			applied &&
-			AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
+			AMS.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
 		const message = ctx.tr.text(SM_Msgs.notifyKicked(rendered ?? undefined))
 		await SquadServerActions.kickPlayerAction(
 			ctx,

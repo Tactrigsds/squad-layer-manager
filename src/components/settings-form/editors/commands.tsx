@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import * as CMD_Msgs from '@/messages/command.messages'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMD from '@/models/command.models'
 import { tr } from '@/systems/messages.client'
 
@@ -229,7 +229,7 @@ function CommandTriggersField({ value$, reset$, onChange, root, cmdId }: Overrid
 	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
 	// document would re-render all of them on every keystroke anywhere in the form
 	const requireReasonFor$ = scopeValue(root.value$, 'requireReasonFor')
-	const requireReasonFor = useFieldValue(requireReasonFor$) as AAR.AdminActionType[] | undefined
+	const requireReasonFor = useFieldValue(requireReasonFor$) as AMS.AdminActionType[] | undefined
 	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
 	const current = () => (value$.getValue() as CMD.CommandTrigger[]) ?? []
 	function structural(next: CMD.CommandTrigger[]) {

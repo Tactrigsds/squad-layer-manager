@@ -3,8 +3,8 @@ import * as Str from '@/lib/string-utils'
 import * as Templating from '@/lib/templating'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as LP from '@/models/labeled-presets.models'
 import { t, type TString } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -135,9 +135,9 @@ export type ArgDef =
 	// rest: raw remainder joined with spaces
 	| (ArgCommon & { kind: 'text'; optional?: true })
 	// rest: a single token must match one of a configured reason's keywords; 2+ tokens are a custom message
-	| (ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true })
+	| (ArgCommon & { kind: 'reason'; action: AMS.AdminActionType; optional?: true })
 	// single token, configured reason only
-	| (ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true })
+	| (ArgCommon & { kind: 'preset-reason'; action: AMS.AdminActionType; optional?: true })
 
 const REST_KINDS: ArgDef['kind'][] = ['text', 'reason']
 
@@ -470,12 +470,12 @@ export const COMMAND_DECLARATIONS = {
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
 	}),
-	...declareCommand('listWarnReasons', {
-		label: t('List Warn Reasons', undefined, { context: 'command' }),
+	...declareCommand('listMessageShorthands', {
+		label: t('List Message Shorthands', undefined, { context: 'command' }),
 		section: 'moderation',
 		access: Access.PUBLIC,
 		args: [],
-		defaults: { allowedChats: ['admin'], triggers: ['warnreasons', 'warns'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['shorthands', 'warnreasons', 'warns'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('warnSquad', {
 		label: t('Warn Squad', undefined, { context: 'command' }),
@@ -923,7 +923,7 @@ export function pluginCommandUsage(decl: PluginCommandInfo, config: CommandConfi
 
 // -------- resolved argument shapes --------
 
-export type ResolvedReasonArg = { type: 'preset'; reason: AAR.AdminActionReason } | { type: 'custom'; text: string }
+export type ResolvedReasonArg = { type: 'preset'; reason: AMS.AdminMessageShorthand } | { type: 'custom'; text: string }
 // resolved by the server layer (needs the live roster); declared here so CommandArgs stays self-contained
 export type ResolvedSquadArg = { teamId: SM.TeamId; teamLabel: string; squad: SM.Squad; players: SM.Player[] }
 
@@ -946,7 +946,7 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 								: D extends { kind: 'reason' }
 									? ResolvedReasonArg
 									: D extends { kind: 'preset-reason' }
-										? AAR.AdminActionReason
+										? AMS.AdminMessageShorthand
 										: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
@@ -1089,15 +1089,15 @@ export function resolveDurationArg(
 	return { code: 'ok', value }
 }
 
-// "Available: label (keyword1, keyword2), ..." listing the reasons valid for an action, for error hints
-function reasonOptionsHint(applicable: AAR.AdminActionReason[]): string {
-	if (applicable.length === 0) return 'No reasons are configured for this action.'
+// "Available: label (keyword1, keyword2), ..." listing the shorthands valid for an action, for error hints
+function reasonOptionsHint(applicable: AMS.AdminMessageShorthand[]): string {
+	if (applicable.length === 0) return 'No message shorthands are configured for this action.'
 	return `Available: ${applicable.map(LP.describePreset).join(', ')}`
 }
 
-// The reasons closest to what was typed, one choice per reason: a reason with several near keywords is still one
+// The shorthands closest to what was typed, one choice per shorthand: a shorthand with several near keywords is still one
 // thing to pick, and the keyword that stands for it only has to resolve, not to be the closest.
-function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgChoice[] {
+function reasonChoices(applicable: AMS.AdminMessageShorthand[], token: string): ArgChoice[] {
 	const choices: ArgChoice[] = []
 	for (const keyword of Str.nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
 		const reason = LP.findByKeyword(applicable, keyword)
@@ -1110,39 +1110,39 @@ function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgC
 	return choices
 }
 
-// resolves a single reason token against ALL reasons for the action, distinguishing "no such reason" from
+// resolves a single shorthand token against ALL shorthands for the action, distinguishing "no such shorthand" from
 // "exists but isn't set up for this action"
 export function resolveReasonToken(
-	allReasons: AAR.AdminActionReason[],
-	action: AAR.AdminActionType,
+	allReasons: AMS.AdminMessageShorthand[],
+	action: AMS.AdminActionType,
 	token: string,
-): { code: 'ok'; reason: AAR.AdminActionReason } | { code: 'err:unknown-preset'; msg: string; choices: ArgChoice[] } {
-	const res = AAR.resolveReason(allReasons, action, token)
-	if (res.code === 'ok') return { code: 'ok', reason: res.reason }
-	const applicable = AAR.reasonsForAction(allReasons, action)
+): { code: 'ok'; reason: AMS.AdminMessageShorthand } | { code: 'err:unknown-preset'; msg: string; choices: ArgChoice[] } {
+	const res = AMS.resolveShorthand(allReasons, action, token)
+	if (res.code === 'ok') return { code: 'ok', reason: res.shorthand }
+	const applicable = AMS.shorthandsForAction(allReasons, action)
 	const choices = reasonChoices(applicable, token)
 	const what =
-		res.code === 'err:reason-not-applicable'
-			? `Reason "${token}" isn't set up for ${AAR_Msgs.actionNames[action].original}.`
-			: `Unknown reason "${token}".`
-	// The choices are the suggestion. Listing every configured reason under them repeats most of the same words in a
+		res.code === 'err:shorthand-not-applicable'
+			? `Shorthand "${token}" isn't set up for ${AMS_Msgs.actionNames[action].original}.`
+			: `Unknown shorthand "${token}".`
+	// The choices are the suggestion. Listing every configured shorthand under them repeats most of the same words in a
 	// warn that holds a few lines, so the hint is what stands in for a list nobody can pick from.
 	return { code: 'err:unknown-preset', msg: choices.length > 0 ? what : `${what} ${reasonOptionsHint(applicable)}`, choices }
 }
 
-// snapshots a chat-resolved reason arg into an AppliedReason (see AAR.AppliedReason)
+// snapshots a chat-resolved reason arg into an AppliedReason (see AMS.AppliedReason)
 export function applyResolvedReason(
-	action: AAR.AdminActionType,
+	action: AMS.AdminActionType,
 	resolved: ResolvedReasonArg,
 	vars: Record<string, string>,
-): AAR.AppliedReason {
-	return resolved.type === 'preset' ? AAR.applyReason(action, resolved.reason, vars) : AAR.applyCustomReason(resolved.text, vars)
+): AMS.AppliedReason {
+	return resolved.type === 'preset' ? AMS.applyShorthand(action, resolved.reason, vars) : AMS.applyCustomReason(resolved.text, vars)
 }
 
-// one token must match a configured reason set up for the action; two or more tokens are a custom message verbatim
+// one token must match a configured shorthand set up for the action; two or more tokens are a custom message verbatim
 export function resolveReasonArg(
-	allReasons: AAR.AdminActionReason[],
-	action: AAR.AdminActionType,
+	allReasons: AMS.AdminMessageShorthand[],
+	action: AMS.AdminActionType,
 	tokens: string[],
 ): { code: 'ok'; value: ResolvedReasonArg } | { code: 'err:unknown-preset'; msg: string; choices: ArgChoice[] } {
 	if (tokens.length === 1) {
@@ -1155,7 +1155,7 @@ export function resolveReasonArg(
 
 // whether an arg may be left out. `requiredReasonActions` (typically GlobalSettings.requireReasonFor) forces a
 // reason/preset-reason arg to count as required even when its declaration marks it optional.
-export function argOptional(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): boolean {
+export function argOptional(def: ArgDef, requiredReasonActions: readonly AMS.AdminActionType[] = []): boolean {
 	if ((def.kind === 'reason' || def.kind === 'preset-reason') && requiredReasonActions.includes(def.action)) return false
 	return !!def.optional
 }
@@ -1166,11 +1166,11 @@ function argLabel(def: ArgDef): string {
 }
 
 // renders a single arg's usage token, so signatures reflect the configured reason requirement
-export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
+export function formatArg(def: ArgDef, requiredReasonActions: readonly AMS.AdminActionType[] = []): string {
 	return argOptional(def, requiredReasonActions) ? `[${argLabel(def)}]` : `<${argLabel(def)}>`
 }
 
-export function formatArgSignature(args: readonly ArgDef[], requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
+export function formatArgSignature(args: readonly ArgDef[], requiredReasonActions: readonly AMS.AdminActionType[] = []): string {
 	return args
 		.map((def) => formatArg(def, requiredReasonActions))
 		.join(' ')
@@ -1183,7 +1183,7 @@ export function formatUsage(
 	id: CommandId,
 	config: CommandConfig,
 	trigger?: CommandTrigger,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): string {
 	const t = trigger ?? primaryTrigger(config) ?? id
 	return `Usage: ${formatTriggerUsage(id, t, requiredReasonActions)}`.trim()
@@ -1343,7 +1343,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 // validation accepts (argTemplateSignature covers every command in the tests).
 export function argTemplateSignature(
 	cmdId: CommandId,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): { ref: string; arg: string }[] {
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
 	// one placeholder per argument, in order: every kind takes a single word except the rest kinds, which take the
@@ -1360,7 +1360,7 @@ export function argTemplateSignature(
 export function formatTriggerSignature(
 	cmdId: CommandId,
 	trigger: CommandTrigger,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): string {
 	const template = triggerArgs(trigger)
 	if (template === undefined) return formatArgSignature(COMMAND_DECLARATIONS[cmdId].args, requiredReasonActions)
@@ -1378,7 +1378,7 @@ export function formatTriggerSignature(
 export function formatTriggerUsage(
 	cmdId: CommandId,
 	trigger: CommandTrigger,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): string {
 	return `${triggerString(trigger)} ${formatTriggerSignature(cmdId, trigger, requiredReasonActions)}`.trim()
 }

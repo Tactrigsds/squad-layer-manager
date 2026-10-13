@@ -9,7 +9,7 @@
 
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
 import { join, t, type TString } from '@/models/messages.models'
@@ -63,7 +63,7 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 // the live values examples are filled from, so an example uses reasons this installation actually has
 // configured rather than invented ones an admin would get an "unknown reason" error for
 export type ExampleSeeds = {
-	reasons: AAR.AdminActionReason[]
+	reasons: AMS.AdminMessageShorthand[]
 }
 
 export type ArgHelp = {
@@ -97,7 +97,7 @@ function triggerArgUses(id: CMD.CommandId, config: CMD.CommandConfig): TriggerAr
 
 // an arg is optional in the signature unless its declaration says otherwise, or the installation requires a reason
 // for that action (mirrors formatArg's handling of requiredReasonActions)
-function argOptional(def: CMD.ArgDef, requiredReasonActions: readonly AAR.AdminActionType[]): boolean {
+function argOptional(def: CMD.ArgDef, requiredReasonActions: readonly AMS.AdminActionType[]): boolean {
 	if (def.kind === 'reason' || def.kind === 'preset-reason') {
 		return !requiredReasonActions.includes(def.action) && !!def.optional
 	}
@@ -115,7 +115,7 @@ function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; keyw
 	switch (def.kind) {
 		case 'reason':
 		case 'preset-reason':
-			return AAR.reasonsForAction(seeds.reasons, def.action)
+			return AMS.shorthandsForAction(seeds.reasons, def.action)
 		default:
 			return []
 	}
@@ -128,7 +128,7 @@ export function describeArgs(
 	id: CMD.CommandId,
 	config: CMD.CommandConfig,
 	seeds: ExampleSeeds,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): ArgHelp[] {
 	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
 	const uses = triggerArgUses(id, config)
@@ -177,7 +177,7 @@ export type TriggerGroup = {
 export function triggerGroups(
 	id: CMD.CommandId,
 	config: CMD.CommandConfig,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): TriggerGroup[] {
 	const groups: (TriggerGroup & { template?: string })[] = []
 	for (const trigger of config.triggers) {
@@ -237,7 +237,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 		case 'reason':
 		case 'preset-reason': {
 			// the first preset that can actually be picked by a single token, not just the first configured one
-			const token = firstPresetToken(AAR.reasonsForAction(seeds.reasons, def.action))
+			const token = firstPresetToken(AMS.shorthandsForAction(seeds.reasons, def.action))
 			// `preset-reason` takes presets only, so it has no free-text form to demonstrate
 			if (def.kind === 'preset-reason') return { token }
 			return { token, alt: { token: 'stop doing that', note: t('With a custom reason') } }
@@ -264,7 +264,7 @@ type Slot = { def: CMD.ArgDef; name: string; optional: boolean; wholeSlot: boole
 function exampleSlots(
 	id: CMD.CommandId,
 	trigger: CMD.CommandTrigger | undefined,
-	requiredReasonActions: readonly AAR.AdminActionType[],
+	requiredReasonActions: readonly AMS.AdminActionType[],
 ): Slot[] {
 	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
 	const template = trigger === undefined ? undefined : CMD.triggerArgs(trigger)
@@ -311,7 +311,7 @@ export function buildExamples(
 	id: CMD.CommandId,
 	config: CMD.CommandConfig,
 	seeds: ExampleSeeds,
-	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): CommandExample[] {
 	const primary = CMD.primaryTrigger(config)
 	const cmdString = primary ? CMD.triggerString(primary) : id

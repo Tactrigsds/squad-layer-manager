@@ -6,7 +6,7 @@ import * as Templating from '@/lib/templating'
 import * as TZ from '@/lib/time-zones'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as AAR from '@/models/admin-action-reasons.models.ts'
+import * as AMS from '@/models/admin-message-shorthands.models.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
@@ -535,22 +535,22 @@ export function integrationEnabled(config: IntegrationConfig): boolean {
 
 export const GlobalSettingsSchema = z
 	.object({
-		adminActionReasons: AAR.AdminActionReasonsSchema.meta(
+		adminMessageShorthands: AMS.AdminMessageShorthandsSchema.meta(
 			SDoc.of({
-				label: t('Admin Action Reasons'),
+				label: t('Message Shorthands'),
 				description: t(
-					"Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that action, so every reason needs at least one. The text reaches the player verbatim and takes '{{label}},' '{{duration}}' (timeouts only), '{{squadName}}' (the target squad's name when the action targets a whole squad, empty otherwise) and any Message Variables below.",
+					"Preset messages admins can pick when acting against players. A shorthand is offered for an action only where it has text for that action, so every shorthand needs at least one. The text reaches the player verbatim and takes '{{label}},' '{{duration}}' (timeouts only), '{{squadName}}' (the target squad's name when the action targets a whole squad, empty otherwise) and any Message Variables below.",
 				),
 			}),
 		),
 		requireReasonFor: z
-			.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE)
+			.array(AMS.REQUIRABLE_ADMIN_ACTION_TYPE)
 			.prefault([])
 			.meta(
 				SDoc.of({
 					label: t('Require a Reason'),
 					description: t(
-						'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
+						'Actions that require a reason (a message shorthand or custom text). Performing one of these without a reason is rejected.',
 					),
 				}),
 			),
@@ -572,7 +572,7 @@ export const GlobalSettingsSchema = z
 				SDoc.of({
 					label: t('Message Variables'),
 					description: t(
-						'Custom variables usable in any admin action reason as \'{{name}}\' (e.g. name "discord", value "discord.gg/xyz"). A value is itself a template, so it can reference the other variables here, as long as the references do not form a cycle.',
+						'Custom variables usable in any message shorthand as \'{{name}}\' (e.g. name "discord", value "discord.gg/xyz"). A value is itself a template, so it can reference the other variables here, as long as the references do not form a cycle.',
 					),
 				}),
 			),

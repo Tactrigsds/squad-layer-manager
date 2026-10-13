@@ -577,7 +577,7 @@ its cause. It is pure (`init` + `on*` transitions) and the most heavily tested m
 Almost all configuration is runtime-editable settings in the database, not config files, so hosts get a smooth
 upgrade path via database migrations with limited manual intervention.
 
-Two schemas: `GlobalSettingsSchema` (one document: RBAC, commands, layer generation, admin action reasons,
+Two schemas: `GlobalSettingsSchema` (one document: RBAC, commands, layer generation, message shorthands,
 broadcasts, vote and queue tunables) and `ServerSettingsSchema` (per server: connections, admin list sources, queue,
 nav links). `PublicServerSettingsSchema` is the latter minus `connections`, and **that omission is the security
 boundary**, not a display convenience.

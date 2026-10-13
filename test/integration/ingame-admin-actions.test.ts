@@ -77,7 +77,7 @@ beforeAll(async () => {
 			s.queue.mainPool.warnFor = [{ filterId: 'discouraged', applyAs: 'regular' }]
 		},
 		globalSettings: (s) => {
-			s.adminActionReasons = REASONS as typeof s.adminActionReasons
+			s.adminMessageShorthands = REASONS as typeof s.adminMessageShorthands
 			// shortcuts onto warn: one pins the reason outright, the other only supplies it when the caller
 			// leaves it out
 			s.commands.warn.triggers.push(
