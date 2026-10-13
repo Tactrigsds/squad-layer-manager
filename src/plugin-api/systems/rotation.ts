@@ -90,6 +90,18 @@ export async function clone(ctx: PluginsSys.Ctx<any>, input: CloneInput): Promis
 	return await Rotation.cloneRotation(ctx, parsed, ownerFor(ctx, input.owner), actorFor(ctx))
 }
 
+/**
+ * Adds the source rotation's contributors, users and roles, to the target rotation. Contributors the target already has
+ * are kept, so repeating a copy changes nothing.
+ */
+export async function copyContributors(
+	ctx: PluginsSys.Ctx<any>,
+	sourceId: ROT.RotationId,
+	targetId: ROT.RotationId,
+): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
+	return await Rotation.copyContributors(ctx, sourceId, targetId)
+}
+
 export async function remove(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
 	const res = await Rotation.deleteRotation(ctx, id, actorFor(ctx))
 	return { code: res.code }

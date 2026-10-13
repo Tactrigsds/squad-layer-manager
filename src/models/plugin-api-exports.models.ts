@@ -248,7 +248,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
 	'slm/systems/repeat-ruleset': ['changes', 'forServer', 'get', 'list', 'remove', 'save', 'setForServer'],
-	'slm/systems/rotation': ['addToQueue', 'changes', 'clone', 'create', 'get', 'remove', 'search', 'update'],
+	'slm/systems/rotation': ['addToQueue', 'changes', 'clone', 'copyContributors', 'create', 'get', 'remove', 'search', 'update'],
 	'slm/systems/squad-rcon': [
 		'MIN_TTL_MS',
 		'adminRenameSquad',

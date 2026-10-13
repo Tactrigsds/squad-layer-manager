@@ -391,26 +391,50 @@ export async function cloneRotation(ctx: C.Db & CS.AbortSignal, input: ROT.Clone
 		{ clonedFrom: source.id },
 	)
 	if (res.code !== 'ok' || !input.copyContributors) return res
-	const [users, roles] = await Promise.all([
-		ctx.db().select().from(Schema.rotationUserContributors).where(E.eq(Schema.rotationUserContributors.rotationId, source.id)),
-		ctx.db().select().from(Schema.rotationRoleContributors).where(E.eq(Schema.rotationRoleContributors.rotationId, source.id)),
-	])
+	await insertContributorsFrom(ctx, source.id, input.id)
+	return res
+}
+
+/** Adds the source's contributors to the target's. Contributors the target already has are kept. */
+export async function copyContributors(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId) {
+	const found = await ctx
+		.db()
+		.select({ id: T.id })
+		.from(T)
+		.where(E.inArray(T.id, [sourceId, targetId]))
+	if (!found.some((r) => r.id === sourceId) || !found.some((r) => r.id === targetId)) return { code: 'err:not-found' as const }
+	await insertContributorsFrom(ctx, sourceId, targetId)
+	return { code: 'ok' as const }
+}
+
+async function insertContributorsFrom(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId) {
+	const users = await ctx
+		.db()
+		.select()
+		.from(Schema.rotationUserContributors)
+		.where(E.eq(Schema.rotationUserContributors.rotationId, sourceId))
+	const roles = await ctx
+		.db()
+		.select()
+		.from(Schema.rotationRoleContributors)
+		.where(E.eq(Schema.rotationRoleContributors.rotationId, sourceId))
 	if (users.length > 0) {
 		await ctx
 			.db()
 			.insert(Schema.rotationUserContributors)
-			.values(users.map((u) => ({ rotationId: input.id, userId: u.userId })))
+			.values(users.map((u) => ({ rotationId: targetId, userId: u.userId })))
+			.onConflictDoNothing()
 	}
 	if (roles.length > 0) {
 		await ctx
 			.db()
 			.insert(Schema.rotationRoleContributors)
-			.values(roles.map((r) => ({ rotationId: input.id, roleId: r.roleId })))
+			.values(roles.map((r) => ({ rotationId: targetId, roleId: r.roleId })))
+			.onConflictDoNothing()
 		Rbac.invalidateAll()
 	} else {
 		for (const u of users) Rbac.invalidateUser(u.userId)
 	}
-	return res
 }
 
 export const orpcRouter = {
