@@ -120,16 +120,17 @@ function bumpVersion() {
 	Store.setState((s) => ({ ...s, version: s.version + 1 }))
 }
 
+// Copy-on-write, so a component selecting a list from Store re-renders when the list changes. Each change is
+// followed by bumpVersion, which is what re-runs those selectors.
 function pushReg<T>(map: Map<string, T[]>, key: string, pluginId: string, reg: T) {
-	const list = map.get(key) ?? []
-	list.push(reg)
-	map.set(key, list)
+	map.set(key, [...(map.get(key) ?? []), reg])
 	const undos = undoByPlugin.get(pluginId) ?? []
-	undos.push(() => {
-		const current = map.get(key)
-		const idx = current?.indexOf(reg) ?? -1
-		if (current && idx >= 0) current.splice(idx, 1)
-	})
+	undos.push(() =>
+		map.set(
+			key,
+			(map.get(key) ?? []).filter((r) => r !== reg),
+		),
+	)
 	undoByPlugin.set(pluginId, undos)
 }
 
@@ -161,8 +162,11 @@ export function registerDecoration<A extends DecorationAnchorId>(
 	bumpVersion()
 }
 
+const NO_SLOT_REGS: SlotReg[] = []
+
+/** The anchor's registrations. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
 export function getSlotRegs(anchor: SlotAnchorId): SlotReg[] {
-	return slotRegs.get(anchor) ?? []
+	return slotRegs.get(anchor) ?? NO_SLOT_REGS
 }
 
 // ---- plugin event rendering ----
@@ -211,11 +215,19 @@ export function registerEventRenderer(
 	bumpVersion()
 }
 
+/** The renderer for a plugin's `name`d events. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
+export function getEventRenderer(pluginId: string, name: string): EventRendererReg | null {
+	const regs = eventRenderers.get(rendererKey(pluginId, name))
+	// last registration wins, so a plugin re-registering a name replaces rather than shadows
+	return regs?.[regs.length - 1] ?? null
+}
+
 /** How a plugin wants one of its events rendered, or null for the host's generic line. */
 export function getEventRendering(pluginId: string, event: PluginEventView): (EventRendering & { regKey: string }) | null {
-	const regs = eventRenderers.get(rendererKey(pluginId, event.name))
-	// last registration wins, so a plugin re-registering a name replaces rather than shadows
-	const reg = regs?.[regs.length - 1]
+	return renderEvent(getEventRenderer(pluginId, event.name), event)
+}
+
+export function renderEvent(reg: EventRendererReg | null, event: PluginEventView): (EventRendering & { regKey: string }) | null {
 	if (!reg) return null
 	try {
 		const rendering = reg.render(event)

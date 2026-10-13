@@ -6,10 +6,9 @@ import * as PluginsClient from '@/systems/plugins.client'
 // Renders whatever plugins registered at an anchor. Each registration is boundary-wrapped so one
 // plugin's render error cannot take the page down with it.
 export function PluginSlot<A extends PluginsClient.SlotAnchorId>(props: { anchor: A; anchorProps: PluginsClient.SlotAnchors[A] }) {
-	// subscription only: a version bump re-renders this so getSlotRegs re-reads the live map. Kept
-	// out of the key, or every slot would remount whenever any plugin (un)registers anything.
-	Zus.useStore(PluginsClient.Store, (s) => s.version)
-	const regs = PluginsClient.getSlotRegs(props.anchor)
+	// selected rather than read beside a bare version subscription: the compiler memoizes a plain call on its
+	// arguments, which would keep the registrations from the first render
+	const regs = Zus.useStore(PluginsClient.Store, () => PluginsClient.getSlotRegs(props.anchor))
 	if (regs.length === 0) return null
 	return (
 		<>
