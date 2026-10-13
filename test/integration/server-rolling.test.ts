@@ -159,7 +159,7 @@ describe('the event archive', () => {
 		const talker = app.emu.world.connectPlayer(makePlayer({ name: ' archive_subject', teamId: 1 }))
 		await app.waitForRosterSync()
 		const played = app.latestMatch()
-		app.emu.world.chat(talker, 'ChatAll', 'archive me please')
+		app.emu.world.chat(talker, 'ChatAll', 'archive me please! -now (or "never") NOT later')
 		await app.waitForRosterSync()
 
 		// roll, so the match under test is finished and no longer the newest on the server
@@ -262,6 +262,26 @@ describe('the event archive', () => {
 		expect(res.rowsHtml.length).toBeGreaterThan(0)
 		// server-rendered, and interactivity rides on attributes rather than anything element-attached
 		expect(res.rowsHtml[0]).toContain('data-dom-')
+	})
+
+	it('reads chat search text literally, including what fts5 would parse as query syntax', async () => {
+		for (const chat of ['please!', 'me please! -now', '(or "never")', 'NOT later', 'NOT', '-now']) {
+			const events = await client.history.query({ query: { chat } })
+			expect(events.code, chat).toBe('ok')
+			if (events.code !== 'ok' || events.type !== 'events') return
+			expect(events.total, chat).toBeGreaterThan(0)
+
+			const matches = await client.history.query({ query: { type: 'matches', chat } })
+			expect(matches.code, chat).toBe('ok')
+			if (matches.code !== 'ok' || matches.type !== 'matches') return
+			expect(matches.total, chat).toBeGreaterThan(0)
+		}
+		for (const chat of ['!!!', '"', 'later please', '*']) {
+			const events = await client.history.query({ query: { chat } })
+			expect(events.code, chat).toBe('ok')
+			if (events.code !== 'ok' || events.type !== 'events') return
+			expect(events.total, chat).toBe(0)
+		}
 	})
 
 	it('finds players by name substring, and a name works as a player ref', async () => {
