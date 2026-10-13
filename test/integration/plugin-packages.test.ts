@@ -636,6 +636,197 @@ describe('packaged plugins', () => {
 		expect(await call('dropRotation', { id: 'hello-queue-rot' })).toMatchObject({ code: 'ok' })
 	})
 
+	// Jobs the plugin lists in its `jobs` export, run by the host from the packed bundle. The hourly job runs as the
+	// plugin starts; one-off runs come due on their own, or an admin runs or cancels them from settings. Only a run
+	// an admin started, a job that asks for it, and a final failure are recorded.
+	it('runs its scheduled jobs, and lets an admin run or cancel a pending run', async () => {
+		const runs = () => call<string[]>('jobRuns', {})
+		const jobEvents = (type: string) =>
+			readRows<{ jobId: string; key: string; manual: number; actorType: string; serverId: string | null; error: string | null }>(
+				`SELECT json_extract(data, '$.json.jobId') AS jobId, json_extract(data, '$.json.key') AS key,
+				 json_extract(data, '$.json.manual') AS manual, actorType, serverId, json_extract(data, '$.json.error') AS error
+				 FROM appEvents WHERE type = ? ORDER BY rowid`,
+				type,
+			)
+
+		await app.waitFor(async () => (await runs()).includes('heartbeat:scheduled:false') || null, { label: 'the hourly job ran on start' })
+		// it asked for its successes to be recorded; it is not tied to a server
+		expect(jobEvents('SCHEDULED_JOB_SUCCESS')).toContainEqual(
+			expect.objectContaining({ jobId: 'heartbeat', manual: 0, actorType: 'plugin', serverId: null }),
+		)
+
+		expect(await call('scheduleGreet', { name: 'soon', inMs: 200 })).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => (await runs()).some((r) => r.startsWith('greet:') && r.endsWith(':soon:false')) || null, {
+			label: 'the one-off run came due',
+		})
+		// an automatic success of a job that did not ask for it leaves no event
+		expect(jobEvents('SCHEDULED_JOB_SUCCESS').filter((e) => e.jobId === 'greet')).toEqual([])
+
+		// scheduling under a key again replaces the run, payload included
+		expect(await call('scheduleGreet', { name: 'later', inMs: 3_600_000, key: 'later' })).toMatchObject({ code: 'ok', key: 'later' })
+		expect(await call('scheduleGreet', { name: 'moved', inMs: 3_600_000, key: 'later' })).toMatchObject({ code: 'ok', key: 'later' })
+		const listed = await client.plugins.listJobs({ pluginId: 'hello' })
+		const greet = listed.code === 'ok' ? listed.jobs.find((j) => j.id === 'greet') : undefined
+		expect(greet?.pending.map((p) => p.key)).toEqual(['later'])
+
+		// run now, by an admin: recorded against them, in the server's feed
+		expect(await client.plugins.runJobNow({ pluginId: 'hello', jobId: 'greet', serverId: app.serverId, key: 'later' })).toMatchObject({
+			code: 'ok',
+		})
+		await app.waitFor(async () => (await runs()).includes('greet:later:moved:true') || null, { label: 'the pending run ran by hand' })
+		await app.waitFor(() => jobEvents('SCHEDULED_JOB_SUCCESS').find((e) => e.jobId === 'greet' && e.key === 'later') ?? null, {
+			label: 'the run by hand was recorded',
+		})
+		expect(jobEvents('SCHEDULED_JOB_SUCCESS').find((e) => e.key === 'later')).toMatchObject({
+			manual: 1,
+			actorType: 'slm-user',
+			serverId: app.serverId,
+		})
+
+		// a recurring job runs by hand outside its schedule
+		expect(await client.plugins.runJobNow({ pluginId: 'hello', jobId: 'heartbeat', serverId: null, key: null })).toMatchObject({
+			code: 'ok',
+		})
+		await app.waitFor(async () => (await runs()).includes('heartbeat:manual:true') || null, { label: 'the recurring job ran by hand' })
+
+		// a run that is running keeps its key until it finishes; scheduling under it again is refused rather than lost
+		expect(await call('scheduleGreet', { name: 'hold', inMs: 0, key: 'held' })).toMatchObject({ code: 'ok' })
+		await app.waitFor(
+			async () => {
+				const res = await client.plugins.listJobs({ pluginId: 'hello' })
+				const job = res.code === 'ok' ? res.jobs.find((j) => j.id === 'greet') : undefined
+				return job?.pending.some((p) => p.key === 'held' && p.state === 'running') || null
+			},
+			{ label: 'the held run started' },
+		)
+		expect(await call('scheduleGreet', { name: 'moved', inMs: 3_600_000, key: 'held' })).toMatchObject({ code: 'err:busy' })
+		expect(await call('releaseHeld', {})).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => (await runs()).includes('greet:held:hold:false') || null, { label: 'the held run finished' })
+		await app.waitFor(
+			async () => (await call<{ code: string }>('scheduleGreet', { name: 'again', inMs: 3_600_000, key: 'held' })).code === 'ok' || null,
+			{ label: 'the finished run is replaced' },
+		)
+		expect(await call('cancelGreet', { key: 'held' })).toMatchObject({ code: 'ok' })
+
+		// a blocked run waits, showing its reason, and goes again on the same attempt once its unblock fires
+		const gatedRun = async (key: string) => {
+			const res = await client.plugins.listJobs({ pluginId: 'hello' })
+			const job = res.code === 'ok' ? res.jobs.find((j) => j.id === 'gated') : undefined
+			return job?.pending.find((p) => p.key === key)
+		}
+		expect(await call('scheduleGated', { mode: 'gate', inMs: 0, key: 'gate' })).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => ((await gatedRun('gate'))?.state === 'blocked' ? true : null), { label: 'the gated run blocked' })
+		expect(await gatedRun('gate')).toMatchObject({ blockedReason: 'the gate is closed', nextAttemptAt: null, attempt: 0 })
+		expect(await call('openGate', {})).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => (await runs()).includes('gated:gate:done') || null, { label: 'the gated run went through' })
+		expect((await runs()).filter((r) => r.startsWith('gated:gate:call'))).toEqual([
+			'gated:gate:call1:attempt1',
+			'gated:gate:call2:attempt1',
+		])
+
+		// a duration, and a source that fires as soon as it is subscribed to, both wait at least a second between calls
+		expect(await call('scheduleGated', { mode: 'delay', inMs: 0, key: 'delay' })).toMatchObject({ code: 'ok' })
+		expect(await call('scheduleGated', { mode: 'eager', inMs: 0, key: 'eager' })).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => ((await runs()).includes('gated:delay:done') && (await runs()).includes('gated:eager:done')) || null, {
+			label: 'the delayed and eager runs went through',
+			timeoutMs: 15_000,
+		})
+		const [delayFirst, delaySecond] = await call<number[]>('gatedCallTimes', { key: 'delay' })
+		expect(delaySecond - delayFirst).toBeGreaterThanOrEqual(1000)
+		const eagerCalls = await call<number[]>('gatedCallTimes', { key: 'eager' })
+		expect(eagerCalls).toHaveLength(3)
+		expect(eagerCalls[2] - eagerCalls[0]).toBeGreaterThanOrEqual(2000)
+
+		// Run now on a blocked run reports why, and leaves the run waiting; cancelling removes it
+		expect(await call('scheduleGated', { mode: 'forever', inMs: 0, key: 'stuck' })).toMatchObject({ code: 'ok' })
+		await app.waitFor(async () => ((await gatedRun('stuck'))?.state === 'blocked' ? true : null), { label: 'the stuck run blocked' })
+		expect(await client.plugins.runJobNow({ pluginId: 'hello', jobId: 'gated', serverId: app.serverId, key: 'stuck' })).toMatchObject({
+			code: 'err:blocked',
+			message: 'it never opens',
+		})
+		expect(await gatedRun('stuck')).toMatchObject({ state: 'blocked', blockedReason: 'it never opens', attempt: 0 })
+		expect(await call('cancelGated', { key: 'stuck' })).toMatchObject({ code: 'ok' })
+		expect(await gatedRun('stuck')).toBeUndefined()
+
+		// a run still blocked when its window ends fails with the reason it was waiting on
+		expect(await call('scheduleGated', { mode: 'forever', inMs: -58_000, key: 'expired' })).toMatchObject({ code: 'ok' })
+		const expired = await app.waitFor(() => jobEvents('SCHEDULED_JOB_FAILED').find((e) => e.key === 'expired') ?? null, {
+			label: 'the run blocked past its window failed',
+			timeoutMs: 15_000,
+		})
+		expect(expired).toMatchObject({
+			jobId: 'gated',
+			manual: 0,
+			actorType: 'plugin',
+			error: 'its catch-up window ended while it waited: it never opens',
+		})
+
+		// cancelling a running run aborts its signal; it is recorded as cancelled only if it stops by throwing that abort
+		const runRow = (jobId: string, key: string) =>
+			readRows<{ state: string; error: string | null }>(
+				`SELECT state, error FROM scheduledJobRuns WHERE jobId = ? AND key = ?`,
+				jobId,
+				key,
+			)[0]
+		const startStoppable = async (mode: 'throws' | 'finishes' | 'ignores', key: string) => {
+			expect(await call('scheduleStoppable', { mode, key })).toMatchObject({ code: 'ok' })
+			await app.waitFor(async () => (await runs()).includes(`stoppable:${key}:started`) || null, { label: `the ${mode} run started` })
+		}
+
+		// by an admin: the run throws the abort, so it is cancelled, and recorded against the admin
+		await startStoppable('throws', 'throws')
+		expect(
+			await client.plugins.cancelJobRun({ pluginId: 'hello', jobId: 'stoppable', serverId: app.serverId, key: 'throws' }),
+		).toMatchObject({ code: 'ok', stopping: true })
+		const cancelled = await app.waitFor(() => jobEvents('SCHEDULED_JOB_CANCELLED').find((e) => e.key === 'throws') ?? null, {
+			label: 'the cancelled run was recorded',
+		})
+		expect(cancelled).toMatchObject({ jobId: 'stoppable', manual: 1, actorType: 'slm-user', serverId: app.serverId })
+		expect(runRow('stoppable', 'throws')).toMatchObject({ state: 'cancelled' })
+
+		// by the plugin: the run finishes despite the abort, so it succeeded and nothing records a cancel
+		await startStoppable('finishes', 'finishes')
+		expect(await call('cancelStoppable', { key: 'finishes' })).toMatchObject({ code: 'ok', stopping: true })
+		await app.waitFor(() => (runRow('stoppable', 'finishes')?.state === 'succeeded' ? true : null), {
+			label: 'the run that finished anyway succeeded',
+		})
+		expect(jobEvents('SCHEDULED_JOB_CANCELLED').find((e) => e.key === 'finishes')).toBeUndefined()
+
+		// a run that ignores the abort is abandoned once the grace period passes, and fails rather than being cancelled
+		await startStoppable('ignores', 'ignores')
+		expect(
+			await client.plugins.cancelJobRun({ pluginId: 'hello', jobId: 'stoppable', serverId: app.serverId, key: 'ignores' }),
+		).toMatchObject({ code: 'ok', stopping: true })
+		const abandoned = await app.waitFor(() => jobEvents('SCHEDULED_JOB_FAILED').find((e) => e.key === 'ignores') ?? null, {
+			label: 'the run that ignored its abort was abandoned',
+			timeoutMs: 30_000,
+		})
+		expect(abandoned).toMatchObject({ jobId: 'stoppable', error: 'it did not stop within 10s of being cancelled' })
+		expect(jobEvents('SCHEDULED_JOB_CANCELLED').find((e) => e.key === 'ignores')).toBeUndefined()
+
+		// a run that outlasts its timeout has its signal aborted, and fails with the timeout once its window is spent
+		expect(await call('scheduleTimed', { key: 'slow' })).toMatchObject({ code: 'ok' })
+		const timedOut = await app.waitFor(() => jobEvents('SCHEDULED_JOB_FAILED').find((e) => e.jobId === 'timed') ?? null, {
+			label: 'the run past its timeout failed',
+		})
+		expect(timedOut).toMatchObject({ key: 'slow', error: 'it ran longer than its timeout of 300 ms' })
+
+		// cancelling removes a pending run
+		expect(await call('scheduleGreet', { name: 'never', inMs: 3_600_000, key: 'gone' })).toMatchObject({ code: 'ok' })
+		expect(await call('cancelGreet', { key: 'gone' })).toMatchObject({ code: 'ok' })
+		expect(await call('cancelGreet', { key: 'gone' })).toMatchObject({ code: 'err:not-found' })
+
+		// a payload that does not fit is refused when it is scheduled
+		expect(await call('scheduleGreet', { name: 42, inMs: 0 })).toMatchObject({ code: 'err:invalid-payload' })
+
+		// a run that throws, with no time left in its window to retry, fails and is recorded against the plugin
+		expect(await call('scheduleGreet', { name: 'fail', inMs: 0, key: 'doomed' })).toMatchObject({ code: 'ok' })
+		const failed = await app.waitFor(() => jobEvents('SCHEDULED_JOB_FAILED').find((e) => e.key === 'doomed') ?? null, {
+			label: 'the failing run was recorded',
+		})
+		expect(failed).toMatchObject({ jobId: 'greet', manual: 0, actorType: 'plugin', error: 'asked to fail' })
+	})
+
 	it("creates and deletes repeat rulesets, and points the plugin's server at one", async () => {
 		const own = await call<string | null>('serverRulesetId', {})
 		expect(own).not.toBeNull()

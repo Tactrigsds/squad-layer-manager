@@ -38,6 +38,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as RotationEdit from '@/systems/rotation-edit.server'
 import * as Rotation from '@/systems/rotation.server'
 import * as Sandbox from '@/systems/sandbox.server'
+import * as SchedJobs from '@/systems/scheduled-jobs.server'
 import * as Seed from '@/systems/seed.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as ServerConsole from '@/systems/server-console.server'
@@ -181,6 +182,9 @@ await Instr.spanOp('main', { module }, async () => {
 
 	// after SquadServerLifecycle.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
+	// before Plugins.setup, which attaches the active plugins' jobs: a run interrupted by the last shutdown has to be
+	// marked as such before anything can start it again
+	await SchedJobs.setup()
 	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
 	// servers reach them through the hook in setupManagedServer
 	await PluginsSys.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), [

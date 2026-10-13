@@ -22,6 +22,7 @@ plugin is only safe to install if running it as a fork of SLM would be.
 - [The client entry](#the-client-entry)
 - [Your events in the feed](#your-events-in-the-feed)
 - [In-game commands](#in-game-commands)
+- [Scheduled jobs](#scheduled-jobs)
 - [Permissions](#permissions)
 - [Pickers](#pickers)
 - [What a plugin can reach](#what-a-plugin-can-reach)
@@ -555,6 +556,98 @@ reads as broken rather than as working. A command whose triggers were all taken 
 Declare a trigger specific enough not to collide. A configured trigger outranks another plugin's default, which
 is how an admin resolves a collision between two installed plugins.
 
+## Scheduled jobs
+
+A job is work SLM runs for your plugin at a time: on a recurring schedule, or once at a time your plugin picks, with
+data of its own. SLM keeps scheduled runs across restarts, catches up a run that came due while it was down, and
+retries a run that fails. Declare each job with `Schedule.job` and list it in the server entry's `jobs` export:
+
+```ts
+import * as z from 'zod'
+import * as Schedule from 'slm/plugin/schedule'
+import * as LayerQueue from 'slm/systems/layer-queue'
+import * as Rotations from 'slm/systems/rotation'
+
+// recurring: `when` returns its schedule, and is read again whenever your config is saved
+export const create = Schedule.job({
+	id: 'create',
+	scope: 'server',
+	catchUp: '6d',
+	when: (cfg: Config, serverId) => (cfg.enabledServers.includes(serverId!) ? Schedule.weekly(6, cfg.createTime, cfg.timezone) : null),
+	run: async (sctx, run) => {
+		const tomorrow = run.scheduledFor + 24 * 60 * 60_000
+		await Schedule.at(sctx, add, { at: tomorrow, payload: { rotationId: 'weekend-mix' }, key: 'this-week' })
+	},
+})
+
+// one-off: runs only when scheduled with `at`, with the payload given there
+export const add = Schedule.job({
+	id: 'add',
+	scope: 'server',
+	payload: z.object({ rotationId: z.string() }),
+	catchUp: '12h',
+	run: async (sctx, run, payload) => {
+		const res = await Rotations.addToQueue(sctx, payload.rotationId, { placement: 'end' })
+		// runs again once nobody has queue edits open
+		if (res.code === 'err:unsaved-edits') return Schedule.blocked('the queue has unsaved edits', LayerQueue.editsSettled(sctx))
+		if (res.code !== 'ok') throw new Error(`could not add ${payload.rotationId}: ${res.code}`)
+	},
+})
+
+export const jobs = [create, add]
+```
+
+A `server` job runs once per server with that server's ctx. A `plugin` job runs once, with the plugin ctx. `when`
+schedules a recurring job: `Schedule.weekly(weekday, 'HH:MM', timezone)` and `Schedule.daily('HH:MM', timezone)`
+turn settings fields into a schedule, `{ cron, timezone }` takes a cron pattern, and `{ every: '6h' }` runs the job
+that long after its last run finished. Return null from `when` to leave the job unscheduled on that server.
+
+`Schedule.at` stores one run with its payload. The payload is checked against the job's schema when it is
+scheduled and again when it runs, and is limited to 16 KB: store an id, not the data it names. Scheduling again under
+the same `key` replaces that run, unless that run is running, which returns `err:busy`.
+`Schedule.cancel(ctx, job, key)` removes a run that has not started, and stops one that has, as described below.
+Neither takes a job that is not in `jobs`.
+
+`catchUp` is how long after its time a run is still attempted. Within it, a run that throws is retried, backing off
+from a minute. A run missed while SLM was down runs as soon as SLM is back. Only the latest missed occurrence of a
+recurring job runs, and a newer occurrence replaces an older one that has not run yet. A run whose window has passed
+is dropped. The default is five minutes.
+
+A run that cannot do its work yet returns `Schedule.blocked(reason, unblock)`. A blocked run is not a failure and does
+not count as an attempt. SLM runs it again once `unblock` fires:
+
+- a duration, such as `'5m'` or `300_000`, fires after that long;
+- a promise fires when it settles;
+- an observable or async iterable fires on its first value, error or end.
+
+A blocked run goes again no sooner than a second after it was blocked. Emit only when it is worth trying again: pass
+`connected$.pipe(filter(Boolean))`, not a `connected$` that emits its current `false` straight away. Admins see the
+reason while the run waits. A run still blocked when its `catchUp` window ends fails with that reason. SLM blocks a
+`server` job's run itself while that server is not loaded.
+
+A run's signal aborts when an admin or your plugin cancels the run, when the run outlasts the job's `timeout`, and when
+your plugin or the run's server stops. The signal is on both `run.signal` and the run's ctx, so SLM calls that take
+the ctx stop with it. Pass it to your own waits too, and let the abort be thrown:
+
+- A cancelled run that stops by throwing the abort is recorded as `SCHEDULED_JOB_CANCELLED`. One that finishes anyway
+  is recorded as it finished, and one that throws something else fails without a retry.
+- A run that outlasts its `timeout` and throws the abort fails, and is retried within `catchUp`.
+- A run still going 10 seconds after its signal aborted is abandoned. It fails, and its job can run again while the
+  abandoned run carries on.
+
+`Schedule.cancel(ctx, job, key)` cancels a running run as well as a pending one. It returns `stopping: true` for a
+running run, which is still going when the call returns.
+
+Check what a run needs before it changes anything, so a blocked run leaves nothing half done. A run can be attempted
+again after SLM stops partway through it, or after a block, so make it safe to repeat. `run.scheduledFor` and
+`run.key` identify the occurrence.
+
+Admins see each job under your plugin in settings: when it next runs, what a blocked run waits for, how its last run
+went, and the pending runs it has scheduled. They can run any of them now, cancel a pending run, or stop a running one. A run started by
+hand that returns `blocked` is not left waiting: the admin is shown the reason, and a scheduled run stays as it was. A run that finally fails is recorded as
+`SCHEDULED_JOB_FAILED`. A successful run is recorded as `SCHEDULED_JOB_SUCCESS` when an admin ran it by hand, and
+every time when the job sets `logSuccess: true`. A `server` job's events also appear in that server's activity feed.
+
 ## Permissions
 
 Every procedure and command declares its access, and the host checks it before the handler runs:
@@ -657,6 +750,7 @@ absent.
 | `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                             |
 | `slm/plugin/events`                                        | rendering your own events in the feed        |
 | `slm/plugin/commands`                                      | in-game commands                             |
+| `slm/plugin/schedule`                                      | jobs that run on a schedule or at a time     |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
 | `slm/plugin/permissions`                                   | actions your plugin defines for itself       |
 | `slm/components/ui`                                        | alerts, badges, buttons, cards and tooltips  |

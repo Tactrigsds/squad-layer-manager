@@ -22,6 +22,7 @@ const USED = [
 	'CameraOff',
 	'CarFront',
 	'CheckCircle2',
+	'Clock',
 	'Copy',
 	'CloudFog',
 	'Crown',

@@ -488,6 +488,17 @@ export async function addToSaved(
 	return await retryAfterGeneration(ctx, () => addToSavedNow(ctx, opts, items, placement))
 }
 
+// Resolves once nobody has unsaved queue edits open, straight away when nobody has. Rejects when ctx.signal aborts.
+export async function editsSettled(ctx: LQ.Ctx & CS.AbortSignal): Promise<void> {
+	await Rx.Ext.firstValueFrom(
+		ctx.layerQueue.op$.pipe(
+			Rx.startWith(null),
+			Rx.filter(() => !SLL.hasMutations(ctx.layerQueue.session.state)),
+		),
+		ctx.signal,
+	)
+}
+
 // a generation in flight would skip an edit, so the edit waits for it. Generation always ends in a
 // queue-item-generated op, falling back to a default layer when it fails.
 async function retryAfterGeneration<R extends { code: string }>(

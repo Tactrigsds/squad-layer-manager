@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
+import { PluginJobs } from '@/components/plugin-jobs'
 import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
 import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
 import { HelpTip } from '@/components/settings-form/controls'
@@ -313,6 +314,7 @@ function PluginRow({
 					</Button>
 				</div>
 			)}
+			{canManage && info.status === 'active' && <PluginJobs pluginId={info.id} />}
 			{canManage && manifest && settingsKey && (
 				<PluginSettingsEditor stores={{ settingsEditor: settingsKey }} info={info} manifest={manifest} />
 			)}

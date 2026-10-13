@@ -12,6 +12,7 @@ import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Permissions from 'slm/plugin/permissions'
 import * as Rpc from 'slm/plugin/rpc.server'
+import * as Schedule from 'slm/plugin/schedule'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
 import * as Discord from 'slm/systems/discord'
@@ -70,6 +71,11 @@ function attributedItem(layerId: string, userId: bigint): Rotations.NewItems[num
 const rotationChanges: string[] = []
 // the ruleset ids after each change to the rulesets
 const rulesetChanges: string[][] = []
+
+// what blocks a run of gatedJob, below
+const GatedMode = z.enum(['gate', 'delay', 'forever', 'eager'])
+// what a run of stoppableJob, below, does when it is cancelled
+const StoppableMode = z.enum(['throws', 'finishes', 'ignores'])
 
 export const router = {
 	stats: os
@@ -180,6 +186,64 @@ export const router = {
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
 		.handler(async () => rotationChanges),
+	scheduleGreet: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		// `name` is unknown so a payload that does not fit the job can be sent
+		.input(z.object({ name: z.unknown(), inMs: z.number(), key: z.string().optional() }))
+		.handler(async ({ context, input }) =>
+			Schedule.at(context, greetJob, { at: Date.now() + input.inMs, payload: { name: input.name as string }, key: input.key }),
+		),
+	cancelGreet: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ key: z.string() }))
+		.handler(async ({ context, input }) => Schedule.cancel(context, greetJob, input.key)),
+	jobRuns: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => jobRuns),
+	releaseHeld: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => {
+			releaseHeld()
+			return { code: 'ok' as const }
+		}),
+	scheduleGated: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ mode: GatedMode, inMs: z.number(), key: z.string() }))
+		.handler(async ({ context, input }) =>
+			Schedule.at(context, gatedJob, { at: Date.now() + input.inMs, payload: { mode: input.mode }, key: input.key }),
+		),
+	cancelGated: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ key: z.string() }))
+		.handler(async ({ context, input }) => Schedule.cancel(context, gatedJob, input.key)),
+	openGate: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async () => {
+			gateOpen = true
+			openGate()
+			return { code: 'ok' as const }
+		}),
+	scheduleStoppable: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ mode: StoppableMode, key: z.string() }))
+		.handler(async ({ context, input }) =>
+			Schedule.at(context, stoppableJob, { at: Date.now(), payload: { mode: input.mode }, key: input.key }),
+		),
+	cancelStoppable: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ key: z.string() }))
+		.handler(async ({ context, input }) => Schedule.cancel(context, stoppableJob, input.key)),
+	scheduleTimed: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ key: z.string() }))
+		.handler(async ({ context, input }) => Schedule.at(context, timedJob, { at: Date.now(), key: input.key })),
+	gatedCallTimes: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ key: z.string() }))
+		.handler(async ({ input }) => gatedCalls.get(input.key) ?? []),
 	addRotationToQueue: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(
@@ -341,6 +405,104 @@ export const router = {
 			yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 		}),
 }
+
+// what the jobs below did, for a test to read back: `<job>:<key>:<name>:<manual>`
+const jobRuns: string[] = []
+
+// a run asked to hold keeps running until releaseHeld is called
+let releaseHeld!: () => void
+const held = new Promise<void>((resolve) => (releaseHeld = resolve))
+
+// a one-off job with data of its own; a run asked to fail does, and its window is too short for a retry
+export const greetJob = Schedule.job({
+	id: 'greet',
+	scope: 'server',
+	payload: z.object({ name: z.string() }),
+	catchUp: '2s',
+	run: async (_sctx, run, payload) => {
+		if (payload.name === 'fail') throw new Error('asked to fail')
+		if (payload.name === 'hold') await held
+		jobRuns.push(`greet:${run.key}:${payload.name}:${run.manual}`)
+	},
+})
+
+// a recurring job not tied to a server. Hourly, so it runs once as the plugin starts and not again during a test.
+export const heartbeatJob = Schedule.job({
+	id: 'heartbeat',
+	scope: 'plugin',
+	when: () => ({ every: '1h' }),
+	logSuccess: true,
+	run: async (_ctx, run) => {
+		jobRuns.push(`heartbeat:${run.key.startsWith('manual:') ? 'manual' : 'scheduled'}:${run.manual}`)
+	},
+})
+
+// A one-off job that is blocked until something lets it through: the gate opening, a moment passing, never, or a
+// source that fires as soon as it is subscribed to. It records each call, so a test can see that a blocked run went
+// again on the same attempt.
+let gateOpen = false
+let openGate!: () => void
+const gate = new Promise<void>((resolve) => (openGate = resolve))
+// when each call of a run happened, by run key
+const gatedCalls = new Map<string, number[]>()
+const firesAtOnce: Schedule.Subscribable<unknown> = {
+	subscribe: (observer) => {
+		observer.next?.(undefined)
+		return { unsubscribe: () => {} }
+	},
+}
+
+export const gatedJob = Schedule.job({
+	id: 'gated',
+	scope: 'server',
+	payload: z.object({ mode: GatedMode }),
+	catchUp: '1m',
+	run: async (_sctx, run, { mode }) => {
+		const calls = [...(gatedCalls.get(run.key) ?? []), Date.now()]
+		gatedCalls.set(run.key, calls)
+		jobRuns.push(`gated:${run.key}:call${calls.length}:attempt${run.attempt}`)
+		if (mode === 'gate' && !gateOpen) return Schedule.blocked('the gate is closed', gate)
+		if (mode === 'delay' && calls.length === 1) return Schedule.blocked('waiting a moment', 100)
+		if (mode === 'forever') return Schedule.blocked('it never opens', new Promise(() => {}))
+		if (mode === 'eager' && calls.length < 3) return Schedule.blocked('it fires at once', firesAtOnce)
+		jobRuns.push(`gated:${run.key}:done`)
+	},
+})
+
+const aborted = (signal: AbortSignal) =>
+	new Promise<void>((resolve) => {
+		if (signal.aborted) resolve()
+		else signal.addEventListener('abort', () => resolve(), { once: true })
+	})
+
+// A one-off job that runs until it is cancelled, and then throws the abort, finishes anyway, or ignores it.
+export const stoppableJob = Schedule.job({
+	id: 'stoppable',
+	scope: 'server',
+	payload: z.object({ mode: StoppableMode }),
+	catchUp: '1m',
+	run: async (_sctx, run, { mode }) => {
+		jobRuns.push(`stoppable:${run.key}:started`)
+		if (mode === 'ignores') await new Promise(() => {})
+		await aborted(run.signal)
+		if (mode === 'throws') throw run.signal.reason
+		jobRuns.push(`stoppable:${run.key}:done`)
+	},
+})
+
+// a one-off job that outlasts its timeout, and stops by throwing the abort when it comes
+export const timedJob = Schedule.job({
+	id: 'timed',
+	scope: 'server',
+	timeout: 300,
+	catchUp: '2s',
+	run: async (_sctx, run) => {
+		await aborted(run.signal)
+		throw run.signal.reason
+	},
+})
+
+export const jobs = [greetJob, heartbeatJob, gatedJob, stoppableJob, timedJob]
 
 // an action this plugin defines for itself, so a role can be granted it without SLM knowing what it means.
 // Held module-level so the router can ask for it; the builders are the plugin's own, not the host's.

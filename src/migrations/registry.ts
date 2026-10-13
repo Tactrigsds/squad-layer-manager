@@ -87,6 +87,7 @@ import * as m0132 from './0132_rulesets'
 import * as m0133 from './0133_rotations'
 import * as m0134 from './0134_server_colors'
 import * as m0135 from './0135_filter_miss_exemption'
+import * as m0136 from './0136_scheduled_job_runs'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -161,4 +162,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0133_rotations', up: m0133.up },
 	{ name: '0134_server_colors', up: m0134.up },
 	{ name: '0135_filter_miss_exemption', up: m0135.up },
+	{ name: '0136_scheduled_job_runs', up: m0136.up },
 ]

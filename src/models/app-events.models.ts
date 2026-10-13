@@ -462,6 +462,28 @@ export const PluginDataPurgedSchema = event('PLUGIN_DATA_PURGED', {
 })
 export type PluginDataPurged = z.infer<typeof PluginDataPurgedSchema>
 
+// a run of a job a plugin scheduled (see SJOB). Recorded by SLM rather than the plugin, attributed to whoever pressed
+// Run now or else the plugin. serverId is null for a job not tied to a server.
+const scheduledJobRunShape = {
+	pluginId: z.string(),
+	jobId: z.string(),
+	// "@<time>" for a recurring occurrence, "manual:<time>" for a Run now of a recurring job, else the plugin's key
+	key: z.string(),
+	scheduledFor: z.number(),
+	manual: z.boolean(),
+	attempt: z.number(),
+}
+
+export const ScheduledJobSuccessSchema = event('SCHEDULED_JOB_SUCCESS', scheduledJobRunShape)
+export type ScheduledJobSuccess = z.infer<typeof ScheduledJobSuccessSchema>
+
+export const ScheduledJobFailedSchema = event('SCHEDULED_JOB_FAILED', { ...scheduledJobRunShape, error: z.string() })
+export type ScheduledJobFailed = z.infer<typeof ScheduledJobFailedSchema>
+
+// a running run stopped by throwing its abort after an admin or the plugin cancelled it
+export const ScheduledJobCancelledSchema = event('SCHEDULED_JOB_CANCELLED', scheduledJobRunShape)
+export type ScheduledJobCancelled = z.infer<typeof ScheduledJobCancelledSchema>
+
 export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerWarnedSchema,
 	SquadDisbandedSchema,
@@ -503,6 +525,9 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	MapSetSchema,
 	PluginEventSchema,
 	PluginDataPurgedSchema,
+	ScheduledJobSuccessSchema,
+	ScheduledJobFailedSchema,
+	ScheduledJobCancelledSchema,
 ])
 export type AppEvent = z.infer<typeof AppEventSchema>
 
@@ -586,6 +611,9 @@ export const APP_EVENT_META = {
 	BACKUP_CREATED: EM.meta<BackupCreated>(),
 	PLUGIN_EVENT: EM.meta<PluginEvent>(),
 	PLUGIN_DATA_PURGED: EM.meta<PluginDataPurged>(),
+	SCHEDULED_JOB_SUCCESS: EM.meta<ScheduledJobSuccess>(),
+	SCHEDULED_JOB_FAILED: EM.meta<ScheduledJobFailed>(),
+	SCHEDULED_JOB_CANCELLED: EM.meta<ScheduledJobCancelled>(),
 	MATCH_LAYERS_RECONCILED: EM.meta<MatchLayersReconciled>(),
 	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
 	// its own event does not have fails here

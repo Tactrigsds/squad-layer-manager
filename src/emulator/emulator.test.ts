@@ -44,7 +44,7 @@ beforeAll(async () => {
 	ensureLoggerSetup()
 	CoreRcon.setup()
 	// restricted layer list to exercise the unknown-layer error path; the default accepts anything
-	emu = new Emulator({ layerChangeDelayMs: 50, knownLayers: ['Harju_RAAS_v1', 'Sumari_Seed_v1'] })
+	emu = new Emulator({ layerChangeDelayMs: 50, knownLayers: ['Harju_RAAS_v1', 'Sumari_Seed_v1', 'JensensRange_USA-PLA'] })
 	await emu.start()
 	rcon = new Rcon({
 		serverId: 'emu-test',
@@ -73,6 +73,12 @@ describe('rcon frontend via the app client', () => {
 		expect(set).toEqual({ code: 'ok', data: 'Set next layer to Sumari_Seed_v1 RGF VDV' })
 		const res = await rcon.execute('ShowNextMap')
 		expect(res).toEqual({ code: 'ok', data: 'Next level is Sumari, layer is Sumari_Seed_v1, factions RGF VDV' })
+	})
+
+	it("reports a training layer's factions from its name when the command gives none", async () => {
+		await rcon.execute('AdminSetNextLayer JensensRange_USA-PLA')
+		const res = await rcon.execute('ShowNextMap')
+		expect(res).toEqual({ code: 'ok', data: 'Next level is JensensRange, layer is JensensRange_USA-PLA, factions USA PLA' })
 	})
 
 	it('rejects unknown layers like the real server', async () => {

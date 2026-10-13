@@ -535,6 +535,18 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		)
 	}
 	if (
+		appEvent.type === 'SCHEDULED_JOB_SUCCESS' ||
+		appEvent.type === 'SCHEDULED_JOB_FAILED' ||
+		appEvent.type === 'SCHEDULED_JOB_CANCELLED'
+	) {
+		const failed = appEvent.type === 'SCHEDULED_JOB_FAILED'
+		return (
+			<Atoms.EventLine time={event.time} icon={<EventIcon name="Clock" className={failed ? 'text-destructive' : 'text-text-3'} />}>
+				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
+			</Atoms.EventLine>
+		)
+	}
+	if (
 		appEvent.type === 'SETTINGS_UPDATED' ||
 		appEvent.type === 'SERVER_REGISTRY_CHANGED' ||
 		appEvent.type === 'FILTER_CHANGED' ||
