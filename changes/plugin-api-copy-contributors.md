@@ -4,5 +4,5 @@ kind: added
 minor: true
 ---
 
-The plugin API is version 0.15.2. Plugins can add one rotation's contributors to another with
-`Rotations.copyContributors`.
+The plugin API is version 0.15.3. Plugins can read, add and remove the contributors of a filter or rotation, and
+copy one filter's or rotation's contributors to another.

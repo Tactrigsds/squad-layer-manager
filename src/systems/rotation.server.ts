@@ -68,25 +68,116 @@ async function recordChange(
 }
 
 async function recordContributor(
-	ctx: C.Db & USR.Ctx.Id,
+	ctx: C.Db,
 	action: AppEvents.RotationContributorChanged['action'],
-	input: ToggleContributorInput,
+	rotationId: ROT.RotationId,
+	contributor: RBAC.Contributor,
+	actor: AppEvents.Actor,
 ) {
-	const [row] = await ctx.db().select({ name: T.name }).from(T).where(E.eq(T.id, input.rotationId)).limit(1)
+	const [row] = await ctx.db().select({ name: T.name }).from(T).where(E.eq(T.id, rotationId)).limit(1)
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.RotationContributorChanged>({
 			type: 'ROTATION_CONTRIBUTOR_CHANGED',
 			action,
-			rotationId: input.rotationId,
+			rotationId,
 			rotationName: row?.name,
-			contributor: input.userId !== undefined ? { type: 'user', userId: input.userId } : { type: 'role', roleId: input.roleId! },
-			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			contributor,
+			actor,
 			serverId: null,
 			matchId: null,
 			causeId: null,
 		}),
 	)
+}
+
+function toContributor(input: ToggleContributorInput): RBAC.Contributor {
+	return input.userId !== undefined ? { type: 'user', userId: input.userId } : { type: 'role', roleId: input.roleId! }
+}
+
+function invalidateContributor(contributor: RBAC.Contributor) {
+	if (contributor.type === 'user') Rbac.invalidateUser(contributor.userId)
+	else Rbac.invalidateAll()
+}
+
+export async function listContributors(ctx: C.Db, rotationId: ROT.RotationId): Promise<RBAC.Contributor[]> {
+	const users = await ctx
+		.db()
+		.select({ userId: Schema.rotationUserContributors.userId })
+		.from(Schema.rotationUserContributors)
+		.where(E.eq(Schema.rotationUserContributors.rotationId, rotationId))
+	const roles = await ctx
+		.db()
+		.select({ roleId: Schema.rotationRoleContributors.roleId })
+		.from(Schema.rotationRoleContributors)
+		.where(E.eq(Schema.rotationRoleContributors.rotationId, rotationId))
+	return [
+		...users.map((u): RBAC.Contributor => ({ type: 'user', userId: u.userId })),
+		...roles.map((r): RBAC.Contributor => ({ type: 'role', roleId: r.roleId })),
+	]
+}
+
+// checked up front because a missing rotation or user would otherwise fail the insert's foreign key
+export async function addContributor(ctx: C.Db, rotationId: ROT.RotationId, contributor: RBAC.Contributor, actor: AppEvents.Actor) {
+	const [rotation] = await ctx.db().select({ id: T.id }).from(T).where(E.eq(T.id, rotationId)).limit(1)
+	if (!rotation) return { code: 'err:not-found' as const }
+	let res
+	switch (contributor.type) {
+		case 'user': {
+			const [user] = await ctx
+				.db()
+				.select({ id: Schema.users.discordId })
+				.from(Schema.users)
+				.where(E.eq(Schema.users.discordId, contributor.userId))
+				.limit(1)
+			if (!user) return { code: 'err:unknown-user' as const }
+			res = await returnInsertErrors(ctx.db().insert(Schema.rotationUserContributors).values({ rotationId, userId: contributor.userId }))
+			break
+		}
+		case 'role':
+			res = await returnInsertErrors(ctx.db().insert(Schema.rotationRoleContributors).values({ rotationId, roleId: contributor.roleId }))
+			break
+		default:
+			assertNever(contributor)
+	}
+	if (res.code === 'err:already-exists') return { code: 'err:already-exists' as const }
+	await recordContributor(ctx, 'added', rotationId, contributor, actor)
+	invalidateContributor(contributor)
+	return { code: 'ok' as const }
+}
+
+export async function removeContributor(ctx: C.Db, rotationId: ROT.RotationId, contributor: RBAC.Contributor, actor: AppEvents.Actor) {
+	let resultSet
+	switch (contributor.type) {
+		case 'user':
+			resultSet = await ctx
+				.db()
+				.delete(Schema.rotationUserContributors)
+				.where(
+					E.and(
+						E.eq(Schema.rotationUserContributors.rotationId, rotationId),
+						E.eq(Schema.rotationUserContributors.userId, contributor.userId),
+					),
+				)
+			break
+		case 'role':
+			resultSet = await ctx
+				.db()
+				.delete(Schema.rotationRoleContributors)
+				.where(
+					E.and(
+						E.eq(Schema.rotationRoleContributors.rotationId, rotationId),
+						E.eq(Schema.rotationRoleContributors.roleId, contributor.roleId),
+					),
+				)
+			break
+		default:
+			assertNever(contributor)
+	}
+	if (resultSet.changes === 0) return { code: 'err:not-found' as const }
+	await recordContributor(ctx, 'removed', rotationId, contributor, actor)
+	invalidateContributor(contributor)
+	return { code: 'ok' as const }
 }
 
 function emit(ctx: C.Db, mutation: ROT.Mutation, actor: AppEvents.Actor) {
@@ -391,23 +482,24 @@ export async function cloneRotation(ctx: C.Db & CS.AbortSignal, input: ROT.Clone
 		{ clonedFrom: source.id },
 	)
 	if (res.code !== 'ok' || !input.copyContributors) return res
-	await insertContributorsFrom(ctx, source.id, input.id)
+	await insertContributorsFrom(ctx, source.id, input.id, actor)
 	return res
 }
 
 /** Adds the source's contributors to the target's. Contributors the target already has are kept. */
-export async function copyContributors(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId) {
+export async function copyContributors(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId, actor: AppEvents.Actor) {
 	const found = await ctx
 		.db()
 		.select({ id: T.id })
 		.from(T)
 		.where(E.inArray(T.id, [sourceId, targetId]))
 	if (!found.some((r) => r.id === sourceId) || !found.some((r) => r.id === targetId)) return { code: 'err:not-found' as const }
-	await insertContributorsFrom(ctx, sourceId, targetId)
+	await insertContributorsFrom(ctx, sourceId, targetId, actor)
 	return { code: 'ok' as const }
 }
 
-async function insertContributorsFrom(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId) {
+// records an event only for the contributors it actually added
+async function insertContributorsFrom(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId, actor: AppEvents.Actor) {
 	const users = await ctx
 		.db()
 		.select()
@@ -418,22 +510,28 @@ async function insertContributorsFrom(ctx: C.Db, sourceId: ROT.RotationId, targe
 		.select()
 		.from(Schema.rotationRoleContributors)
 		.where(E.eq(Schema.rotationRoleContributors.rotationId, sourceId))
+	const added: RBAC.Contributor[] = []
 	if (users.length > 0) {
-		await ctx
+		const inserted = await ctx
 			.db()
 			.insert(Schema.rotationUserContributors)
 			.values(users.map((u) => ({ rotationId: targetId, userId: u.userId })))
 			.onConflictDoNothing()
+			.returning({ userId: Schema.rotationUserContributors.userId })
+		for (const u of inserted) added.push({ type: 'user', userId: u.userId })
 	}
 	if (roles.length > 0) {
-		await ctx
+		const inserted = await ctx
 			.db()
 			.insert(Schema.rotationRoleContributors)
 			.values(roles.map((r) => ({ rotationId: targetId, roleId: r.roleId })))
 			.onConflictDoNothing()
-		Rbac.invalidateAll()
-	} else {
-		for (const u of users) Rbac.invalidateUser(u.userId)
+			.returning({ roleId: Schema.rotationRoleContributors.roleId })
+		for (const r of inserted) added.push({ type: 'role', roleId: r.roleId })
+	}
+	for (const contributor of added) {
+		await recordContributor(ctx, 'added', targetId, contributor, actor)
+		invalidateContributor(contributor)
 	}
 }
 
@@ -542,24 +640,7 @@ export const orpcRouter = {
 		.handler(async ({ input, context: ctx }) => {
 			const denyRes = await denyUnlessOwner(ctx, input.rotationId)
 			if (denyRes) return denyRes
-			const res = input.userId
-				? await returnInsertErrors(
-						ctx.db().insert(Schema.rotationUserContributors).values({ rotationId: input.rotationId, userId: input.userId }),
-					)
-				: await returnInsertErrors(
-						ctx.db().insert(Schema.rotationRoleContributors).values({ rotationId: input.rotationId, roleId: input.roleId! }),
-					)
-			switch (res.code) {
-				case 'err:already-exists':
-					return { code: 'err:already-exists' as const }
-				case 'ok':
-					await recordContributor(ctx, 'added', input)
-					if (input.userId) Rbac.invalidateUser(input.userId)
-					else Rbac.invalidateAll()
-					return { code: 'ok' as const }
-				default:
-					assertNever(res)
-			}
+			return await addContributor(ctx, input.rotationId, toContributor(input), { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 
 	removeContributor: orpcBase
@@ -568,30 +649,7 @@ export const orpcRouter = {
 		.handler(async ({ input, context: ctx }) => {
 			const denyRes = await denyUnlessOwner(ctx, input.rotationId)
 			if (denyRes) return denyRes
-			const resultSet = input.userId
-				? await ctx
-						.db()
-						.delete(Schema.rotationUserContributors)
-						.where(
-							E.and(
-								E.eq(Schema.rotationUserContributors.rotationId, input.rotationId),
-								E.eq(Schema.rotationUserContributors.userId, input.userId),
-							),
-						)
-				: await ctx
-						.db()
-						.delete(Schema.rotationRoleContributors)
-						.where(
-							E.and(
-								E.eq(Schema.rotationRoleContributors.rotationId, input.rotationId),
-								E.eq(Schema.rotationRoleContributors.roleId, input.roleId!),
-							),
-						)
-			if (resultSet.changes === 0) return { code: 'err:not-found' as const }
-			await recordContributor(ctx, 'removed', input)
-			if (input.userId) Rbac.invalidateUser(input.userId)
-			else Rbac.invalidateAll()
-			return { code: 'ok' as const }
+			return await removeContributor(ctx, input.rotationId, toContributor(input), { type: 'slm-user', userId: ctx.user.discordId })
 		}),
 }
 

@@ -233,6 +233,22 @@ A filter that `create` makes is owned by your plugin, and the filter index names
 To make an admin the owner instead, pass `owner: { type: 'slm-user', userId: 123456789012345678n }` with their discord
 user id. That admin gets the filter-owner role over the filter and can edit it and manage its contributors.
 
+A filter's contributors are users and roles that can edit it without owning it. Your plugin can read and change them
+on any filter:
+
+```ts
+await Filters.getContributors(ctx, 'no-seed') // [{ type: 'user', userId: 123456789012345678n }, { type: 'role', roleId: 'mappers' }]
+await Filters.addContributor(ctx, 'no-seed', { type: 'role', roleId: 'mappers' })
+await Filters.removeContributor(ctx, 'no-seed', { type: 'user', userId: 123456789012345678n })
+await Filters.copyContributors(ctx, 'no-seed', 'no-seed-2') // adds the first filter's contributors to the second
+```
+
+`addContributor` refuses a user who has never signed in to SLM with `err:unknown-user`, and one the filter already has
+with `err:already-exists`. The three writes answer `err:not-found` for a filter that does not exist, and
+`removeContributor` answers it for a contributor the filter does not have. `copyContributors` keeps the contributors
+the target already has. The audit log records a `FILTER_CONTRIBUTOR_CHANGED` naming your plugin for each contributor
+added or removed.
+
 Every filter's `owner` is one of `{ type: 'slm-user', userId }`, `{ type: 'plugin', pluginId }` or
 `{ type: 'system' }`. A system-owned filter is one SLM itself created, such as a fresh install's starting pool.
 
@@ -294,12 +310,22 @@ with `rotations:write-all` can edit and delete it by hand, and contributors that
 an admin the owner instead, pass `owner: { type: 'slm-user', userId: 123456789012345678n }`. That admin gets the
 rotation-owner role over the rotation, and can edit and delete it and manage its contributors. `clone` copies the
 source's items, description and repeat ruleset, and its tags when `copyTags` is set. It never copies contributors.
-Use `copyContributors` to add one rotation's contributors to another, such as last week's rotation's contributors to
-this week's.
+
+A rotation's contributors are users and roles that can edit it without owning it. Your plugin can read and change
+them on any rotation:
 
 ```ts
-await Rotations.copyContributors(ctx, 'weekend-mix', 'weekend-mix-2') // { code: 'ok' } or { code: 'err:not-found' }
+await Rotations.getContributors(ctx, 'weekend-mix') // [{ type: 'user', userId: 123456789012345678n }, { type: 'role', roleId: 'mappers' }]
+await Rotations.addContributor(ctx, 'weekend-mix', { type: 'role', roleId: 'mappers' })
+await Rotations.removeContributor(ctx, 'weekend-mix', { type: 'user', userId: 123456789012345678n })
+await Rotations.copyContributors(ctx, 'weekend-mix', 'weekend-mix-2') // adds the first rotation's contributors to the second
 ```
+
+`addContributor` refuses a user who has never signed in to SLM with `err:unknown-user`, and one the rotation already
+has with `err:already-exists`. The three writes answer `err:not-found` for a rotation that does not exist, and
+`removeContributor` answers it for a contributor the rotation does not have. `copyContributors` keeps the contributors
+the target already has. The audit log records a `ROTATION_CONTRIBUTOR_CHANGED` naming your plugin for each
+contributor added or removed.
 
 Your writes are ordinary writes. Every open page updates, and the audit log records a `ROTATION_CHANGED` naming your
 plugin rather than a person. Writing the `rotations` table through `ctx.db()` skips all of that.

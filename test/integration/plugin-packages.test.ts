@@ -296,6 +296,43 @@ describe('packaged plugins', () => {
 		expect(await call('renameFilter', { id: 'hello-pool', name: 'Hello pool v2' })).toMatchObject({ code: 'ok' })
 		expect(filterRow().name).toBe('Hello pool v2')
 
+		const admin = { kind: 'filter', id: 'hello-pool', userId: String(ADMIN_USER.discordId) }
+		const role = { kind: 'filter', id: 'hello-pool', roleId: 'hello-mappers' }
+		expect(await call('addContributor', admin)).toMatchObject({ code: 'ok' })
+		expect(await call('addContributor', admin)).toMatchObject({ code: 'err:already-exists' })
+		expect(await call('addContributor', role)).toMatchObject({ code: 'ok' })
+		expect(await call('addContributor', { ...admin, userId: '999999999999999999' })).toMatchObject({ code: 'err:unknown-user' })
+		expect(await call('addContributor', { ...role, id: 'no-such-filter' })).toMatchObject({ code: 'err:not-found' })
+		expect(await call('getContributors', { kind: 'filter', id: 'hello-pool' })).toEqual([
+			{ type: 'user', userId: admin.userId },
+			{ type: 'role', roleId: 'hello-mappers' },
+		])
+		expect(await call('makeFilter', { id: 'hello-pool-copy' })).toMatchObject({ code: 'ok' })
+		expect(await call('copyContributors', { kind: 'filter', sourceId: 'hello-pool', targetId: 'hello-pool-copy' })).toMatchObject({
+			code: 'ok',
+		})
+		expect(await call('copyContributors', { kind: 'filter', sourceId: 'hello-pool', targetId: 'hello-pool-copy' })).toMatchObject({
+			code: 'ok',
+		})
+		expect(await call('getContributors', { kind: 'filter', id: 'hello-pool-copy' })).toHaveLength(2)
+		expect(await call('removeContributor', admin)).toMatchObject({ code: 'ok' })
+		expect(await call('removeContributor', admin)).toMatchObject({ code: 'err:not-found' })
+		expect(await call('getContributors', { kind: 'filter', id: 'hello-pool' })).toEqual([{ type: 'role', roleId: 'hello-mappers' }])
+		// the user and role on hello-pool, the two the copy added, then the removal; the repeated copy added nothing
+		expect(
+			readRows<{ action: string; filterId: string }>(
+				`SELECT json_extract(data, '$.json.action') AS action, json_extract(data, '$.json.filterId') AS filterId FROM appEvents
+				 WHERE type = 'FILTER_CONTRIBUTOR_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
+			),
+		).toEqual([
+			{ action: 'added', filterId: 'hello-pool' },
+			{ action: 'added', filterId: 'hello-pool' },
+			{ action: 'added', filterId: 'hello-pool-copy' },
+			{ action: 'added', filterId: 'hello-pool-copy' },
+			{ action: 'removed', filterId: 'hello-pool' },
+		])
+
+		expect(await call('dropFilter', { id: 'hello-pool-copy' })).toMatchObject({ code: 'ok' })
 		expect(await call('dropFilter', { id: 'hello-pool' })).toMatchObject({ code: 'ok' })
 		expect(filterRow()).toBeUndefined()
 
@@ -304,7 +341,7 @@ describe('packaged plugins', () => {
 				`SELECT json_extract(data, '$.json.action') AS action FROM appEvents
 				 WHERE type = 'FILTER_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
 			).map((r) => r.action),
-		).toEqual(['created', 'updated', 'deleted'])
+		).toEqual(['created', 'updated', 'created', 'deleted', 'deleted'])
 	})
 
 	// Nothing stopped an admin deleting a filter a plugin's config named, which left the plugin failing later
@@ -392,11 +429,40 @@ describe('packaged plugins', () => {
 			readRows<{ userId: string }>(`SELECT userId FROM rotationUserContributors WHERE rotationId = ?`, id).map((r) => r.userId)
 		expect(contributors('hello-rot-copy')).toEqual([])
 		expect(await client.rotations.addContributor({ rotationId: 'hello-rot', userId: OUTSIDER.discordId })).toMatchObject({ code: 'ok' })
-		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
+		expect(await call('copyContributors', { kind: 'rotation', sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({
+			code: 'ok',
+		})
 		expect(contributors('hello-rot-copy')).toEqual([String(OUTSIDER.discordId)])
 		// a repeated copy keeps what the target already has rather than failing on it
-		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
-		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'no-such-rot' })).toMatchObject({ code: 'err:not-found' })
+		expect(await call('copyContributors', { kind: 'rotation', sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({
+			code: 'ok',
+		})
+		expect(await call('copyContributors', { kind: 'rotation', sourceId: 'hello-rot', targetId: 'no-such-rot' })).toMatchObject({
+			code: 'err:not-found',
+		})
+
+		const outsider = { kind: 'rotation', id: 'hello-rot-copy', userId: String(OUTSIDER.discordId) }
+		const role = { kind: 'rotation', id: 'hello-rot-copy', roleId: 'hello-mappers' }
+		expect(await call('getContributors', { kind: 'rotation', id: 'hello-rot-copy' })).toEqual([{ type: 'user', userId: outsider.userId }])
+		expect(await call('addContributor', role)).toMatchObject({ code: 'ok' })
+		expect(await call('addContributor', role)).toMatchObject({ code: 'err:already-exists' })
+		expect(await call('addContributor', { kind: 'rotation', id: 'hello-rot-copy', userId: '999999999999999999' })).toMatchObject({
+			code: 'err:unknown-user',
+		})
+		expect(await call('addContributor', { ...role, id: 'no-such-rot' })).toMatchObject({ code: 'err:not-found' })
+		expect(await call('removeContributor', outsider)).toMatchObject({ code: 'ok' })
+		expect(await call('removeContributor', outsider)).toMatchObject({ code: 'err:not-found' })
+		expect(await call('getContributors', { kind: 'rotation', id: 'hello-rot-copy' })).toEqual([{ type: 'role', roleId: 'hello-mappers' }])
+		expect(
+			readRows<{ action: string; contributor: string }>(
+				`SELECT json_extract(data, '$.json.action') AS action, json_extract(data, '$.json.contributor.type') AS contributor FROM appEvents
+				 WHERE type = 'ROTATION_CONTRIBUTOR_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
+			),
+		).toEqual([
+			{ action: 'added', contributor: 'user' },
+			{ action: 'added', contributor: 'role' },
+			{ action: 'removed', contributor: 'user' },
+		])
 
 		expect(await call('updateRotation', { id: 'hello-rot', name: 'Hello rotation v2', layerIds: [LAYERS.sumariSeed] })).toMatchObject({
 			code: 'ok',

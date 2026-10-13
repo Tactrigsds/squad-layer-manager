@@ -7,7 +7,7 @@ import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
-import type * as USR from '@/models/users.models'
+import * as USR from '@/models/users.models'
 
 import { assertNever } from './lib/type-guards'
 
@@ -84,6 +84,13 @@ export const UserDefinedRoleIdSchema = z
 			.map((opt) => opt.shape.type.value)
 			.join(', ')}`,
 	})
+
+/** A user or a role that can edit a filter or rotation it does not own. */
+export const ContributorSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('user'), userId: USR.UserIdSchema }),
+	z.object({ type: z.literal('role'), roleId: UserDefinedRoleIdSchema }),
+])
+export type Contributor = z.infer<typeof ContributorSchema>
 
 export type RoleAssignment =
 	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
