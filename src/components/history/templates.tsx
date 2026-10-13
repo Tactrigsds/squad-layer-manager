@@ -85,7 +85,7 @@ function CopyId(props: { kind: SM_Msgs.IdKind; id: string }) {
 // chevron, the row's own columns, then the events count: PLAYER_ROW_COLUMNS counts all three groups
 export const PLAYER_ROW_COLUMNS = 8
 
-export function PlayerRow(props: { row: HQ.PlayerRow }) {
+export function PlayerRow(props: { row: HQ.PlayerRow; timeZone: string }) {
 	const { row } = props
 	return (
 		<ExpandableRow
@@ -116,14 +116,20 @@ export function PlayerRow(props: { row: HQ.PlayerRow }) {
 			</td>
 			<td className={NUM_CELL}>{row.matches}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
-			<td className={CELL}>{MsgFmt.formatDate(row.lastSeen, 'dateTime')}</td>
+			<td className={CELL}>{MsgFmt.formatDate(row.lastSeen, 'dateTime', undefined, props.timeZone)}</td>
 		</ExpandableRow>
 	)
 }
 
 export const MATCH_ROW_COLUMNS = 11
 
-export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormalized: boolean; events: number; setBy: string }) {
+export function MatchRow(props: {
+	details: MH.MatchDetails
+	displayTeamsNormalized: boolean
+	events: number
+	setBy: string
+	timeZone: string
+}) {
 	const { details } = props
 	const time = MatchSummary.matchTime(details)
 	return (
@@ -133,7 +139,7 @@ export function MatchRow(props: { details: MH.MatchDetails; displayTeamsNormaliz
 			columns={MATCH_ROW_COLUMNS}
 			menu={{ kind: 'layer', layerIds: [details.layerId], historyEntryIds: [details.historyEntryId] }}
 		>
-			<td className={CELL}>{time ? MsgFmt.formatDate(time, 'dateTime') : ''}</td>
+			<td className={CELL}>{time ? MsgFmt.formatDate(time, 'dateTime', undefined, props.timeZone) : ''}</td>
 			<td className={CELL}>{details.serverId}</td>
 			<td className="px-2 py-1 align-top">
 				<Atoms.ShortLayerName

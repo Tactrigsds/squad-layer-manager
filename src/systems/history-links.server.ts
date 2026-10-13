@@ -6,7 +6,6 @@ import { assertNever } from '@/lib/type-guards'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as CS from '@/models/context-shared.models'
-import * as DM from '@/models/discord.models'
 import * as HQ from '@/models/history.models'
 import type * as SETTINGS from '@/models/settings.models'
 import * as DB from '@/server/db'
@@ -20,7 +19,7 @@ import * as Settings from '@/systems/settings.server'
 
 // Quotes a linked history selection back into discord. A message in the home guild whose links to the history page
 // carry selections gets one reply, attaching each selection's events as a text file (the same text copying them in
-// the app gives) with a line summarizing it, which follows the message as it is edited or deleted.
+// the app gives) with a line giving its event count and time zone, which follows the message as it is edited or deleted.
 //
 // Answered only for a poster who may query history (`history:query`), and scoped to the servers they can see, the way
 // their own query of the link would be. The reply itself is public to the channel, as the link was.
@@ -32,9 +31,7 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.httpServer })
 let ENV!: ReturnType<typeof envBuilder>
 
 const MAX_LINKS_PER_MESSAGE = 3
-const TIME_ZONE = 'UTC'
-
-type Quote = { text: string; events: number; from: number; to: number }
+type Quote = { text: string; events: number; timeZone: string }
 
 export function setup() {
 	log = module.getLogger()
@@ -164,17 +161,13 @@ async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selecti
 	if (await Rbac.tryDenyProcedureAccess(ctx, 'history.selectionText', undefined)) return []
 	const quotes: Quote[] = []
 	for (const link of links) {
-		const res = await History.selectionText(
-			ctx,
-			link.query,
-			{ anchor: link.sel[0], head: link.sel[1] },
-			{ render: History.DEFAULT_RENDER, timeZone: TIME_ZONE },
-		)
+		// no viewer zone: a link in local time is quoted in the defaultTimeZone setting's zone
+		const res = await History.selectionText(ctx, link.query, { anchor: link.sel[0], head: link.sel[1] }, History.DEFAULT_RENDER)
 		if (res.code !== 'ok') {
 			log.info({ code: res.code }, 'not quoting a linked selection from %s', message.author.username)
 			continue
 		}
-		quotes.push({ text: res.text, events: res.count, from: res.from, to: res.to })
+		quotes.push({ text: res.text, events: res.count, timeZone: res.timeZone })
 	}
 	return quotes
 }
@@ -184,18 +177,7 @@ function replyPayload(quotes: Quote[]) {
 	const files: D.AttachmentPayload[] = []
 	quotes.forEach((quote, i) => {
 		const name = quotes.length === 1 ? 'selection.txt' : `selection-${i + 1}.txt`
-		summaries.push(
-			I18n.ambient.text(
-				HistoryMsgs.quotedSelectionSummary({
-					file: name,
-					events: quote.events,
-					lines: quote.text.split('\n').length,
-					from: DM.timestamp(quote.from),
-					to: DM.timestamp(quote.to),
-					span: quote.from === quote.to ? 'instant' : 'range',
-				}),
-			),
-		)
+		summaries.push(I18n.ambient.text(HistoryMsgs.quotedSelectionSummary({ events: quote.events, timeZone: quote.timeZone })))
 		files.push({ attachment: Buffer.from(quote.text, 'utf8'), name })
 	})
 	return { content: summaries.join('\n'), files, allowedMentions: { parse: [], repliedUser: false } }

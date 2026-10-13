@@ -15,6 +15,7 @@ import { filter } from '../harness/arrange'
 // Map_Gamemode_vN: a mod layer carries its collection ('Umbara_RAAS_v3_GC') and a training layer collapses to
 // the bare map name ('Umbara'), which also makes SLM's set-next disagree with the layer the server reports
 // back and prepend it to the queue again. Every real pool is filtered; this is the shared app's.
+export const SHARED_SERVER_TIME_ZONE = 'Pacific/Chatham'
 const SHARED_POOL_FILTER = filter('shared-app-pool', 'Vanilla RAAS', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Collection', 'OWI')]))
 
 export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTelemetry: void }, { workerApp: AppFixture }>({
@@ -35,8 +36,11 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		async ({}, use) => {
 			const app = await createAppFixture({
 				filters: [SHARED_POOL_FILTER],
-				serverSettings: (settings) =>
-					settings.queue.mainPool.constrainGeneration.push({ filterId: SHARED_POOL_FILTER.id, applyAs: 'regular' }),
+				serverSettings: (settings) => {
+					settings.queue.mainPool.constrainGeneration.push({ filterId: SHARED_POOL_FILTER.id, applyAs: 'regular' })
+					// an offset neither the app process nor the browser has, so history's `tz=server` shows in times
+					settings.timeZone = SHARED_SERVER_TIME_ZONE
+				},
 			})
 			await use(app)
 			await app.dispose()

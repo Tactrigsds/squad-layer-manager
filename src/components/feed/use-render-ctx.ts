@@ -10,7 +10,6 @@ import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import { useOutletKey } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
-import { localTimeZone } from './format'
 import * as Interactions from './interactions'
 import * as RC from './render-context'
 import * as RowText from './row-text'
@@ -27,7 +26,7 @@ export function useEventsSelectionText(events: readonly CHAT.EventEnriched[] | n
 	return React.useCallback(async (selection: RC.RowSelection, ctx: RC.RenderCtx) => {
 		const selected = RC.selectedEvents(eventsRef.current ?? [], selection)
 		if (!selected) return undefined
-		return { text: RowText.eventsText(ctx, selected, { timeZone: localTimeZone() }), count: selected.length }
+		return { text: RowText.eventsText(ctx, selected, {}), count: selected.length }
 	}, [])
 }
 

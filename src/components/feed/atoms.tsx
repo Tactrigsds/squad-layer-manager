@@ -13,6 +13,7 @@ import React from 'react'
 import * as DH from '@/lib/display-helpers'
 import { withThrown } from '@/lib/error'
 import * as Obj from '@/lib/object-utils'
+import * as TZ from '@/lib/time-zones'
 import { isNullOrUndef } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -43,11 +44,20 @@ function shortTime(time: number) {
 }
 
 export function EventTime(props: { time: number }) {
+	const zone = RC.currentTimeZone()
+	let text: string
+	if (zone) text = TZ.formatDateTime(props.time, zone)
+	else text = RC.usingFullTimestamps() ? formatDateTime(props.time) : shortTime(props.time)
 	return (
 		<>
-			<button type="button" className="shrink-0" data-state="closed" {...{ [RC.TIP_TIME_ATTR]: props.time }}>
+			<button
+				type="button"
+				className="shrink-0"
+				data-state="closed"
+				{...{ [RC.TIP_TIME_ATTR]: props.time, [RC.TIP_TIME_ZONE_ATTR]: zone }}
+			>
 				<span dir="ltr" className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-					{RC.usingFullTimestamps() ? formatDateTime(props.time) : shortTime(props.time)}
+					{text}
 				</span>
 			</button>
 			<RowMatchId />

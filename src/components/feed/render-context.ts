@@ -93,6 +93,21 @@ export function currentRowMatchId(): number | undefined {
 	return rowMatchId
 }
 
+// The IANA zone rows draw their times in, ambient for the same reason the timestamp format is. Unset means the
+// process's own zone, which is the viewer's wherever a row is built in the browser. Only ever set around a synchronous
+// render pass.
+let timeZone: string | undefined
+
+export function setTimeZone(value: string | undefined): string | undefined {
+	const previous = timeZone
+	timeZone = value
+	return previous
+}
+
+export function currentTimeZone(): string | undefined {
+	return timeZone
+}
+
 const scopes = new Map<string, RenderCtx>()
 
 export function register(ctx: RenderCtx) {
@@ -157,6 +172,8 @@ export const TIP_ATTR = 'data-dom-tip'
 export const TIP_HEADING_ATTR = 'data-dom-tip-heading'
 /** an epoch the tooltip formats when it opens, so 600 rows don't each pay for a timezone-qualified timestamp */
 export const TIP_TIME_ATTR = 'data-dom-tip-time'
+/** the IANA zone a TIP_TIME_ATTR's epoch is drawn in, where it is not the viewer's own */
+export const TIP_TIME_ZONE_ATTR = 'data-dom-tip-tz'
 /** a match id the tooltip looks up through the scope, which already holds the page's matches */
 export const TIP_MATCH_ATTR = 'data-dom-tip-match'
 /** shift-clicking one selects every admin, ctrl-shift every admin on either side */

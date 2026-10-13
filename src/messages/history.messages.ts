@@ -34,6 +34,11 @@ export const fieldPlayer = def('Player')
 export const playerPlaceholder = def('Name, EOS or Steam64 id')
 export const fieldFrom = def('From')
 export const fieldTo = def('To')
+export const fieldTimeZone = def('Time zone')
+export const timeZoneLocal = def((zone: string) => t('Local ({zone})', { zone }))
+export const timeZoneUtc = def('UTC')
+// a server's own time zone, offered by the server's name
+export const timeZoneOfServer = def((server: string, zone: string) => t('{server} ({zone})', { server, zone }))
 export const fieldEventTypes = def('Event types')
 export const fieldVariant = def('Kill variant')
 export const fieldDamageSource = def('Damage source')
@@ -116,12 +121,8 @@ export const rawFormUnavailable = def((contentType: string) =>
 export const textSelectionNotFound = def('The selected events are not in these results.')
 
 // a discord reply quoting a linked selection
-export const quotedSelectionSummary = def(
-	(p: { file: string; events: number; lines: number; from: string; to: string; span: 'instant' | 'range' }) =>
-		t(
-			'`{file}`: {events, plural, one {# event} other {# events}}, {lines, plural, one {# line} other {# lines}}, {span, select, instant {at {from}} other {{from} to {to}}}',
-			p,
-		),
+export const quotedSelectionSummary = def((p: { events: number; timeZone: string }) =>
+	t('{events, plural, one {# event} other {# events}}, times in {timeZone}', p),
 )
 
 export const results = def((n: number) => t('{n, plural, one {# result} other {# results}}', { n }))

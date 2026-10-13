@@ -2,7 +2,6 @@ import { useIsFetching, useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { localTimeZone } from '@/components/feed/format'
 import * as RC from '@/components/feed/render-context'
 import * as Selection from '@/components/feed/selection'
 import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
@@ -10,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
-import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
@@ -46,7 +44,7 @@ export default function HistoryEvents(props: {
 	linkable?: boolean
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
-	const render = React.useMemo(() => ({ displayTeamsNormalized, locale: I18n.getAmbientLocale() }), [displayTeamsNormalized])
+	const render = React.useMemo(() => HistoryClient.renderInput(displayTeamsNormalized), [displayTeamsNormalized])
 
 	const key = React.useMemo(() => JSON.stringify([props.query, render]), [props.query, render])
 	// the pages past the first, which "load more" and a reveal both append to from outside a render
@@ -95,7 +93,6 @@ export default function HistoryEvents(props: {
 				query: props.query,
 				sel: [selection.anchor, selection.head],
 				render,
-				timeZone: localTimeZone(),
 			})
 			return res.code === 'ok' ? { text: res.text, count: res.count } : undefined
 		},

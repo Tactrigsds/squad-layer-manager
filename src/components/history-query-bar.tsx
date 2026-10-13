@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDebouncedCommit } from '@/hooks/use-debounced-commit'
 import * as Browser from '@/lib/browser'
+import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -115,6 +116,9 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 			<Field label={tr.text(HistoryMsgs.fieldTime())} canClear={time.isSet} onClear={time.clear} stacked={time.showCustom}>
 				<TimeRange draft={draft} set={set} showCustom={time.showCustom} setCustom={time.setCustom} />
 			</Field>
+			<Field label={tr.text(HistoryMsgs.fieldTimeZone())} canClear={draft.tz !== undefined} onClear={() => set({ tz: undefined })}>
+				<TimeZonePicker draft={draft} set={set} />
+			</Field>
 			<Field
 				label={tr.text(HistoryMsgs.fieldPlayer())}
 				canClear={!!draft.players?.length}
@@ -178,7 +182,54 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 			>
 				<TimeRange draft={draft} set={set} showCustom={time.showCustom} setCustom={time.setCustom} />
 			</Field>
+			<Field
+				className={BOUNDS_FIELD_CLASS}
+				label={tr.text(HistoryMsgs.fieldTimeZone())}
+				canClear={draft.tz !== undefined}
+				onClear={() => set({ tz: undefined })}
+			>
+				<TimeZonePicker draft={draft} set={set} />
+			</Field>
 		</div>
+	)
+}
+
+// The shorthands, then each server's zone, then every IANA zone. UTC is left out of the zones, since the `utc` shorthand
+// offers it, and so is a zone named the same as a server, which the server's entry would take in the url.
+function TimeZonePicker(props: { draft: HQ.Query; set: Set }) {
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const options = React.useMemo(() => {
+		const local = TZ.local()
+		const shorthands = HQ.TIME_ZONE_SHORTHANDS.map((tz) => {
+			switch (tz) {
+				case 'local':
+					return { value: tz, label: tr.text(HistoryMsgs.timeZoneLocal(local)), keywords: [local] }
+				case 'utc':
+					return { value: tz, label: tr.text(HistoryMsgs.timeZoneUtc()), keywords: ['UTC'] }
+				default:
+					assertNever(tz)
+			}
+		})
+		const serverIds = new Set(servers?.map((server) => server.id))
+		const serverZones = (servers ?? []).map((server) => ({
+			value: server.id,
+			label: tr.text(HistoryMsgs.timeZoneOfServer(server.displayName, server.timeZone)),
+			keywords: [server.id, server.timeZone],
+		}))
+		const zones = TZ.all()
+			.filter((zone) => zone !== 'UTC' && !serverIds.has(zone))
+			.map((zone) => ({ value: zone, label: zone }))
+		return [...shorthands, ...serverZones, ...zones]
+	}, [servers])
+	return (
+		<ComboBox
+			title={tr.text(HistoryMsgs.fieldTimeZone())}
+			className="w-full"
+			sort={false}
+			value={props.draft.tz ?? 'local'}
+			options={options}
+			onSelect={(tz) => props.set({ tz: tz === 'local' || tz === null ? undefined : tz })}
+		/>
 	)
 }
 
@@ -282,6 +333,7 @@ const PRESETS = [
 // also saved and shared, and a saved "last 7 days" would answer a different question every time it was run.
 function TimeRange(props: { draft: HQ.Query; set: Set; showCustom: boolean; setCustom: (custom: boolean) => void }) {
 	const { draft, set, setCustom, showCustom } = props
+	const zone = HistoryClient.useResultZone(draft.tz)
 	return (
 		// the picker stays put and the two dates appear under it, rather than replacing it: a custom range the
 		// user has not filled in yet sets nothing, so a picker that had swapped itself out would leave no way
@@ -312,21 +364,22 @@ function TimeRange(props: { draft: HQ.Query; set: Set; showCustom: boolean; setC
 					<SelectItem value="custom">{tr.text(HistoryMsgs.timeCustom())}</SelectItem>
 				</SelectContent>
 			</Select>
+			{/* keyed on the zone, so a zone change redraws the bounds in it rather than reinterpreting what they show */}
 			{showCustom && (
-				<>
+				<React.Fragment key={zone}>
 					<BoundInput
 						type="datetime-local"
 						label={tr.text(HistoryMsgs.fieldFrom())}
-						defaultValue={toDatetimeLocal(draft.from)}
-						onChange={(value) => set({ from: value === '' ? undefined : new Date(value).getTime() })}
+						defaultValue={draft.from === undefined ? '' : TZ.toWallInput(draft.from, zone)}
+						onChange={(value) => set({ from: value === '' ? undefined : TZ.fromWallInput(value, zone) })}
 					/>
 					<BoundInput
 						type="datetime-local"
 						label={tr.text(HistoryMsgs.fieldTo())}
-						defaultValue={toDatetimeLocal(draft.to)}
-						onChange={(value) => set({ to: value === '' ? undefined : new Date(value).getTime() })}
+						defaultValue={draft.to === undefined ? '' : TZ.toWallInput(draft.to, zone)}
+						onChange={(value) => set({ to: value === '' ? undefined : TZ.fromWallInput(value, zone) })}
 					/>
-				</>
+				</React.Fragment>
 			)}
 		</div>
 	)
@@ -339,11 +392,6 @@ function matchedPreset(query: HQ.Query) {
 	if (query.from === undefined || query.to !== undefined) return undefined
 	const age = Date.now() - query.from
 	return PRESETS.find((p) => Math.abs(age - p.ms) < PRESET_SLACK_MS)
-}
-
-function toDatetimeLocal(value: number | undefined): string {
-	if (value === undefined) return ''
-	return new Date(value - new Date(value).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
 // Searches by steam, eos or epic id, or by name through the trigram index. A picked player is stored by eos id. A

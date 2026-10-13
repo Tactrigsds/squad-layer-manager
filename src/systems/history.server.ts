@@ -8,6 +8,7 @@ import * as RC from '@/components/feed/render-context'
 import * as RowText from '@/components/feed/row-text'
 import * as ResultTable from '@/components/history/result-table'
 import { createId } from '@/lib/id'
+import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as I18n from '@/messages/i18n'
@@ -170,17 +171,12 @@ function nextCursorOf(hits: HistoryWorker.EventHit[]): HQ.EventCursor | undefine
 const RenderSchema = z.object({
 	displayTeamsNormalized: z.boolean().prefault(true),
 	locale: z.string().max(35).prefault('en'),
+	// the zone `tz=local` means, which only the viewer's browser knows. Absent for a caller with no browser behind it,
+	// which takes the defaultTimeZone setting instead
+	viewerTimeZone: z.string().max(64).refine(TZ.isValid, 'unknown time zone').optional(),
 })
 type RenderOpts = z.infer<typeof RenderSchema>
 export const DEFAULT_RENDER: RenderOpts = RenderSchema.parse({})
-
-function isTimeZone(timeZone: string) {
-	try {
-		return new Intl.DateTimeFormat('en', { timeZone }).resolvedOptions().timeZone !== ''
-	} catch {
-		return false
-	}
-}
 
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
@@ -329,7 +325,7 @@ export const router = {
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, res, input.render, input.format)
+					const page = await assembleEventPage(ctx, input.query, res, input.render, input.format)
 					return {
 						code: 'ok' as const,
 						type: 'events' as const,
@@ -355,23 +351,17 @@ export const router = {
 			}
 		}),
 
-	// the text a copied selection puts on the clipboard, in the viewer's own time zone
+	// the text a copied selection puts on the clipboard, in the query's time zone
 	selectionText: orpcBase
 		.input(
 			z.object({
 				query: HQ.QuerySchema,
 				sel: HQ.RowSelectionParamSchema,
 				render: RenderSchema.prefault({}),
-				timeZone: z.string().max(64).refine(isTimeZone, 'unknown time zone'),
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
-			return selectionText(
-				ctx,
-				input.query,
-				{ anchor: input.sel[0], head: input.sel[1] },
-				{ render: input.render, timeZone: input.timeZone },
-			)
+			return selectionText(ctx, input.query, { anchor: input.sel[0], head: input.sel[1] }, input.render)
 		}),
 
 	// Who a player is, independent of any server: what the frameless player-details window opens with. Their ids and
@@ -547,11 +537,46 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 // out as rendered html rather than event data: the same builders the live feed uses run here against a shadow
 // dom, the client inserts the strings and holds them behind content-visibility, and interactivity is all
 // attributes resolved against the client's scope (see feed/render-context.ts).
-async function assembleEventPage(ctx: QueryCtx, page: HistoryWorker.EventPage, render: RenderOpts, format: 'html' | 'wire') {
+async function assembleEventPage(
+	ctx: QueryCtx,
+	query: HQ.Query,
+	page: HistoryWorker.EventPage,
+	render: RenderOpts,
+	format: 'html' | 'wire',
+) {
 	const matches = page.matches.flatMap((row) => toMatchDetails(row) ?? [])
 	if (format === 'wire') return { rowsHtml: [] as string[], events: page.events, matches }
 	const events = page.events ? CHAT.Wire.decode(page.events) : []
-	return { rowsHtml: renderEventRows(events, matches, render, await actorLabels(ctx, events)), events: null, matches }
+	const timeZone = resultZone(query, render, () => eventServerIds(events, matches))
+	const rows = renderEventRows(events, matches, render, await actorLabels(ctx, events), timeZone)
+	return { rowsHtml: rows, events: null, matches }
+}
+
+/** `serverIds` are the servers the result's rows are from, read only where the defaultTimeZone setting needs them. */
+function resultZone(query: HQ.Query, render: RenderOpts, serverIds: () => Iterable<string | undefined>): string {
+	const local = () => render.viewerTimeZone ?? defaultZone(serverIds())
+	return HQ.zoneFor(query.tz, { local, ofServer: serverZone })
+}
+
+function defaultZone(serverIds: Iterable<string | undefined>): string {
+	const setting = Settings.GLOBAL_SETTINGS.defaultTimeZone
+	if (setting !== 'server') return setting
+	const servers = new Set(serverIds)
+	const [sole] = servers
+	return (servers.size === 1 && sole !== undefined ? serverZone(sole) : undefined) ?? 'UTC'
+}
+
+function serverZone(serverId: string): string | undefined {
+	return Settings.getServerEntry(serverId)?.timeZone
+}
+
+function* eventServerIds(events: CHAT.EventEnriched[], matches: Iterable<MH.MatchDetails>): Generator<string | undefined> {
+	const serverOfMatch = new Map<number, string>()
+	for (const match of matches) serverOfMatch.set(match.historyEntryId, match.serverId)
+	for (const event of events) {
+		if (event.type === 'APP_EVENT' && event.appEvent.serverId) yield event.appEvent.serverId
+		else yield event.matchId === null || event.matchId === undefined ? undefined : serverOfMatch.get(event.matchId)
+	}
 }
 
 // display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
@@ -606,15 +631,17 @@ function resultsRenderCtx(
 // Safe to set-and-restore without a scope: `fn` is synchronous, so nothing else can read the ambient locale while
 // it is ours. Same for the timestamp format: results span days and servers, so a row's time on its own does not
 // place it, unlike in a feed of one match.
-function withResultsAmbient<T>(render: RenderOpts, fn: () => T): T {
+function withResultsAmbient<T>(render: RenderOpts, timeZone: string, fn: () => T): T {
 	const prevLocale = I18n.getAmbientLocale()
 	I18n.setAmbientLocale(render.locale)
 	const prevFull = RC.setFullTimestamps(true)
+	const prevZone = RC.setTimeZone(timeZone)
 	try {
 		return fn()
 	} finally {
 		I18n.setAmbientLocale(prevLocale)
 		RC.setFullTimestamps(prevFull)
+		RC.setTimeZone(prevZone)
 		RC.setRowMatchId(undefined)
 	}
 }
@@ -624,9 +651,10 @@ function renderEventRows(
 	matches: MH.MatchDetails[],
 	render: RenderOpts,
 	labels: Pick<RC.RenderCtx, 'userLabel' | 'pluginName'>,
+	timeZone: string,
 ): string[] {
 	const rctx = resultsRenderCtx(matches, render, labels)
-	return withResultsAmbient(render, () => {
+	return withResultsAmbient(render, timeZone, () => {
 		const out: string[] = []
 		for (const event of events) {
 			// per row rather than per pass: results span matches, and which one a row is from is the thing a
@@ -644,8 +672,6 @@ function renderEventRows(
 // Events as copying rows in the feed gives them (see row-text.ts), always with match boundaries, the way the page
 // shows events. Players and matches as a table (see result-table.ts). Scoped to the servers `ctx.user` can see,
 // like any query.
-
-type TextOpts = { render: RenderOpts; timeZone: string }
 
 // how far a selection's ends are looked for, the same bound the page itself pages to when a link opens
 const SELECTION_MAX_PAGES = 20
@@ -672,13 +698,13 @@ async function eventsPage(ctx: QueryCtx, resolved: Resolved, order: HistoryWorke
 	}
 }
 
-async function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], opts: TextOpts) {
-	const rctx = resultsRenderCtx(matches, opts.render, await actorLabels(ctx, events))
-	return withResultsAmbient(opts.render, () => RowText.eventsText(rctx, events, { timeZone: opts.timeZone, withMatchIds: true }))
+async function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], render: RenderOpts, timeZone: string) {
+	const rctx = resultsRenderCtx(matches, render, await actorLabels(ctx, events))
+	return withResultsAmbient(render, timeZone, () => RowText.eventsText(rctx, events, { timeZone, withMatchIds: true }))
 }
 
 /** The events between a selection's ends in `query`'s results. Pages until both ends are in; `err:not-found` when they never are. */
-export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: RC.RowSelection, opts: TextOpts) {
+export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: RC.RowSelection, render: RenderOpts) {
 	if (query.type !== 'events') return { code: 'err:not-events' as const }
 	const resolved = await resolveForQuery(ctx, query)
 	if (resolved.code !== 'ok') return resolved
@@ -706,8 +732,9 @@ export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: R
 				if (event.time < from) from = event.time
 				if (event.time > to) to = event.time
 			}
-			const text = await eventsAsText(ctx, selected, [...matches.values()], opts)
-			return { code: 'ok' as const, text, count: selected.length, from, to }
+			const timeZone = resultZone(query, render, () => eventServerIds(selected, matches.values()))
+			const text = await eventsAsText(ctx, selected, [...matches.values()], render, timeZone)
+			return { code: 'ok' as const, text, count: selected.length, from, to, timeZone }
 		}
 		if (!res.nextCursor) break
 		cursor = res.nextCursor
@@ -720,16 +747,16 @@ export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: R
  * when there is one. Events: the url's selection when it has one, else the page of events its cursor starts. Players
  * and matches: the page it names, as a table.
  */
-export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: 'text/plain' | 'text/csv', opts: TextOpts) {
+export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: 'text/plain' | 'text/csv', render: RenderOpts) {
 	const { query, sel, cursor, page = 1 } = HQ.splitSearch(search)
 	if (!HQ.rawContentTypes(query.type).includes(contentType)) return { code: 'err:no-raw-form' as const }
 	if (query.type === 'events' && sel) {
-		const res = await selectionText(ctx, query, { anchor: sel[0], head: sel[1] }, opts)
+		const res = await selectionText(ctx, query, { anchor: sel[0], head: sel[1] }, render)
 		return res.code === 'ok' ? { code: 'ok' as const, body: res.text, next: undefined } : res
 	}
 	const resolved = await resolveForQuery(ctx, query)
 	if (resolved.code !== 'ok') return resolved
-	const tableOpts: ResultTable.TableOpts = { timeZone: opts.timeZone, displayTeamsNormalized: opts.render.displayTeamsNormalized }
+	const tableOpts = (timeZone: string): ResultTable.TableOpts => ({ timeZone, displayTeamsNormalized: render.displayTeamsNormalized })
 	const format = (table: ResultTable.Table) => (contentType === 'text/csv' ? ResultTable.tableCsv(table) : ResultTable.tableText(table))
 	const nextPage = (total: number, size: number): HQ.SearchExtras | undefined => (page * size < total ? { page: page + 1 } : undefined)
 
@@ -738,12 +765,15 @@ export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: '
 			const res = await eventsPage(ctx, resolved, query.order ?? 'newest', cursor)
 			if (res.code !== 'ok') return res
 			const next: HQ.SearchExtras | undefined = res.nextCursor ? { cursor: res.nextCursor } : undefined
-			return { code: 'ok' as const, body: await eventsAsText(ctx, res.events, res.matches, opts), next }
+			const timeZone = resultZone(query, render, () => eventServerIds(res.events, res.matches))
+			return { code: 'ok' as const, body: await eventsAsText(ctx, res.events, res.matches, render, timeZone), next }
 		}
 		case 'players': {
 			const res = await playersPage(ctx, resolved, query, page - 1)
 			if (res.code !== 'ok') return res
-			const body = withResultsAmbient(opts.render, () => format(ResultTable.playersTable(res.rows, tableOpts)))
+			// a player row is from every server the player played on, so only a query of one server names one
+			const timeZone = resultZone(query, render, () => [HQ.soleServerId(query)])
+			const body = withResultsAmbient(render, timeZone, () => format(ResultTable.playersTable(res.rows, tableOpts(timeZone))))
 			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.players) }
 		}
 		case 'matches': {
@@ -754,7 +784,8 @@ export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: '
 				events: res.eventCounts[details.historyEntryId] ?? 0,
 				setBy: MatchSummary.setByText(details.layerSource, res.setByNames),
 			}))
-			const body = withResultsAmbient(opts.render, () => format(ResultTable.matchesTable(rows, tableOpts)))
+			const timeZone = resultZone(query, render, () => res.matches.map((details) => details.serverId))
+			const body = withResultsAmbient(render, timeZone, () => format(ResultTable.matchesTable(rows, tableOpts(timeZone))))
 			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.matches) }
 		}
 		default:

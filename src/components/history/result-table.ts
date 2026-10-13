@@ -4,9 +4,9 @@
 import { createElement } from 'react'
 
 import * as Atoms from '@/components/feed/atoms'
-import { formatDateTimeIn } from '@/components/feed/format'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RowText from '@/components/feed/row-text'
+import * as TZ from '@/lib/time-zones'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import type * as HQ from '@/models/history.models'
@@ -35,7 +35,7 @@ export function playersTable(rows: HQ.PlayerRow[], opts: TableOpts): Table {
 			{ header: text(HistoryMsgs.colEosId()), value: (r) => r.playerId },
 			{ header: text(HistoryMsgs.colMatches()), numeric: true, value: (r) => String(r.matches) },
 			{ header: text(HistoryMsgs.colChat()), numeric: true, value: (r) => String(r.chatMessages) },
-			{ header: text(HistoryMsgs.colLastSeen()), value: (r) => formatDateTimeIn(r.lastSeen, opts.timeZone) },
+			{ header: text(HistoryMsgs.colLastSeen()), value: (r) => TZ.formatDateTime(r.lastSeen, opts.timeZone) },
 			{ header: text(HistoryMsgs.colEvents()), numeric: true, value: (r) => String(r.events) },
 		],
 		rows,
@@ -51,7 +51,7 @@ export function matchesTable(rows: MatchRow[], opts: TableOpts): Table {
 				header: text(HistoryMsgs.colTime()),
 				value: ({ details }) => {
 					const time = MatchSummary.matchTime(details)
-					return time ? formatDateTimeIn(time.getTime(), opts.timeZone) : ''
+					return time ? TZ.formatDateTime(time.getTime(), opts.timeZone) : ''
 				},
 			},
 			{ header: text(HistoryMsgs.colServer()), value: ({ details }) => details.serverId },

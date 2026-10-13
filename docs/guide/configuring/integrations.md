@@ -34,7 +34,10 @@ A sandbox server never shows the button.
 ## Discord bot
 
 When a link to a selection of events from the history page is posted in Discord, the SLM bot replies with the events
-as a text file. The bot replies only to people whose roles grant `history:query`.
+as a text file. The reply names the number of events and the time zone of their times. Times are in the time zone the
+link names. A link with no time zone of its own uses the `defaultTimeZone` setting, which by default is the `timeZone`
+setting of the server the events are from. The bot replies only to
+people whose roles grant `history:query`.
 
 The replies need _Message Content Intent_, on the _Bot_ page of your Discord app. Without it, the
 `discord.expandHistoryLinks` setting shows a warning. Turn that setting off to stop the replies.
