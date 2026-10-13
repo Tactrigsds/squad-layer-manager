@@ -305,10 +305,11 @@ test.describe('collaborative rotation editing', () => {
 		await openPath(page, '/rotations')
 		await expect(page.getByRole('link', { name: 'Weekend Competitive' })).toBeVisible({ timeout: 15_000 })
 
-		// a search lists matches as rows, says what matched, and is kept in the url
-		await page.getByRole('textbox', { name: 'Search rotations' }).fill('gorodok')
-		await expect(page).toHaveURL(/[?&]q=gorodok/)
+		// a search matches the description too, lists matches as rows, says what matched, and is kept in the url
+		await page.getByRole('textbox', { name: 'Search rotations' }).fill('saturday')
+		await expect(page).toHaveURL(/[?&]q=saturday/)
 		await expect(page.getByText('Match')).toBeVisible()
+		await expect(page.getByRole('link', { name: 'Midweek Casual' })).toBeHidden()
 		await page.getByRole('textbox', { name: 'Search rotations' }).fill('')
 		await expect(page).not.toHaveURL(/[?&]q=/)
 

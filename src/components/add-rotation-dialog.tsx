@@ -1,3 +1,4 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -12,7 +13,6 @@ import TabsList from '@/components/ui/tabs-list'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useDebounced } from '@/hooks/use-debounce'
-import * as DH from '@/lib/display-helpers'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as LL_Msgs from '@/messages/layer-list.messages'
@@ -21,7 +21,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import type * as LTag from '@/models/layer-tags.models'
-import * as ROT from '@/models/rotations.models'
+import type * as ROT from '@/models/rotations.models'
 import { tr } from '@/systems/messages.client'
 import * as RotationClient from '@/systems/rotation.client'
 
@@ -40,7 +40,8 @@ export function AddRotationDialog(props: {
 	const [selectedId, setSelectedId] = React.useState<ROT.RotationId | null>(null)
 	const pasted = useLayerTextImport({ installedMods: props.installedMods })
 	const [adding, setAdding] = React.useState(false)
-	const selected = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotation(selectedId ?? undefined))
+	const selectedRes = useQuery({ ...RotationClient.getQuery(selectedId ?? ''), enabled: tab === 'saved' && !!selectedId })
+	const selected = selectedId ? (selectedRes.data ?? undefined) : undefined
 
 	const setOpen = (open: boolean) => {
 		if (!open) {
@@ -105,6 +106,7 @@ export function AddRotationDialog(props: {
 							stores={props.stores}
 							insertAt={placement === 'end' ? 'end' : 'start'}
 							selectedId={selectedId}
+							selected={selected}
 							onSelect={setSelectedId}
 						/>
 					)}
@@ -133,14 +135,15 @@ function SavedRotationPicker(props: {
 	stores: ListHostPrt.KeyProp
 	insertAt: 'start' | 'end'
 	selectedId: ROT.RotationId | null
+	selected: ROT.Rotation | undefined
 	onSelect: (id: ROT.RotationId) => void
 }) {
+	const { selected } = props
 	const insertion = Zus.useStore(props.stores.listHost, Zus.useShallow(ListHostPrt.Sel.insertionPoint(props.insertAt)))
 	const [query, setQuery] = React.useState('')
 	const onQuery = useDebounced({ delay: 200, onChange: setQuery })
-	const rotations = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotations)
-	const shown = ROT.searchRotations(rotations.values(), { q: query, sort: 'name' }, DH.toShortLayerNameFromId)
-	const selected = props.selectedId ? rotations.get(props.selectedId) : undefined
+	const searchRes = useInfiniteQuery(RotationClient.searchQuery({ q: query, sort: 'name' }))
+	const shown = searchRes.data?.pages.flatMap((page) => page.rotations) ?? []
 
 	return (
 		// the preview takes the width its layer names need, and only wraps them where even its own row is too narrow
@@ -151,7 +154,9 @@ function SavedRotationPicker(props: {
 					aria-label={tr.text(LL_Msgs.addRotationSavedTab())}
 					className="flex max-h-72 min-h-40 flex-col overflow-y-auto rounded-md border"
 				>
-					{shown.length === 0 && <li className="p-3 text-sm text-muted-foreground">{tr.text(LL_Msgs.noRotationsMatch())}</li>}
+					{searchRes.isSuccess && shown.length === 0 && (
+						<li className="p-3 text-sm text-muted-foreground">{tr.text(LL_Msgs.noRotationsMatch())}</li>
+					)}
 					{shown.map((rotation) => (
 						<li key={rotation.id}>
 							<button
@@ -170,6 +175,19 @@ function SavedRotationPicker(props: {
 							</button>
 						</li>
 					))}
+					{searchRes.hasNextPage && (
+						<li>
+							<Button
+								variant="ghost"
+								size="sm"
+								className="w-full"
+								disabled={searchRes.isFetchingNextPage}
+								onClick={() => void searchRes.fetchNextPage()}
+							>
+								{tr.text(UI_Msgs.showMore())}
+							</Button>
+						</li>
+					)}
 				</ul>
 			</div>
 			<div className="min-w-0 max-w-full flex-[0_1_auto] rounded-md border p-2">

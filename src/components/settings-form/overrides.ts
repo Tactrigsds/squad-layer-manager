@@ -20,6 +20,7 @@ import {
 	PluginFilterField,
 	PluginFilterMultiField,
 	PluginMultilineField,
+	PluginRotationTagField,
 	PluginServerField,
 	PluginServerMultiField,
 } from '@/components/settings-form/editors/plugin-fields'
@@ -43,6 +44,7 @@ const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	'server-ids': PluginServerMultiField,
 	'discord-channel-id': PluginChannelField,
 	'discord-channel-ids': PluginChannelMultiField,
+	'rotation-tag-id': PluginRotationTagField,
 	multiline: PluginMultilineField,
 }
 

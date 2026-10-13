@@ -58,8 +58,8 @@ export function LayerTags(props: {
 }) {
 	const kind = props.kind ?? 'layer'
 	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => configuredTags(s, kind))
-	const rotations = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotations)
-	const resolved = LTag.resolveAll(props.tags, configured, (rotationId) => rotations.get(rotationId)?.name)
+	const rotationNames = RotationClient.useTagRotationNames(props.tags)
+	const resolved = LTag.resolveAll(props.tags, configured, (rotationId) => rotationNames.get(rotationId))
 	const canManage = useCanManageTags(kind)
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
 

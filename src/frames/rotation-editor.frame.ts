@@ -142,7 +142,10 @@ export const frame: Frame = frameManager.createFrame<Types>({
 
 		args.cleanup.push(
 			Rx.combineLatest([
-				Zus.toStream(RotationClient.Store, (s) => s.rotations.get(rotationId)?.repeatRulesetId ?? null, { fireImmediately: true }),
+				RotationClient.rotation$(rotationId).pipe(
+					Rx.map((rotation) => rotation?.repeatRulesetId ?? null),
+					Rx.distinctUntilChanged(),
+				),
 				Zus.toStream(SettingsClient.PublicSettingsStore, SettingsClient.selectRepeatRulesets, { fireImmediately: true }),
 			]).subscribe(([repeatRulesetId, rulesets]) => args.set({ repeatRules: [...RRS.rulesFor(rulesets, repeatRulesetId)] })),
 		)

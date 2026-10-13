@@ -204,8 +204,11 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'NameSchema',
 		'NewRotationSchema',
 		'OwnerSchema',
+		'PREVIEW_ITEMS',
 		'RotationIdSchema',
 		'RotationSchema',
+		'SearchCursorSchema',
+		'SearchInputSchema',
 		'UpdatePatchSchema',
 	],
 	'slm/models/server-events': [],
@@ -244,7 +247,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
 	'slm/systems/repeat-ruleset': ['changes', 'forServer', 'get', 'list', 'remove', 'save', 'setForServer'],
-	'slm/systems/rotation': ['addToQueue', 'changes', 'clone', 'create', 'get', 'list', 'remove', 'update'],
+	'slm/systems/rotation': ['addToQueue', 'changes', 'clone', 'create', 'get', 'remove', 'search', 'update'],
 	'slm/systems/squad-rcon': [
 		'MIN_TTL_MS',
 		'adminRenameSquad',
@@ -274,4 +277,5 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'warnAllAdmins',
 	],
 	'slm/systems/squad-server': ['endMatch', 'events$', 'getCurrTeams', 'kickPlayers', 'peekCurrentMatch', 'tryKickPlayers'],
+	'slm/systems/tags': ['ensure', 'list'],
 }

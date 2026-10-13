@@ -16,7 +16,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
  */
-export const API_VERSION = { major: 0, minor: 14, patch: 0 }
+export const API_VERSION = { major: 0, minor: 15, patch: 0 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {
@@ -286,6 +286,7 @@ export const FIELD_CONTROLS = [
 	'server-ids',
 	'discord-channel-id',
 	'discord-channel-ids',
+	'rotation-tag-id',
 	'multiline',
 ] as const
 export type FieldControl = (typeof FIELD_CONTROLS)[number]
@@ -337,7 +338,7 @@ const withControl = <S extends z.ZodType>(schema: S, control: FieldControl): S =
 
 /**
  * Config fields that render as one of SLM's pickers instead of a text box. Each stores what its name says:
- * a filter entity id, a managed server id, a Discord channel id.
+ * a filter entity id, a managed server id, a Discord channel id, a rotation tag id.
  *
  * The value is still a plain string (or array of them), so a config written by hand or through the YAML
  * editor is unaffected, and an id whose target has since been deleted still round-trips.
@@ -349,6 +350,7 @@ export const Fields = {
 	serverIds: () => withControl(z.array(z.string()), 'server-ids'),
 	discordChannelId: () => withControl(z.string(), 'discord-channel-id'),
 	discordChannelIds: () => withControl(z.array(z.string()), 'discord-channel-ids'),
+	rotationTagId: () => withControl(z.string(), 'rotation-tag-id'),
 	/** a string edited in a textarea rather than a one-line input, for message templates and the like */
 	multilineText: () => withControl(z.string(), 'multiline'),
 }

@@ -63,18 +63,31 @@ type Session = {
 }
 
 const sessions = new Map<ROT.RotationId, Session>()
+const loading = new Map<ROT.RotationId, Promise<Session | null>>()
 
-function acquire(rotationId: ROT.RotationId): Session | null {
+// the rotation's session, provisioned from the saved rotation if it has none. A session nothing attaches to is torn
+// down like one whose last watcher left.
+function getOrLoad(ctx: C.Db, rotationId: ROT.RotationId): Promise<Session | null> {
 	const existing = sessions.get(rotationId)
-	if (existing) {
-		if (existing.idleTimer) {
-			clearTimeout(existing.idleTimer)
-			existing.idleTimer = undefined
-		}
-		existing.watchers++
-		return existing
+	if (existing) return Promise.resolve(existing)
+	let load = loading.get(rotationId)
+	if (!load) {
+		load = provision(ctx, rotationId).finally(() => loading.delete(rotationId))
+		loading.set(rotationId, load)
 	}
-	const rotation = Rotation.state.rotations.get(rotationId)
+	return load
+}
+
+function attach(session: Session) {
+	if (session.idleTimer) {
+		clearTimeout(session.idleTimer)
+		session.idleTimer = undefined
+	}
+	session.watchers++
+}
+
+async function provision(ctx: C.Db, rotationId: ROT.RotationId): Promise<Session | null> {
+	const rotation = await Rotation.getRotation(ctx, rotationId)
 	if (!rotation) return null
 	const payload: Payload = {
 		rotationId,
@@ -88,18 +101,18 @@ function acquire(rotationId: ROT.RotationId): Session | null {
 			.runExclusive(() => applyAndBroadcast(payload, [{ op: 'discard-abandoned-queue-edits', opId: SLL.createOpId() }]))
 			.catch((error) => log.error(error, 'failed to discard abandoned rotation edits'))
 	})
-	const session: Session = { payload, watchers: 1, sub }
+	const session: Session = { payload, watchers: 0, sub }
+	session.idleTimer = setTimeout(() => destroy(rotationId), IDLE_TEARDOWN_DELAY)
 	sessions.set(rotationId, session)
 	log.info('provisioned rotation edit session %s', rotationId)
 	return session
 }
 
-function release(rotationId: ROT.RotationId) {
-	const session = sessions.get(rotationId)
-	if (!session) return
+function release(session: Session) {
+	if (sessions.get(session.payload.rotationId) !== session) return
 	session.watchers--
 	if (session.watchers > 0) return
-	session.idleTimer = setTimeout(() => destroy(rotationId), IDLE_TEARDOWN_DELAY)
+	session.idleTimer = setTimeout(() => destroy(session.payload.rotationId), IDLE_TEARDOWN_DELAY)
 }
 
 function destroy(rotationId: ROT.RotationId) {
@@ -201,22 +214,41 @@ export const orpcRouter = {
 		.input(z.object({ rotationId: ROT.RotationIdSchema }))
 		.handler(async function* ({ context, signal, input }) {
 			const update$ = Rx.defer(() => {
-				const session = acquire(input.rotationId)
-				if (!session) {
-					return Rx.throwError(() => new Orpc.ORPCError('NOT_FOUND', { message: `rotation ${input.rotationId} does not exist` }))
-				}
-				const init: SLL.Update = {
-					code: 'init',
-					state: Obj.deepClone(session.payload.session.state),
-					ops: Obj.deepClone(session.payload.session.ops),
-				}
-				return session.payload.op$.pipe(
-					Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
-					Rx.filter((update): update is NonNullable<typeof update> => update !== null),
-					Rx.startWith(init),
-					// if we don't do this then the orpcWs breaks
-					Rx.observeOn(Rx.asyncScheduler),
-					Rx.finalize(() => release(input.rotationId)),
+				// attaching and releasing both happen synchronously in this closure, so an unsubscribe while the session
+				// loads never leaves it attached
+				let attached: Session | null = null
+				let closed = false
+				const session$ = Rx.from(
+					getOrLoad(context, input.rotationId).then((session) => {
+						if (session && !closed) {
+							attach(session)
+							attached = session
+						}
+						return session
+					}),
+				)
+				return session$.pipe(
+					Rx.switchMap((session) => {
+						if (!session) {
+							return Rx.throwError(() => new Orpc.ORPCError('NOT_FOUND', { message: `rotation ${input.rotationId} does not exist` }))
+						}
+						const init: SLL.Update = {
+							code: 'init',
+							state: Obj.deepClone(session.payload.session.state),
+							ops: Obj.deepClone(session.payload.session.ops),
+						}
+						return session.payload.op$.pipe(
+							Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+							Rx.filter((update): update is NonNullable<typeof update> => update !== null),
+							Rx.startWith(init),
+							// if we don't do this then the orpcWs breaks
+							Rx.observeOn(Rx.asyncScheduler),
+						)
+					}),
+					Rx.finalize(() => {
+						closed = true
+						if (attached) release(attached)
+					}),
 				)
 			}).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(update$)

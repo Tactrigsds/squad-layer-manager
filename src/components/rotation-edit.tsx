@@ -47,9 +47,9 @@ import { DeleteRotationDialog, RotationFormDialog } from './rotation-dialogs'
 const RotationSourceEditor = React.lazy(() => import('./rotation-source-editor'))
 
 export default function RotationEdit(props: { rotationId: ROT.RotationId }) {
-	const rotation = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotation(props.rotationId))
-	const initialized = Zus.useStore(RotationClient.Store, (s) => s.initialized)
-	if (!rotation) return initialized ? <p className="container mx-auto py-8">{tr.text(ROT_Msgs.notFound())}</p> : null
+	const rotation = RotationClient.useRotation(props.rotationId)
+	if (rotation === undefined) return null
+	if (rotation === null) return <p className="container mx-auto py-8">{tr.text(ROT_Msgs.notFound())}</p>
 	return <RotationEditLoaded rotation={rotation} />
 }
 

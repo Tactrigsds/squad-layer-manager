@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -27,20 +28,28 @@ import { tr } from '@/systems/messages.client'
 import * as RotationClient from '@/systems/rotation.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-export type RotationFormMode = { mode: 'new' } | { mode: 'clone'; source: ROT.Rotation }
+export type RotationFormMode = { mode: 'new' } | { mode: 'clone'; source: Pick<ROT.Meta, 'id' | 'name'> }
 
 // Creates a rotation, or a copy of one, and opens it. The ID follows the name until it is edited by hand.
 export function RotationFormDialog(props: RotationFormMode & { open: boolean; onOpenChange: (open: boolean) => void }) {
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogContent className="max-w-md">{props.open && <RotationForm {...props} />}</DialogContent>
+			<DialogContent className="max-w-md">
+				{props.open && (props.mode === 'new' ? <RotationForm {...props} /> : <CloneForm {...props} />)}
+			</DialogContent>
 		</Dialog>
 	)
 }
 
-function RotationForm(props: RotationFormMode & { onOpenChange: (open: boolean) => void }) {
+// the form opens once the copy's ID is known, so the ID field starts out filled in
+function CloneForm(props: Extract<RotationFormMode, { mode: 'clone' }> & { onOpenChange: (open: boolean) => void }) {
+	const cloneId = useQuery(RotationClient.suggestCloneIdQuery(props.source.id))
+	if (!cloneId.data) return null
+	return <RotationForm {...props} cloneId={cloneId.data} />
+}
+
+function RotationForm(props: RotationFormMode & { cloneId?: ROT.RotationId; onOpenChange: (open: boolean) => void }) {
 	const navigate = useNavigate()
-	const rotations = Zus.useStore(RotationClient.Store, RotationClient.Sel.rotations)
 	// the configured default, else the ruleset of the default server
 	const defaultRepeatRulesetId = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
@@ -57,7 +66,7 @@ function RotationForm(props: RotationFormMode & { onOpenChange: (open: boolean) 
 
 	const [defaults] = React.useState(() => {
 		if (props.mode === 'new') return { name: '', id: '' }
-		return { name: F.cloneName(props.source.name), id: F.cloneId(new Set(rotations.keys()), props.source.id) }
+		return { name: F.cloneName(props.source.name), id: props.cloneId ?? '' }
 	})
 
 	const onNameChange = (name: string) => {
@@ -156,7 +165,7 @@ function RotationForm(props: RotationFormMode & { onOpenChange: (open: boolean) 
 }
 
 export function DeleteRotationDialog(props: {
-	rotation: ROT.Rotation
+	rotation: Pick<ROT.Meta, 'id' | 'name'>
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	onDeleted?: () => void

@@ -3,9 +3,9 @@ audience: operators
 kind: breaking
 ---
 
-The plugin API is version 0.14. A packed plugin that declares `^0.13` does not load until it is rebuilt against 0.14.
+The plugin API is version 0.15. A packed plugin that declares `^0.13` does not load until it is rebuilt against 0.15.
 
-The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.14` in its manifest and
+The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.15` in its manifest and
 repack it with `pnpm plugin:pack`. Changes since 0.13:
 
 - A note copied from a rotation has no `author`, and its `fromRotation` names the rotation. A plugin that reads

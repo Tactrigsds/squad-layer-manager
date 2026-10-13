@@ -74,7 +74,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.14',
+	apiVersion: '^0.15',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -271,13 +271,18 @@ await Rotations.create(ctx, {
 	],
 })
 
-Rotations.list() // every rotation, archived ones included
-Rotations.get('weekend-mix') // one, or undefined
+await Rotations.get(ctx, 'weekend-mix') // one, or undefined
+await Rotations.search(ctx, { q: 'weekend', sort: 'name' }) // a page of summaries, without items
 await Rotations.update(ctx, 'weekend-mix', { name: 'Weekend mix v2', archived: true })
 await Rotations.clone(ctx, { sourceId: 'weekend-mix', id: 'weekend-mix-2', name: 'Weekend mix 2', copyTags: true })
 await Rotations.remove(ctx, 'weekend-mix')
 Rotations.changes(ctx).subscribe((c) => ...) // every write, yours included, with the actor that made it
 ```
+
+`search` returns one page of summaries. A summary is a rotation without its items, with `itemCount` and the layers of
+its first few items in their place. `q` matches the name and the description. Archived rotations are left out unless
+`archived` is set. A page holds 60 summaries unless `limit` sets another size, up to 200. Pass the page's `nextCursor`
+back as `cursor` to get the next page, until `nextCursor` is null. Use `get` to read a rotation's items.
 
 An item without an `itemId` or `source` is given one. SLM strips attribution from every item before storing it: the
 source becomes `unknown`, tag attribution is dropped and notes lose their `author`. The layers, tags and note text are
@@ -299,11 +304,20 @@ is never refused for this reason.
 
 Owning a rotation does not lock it. A plugin can write any rotation, including one an admin made. Deactivating your
 plugin leaves its rotations behind. Find your plugin's rotations with
-`Rotations.list().filter((r) => r.owner.type === 'plugin' && r.owner.pluginId === ctx.plugin.id)`.
+``Rotations.search(ctx, { author: `plugin:${ctx.plugin.id}`, archived: true })``, paging through `nextCursor`.
 
 `create`, `update` and `clone` refuse a `repeatRulesetId` or a tag that is not configured, with
 `err:unknown-repeat-ruleset` or `err:unknown-tags`. Rotation tags are configured in the global settings, separately
-from layer tags.
+from layer tags. To let an admin choose one, declare the config field with `Fields.rotationTagId()`, which renders as a
+picker over the configured rotation tags and stores the tag's id. `slm/systems/tags` finds a tag by its label, and
+creates it when no tag has that label:
+
+```ts
+import * as Tags from 'slm/systems/tags'
+
+const res = await Tags.ensure(ctx, 'rotation', 'Fogless Friday') // or 'layer'
+if (res.code === 'ok') await Rotations.update(ctx, 'weekend-mix', { tags: [res.tag.id] })
+```
 
 `addToQueue` adds a rotation to the queue of your plugin's server, as _Add Rotation_ does for an admin:
 
@@ -608,8 +622,8 @@ action no running plugin declares grants nothing.
 
 ## Pickers
 
-A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
-one, instead of a text box. Declare it in the schema:
+A config field that stores a filter, a server, a Discord channel or a rotation tag id can render as the picker SLM
+uses for one, instead of a text box. Declare it in the schema:
 
 ```ts
 import { Fields } from 'slm/plugin/fields'
@@ -621,11 +635,11 @@ configSchema: z.object({
 })
 ```
 
-There are six: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural of each. The stored value is still
-a plain string or array of strings. A config written through the YAML editor is unaffected, and an id whose target
-has since been deleted still round-trips rather than being dropped.
+There are seven: `filterId`, `serverId`, `discordChannelId`, an `Ids` plural of each, and `rotationTagId`. The
+stored value is still a plain string or array of strings. A config written through the YAML editor is unaffected,
+and an id whose target has since been deleted still round-trips rather than being dropped.
 
-The same six are components, for a slot that picks something rather than a setting that stores it. See
+The first six are also components, for a slot that picks something rather than a setting that stores it. See
 [Components](plugin_ui.md#components).
 
 ## What a plugin can reach
@@ -661,6 +675,7 @@ absent.
 | `slm/systems/filter-entity`                                | filter reads and writes                      |
 | `slm/systems/rotation`                                     | rotation reads and writes                    |
 | `slm/systems/repeat-ruleset`                               | repeat ruleset reads and writes              |
+| `slm/systems/tags`                                         | layer and rotation tags, found or created    |
 | `slm/systems/layer-queries`                                | asking the layer table what matches          |
 | `slm/systems/app-events`                                   | writing to the audit log                     |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |

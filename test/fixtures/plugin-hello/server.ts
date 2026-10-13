@@ -5,6 +5,7 @@ import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
 import * as RBAC from 'slm/models/rbac'
+import type * as ROT from 'slm/models/rotation'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
 import * as Commands from 'slm/plugin/commands'
@@ -21,6 +22,7 @@ import * as MatchHistory from 'slm/systems/match-history'
 import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
 import * as Rotations from 'slm/systems/rotation'
 import * as SquadServer from 'slm/systems/squad-server'
+import * as Tags from 'slm/systems/tags'
 
 import manifest from './plugin.ts'
 import * as S from './schema.ts'
@@ -159,19 +161,47 @@ export const router = {
 	getRotation: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ id: z.string() }))
-		.handler(async ({ input }) => Rotations.get(input.id) ?? null),
+		.handler(async ({ context, input }) => (await Rotations.get(context, input.id)) ?? null),
+	// every rotation's id, archived ones included, a page of one at a time so that paging is exercised
 	rotationIds: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
-		.handler(async () => Rotations.list().map((r) => r.id)),
+		.handler(async ({ context }) => {
+			const ids: string[] = []
+			let cursor: ROT.SearchCursor | undefined
+			do {
+				const page = await Rotations.search(context, { archived: true, sort: 'name', limit: 1, cursor })
+				ids.push(...page.rotations.map((r) => r.id))
+				cursor = page.nextCursor ?? undefined
+			} while (cursor)
+			return ids
+		}),
 	rotationChanges: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({}))
 		.handler(async () => rotationChanges),
 	addRotationToQueue: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ id: z.string(), placement: z.enum(['replace', 'start', 'end']), tags: z.array(z.string()).optional() }))
-		.handler(async ({ context, input }) => Rotations.addToQueue(context, input.id, { placement: input.placement, tags: input.tags })),
+		.input(
+			z.object({
+				id: z.string(),
+				placement: z.enum(['replace', 'start', 'end']),
+				tags: z.array(z.string()).optional(),
+				// clears every queued item but these in the same edit
+				keepItemIds: z.array(z.string()).optional(),
+			}),
+		)
+		.handler(async ({ context, input }) =>
+			Rotations.addToQueue(context, input.id, {
+				placement: input.placement,
+				tags: input.tags,
+				clear: input.keepItemIds && ((item) => !input.keepItemIds!.includes(item.itemId)),
+			}),
+		),
+	ensureTag: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ kind: z.enum(['layer', 'rotation']), label: z.string() }))
+		.handler(async ({ context, input }) => Tags.ensure(context, input.kind, input.label)),
 	// drops every saved queue item but these
 	keepQueueItems: os
 		.meta({ access: RBAC.Access.PUBLIC })

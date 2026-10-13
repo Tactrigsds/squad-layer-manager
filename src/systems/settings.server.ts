@@ -371,7 +371,7 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	// the server's own ruleset goes with it, unless another server has come to use it, which keeps it ownerless
 	const owned = GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.ownerServerId === serverId)
 	if (owned.length > 0) {
-		const inUse = repeatRulesetIdsInUse()
+		const inUse = await repeatRulesetIdsInUse(ctx)
 		const rulesets = GLOBAL_SETTINGS.repeatRulesets.flatMap((r) => {
 			if (r.ownerServerId !== serverId) return [r]
 			if (!inUse.has(r.id)) return []
@@ -550,21 +550,21 @@ function unknownRepeatRulesetError(settings: SETTINGS.PublicServerSettings) {
 	return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
 }
 
-const repeatRulesetUsers: (() => Iterable<RRS.RulesetId>)[] = []
+const repeatRulesetUsers: ((ctx: C.Db) => Promise<Iterable<RRS.RulesetId>>)[] = []
 
 // for systems this one cannot import without a cycle (rotations), whose rulesets must survive a settings save
-export function registerRepeatRulesetUsers(read: () => Iterable<RRS.RulesetId>) {
+export function registerRepeatRulesetUsers(read: (ctx: C.Db) => Promise<Iterable<RRS.RulesetId>>) {
 	repeatRulesetUsers.push(read)
 }
 
 // the ids of the rulesets some server or rotation points at
-function repeatRulesetIdsInUse(): Set<RRS.RulesetId> {
+async function repeatRulesetIdsInUse(ctx: C.Db): Promise<Set<RRS.RulesetId>> {
 	const ids = new Set<RRS.RulesetId>()
 	for (const entry of serverRegistry.values()) {
 		if (entry.repeatRulesetId) ids.add(entry.repeatRulesetId)
 	}
 	for (const read of repeatRulesetUsers) {
-		for (const id of read()) ids.add(id)
+		for (const id of await read(ctx)) ids.add(id)
 	}
 	return ids
 }
@@ -608,7 +608,7 @@ export async function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: Ap
 
 export async function deleteRepeatRuleset(ctx: C.Db, id: RRS.RulesetId, actor: AppEvents.Actor) {
 	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) return { code: 'err:not-found' as const }
-	if (repeatRulesetIdsInUse().has(id)) {
+	if ((await repeatRulesetIdsInUse(ctx)).has(id)) {
 		return { code: 'err:repeat-ruleset-in-use' as const, message: `A server or rotation still uses the repeat ruleset "${id}"` }
 	}
 	const res = await patchGlobalSettings(ctx, { repeatRulesets: GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.id !== id) }, actor)
@@ -661,6 +661,20 @@ async function upsertTag(ctx: C.Db & USR.Ctx.Id, key: 'layerTags' | 'rotationTag
 	const res = await patchGlobalSettings(ctx, { [key]: tags }, { type: 'slm-user', userId: ctx.user.discordId })
 	if (res.code !== 'ok') return res
 	return { code: 'ok' as const, tag: input }
+}
+
+// the tag labeled `label`, matched without regard to case, created when there is none. For writers that name a tag
+// rather than hold its id.
+export async function ensureTag(ctx: C.Db, key: 'layerTags' | 'rotationTags', label: string, actor: AppEvents.Actor) {
+	const parsed = LTag.LabelSchema.safeParse(label)
+	if (!parsed.success) return { code: 'err:invalid-label' as const, message: z.prettifyError(parsed.error) }
+	const tags = GLOBAL_SETTINGS[key]
+	const existing = tags.find((t) => t.label.trim().toLowerCase() === parsed.data.toLowerCase())
+	if (existing) return { code: 'ok' as const, tag: existing }
+	const tag: LTag.Tag = { id: LTag.createTagId(parsed.data), label: parsed.data, description: '', color: LTag.suggestColor(tags) }
+	const res = await patchGlobalSettings(ctx, { [key]: [...tags, tag] }, actor)
+	if (res.code !== 'ok') return res
+	return { code: 'ok' as const, tag }
 }
 
 // ============================== unified settings bus ==============================
@@ -798,7 +812,7 @@ const globalRouter = {
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 
 			const keptRepeatRulesetIds = new Set(parseRes.data.repeatRulesets.map((r) => r.id))
-			const removedInUse = [...repeatRulesetIdsInUse()].filter((id) => !keptRepeatRulesetIds.has(id))
+			const removedInUse = [...(await repeatRulesetIdsInUse(ctx))].filter((id) => !keptRepeatRulesetIds.has(id))
 			if (removedInUse.length > 0) {
 				return {
 					code: 'err:repeat-ruleset-in-use' as const,
