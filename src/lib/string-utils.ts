@@ -44,6 +44,13 @@ export function escapeRegex(str: string) {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// length in unicode code points rather than UTF-16 units, so an emoji counts as one
+export function codePointLength(str: string) {
+	let n = 0
+	for (const _ of str) n++
+	return n
+}
+
 export namespace StrPatterns {
 	export const PATH_SEGMENT = /[^/]+/
 }

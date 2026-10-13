@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
@@ -37,6 +38,17 @@ export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
 export const cs = Schema.Virtual.chatSearch
 export const us = Schema.Virtual.usernameSearch
+
+// user text as a single fts5 phrase, so operators and punctuation in it (`!`, `-`, `"`, `NOT`, `*`) are matched
+// as text rather than parsed as query syntax
+function ftsPhrase(text: string) {
+	return `"${text.replaceAll('"', '""')}"`
+}
+
+// user text as a LIKE substring pattern, for use with `ESCAPE '\'`
+function likeContains(text: string) {
+	return `%${text.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+}
 
 // abs(team1 - team2) over the match row, null while either side's tickets are unrecorded (an unfinished or
 // pre-outcome match), which every comparison then reads as not-true rather than as zero
@@ -123,7 +135,7 @@ export async function resolveUserRefs(ctx: C.Db, refs: string[]): Promise<string
 export async function resolveNamedUserIds(ctx: C.Db, name: string): Promise<string[]> {
 	const trimmed = name.trim()
 	if (trimmed === '') return []
-	const needle = `%${trimmed.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+	const needle = likeContains(trimmed)
 	// the nickname is the display name when set, so it is searched alongside the discord username the account
 	// carries; either matching is a hit, since the searcher does not know which the user goes by here
 	const rows = await ctx
@@ -167,17 +179,15 @@ export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<stri
 export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<string[]> {
 	const trimmed = name.trim()
 	if (trimmed === '') return []
-	// the trigram index answers substring matches of three or more characters (see migration 0108); a
+	// the trigram index answers substring matches of three or more code points (see migration 0108); a
 	// shorter needle falls back to scanning players, which is what every needle cost before the index
-	if (trimmed.length >= 3) {
+	if (Str.codePointLength(trimmed) >= 3) {
 		const rows = ctx
 			.db()
-			.all<{ eosId: string }>(
-				sql`SELECT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${`"${trimmed.replaceAll('"', '""')}"`} LIMIT ${MAX_NAME_MATCHES}`,
-			)
+			.all<{ eosId: string }>(sql`SELECT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${ftsPhrase(trimmed)} LIMIT ${MAX_NAME_MATCHES}`)
 		return rows.map((r) => r.eosId)
 	}
-	const needle = `%${trimmed.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+	const needle = likeContains(trimmed)
 	const rows = await ctx
 		.db()
 		.select({ eosId: Schema.players.eosId })
@@ -630,7 +640,7 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 		case 'chat.message': {
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
-			const cond = sql`${t.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
+			const cond = sql`${t.serverEventId} IN (SELECT ${cs.serverEventId} FROM ${cs} WHERE ${cs} MATCH ${ftsPhrase(needle)})`
 			return comp.neg ? negate(cond) : cond
 		}
 		case 'chat.channel':
@@ -951,7 +961,7 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			const needle = compValueList(comp)[0]
 			if (typeof needle !== 'string' || needle.length === 0) return comp.neg ? undefined : sql`0 = 1`
 			if (comp.neg) return matchHasEvent(node, art, bounds)
-			return sql`${mh.id} IN (SELECT ${cs.matchId} FROM ${cs} WHERE ${cs} MATCH ${needle})`
+			return sql`${mh.id} IN (SELECT ${cs.matchId} FROM ${cs} WHERE ${cs} MATCH ${ftsPhrase(needle)})`
 		}
 		case 'layer.layer':
 		case 'layer.map':
