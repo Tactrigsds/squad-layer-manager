@@ -20,6 +20,7 @@ import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as Reminders from 'slm/systems/post-roll-reminders'
 import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
 import * as Rotations from 'slm/systems/rotation'
 import * as Settings from 'slm/systems/settings'
@@ -597,6 +598,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		const changes = serverSettingsChanges.get(sctx.serverId) ?? []
 		serverSettingsChanges.set(sctx.serverId, changes)
 		Settings.serverChanges(sctx, sctx.serverId).subscribe((settings) => changes.push([...settings.installedMods]))
+		Reminders.register(sctx, async () => [`[hello] rolled on ${sctx.serverId}`])
 		void (async () => {
 			const matches = await MatchHistory.getRecentMatches(sctx)
 			await sctx

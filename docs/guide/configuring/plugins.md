@@ -11,11 +11,10 @@ permission.
 
 SLM ships with these plugins. They are installed but stopped by default.
 
-| Plugin           | What it does                                                              |
-| ---------------- | ------------------------------------------------------------------------- |
-| AFK Kicker       | Kicks AFK players when people are waiting in the queue, longest AFK first |
-| Balance Triggers | Watches recent match outcomes and warns admins when they look one-sided   |
-| Teamkill Warns   | Warns players when they have been teamkilled                              |
+| Plugin         | What it does                                                              |
+| -------------- | ------------------------------------------------------------------------- |
+| AFK Kicker     | Kicks AFK players when people are waiting in the queue, longest AFK first |
+| Teamkill Warns | Warns players when they have been teamkilled                              |
 
 ## Installing a plugin
 
