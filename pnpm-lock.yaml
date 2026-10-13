@@ -113,6 +113,9 @@ importers:
       codemirror-json-schema:
         specifier: ^0.8.1
         version: 0.8.1(@codemirror/language@6.12.4)(@codemirror/lint@6.9.7)(@codemirror/state@6.7.1)(@codemirror/view@6.43.6)(@lezer/common@1.5.2)
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
       dockerode:
         specifier: ^4.0.12
         version: 4.0.12
@@ -4267,6 +4270,10 @@ packages:
 
   crelt@1.0.7:
     resolution: {integrity: sha512-aK6BbWfhf4U/wCcLHKPJl/xa6VkVstRaPywWtMKGwuOLc/wZTyQYuoxgvZnNsBvv7Kg3YTBQYYBCggcviQczuA==}
+
+  croner@10.0.1:
+    resolution: {integrity: sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==}
+    engines: {node: '>=18.0'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -10337,6 +10344,8 @@ snapshots:
     optional: true
 
   crelt@1.0.7: {}
+
+  croner@10.0.1: {}
 
   cross-spawn@7.0.6:
     dependencies:

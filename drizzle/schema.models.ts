@@ -20,6 +20,7 @@ export type FilterRoleContributor = typeof Schema.filterRoleContributors.$inferS
 export type NewFilterRoleContributor = typeof Schema.filterRoleContributors.$inferInsert
 export type Rotation = typeof Schema.rotations.$inferSelect
 export type NewRotation = typeof Schema.rotations.$inferInsert
+export type ScheduledJobRun = typeof Schema.scheduledJobRuns.$inferSelect
 export type NewServer = typeof Schema.servers.$inferInsert
 export type MatchHistory = typeof Schema.matchHistory.$inferSelect
 export type NewMatchHistory = typeof Schema.matchHistory.$inferInsert

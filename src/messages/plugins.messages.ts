@@ -1,4 +1,4 @@
-import { def } from '@/models/messages.models'
+import { def, raw, t } from '@/models/messages.models'
 
 export const sectionTitle = def('Plugins')
 
@@ -108,3 +108,67 @@ export const commandTriggerTaken = def(
 )
 
 export const commandsTitle = def('Commands')
+
+// -------- scheduled jobs --------
+
+export const jobsTitle = def('Scheduled jobs')
+
+export const jobsBlurb = def(
+	'The jobs this plugin runs on a schedule, and the runs it has scheduled. Use Run now to run one straight away. Its next scheduled run stays as it was.',
+)
+
+export const jobPluginWide = def('Not tied to a server')
+
+export const jobNextRun = def('Next run {time}', (time: string) => ({ time }))
+
+export const jobNotScheduled = def('Not scheduled')
+
+export const jobLastSucceeded = def('Last run succeeded {time}', (time: string) => ({ time }))
+
+export const jobLastSucceededManual = def('Last run, by hand, succeeded {time}', (time: string) => ({ time }))
+
+export const jobLastFailed = def('Last run failed {time}: {error}', (time: string, error: string) => ({ time, error }))
+
+export const jobLastSkipped = def('Last run skipped {time}: {reason}', (time: string, reason: string) => ({ time, reason }))
+
+export const jobLastCancelled = def('Last run cancelled {time}', (time: string) => ({ time }))
+
+export const jobNeverRun = def('Has not run yet')
+
+export const jobStopping = def('Stopping')
+
+export const jobStop = def('Stop')
+
+export const jobStopLabel = def('Stop {job} on {server}', (job: string, server: string) => ({ job, server }))
+
+export const jobStopRequested = def((key: string) => ({ toast: [t('Stopping {key}', { key })] }))
+
+export const jobWaiting = def('Waiting: {reason}', (reason: string) => ({ reason }))
+
+export const jobWaitingUntil = def('Waiting until {time}: {reason}', (time: string, reason: string) => ({ time, reason }))
+
+export const jobPendingTitle = def('Scheduled runs')
+
+export const jobPendingDue = def('Due {time}', (time: string) => ({ time }))
+
+export const jobPendingRetrying = def('Retrying {time}, attempt {attempt}', (time: string, attempt: number) => ({ time, attempt }))
+
+export const jobRunning = def('Running')
+
+export const jobRunNow = def('Run now')
+
+export const jobCancel = def('Cancel')
+
+export const jobRunNowLabel = def('Run {job} on {server} now', (job: string, server: string) => ({ job, server }))
+
+export const jobCancelLabel = def('Cancel the run {key} of {job}', (key: string, job: string) => ({ key, job }))
+
+export const jobStarted = def((job: string) => ({ toast: [t('Started {job}', { job })] }))
+
+export const jobCancelled = def((key: string) => ({ toast: [t('Cancelled {key}', { key })] }))
+
+export const jobBlocked = def((job: string, reason: string) => ({
+	toast: [t('{job} did not run', { job }), { description: raw(reason) }],
+}))
+
+export const jobActionFailed = def((reason: string) => ({ toast: [t('The job could not be run'), { description: raw(reason) }] }))

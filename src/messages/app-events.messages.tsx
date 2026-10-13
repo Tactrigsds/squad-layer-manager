@@ -402,6 +402,14 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return e.message
 		case 'PLUGIN_DATA_PURGED':
 			return `deleted ${e.pluginId}'s leftover data (${e.tables.length} ${e.tables.length === 1 ? 'table' : 'tables'})`
+		case 'SCHEDULED_JOB_SUCCESS':
+			return `ran ${e.pluginId}'s scheduled job ${e.jobId}${e.manual ? ' by hand' : ''}`
+		case 'SCHEDULED_JOB_FAILED': {
+			const attempts = e.attempt === 1 ? '' : ` after ${e.attempt} attempts`
+			return `${e.pluginId}'s scheduled job ${e.jobId} failed${e.manual ? ' when run by hand' : ''}${attempts}: ${e.error}`
+		}
+		case 'SCHEDULED_JOB_CANCELLED':
+			return `stopped ${e.pluginId}'s running job ${e.jobId}`
 		case 'VOTE_STARTED':
 			return `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
 		case 'VOTE_ENDED': {

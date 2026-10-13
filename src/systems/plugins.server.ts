@@ -19,6 +19,7 @@ import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as PLG from '@/models/plugins.models'
+import * as SJOB from '@/models/scheduled-jobs.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'
@@ -34,6 +35,7 @@ import * as FilterEntity from '@/systems/filter-entity.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as Pkgs from '@/systems/plugin-packages.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as SchedJobs from '@/systems/scheduled-jobs.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
@@ -77,7 +79,12 @@ export type RpcCtx<M extends PLG.Manifest<any> = PLG.Manifest> = ServerCtx<M> & 
 
 // A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
 // module, reached through BuiltinPlugin.migrations.
-export type ServerModule = { activate: (ctx: Ctx<any>) => void | Promise<void>; migrations?: PLG.PluginMigration[] }
+export type ServerModule = {
+	activate: (ctx: Ctx<any>) => void | Promise<void>
+	migrations?: PLG.PluginMigration[]
+	// the jobs the plugin schedules (see slm/plugin/schedule), read at activation so stored runs find their job on boot
+	jobs?: SJOB.Job<any, any, any>[]
+}
 
 // how a builtin registers itself (plugins/builtins.server.ts)
 export type BuiltinPlugin = {
@@ -137,6 +144,8 @@ type Runtime = {
 	commandConfigs: CMD.PluginCommandConfigs
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
+	// the jobs the server module exports, by id, while the plugin is active
+	jobs: Map<string, SJOB.Job<any, any, any>>
 }
 
 const plugins = new Map<string, Runtime>()
@@ -256,6 +265,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		cleanup: [],
 		abort: null,
 		serverSetups: [],
+		jobs: new Map(),
 		instances: new Map(),
 		permissions: new Map(),
 		commands: new Map(),
@@ -393,10 +403,15 @@ async function activateLocked(rt: Runtime) {
 		const mod = await rt.entry.server()
 		const migrations = rt.entry.migrations ? (await rt.entry.migrations()).migrations : (mod.migrations ?? [])
 		if (migrations.length > 0) await applyPluginMigrations(id, migrations)
+		const jobs = mod.jobs ?? []
+		const jobErrors = SchedJobs.jobListErrors(jobs)
+		if (jobErrors.length > 0) throw new Error(`invalid jobs:\n${jobErrors.join('\n')}`)
 		rt.abort = new AbortController()
 		rt.cleanup = []
+		rt.jobs = new Map(jobs.map((job) => [job.id, job]))
 		await mod.activate(mkCtx(rt))
 		rt.status = 'active'
+		SchedJobs.attach(schedulerHost(rt))
 		rt.log.info('plugin activated')
 	} catch (err) {
 		rt.log.error(err, 'plugin activation failed')
@@ -419,6 +434,8 @@ async function deactivateLocked(rt: Runtime) {
 }
 
 async function teardownLocked(rt: Runtime) {
+	SchedJobs.detach(rt.ref.id)
+	rt.jobs = new Map()
 	rt.abort?.abort()
 	rt.abort = null
 	// instance disposals are once-wrapped members of rt.cleanup, so this covers them too
@@ -489,8 +506,28 @@ export function registerServerSetup(ctx: Ctx<any>, cb: ServerSetupFn) {
 	}
 }
 
+// The scheduler's view of an active plugin: its jobs, its config, and the ctx each run gets. A server's run gets the
+// same ctx the plugin's procedures get on that server.
+function schedulerHost(rt: Runtime): SchedJobs.Host {
+	return {
+		pluginId: rt.ref.id,
+		log: rt.log,
+		jobs: rt.jobs,
+		config: () => rt.config,
+		ctxFor: (serverId) => {
+			if (rt.status !== 'active' || !rt.abort) return null
+			if (serverId === null) return mkCtx(rt)
+			const managedServer = SquadServer.globalState.managedServers.get(serverId)
+			if (!managedServer) return null
+			return serverScopedCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, serverId)
+		},
+		serverIds: () => [...SquadServer.globalState.managedServers.keys()],
+	}
+}
+
 // called from setupManagedServer, alongside the other per-server subsystem hooks
 export function setupServerInstances(managedServer: C.ManagedServer) {
+	SchedJobs.wake()
 	for (const rt of plugins.values()) {
 		if (rt.status !== 'active' && rt.status !== 'activating') continue
 		if (rt.serverSetups.length === 0) continue
@@ -1017,6 +1054,8 @@ export const router = {
 				rt.configInput = input.config
 				// active plugins read config through getConfig on every use, so this takes effect immediately
 				if (rt.status === 'active' || rt.status === 'activating') rt.config = parsed.data
+				// a recurring job's schedule is read from the config
+				SchedJobs.wake()
 			}
 			await persistRow(ctx, rt)
 			update$.next(rt.ref.id)
@@ -1096,6 +1135,7 @@ export const router = {
 		.handler(async ({ context: ctx, input }) => {
 			const res = purgeLeftoverData(input.pluginId)
 			if (res.code !== 'ok') return res
+			await SchedJobs.purge(ctx, input.pluginId)
 			await AppEventsSys.persistAppEvent(
 				ctx,
 				AppEvents.create<AppEvents.PluginDataPurged>({
@@ -1126,6 +1166,33 @@ export const router = {
 			await Pkgs.remove(input.pluginId)
 			await reloadPackages(ctx)
 			return { code: 'ok' as const }
+		}),
+
+	// The plugin's jobs, with when each next runs and how its last run went, and its pending one-off runs
+	listJobs: orpcBase.input(z.object({ pluginId: PLG.PluginIdSchema })).handler(async ({ input }) => {
+		return { code: 'ok' as const, jobs: await SchedJobs.listJobs(input.pluginId) }
+	}),
+
+	// Runs a job now. With a key, the pending one-off run under it; without one, a recurring job outside its schedule.
+	runJobNow: orpcBase
+		.meta({ type: 'mutation' })
+		.input(
+			z.object({
+				pluginId: PLG.PluginIdSchema,
+				jobId: SJOB.JobIdSchema,
+				serverId: z.string().nullable(),
+				key: SJOB.KeySchema.nullable(),
+			}),
+		)
+		.handler(async ({ context: ctx, input }) => {
+			return await SchedJobs.runNow(input.pluginId, input.serverId, input.jobId, input.key, ctx.user.discordId)
+		}),
+
+	cancelJobRun: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ pluginId: PLG.PluginIdSchema, jobId: SJOB.JobIdSchema, serverId: z.string().nullable(), key: SJOB.KeySchema }))
+		.handler(async ({ context: ctx, input }) => {
+			return await SchedJobs.cancel(input.pluginId, input.serverId, input.jobId, input.key, { userId: ctx.user.discordId })
 		}),
 
 	rpcCall: orpcBase

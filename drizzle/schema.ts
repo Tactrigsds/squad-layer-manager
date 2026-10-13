@@ -556,6 +556,44 @@ export const rotationRoleContributors = sqliteTable(
 
 export type Rotation = typeof rotations.$inferSelect
 
+// One run of a job a plugin scheduled (see SJOB in scheduled-jobs.models). A recurring occurrence is claimed by
+// inserting its row, keyed "@<dueAt>", before it runs; a one-off run is stored when it is scheduled, under the key the
+// plugin gave it, and a later schedule under the same key replaces it.
+export const scheduledJobRuns = sqliteTable(
+	'scheduledJobRuns',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		pluginId: text('pluginId').notNull(),
+		// '' for a job that is not tied to a server
+		serverId: text('serverId').notNull(),
+		jobId: text('jobId').notNull(),
+		key: text('key').notNull(),
+		kind: text('kind', { enum: ['once', 'recurring', 'manual'] }).notNull(),
+		dueAt: timestamp('dueAt').notNull(),
+		// superjson-encoded, validated against the job's payload schema when the run is scheduled and when it runs
+		payload: text('payload'),
+		state: text('state', {
+			enum: ['pending', 'running', 'retrying', 'blocked', 'succeeded', 'failed', 'skipped', 'cancelled'],
+		}).notNull(),
+		attempt: integer('attempt').notNull().default(0),
+		nextAttemptAt: timestamp('nextAttemptAt'),
+		manual: boolean('manual').notNull().default(false),
+		startedAt: timestamp('startedAt'),
+		finishedAt: timestamp('finishedAt'),
+		error: text('error'),
+		// what a blocked run waits for. A blocked run with no nextAttemptAt waits on a signal held in memory, and runs
+		// again when there is none, as after a restart.
+		blockedReason: text('blockedReason'),
+		// a running run was cancelled and is being stopped; a restart closes it rather than retrying it
+		cancelRequested: boolean('cancelRequested').notNull().default(false),
+	},
+	(table) => ({
+		run: unique('scheduledJobRuns_run').on(table.pluginId, table.serverId, table.jobId, table.key),
+		open: index('scheduledJobRuns_open').on(table.state, table.dueAt),
+		latestRecurring: index('scheduledJobRuns_latestRecurring').on(table.kind, table.pluginId, table.serverId, table.jobId, table.dueAt),
+	}),
+)
+
 export const servers = sqliteTable('servers', {
 	id: text('id').primaryKey(),
 	displayName: text('displayName').notNull(),

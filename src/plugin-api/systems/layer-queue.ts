@@ -7,6 +7,15 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 
 export { dispatchOp, getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/systems/layer-queue.server'
+
+/**
+ * Resolves once nobody has unsaved queue edits open, straight away when nobody has. Pass it as a blocked job's
+ * unblock after an edit is refused with `err:unsaved-edits`.
+ */
+export async function editsSettled(ctx: PluginsSys.ServerCtx<any>): Promise<void> {
+	// as editSaved: the runtime object is the whole managed server, and only ServerCtx's type leaves the queue out
+	await LayerQueue.editsSettled(ctx as unknown as Parameters<typeof LayerQueue.editsSettled>[0])
+}
 export type { QueueEntry } from '@/systems/layer-queue.server'
 
 /**

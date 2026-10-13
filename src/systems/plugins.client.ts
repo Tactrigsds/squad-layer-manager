@@ -16,6 +16,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
+import * as RbacClient from '@/systems/rbac.client'
 
 // Client half of the plugin host: watches which plugins are active, loads their client entries, and
 // holds what those entries register -- slot components, row decorations, event renderers, rpc query
@@ -438,6 +439,40 @@ const liveClients = new Set<string>()
 const requestedManifests = new Set<string>()
 const reloadPrompted = new Set<string>()
 const BUILTIN = 'builtin'
+
+// -------- scheduled jobs --------
+
+export function jobsQuery(pluginId: string) {
+	// a run's state moves on its own (it comes due, retries, finishes), so the list is refetched while shown
+	return RPC.orpc.plugins.listJobs.queryOptions({ input: { pluginId }, refetchInterval: 15_000 })
+}
+
+export namespace Actions {
+	export async function runJobNow(pluginId: string, jobId: string, serverId: string | null, key: string | null) {
+		try {
+			const res = await RPC.orpc.plugins.runJobNow.call({ pluginId, jobId, serverId, key })
+			if (res.code === 'ok') toast(...tr.toast(PLUGINS_Msgs.jobStarted(jobId)))
+			else if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else if (res.code === 'err:blocked') toast.warning(...tr.toast(PLUGINS_Msgs.jobBlocked(jobId, res.message)))
+			else toast.error(...tr.toast(PLUGINS_Msgs.jobActionFailed(res.message)))
+		} catch (err) {
+			toast.error(...tr.toast(PLUGINS_Msgs.jobActionFailed(err instanceof Error ? err.message : String(err))))
+		}
+		void RPC.queryClient.invalidateQueries({ queryKey: jobsQuery(pluginId).queryKey })
+	}
+
+	export async function cancelJobRun(pluginId: string, jobId: string, serverId: string | null, key: string) {
+		try {
+			const res = await RPC.orpc.plugins.cancelJobRun.call({ pluginId, jobId, serverId, key })
+			if (res.code === 'ok') toast(...tr.toast(res.stopping ? PLUGINS_Msgs.jobStopRequested(key) : PLUGINS_Msgs.jobCancelled(key)))
+			else if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else toast.error(...tr.toast(PLUGINS_Msgs.jobActionFailed(res.code)))
+		} catch (err) {
+			toast.error(...tr.toast(PLUGINS_Msgs.jobActionFailed(err instanceof Error ? err.message : String(err))))
+		}
+		void RPC.queryClient.invalidateQueries({ queryKey: jobsQuery(pluginId).queryKey })
+	}
+}
 
 export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 	builtins = builtinPlugins

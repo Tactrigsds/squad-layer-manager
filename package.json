@@ -102,6 +102,7 @@
 		"cnfast": "^0.0.8",
 		"codemirror": "^6.0.2",
 		"codemirror-json-schema": "^0.8.1",
+		"croner": "^10.0.1",
 		"dockerode": "^4.0.12",
 		"drizzle-kit": "^0.31.10",
 		"drizzle-orm": "^0.45.2",
