@@ -83,6 +83,10 @@ export const idHelp = def('Follows the name until edited. Lowercase letters, num
 
 export const description = def('Description')
 
+export const copyFrom = def('Copy from')
+
+export const copyFromNothing = def('Nothing, start empty')
+
 export const copyTags = def('Copy rotation tags')
 
 export const copyContributors = def('Copy contributors')

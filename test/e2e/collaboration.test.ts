@@ -326,6 +326,20 @@ test.describe('collaborative rotation editing', () => {
 		await app.waitFor(() => savedRotation(app, 'weekend-copy') ?? null, { label: 'the copy was written' })
 		expect(savedRotation(app, 'weekend-copy')!.items).toHaveLength(1)
 
+		// New Rotation can start as a copy of a rotation picked in the dialog
+		await openPath(page, '/rotations')
+		await page.getByRole('button', { name: 'New Rotation' }).click()
+		const newDialog = page.getByRole('dialog', { name: 'New Rotation' })
+		await newDialog.getByRole('combobox', { name: /Copy from/ }).click()
+		await page.getByRole('option', { name: 'Weekend Competitive', exact: true }).click()
+		await expect(newDialog.getByLabel('Name')).toHaveValue('Weekend Competitive (copy)')
+		await newDialog.getByLabel('Name').fill('Weekend Again')
+		await newDialog.getByLabel('ID').fill('weekend-again')
+		await newDialog.getByRole('button', { name: 'Clone and Open' }).click()
+		await expect(page).toHaveURL(/\/rotations\/weekend-again/)
+		await app.waitFor(() => savedRotation(app, 'weekend-again') ?? null, { label: 'the picked copy was written' })
+		expect(savedRotation(app, 'weekend-again')!.items).toHaveLength(1)
+
 		await openPath(page, '/rotations')
 		const copyCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Weekend Competitive (copy)' }) })
 

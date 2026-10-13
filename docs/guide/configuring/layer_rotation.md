@@ -67,8 +67,9 @@ To change a server's repeat rules:
 
 _Save Changes_ saves the rules into the repeat ruleset, so every server using that repeat ruleset gets the new rules.
 
-Use _New repeat ruleset_, beside the picker, to create a repeat ruleset. It starts with a copy of the rules shown, and
-the server switches to it once _Save Changes_ is pressed. Use the pencil beside the picker to rename the repeat ruleset
+Use _New repeat ruleset_, beside the picker, to create a repeat ruleset. It starts with a copy of the rules of the
+repeat ruleset picked under _Copy rules from_, which is the one shown unless another is picked, or with the default
+repeat rules. The server switches to the new repeat ruleset once _Save Changes_ is pressed. Use the pencil beside the picker to rename the repeat ruleset
 shown. The settings page lists every repeat ruleset under _Repeat Rulesets_. A repeat ruleset can only be deleted
 there, and only while no server or rotation uses it.
 

@@ -1046,9 +1046,15 @@ export function RepeatRulesetPanel(props: {
 					rulesets={rulesets}
 					current={saved}
 					onClose={() => setNameDialog(null)}
-					onSubmit={async (name) => {
+					onSubmit={async (name, sourceId) => {
 						if (nameDialog === 'rename') return await RepeatRulesetEditorFrame.Actions.rename({ repeatRulesetEditor }, name)
-						const rules = saved ? Zus.getState(repeatRulesetEditor).draft : RRS.DEFAULT_RULES
+						// the ruleset being edited is copied as drafted, unsaved edits included
+						const rules =
+							sourceId === null
+								? RRS.DEFAULT_RULES
+								: sourceId === saved?.id
+									? Zus.getState(repeatRulesetEditor).draft
+									: (rulesets.find((ruleset) => ruleset.id === sourceId)?.rules ?? RRS.DEFAULT_RULES)
 						const id = await RepeatRulesetEditorFrame.Actions.create(name, rules)
 						if (id) props.onSelect(id)
 						return id !== null
@@ -1069,12 +1075,15 @@ function RepeatRulesetNameDialog(props: {
 	rulesets: readonly RRS.Ruleset[]
 	current: RRS.Ruleset | undefined
 	onClose: () => void
-	onSubmit: (name: string) => Promise<boolean>
+	// `sourceId` is the ruleset a new ruleset copies its rules from, or null for the default rules
+	onSubmit: (name: string, sourceId: RRS.RulesetId | null) => Promise<boolean>
 }) {
 	const initial =
 		props.mode === 'rename' ? (props.current?.name ?? '') : RRS.freeName(props.rulesets, tr.text(SETTINGS_Msgs.newRepeatRulesetName()))
 	const [name, setName] = React.useState(initial)
 	const [submitting, setSubmitting] = React.useState(false)
+	const [sourceId, setSourceId] = React.useState<RRS.RulesetId | null>(props.current?.id ?? null)
+	const source = props.rulesets.find((ruleset) => ruleset.id === sourceId)
 	const nameId = React.useId()
 	const trimmed = name.trim()
 	const taken = RRS.nameTaken(props.rulesets, trimmed, props.mode === 'rename' ? props.current?.id : undefined)
@@ -1084,7 +1093,7 @@ function RepeatRulesetNameDialog(props: {
 		if (!canSubmit) return
 		setSubmitting(true)
 		try {
-			if (await props.onSubmit(trimmed)) props.onClose()
+			if (await props.onSubmit(trimmed, source?.id ?? null)) props.onClose()
 		} finally {
 			setSubmitting(false)
 		}
@@ -1099,9 +1108,7 @@ function RepeatRulesetNameDialog(props: {
 					</DialogTitle>
 					{props.mode === 'new' && (
 						<DialogDescription>
-							{tr.text(
-								props.current ? SETTINGS_Msgs.newRepeatRulesetCopies(props.current.name) : SETTINGS_Msgs.newRepeatRulesetDefaults(),
-							)}
+							{tr.text(source ? SETTINGS_Msgs.newRepeatRulesetCopies(source.name) : SETTINGS_Msgs.newRepeatRulesetDefaults())}
 						</DialogDescription>
 					)}
 				</DialogHeader>
@@ -1119,6 +1126,21 @@ function RepeatRulesetNameDialog(props: {
 					/>
 					{taken && <p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.repeatRulesetNameTaken(trimmed))}</p>}
 				</div>
+				{props.mode === 'new' && (
+					<div className="space-y-1">
+						<Label>{tr.text(SETTINGS_Msgs.repeatRulesetCopyFrom())}</Label>
+						<ComboBox
+							className="w-full"
+							title={tr.text(SETTINGS_Msgs.repeatRulesetCopyFrom())}
+							placeholder={tr.text(SETTINGS_Msgs.defaultRepeatRules())}
+							emptyLabel={tr.text(SETTINGS_Msgs.defaultRepeatRules())}
+							options={props.rulesets.map((ruleset) => ({ value: ruleset.id, label: ruleset.name }))}
+							value={source?.id}
+							allowEmpty
+							onSelect={(value) => setSourceId(value ?? null)}
+						/>
+					</div>
+				)}
 				<DialogFooter>
 					<Button variant="outline" onClick={props.onClose}>
 						{tr.text(UI_Msgs.cancel())}

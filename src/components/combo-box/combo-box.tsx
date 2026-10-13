@@ -41,6 +41,8 @@ import { ComboBoxSurface } from './surface.tsx'
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
 	allowEmpty?: boolean
+	// names the empty choice that allowEmpty offers; defaults to a dash
+	emptyLabel?: string
 	className?: string
 	title: string
 	// text shown on the trigger when nothing is selected; defaults to `Select {title}...`
@@ -372,14 +374,14 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							{!drillEntry && options !== LOADING && props.allowEmpty && (
 								<CommandGroup>
 									<CommandItem
-										value={DH.MISSING_DISPLAY}
+										value={props.emptyLabel ?? DH.MISSING_DISPLAY}
 										onSelect={() => {
 											if (!props.allowEmpty) return
 											onSelect(undefined)
 										}}
 									>
 										<Check className={cn('me-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
-										{DH.MISSING_DISPLAY}
+										{props.emptyLabel ?? DH.MISSING_DISPLAY}
 									</CommandItem>
 								</CommandGroup>
 							)}

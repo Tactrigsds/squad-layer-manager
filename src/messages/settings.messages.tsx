@@ -346,6 +346,10 @@ export const newRepeatRulesetCopies = def('The new repeat ruleset starts with a 
 
 export const newRepeatRulesetDefaults = def('The new repeat ruleset starts with the default repeat rules.')
 
+export const repeatRulesetCopyFrom = def('Copy rules from')
+
+export const defaultRepeatRules = def('Default repeat rules')
+
 export const repeatRulesetNameTaken = def('Another repeat ruleset is already named {name}.', (name: string) => ({ name }))
 
 export const createRepeatRuleset = def('Create')
