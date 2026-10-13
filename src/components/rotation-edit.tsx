@@ -309,14 +309,14 @@ function OpenedFileDialog(props: { listHost: RotationEditorFrame.Key }) {
 					<Button variant="outline" onClick={() => RotationEditorFrame.Actions.dismissOpenedFile(props.listHost)}>
 						{tr.text(UI_Msgs.cancel())}
 					</Button>
-					<Button variant="outline" onClick={place('replace')}>
-						{tr.text(LL_Msgs.placeReplace())}
-					</Button>
 					<Button variant="outline" onClick={place('start')}>
 						{tr.text(LL_Msgs.placeStart())}
 					</Button>
-					<Button variant="primary" onClick={place('end')}>
+					<Button variant="outline" onClick={place('end')}>
 						{tr.text(LL_Msgs.placeEnd())}
+					</Button>
+					<Button variant="primary" onClick={place('replace')}>
+						{tr.text(LL_Msgs.placeReplace())}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
