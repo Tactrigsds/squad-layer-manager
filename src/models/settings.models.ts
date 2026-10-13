@@ -1826,13 +1826,9 @@ export function derefSettingsValue(settings: PublicServerSettings, path: Setting
 	return current as unknown
 }
 
-export function applySettingMutation(settings: PublicServerSettings, path: SettingsPath, value: any): void
-export function applySettingMutation(settings: PublicServerSettings, mutation: SettingMutation): void
-export function applySettingMutation<T extends PublicServerSettings>(
-	settings: T,
-	pathOrMutation: SettingsPath | SettingMutation,
-	value?: any,
-) {
+export function applySettingMutation(settings: object, path: SettingsPath, value: any): void
+export function applySettingMutation(settings: object, mutation: SettingMutation): void
+export function applySettingMutation(settings: object, pathOrMutation: SettingsPath | SettingMutation, value?: any) {
 	const path = Array.isArray(pathOrMutation) ? pathOrMutation : pathOrMutation.path
 	const resolvedValue = Array.isArray(pathOrMutation) ? value : pathOrMutation.value
 	if (path.some((key) => typeof key === 'string' && PROTOTYPE_KEYS.has(key))) {
@@ -1851,7 +1847,7 @@ export function applySettingMutation<T extends PublicServerSettings>(
 	if (resolvedValue === undefined) delete current[key]
 	else current[key] = resolvedValue
 }
-export function applySettingMutations(settings: PublicServerSettings, mutations: SettingMutation[]) {
+export function applySettingMutations(settings: object, mutations: SettingMutation[]) {
 	for (const mutation of mutations) {
 		applySettingMutation(settings, mutation.path, mutation.value)
 	}

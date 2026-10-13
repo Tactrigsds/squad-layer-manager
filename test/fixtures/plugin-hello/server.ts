@@ -22,6 +22,7 @@ import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
 import * as RepeatRulesets from 'slm/systems/repeat-ruleset'
 import * as Rotations from 'slm/systems/rotation'
+import * as Settings from 'slm/systems/settings'
 import * as SquadServer from 'slm/systems/squad-server'
 import * as Tags from 'slm/systems/tags'
 
@@ -80,6 +81,8 @@ function contributorOf(input: { userId?: string; roleId?: string }): RBAC.Contri
 const rotationChanges: string[] = []
 // the ruleset ids after each change to the rulesets
 const rulesetChanges: string[][] = []
+// installedMods after each change to a server's settings, by server
+const serverSettingsChanges = new Map<string, string[][]>()
 
 // what blocks a run of gatedJob, below
 const GatedMode = z.enum(['gate', 'delay', 'forever', 'eager'])
@@ -327,6 +330,33 @@ export const router = {
 		.input(z.object({}))
 		.handler(async () => rulesetChanges),
 
+	readSettings: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => ({
+			defaultTimeZone: Settings.global().defaultTimeZone,
+			installedMods: Settings.server(context.serverId)?.installedMods,
+			hasConnections: 'connections' in (Settings.server(context.serverId) ?? {}),
+			missingServer: Settings.server('no-such-server') ?? null,
+		})),
+	updateGlobalSettings: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ ops: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), value: z.unknown() })) }))
+		.handler(async ({ context, input }) => Settings.updateGlobal(context, input.ops)),
+	updateServerSettings: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(
+			z.object({
+				serverId: z.string().optional(),
+				ops: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), value: z.unknown() })),
+			}),
+		)
+		.handler(async ({ context, input }) => Settings.updateServer(context, input.serverId ?? context.serverId, input.ops)),
+	serverSettingsChanges: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({}))
+		.handler(async ({ context }) => serverSettingsChanges.get(context.serverId) ?? []),
+
 	// the filter the query is constrained by is one the plugin made itself, which is the pairing worth
 	// covering: neither half is much use to a plugin without the other
 	inFilter: os
@@ -564,6 +594,9 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
 	// system (match history) and its config, all through shimmed slm/* imports
 	Servers.setup(ctx, (sctx) => {
+		const changes = serverSettingsChanges.get(sctx.serverId) ?? []
+		serverSettingsChanges.set(sctx.serverId, changes)
+		Settings.serverChanges(sctx, sctx.serverId).subscribe((settings) => changes.push([...settings.installedMods]))
 		void (async () => {
 			const matches = await MatchHistory.getRecentMatches(sctx)
 			await sctx

@@ -45,6 +45,7 @@ import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-remind
 import * as systemsRbac from '@/plugin-api/systems/rbac'
 import * as systemsRepeatRuleset from '@/plugin-api/systems/repeat-ruleset'
 import * as systemsRotation from '@/plugin-api/systems/rotation'
+import * as systemsSettings from '@/plugin-api/systems/settings'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
 import * as systemsSquadServer from '@/plugin-api/systems/squad-server'
 import * as systemsTags from '@/plugin-api/systems/tags'
@@ -98,6 +99,7 @@ export function setup() {
 		'slm/systems/rbac': systemsRbac,
 		'slm/systems/repeat-ruleset': systemsRepeatRuleset,
 		'slm/systems/rotation': systemsRotation,
+		'slm/systems/settings': systemsSettings,
 		'slm/systems/player-activity': systemsPlayerActivity,
 		'slm/systems/squad-rcon': systemsSquadRcon,
 		'slm/systems/squad-server': systemsSquadServer,

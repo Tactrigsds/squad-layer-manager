@@ -387,6 +387,29 @@ created stays that server's. `remove` refuses a ruleset that a server or rotatio
 `err:repeat-ruleset-in-use`. `setForServer` refuses an id that names no ruleset, with `err:unknown-repeat-ruleset`.
 The audit log records each write as a `SETTINGS_UPDATED` naming your plugin.
 
+## Settings
+
+`slm/systems/settings` reads and writes SLM's global settings and each server's settings. A server's settings are
+the ones every signed-in user sees, so its connection details are left out, and cannot be written.
+
+```ts
+import * as Settings from 'slm/systems/settings'
+
+Settings.global().defaultTimeZone // global settings
+Settings.server(ctx.serverId)?.installedMods // a server's settings, undefined while it is not running
+Settings.globalChanges(ctx).subscribe((settings) => ...) // the global settings after each change
+Settings.serverChanges(ctx, ctx.serverId).subscribe((settings) => ...) // a server's settings after each change
+await Settings.updateGlobal(ctx, [{ path: ['defaultTimeZone'], value: 'Europe/Berlin' }])
+await Settings.updateServer(ctx, ctx.serverId, [{ path: ['overrideAdminSetNextLayer'], value: true }])
+```
+
+The readers return the live objects SLM itself reads. Do not mutate them: write through `updateGlobal` and
+`updateServer` instead. Each takes a list of `{ path, value }` changes and applies all of them or none.
+`updateServer` writes a server whether or not it is running, and refuses an id that names no server with
+`err:server-not-found`. A write is
+checked the way the settings pages check one, and refused with `err:invalid-settings` and the reason when it does
+not fit. The audit log records each write as a `SETTINGS_UPDATED` naming your plugin.
+
 ## Layer queries
 
 `slm/systems/layer-queries` searches SLM's list of every known layer given a set of constraints, checks queue items against constraints, and
@@ -802,6 +825,7 @@ absent.
 | `slm/systems/rotation`                                     | rotation reads and writes                    |
 | `slm/systems/repeat-ruleset`                               | repeat ruleset reads and writes              |
 | `slm/systems/tags`                                         | layer and rotation tags, found or created    |
+| `slm/systems/settings`                                     | global and server settings, reads and writes |
 | `slm/systems/layer-queries`                                | asking the layer table what matches          |
 | `slm/systems/app-events`                                   | writing to the audit log                     |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |

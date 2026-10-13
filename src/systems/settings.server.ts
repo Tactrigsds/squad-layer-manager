@@ -606,6 +606,52 @@ export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.Glo
 	return { code: 'ok' as const }
 }
 
+/** Applies mutations to the global settings, validated and recorded as patchGlobalSettings does. */
+export async function editGlobalSettings(ctx: C.Db, ops: SETTINGS.SettingMutation[], actor: AppEvents.Actor) {
+	const next = Obj.deepClone(GLOBAL_SETTINGS)
+	SETTINGS.applySettingMutations(next, ops)
+	return await patchGlobalSettings(ctx, next, actor)
+}
+
+/**
+ * Applies mutations to a server's settings, validated as the settings page validates them, and records
+ * SETTINGS_UPDATED against `actor`.
+ */
+export async function editServerSettings(
+	ctx: C.Db & CS.ServerId,
+	ops: SETTINGS.SettingMutation[],
+	actor: AppEvents.Actor,
+	source: SS.LQStateUpdate['source'],
+) {
+	let changes: SettingChange[] = []
+	const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+		const state = await SquadServer.getServerState(ctx)
+		const next = Obj.deepClone(state.settings)
+		SETTINGS.applySettingMutations(next, ops)
+		const parsed = SETTINGS.ServerSettingsSchema.safeParse(next)
+		if (!parsed.success) return { code: 'err:invalid-settings' as const, message: parsed.error.message }
+		const repeatRulesetError = unknownRepeatRulesetError(parsed.data)
+		if (repeatRulesetError) return repeatRulesetError
+		changes = diffSettings(state.settings, parsed.data)
+		await updateServerSettings(ctx, parsed.data, source)
+	})
+	if (res) return res
+	if (changes.length > 0) {
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.SettingsUpdated>({
+				type: 'SETTINGS_UPDATED',
+				actor,
+				serverId: ctx.serverId,
+				matchId: null,
+				causeId: null,
+				changes: auditableSettingChanges(changes),
+			}),
+		)
+	}
+	return { code: 'ok' as const }
+}
+
 // creates or replaces one ruleset. Ownership is decided by server creation, never by the writer, so `ownerServerId`
 // is kept from the ruleset being replaced.
 export async function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: AppEvents.Actor) {
@@ -915,41 +961,12 @@ const serverRouter = {
 		.handler(async ({ context: _ctx, input }) => {
 			if (!hasServerEntry(input.serverId)) return { code: 'err:server-not-found' as const }
 			const ctx = { ..._ctx, serverId: input.serverId }
-
-			// the mutations are applied in place, so the before-state has to be taken first to have anything to diff
-			let changes: SettingChange[] = []
-			const updateRes = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				const state = await SquadServer.getServerState(ctx)
-				const prior = Obj.deepClone(state.settings)
-				SETTINGS.applySettingMutations(state.settings, input.ops)
-				const res = SETTINGS.ServerSettingsSchema.safeParse(state.settings)
-				if (!res.success) {
-					return { code: 'err:invalid-settings' as const, message: res.error.message }
-				}
-				const repeatRulesetError = unknownRepeatRulesetError(res.data)
-				if (repeatRulesetError) return repeatRulesetError
-				changes = diffSettings(prior, res.data)
-
-				await updateServerSettings(ctx, res.data, {
-					type: 'manual',
-					user: USR.toMiniUser(ctx.user),
-					event: 'edit-settings',
-				})
-			})
-			if (!updateRes) {
-				await AppEventsSys.persistAppEvent(
-					ctx,
-					AppEvents.create<AppEvents.SettingsUpdated>({
-						type: 'SETTINGS_UPDATED',
-						actor: { type: 'slm-user', userId: ctx.user.discordId },
-						serverId: input.serverId,
-						matchId: null,
-						causeId: null,
-						changes: auditableSettingChanges(changes),
-					}),
-				)
-			}
-			return updateRes
+			return await editServerSettings(
+				ctx,
+				input.ops,
+				{ type: 'slm-user', userId: ctx.user.discordId },
+				{ type: 'manual', user: USR.toMiniUser(ctx.user), event: 'edit-settings' },
+			)
 		}),
 }
 

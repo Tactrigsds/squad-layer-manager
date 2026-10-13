@@ -927,6 +927,53 @@ describe('packaged plugins', () => {
 		expect(seen.at(-1)).not.toContain('hello-rules')
 	})
 
+	it('reads and writes global and server settings', async () => {
+		type Read = { defaultTimeZone: string; installedMods: string[]; hasConnections: boolean; missingServer: null }
+		const before = await call<Read>('readSettings', {})
+		expect(before.hasConnections).toBe(false)
+		expect(before.missingServer).toBeNull()
+		const lastSettingsUpdate = () =>
+			readRows<{ actor: string; serverId: string | null }>(
+				`SELECT actorPluginId AS actor, serverId FROM appEvents WHERE type = 'SETTINGS_UPDATED' ORDER BY rowid DESC LIMIT 1`,
+			)[0]
+
+		const mods = [...before.installedMods, 'SuperMod']
+		expect(await call('updateServerSettings', { ops: [{ path: ['installedMods'], value: mods }] })).toMatchObject({ code: 'ok' })
+		expect((await call<Read>('readSettings', {})).installedMods).toEqual(mods)
+		expect(lastSettingsUpdate()).toMatchObject({ actor: 'hello', serverId: expect.any(String) })
+		await app.waitFor(async () => ((await call<string[][]>('serverSettingsChanges', {})).at(-1)?.includes('SuperMod') ? true : null), {
+			label: 'serverChanges saw the write',
+		})
+
+		expect(await call('updateServerSettings', { ops: [{ path: ['installedMods'], value: [] }] })).toMatchObject({
+			code: 'err:invalid-settings',
+		})
+		expect(await call('updateServerSettings', { ops: [{ path: ['connections', 'rcon', 'host'], value: 'x' }] })).toMatchObject({
+			code: 'err:invalid-path',
+		})
+		expect(await call('updateServerSettings', { ops: [{ path: ['__proto__', 'polluted'], value: true }] })).toMatchObject({
+			code: 'err:invalid-path',
+		})
+		expect(
+			await call('updateServerSettings', { serverId: 'no-such-server', ops: [{ path: ['installedMods'], value: mods }] }),
+		).toMatchObject({ code: 'err:server-not-found' })
+		expect(await call('updateServerSettings', { ops: [{ path: ['installedMods'], value: before.installedMods }] })).toMatchObject({
+			code: 'ok',
+		})
+
+		expect(await call('updateGlobalSettings', { ops: [{ path: ['defaultTimeZone'], value: 'Europe/Berlin' }] })).toMatchObject({
+			code: 'ok',
+		})
+		expect((await call<Read>('readSettings', {})).defaultTimeZone).toBe('Europe/Berlin')
+		expect(lastSettingsUpdate()).toMatchObject({ actor: 'hello', serverId: null })
+		expect(await call('updateGlobalSettings', { ops: [{ path: ['defaultTimeZone'], value: 'Not/AZone' }] })).toMatchObject({
+			code: 'err:invalid-settings',
+		})
+		expect(await call('updateGlobalSettings', { ops: [{ path: ['defaultTimeZone'], value: before.defaultTimeZone }] })).toMatchObject({
+			code: 'ok',
+		})
+	})
+
 	it('sees server events as they land', async () => {
 		const speaker = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_event_watcher', teamId: 1 }))
 		await app.waitForRosterSync()

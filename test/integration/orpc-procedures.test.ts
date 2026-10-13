@@ -418,7 +418,7 @@ describe('server colors', () => {
 			ops: [{ path: ['color'], value: Color.SWATCHES.red }],
 		})
 		// the handler returns a result only on failure
-		expect(res).toBeUndefined()
+		expect(res).toMatchObject({ code: 'ok' })
 		expect(await deliveredColor(app.serverId)).toBe(Color.SWATCHES.red)
 	})
 
