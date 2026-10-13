@@ -94,6 +94,18 @@ export function clampToViewport(pos: Point, size: Size, padding: number, viewpor
 	}
 }
 
+const MIN_VISIBLE_DRAG_BAR_WIDTH = 100
+
+// Where a window the user has moved may sit: its drag bar stays inside the viewport at its full height and at least
+// MIN_VISIBLE_DRAG_BAR_WIDTH px wide, or whole when the window is narrower than that.
+export function clampMovedWindow(pos: Point, size: Size, viewport: Size, dragBarHeight: number): Point {
+	const visibleWidth = Math.min(size.width, MIN_VISIBLE_DRAG_BAR_WIDTH)
+	return {
+		x: Math.max(visibleWidth - size.width, Math.min(pos.x, viewport.width - visibleWidth)),
+		y: Math.max(0, Math.min(pos.y, viewport.height - dragBarHeight)),
+	}
+}
+
 function besideAnchor(anchor: Rect, size: Size, side: Side, offset: number): Point {
 	const centeredX = anchor.left + anchor.width / 2 - size.width / 2
 	const centeredY = anchor.top + anchor.height / 2 - size.height / 2
