@@ -31,7 +31,10 @@ only for players whose Steam profile makes game details public. Enter a web API 
 A sandbox server never shows the button.</p>
 <h2 id="discord-bot" class="docs-heading">Discord bot<a href="#discord-bot" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/integrations.md#discord-bot" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>When a link to a selection of events from the history page is posted in Discord, the SLM bot replies with the events
-as a text file. The bot replies only to people whose roles grant <code>history:query</code>.</p>
+as a text file. The reply names the number of events and the time zone of their times. Times are in the time zone the
+link names. A link with no time zone of its own uses the <code>defaultTimeZone</code> setting, which by default is the <code>timeZone</code>
+setting of the server the events are from. The bot replies only to
+people whose roles grant <code>history:query</code>.</p>
 <p>The replies need <em>Message Content Intent</em>, on the <em>Bot</em> page of your Discord app. Without it, the
 <code>discord.expandHistoryLinks</code> setting shows a warning. Turn that setting off to stop the replies.</p>
 <p>The bot replies only in channels where its role has these permissions:</p>
