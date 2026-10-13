@@ -1,4 +1,4 @@
-import { createORPCClient, onError } from '@orpc/client'
+import { createORPCClient, onError, ORPCError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
@@ -335,6 +335,21 @@ export function observe<T, R = T>(tag: string, task: () => Promise<Rx.Observable
 			},
 		}),
 	)
+}
+
+/**
+ * For a watch of one item, such as a rotation's or a filter's shared draft: once the item is deleted, the watch ends
+ * and every resubscribe fails with NOT_FOUND. Nothing more can arrive, and the page reports the deletion itself (see
+ * AppEventsClient.reportDeletion), so the stream holds quietly until its subscriber goes away rather than retrying
+ * into an error toast.
+ */
+export function holdWhenNotFound<T>(): Rx.OperatorFunction<T, T> {
+	return (source$) =>
+		source$.pipe(
+			Rx.catchError((error: unknown) =>
+				error instanceof ORPCError && error.code === 'NOT_FOUND' ? Rx.NEVER : Rx.throwError(() => error),
+			),
+		)
 }
 
 /**

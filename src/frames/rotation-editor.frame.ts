@@ -64,6 +64,8 @@ export type State = ListHostPrt.Store & {
 	view: View
 	source: Source
 	tagChoices: ReadonlyMap<string, TagChoice>
+	// a file waiting on where its items go
+	openedFile: { name: string; text: string } | null
 	sourceEdits$: Rx.Subject<string>
 	// mutated in place, never rendered: the serialization of the draft that the text last matched, and the analysis
 	// in flight
@@ -112,6 +114,7 @@ export const frame: Frame = frameManager.createFrame<Types>({
 			view: 'builder',
 			source: { text: '', textSeq: 0, edited: false, analysis: null },
 			tagChoices: new Map(),
+			openedFile: null,
 			sourceEdits$,
 			sourceRuntime: { synced: '', analysis: null, pendingEdit: false },
 		})
@@ -205,11 +208,13 @@ async function analyzeAndApply(key: StateKey, text: string) {
 }
 
 async function analyzeAndApplyUnsafe(key: StateKey, text: string) {
+	// a debounced edit that a file or the draft has since replaced
+	if (text !== Zus.getState(key).source.text) return
 	const runtime = runtimeOf(key)
 	runtime.analysis?.abort()
 	const controller = new AbortController()
 	runtime.analysis = controller
-	if (text === Zus.getState(key).source.text) runtime.pendingEdit = false
+	runtime.pendingEdit = false
 	const mod = rfmt ?? (await loadRfmt())
 	const state = Zus.getState(key)
 	if (controller.signal.aborted || state.view === 'builder') return
@@ -263,7 +268,7 @@ async function analyzeAndApplyUnsafe(key: StateKey, text: string) {
 		}
 	}
 	const list = Zus.getState(key).queue.layerList
-	const items = mod.carryOver(list, mod.toNewItems(parsed, mapping), format)
+	const items = mod.carryOver(list, mod.toNewItems(parsed, mapping))
 	const unknownSource: LL.Source = { type: 'unknown' }
 	const next = mod.serialize(
 		items.map((item) => LL.createItem(item, unknownSource)),
@@ -307,12 +312,54 @@ export namespace Actions {
 		await analyzeAndApply(key, state.source.text)
 	}
 
-	// replaces the text with a file's, switching to the file's format
-	export async function loadSource(key: StateKey, text: string) {
+	// Offers a file's items to the draft. An empty draft takes them right away, and otherwise they wait on placeOpenedFile.
+	export async function openFile(key: StateKey, file: File) {
+		const text = await file.text()
+		if (Zus.getState(key).queue.layerList.length === 0) {
+			await loadSource(key, text, 'replace')
+			return
+		}
+		store(key).setState({ openedFile: { name: file.name, text } })
+	}
+
+	export async function placeOpenedFile(key: StateKey, placement: LL.Placement) {
+		const file = Zus.getState(key).openedFile
+		if (!file) return
+		store(key).setState({ openedFile: null })
+		await loadSource(key, file.text, placement)
+	}
+
+	export function dismissOpenedFile(key: StateKey) {
+		store(key).setState({ openedFile: null })
+	}
+
+	// Puts a file's text before, after or in place of the draft's, in the file's format, and shows the result in that
+	// format. The draft's text is the text on screen when it is already in that format, so unapplied typing is kept.
+	async function loadSource(key: StateKey, fileText: string, placement: LL.Placement) {
 		const mod = await loadRfmt()
-		const view = mod.detectFormat(text)
-		const prev = Zus.getState(key).source
-		store(key).setState({ view, source: { text, textSeq: prev.textSeq + 1, edited: true, analysis: null } })
+		const format = mod.detectFormat(fileText)
+		const state = Zus.getState(key)
+		if (format !== state.view && blockingProblems(state.source) > 0) {
+			toast.error(tr.text(ROT_Msgs.switchViewBlocked(blockingProblems(state.source))))
+			return
+		}
+		const current = state.view === format ? state.source.text : mod.serialize(state.queue.layerList, format, configuredTags())
+		let text: string
+		switch (placement) {
+			case 'replace':
+				text = fileText
+				break
+			case 'start':
+				text = joinText(fileText, current)
+				break
+			case 'end':
+				text = joinText(current, fileText)
+				break
+			default:
+				assertNever(placement)
+		}
+		state.sourceRuntime.pendingEdit = false
+		store(key).setState({ view: format, source: { text, textSeq: state.source.textSeq + 1, edited: true, analysis: null } })
 		await analyzeAndApply(key, text)
 	}
 
@@ -342,7 +389,7 @@ export namespace Actions {
 		const url = URL.createObjectURL(new Blob([text], { type: format === 'yaml' ? 'application/yaml' : 'text/plain' }))
 		const a = document.createElement('a')
 		a.href = url
-		a.download = `${Zus.getState(key).rotationId}.${format === 'yaml' ? 'yaml' : 'txt'}`
+		a.download = `${Zus.getState(key).rotationId}.${format === 'yaml' ? 'yaml' : 'cfg'}`
 		a.click()
 		URL.revokeObjectURL(url)
 	}
@@ -354,4 +401,10 @@ async function exportText(key: StateKey, format: RFMT.Format): Promise<string> {
 	if (state.view === format) return state.source.text
 	const mod = await loadRfmt()
 	return mod.serialize(state.queue.layerList, format, configuredTags())
+}
+
+function joinText(first: string, second: string): string {
+	if (first.trim().length === 0) return second
+	if (second.trim().length === 0) return first
+	return first.endsWith('\n') ? first + second : `${first}\n${second}`
 }

@@ -83,6 +83,10 @@ export const idHelp = def('Follows the name until edited. Lowercase letters, num
 
 export const description = def('Description')
 
+export const copyFrom = def('Copy from')
+
+export const copyFromNothing = def('Nothing, start empty')
+
 export const copyTags = def('Copy rotation tags')
 
 export const copyContributors = def('Copy contributors')
@@ -165,8 +169,6 @@ export const readOnlyHint = def('Read only. Start Editing to change the layers h
 
 export const appliesAsYouType = def('Changes apply to the list as you type.')
 
-export const plainTextKeepsTags = def('Plain text does not show tags. A layer keeps its tags while it stays in the list.')
-
 export const copy = def('Copy')
 
 export const download = def('Download')
@@ -177,19 +179,23 @@ export const copyAsText = def('Copy as plain text')
 
 export const copyAsYaml = def('Copy as YAML')
 
-export const downloadText = def('Download .txt')
+export const downloadText = def('Download .cfg')
 
 export const downloadYaml = def('Download .yaml')
-
-export const leavesOutTags = def('Leaves out tags')
-
-export const keepsNotesAndTags = def('Keeps notes and tags')
 
 export const copied = def('Copied to the clipboard')
 
 export const openFile = def('Open File...')
 
-export const openFileHint = def('Replace the text with a .yaml or .txt file')
+export const openFileHint = def('Add the layers of a .yaml, .cfg or .txt file. Files can also be dropped onto the layers.')
+
+export const dropFileHint = def('Drop a .yaml, .cfg or .txt file to add its layers')
+
+export const openedFileTitle = def('Open {name}', (name: string) => ({ name }))
+
+export const openedFileBlurb = def(
+	"Add the file's layers before or after the rotation's layers, or replace the rotation's layers with them.",
+)
 
 export const tagChoicePlaceholder = def('Choose...')
 

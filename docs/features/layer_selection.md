@@ -77,9 +77,6 @@ _Rotations_ page, where they can be searched, tagged, cloned and archived.
 
 ![the Rotations page, with rotation tag and author filters beside the rotation cards](../images/features/rotations_page.png)
 
-Use _Tags_ in a rotation card's ⋮ or right-click menu to put a rotation tag on the rotation or take one off, and _New
-tag..._ there to define a new rotation tag.
-
 A rotation is edited the same way as the queue, and several admins can edit one at once. Each rotation follows a
 [repeat ruleset](../guide/configuring/layer_rotation.md#repeat-rules), and the editor marks every layer that breaks one
 of the ruleset's rules. A rotation's layers can also be edited, copied and downloaded as YAML or plain text.

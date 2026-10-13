@@ -299,7 +299,7 @@ test.describe('collaborative rotation editing', () => {
 		}
 	})
 
-	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page }) => {
+	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page, browser }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
 		await openPath(page, '/rotations')
@@ -325,6 +325,20 @@ test.describe('collaborative rotation editing', () => {
 		await expect(page).toHaveURL(/\/rotations\/weekend-copy/)
 		await app.waitFor(() => savedRotation(app, 'weekend-copy') ?? null, { label: 'the copy was written' })
 		expect(savedRotation(app, 'weekend-copy')!.items).toHaveLength(1)
+
+		// New Rotation can start as a copy of a rotation picked in the dialog
+		await openPath(page, '/rotations')
+		await page.getByRole('button', { name: 'New Rotation' }).click()
+		const newDialog = page.getByRole('dialog', { name: 'New Rotation' })
+		await newDialog.getByRole('combobox', { name: /Copy from/ }).click()
+		await page.getByRole('option', { name: 'Weekend Competitive', exact: true }).click()
+		await expect(newDialog.getByLabel('Name')).toHaveValue('Weekend Competitive (copy)')
+		await newDialog.getByLabel('Name').fill('Weekend Again')
+		await newDialog.getByLabel('ID').fill('weekend-again')
+		await newDialog.getByRole('button', { name: 'Clone and Open' }).click()
+		await expect(page).toHaveURL(/\/rotations\/weekend-again/)
+		await app.waitFor(() => savedRotation(app, 'weekend-again') ?? null, { label: 'the picked copy was written' })
+		expect(savedRotation(app, 'weekend-again')!.items).toHaveLength(1)
 
 		await openPath(page, '/rotations')
 		const copyCard = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Weekend Competitive (copy)' }) })
@@ -352,12 +366,37 @@ test.describe('collaborative rotation editing', () => {
 		await expect(copyCard).toBeVisible()
 		await expect(page).toHaveURL(/[?&]archived=true/)
 
-		// deleting asks first
-		await copyCard.getByRole('button', { name: 'More actions' }).click()
-		await page.getByRole('menuitem', { name: 'Delete' }).click()
-		await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
-		await expect(copyCard).toBeHidden()
-		await app.waitFor(() => savedRotation(app, 'weekend-copy') === undefined || null, { label: 'the copy was deleted' })
+		// another user has the copy open with unsaved edits, and the list open in a second tab
+		const second = await browser.newContext()
+		try {
+			const editorTab = await second.newPage()
+			await editorTab.goto(app.loginUrl(SECOND_USER))
+			await expect(editorTab.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+			const indexTab = await second.newPage()
+			await indexTab.goto(app.loginUrl(SECOND_USER))
+			await openPath(indexTab, '/rotations')
+			await expect(indexTab.getByRole('link', { name: 'Weekend Competitive' })).toBeVisible({ timeout: 15_000 })
+			await openPath(editorTab, '/rotations/weekend-copy')
+			await expect(editorTab.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
+			await editorTab.getByRole('button', { name: 'Clear layers' }).click()
+			await expect(editorTab.getByRole('heading', { name: 'Layers (0)' })).toBeVisible()
+
+			// deleting asks first
+			await copyCard.getByRole('button', { name: 'More actions' }).click()
+			await page.getByRole('menuitem', { name: 'Delete' }).click()
+			await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+			await expect(copyCard).toBeHidden()
+			await expect(page.getByText('Deleted Weekend Competitive (copy)')).toBeVisible()
+			await app.waitFor(() => savedRotation(app, 'weekend-copy') === undefined || null, { label: 'the copy was deleted' })
+
+			// the other user is sent back to the list past the unsaved edits, and both tabs say who deleted the copy
+			await expect(editorTab).toHaveURL(/\/rotations\/?(\?|$)/)
+			for (const tab of [editorTab, indexTab]) {
+				await expect(tab.getByText(/deleted Weekend Competitive \(copy\)/)).toBeVisible()
+			}
+		} finally {
+			await second.close()
+		}
 	})
 
 	// replaces the queue, so it runs last
@@ -442,6 +481,45 @@ test.describe('collaborative rotation editing', () => {
 		expect(narva.tags).toEqual([META.id])
 		expect(narva.notes?.map((note) => [note.text, note.author])).toEqual([['opener', undefined]])
 		expect(vote.choices?.map((choice) => choice.layerId)).toEqual([LAYERS.gorodokRaas, LAYERS.skorpoRaas])
+
+		// plain text writes the tags as a comment above the layer
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+		await expect(page.getByRole('textbox', { name: 'Layers as Plain text' })).toContainText(
+			'# opener# TAGS: metaNarva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+		)
+
+		// an opened file asks where its layers go
+		const choosing = page.waitForEvent('filechooser')
+		await page.getByRole('button', { name: 'Open File...' }).click()
+		await (
+			await choosing
+		).setFiles({
+			name: 'extra.cfg',
+			mimeType: 'text/plain',
+			buffer: Buffer.from('Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n'),
+		})
+		await page.getByRole('dialog', { name: 'Open extra.cfg' }).getByRole('button', { name: 'Add to start' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (3)' })).toBeVisible()
+		await expect(page.getByRole('textbox', { name: 'Layers as Plain text' })).toContainText(
+			'Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms# opener',
+		)
+
+		// so does one dropped onto the text, which the text editor leaves alone
+		const dropped = await page.evaluateHandle(() => {
+			const transfer = new DataTransfer()
+			transfer.items.add(new File(['- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n'], 'one.yaml'))
+			return transfer
+		})
+		const content = page.getByRole('textbox', { name: 'Layers as Plain text' })
+		await content.dispatchEvent('dragenter', { dataTransfer: dropped })
+		await content.dispatchEvent('dragover', { dataTransfer: dropped })
+		await content.dispatchEvent('drop', { dataTransfer: dropped })
+		await page.getByRole('dialog', { name: 'Open one.yaml' }).getByRole('button', { name: 'Replace' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible()
+		await expect(page.getByRole('textbox', { name: 'Layers as YAML' })).toHaveText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
+
+		await page.getByRole('button', { name: 'Reset' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible()
 	})
 
 	test('the layer pickers keep the collection and the applied filters from Explore Layers and across rotations', async ({ page }) => {

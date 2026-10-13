@@ -10,10 +10,12 @@ import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as ROT_Msgs from '@/messages/rotations.messages'
+import type * as AppEvents from '@/models/app-events.models'
 import * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
+import * as AppEventsClient from '@/systems/app-events.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -205,10 +207,24 @@ export namespace Actions {
 	}
 
 	export async function remove(rotation: Pick<ROT.Meta, 'id' | 'name'>): Promise<boolean> {
+		deletingHere.add(rotation.id)
 		const ok = handleResult(await RPC.orpc.rotations.delete.call(rotation.id))
 		if (ok) toast(...tr.toast(ROT_Msgs.deleted(rotation.name)))
+		else deletingHere.delete(rotation.id)
 		return ok
 	}
+}
+
+// rotations this tab is deleting, which report their own deletion
+const deletingHere = new Set<ROT.RotationId>()
+
+function reportDeletion(mutation: ROT.SummaryMutation & { actor: AppEvents.Actor }) {
+	if (deletingHere.delete(mutation.key)) return
+	void AppEventsClient.reportDeletion({
+		item: { index: '/rotations', to: '/rotations/$rotationId', params: { rotationId: mutation.key } },
+		actor: mutation.actor,
+		describe: (actorName) => tr.toast(ROT_Msgs.deletedBy(mutation.value.name, actorName)),
+	})
 }
 
 // -------- keeping caches current --------
@@ -233,6 +249,7 @@ function applyChange(change: RotationChange) {
 				Store.setState({ names: new Map(names).set(mutation.key, name) })
 			}
 			void RPC.queryClient.invalidateQueries({ queryKey: [...RPC.orpc.rotations.get.key(), mutation.key] })
+			if (mutation.type === 'delete') reportDeletion(mutation)
 			break
 		}
 		default:

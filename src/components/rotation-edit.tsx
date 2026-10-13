@@ -11,7 +11,7 @@ import { RepeatRulesetPanel } from '@/components/pool-config-panels'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +33,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as ROT from '@/models/rotations.models'
 import * as UP from '@/models/user-presence.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
@@ -104,19 +105,17 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 				</div>
 			</div>
 
-			{/* wrap-reverse puts the aside above the layers once the row wraps. It also swaps the cross axis, so items-end
-			    aligns both columns to the top. */}
-			<div className="flex flex-wrap-reverse items-end gap-4">
-				<section
-					className="flex-[999_1_620px] min-w-0 rounded border bg-card"
-					aria-label={tr.text(ROT_Msgs.layers(rotation.items.length))}
-				>
-					<ListToolbar listHost={listHost} rotation={rotation} />
-					<ListBody listHost={listHost} rotationId={rotation.id} />
-				</section>
+			{/* one column puts the actions above the layers and the repeat ruleset below them. Two columns put both beside
+			    the layers. */}
+			<div className="@container">
+				<div className="grid gap-4 [grid-template-areas:'actions'_'layers'_'ruleset'] @[960px]:grid-cols-[minmax(0,1fr)_fit-content(40%)] @[960px]:grid-rows-[auto_1fr] @[960px]:[grid-template-areas:'layers_actions'_'layers_ruleset']">
+					<ListSection listHost={listHost} rotation={rotation}>
+						<ListToolbar listHost={listHost} rotation={rotation} />
+						<ListBody listHost={listHost} rotationId={rotation.id} />
+					</ListSection>
+					<OpenedFileDialog listHost={listHost} />
 
-				<aside className="flex min-w-0 flex-[1_1_320px] max-w-md flex-col gap-3">
-					<div className="flex flex-wrap gap-1.5">
+					<div className="flex flex-wrap content-start gap-1.5 [grid-area:actions]">
 						<EditingControls listHost={listHost} rotationId={rotation.id} />
 						<PermissionDeniedTooltip denied={createDenied}>
 							<Button variant="outline" disabled={!!createDenied} onClick={() => setDialog('clone')}>
@@ -141,7 +140,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 							</Button>
 						</PermissionDeniedTooltip>
 					</div>
-					<section className="rounded border bg-card p-3">
+					<section className="min-w-0 self-start rounded border bg-card p-3 [grid-area:ruleset]">
 						<RepeatRulesetPanel
 							title={tr.text(ROT_Msgs.repeatRuleset())}
 							help={tr.text(ROT_Msgs.repeatRulesetHelp())}
@@ -153,7 +152,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 							rulesInDialog
 						/>
 					</section>
-				</aside>
+				</div>
 			</div>
 
 			{(dialog === 'name' || dialog === 'description') && (
@@ -169,7 +168,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 				rotation={rotation}
 				open={dialog === 'delete'}
 				onOpenChange={(open) => setDialog(open ? 'delete' : null)}
-				onDeleted={() => void navigate({ to: '/rotations' })}
+				onDeleted={() => void navigate({ to: '/rotations', ignoreBlocker: true })}
 			/>
 		</div>
 	)
@@ -232,6 +231,96 @@ function RotationTagsRow(props: { rotation: ROT.Rotation; disabled: boolean }) {
 				onRemove={(tagId) => setTags(rotation.tags.filter((id) => id !== tagId))}
 			/>
 		</div>
+	)
+}
+
+// opens a file dropped anywhere on the layers, as Open File... does
+function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.Rotation; children: React.ReactNode }) {
+	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotation.id))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+	const [dragging, setDragging] = React.useState(false)
+	// dragenter and dragleave fire for every child the drag crosses, so the overlay shows while the count is above 0
+	const dragDepth = React.useRef(0)
+	const overlayZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const carriesFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
+	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
+	return (
+		<section
+			className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
+			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
+			onDragEnter={(e) => {
+				if (!carriesFiles(e) || writeDenied) return
+				dragDepth.current++
+				setDragging(true)
+			}}
+			onDragLeave={(e) => {
+				if (!carriesFiles(e) || writeDenied) return
+				dragDepth.current = Math.max(0, dragDepth.current - 1)
+				if (dragDepth.current === 0) setDragging(false)
+			}}
+			onDragOverCapture={(e) => {
+				if (!carriesFiles(e)) return
+				e.preventDefault()
+				e.stopPropagation()
+				e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
+			}}
+			onDropCapture={(e) => {
+				if (!carriesFiles(e)) return
+				e.preventDefault()
+				e.stopPropagation()
+				dragDepth.current = 0
+				setDragging(false)
+				const file = e.dataTransfer.files[0]
+				if (!file || writeDenied) return
+				setIsEditing(true)
+				void RotationEditorFrame.Actions.openFile(props.listHost, file)
+			}}
+		>
+			{props.children}
+			{dragging && (
+				<div
+					style={{ zIndex: overlayZIndex }}
+					className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
+				>
+					{tr.text(ROT_Msgs.dropFileHint())}
+				</div>
+			)}
+		</section>
+	)
+}
+
+// where the items of an opened file go in a draft that already has items
+function OpenedFileDialog(props: { listHost: RotationEditorFrame.Key }) {
+	const file = Zus.useStore(props.listHost, (s) => s.openedFile)
+	const place = (placement: LL.Placement) => () => void RotationEditorFrame.Actions.placeOpenedFile(props.listHost, placement)
+	return (
+		<Dialog
+			open={file !== null}
+			onOpenChange={(open) => {
+				if (!open) RotationEditorFrame.Actions.dismissOpenedFile(props.listHost)
+			}}
+		>
+			<DialogContent className="max-w-md">
+				<DialogHeader>
+					<DialogTitle>{tr.text(ROT_Msgs.openedFileTitle(file?.name ?? ''))}</DialogTitle>
+					<DialogDescription>{tr.text(ROT_Msgs.openedFileBlurb())}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter className="flex-wrap gap-2">
+					<Button variant="outline" onClick={() => RotationEditorFrame.Actions.dismissOpenedFile(props.listHost)}>
+						{tr.text(UI_Msgs.cancel())}
+					</Button>
+					<Button variant="outline" onClick={place('start')}>
+						{tr.text(LL_Msgs.placeStart())}
+					</Button>
+					<Button variant="outline" onClick={place('end')}>
+						{tr.text(LL_Msgs.placeEnd())}
+					</Button>
+					<Button variant="primary" onClick={place('replace')}>
+						{tr.text(LL_Msgs.placeReplace())}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
@@ -299,40 +388,37 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 				setActive={(next) => void RotationEditorFrame.Actions.setView(props.listHost, next)}
 			/>
 			<span className="flex-1" />
-			{view === 'builder' ? (
+			{view === 'builder' && (
 				<BuilderActions
 					writeDenied={writeDenied}
 					fixingRepeats={fixingRepeats}
 					onFixRepeats={editing(() => void ListHostPrt.Actions.fixRepeats({ listHost: props.listHost }))}
 					onClear={editing(clear)}
 				/>
-			) : (
-				<>
-					<input
-						ref={fileRef}
-						type="file"
-						accept=".yaml,.yml,.txt,text/plain"
-						className="hidden"
-						onChange={(e) => {
-							const file = e.target.files?.[0]
-							e.target.value = ''
-							if (file) void file.text().then((text) => RotationEditorFrame.Actions.loadSource(props.listHost, text))
-						}}
-					/>
-					<PermissionDeniedTooltip denied={writeDenied}>
-						<Button
-							variant="outline"
-							size="sm"
-							title={tr.text(ROT_Msgs.openFileHint())}
-							disabled={!!writeDenied}
-							onClick={editing(() => fileRef.current?.click())}
-						>
-							<Icons.FolderOpen />
-							{tr.text(ROT_Msgs.openFile())}
-						</Button>
-					</PermissionDeniedTooltip>
-				</>
 			)}
+			<input
+				ref={fileRef}
+				type="file"
+				accept=".yaml,.yml,.cfg,.txt,text/plain"
+				className="hidden"
+				onChange={(e) => {
+					const file = e.target.files?.[0]
+					e.target.value = ''
+					if (file) void RotationEditorFrame.Actions.openFile(props.listHost, file)
+				}}
+			/>
+			<PermissionDeniedTooltip denied={writeDenied}>
+				<Button
+					variant="outline"
+					size="sm"
+					title={tr.text(ROT_Msgs.openFileHint())}
+					disabled={!!writeDenied}
+					onClick={editing(() => fileRef.current?.click())}
+				>
+					<Icons.FolderOpen />
+					{tr.text(ROT_Msgs.openFile())}
+				</Button>
+			</PermissionDeniedTooltip>
 			<Button
 				variant="ghost"
 				size="icon-sm"
@@ -422,14 +508,7 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 			</ButtonGroup>
 		)
 	}
-	const option = (title: string, hint: string, onSelect: () => void) => (
-		<DropdownMenuItem onSelect={onSelect}>
-			<span className="flex flex-col">
-				<span>{title}</span>
-				<span className="text-xs text-muted-foreground">{hint}</span>
-			</span>
-		</DropdownMenuItem>
-	)
+	const option = (title: string, onSelect: () => void) => <DropdownMenuItem onSelect={onSelect}>{title}</DropdownMenuItem>
 	return (
 		<ButtonGroup aria-label={label} className="ms-1.5">
 			<DropdownMenu modal={false}>
@@ -441,16 +520,8 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					{option(
-						tr.text(ROT_Msgs.copyAsText()),
-						tr.text(ROT_Msgs.leavesOutTags()),
-						() => void RotationEditorFrame.Actions.copyText(listHost, 'text'),
-					)}
-					{option(
-						tr.text(ROT_Msgs.copyAsYaml()),
-						tr.text(ROT_Msgs.keepsNotesAndTags()),
-						() => void RotationEditorFrame.Actions.copyText(listHost, 'yaml'),
-					)}
+					{option(tr.text(ROT_Msgs.copyAsText()), () => void RotationEditorFrame.Actions.copyText(listHost, 'text'))}
+					{option(tr.text(ROT_Msgs.copyAsYaml()), () => void RotationEditorFrame.Actions.copyText(listHost, 'yaml'))}
 				</DropdownMenuContent>
 			</DropdownMenu>
 			<DropdownMenu modal={false}>
@@ -462,16 +533,8 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					{option(
-						tr.text(ROT_Msgs.downloadText()),
-						tr.text(ROT_Msgs.leavesOutTags()),
-						() => void RotationEditorFrame.Actions.downloadText(listHost, 'text'),
-					)}
-					{option(
-						tr.text(ROT_Msgs.downloadYaml()),
-						tr.text(ROT_Msgs.keepsNotesAndTags()),
-						() => void RotationEditorFrame.Actions.downloadText(listHost, 'yaml'),
-					)}
+					{option(tr.text(ROT_Msgs.downloadText()), () => void RotationEditorFrame.Actions.downloadText(listHost, 'text'))}
+					{option(tr.text(ROT_Msgs.downloadYaml()), () => void RotationEditorFrame.Actions.downloadText(listHost, 'yaml'))}
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</ButtonGroup>

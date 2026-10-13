@@ -115,11 +115,18 @@ test.describe('filter references', () => {
 		await expect(leadCard).toContainText('Pool filter for:')
 		await expect(leadCard).toContainText('Emulated Server')
 
-		// a filter nothing points at still deletes
+		// a filter nothing points at still deletes, and a second tab showing it is sent back to the index and told why
 		await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
 		await expect(page.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
+		const otherTab = await page.context().newPage()
+		await otherTab.goto(app.loginUrl(app.adminUser, '/filters/unused'))
+		await expect(otherTab.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
 		await page.getByRole('button', { name: 'Delete' }).click()
 		await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+		await expect(page.getByText('Filter "AAS Only" deleted')).toBeVisible()
+		await expect(otherTab).toHaveURL(/\/filters\/?(\?|$)/)
+		await expect(otherTab.getByText(/Filter AAS Only was deleted by/)).toBeVisible()
+		await otherTab.close()
 
 		await app.waitFor(
 			() => {

@@ -67,8 +67,9 @@ To change a server's repeat rules:
 
 _Save Changes_ saves the rules into the repeat ruleset, so every server using that repeat ruleset gets the new rules.
 
-Use _New repeat ruleset_, beside the picker, to create a repeat ruleset. It starts with a copy of the rules shown, and
-the server switches to it once _Save Changes_ is pressed. Use the pencil beside the picker to rename the repeat ruleset
+Use _New repeat ruleset_, beside the picker, to create a repeat ruleset. It starts with a copy of the rules of the
+repeat ruleset picked under _Copy rules from_, which is the one shown unless another is picked, or with the default
+repeat rules. The server switches to the new repeat ruleset once _Save Changes_ is pressed. Use the pencil beside the picker to rename the repeat ruleset
 shown. The settings page lists every repeat ruleset under _Repeat Rulesets_. A repeat ruleset can only be deleted
 there, and only while no server or rotation uses it.
 
@@ -152,7 +153,7 @@ A note on an item added from a saved rotation shows a rotation icon in place of 
 
 The toggle beside a rotation's _Layers_ heading switches between _Builder_, which shows the layers as a list, and _Text_
 and _YAML_, which show them as plain text or YAML. The text holds the layers alone, without the rotation's name,
-description, tags or repeat ruleset. Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a
+description, rotation tags or repeat ruleset. Both formats write a layer as the line SLM sends with `AdminSetNextLayer`, so a
 layer line copied from one format pastes into the other.
 
 ```yaml
@@ -171,13 +172,15 @@ In YAML, each `#` line directly above a layer or a vote choice is a note on it. 
 first choice is its default. `display` sets what the vote shows players, from `map`, `gamemode`, `layer`, `factions`
 and `units`, and `duration` sets how long the vote runs. A vote without them uses the server's vote settings.
 
-Plain text holds one layer per line, with `#` lines as notes on the next layer. A vote starts with a `# VOTE:` line,
-which takes the same `display` and `duration` settings, separated by `;`. The vote's choices follow it, indented, and
-the vote ends at the next line that is not indented. Plain text leaves tags out.
+Plain text holds one layer per line, with `#` lines as notes on the next layer. A `# TAGS:` line names the next
+layer's tags by label, separated by `,`. A vote starts with a `# VOTE:` line, which takes the same `display` and
+`duration` settings, separated by `;`. The vote's choices follow it, indented, and the vote ends at the next line that
+is not indented.
 
 ```text
 # Opening layer. Keep it light while the server fills.
 Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+# TAGS: Event Night
 Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
 # VOTE: display map, factions; duration 3m
   GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry
@@ -187,11 +190,15 @@ Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
 The text can be edited once _Start Editing_ is pressed. A change applies to the rotation's layers when typing pauses.
 SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
 also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
-change is held back, the view cannot be switched. Plain text does not show tags, so a layer edited as plain text keeps
-its tags while it stays in the list. Use _Open File..._ to replace the text with a `.yaml` or `.txt` file.
+change is held back, the view cannot be switched.
+
+Use _Open File..._, or drop a `.yaml`, `.cfg` or `.txt` file onto a rotation's layers, to add the file's layers. Pick
+_Add to start_ or _Add to end_ to put them before or after the rotation's layers, or _Replace_ to replace the
+rotation's layers with them. A rotation with no layers takes the file's layers without asking. The result is shown as
+text in the file's format, so any line SLM cannot read is listed there.
 
 Use _Copy_ and _Download_ to take a rotation's layers out as text. In the _Builder_, each one asks for plain text or
-YAML. In _Text_ and _YAML_, _Copy_ and _Download_ use the text on screen.
+YAML. In _Text_ and _YAML_, _Copy_ and _Download_ use the text on screen. Plain text downloads as a `.cfg` file.
 
 _Add Rotation_ on the queue reads the same formats on its _Paste_ tab.
 

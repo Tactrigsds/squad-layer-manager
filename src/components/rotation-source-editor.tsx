@@ -5,13 +5,14 @@ import React from 'react'
 import { describeParseError } from '@/components/layer-text-import.helpers'
 import { LayerLineErrors } from '@/components/multi-layer-set-dialog'
 import { describeLayerLine } from '@/components/multi-layer-set-dialog.helpers'
+import { rotationCfg } from '@/components/rotation-cfg-language'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import * as RotationEditorFrame from '@/frames/rotation-editor.frame'
 import * as CM from '@/lib/codemirror'
 import * as Zus from '@/lib/zustand'
 import * as ROT_Msgs from '@/messages/rotations.messages'
-import * as RFMT from '@/models/rotation-format.models'
+import type * as RFMT from '@/models/rotation-format.models'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -35,7 +36,7 @@ export default function RotationSourceEditor(props: { listHost: RotationEditorFr
 			parent: editorEltRef.current!,
 			doc: initial.text,
 			extensions: [
-				...(format === 'yaml' ? CM.yamlEditorExtensions(undefined) : CM.plainTextEditorExtensions()),
+				...(format === 'yaml' ? CM.yamlEditorExtensions(undefined) : [...CM.plainTextEditorExtensions(), rotationCfg]),
 				readOnly.of(CM.readOnly(!editingRef.current)),
 				CM.EditorView.contentAttributes.of({ 'aria-label': tr.text(ROT_Msgs.sourceLabel(formatName)) }),
 				CM.EditorView.updateListener.of((u) => {
@@ -75,10 +76,7 @@ export default function RotationSourceEditor(props: { listHost: RotationEditorFr
 }
 
 function SourceStatus(props: { listHost: RotationEditorFrame.Key; formatName: string; editing: boolean }) {
-	const [analysis, view, taggedInList] = Zus.useStore(
-		props.listHost,
-		Zus.useShallow((s) => [s.source.analysis, s.view, RFMT.plainTextDroppedTags(s.queue.layerList) > 0] as const),
-	)
+	const analysis = Zus.useStore(props.listHost, (s) => s.source.analysis)
 	const errors = analysis
 		? [
 				...analysis.parseErrors.map((error) => ({ lineNumber: error.line, text: error.text, reason: describeParseError(error) })),
@@ -92,12 +90,6 @@ function SourceStatus(props: { listHost: RotationEditorFrame.Key; formatName: st
 					{(!analysis || analysis.pending) && <Spinner className="h-3.5 w-3.5 animate-spin" />}
 					{analysis && tr.text(ROT_Msgs.importSummary(props.formatName, analysis.itemCount, analysis.noteCount))}
 				</span>
-				{view === 'text' && taggedInList && (
-					<span className="inline-flex items-center gap-1.5 text-warning">
-						<Icons.TriangleAlert className="h-3.5 w-3.5" aria-hidden />
-						{tr.text(ROT_Msgs.plainTextKeepsTags())}
-					</span>
-				)}
 				<span className="flex-1" />
 				<span className="text-muted-foreground">{tr.text(ROT_Msgs.appliesAsYouType())}</span>
 			</div>

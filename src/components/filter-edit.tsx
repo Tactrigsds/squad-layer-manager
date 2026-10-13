@@ -59,8 +59,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const navigate = useNavigate()
 
-	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
-
 	const [editingDetails, setEditingDetails] = useState(false)
 	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
 	const colConfig = Zus.useStore(stores.filterEditor, (s) => s.layerTable.colConfig)
@@ -107,14 +105,14 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 		if (!props.entity) {
 			return
 		}
-		const res = await deleteFilterMutation.mutateAsync(props.entity.id)
+		const res = await FilterEntityClient.deleteFilter(props.entity.id)
 		if (res.code === 'ok') {
 			toast(...tr.toast(F_Msgs.deleted(props.entity.name)))
-			void navigate({ to: '/filters' })
+			void navigate({ to: '/filters', ignoreBlocker: true })
 		} else {
 			toast.error(...tr.toast(F_Msgs.deleteFailed(props.entity.name, res)))
 		}
-	}, [deleteFilterMutation, navigate, props.entity])
+	}, [navigate, props.entity])
 
 	const canEditRes = RbacClient.usePermsCheck(RBAC.getWritePermReqForFilterEntity(props.entity.id))
 	const permitWriteAll = !RbacClient.usePermsCheck(RBAC.perm('filters:write-all'))?.code
