@@ -233,21 +233,70 @@ type Selector = (...states: any[]) => any
 
 const THREW = Symbol('threw')
 
-// One selector over one tuple of sync sources, shared by every useStore call that names the same ones. It subscribes to
-// the sources once and runs the selector once per change, and its components hear about a change only when the result
-// differs. N components reading one selector cost one run per change rather than N trips through React.
+// The shared path of useStore keeps its state outside React, in two layers:
+//
+// - SourceSub: one subscription per source, fanned out to every selection reading it.
+// - Selection: one selector over one tuple of sources, shared by every useStore call that names the same ones. It runs
+//   the selector once per change, and its components hear about a change only when the result differs, so N
+//   components sharing a selector cost one run per change rather than N trips through React.
+//
+// A component reads the selection for its current selector, so a new selector identity moves it to another selection.
+// Components naming the same selector and sources stay on one selection. A selection with no components left is
+// released a microtask later, unless a component joins it in between. React unsubscribes a component from its old
+// selection before subscribing it to the new one, so the delay keeps the source subscribed across the switch. That
+// matters for a source that forgets its value once nothing subscribes, such as a react-rxjs StateObservable: without
+// it, a selector that is new on every render resubscribes, loses the value and renders again, forever.
+
+class SourceSub {
+	readonly listeners = new Set<() => void>()
+	private readonly unsubscribe: () => void
+
+	constructor(readonly source: SyncSource<any>) {
+		this.unsubscribe = subscribe(source as AnyStore<any>, this.notify)
+	}
+
+	private notify = () => {
+		for (const listener of this.listeners) listener()
+	}
+
+	add(listener: () => void) {
+		this.listeners.add(listener)
+	}
+
+	// immediate, because only a selection's delayed release calls it: by then a component that switched selection has
+	// already added the new selection's listener here
+	remove(listener: () => void) {
+		this.listeners.delete(listener)
+		if (this.listeners.size > 0) return
+		this.unsubscribe()
+		if (sourceSubs.get(this.source) === this) sourceSubs.delete(this.source)
+	}
+}
+
+const sourceSubs = new Map<SyncSource<any>, SourceSub>()
+
+function sourceSubFor(source: SyncSource<any>): SourceSub {
+	let sub = sourceSubs.get(source)
+	if (!sub) {
+		sub = new SourceSub(source)
+		sourceSubs.set(source, sub)
+	}
+	return sub
+}
+
 class Selection {
 	private states: any[] | null = null
 	private value: any
 	// the value the listeners last heard about. A render can read() a change before onSourceChange runs, so comparing
 	// against `value` alone would let that change go unannounced.
 	private announced: any
-	private listeners = new Set<() => void>()
-	private unsubscribes: (() => void)[] = []
+	private readonly listeners = new Set<() => void>()
+	private subs: SourceSub[] = []
 
 	constructor(
-		private sources: (SyncSource<any> | null)[],
-		private selector: Selector | undefined,
+		private readonly sources: (SyncSource<any> | null)[],
+		private readonly selector: Selector | undefined,
+		private readonly node: SelectionNode,
 	) {}
 
 	read = () => {
@@ -269,17 +318,37 @@ class Selection {
 	}
 
 	subscribe = (listener: () => void) => {
+		// a render can take a selection that is released before it commits; the commit revives it
+		this.node.selection ??= this
 		if (this.listeners.size === 0) {
-			this.announced = this.read()
-			this.unsubscribes = this.sources.map((s) => subscribe(s as AnyStore<any> | null, this.onSourceChange))
+			// still subscribed when a component rejoins before the delayed release ran
+			if (this.subs.length === 0) {
+				for (const source of this.sources) {
+					if (source === null) continue
+					const sub = sourceSubFor(source)
+					sub.add(this.onSourceChange)
+					this.subs.push(sub)
+				}
+			}
+			// read after subscribing, so a source that only holds a value while subscribed has one to read
+			try {
+				this.announced = this.read()
+			} catch {
+				this.announced = THREW
+			}
 		}
 		this.listeners.add(listener)
 		return () => {
 			this.listeners.delete(listener)
-			if (this.listeners.size > 0) return
-			for (const unsubscribe of this.unsubscribes) unsubscribe()
-			this.unsubscribes = []
+			if (this.listeners.size === 0) queueMicrotask(this.releaseIfIdle)
 		}
+	}
+
+	private releaseIfIdle = () => {
+		if (this.listeners.size > 0) return
+		for (const sub of this.subs) sub.remove(this.onSourceChange)
+		this.subs = []
+		if (this.node.selection === this) this.node.selection = undefined
 	}
 
 	// A selector that throws here, such as a per-item selector for an item just deleted, is treated as a change, as
@@ -300,8 +369,9 @@ class Selection {
 	}
 }
 
-// keyed on the selector, then on each source in turn. Every level is weak, so an inline selector's selection is
-// dropped with the render that made it, and a torn-down frame's with its store.
+// Keyed on the selector, then on each source in turn. Every level is weak, so a selection created by a render that never
+// committed is collected along with its selector, and a torn-down frame's along with its store. A released selection
+// is also dropped from its node, so a component that names the selector again starts a fresh one.
 type SelectionNode = { selection?: Selection; next?: WeakMap<object, SelectionNode> }
 const NO_SELECTOR = {}
 const NO_SOURCE = {}
@@ -324,7 +394,7 @@ function selectionFor(sources: (SyncSource<any> | null)[], selector: Selector | 
 		}
 		node = next
 	}
-	node.selection ??= new Selection(sources, selector)
+	node.selection ??= new Selection(sources, selector, node)
 	return node.selection
 }
 
