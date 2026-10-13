@@ -273,6 +273,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'search',
 		'update',
 	],
+	'slm/systems/settings': ['global', 'globalChanges', 'server', 'serverChanges', 'updateGlobal', 'updateServer'],
 	'slm/systems/squad-rcon': [
 		'MIN_TTL_MS',
 		'adminRenameSquad',

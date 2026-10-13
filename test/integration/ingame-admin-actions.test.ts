@@ -393,7 +393,7 @@ describe("editing the server's admin lists", () => {
 		const client = await createOrpcClient(app)
 		const res = await client.settings.server.updateSettings({ serverId: app.serverId, ops: [{ path: ['adminLists'], value: [] }] })
 		// the handler returns a result only on failure
-		expect(res).toBeUndefined()
+		expect(res).toMatchObject({ code: 'ok' })
 
 		// the same command the ingame admin was granted above, now reaching them through no list at all
 		app.emu.rcon.commandLog.length = 0

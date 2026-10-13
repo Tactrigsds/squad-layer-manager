@@ -171,6 +171,11 @@ export function require(serverId: string): C.ManagedServer {
 	return managedServer
 }
 
+/** the live managed server, or undefined when it is not running */
+export function find(serverId: string): C.ManagedServer | undefined {
+	return globalState.managedServers.get(serverId)
+}
+
 /**
  * The managed server ctx for an event handler, rebuilt at handle time from the serverId the event carries. Events
  * carry only the id so that the SQS.Ctx.Payload payload does not reference C.ManagedServer, which would pin it to
