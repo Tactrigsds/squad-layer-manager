@@ -8,9 +8,9 @@ import * as Obj from '@/lib/object-utils'
 // subscribe with a bare `Zus.useStore(store, Sel.foo)` -- no useShallow/useDeep wrapper --
 // and only re-render when the selected data actually changes.
 //
-// Keep them module-level. `Zus.useStore` shares one subscription per selector function, so every component naming a
-// module-level selector is served by a single run of it per change. A selector defined inline in a component body is
-// a new function every render, and resubscribes on each one.
+// Keep them module-level. `Zus.useStore` shares one selection per selector function, so every component naming a
+// module-level selector is served by a single run of it per change. An inline selector the React Compiler does not
+// hoist is a new function every render, so it shares nothing and runs once per component.
 //
 // For parameterized selectors, memoize the factory itself so every call site shares one
 // selector instance (and one cache, and one subscription) per parameter:

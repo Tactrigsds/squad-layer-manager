@@ -381,7 +381,7 @@ describe('useStore shared selections', () => {
 		expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['a'])
 	})
 
-	it('drops its source subscription when the last component unmounts', () => {
+	it('drops its source subscription a microtask after the last component unmounts', async () => {
 		const store = createStore()
 		const unsubscribed = vi.fn()
 		const subscribe = store.subscribe
@@ -402,6 +402,122 @@ describe('useStore shared selections', () => {
 			</>,
 		)
 		view.unmount()
+		expect(unsubscribed).not.toHaveBeenCalled()
+		await Promise.resolve()
 		expect(unsubscribed).toHaveBeenCalledTimes(1)
+	})
+
+	it('splits a component off when it switches selector, and rejoins when it switches back', async () => {
+		const store = createStore()
+		const a = vi.fn(selectCount)
+		const b = vi.fn((s: State) => s.count * 10)
+		function Reader(props: { selector: (s: State) => number }) {
+			return <span>{Zus.useStore(store, props.selector)}</span>
+		}
+		const view = render(
+			<>
+				<Reader selector={a} />
+				<Reader selector={a} />
+			</>,
+		)
+		view.rerender(
+			<>
+				<Reader selector={a} />
+				<Reader selector={b} />
+			</>,
+		)
+		a.mockClear()
+		b.mockClear()
+		act(() => store.setState({ count: 1 }))
+		expect(a).toHaveBeenCalledTimes(1)
+		expect(b).toHaveBeenCalledTimes(1)
+		expect(screen.getByText('1')).toBeTruthy()
+		expect(screen.getByText('10')).toBeTruthy()
+
+		view.rerender(
+			<>
+				<Reader selector={a} />
+				<Reader selector={a} />
+			</>,
+		)
+		// the selection nobody reads any more is released a microtask later
+		await Promise.resolve()
+		a.mockClear()
+		b.mockClear()
+		act(() => store.setState({ count: 2 }))
+		expect(a).toHaveBeenCalledTimes(1)
+		expect(b).not.toHaveBeenCalled()
+		expect(screen.getAllByText('2')).toHaveLength(2)
+	})
+
+	// stands in for a react-rxjs StateObservable that only this component keeps hot: it holds a value only while
+	// something subscribes, and forgets it when the last subscriber leaves
+	function refCounted(initial: string) {
+		const subject = new Rx.Subject<string>()
+		let current: string | undefined
+		let active = 0
+		const subscribes = vi.fn()
+		const observable = new Rx.Observable<string>((subscriber) => {
+			subscribes()
+			if (active++ === 0) current = initial
+			subscriber.next(current!)
+			const sub = subject.subscribe((v) => {
+				current = v
+				subscriber.next(v)
+			})
+			return () => {
+				sub.unsubscribe()
+				if (--active === 0) current = undefined
+			}
+		})
+		const source = Object.assign(observable, { getValue: () => current }) as Zus.ValueObservable<string | undefined>
+		return { source, emit: (v: string) => subject.next(v), subscribes, active: () => active }
+	}
+
+	it('keeps a forgetful source subscribed, and settles, under a selector that is new on every render', () => {
+		const { source, emit, subscribes } = refCounted('ready')
+		function Reader(_props: { tick: number }) {
+			// otherwise the React Compiler hoists the selector, as it does in the app, and no render makes a new one
+			'use no memo'
+			return <span>{Zus.useStore(source, (v) => v ?? 'none')}</span>
+		}
+		const view = render(<Reader tick={0} />)
+		expect(screen.getByText('ready')).toBeTruthy()
+		for (let i = 1; i <= 5; i++) view.rerender(<Reader tick={i} />)
+		act(() => emit('next'))
+		expect(screen.getByText('next')).toBeTruthy()
+		expect(subscribes).toHaveBeenCalledTimes(1)
+	})
+
+	it('survives StrictMode mounting every component twice', () => {
+		const { source, subscribes } = refCounted('ready')
+		function Reader() {
+			return <span>{Zus.useStore(source, (v) => v ?? 'none')}</span>
+		}
+		rtlRender(
+			<React.StrictMode>
+				<Reader />
+			</React.StrictMode>,
+		)
+		expect(screen.getByText('ready')).toBeTruthy()
+		expect(subscribes).toHaveBeenCalledTimes(1)
+	})
+
+	it('removes every selection and closes the source once no component reads it', async () => {
+		const { source, active } = refCounted('ready')
+		const selector = (v: string | undefined) => v ?? 'none'
+		function Reader() {
+			return <span>{Zus.useStore(source, selector)}</span>
+		}
+		const view = render(
+			<>
+				<Reader />
+				<Reader />
+			</>,
+		)
+		expect(active()).toBe(1)
+		view.unmount()
+		await Promise.resolve()
+		expect(active()).toBe(0)
 	})
 })
