@@ -160,6 +160,10 @@ export const router = {
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ sourceId: z.string(), id: z.string() }))
 		.handler(async ({ context, input }) => Rotations.clone(context, { ...input, name: 'Hello rotation clone' })),
+	copyContributors: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ sourceId: z.string(), targetId: z.string() }))
+		.handler(async ({ context, input }) => Rotations.copyContributors(context, input.sourceId, input.targetId)),
 	dropRotation: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ id: z.string() }))

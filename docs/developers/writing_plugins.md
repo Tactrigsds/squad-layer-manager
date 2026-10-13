@@ -294,6 +294,12 @@ with `rotations:write-all` can edit and delete it by hand, and contributors that
 an admin the owner instead, pass `owner: { type: 'slm-user', userId: 123456789012345678n }`. That admin gets the
 rotation-owner role over the rotation, and can edit and delete it and manage its contributors. `clone` copies the
 source's items, description and repeat ruleset, and its tags when `copyTags` is set. It never copies contributors.
+Use `copyContributors` to add one rotation's contributors to another, such as last week's rotation's contributors to
+this week's.
+
+```ts
+await Rotations.copyContributors(ctx, 'weekend-mix', 'weekend-mix-2') // { code: 'ok' } or { code: 'err:not-found' }
+```
 
 Your writes are ordinary writes. Every open page updates, and the audit log records a `ROTATION_CHANGED` naming your
 plugin rather than a person. Writing the `rotations` table through `ctx.db()` skips all of that.

@@ -388,6 +388,16 @@ describe('packaged plugins', () => {
 		expect(rotationRow('hello-rot-copy')).toMatchObject({ name: 'Hello rotation clone', ownerUserId: null, ownerPluginId: 'hello' })
 		expect(await outsiderClient.rotations.delete('hello-rot-copy')).toMatchObject({ code: 'err:permission-denied' })
 
+		const contributors = (id: string) =>
+			readRows<{ userId: string }>(`SELECT userId FROM rotationUserContributors WHERE rotationId = ?`, id).map((r) => r.userId)
+		expect(contributors('hello-rot-copy')).toEqual([])
+		expect(await client.rotations.addContributor({ rotationId: 'hello-rot', userId: OUTSIDER.discordId })).toMatchObject({ code: 'ok' })
+		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
+		expect(contributors('hello-rot-copy')).toEqual([String(OUTSIDER.discordId)])
+		// a repeated copy keeps what the target already has rather than failing on it
+		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
+		expect(await call('copyContributors', { sourceId: 'hello-rot', targetId: 'no-such-rot' })).toMatchObject({ code: 'err:not-found' })
+
 		expect(await call('updateRotation', { id: 'hello-rot', name: 'Hello rotation v2', layerIds: [LAYERS.sumariSeed] })).toMatchObject({
 			code: 'ok',
 		})
