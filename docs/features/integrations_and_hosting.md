@@ -26,13 +26,12 @@ a button that opens your server in Squad.
 ## Plugins
 
 Plugins add commands, settings, behaviour and UI to SLM. A plugin installs from the URL its author provides, and is
-configured and started on the settings page. See [Plugins](../guide/configuring/plugins.md). SLM ships with three:
+configured and started on the settings page. See [Plugins](../guide/configuring/plugins.md). SLM ships with two:
 
-| Plugin           | What it does                                                              |
-| ---------------- | ------------------------------------------------------------------------- |
-| AFK Kicker       | Kicks AFK players when people are waiting in the queue, longest AFK first |
-| Balance Triggers | Watches recent match outcomes and warns admins when they look one-sided   |
-| Teamkill Warns   | Warns players when they have been teamkilled                              |
+| Plugin         | What it does                                                              |
+| -------------- | ------------------------------------------------------------------------- |
+| AFK Kicker     | Kicks AFK players when people are waiting in the queue, longest AFK first |
+| Teamkill Warns | Warns players when they have been teamkilled                              |
 
 To write a plugin, see [Writing a plugin](../developers/writing_plugins.md).
 

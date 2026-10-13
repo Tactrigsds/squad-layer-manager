@@ -49,8 +49,8 @@ pnpm install
 Write your plugin in its own directory. `plugins/<id>/` is the natural place, and your plugin's own git repo can
 be kept there without either repo noticing the other. See [Repo layouts](#repo-layouts).
 
-Two working plugins are already there to read. `test/fixtures/plugin-hello` is about sixty lines and touches every
-part of the contract. `plugins/balance-triggers` is a real one.
+Three working plugins are already there to read. `test/fixtures/plugin-hello` touches every part of the contract.
+`plugins/afk-kicker` and `plugins/teamkill-warns` are real ones, with a server half and no client half.
 
 ## The files
 
@@ -1077,7 +1077,7 @@ state anyway. Defining the component inline inside `setup()` loses this. An edit
 and every component in it starts from scratch.
 
 Whatever your components need that only exists at setup time (most often an rpc client) goes in a plain `.ts`
-module they import. `plugins/balance-triggers` is laid out this way.
+module they import. [Laying out the files](plugin_ui.md#laying-out-the-files) shows this layout.
 
 Discovery is dev-only. A plugin that has only ever run this way has never been through `plugin:pack` or the shim
 registry. Those are most of what running it proves, so pack and install it before each release.

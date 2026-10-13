@@ -1,12 +1,12 @@
 import { expect, test } from './fixtures'
 
-// The plugins settings section in a browser, driven against the builtin that every app ships with.
+// The plugins settings section in a browser, driven against a builtin that every app ships with.
 // The section renders whether or not it is reachable, so what is worth asserting here is the wiring
 // around it: that the table of contents lists it and can navigate to it, that it follows the config
 // editor between GUI and YAML the way a server section does, and that the switch actually stops the
 // plugin. Installing a package needs an http origin and is covered in test/integration.
 
-const PLUGIN = { id: 'balance-triggers', name: 'Balance Triggers' }
+const PLUGIN = { id: 'afk-kicker', name: 'AFK Kicker' }
 
 test.describe('plugins settings section', () => {
 	test('lists the builtin, and its table of contents entry navigates to it', async ({ page, app }) => {
@@ -50,43 +50,42 @@ test.describe('plugins settings section', () => {
 	test('a config edit is saved through the shared save panel', async ({ page, app }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/settings'))
 
-		const field = page.locator(`[id="setting:plugin:${PLUGIN.id}:postRollReminder"]`)
-		const toggle = field.getByRole('switch')
-		await expect(toggle).toBeVisible({ timeout: 20_000 })
-		// either way round: a repeat of this test against the same app finds what it saved last time
-		const before = await toggle.getAttribute('aria-checked')
-		const after = before === 'true' ? 'false' : 'true'
-		await toggle.click()
+		const input = page.locator(`[id="setting:plugin:${PLUGIN.id}:kickReason"]`).getByRole('textbox')
+		await expect(input).toBeVisible({ timeout: 20_000 })
+		// unique per run: a repeat of this test against the same app finds what it saved last time
+		const reason = `AFK e2e ${Date.now()}`
+		await input.fill(reason)
+		await input.blur()
 
 		await page.getByRole('button', { name: 'Save', exact: true }).click()
 		const dialog = page.getByRole('alertdialog')
-		await expect(dialog.getByText('config.postRollReminder')).toBeVisible()
+		await expect(dialog.getByText('config.kickReason')).toBeVisible()
 		await dialog.getByRole('button', { name: 'Save', exact: true }).click()
 		await expect(page.getByText(`${PLUGIN.name} configuration saved`)).toBeVisible()
 
 		await page.goto(app.loginUrl(app.adminUser, '/settings'))
-		await expect(page.locator(`[id="setting:plugin:${PLUGIN.id}:postRollReminder"]`).getByRole('switch')).toHaveAttribute(
-			'aria-checked',
-			after,
-			{ timeout: 20_000 },
-		)
+		await expect(page.locator(`[id="setting:plugin:${PLUGIN.id}:kickReason"]`).getByRole('textbox')).toHaveValue(reason, {
+			timeout: 20_000,
+		})
 	})
 
-	// last: it leaves the plugin stopped, and the dashboard's alerts come from it
-	test('the switch stops and starts the plugin', async ({ page, app }) => {
+	// either way round: a builtin starts stopped on a fresh app, and a repeat of this test finds it as it left it
+	test('the switch starts and stops the plugin', async ({ page, app }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/settings'))
 
 		const section = page.locator(`[id="section:plugin:${PLUGIN.id}"]`)
 		const toggle = section.getByRole('switch', { name: `${PLUGIN.name} enabled` })
 		await expect(toggle).toBeVisible({ timeout: 20_000 })
-		await expect(section.getByText('Running')).toBeVisible()
+		await expect(section.getByText(/^(Running|Stopped)$/)).toBeVisible()
+		const wasRunning = (await toggle.getAttribute('aria-checked')) === 'true'
+		const [first, second] = wasRunning ? (['Stopped', 'Running'] as const) : (['Running', 'Stopped'] as const)
 
 		await toggle.click()
-		await expect(section.getByText('Stopped')).toBeVisible()
+		await expect(section.getByText(first, { exact: true })).toBeVisible()
 		// the status is the host's, read back over the plugin watch stream rather than set optimistically
-		await expect(toggle).toHaveAttribute('aria-checked', 'false')
+		await expect(toggle).toHaveAttribute('aria-checked', String(!wasRunning))
 
 		await toggle.click()
-		await expect(section.getByText('Running')).toBeVisible()
+		await expect(section.getByText(second, { exact: true })).toBeVisible()
 	})
 })

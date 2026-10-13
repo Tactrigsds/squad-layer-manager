@@ -128,7 +128,17 @@ On `match-history:row`:
 - hovering an icon lists every decoration of that tint, with its title and body
 
 `layerId` and `ordinal` let a body name a side. Which faction a team played depends on both, so a body that reads "Team
-A (USMC)" needs them. See `plugins/balance-triggers/events.client.ts`.
+A (USMC)" needs them:
+
+```ts
+import * as L from 'slm/models/layer'
+import * as MH from 'slm/models/match-history'
+
+function teamLabel(team: MH.NormedTeamProp, layerId: string, ordinal: number) {
+	const faction = L.toLayer(layerId)[MH.getTeamNormalizedFactionProp(ordinal, team)]
+	return `Team ${MH.toNormedTeamId(team)}${faction ? ` (${faction})` : ''}`
+}
+```
 
 Values that have not arrived yet read as `undefined`. Write `select` to accept `undefined`, as above.
 
@@ -387,8 +397,6 @@ export default definePluginClient(manifest, (ctx) => {
 With this layout, `pnpm dev` swaps the component in place when `alert.tsx` changes, and keeps its state. When a
 component defined inside `client.tsx` changes, `pnpm dev` reloads the page instead. [The dev
 loop](writing_plugins.md#the-dev-loop) explains why.
-
-`plugins/balance-triggers` follows this layout, and registers a slot and a decoration.
 
 ## Things that will bite you
 

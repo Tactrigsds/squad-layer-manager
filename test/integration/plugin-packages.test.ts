@@ -988,13 +988,31 @@ describe('packaged plugins', () => {
 	// endMatch is host-owned precisely so the round end is attributed. A plugin cannot emit MATCH_ENDED
 	// itself -- slm/systems/app-events only writes PLUGIN_EVENT -- so the actorPluginId on the row is the
 	// whole point of the function existing.
-	it('ends a match, attributed to the plugin', async () => {
+	it('ends a match, attributed to the plugin, and has its reminder warned to admins after the roll', async () => {
+		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_reminder_admin', steam: ADMIN_STEAM_ID, teamId: 1 }))
+		await app.waitForRosterSync()
+		const ended = Inspect.latestMatch(app)
+
 		expect(await call('endMatch', {})).toMatchObject({ code: 'ok' })
 		expect(
 			readRows<{ actor: string }>(
 				`SELECT actorPluginId AS actor FROM appEvents WHERE type = 'MATCH_ENDED' ORDER BY rowid DESC LIMIT 1`,
 			)[0],
 		).toMatchObject({ actor: 'hello' })
+
+		// rolling before the outcome is recorded can land both in one ingest batch and skip finalization
+		await app.waitFor(
+			() => readRows<{ outcome: string | null }>(`SELECT outcome FROM matchHistory WHERE id = ?`, ended.id)[0]?.outcome ?? undefined,
+			{ label: 'the ended match recording its outcome' },
+		)
+		app.emu.world.startNewGame()
+		// the plugin returns the message; the host is what warns it to the admins on the server that rolled
+		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('[hello] rolled on')), {
+			label: "the plugin's post-roll reminder",
+			timeoutMs: 30_000,
+		})
+		expect(Inspect.warnsTo(app, admin).join('\n')).toContain(`[hello] rolled on ${app.serverId}`)
+		await app.waitForRosterSync()
 	})
 
 	// The host owns dispatch (trigger, chat, enabled); the plugin owns authorization, because what a command
@@ -1112,7 +1130,16 @@ describe('packaged plugins', () => {
 			}
 		expect((await stats()).data?.activations).toBe(1)
 
-		await client.plugins.setEnabled({ pluginId: 'hello', enabled: false })
+		expect(await client.plugins.setEnabled({ pluginId: 'hello', enabled: false })).toMatchObject({ code: 'ok', status: 'inactive' })
+		const stopped = await firstYield(
+			(signal) =>
+				client.plugins.rpcStream(
+					{ pluginId: 'hello', path: ['greetings'], serverId: app.serverId, input: { serverId: app.serverId } },
+					{ signal },
+				),
+			{ label: 'the greetings stream of a stopped plugin' },
+		)
+		expect(stopped).toMatchObject({ code: 'err:unknown-rpc' })
 		await client.plugins.setEnabled({ pluginId: 'hello', enabled: true })
 
 		// 2 would mean the second activate() ran against the first run's module scope
@@ -1170,9 +1197,8 @@ describe('packaged plugins', () => {
 		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'hello'`)).toHaveLength(0)
 		expect(await leftoverData()).toBeUndefined()
 
-		// the plugin sharing the database keeps everything it owns
-		expect(readRows(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'p_balance_triggers_events'`)).toHaveLength(1)
-		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'balance-triggers'`).length).toBeGreaterThan(0)
+		// the plugins sharing the database keep their settings
+		expect(readRows(`SELECT 1 FROM plugins WHERE id = 'teamkill-warns'`)).toHaveLength(1)
 	})
 
 	// The other way a package arrives: an admin drops a directory in and presses rescan. It is the packed
