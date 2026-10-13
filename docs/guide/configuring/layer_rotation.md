@@ -189,8 +189,12 @@ Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
 The text can be edited once _Start Editing_ is pressed. A change applies to the rotation's layers when typing pauses.
 SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
 also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
-change is held back, the view cannot be switched. Use _Open File..._ to replace the text with a `.yaml`, `.cfg` or
-`.txt` file.
+change is held back, the view cannot be switched.
+
+Use _Open File..._, or drop a `.yaml`, `.cfg` or `.txt` file onto a rotation's layers, to add the file's layers. Pick
+_Add to start_ or _Add to end_ to put them before or after the rotation's layers, or _Replace_ to replace the
+rotation's layers with them. A rotation with no layers takes the file's layers without asking. The result is shown as
+text in the file's format, so any line SLM cannot read is listed there.
 
 Use _Copy_ and _Download_ to take a rotation's layers out as text. In the _Builder_, each one asks for plain text or
 YAML. In _Text_ and _YAML_, _Copy_ and _Download_ use the text on screen. Plain text downloads as a `.cfg` file.

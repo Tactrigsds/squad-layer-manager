@@ -11,7 +11,7 @@ import { RepeatRulesetPanel } from '@/components/pool-config-panels'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +33,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as ROT from '@/models/rotations.models'
 import * as UP from '@/models/user-presence.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
@@ -107,13 +108,11 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 			{/* wrap-reverse puts the aside above the layers once the row wraps. It also swaps the cross axis, so items-end
 			    aligns both columns to the top. */}
 			<div className="flex flex-wrap-reverse items-end gap-4">
-				<section
-					className="flex-[999_1_620px] min-w-0 rounded border bg-card"
-					aria-label={tr.text(ROT_Msgs.layers(rotation.items.length))}
-				>
+				<ListSection listHost={listHost} rotation={rotation}>
 					<ListToolbar listHost={listHost} rotation={rotation} />
 					<ListBody listHost={listHost} rotationId={rotation.id} />
-				</section>
+				</ListSection>
+				<OpenedFileDialog listHost={listHost} />
 
 				<aside className="flex min-w-0 flex-[1_1_320px] max-w-md flex-col gap-3">
 					<div className="flex flex-wrap gap-1.5">
@@ -235,6 +234,96 @@ function RotationTagsRow(props: { rotation: ROT.Rotation; disabled: boolean }) {
 	)
 }
 
+// opens a file dropped anywhere on the layers, as Open File... does
+function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.Rotation; children: React.ReactNode }) {
+	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotation.id))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+	const [dragging, setDragging] = React.useState(false)
+	// dragenter and dragleave fire for every child the drag crosses, so the overlay shows while the count is above 0
+	const dragDepth = React.useRef(0)
+	const overlayZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const carriesFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
+	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
+	return (
+		<section
+			className="relative flex-[999_1_620px] min-w-0 rounded border bg-card"
+			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
+			onDragEnter={(e) => {
+				if (!carriesFiles(e) || writeDenied) return
+				dragDepth.current++
+				setDragging(true)
+			}}
+			onDragLeave={(e) => {
+				if (!carriesFiles(e) || writeDenied) return
+				dragDepth.current = Math.max(0, dragDepth.current - 1)
+				if (dragDepth.current === 0) setDragging(false)
+			}}
+			onDragOverCapture={(e) => {
+				if (!carriesFiles(e)) return
+				e.preventDefault()
+				e.stopPropagation()
+				e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
+			}}
+			onDropCapture={(e) => {
+				if (!carriesFiles(e)) return
+				e.preventDefault()
+				e.stopPropagation()
+				dragDepth.current = 0
+				setDragging(false)
+				const file = e.dataTransfer.files[0]
+				if (!file || writeDenied) return
+				setIsEditing(true)
+				void RotationEditorFrame.Actions.openFile(props.listHost, file)
+			}}
+		>
+			{props.children}
+			{dragging && (
+				<div
+					style={{ zIndex: overlayZIndex }}
+					className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
+				>
+					{tr.text(ROT_Msgs.dropFileHint())}
+				</div>
+			)}
+		</section>
+	)
+}
+
+// where the items of an opened file go in a draft that already has items
+function OpenedFileDialog(props: { listHost: RotationEditorFrame.Key }) {
+	const file = Zus.useStore(props.listHost, (s) => s.openedFile)
+	const place = (placement: LL.Placement) => () => void RotationEditorFrame.Actions.placeOpenedFile(props.listHost, placement)
+	return (
+		<Dialog
+			open={file !== null}
+			onOpenChange={(open) => {
+				if (!open) RotationEditorFrame.Actions.dismissOpenedFile(props.listHost)
+			}}
+		>
+			<DialogContent className="max-w-md">
+				<DialogHeader>
+					<DialogTitle>{tr.text(ROT_Msgs.openedFileTitle(file?.name ?? ''))}</DialogTitle>
+					<DialogDescription>{tr.text(ROT_Msgs.openedFileBlurb())}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter className="flex-wrap gap-2">
+					<Button variant="outline" onClick={() => RotationEditorFrame.Actions.dismissOpenedFile(props.listHost)}>
+						{tr.text(UI_Msgs.cancel())}
+					</Button>
+					<Button variant="outline" onClick={place('replace')}>
+						{tr.text(LL_Msgs.placeReplace())}
+					</Button>
+					<Button variant="outline" onClick={place('start')}>
+						{tr.text(LL_Msgs.placeStart())}
+					</Button>
+					<Button variant="primary" onClick={place('end')}>
+						{tr.text(LL_Msgs.placeEnd())}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
 function ListBody(props: { listHost: RotationEditorFrame.Key; rotationId: ROT.RotationId }) {
 	const view = Zus.useStore(props.listHost, (s) => s.view)
 	const [isEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotationId))
@@ -299,40 +388,37 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 				setActive={(next) => void RotationEditorFrame.Actions.setView(props.listHost, next)}
 			/>
 			<span className="flex-1" />
-			{view === 'builder' ? (
+			{view === 'builder' && (
 				<BuilderActions
 					writeDenied={writeDenied}
 					fixingRepeats={fixingRepeats}
 					onFixRepeats={editing(() => void ListHostPrt.Actions.fixRepeats({ listHost: props.listHost }))}
 					onClear={editing(clear)}
 				/>
-			) : (
-				<>
-					<input
-						ref={fileRef}
-						type="file"
-						accept=".yaml,.yml,.cfg,.txt,text/plain"
-						className="hidden"
-						onChange={(e) => {
-							const file = e.target.files?.[0]
-							e.target.value = ''
-							if (file) void file.text().then((text) => RotationEditorFrame.Actions.loadSource(props.listHost, text))
-						}}
-					/>
-					<PermissionDeniedTooltip denied={writeDenied}>
-						<Button
-							variant="outline"
-							size="sm"
-							title={tr.text(ROT_Msgs.openFileHint())}
-							disabled={!!writeDenied}
-							onClick={editing(() => fileRef.current?.click())}
-						>
-							<Icons.FolderOpen />
-							{tr.text(ROT_Msgs.openFile())}
-						</Button>
-					</PermissionDeniedTooltip>
-				</>
 			)}
+			<input
+				ref={fileRef}
+				type="file"
+				accept=".yaml,.yml,.cfg,.txt,text/plain"
+				className="hidden"
+				onChange={(e) => {
+					const file = e.target.files?.[0]
+					e.target.value = ''
+					if (file) void RotationEditorFrame.Actions.openFile(props.listHost, file)
+				}}
+			/>
+			<PermissionDeniedTooltip denied={writeDenied}>
+				<Button
+					variant="outline"
+					size="sm"
+					title={tr.text(ROT_Msgs.openFileHint())}
+					disabled={!!writeDenied}
+					onClick={editing(() => fileRef.current?.click())}
+				>
+					<Icons.FolderOpen />
+					{tr.text(ROT_Msgs.openFile())}
+				</Button>
+			</PermissionDeniedTooltip>
 			<Button
 				variant="ghost"
 				size="icon-sm"

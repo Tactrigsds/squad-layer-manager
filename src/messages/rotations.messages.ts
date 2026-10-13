@@ -183,7 +183,15 @@ export const copied = def('Copied to the clipboard')
 
 export const openFile = def('Open File...')
 
-export const openFileHint = def('Replace the text with a .yaml, .cfg or .txt file')
+export const openFileHint = def('Add the layers of a .yaml, .cfg or .txt file. Files can also be dropped onto the layers.')
+
+export const dropFileHint = def('Drop a .yaml, .cfg or .txt file to add its layers')
+
+export const openedFileTitle = def('Open {name}', (name: string) => ({ name }))
+
+export const openedFileBlurb = def(
+	"Add the file's layers before or after the rotation's layers, or replace the rotation's layers with them.",
+)
 
 export const tagChoicePlaceholder = def('Choose...')
 

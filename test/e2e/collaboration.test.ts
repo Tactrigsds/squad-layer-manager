@@ -448,6 +448,39 @@ test.describe('collaborative rotation editing', () => {
 		await expect(page.getByRole('textbox', { name: 'Layers as Plain text' })).toContainText(
 			'# opener# TAGS: metaNarva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
 		)
+
+		// an opened file asks where its layers go
+		const choosing = page.waitForEvent('filechooser')
+		await page.getByRole('button', { name: 'Open File...' }).click()
+		await (
+			await choosing
+		).setFiles({
+			name: 'extra.cfg',
+			mimeType: 'text/plain',
+			buffer: Buffer.from('Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n'),
+		})
+		await page.getByRole('dialog', { name: 'Open extra.cfg' }).getByRole('button', { name: 'Add to start' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (3)' })).toBeVisible()
+		await expect(page.getByRole('textbox', { name: 'Layers as Plain text' })).toContainText(
+			'Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms# opener',
+		)
+
+		// so does one dropped onto the text, which the text editor leaves alone
+		const dropped = await page.evaluateHandle(() => {
+			const transfer = new DataTransfer()
+			transfer.items.add(new File(['- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms\n'], 'one.yaml'))
+			return transfer
+		})
+		const content = page.getByRole('textbox', { name: 'Layers as Plain text' })
+		await content.dispatchEvent('dragenter', { dataTransfer: dropped })
+		await content.dispatchEvent('dragover', { dataTransfer: dropped })
+		await content.dispatchEvent('drop', { dataTransfer: dropped })
+		await page.getByRole('dialog', { name: 'Open one.yaml' }).getByRole('button', { name: 'Replace' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible()
+		await expect(page.getByRole('textbox', { name: 'Layers as YAML' })).toHaveText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
+
+		await page.getByRole('button', { name: 'Reset' }).click()
+		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible()
 	})
 
 	test('the layer pickers keep the collection and the applied filters from Explore Layers and across rotations', async ({ page }) => {
