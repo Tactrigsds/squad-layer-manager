@@ -168,6 +168,8 @@ export type ServerEntry = {
 	adminLists: readonly SM.AdminListId[]
 	// mirrored out of this server's settings; null when the settings leave it unset or are broken
 	color: string | null
+	// mirrored out of this server's settings, so history can resolve a row's zone without a db read; UTC when broken
+	timeZone: string
 	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
 	sandbox: boolean
 	// mirrored out of this server's settings so the ruleset editors can say which servers share a ruleset, and so a
@@ -266,6 +268,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			broken,
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
 			color: (settingsRes.success && settingsRes.data.color) || null,
+			timeZone: settingsRes.success ? settingsRes.data.timeZone : 'UTC',
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
 			repeatRulesetId: settingsRes.success ? settingsRes.data.queue.mainPool.repeatRulesetId : null,
 			visibility: row.visibility,
@@ -343,6 +346,7 @@ export async function createServerEntry(
 		broken: false,
 		adminLists: newServer.settings.adminLists,
 		color: newServer.settings.color ?? null,
+		timeZone: newServer.settings.timeZone,
 		sandbox: newServer.settings.connections.type === 'sandbox',
 		repeatRulesetId: newServer.settings.queue.mainPool.repeatRulesetId,
 		visibility,
@@ -422,11 +426,20 @@ function syncServerEntry(serverId: SS.ServerId, settings: SETTINGS.ServerSetting
 	const sandbox = settings.connections.type === 'sandbox'
 	const repeatRulesetId = settings.queue.mainPool.repeatRulesetId
 	const color = settings.color ?? null
-	if (!adminListsChanged && entry.sandbox === sandbox && entry.repeatRulesetId === repeatRulesetId && entry.color === color) return
+	if (
+		!adminListsChanged &&
+		entry.sandbox === sandbox &&
+		entry.repeatRulesetId === repeatRulesetId &&
+		entry.color === color &&
+		entry.timeZone === settings.timeZone
+	) {
+		return
+	}
 	entry.adminLists = settings.adminLists
 	entry.sandbox = sandbox
 	entry.repeatRulesetId = repeatRulesetId
 	entry.color = color
+	entry.timeZone = settings.timeZone
 	// permissions resolved against the lists this server used to name are cached per player
 	if (adminListsChanged) Rbac.invalidateAll()
 	settings$.next({ scope: 'registry' })

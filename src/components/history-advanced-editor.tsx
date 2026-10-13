@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import * as HistoryFrame from '@/frames/history.frame'
+import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -26,6 +27,7 @@ import * as HQ from '@/models/history.models'
 import type * as LC from '@/models/layer-columns.models'
 import * as L from '@/models/layer.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -272,8 +274,8 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 		const isTime = def.domain.kind === 'timestamp'
 		return (
 			<>
-				<RangeValueInput value={values[0]} isTime={isTime} onChange={(v) => setScalar(1, v)} />
-				<RangeValueInput value={values[1]} isTime={isTime} onChange={(v) => setScalar(2, v)} />
+				<RangeValueInput stores={props.stores} value={values[0]} isTime={isTime} onChange={(v) => setScalar(1, v)} />
+				<RangeValueInput stores={props.stores} value={values[1]} isTime={isTime} onChange={(v) => setScalar(2, v)} />
 			</>
 		)
 	}
@@ -365,7 +367,7 @@ function CompValueEditor(props: EditorProps & { node: F.EditableCompNode; path: 
 		)
 	}
 	if (def.domain.kind === 'timestamp') {
-		return <RangeValueInput value={values[0]} isTime onChange={(v) => setScalar(1, v)} />
+		return <RangeValueInput stores={props.stores} value={values[0]} isTime onChange={(v) => setScalar(1, v)} />
 	}
 	if (def.domain.kind === 'number') {
 		return (
@@ -407,23 +409,25 @@ function layerColumnFor(def: HQ.ColumnDef): LC.EnumColumn | undefined {
 	}
 }
 
-function toDatetimeLocal(value: F.Value | undefined): string {
-	if (typeof value !== 'number') return ''
-	const date = new Date(value - new Date(value).getTimezoneOffset() * 60_000)
-	return date.toISOString().slice(0, 16)
+// entered in the query's time zone, and redrawn in a new one rather than reinterpreted (see the key)
+function TimeValueInput(props: EditorProps & { value: F.Value | undefined; onChange: (value: F.Value | undefined) => void }) {
+	const tz = Zus.useStore(props.stores.history, (s) => s.draft.tz)
+	const zone = HistoryClient.useResultZone(tz)
+	return (
+		<Input
+			key={zone}
+			type="datetime-local"
+			className="h-6 w-max text-xs"
+			defaultValue={typeof props.value === 'number' ? TZ.toWallInput(props.value, zone) : ''}
+			onChange={(e) => props.onChange(e.target.value === '' ? undefined : TZ.fromWallInput(e.target.value, zone))}
+		/>
+	)
 }
 
-function RangeValueInput(props: { value: F.Value | undefined; isTime?: boolean; onChange: (value: F.Value | undefined) => void }) {
-	if (props.isTime) {
-		return (
-			<Input
-				type="datetime-local"
-				className="h-6 w-max text-xs"
-				defaultValue={toDatetimeLocal(props.value)}
-				onChange={(e) => props.onChange(e.target.value === '' ? undefined : new Date(e.target.value).getTime())}
-			/>
-		)
-	}
+function RangeValueInput(
+	props: EditorProps & { value: F.Value | undefined; isTime?: boolean; onChange: (value: F.Value | undefined) => void },
+) {
+	if (props.isTime) return <TimeValueInput stores={props.stores} value={props.value} onChange={props.onChange} />
 	return (
 		<Input
 			type="number"

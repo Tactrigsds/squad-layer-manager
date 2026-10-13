@@ -4,17 +4,33 @@ import React from 'react'
 
 import type * as RC from '@/components/feed/render-context'
 import * as Selection from '@/components/feed/selection'
+import * as TZ from '@/lib/time-zones'
+import * as Zus from '@/lib/zustand'
+import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsClient from '@/systems/settings.client'
 
 export type QueryPageInput = {
 	query: HQ.Query
 	cursor?: { time: number; serverEventId?: number; appEventId?: string }
 	page?: number
 	// events rows are rendered server-side, so the viewer's display settings ride along
-	render?: { displayTeamsNormalized: boolean; locale: string }
+	render?: RenderInput
 	includeMatchBoundaries?: boolean
+}
+
+export type RenderInput = { displayTeamsNormalized: boolean; locale: string; viewerTimeZone: string }
+
+/** HQ.zoneFor a query's `tz`, against the server zones this client was sent. */
+export function useResultZone(tz: string | undefined): string {
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	return HQ.zoneFor(tz, { local: TZ.local, ofServer: (id) => servers?.find((server) => server.id === id)?.timeZone })
+}
+
+export function renderInput(displayTeamsNormalized: boolean): RenderInput {
+	return { displayTeamsNormalized, locale: I18n.getAmbientLocale(), viewerTimeZone: TZ.local() }
 }
 
 /**

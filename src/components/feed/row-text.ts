@@ -7,14 +7,15 @@
 
 import { createElement, Fragment, type ReactElement, type ReactNode } from 'react'
 
+import * as TZ from '@/lib/time-zones'
 import type * as CHAT from '@/models/chat.models'
 
-import { formatDateTimeIn } from './format'
 import * as RC from './render-context'
 import { Row } from './rows'
 
 export type TextOpts = {
-	timeZone: string
+	// an IANA zone; without one, the process's own
+	timeZone?: string
 	// name each row's match, for text drawn from a query that spans several
 	withMatchIds?: boolean
 }
@@ -42,7 +43,7 @@ export function eventsText(ctx: RC.RenderCtx, events: readonly CHAT.EventEnriche
 		// laid out the way the row draws it: the time, the match badge beside it, then the row
 		lines.forEach((line, i) => {
 			let text = i === 0 ? '' : '  '
-			if (line.time !== undefined) text += `${formatDateTimeIn(line.time, opts.timeZone)} `
+			if (line.time !== undefined) text += `${TZ.formatDateTime(line.time, opts.timeZone ?? TZ.local())} `
 			if (line.matchId !== undefined) text += `#${line.matchId} `
 			text += line.text
 			out.push(text)

@@ -455,7 +455,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				.type('text/plain; charset=utf-8')
 				.send(t.text(RBAC_Msgs.permissionDenied(denied)))
 		res.type(`${contentType}; charset=utf-8`)
-		const result = await History.searchRaw(ctx, search, contentType, { render: History.DEFAULT_RENDER, timeZone: 'UTC' })
+		const result = await History.searchRaw(ctx, search, contentType, History.DEFAULT_RENDER)
 		switch (result.code) {
 			case 'ok':
 				break

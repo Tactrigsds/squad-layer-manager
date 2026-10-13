@@ -3,7 +3,6 @@ import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { localTimeZone } from '@/components/feed/format'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
 import { renderStatic } from '@/components/feed/static-render'
@@ -24,11 +23,11 @@ import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Browser from '@/lib/browser'
+import * as TZ from '@/lib/time-zones'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
-import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
@@ -271,8 +270,10 @@ function RailResizer(props: { children: React.ReactNode }) {
 function RawMenu(props: { query: HQ.Query; selection: HQ.RowSelectionParam | undefined }) {
 	const router = TSR.useRouter()
 	const sel = props.query.type === 'events' ? props.selection : undefined
+	// the server answers these with no viewer zone to read, so local time is spelled out as the zone it is here
+	const tz = props.query.tz === undefined || props.query.tz === 'local' ? TZ.local() : props.query.tz
 	const hrefFor = (contentType: HQ.ContentType) =>
-		router.buildLocation({ to: '/history', search: { ...props.query, sel, contentType } }).href
+		router.buildLocation({ to: '/history', search: { ...props.query, tz, sel, contentType } }).href
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -420,7 +421,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 				HistoryClient.queryPageBase({
 					query: narrowed,
 					cursor: cursor as HistoryClient.QueryPageInput['cursor'],
-					render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() },
+					render: HistoryClient.renderInput(displayTeamsNormalized),
 				}),
 			)
 			if (res.code !== 'ok' || res.type !== 'events') throw new Error(res.code)
@@ -443,8 +444,7 @@ function useRowEvents(query: HQ.Query, matches: MH.MatchDetails[]) {
 			const res = await RPC.orpc.history.selectionText.call({
 				query: narrowed,
 				sel: [selection.anchor, selection.head],
-				render: { displayTeamsNormalized, locale: I18n.getAmbientLocale() },
-				timeZone: localTimeZone(),
+				render: HistoryClient.renderInput(displayTeamsNormalized),
 			})
 			return res.code === 'ok' ? { text: res.text, count: res.count } : undefined
 		},
@@ -493,6 +493,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
 	// the rows they open still name their match, which is all the feed row needs
 	const rowCtx = useRowEvents(props.query, EMPTY_MATCHES)
+	const timeZone = HistoryClient.useResultZone(props.query.tz)
 	const sort = HQ.playerSort(props.query)
 	const sortHeader = (column: HQ.PlayerSortColumn, label: string) => (
 		<SortHeader
@@ -527,7 +528,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 					<DomRowsBody
 						scopeId={rowCtx.scopeId}
 						rows={(ok?.rows ?? []).map((row) => (
-							<HistoryTemplates.PlayerRow key={row.playerId} row={row} />
+							<HistoryTemplates.PlayerRow key={row.playerId} row={row} timeZone={timeZone} />
 						))}
 					/>
 				</table>
@@ -544,6 +545,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 	const ok = okOf(res, 'matches')
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
+	const timeZone = HistoryClient.useResultZone(props.query.tz)
 	const sort = HQ.matchSort(props.query)
 	const sortHeader = (column: HQ.MatchSortColumn, label: string) => (
 		<SortHeader key={column} column={column} label={label} sort={sort} onSort={(next) => props.onRun({ ...props.query, sort: next })} />
@@ -580,6 +582,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 								displayTeamsNormalized={displayTeamsNormalized}
 								events={ok?.eventCounts[m.historyEntryId] ?? 0}
 								setBy={MatchSummary.setByText(m.layerSource, ok!.setByNames)}
+								timeZone={timeZone}
 							/>
 						))}
 					/>

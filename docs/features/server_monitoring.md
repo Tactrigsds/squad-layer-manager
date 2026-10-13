@@ -81,6 +81,14 @@ A query can be saved privately or shared with other admins, and results export a
 
 ![the history page](../images/features/history.png)
 
+### Time zones
+
+The history page shows times in the browser's time zone by default. Use the _Time zone_ field to show them in UTC, in a
+server's time zone, or in any IANA time zone such as `Europe/Berlin`. The _From_ and _To_ bounds are entered in the same
+zone. A saved query or a shared link keeps its time zone.
+
+A server's time zone is set by its `timeZone` setting, which is UTC by default.
+
 ### Players and matches
 
 The _Players_ and _Matches_ tabs group the events a query finds by player or by match. Each row counts the events

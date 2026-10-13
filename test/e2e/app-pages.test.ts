@@ -1,12 +1,13 @@
 import type { Locator, Page } from '@playwright/test'
 
 import { makePlayer } from '@/emulator'
+import * as TZ from '@/lib/time-zones'
 
 import type { AppFixture } from '../harness/app-fixture'
 import * as Dash from '../harness/dashboard'
 import { dragFrom } from '../harness/drag'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
-import { expect, sharedAppTest as test, test as plainTest } from './fixtures'
+import { expect, SHARED_SERVER_TIME_ZONE, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
 // teams panel's filter bar, the settings page, and the nav bar. Selectors are role/label-based on
@@ -1159,5 +1160,56 @@ test.describe('history page', () => {
 		await page.getByRole('button', { name: 'Saved' }).click()
 		await page.getByRole('link', { name }).click()
 		await expect(page).toHaveURL(/type=matches/)
+	})
+
+	// Event rows are drawn on the app server, which knows the viewer's zone only because the page sends it. The
+	// browser runs in a zone neither the app process nor the shared server has.
+	test.describe('in a time zone of its own', () => {
+		const VIEWER_ZONE = 'Australia/Adelaide'
+		test.use({ timezoneId: VIEWER_ZONE })
+
+		test("shows times in the viewer's zone, a server's, or one the query names", async ({ app, page }) => {
+			await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+			const results = page.getByRole('region', { name: 'Event results' })
+			const time = results.locator('[data-dom-tip-time]').first()
+			const expectTimesIn = async (zone: string) => {
+				await expect(time).toBeVisible({ timeout: 30_000 })
+				const epoch = Number(await time.getAttribute('data-dom-tip-time'))
+				await expect(time).toHaveText(TZ.formatDateTime(epoch, zone))
+				await time.hover()
+				// the zone's names differ between node's and chromium's time zone data, so only the time is compared
+				await expect(page.getByRole('tooltip')).toHaveText(new RegExp(`^${escapeRegExp(TZ.formatDateTime(epoch, zone))} \\S`), {
+					timeout: 20_000,
+				})
+				await time.click({ button: 'right' })
+				await page.getByRole('menuitem', { name: 'Copy event as text' }).click()
+				await expect.poll(() => readClipboard(page)).toMatch(new RegExp(`^${escapeRegExp(TZ.formatDateTime(epoch, zone))} `))
+				await page.keyboard.press('Escape')
+			}
+
+			await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+			await expectTimesIn(VIEWER_ZONE)
+
+			// the Raw menu's text is answered by the server, which only knows the viewer's zone from the link
+			await page.getByRole('button', { name: 'Raw' }).click()
+			const rawHref = await page.getByRole('menuitem').first().getAttribute('href')
+			await page.keyboard.press('Escape')
+			expect(new URL(rawHref!, page.url()).searchParams.get('tz')).toBe(VIEWER_ZONE)
+
+			await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&tz=${app.serverId}`))
+			await expectTimesIn(SHARED_SERVER_TIME_ZONE)
+
+			await page.getByRole('combobox', { name: 'Time zone', exact: true }).click()
+			await page.getByPlaceholder('Search...').fill('Kiritimati')
+			await page.getByRole('option', { name: 'Pacific/Kiritimati' }).click()
+			await page.getByRole('button', { name: 'Run', exact: true }).click()
+			await expect(page).toHaveURL(/tz=Pacific%2FKiritimati/)
+			await expectTimesIn('Pacific/Kiritimati')
+
+			// a custom range is shown, and entered, in the query's zone
+			const fromTime = Date.UTC(2026, 0, 2, 3, 4)
+			await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&tz=Pacific%2FKiritimati&from=${fromTime}`))
+			await expect(page.getByLabel('From', { exact: true })).toHaveValue(TZ.toWallInput(fromTime, 'Pacific/Kiritimati'))
+		})
 	})
 })

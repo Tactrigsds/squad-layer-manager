@@ -108,12 +108,13 @@ export type DateFormat = keyof typeof DATE_FORMATS
 
 const dateFormats = new Map<string, Intl.DateTimeFormat>()
 
-export function formatDate(time: number | Date, format: DateFormat, locale?: string) {
+/** `timeZone` is an IANA zone; without one, the process's own. */
+export function formatDate(time: number | Date, format: DateFormat, locale?: string, timeZone?: string) {
 	const resolved = locale ?? I18n.getAmbientLocale()
-	const cacheKey = `${resolved}|${format}`
+	const cacheKey = `${resolved}|${format}|${timeZone ?? ''}`
 	let formatter = dateFormats.get(cacheKey)
 	if (!formatter) {
-		formatter = new Intl.DateTimeFormat(resolved, DATE_FORMATS[format])
+		formatter = new Intl.DateTimeFormat(resolved, { ...DATE_FORMATS[format], timeZone })
 		dateFormats.set(cacheKey, formatter)
 	}
 	return formatter.format(time)

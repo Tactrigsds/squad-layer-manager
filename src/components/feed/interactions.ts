@@ -7,6 +7,7 @@
 
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Flt from '@/lib/floating'
+import * as TZ from '@/lib/time-zones'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
@@ -385,7 +386,10 @@ function tipContentOf(element: Element, ctx: RC.RenderCtx | undefined): RC.TipCo
 	const time = element.getAttribute(RC.TIP_TIME_ATTR)
 	// deliberately not formatted until now: a timezone-qualified timestamp per row is most of what a feed's
 	// timestamps cost, and only the one being hovered is ever read
-	if (time !== null) return { kind: 'text', text: formatFullTime(Number(time)) }
+	if (time !== null) {
+		const zone = element.getAttribute(RC.TIP_TIME_ZONE_ATTR)
+		return { kind: 'text', text: zone ? TZ.formatFull(Number(time), zone) : formatFullTime(Number(time)) }
+	}
 	const text = element.getAttribute(RC.TIP_ATTR)
 	if (text === null) return null
 	return { kind: 'text', text, heading: element.getAttribute(RC.TIP_HEADING_ATTR) ?? undefined }

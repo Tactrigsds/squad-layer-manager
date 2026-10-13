@@ -3,6 +3,7 @@ import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'
+import * as TZ from '@/lib/time-zones'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
@@ -669,6 +670,18 @@ export const GlobalSettingsSchema = z
 			.boolean()
 			.prefault(false)
 			.meta(SDoc.of({ label: t('Warn on SLM Start'), description: t('Warn all in-game admins when SLM starts or restarts.') })),
+		defaultTimeZone: z
+			.string()
+			.refine((tz) => tz === 'server' || TZ.isValid(tz), 'unknown time zone')
+			.prefault('server')
+			.meta(
+				SDoc.of({
+					label: t('Default Time Zone'),
+					description: t(
+						'The time zone of times SLM writes with no viewer to take a time zone from. Either an IANA time zone such as "Europe/Berlin", or "server", the Time Zone setting of the server the events are from (UTC when they are from several servers). Two cases use it: (1) history selections quoted into Discord, when the link sets no time zone; (2) history results requested as text or CSV, such as by a script that fetches the history page accepting only text/plain or text/csv, when the query sets no time zone. The Raw menu on the history page always sets one: the viewer\'s.',
+					),
+				}),
+			),
 		discord: z
 			.object({
 				expandHistoryLinks: z
@@ -1371,6 +1384,18 @@ export const PublicServerSettingsSchema = z.object({
 				label: t('Locale'),
 				description: t(
 					'The language this server talks to its players in: warnings, broadcasts and the in-game vote. A BCP-47 tag such as "en" or "de". Falls back to English wherever a message has not been translated. Does not affect the web app, which follows each viewer\'s own browser.',
+				),
+			}),
+		),
+	timeZone: z
+		.string()
+		.refine(TZ.isValid, 'unknown time zone')
+		.prefault('UTC')
+		.meta(
+			SDoc.of({
+				label: t('Time Zone'),
+				description: t(
+					'The IANA time zone for this server, such as "Europe/Berlin". Picking this server in the Time zone field of the history page shows times in this zone. The Default Time Zone setting can select it too.',
 				),
 			}),
 		),

@@ -1,4 +1,5 @@
 import { APP_EVENT_TYPE, SERVER_EVENT_TYPE } from '$root/drizzle/enums'
+import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CHAT from '@/models/chat.models'
@@ -28,6 +29,24 @@ export type PlayerRole = (typeof PLAYER_ROLES)[number]
 export const STEAM64_RE = /^7656\d{13}$/
 // eos and epic ids share this shape
 export const EOS_ID_RE = /^[0-9a-f]{32}$/i
+
+// `tz`'s spellings besides a server id, which means that server's zone (its timeZone setting), and an IANA zone name
+export const TIME_ZONE_SHORTHANDS = ['local', 'utc'] as const
+export const TimeZoneParamSchema = z.string().min(1).max(256)
+
+/**
+ * The IANA zone a result shows its times in, under the query's `tz`. `local` is the viewer's zone, which only the
+ * viewer's browser knows, so a caller with no viewer supplies its own. A server id is checked before a zone name, and a
+ * value that is neither reads as local.
+ */
+export function zoneFor(
+	tz: string | undefined,
+	zones: { local: () => string; ofServer: (serverId: string) => string | undefined },
+): string {
+	if (tz === undefined || tz === 'local') return zones.local()
+	if (tz === 'utc') return 'UTC'
+	return zones.ofServer(tz) ?? (TZ.isValid(tz) ? tz : zones.local())
+}
 
 export function isPlayerIdRef(ref: string): boolean {
 	return STEAM64_RE.test(ref) || EOS_ID_RE.test(ref)
@@ -361,6 +380,9 @@ const QueryFieldsSchema = z.object({
 	// outside the tree like the others and means the same thing in both modes. Absent means newest, which
 	// keeps it out of the url of every query that does not care.
 	order: z.enum(['newest', 'oldest']).optional(),
+	// which zone the results show times in, and the zone `from` and `to` are entered in; see zoneFor. Absent means
+	// local, which parsing folds into absence.
+	tz: TimeZoneParamSchema.optional(),
 
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
 	// the activity feed's secondary filter, as a shortcut over event type. Absent means the result type's own
@@ -428,6 +450,7 @@ function foldSingles({ server, player, user, outcome, ...rest }: QueryFields): F
 		users: fold(rest.users, user),
 		outcomes: fold(rest.outcomes, outcome),
 		feed: rest.feed === defaultFeed(rest.type) ? undefined : rest.feed,
+		tz: rest.tz === 'local' ? undefined : rest.tz,
 	}
 }
 
