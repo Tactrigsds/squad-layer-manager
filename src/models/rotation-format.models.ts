@@ -6,10 +6,10 @@
 // whose first choice is the default; a choice takes either item form. Tags are written by label. Each `#` line
 // directly above an item or a choice is one note on it.
 //
-// Plain text is one layer per line, and leaves tags out. A `#` line is a note on the next layer. A vote is a
-// `# VOTE:` line carrying its display settings (`# VOTE: display map, factions; duration 3m`), followed by its choices,
-// indented. An indented `#` line is a note on the next choice, and the vote ends at the next line that is not
-// indented.
+// Plain text is one layer per line. A `#` line is a note on the next layer, and a `# TAGS: a, b` line names the next
+// layer's tags. A vote is a `# VOTE:` line carrying its display settings (`# VOTE: display map, factions; duration 3m`),
+// followed by its choices, indented. An indented `#` line is a note or the tags of the next choice, and the vote ends at
+// the next line that is not indented. Tags named above a `# VOTE:` line go on its default choice.
 //
 // WARNING: this pulls in the whole `yaml` package (see src/lib/yaml.ts), so only lazily-loaded code may import it.
 import type * as DH from '@/lib/display-helpers'
@@ -34,6 +34,7 @@ function voteConfigOf(item: LL.VoteItem): VoteConfig {
 }
 
 const VOTE_HEADER = /^#\s*VOTE:(.*)$/i
+const TAGS_LINE = /^#\s*TAGS:(.*)$/i
 
 function voteHeader(config: VoteConfig): string {
 	const parts: string[] = []
@@ -93,11 +94,17 @@ function tagLabel(id: LTag.TagId, tags: LTag.Tag[]): string | undefined {
 	return tags.find((tag) => tag.id === id)?.label ?? LTag.originalLabel(id)
 }
 
-export function toYaml(items: LL.List, opts: { notes: boolean; tags: boolean; configuredTags: LTag.Tag[] }): string {
+function writtenTagLabels(item: LL.SingleItem, configuredTags: LTag.Tag[]): string[] {
+	return (item.tags ?? []).flatMap((id) => tagLabel(id, configuredTags) ?? [])
+}
+
+type WriteOpts = { notes: boolean; tags: boolean; configuredTags: LTag.Tag[] }
+
+export function toYaml(items: LL.List, opts: WriteOpts): string {
 	const doc = new Yaml.Document([] as unknown[])
 	const seq = doc.contents as Yaml.YAMLSeq
 	const single = (item: LL.SingleItem) => {
-		const labels = opts.tags ? (item.tags ?? []).flatMap((id) => tagLabel(id, opts.configuredTags) ?? []) : []
+		const labels = opts.tags ? writtenTagLabels(item, opts.configuredTags) : []
 		const node =
 			labels.length > 0 ? doc.createNode({ layer: layerLine(item.layerId), tags: labels }) : doc.createNode(layerLine(item.layerId))
 		if (Yaml.isMap(node)) {
@@ -134,10 +141,12 @@ export function toYaml(items: LL.List, opts: { notes: boolean; tags: boolean; co
 	return doc.toString({ lineWidth: 0, flowCollectionPadding: false })
 }
 
-export function toPlainText(items: LL.List, opts: { notes: boolean }): string {
+export function toPlainText(items: LL.List, opts: WriteOpts): string {
 	const lines: string[] = []
 	const single = (item: LL.SingleItem, indent: string) => {
 		if (opts.notes) for (const note of item.notes ?? []) lines.push(`${indent}# ${noteLine(note)}`)
+		const labels = opts.tags ? writtenTagLabels(item, opts.configuredTags) : []
+		if (labels.length > 0) lines.push(`${indent}# TAGS: ${labels.join(', ')}`)
 		lines.push(`${indent}${layerLine(item.layerId)}`)
 	}
 	for (const item of items) {
@@ -149,16 +158,6 @@ export function toPlainText(items: LL.List, opts: { notes: boolean }): string {
 		for (const choice of item.choices) single(choice, '  ')
 	}
 	return lines.length > 0 ? `${lines.join('\n')}\n` : ''
-}
-
-// how many items lose their tags in a plain-text export, for the export dialog to point out
-export function plainTextDroppedTags(items: LL.List): number {
-	let taggedItems = 0
-	for (const item of items) {
-		const singles = item.type === 'single-list-item' ? [item] : item.choices
-		if (singles.some((single) => (single.tags ?? []).some((id) => LTag.rotationIdOfTag(id) === undefined))) taggedItems++
-	}
-	return taggedItems
 }
 
 // -------- import --------
@@ -199,15 +198,17 @@ function parseLayerLine(text: string, line: number, opts?: { installedMods?: rea
 export function parsePlainText(text: string, opts?: { installedMods?: readonly string[] }): Parsed {
 	const items: ParsedItem[] = []
 	const errors: ParseError[] = []
-	let notes: string[] = []
-	let vote: { line: number; text: string; config: VoteConfig; notes: string[]; choices: ParsedSingle[]; choiceNotes: string[] } | null =
+	type Pending = { notes: string[]; tagLabels: string[] }
+	const nothingPending = (): Pending => ({ notes: [], tagLabels: [] })
+	let pending = nothingPending()
+	let vote: { line: number; text: string; config: VoteConfig; notes: string[]; choices: ParsedSingle[]; choicePending: Pending } | null =
 		null
-	// notes left after a vote's last choice fall to whatever follows the vote
+	// notes and tags left after a vote's last choice fall to whatever follows the vote
 	const closeVote = () => {
 		if (!vote) return
 		if (vote.choices.length === 0) errors.push({ line: vote.line, text: vote.text, code: 'err:bad-item' })
 		else items.push({ type: 'vote', line: vote.line, choices: vote.choices, notes: vote.notes, config: vote.config })
-		notes = vote.choiceNotes
+		pending = vote.choicePending
 		vote = null
 	}
 	text.split('\n').forEach((raw, index) => {
@@ -220,24 +221,41 @@ export function parsePlainText(text: string, opts?: { installedMods?: readonly s
 			closeVote()
 			const config = parseVoteHeader(header[1])
 			if (!config) errors.push({ line: lineNumber, text: line, code: 'err:bad-vote-header' })
-			vote = { line: lineNumber, text: line, config: config ?? {}, notes, choices: [], choiceNotes: [] }
-			notes = []
+			vote = {
+				line: lineNumber,
+				text: line,
+				config: config ?? {},
+				notes: pending.notes,
+				choices: [],
+				choicePending: { notes: [], tagLabels: pending.tagLabels },
+			}
+			pending = nothingPending()
 			return
 		}
 		if (!indented) closeVote()
-		if (line.startsWith('#')) {
-			const note = line.replace(/^#+\s?/, '').trim()
-			if (note.length > 0) (vote ? vote.choiceNotes : notes).push(note)
+		const target = vote ? vote.choicePending : pending
+		const tags = TAGS_LINE.exec(line)
+		if (tags) {
+			for (const label of tags[1].split(',')) if (label.trim().length > 0) target.tagLabels.push(label.trim())
 			return
 		}
-		const target = vote ? vote.choiceNotes : notes
-		const single: ParsedSingle = { line: lineNumber, layer: parseLayerLine(line, lineNumber, opts), tagLabels: [], notes: [...target] }
+		if (line.startsWith('#')) {
+			const note = line.replace(/^#+\s?/, '').trim()
+			if (note.length > 0) target.notes.push(note)
+			return
+		}
+		const single: ParsedSingle = {
+			line: lineNumber,
+			layer: parseLayerLine(line, lineNumber, opts),
+			tagLabels: target.tagLabels,
+			notes: target.notes,
+		}
 		if (vote) {
 			vote.choices.push(single)
-			vote.choiceNotes = []
+			vote.choicePending = nothingPending()
 		} else {
 			items.push({ type: 'single', single })
-			notes = []
+			pending = nothingPending()
 		}
 	})
 	closeVote()
@@ -265,6 +283,7 @@ export function parseYaml(text: string, opts?: { installedMods?: readonly string
 			errors: [{ line: lineCounter.linePos(error.pos[0]).line, text: error.message, code: 'err:yaml' }],
 		}
 	}
+	if (doc.contents === null) return { format: 'yaml', items: [], errors: [] }
 	if (!Yaml.isSeq(doc.contents)) {
 		return { format: 'yaml', items: [], errors: [{ line: lineOf(doc.contents as Yaml.Node), text: '', code: 'err:not-a-list' }] }
 	}
@@ -388,23 +407,23 @@ export function toNewItems(parsed: Parsed, mapping: TagMapping): LL.NewItem[] {
 
 // -------- editing as text --------
 
-// the whole list in `format`, with every note, and with tags in YAML
+// the whole list in `format`, with every note and tag
 export function serialize(items: LL.List, format: Format, configuredTags: LTag.Tag[]): string {
-	return format === 'yaml' ? toYaml(items, { notes: true, tags: true, configuredTags }) : toPlainText(items, { notes: true })
+	const opts = { notes: true, tags: true, configuredTags }
+	return format === 'yaml' ? toYaml(items, opts) : toPlainText(items, opts)
 }
 
 // Gives each parsed item that repeats an item of `existing` what the text could not say about it: its id, the authors
-// of the notes it keeps, and the tags the format leaves out (all of them in plain text, rotation tags in YAML). A layer
-// repeats the first unclaimed existing layer with the same layer id, and a vote the first unclaimed vote with the same
-// choices.
-export function carryOver(existing: LL.List, items: LL.NewItem[], format: Format): LL.NewItem[] {
+// of the notes it keeps, and its rotation tags, which neither format writes. A layer repeats the first unclaimed
+// existing layer with the same layer id, and a vote the first unclaimed vote with the same choices.
+export function carryOver(existing: LL.List, items: LL.NewItem[]): LL.NewItem[] {
 	const singles = new Map<L.LayerId, LL.SingleItem[]>()
 	const votes = new Map<string, LL.VoteItem[]>()
 	for (const item of existing) {
 		if (item.type === 'single-list-item') claimable(singles, item.layerId).push(item)
 		else claimable(votes, voteKey(item.choices)).push(item)
 	}
-	const unsaid = (id: LTag.TagId) => format === 'text' || LTag.rotationIdOfTag(id) !== undefined
+	const unsaid = (id: LTag.TagId) => LTag.rotationIdOfTag(id) !== undefined
 	const merge = <T extends LL.NewSingleItem>(item: T, prev: LL.SingleItem): T => {
 		const out: T = { ...item, itemId: prev.itemId }
 		const tags = [...new Set([...(item.tags ?? []), ...(prev.tags ?? []).filter(unsaid)])]

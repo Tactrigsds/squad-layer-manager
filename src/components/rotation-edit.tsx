@@ -311,7 +311,7 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 					<input
 						ref={fileRef}
 						type="file"
-						accept=".yaml,.yml,.txt,text/plain"
+						accept=".yaml,.yml,.cfg,.txt,text/plain"
 						className="hidden"
 						onChange={(e) => {
 							const file = e.target.files?.[0]
@@ -422,14 +422,7 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 			</ButtonGroup>
 		)
 	}
-	const option = (title: string, hint: string, onSelect: () => void) => (
-		<DropdownMenuItem onSelect={onSelect}>
-			<span className="flex flex-col">
-				<span>{title}</span>
-				<span className="text-xs text-muted-foreground">{hint}</span>
-			</span>
-		</DropdownMenuItem>
-	)
+	const option = (title: string, onSelect: () => void) => <DropdownMenuItem onSelect={onSelect}>{title}</DropdownMenuItem>
 	return (
 		<ButtonGroup aria-label={label} className="ms-1.5">
 			<DropdownMenu modal={false}>
@@ -441,16 +434,8 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					{option(
-						tr.text(ROT_Msgs.copyAsText()),
-						tr.text(ROT_Msgs.leavesOutTags()),
-						() => void RotationEditorFrame.Actions.copyText(listHost, 'text'),
-					)}
-					{option(
-						tr.text(ROT_Msgs.copyAsYaml()),
-						tr.text(ROT_Msgs.keepsNotesAndTags()),
-						() => void RotationEditorFrame.Actions.copyText(listHost, 'yaml'),
-					)}
+					{option(tr.text(ROT_Msgs.copyAsText()), () => void RotationEditorFrame.Actions.copyText(listHost, 'text'))}
+					{option(tr.text(ROT_Msgs.copyAsYaml()), () => void RotationEditorFrame.Actions.copyText(listHost, 'yaml'))}
 				</DropdownMenuContent>
 			</DropdownMenu>
 			<DropdownMenu modal={false}>
@@ -462,16 +447,8 @@ function CopyDownloadButtons(props: { listHost: RotationEditorFrame.Key; view: R
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
-					{option(
-						tr.text(ROT_Msgs.downloadText()),
-						tr.text(ROT_Msgs.leavesOutTags()),
-						() => void RotationEditorFrame.Actions.downloadText(listHost, 'text'),
-					)}
-					{option(
-						tr.text(ROT_Msgs.downloadYaml()),
-						tr.text(ROT_Msgs.keepsNotesAndTags()),
-						() => void RotationEditorFrame.Actions.downloadText(listHost, 'yaml'),
-					)}
+					{option(tr.text(ROT_Msgs.downloadText()), () => void RotationEditorFrame.Actions.downloadText(listHost, 'text'))}
+					{option(tr.text(ROT_Msgs.downloadYaml()), () => void RotationEditorFrame.Actions.downloadText(listHost, 'yaml'))}
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</ButtonGroup>

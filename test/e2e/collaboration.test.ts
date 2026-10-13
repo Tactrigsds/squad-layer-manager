@@ -442,6 +442,12 @@ test.describe('collaborative rotation editing', () => {
 		expect(narva.tags).toEqual([META.id])
 		expect(narva.notes?.map((note) => [note.text, note.author])).toEqual([['opener', undefined]])
 		expect(vote.choices?.map((choice) => choice.layerId)).toEqual([LAYERS.gorodokRaas, LAYERS.skorpoRaas])
+
+		// plain text writes the tags as a comment above the layer
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+		await expect(page.getByRole('textbox', { name: 'Layers as Plain text' })).toContainText(
+			'# opener# TAGS: metaNarva_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
+		)
 	})
 
 	test('the layer pickers keep the collection and the applied filters from Explore Layers and across rotations', async ({ page }) => {

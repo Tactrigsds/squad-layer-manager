@@ -263,7 +263,7 @@ async function analyzeAndApplyUnsafe(key: StateKey, text: string) {
 		}
 	}
 	const list = Zus.getState(key).queue.layerList
-	const items = mod.carryOver(list, mod.toNewItems(parsed, mapping), format)
+	const items = mod.carryOver(list, mod.toNewItems(parsed, mapping))
 	const unknownSource: LL.Source = { type: 'unknown' }
 	const next = mod.serialize(
 		items.map((item) => LL.createItem(item, unknownSource)),
@@ -342,7 +342,7 @@ export namespace Actions {
 		const url = URL.createObjectURL(new Blob([text], { type: format === 'yaml' ? 'application/yaml' : 'text/plain' }))
 		const a = document.createElement('a')
 		a.href = url
-		a.download = `${Zus.getState(key).rotationId}.${format === 'yaml' ? 'yaml' : 'txt'}`
+		a.download = `${Zus.getState(key).rotationId}.${format === 'yaml' ? 'yaml' : 'cfg'}`
 		a.click()
 		URL.revokeObjectURL(url)
 	}

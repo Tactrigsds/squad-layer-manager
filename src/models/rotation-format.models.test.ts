@@ -70,11 +70,12 @@ describe('rotation exchange formats', () => {
 	})
 
 	it('writes a vote in plain text as a VOTE line over its indented choices, and reads it back', () => {
-		const text = RFMT.toPlainText(LIST, { notes: true })
+		const text = RFMT.toPlainText(LIST, { notes: true, tags: true, configuredTags: [EVENT] })
 		expect(text).toBe(
 			[
 				'# opening layer, keep it light',
 				lineOf(A),
+				'# TAGS: Event Night',
 				lineOf(B),
 				'# VOTE: display map, factions; duration 3m',
 				`  ${lineOf(A)}`,
@@ -83,12 +84,12 @@ describe('rotation exchange formats', () => {
 				'',
 			].join('\n'),
 		)
-		expect(RFMT.plainTextDroppedTags(LIST)).toBe(1)
 
 		const parsed = RFMT.parse(`AdminSetNextLayer ${lineOf(B)}\n${text}${lineOf(A)}\n`)
 		expect(parsed.format).toBe('text')
 		expect(parsed.errors).toEqual([])
-		const items = RFMT.toNewItems(parsed, new Map())
+		expect(RFMT.tagLabels(parsed, [EVENT])).toEqual([{ label: 'Event Night', match: EVENT }])
+		const items = RFMT.toNewItems(parsed, new Map([['event night', EVENT.id]]))
 		expect(items.map((item) => item.type)).toEqual([
 			'single-list-item',
 			'single-list-item',
@@ -97,6 +98,7 @@ describe('rotation exchange formats', () => {
 			'single-list-item',
 		])
 		expect(items[1].type === 'single-list-item' && items[1].notes?.map((note) => note.text)).toEqual(['opening layer, keep it light'])
+		expect(items[2].type === 'single-list-item' && items[2].tags).toEqual([EVENT.id])
 		const vote = items[3]
 		if (vote.type !== 'vote-list-item') throw new Error('types')
 		expect(vote.choices.map((choice) => choice.layerId)).toEqual([A, B])
@@ -104,12 +106,20 @@ describe('rotation exchange formats', () => {
 		expect(vote.voteConfig).toEqual({ displayProps: ['map', 'factions'], duration: 180_000, source: { type: 'unknown' } })
 	})
 
-	it('takes notes above a VOTE line as notes on the vote, and a bare VOTE line as the server defaults', () => {
-		const parsed = RFMT.parse(['# closer', '# VOTE:', `  ${lineOf(A)}`, `  ${lineOf(B)}`].join('\n'))
-		const [vote] = RFMT.toNewItems(parsed, new Map())
+	it('puts notes and tags above a VOTE line on its default choice, and reads a bare VOTE line as the server defaults', () => {
+		const parsed = RFMT.parse(
+			['# closer', '# TAGS: Event Night', '# VOTE:', `  ${lineOf(A)}`, '  # TAGS: event night', `  ${lineOf(B)}`].join('\n'),
+		)
+		const [vote] = RFMT.toNewItems(parsed, new Map([['event night', EVENT.id]]))
 		if (vote.type !== 'vote-list-item') throw new Error('types')
 		expect(vote.voteConfig).toBeUndefined()
 		expect(vote.choices[0].notes?.map((note) => note.text)).toEqual(['closer'])
+		expect(vote.choices.map((choice) => choice.tags)).toEqual([[EVENT.id], [EVENT.id]])
+	})
+
+	it('reads empty or comment-only YAML as no items', () => {
+		expect(RFMT.parseYaml('')).toEqual({ format: 'yaml', items: [], errors: [] })
+		expect(RFMT.parseYaml('# nothing yet\n')).toEqual({ format: 'yaml', items: [], errors: [] })
 	})
 
 	it('names a VOTE line it cannot read, and a vote with no choices', () => {
@@ -142,7 +152,7 @@ describe('rotation exchange formats', () => {
 		expect(broken.errors[0].code).toBe('err:yaml')
 	})
 
-	it('keeps the ids, note authors and unwritten tags of the items an edit leaves in place', () => {
+	it('keeps the ids, note authors and rotation tags of the items an edit leaves in place', () => {
 		const authored = LL.createVoteItem(
 			[single(A), single(B, { notes: [{ id: 'note03', text: 'only above 80', author: '42' as never }] })],
 			SOURCE,
@@ -151,11 +161,10 @@ describe('rotation exchange formats', () => {
 		const [, tagged] = existing as LL.SingleItem[]
 		const edit = (format: RFMT.Format, text: string) => {
 			const parsed = format === 'yaml' ? RFMT.parseYaml(text) : RFMT.parsePlainText(text)
-			return RFMT.carryOver(existing, RFMT.toNewItems(parsed, new Map([['event night', EVENT.id]])), format)
+			return RFMT.carryOver(existing, RFMT.toNewItems(parsed, new Map([['event night', EVENT.id]])))
 		}
 
-		// plain text cannot say what tags a layer has, so every tag stays on it
-		const text = RFMT.toPlainText(existing.slice(1), { notes: true })
+		const text = RFMT.toPlainText(existing.slice(1), { notes: true, tags: true, configuredTags: [EVENT] })
 		const [kept, vote] = edit('text', `${lineOf(A)}\n${text}`).slice(1)
 		if (kept.type !== 'single-list-item' || vote.type !== 'vote-list-item') throw new Error('types')
 		expect(kept.itemId).toBe(tagged.itemId)
@@ -163,9 +172,11 @@ describe('rotation exchange formats', () => {
 		expect(vote.choices.map((choice) => choice.itemId)).toEqual(authored.choices.map((choice) => choice.itemId))
 		expect(vote.choices[1].notes).toEqual([{ id: 'note03', text: 'only above 80', author: '42' }])
 
-		// YAML writes layer tags, so taking one out of the text takes it off. A rotation tag is never written, so it stays.
+		// taking a layer tag out of the text takes it off. A rotation tag is never written, so it stays.
 		const [untagged] = edit('yaml', `- layer: ${lineOf(B)}\n  tags: []\n`)
 		expect(untagged.type === 'single-list-item' && untagged.tags).toEqual([LTag.fromRotationTagId('weekend')])
+		const [untaggedText] = edit('text', `${lineOf(B)}\n`)
+		expect(untaggedText.type === 'single-list-item' && untaggedText.tags).toEqual([LTag.fromRotationTagId('weekend')])
 	})
 
 	it('drops a tag label the mapping leaves out', () => {
