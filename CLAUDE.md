@@ -144,6 +144,12 @@ when you need a side with no identity.
 docs/ and the README are user-facing. Keep implementation detail out of them, except in docs/developers/architecture.md, which
 is for contributors.
 
+docs/features/ is an overview, not a reference. A features page says what each feature is and what it is for, in a few
+sentences, and links to the guide page that covers it. It does not enumerate controls, menu items, dialog options,
+shortcuts or edge cases, and a new button, menu item or dialog field never earns a sentence there. That detail belongs in
+docs/guide/, and only when it is procedure a user needs. Before adding a sentence to docs/features/, check whether the
+feature's paragraph already covers it at overview level; if it does, add nothing.
+
 # Editing
 
 Before reporting back on prose you wrote (docs, app text, comments, PR descriptions), re-read every new sentence
