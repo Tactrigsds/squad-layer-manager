@@ -32,9 +32,10 @@ const PLUGIN_EVENT_ICONS: Record<PluginsClient.EventIcon, React.ReactNode> = {
 export function PluginEventRow(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }> }) {
 	const { ctx, event } = props
 	const appEvent = event.appEvent as AppEvents.PluginEvent
-	// subscription only: a version bump re-renders this so the renderer map is re-read live
-	Zus.useStore(PluginsClient.Store, (s) => s.version)
-	const rendering = PluginsClient.getEventRendering(appEvent.pluginId, {
+	// selected rather than read beside a bare version subscription: the compiler memoizes a plain call on its
+	// arguments, which would keep the renderer from the first render
+	const renderer = Zus.useStore(PluginsClient.Store, () => PluginsClient.getEventRenderer(appEvent.pluginId, appEvent.name))
+	const rendering = PluginsClient.renderEvent(renderer, {
 		name: appEvent.name,
 		payload: appEvent.payload,
 		message: appEvent.message,
