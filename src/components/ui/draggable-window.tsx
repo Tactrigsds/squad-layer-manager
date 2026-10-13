@@ -43,6 +43,12 @@ const RESIZE_HANDLES: { dir: ResizeDir; className: string }[] = [
 	{ dir: 'sw', className: 'bottom-0 inset-s-0 h-2 w-2 cursor-nesw-resize' },
 ]
 
+type WindowMeasure = { size: { width: number; height: number }; dragBarHeight: number }
+
+function clampMoved(pos: { x: number; y: number }, m: WindowMeasure) {
+	return DW.clampMovedWindow(pos, m.size, { width: window.innerWidth, height: window.innerHeight }, m.dragBarHeight)
+}
+
 interface DraggableWindowInstanceProps {
 	window: WindowState
 	definition: WindowDefinition
@@ -52,7 +58,9 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
 	const dragBarRef = React.useRef<HTMLElement | null>(null)
 	const positionRef = React.useRef<{ x: number; y: number } | null>(null)
-	const dragStartRef = React.useRef<{ mouseX: number; mouseY: number; elementX: number; elementY: number } | null>(null)
+	const dragStartRef = React.useRef<{ mouseX: number; mouseY: number; elementX: number; elementY: number; measure: WindowMeasure } | null>(
+		null,
+	)
 	const isDraggingRef = React.useRef(false)
 	const isResizingRef = React.useRef(false)
 	const [dragBarNode, setDragBarNode] = React.useState<HTMLElement | null>(null)
@@ -73,17 +81,22 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		positionRef.current = pos
 	}, [])
 
+	// measured once per gesture, since reading layout after each position write would force a reflow per mousemove
+	const measure = React.useCallback((): WindowMeasure => {
+		const size = contentRef.current!.getBoundingClientRect()
+		return { size, dragBarHeight: dragBarRef.current?.offsetHeight ?? size.height }
+	}, [])
+
 	const clampToViewport = React.useCallback(() => {
 		const content = contentRef.current
 		const currentPos = positionRef.current
 		if (!content || !currentPos || isResizingRef.current) return
 
-		const viewport = { width: window.innerWidth, height: window.innerHeight }
-		const clamped = DW.clampToViewport(currentPos, content.getBoundingClientRect(), collisionPadding, viewport)
+		const clamped = clampMoved(currentPos, measure())
 		if (clamped.x !== currentPos.x || clamped.y !== currentPos.y) {
 			applyPosition(clamped)
 		}
-	}, [collisionPadding, applyPosition])
+	}, [measure, applyPosition])
 
 	const close = React.useCallback(() => {
 		DraggableWindowStore.getState().closeWindow(windowState.id)
@@ -241,6 +254,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				mouseY: e.clientY,
 				elementX: positionRef.current.x,
 				elementY: positionRef.current.y,
+				measure: measure(),
 			}
 		}
 
@@ -250,10 +264,15 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			const deltaX = e.clientX - dragStartRef.current.mouseX
 			const deltaY = e.clientY - dragStartRef.current.mouseY
 
-			applyPosition({
-				x: dragStartRef.current.elementX + deltaX,
-				y: dragStartRef.current.elementY + deltaY,
-			})
+			applyPosition(
+				clampMoved(
+					{
+						x: dragStartRef.current.elementX + deltaX,
+						y: dragStartRef.current.elementY + deltaY,
+					},
+					dragStartRef.current.measure,
+				),
+			)
 		}
 
 		const handleMouseUp = () => {
@@ -275,7 +294,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			document.removeEventListener('mousemove', handleMouseMove)
 			document.removeEventListener('mouseup', handleMouseUp)
 		}
-	}, [dragBarNode, bringToFront, applyPosition, setIsPinned, phone])
+	}, [dragBarNode, bringToFront, applyPosition, measure, setIsPinned, phone])
 
 	const handleMouseDown = React.useCallback(() => {
 		bringToFront()
@@ -360,12 +379,14 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
 				className={cn(
-					'fd-win fixed outline-none invisible',
+					// w-max: a fixed box with auto width shrinks to the space between its left edge and the viewport's
+					// right edge, so it would squeeze as it is dragged past the right edge
+					'fd-win fixed w-max outline-none invisible',
 					definition.resizable && 'flex flex-col overflow-hidden',
 					// physical: overrides the dragged position, which is kept as style.left in screen coordinates
-					phone && 'inset-0 top-0! left-0! flex h-full w-full! flex-col overflow-hidden rounded-none border-0',
+					phone && 'inset-0 top-0! left-0! flex h-full w-full! max-w-none! flex-col overflow-hidden rounded-none border-0',
 				)}
-				style={{ zIndex: effectiveZIndex }}
+				style={{ zIndex: effectiveZIndex, maxWidth: `calc(100vw - ${collisionPadding * 2}px)` }}
 			>
 				<BaseZIndexContext.Provider value={effectiveZIndex}>
 					<Component {...windowState.props} />
