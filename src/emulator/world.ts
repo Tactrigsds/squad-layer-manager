@@ -632,8 +632,14 @@ export class World {
 		return {
 			level,
 			layer,
-			factions: f1 && f2 ? `${f1} ${f2}` : 'USA GFI',
+			factions: f1 && f2 ? `${f1} ${f2}` : (factionsInLayerName(layer) ?? 'USA GFI'),
 			mapDir: `/Game/Maps/${level}/Gameplay_Layers`,
 		}
 	}
+}
+
+// A training layer names its factions instead of taking them, as in JensensRange_USA-PLA, and the server reports those.
+function factionsInLayerName(layer: string): string | null {
+	const match = /^[A-Za-z]+_([A-Z]+)-([A-Z]+)$/.exec(layer)
+	return match ? `${match[1]} ${match[2]}` : null
 }
