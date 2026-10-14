@@ -32,9 +32,34 @@ export async function sessionCookie(app: AppFixture, user: TestUser = ADMIN_USER
 	return cookie
 }
 
-export async function createOrpcClient(app: AppFixture, user: TestUser = ADMIN_USER): Promise<TestOrpcClient> {
+// The hash of the layer data the app serves, which a socket has to name to be served (see C.LayerDataSession). A
+// browser page sends the hash of the layer-data.json it loaded; a test client has no layer data of its own to load.
+const layerDataHashes = new WeakMap<AppFixture, Promise<string>>()
+export function layerDataHash(app: AppFixture): Promise<string> {
+	let hash = layerDataHashes.get(app)
+	if (!hash) {
+		hash = (async () => {
+			// served to signed-in users only
+			const res = await fetch(`${app.appUrl}${AR.route('/layer-data.json')}`, { headers: { cookie: await sessionCookie(app) } })
+			await res.arrayBuffer()
+			const etag = AR.parseContentHashEtag(res.headers.get('ETag'))
+			if (!etag) throw new Error(`the app served layer-data.json (${res.status}) without its content hash`)
+			return etag
+		})()
+		layerDataHashes.set(app, hash)
+	}
+	return hash
+}
+
+// `layerDataHash` names other layer data than the app's, for a test of how a stale page is refused
+export async function createOrpcClient(
+	app: AppFixture,
+	user: TestUser = ADMIN_USER,
+	opts?: { layerDataHash?: string },
+): Promise<TestOrpcClient> {
 	const cookie = await sessionCookie(app, user)
-	const wsUrl = `${app.appUrl.replace(/^http/, 'ws')}${AR.route('/orpc')}`
+	const hash = opts?.layerDataHash ?? (await layerDataHash(app))
+	const wsUrl = `${app.appUrl.replace(/^http/, 'ws')}${AR.route('/orpc')}?layerData=${encodeURIComponent(hash)}`
 	// the browser sends the session cookie automatically; here it has to be set on the upgrade request
 	const websocket = new WebSocket(wsUrl, { headers: { cookie } })
 

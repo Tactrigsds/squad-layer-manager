@@ -1,5 +1,5 @@
 import * as Otel from '@opentelemetry/api'
-import { os } from '@orpc/server'
+import { ORPCError, os } from '@orpc/server'
 import type Pino from 'pino'
 
 import type { OtelModule } from '@/lib/otel.ts'
@@ -78,7 +78,17 @@ export const getOrpcBase = (module: OtelModule) => {
 		return res
 	})
 
-	return base.use(spanOpMiddleware).use(accessMiddleware)
+	// A client on other layer data than this server's would read every dense layer id it is sent as a different layer,
+	// and send ids this server reads the same way. Everything but the config (which carries the layer data hash the
+	// client reloads on) is refused until it reloads.
+	const staleLayerDataMiddleware = base.middleware(({ context: ctx, path, next }) => {
+		if (!ctx.layerDataCurrent && path[0] !== 'config') {
+			throw new ORPCError('PRECONDITION_FAILED', { message: PA.STALE_LAYER_DATA })
+		}
+		return next()
+	})
+
+	return base.use(spanOpMiddleware).use(staleLayerDataMiddleware).use(accessMiddleware)
 }
 
 type AccessCheck = () => Promise<RBAC.PermissionDeniedResponse | null>
