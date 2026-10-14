@@ -115,7 +115,7 @@ function LayerPickerDesktop(props: LayerPickerLayoutProps) {
 					<div data-tour={`${props.tourPrefix}-pick`} className="flex min-w-0 flex-col">
 						<LayerTable
 							extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
-							stores={{ layerTable: frameKey }}
+							stores={{ layerTable: frameKey, listHost: props.listHost }}
 							canChangeRowsPerPage={false}
 							canToggleColumns={props.canToggleColumns}
 							enableForceSelect
