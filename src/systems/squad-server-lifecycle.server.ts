@@ -3,7 +3,6 @@
 
 import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
-import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
 import * as Timers from 'node:timers/promises'
 
@@ -372,27 +371,6 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		}
 		server.emittedEvents.push(event)
 	})
-
-	server.event$
-		.pipe(
-			Rx.filter(([_, event]) => event.type === 'PLAYER_DETAILS_CHANGED' && !!event.newUsername),
-			Instr.durableSub('onPlayerNameChanged', { module }, async ([evtCtx, event], signal) => {
-				if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) {
-					return
-				}
-				const ctx = SquadServer.eventCtx(evtCtx, signal)
-				await ctx
-					.db()
-					.update(Schema.players)
-					.set({
-						username: event.newUsername,
-						// still valid if only the tag changed
-						usernameNoTag: sql`CASE WHEN substr(${event.newUsername}, -length(${Schema.players.usernameNoTag})) = ${Schema.players.usernameNoTag} THEN ${Schema.players.usernameNoTag} END`,
-					})
-					.where(E.eq(Schema.players.eosId, event.player))
-			}),
-		)
-		.subscribe()
 
 	// The Squad server re-reads its Admins.cfg on every new game, so refetch at the same moment rather than waiting out
 	// the hourly TTL: from the roll onwards the file's current contents are what the server enforces in-game, and SLM

@@ -806,6 +806,46 @@ describe('the event archive', () => {
 		expect((await total({ feed: 'VEHICLES' })).total).toBe(7)
 	})
 
+	it('records previous usernames and finds a player by one', async () => {
+		const first = makePlayer({ name: ' rename_first', teamId: 1 })
+		app.emu.world.connectPlayer(first)
+		const usernamesOf = async () => {
+			const info = await client.history.playerInfo({ playerId: first.eos })
+			return info.code === 'ok' ? info.usernames.map((u) => u.username.trim()) : []
+		}
+		await app.waitFor(async () => ((await usernamesOf()).includes('rename_first') ? true : undefined), {
+			label: 'the joined player reaching the players table',
+		})
+
+		// renamed mid-session: the teams poll reports the new name
+		first.name = ' rename_second'
+		await app.waitFor(async () => ((await usernamesOf())[0] === 'rename_second' ? true : undefined), {
+			label: 'the in-session rename being recorded',
+		})
+
+		// rejoins under a third name
+		app.emu.world.disconnectPlayer(first)
+		app.emu.world.connectPlayer(makePlayer({ name: ' rename_third', teamId: 1, eos: first.eos, steam: first.steam }))
+		await app.waitFor(async () => ((await usernamesOf())[0] === 'rename_third' ? true : undefined), {
+			label: 'the rejoin under a new name being recorded',
+		})
+		const info = await client.history.playerInfo({ playerId: first.eos })
+		if (info.code !== 'ok') throw new Error(info.code)
+		expect(info.username.trim()).toBe('rename_third')
+		expect(info.usernames.map((u) => u.username.trim())).toEqual(['rename_third', 'rename_second', 'rename_first'])
+		expect(info.usernames[0].to).toBeNull()
+		expect(info.usernames[1].to).toBe(info.usernames[0].from)
+
+		for (const needle of ['rename_first', 'ren']) {
+			const res = await client.history.searchPlayers({ needle })
+			if (res.code !== 'ok') throw new Error(res.code)
+			expect(
+				res.players.map((p) => p.eosId),
+				needle,
+			).toContain(first.eos)
+		}
+	})
+
 	it('searches players by steam and eos id', async () => {
 		const byName = await client.history.searchPlayers({ needle: 'archive_subject' })
 		if (byName.code !== 'ok') throw new Error(byName.code)

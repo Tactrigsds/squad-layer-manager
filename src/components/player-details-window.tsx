@@ -47,6 +47,7 @@ import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
+import type * as PUN from '@/models/player-usernames.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -171,6 +172,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 						<div className="flex flex-col">
 							<div className="inline-flex gap-2 items-baseline">
 								{username && <CopyIdButton kind="username" id={username} />}
+								{info?.code === 'ok' && <PreviousUsernamesButton periods={info.usernames} />}
 								{steam && <CopyIdButton kind="steam" id={steam} />}
 							</div>
 							<div className="inline-flex gap-1 items-baseline">
@@ -418,6 +420,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 						<div className="flex flex-col ">
 							<div className="inline-flex gap-2 items-baseline">
 								{ids?.username && <CopyIdButton kind="username" id={ids?.username} />}
+								{data && <PreviousUsernamesButton periods={data.usernames} />}
 								{(ids?.steam ?? profile?.playerIds.steam) && (
 									<CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />
 								)}
@@ -758,6 +761,45 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 				</Button>
 			)}
 		</div>
+	)
+}
+
+// Every name the player has gone by, newest first. Hidden for a player who has only ever had one.
+function PreviousUsernamesButton({ periods }: { periods: PUN.UsernamePeriod[] }) {
+	const current = periods[0]?.username
+	const previousCount = new Set(periods.filter((p) => p.username !== current).map((p) => p.username)).size
+	if (previousCount === 0) return null
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					className="inline-flex shrink-0 items-center gap-0.5 rounded px-0.5 text-muted-foreground hover:text-foreground transition-colors"
+					title={tr.text(SM_Msgs.showPreviousUsernames())}
+					aria-label={tr.text(SM_Msgs.showPreviousUsernames())}
+				>
+					<Icons.History className="h-3 w-3" />
+					<span className="font-mono">{tr.text(SM_Msgs.previousUsernamesCount(previousCount))}</span>
+				</button>
+			</PopoverTrigger>
+			<PopoverContent align="start" className="w-auto max-w-sm p-2">
+				<h4 className="fd-lbl-k2 mb-1">{tr.text(SM_Msgs.previousUsernamesTitle())}</h4>
+				<ul className="flex flex-col gap-1 text-xs">
+					{periods.map((period) => (
+						<li key={`${period.from}:${period.username}`} className="flex min-w-0 flex-col">
+							<CopyIdButton kind="username" id={period.username} hideLabel />
+							<span className="text-muted-foreground">
+								{period.to === null
+									? tr.text(SM_Msgs.usernameCurrentSince(MsgFmt.formatDate(period.from, 'date')))
+									: tr.text(
+											SM_Msgs.usernameUsedRange(MsgFmt.formatDate(period.from, 'date'), MsgFmt.formatDate(period.to, 'date')),
+										)}
+							</span>
+						</li>
+					))}
+				</ul>
+			</PopoverContent>
+		</Popover>
 	)
 }
 

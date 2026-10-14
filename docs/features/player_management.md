@@ -25,6 +25,9 @@ squad, and their recent chat.
 
 ![a player's details](../images/features/player_details.png)
 
+A history icon beside the username marks a player who has gone by other usernames. Click it to list each username and
+the dates the player used it.
+
 Use the expand button beside the activity filter to give the player's server activity the whole window. Press it again
 to bring back the rest of the player's details.
 

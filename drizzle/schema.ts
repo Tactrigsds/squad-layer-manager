@@ -155,6 +155,23 @@ export const players = sqliteTable('players', {
 	modifiedAt: timestamp('modifiedAt').$defaultFn(() => new Date()),
 })
 
+// Every name a player has gone by: a row each time players.username changed, stamped with the time of the event
+// that carried the new name. Written only by triggers on players (migration 0139). WITHOUT ROWID, so one player's
+// names are one contiguous range.
+export const playerUsernames = sqliteTable(
+	'playerUsernames',
+	{
+		playerId: text('playerId')
+			.notNull()
+			.references(() => players.eosId, { onDelete: 'cascade' }),
+		time: timestamp('time').notNull(),
+		username: text('username').notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.playerId, table.time, table.username] }),
+	}),
+)
+
 // active-kick timeouts. A row is active while cancelled=false and expiresAt > now; enforced globally on
 // every SLM-managed server (players with an active timeout are kicked on connect / roster reset).
 export const timeouts = sqliteTable(
@@ -383,10 +400,12 @@ export namespace Virtual {
 		time: timestamp('time').notNull(),
 	})
 
-	/** fts5 trigram over player names, so a substring needle of three or more characters is an index lookup. */
+	/**
+	 * fts5 trigram over every name a player has gone by (playerUsernames), one row per distinct name, so a substring
+	 * needle of three or more characters is an index lookup.
+	 */
 	export const usernameSearch = sqliteTable('usernameSearch', {
 		username: text('username').notNull(),
-		usernameNoTag: text('usernameNoTag').notNull(),
 		eosId: text('eosId').notNull(),
 	})
 }

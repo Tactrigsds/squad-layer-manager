@@ -145,7 +145,31 @@ test.describe('admin actions from the teams panel', () => {
 		await expect(window).toBeVisible({ timeout: 20_000 })
 		// the row's own click handler toggles selection, and it has to stay out of this one
 		await expect(row.getByRole('checkbox').first()).not.toBeChecked()
+		await expect(window.getByRole('button', { name: 'Show previous usernames' })).toHaveCount(0)
 		await window.getByRole('button', { name: 'Close window' }).click()
+	})
+
+	test("the details window lists a renamed player's previous usernames", async ({ page }) => {
+		const panel = Dash.teamsSection(page)
+		member.name = ' sq_member_renamed'
+		try {
+			const button = panel.getByRole('button', { name: 'sq_member_renamed' })
+			await expect(button).toBeVisible({ timeout: 20_000 })
+			await button.click()
+
+			const window = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /sq_member_renamed/ }) })
+			await window.getByRole('button', { name: 'Show previous usernames' }).click()
+			const list = page.getByRole('list').filter({ hasText: 'Current since' })
+			await expect(list.getByRole('listitem')).toHaveCount(2)
+			await expect(list.getByRole('listitem').nth(0).getByRole('button', { name: 'sq_member_renamed', exact: true })).toBeVisible()
+			await expect(list.getByRole('listitem').nth(1).getByRole('button', { name: 'sq_member', exact: true })).toBeVisible()
+			await page.keyboard.press('Escape')
+			await window.getByRole('button', { name: 'Close window' }).click()
+		} finally {
+			// the later tests find this player by the original name
+			member.name = ' sq_member'
+			await expect(panel.getByRole('button', { name: 'sq_member', exact: true })).toBeVisible({ timeout: 20_000 })
+		}
 	})
 
 	// a party can span both teams, so a party filter or selection is not limited to one table
