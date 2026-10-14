@@ -1,16 +1,15 @@
 // Shared CodeMirror 6 setup for YAML editors with zod-derived JSON-schema autocomplete + hover.
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the
 // whole CodeMirror + codemirror-json-schema bundle, which we don't want in the initial/route chunk.
-import { indentWithTab } from '@codemirror/commands'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import type { Extension } from '@codemirror/state'
 import { Annotation, Compartment, EditorState } from '@codemirror/state'
-import { EditorView, hoverTooltip, keymap, type ViewUpdate } from '@codemirror/view'
-import { basicSetup } from 'codemirror'
+import { EditorView, hoverTooltip, type ViewUpdate } from '@codemirror/view'
 import { stateExtensions, updateSchema } from 'codemirror-json-schema'
 import { yamlCompletion, yamlSchemaHover } from 'codemirror-json-schema/yaml'
 import type { JSONSchema7 } from 'json-schema'
 
+import { basicSetup, yamlIndentKeymap } from './codemirror-keymap.ts'
 import { foundryTheme } from './codemirror-theme.ts'
 import { z } from './zod.ts'
 
@@ -37,10 +36,7 @@ export function toJsonSchema(schema: z.core.$ZodType): JsonSchema | undefined {
 export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[] {
 	return [
 		basicSetup,
-		// basicSetup leaves Tab alone so keyboard users can leave the editor, but indentation is structure in
-		// YAML, so Tab has to indent here. It inserts the indentUnit (two spaces) rather than a tab character,
-		// which YAML rejects as indentation. Ctrl-m (Shift-Alt-m on mac) still frees Tab to move focus.
-		keymap.of([indentWithTab]),
+		yamlIndentKeymap,
 		yaml(),
 		...(schema
 			? [yamlLanguage.data.of({ autocomplete: yamlCompletion() }), hoverTooltip(yamlSchemaHover()), stateExtensions(schema)]

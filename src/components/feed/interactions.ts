@@ -14,6 +14,7 @@ import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 
 import { formatFullTime } from './format'
@@ -350,23 +351,25 @@ function onSelectionKeyDown(event: KeyboardEvent) {
 		Selection.set(activeHostKey, undefined)
 		return
 	}
-	if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return
-	// Option+C on a Mac types a character, so with alt the physical key is what identifies it
-	if (event.altKey ? event.code !== 'KeyC' : event.key.toLowerCase() !== 'c') return
-	const host = Selection.hostOf(activeHostKey)
-	if (!host) return
-	if (event.altKey) {
-		const link = RC.scopeOf(host)?.linkToRows?.(selection, Selection.selectedRows(host, selection), Selection.groupOf(host))
-		if (!link) return
-		event.preventDefault()
-		void navigator.clipboard.writeText(link.url).then(() => toast(tr.text(CHAT_Msgs.linkToRowsCopied()), { description: link.caveat }))
-		return
-	}
+}
+
+function selectionOf(host: Element) {
+	const hostKey = Selection.keyOf(host)
+	return hostKey ? Selection.get(hostKey) : undefined
+}
+
+function copyRows(_e: KeyboardEvent, host: Element) {
+	const selection = selectionOf(host)
 	// a text selection is the reader's own, and copies the ordinary way
-	if (!(window.getSelection()?.isCollapsed ?? true)) return
-	if (!RC.scopeOf(host)?.selectionText) return
-	event.preventDefault()
+	if (!selection || !(window.getSelection()?.isCollapsed ?? true) || !RC.scopeOf(host)?.selectionText) return false
 	Selection.copySelection(host, selection)
+}
+
+function copyRowLink(_e: KeyboardEvent, host: Element) {
+	const selection = selectionOf(host)
+	const link = selection && RC.scopeOf(host)?.linkToRows?.(selection, Selection.selectedRows(host, selection), Selection.groupOf(host))
+	if (!link) return false
+	void navigator.clipboard.writeText(link.url).then(() => toast(tr.text(CHAT_Msgs.linkToRowsCopied()), { description: link.caveat }))
 }
 
 // -------- tooltip --------
@@ -627,6 +630,7 @@ export function setup() {
 	document.addEventListener('focusout', onFocusOut)
 	document.addEventListener('keydown', onKeyDown, true)
 	document.addEventListener('keydown', onSelectionKeyDown)
+	KBClient.handleType('feed', { 'copy-rows': copyRows, 'copy-row-link': copyRowLink })
 	document.addEventListener('pointerdown', onPointerDown)
 	document.addEventListener('pointermove', onPointerMove, { passive: true })
 	document.addEventListener('pointerup', onPointerUp)

@@ -1,9 +1,10 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import * as React from 'react'
 
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
+import type * as KEYS from '@/models/keybinds.models'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 
 import { DraggableWindowOutlet } from './draggable-window'
 
@@ -15,8 +16,13 @@ const PopoverAnchor = PopoverPrimitive.Anchor
 
 const PopoverContent = React.forwardRef<
 	React.ElementRef<typeof PopoverPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = 'center', sideOffset = 4, collisionPadding = 8, children, style, ...props }, ref) => {
+	React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+		// the keybinding scope of a popover with bindings of its own. A plain popover opens one of type `popover`
+		kbScope?: KBClient.ScopeHandle<KEYS.Extending<'popover'>>
+	}
+>(({ className, align = 'center', sideOffset = 4, collisionPadding = 8, children, style, kbScope: kbScopeProp, ...props }, ref) => {
+	const plainScope = KBClient.useScope('popover', {})
+	const kbScope = kbScopeProp ?? plainScope
 	const draggableWindowOutletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
 	const [contentNode, setContentNode] = React.useState<HTMLDivElement | null>(null)
@@ -25,13 +31,14 @@ const PopoverContent = React.forwardRef<
 		(node: HTMLDivElement | null) => {
 			contentRef.current = node
 			setContentNode(node)
+			kbScope.ref(node)
 			if (typeof ref === 'function') {
 				ref(node)
 			} else if (ref) {
 				;(ref as React.MutableRefObject<HTMLDivElement | null>).current = node
 			}
 		},
-		[ref],
+		[ref, kbScope],
 	)
 
 	// a Dialog's scroll lock (react-remove-scroll) preventDefaults every wheel event that reaches the document
@@ -60,14 +67,15 @@ const PopoverContent = React.forwardRef<
 					className,
 				)}
 				style={{ zIndex: contentZIndex, ...style }}
-				{...SubmitChord.scopeAttrs('popover')}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={contentZIndex}>
-					<DraggableWindowOutlet outletKey={draggableWindowOutletKey} getElement={() => contentRef.current}>
-						{children}
-					</DraggableWindowOutlet>
-				</BaseZIndexContext.Provider>
+				<KBClient.Context.Provider value={kbScope.id}>
+					<BaseZIndexContext.Provider value={contentZIndex}>
+						<DraggableWindowOutlet outletKey={draggableWindowOutletKey} getElement={() => contentRef.current}>
+							{children}
+						</DraggableWindowOutlet>
+					</BaseZIndexContext.Provider>
+				</KBClient.Context.Provider>
 			</PopoverPrimitive.Content>
 		</PopoverPrimitive.Portal>
 	)

@@ -92,7 +92,7 @@ rejects a second alias for a module, and an alias that already names another mod
 | `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
 | `CssRules`                       | `css-rules`                                                   | merging two Tailwind-compiled sheets in order      |
 | `TZ`                             | `time-zones`                                                  | wall-clock times in a named IANA zone              |
-| `SubmitChord`                    | `submit-chord`                                                | ctrl/cmd+enter clicks the scope's submit button    |
+| `KB`                             | `keybinds`                                                    | key binding tables, and the check for clashes      |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
 convention.
@@ -391,6 +391,54 @@ Conventions from CLAUDE.md, each with a specific reason:
   `teams-panel/player-table.tsx`, and the feed below). `Tooltip` keeps its state machine in a plain object
   (`use-follow-tooltip.ts`) and mounts its node only while open, so a closed one costs three hooks.
 
+### Keyboard shortcuts
+
+Every shortcut SLM binds is declared in `src/models/keybinds.models.ts` (`KEYS`), with the scope types it binds in. The
+browser's, sonner's and CodeMirror's shortcuts are declared beside them. A handler never decides whether a key is its
+own: `src/systems/keybinds.client.ts` (`KBClient`) dispatches each key to the binding that answers it.
+
+**Scope types are static.** Each type names the types it can sit within, and can be `isolated` (keys pressed in it
+never reach the scopes around it, as in a dialog or a window), `modal` (a key with nothing focused goes to the topmost
+open one), or a `leaf` that holds no other scopes (a text field). A type that `extends` another is that type too, so
+`<DialogContent kbScope={…}>` with a specialized dialog type still answers submit. `src/lib/keybinds.ts` checks the
+table: two bindings clash when they share a key on either platform and a key could reach both. The one closer to the
+key may take the other's keys only by naming it in `shadows`, as a text field's own undo shadows the editor's.
+`keybinds.models.test.ts` fails CI on a clash, a stale `shadows` entry, or a CodeMirror key bound around an editor and
+left undeclared. A development build checks the table on startup.
+
+**Scopes are opened at runtime.** A component calls `KBClient.useScope(type, handlers)` and puts the handle's `ref` on
+its element. The handlers are one object keyed by binding id, typed to the bindings the type answers, so a scope cannot
+register a binding twice or one its type does not answer. The scope a component renders inside, read from
+`KBClient.Context`, is its parent, which follows a dialog or popover back to its opener through a portal. A development
+build checks each parent against the table when the scope mounts. `DialogContent`, `PopoverContent`, the alert and
+headless dialogs, draggable windows and the history page open their scopes themselves. A menu, select or sheet opens
+none, and passes keys to the scope it was opened from (`useInheritAttrs`), so an open menu never swallows a shortcut. A
+region rendered without React marks its element with `typeAttrs(type)` and registers its type's handlers once with
+`handleType`, as the feed does.
+
+**One listener dispatches.** It listens on the document in the bubble phase, so every focused control, React handler
+and CodeMirror keymap has the key first, and a key one of them claims with `preventDefault()` is left alone. Otherwise
+the dispatcher walks the scopes around the key's target, innermost first, and asks each in turn:
+
+- a browser or library binding stops the walk and leaves the key to its owner
+- a button binding (submit, undo, redo) clicks the button the scope marks with `KBClient.buttonAttrs(id)`, so a
+  disabled button blocks the key as it blocks the mouse
+- any other binding runs the scope's handler, which can return `false` to pass the key outward
+
+The walk ends at an isolated scope. A key pressed with nothing focused goes to the topmost open modal scope, or else to
+a hovered scope whose type takes hovered keys (a find region), or else to the scope last pressed or focused in. Scopes
+that are hidden or closing are skipped. Held keys repeat only bindings declared `repeat`.
+
+In a development build an observer listens before everything else, and warns about a declared key that something
+stopped before the dispatcher saw it, or claimed without declaring a binding that explains it.
+
+To add a shortcut, declare it in the table, then register its handler on the scope that answers it. A key that only
+reaches the focused control, such as Enter in an input, is not declared.
+
+Escape is not declared yet. Radix answers it in the capture phase for the topmost dialog, popover or menu, and nine of
+our own handlers settle the rest by listener phase and `stopPropagation`. It moves to the dispatcher in one change:
+each overlay will register a dismiss binding, and Radix's own will be turned off through `onEscapeKeyDown`.
+
 ### Send markup, not data, where the client only displays it
 
 Where the client displays a result and does nothing else with it, the server sends the result as html rather than as
@@ -561,8 +609,8 @@ takes its session's lock before its first await. The queue's handler awaits perm
 `dispatchOp` takes the queue lock, so it first takes a lane per client (`src/lib/ordered-lanes.ts`) that holds each
 client's ops in arrival order.
 
-`src/systems/undo-shortcut.client.ts` routes the keys. An editor root carries `data-undo-scope` and its buttons `data-undo`, and
-one document listener clicks the button of the scope the key belongs to.
+Each editor opens a keybinding scope, and its Undo and Redo buttons answer the keys, as _Keyboard shortcuts_ above
+describes.
 
 ## The domain layer
 

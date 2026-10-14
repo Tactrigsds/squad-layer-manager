@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -37,11 +38,13 @@ const DropdownMenuSubContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, style, children, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 	return (
 		<DropdownMenuPrimitive.SubContent
 			ref={ref}
 			className={cn('fd-menu min-w-32 max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto', className)}
 			style={{ zIndex, ...style }}
+			{...inheritKeys}
 			{...props}
 		>
 			<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
@@ -55,6 +58,7 @@ const DropdownMenuContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, collisionPadding = 8, style, children, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 
 	return (
 		<DropdownMenuPrimitive.Portal>
@@ -67,6 +71,7 @@ const DropdownMenuContent = React.forwardRef<
 					className,
 				)}
 				style={{ zIndex, ...style }}
+				{...inheritKeys}
 				{...props}
 			>
 				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>

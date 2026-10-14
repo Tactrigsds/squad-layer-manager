@@ -29,11 +29,11 @@ import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as KBClient from '@/systems/keybinds.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -561,38 +561,41 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
 	// nothing to show once the warnings clear, so the toggle falls closed with them
 	const showWarnings = !!warnings && warningsRequested
+	const kbScope = KBClient.useScope('queue-editor', {})
 
 	return (
-		<div {...UndoShortcutClient.scopeAttrs()} className="contents">
-			<ValidationWarningsDisplay
-				warnings={warnings ?? []}
-				showWarnings={showWarnings}
-				setShowWarnings={setShowWarnings}
-				stores={props.stores}
-			/>
-			<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel', props.className)}>
-				<span className="flex flex-wrap items-center gap-2 w-full">
-					{!phone && (
-						<span className="flex items-center gap-2 whitespace-nowrap">
-							<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
-							<QueueHeaderBadges stores={props.stores} />
-						</span>
-					)}
-					<QueueControlPanel
-						warnings={warnings ?? null}
-						showWarnings={showWarnings}
-						setShowWarnings={setShowWarnings}
-						stores={props.stores}
-						phone={phone}
-					/>
-				</span>
-			</div>
-			<StickyGroup stickyRef={headerRef}>
-				<div className="fd-well mx-2 mb-2">
-					<LayerList stores={{ listHost: props.stores.squadServer! }} />
+		<KBClient.Context.Provider value={kbScope.id}>
+			<div ref={kbScope.ref} className="contents">
+				<ValidationWarningsDisplay
+					warnings={warnings ?? []}
+					showWarnings={showWarnings}
+					setShowWarnings={setShowWarnings}
+					stores={props.stores}
+				/>
+				<div ref={headerRef} className={cn('flex items-center gap-2 px-2 pt-1.5 pb-1 bg-panel', props.className)}>
+					<span className="flex flex-wrap items-center gap-2 w-full">
+						{!phone && (
+							<span className="flex items-center gap-2 whitespace-nowrap">
+								<span className="fd-cond font-bold text-base">{tr.text(LL_Msgs.upNext())}</span>
+								<QueueHeaderBadges stores={props.stores} />
+							</span>
+						)}
+						<QueueControlPanel
+							warnings={warnings ?? null}
+							showWarnings={showWarnings}
+							setShowWarnings={setShowWarnings}
+							stores={props.stores}
+							phone={phone}
+						/>
+					</span>
 				</div>
-			</StickyGroup>
-		</div>
+				<StickyGroup stickyRef={headerRef}>
+					<div className="fd-well mx-2 mb-2">
+						<LayerList stores={{ listHost: props.stores.squadServer! }} />
+					</div>
+				</StickyGroup>
+			</div>
+		</KBClient.Context.Provider>
 	)
 }
 

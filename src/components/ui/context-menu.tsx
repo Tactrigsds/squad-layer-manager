@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
 const ContextMenu = ContextMenuPrimitive.Root
@@ -36,6 +37,7 @@ const ContextMenuSubContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
 >(({ className, style, children, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 	return (
 		<ContextMenuPrimitive.SubContent
 			ref={ref}
@@ -44,6 +46,7 @@ const ContextMenuSubContent = React.forwardRef<
 				className,
 			)}
 			style={{ zIndex, ...style }}
+			{...inheritKeys}
 			{...props}
 		>
 			<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
@@ -57,6 +60,7 @@ const ContextMenuContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
 >(({ className, style, onCloseAutoFocus, children, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 
 	return (
 		<ContextMenuPrimitive.Portal>
@@ -77,6 +81,7 @@ const ContextMenuContent = React.forwardRef<
 					className,
 				)}
 				style={{ zIndex, ...style }}
+				{...inheritKeys}
 				{...props}
 			>
 				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>

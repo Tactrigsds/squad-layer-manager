@@ -243,8 +243,13 @@ test.describe('collaborative queue editing', () => {
 
 			await panelB.getByRole('button', { name: 'Undo' }).click()
 			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeVisible({ timeout: 15_000 })
+			// a row's menu opens no keybinding scope of its own, so a key pressed in it reaches the queue it opened from
+			await panelB.getByText(layerText('Sumari_RAAS_v1')).first().click({ button: 'right' })
+			await expect(pageB.getByRole('menu')).toBeVisible()
 			await pageB.keyboard.press('Control+Shift+z')
 			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeHidden({ timeout: 15_000 })
+			await pageB.keyboard.press('Escape')
+			await expect(pageB.getByRole('menu')).toBeHidden()
 			await expect(panelA.getByRole('listitem')).toHaveCount(1)
 
 			// A leaves the session; B, now the only editor, saves what the two of them built

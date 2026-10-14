@@ -7,6 +7,7 @@ import { keepOpenOnToastClick } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 
 // A menu as a sheet from the bottom of a phone screen, for the row and selection menus whose desktop form is a
@@ -39,6 +40,7 @@ export function MenuSheet(props: {
 	children: React.ReactNode
 }) {
 	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
+	const inheritKeys = KBClient.useInheritAttrs()
 	return (
 		<DialogPrimitive.Root open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogPrimitive.Portal>
@@ -49,6 +51,7 @@ export function MenuSheet(props: {
 					aria-describedby={undefined}
 					onOpenAutoFocus={(e) => e.preventDefault()}
 					onInteractOutside={keepOpenOnToastClick}
+					{...inheritKeys}
 				>
 					<BaseZIndexContext.Provider value={zIndex}>
 						<SheetBody {...props} />

@@ -5,6 +5,7 @@ import * as React from 'react'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 
 const Select = SelectPrimitive.Root
 
@@ -78,6 +79,7 @@ const SelectContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = 'popper', style, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 	return (
 		<SelectPrimitive.Portal>
 			<SelectPrimitive.Content
@@ -93,6 +95,7 @@ const SelectContent = React.forwardRef<
 				)}
 				position={position}
 				style={{ zIndex, ...style }}
+				{...inheritKeys}
 				{...props}
 			>
 				<SelectScrollUpButton />

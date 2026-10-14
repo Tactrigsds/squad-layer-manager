@@ -37,11 +37,11 @@ import * as UP from '@/models/user-presence.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as RotationClient from '@/systems/rotation.client'
-import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { StartActivityInteraction } from './activity'
@@ -245,50 +245,53 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 	const dragDepth = React.useRef(0)
 	const overlayZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const carriesFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
+	const kbScope = KBClient.useScope('rotation-editor', {})
 	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
 	return (
-		<section
-			{...UndoShortcutClient.scopeAttrs()}
-			className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
-			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
-			onDragEnter={(e) => {
-				if (!carriesFiles(e) || writeDenied) return
-				dragDepth.current++
-				setDragging(true)
-			}}
-			onDragLeave={(e) => {
-				if (!carriesFiles(e) || writeDenied) return
-				dragDepth.current = Math.max(0, dragDepth.current - 1)
-				if (dragDepth.current === 0) setDragging(false)
-			}}
-			onDragOverCapture={(e) => {
-				if (!carriesFiles(e)) return
-				e.preventDefault()
-				e.stopPropagation()
-				e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
-			}}
-			onDropCapture={(e) => {
-				if (!carriesFiles(e)) return
-				e.preventDefault()
-				e.stopPropagation()
-				dragDepth.current = 0
-				setDragging(false)
-				const file = e.dataTransfer.files[0]
-				if (!file || writeDenied) return
-				setIsEditing(true)
-				void RotationEditorFrame.Actions.openFile(props.listHost, file)
-			}}
-		>
-			{props.children}
-			{dragging && (
-				<div
-					style={{ zIndex: overlayZIndex }}
-					className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
-				>
-					{tr.text(ROT_Msgs.dropFileHint())}
-				</div>
-			)}
-		</section>
+		<KBClient.Context.Provider value={kbScope.id}>
+			<section
+				ref={kbScope.ref}
+				className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
+				aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
+				onDragEnter={(e) => {
+					if (!carriesFiles(e) || writeDenied) return
+					dragDepth.current++
+					setDragging(true)
+				}}
+				onDragLeave={(e) => {
+					if (!carriesFiles(e) || writeDenied) return
+					dragDepth.current = Math.max(0, dragDepth.current - 1)
+					if (dragDepth.current === 0) setDragging(false)
+				}}
+				onDragOverCapture={(e) => {
+					if (!carriesFiles(e)) return
+					e.preventDefault()
+					e.stopPropagation()
+					e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
+				}}
+				onDropCapture={(e) => {
+					if (!carriesFiles(e)) return
+					e.preventDefault()
+					e.stopPropagation()
+					dragDepth.current = 0
+					setDragging(false)
+					const file = e.dataTransfer.files[0]
+					if (!file || writeDenied) return
+					setIsEditing(true)
+					void RotationEditorFrame.Actions.openFile(props.listHost, file)
+				}}
+			>
+				{props.children}
+				{dragging && (
+					<div
+						style={{ zIndex: overlayZIndex }}
+						className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
+					>
+						{tr.text(ROT_Msgs.dropFileHint())}
+					</div>
+				)}
+			</section>
+		</KBClient.Context.Provider>
 	)
 }
 

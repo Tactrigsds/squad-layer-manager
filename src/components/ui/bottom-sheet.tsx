@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 
 // A panel along the bottom of a phone screen over a scrim. It is not modal: it leaves focus management to whatever
@@ -22,6 +23,7 @@ export function BottomSheetFrame(
 ) {
 	const { title, onClose, closeOnScrim = true, children, className, ...rest } = props
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
+	const inheritKeys = KBClient.useInheritAttrs()
 	const [node, setNode] = React.useState<HTMLDivElement | null>(null)
 
 	// see PopoverContent: a Radix dialog's scroll lock swallows wheel events from portalled content
@@ -44,6 +46,7 @@ export function BottomSheetFrame(
 					className,
 				)}
 				style={{ zIndex }}
+				{...inheritKeys}
 				{...rest}
 			>
 				<div className="mx-auto mt-1.5 h-1 w-9 shrink-0 rounded-full bg-line-soft" />

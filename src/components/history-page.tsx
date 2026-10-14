@@ -19,7 +19,6 @@ import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as HistoryFrame from '@/frames/history.frame'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as TZ from '@/lib/time-zones'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
@@ -30,6 +29,7 @@ import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
+import * as KBClient from '@/systems/keybinds.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
@@ -55,6 +55,7 @@ function okOf<T extends OkRes['type']>(res: QueryRes | undefined, type: T): Extr
 type SavedAs = { id: string; name: string; visibility: 'private' | 'shared' }
 
 export default function HistoryPage(props: HistoryPageProps) {
+	const kbScope = KBClient.useScope('page', {})
 	const draft = Zus.useStore(props.stores.history, (s) => s.draft)
 	const canRun = Zus.useStore(props.stores.history, HistoryFrame.Sel.canRun)
 	const wrapLines = Zus.useStore(props.stores.history, (s) => s.wrapLines)
@@ -118,83 +119,85 @@ export default function HistoryPage(props: HistoryPageProps) {
 		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
 		// w-full: without it the row sizes to its content, so widening the rail grows the page instead of
 		// taking the space from the results
-		<div className="flex h-full min-h-0 w-full gap-2.5" {...SubmitChord.scopeAttrs('page')}>
-			<div className="flex min-w-0 flex-1 flex-col gap-2">
-				<div className="flex flex-wrap items-center gap-2">
-					<TabsList
-						options={[
-							{ value: 'events', label: tr.text(HistoryMsgs.tabEvents()) },
-							{ value: 'players', label: tr.text(HistoryMsgs.tabPlayers()) },
-							{ value: 'matches', label: tr.text(HistoryMsgs.tabMatches()) },
-						]}
-						active={draft.type}
-						setActive={switchType}
-					/>
-					{draft.mode === 'advanced' && modeToggle}
-					<div className="grow" />
-					<RecentMenu onLoad={() => setSavedAs(null)} />
-					<SavedMenu
-						onLoad={() => setSavedAs(null)}
-						onLoadOwn={(saved) => {
-							setSavedAs(saved)
-						}}
-					/>
-					<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
-					{props.executed.type === 'events' && (
-						<WrapLinesToggle
-							wrap={wrapLines}
-							onToggle={() => HistoryFrame.Actions.setWrapLines(props.stores, !wrapLines)}
-							variant="ghost"
-							className="h-8 w-8"
+		<KBClient.Context.Provider value={kbScope.id}>
+			<div ref={kbScope.ref} className="flex h-full min-h-0 w-full gap-2.5">
+				<div className="flex min-w-0 flex-1 flex-col gap-2">
+					<div className="flex flex-wrap items-center gap-2">
+						<TabsList
+							options={[
+								{ value: 'events', label: tr.text(HistoryMsgs.tabEvents()) },
+								{ value: 'players', label: tr.text(HistoryMsgs.tabPlayers()) },
+								{ value: 'matches', label: tr.text(HistoryMsgs.tabMatches()) },
+							]}
+							active={draft.type}
+							setActive={switchType}
+						/>
+						{draft.mode === 'advanced' && modeToggle}
+						<div className="grow" />
+						<RecentMenu onLoad={() => setSavedAs(null)} />
+						<SavedMenu
+							onLoad={() => setSavedAs(null)}
+							onLoadOwn={(saved) => {
+								setSavedAs(saved)
+							}}
+						/>
+						<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
+						{props.executed.type === 'events' && (
+							<WrapLinesToggle
+								wrap={wrapLines}
+								onToggle={() => HistoryFrame.Actions.setWrapLines(props.stores, !wrapLines)}
+								variant="ghost"
+								className="h-8 w-8"
+							/>
+						)}
+						<RawMenu query={props.executed} selection={props.selection} />
+						<CopyLinkButton />
+						{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
+					</div>
+					{draft.mode === 'advanced' && (
+						<>
+							<div key={executedKey}>
+								<HistoryQueryBounds draft={draft} set={set} />
+							</div>
+							<HistoryAdvancedEditor stores={props.stores} />
+						</>
+					)}
+					{/* the results answer the executed query, so they are shown only while it is the type the tabs name */}
+					{resultsPending ? (
+						// the switch runs on its own, so the gap before the url catches up is a load rather than a
+						// prompt to run, which is what it would otherwise read as
+						switchingTo !== null ? (
+							<ResultsLoading />
+						) : (
+							<div className="text-xs text-muted-foreground">
+								{tr.text(canRun ? HistoryMsgs.runToSeeResults() : HistoryMsgs.unfinishedFilter())}
+							</div>
+						)
+					) : (
+						<Results
+							query={props.executed}
+							onRun={props.onRun}
+							selection={props.selection}
+							onSelect={props.onSelect}
+							wrapLines={wrapLines}
 						/>
 					)}
-					<RawMenu query={props.executed} selection={props.selection} />
-					<CopyLinkButton />
-					{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
 				</div>
-				{draft.mode === 'advanced' && (
-					<>
-						<div key={executedKey}>
-							<HistoryQueryBounds draft={draft} set={set} />
+
+				{draft.mode === 'basic' && (
+					<RailResizer>
+						<div className="flex items-center gap-2">
+							{modeToggle}
+							<span className="min-w-0 flex-1">{runButton}</span>
 						</div>
-						<HistoryAdvancedEditor stores={props.stores} />
-					</>
-				)}
-				{/* the results answer the executed query, so they are shown only while it is the type the tabs name */}
-				{resultsPending ? (
-					// the switch runs on its own, so the gap before the url catches up is a load rather than a
-					// prompt to run, which is what it would otherwise read as
-					switchingTo !== null ? (
-						<ResultsLoading />
-					) : (
-						<div className="text-xs text-muted-foreground">
-							{tr.text(canRun ? HistoryMsgs.runToSeeResults() : HistoryMsgs.unfinishedFilter())}
+						{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
+						<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pe-1">
+							<HistoryQueryBar draft={draft} set={set} />
 						</div>
-					)
-				) : (
-					<Results
-						query={props.executed}
-						onRun={props.onRun}
-						selection={props.selection}
-						onSelect={props.onSelect}
-						wrapLines={wrapLines}
-					/>
+					</RailResizer>
 				)}
 			</div>
-
-			{draft.mode === 'basic' && (
-				<RailResizer>
-					<div className="flex items-center gap-2">
-						{modeToggle}
-						<span className="min-w-0 flex-1">{runButton}</span>
-					</div>
-					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pe-1">
-						<HistoryQueryBar draft={draft} set={set} />
-					</div>
-				</RailResizer>
-			)}
-		</div>
+		</KBClient.Context.Provider>
 	)
 }
 

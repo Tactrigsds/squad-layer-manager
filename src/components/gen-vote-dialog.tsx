@@ -22,7 +22,6 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -36,6 +35,7 @@ import type * as L from '@/models/layer.models'
 import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import EditLayerDialog from './edit-layer-dialog'
@@ -408,7 +408,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					)}
 					<span className="flex-1" />
 					<Button
-						{...SubmitChord.closeAttrs}
+						{...SubmitChordClient.closeAttrs}
 						variant="ghost"
 						size="icon-sm"
 						onClick={props.onClose}
