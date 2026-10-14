@@ -45,16 +45,9 @@ export function AddNoteDialogContent(props: { noteRef: React.MutableRefObject<st
 					noteRef.current = e.target.value
 					setEmpty(e.target.value.trim().length === 0)
 				}}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-						e.preventDefault()
-						e.currentTarget.form?.requestSubmit()
-					}
-				}}
 			/>
 			<div className="flex justify-between gap-3 text-2xs text-muted-foreground">
 				<span>{user && tr.text(BM_Msgs.noteSignature(BM.noteSignature(BM.webActorLabel(user))))}</span>
-				<span className="shrink-0">{tr.text(BM_Msgs.noteSubmitHint())}</span>
 			</div>
 		</div>
 	)
@@ -73,7 +66,7 @@ function useAddNoteAction(playerIds: string[], target: Tgt.Target) {
 		const result = await openDialog({
 			title: msg.title,
 			content: <AddNoteDialogContent noteRef={noteRef} playerCount={playerIds.length} />,
-			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
+			buttons: [{ id: 'confirm', label: msg.confirmLabel, submitChord: true }],
 		})
 		const note = noteRef.current.trim()
 		if (result !== 'confirm' || note.length === 0) return

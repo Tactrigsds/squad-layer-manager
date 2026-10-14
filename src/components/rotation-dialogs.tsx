@@ -213,7 +213,7 @@ function RotationForm(props: RotationFormMode & { cloneId?: ROT.RotationId; onOp
 				<Button type="button" variant="ghost" onClick={() => props.onOpenChange(false)}>
 					{tr.text(UI_Msgs.cancel())}
 				</Button>
-				<Button type="submit" variant="primary" disabled={submitting}>
+				<Button submitChord="manual" type="submit" variant="primary" disabled={submitting}>
 					{tr.text(source ? ROT_Msgs.cloneAndOpen() : ROT_Msgs.create())}
 				</Button>
 			</DialogFooter>
@@ -237,6 +237,7 @@ export function DeleteRotationDialog(props: {
 				<AlertDialogFooter>
 					<AlertDialogCancel>{tr.text(UI_Msgs.cancel())}</AlertDialogCancel>
 					<AlertDialogAction
+						submitChord
 						variant="destructive"
 						onClick={async () => {
 							if (await RotationClient.Actions.remove(props.rotation)) props.onDeleted?.()

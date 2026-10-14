@@ -1,3 +1,4 @@
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 
 function Kbd({ className, ...props }: React.ComponentProps<'kbd'>) {
@@ -14,4 +15,13 @@ function KbdGroup({ className, ...props }: React.ComponentProps<'div'>) {
 	return <kbd data-slot="kbd-group" className={cn('inline-flex items-center gap-1', className)} {...props} />
 }
 
-export { Kbd, KbdGroup }
+function SubmitChordKbd({ className }: { className?: string }) {
+	return (
+		<Kbd className={className} aria-hidden>
+			{SubmitChord.MODIFIER_LABEL}
+			{SubmitChord.ENTER_LABEL}
+		</Kbd>
+	)
+}
+
+export { Kbd, KbdGroup, SubmitChordKbd }

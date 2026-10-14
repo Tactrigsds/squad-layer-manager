@@ -140,7 +140,8 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 			await itemB.getByRole('button', { name: 'Add note' }).click()
 			const noteDialogB = pageB.getByRole('dialog', { name: 'Add note' })
 			await noteDialogB.getByRole('textbox').fill(WRITER_NOTE)
-			await noteDialogB.getByRole('button', { name: 'Add' }).click()
+			// the submit chord clicks the dialog's Add button
+			await noteDialogB.getByRole('textbox').press('ControlOrMeta+Enter')
 
 			// both notes sit on the row, the newest first; their own carries the edit button
 			const noteRow = itemB.getByText(WRITER_NOTE)

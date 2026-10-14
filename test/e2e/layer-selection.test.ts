@@ -240,6 +240,23 @@ test.describe('applied filters', () => {
 		await settledTextAfter(dialog, poolOnlyCount)
 		await expect(dialog.getByRole('row').filter({ hasText: 'Narva' }).first()).toBeVisible()
 	})
+
+	// the picker sits inside the dialog, so the chord must stop at the picker rather than submit the dialog
+	test('Ctrl+Enter in the extras picker toggles the highlighted filter and closes only the picker', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		const dialog = await openAddLayers(page)
+
+		await dialog.getByRole('button', { name: 'Edit extra filters' }).click()
+		const options = page.getByRole('listbox')
+		await page.keyboard.type('Narva')
+		await expect(options.getByRole('option', { name: 'Narva Only' })).toHaveAttribute('aria-selected', 'true')
+		await page.keyboard.press('Control+Enter')
+
+		await expect(options).toBeHidden()
+		await expect(dialog.getByRole('checkbox', { name: 'Narva Only' })).toBeVisible()
+		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeVisible()
+	})
 })
 
 test.describe('the filter menu', { tag: '@firefox' }, () => {
@@ -553,8 +570,11 @@ test.describe('pool membership and force-write', () => {
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		// the admin is a superuser, so the out-of-pool row accepts the selection and Submit arms
 		const dialog = await clickOutOfPoolRow(page)
-		await dialog.getByRole('button', { name: 'Submit' }).click()
-		await expect(dialog).toBeHidden()
+		const submit = dialog.getByRole('button', { name: 'Submit' })
+		await expect(submit).toBeEnabled()
+		// the dialog's submit chord, which clicks Submit and closes the dialog
+		await page.keyboard.press('Control+Enter')
+		await expect(submit).toBeHidden()
 
 		// 'Add to start' is the default placement, so it lands at the head
 		const queuePanel = Dash.queueSection(page)

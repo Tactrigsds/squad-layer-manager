@@ -78,7 +78,7 @@ export function CloneFilterDialog(props: { source: F.FilterEntity; onClose: () =
 						<Button type="button" variant="ghost" onClick={props.onClose}>
 							{tr.text(F_Msgs.cancel())}
 						</Button>
-						<Button type="submit" variant="primary" disabled={submitting}>
+						<Button submitChord="manual" type="submit" variant="primary" disabled={submitting}>
 							{tr.text(F_Msgs.cloneAndOpen())}
 						</Button>
 					</DialogFooter>

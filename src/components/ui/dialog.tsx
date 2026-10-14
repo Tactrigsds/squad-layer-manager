@@ -3,6 +3,7 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -66,13 +67,17 @@ const DialogContent = React.forwardRef<
 					phone && 'inset-0 max-w-none rounded-none border-0 max-h-none overflow-y-auto',
 				)}
 				style={zIndexStyle}
+				{...SubmitChord.scopeAttrs('dialog')}
 				{...props}
 			>
 				<BaseZIndexContext.Provider value={zIndex}>
 					<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
 						{children}
 					</DraggableWindowOutlet>
-					<DialogPrimitive.Close className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5">
+					<DialogPrimitive.Close
+						{...SubmitChord.closeAttrs}
+						className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5"
+					>
 						<Cross2Icon />
 						<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
 					</DialogPrimitive.Close>

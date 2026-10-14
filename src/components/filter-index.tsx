@@ -122,7 +122,7 @@ function FilterMenus(props: { filter: F.FilterEntity; children: (actions: MenuAc
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel>{tr.text(F_Msgs.cancel())}</AlertDialogCancel>
-						<AlertDialogAction variant="destructive" onClick={() => void confirmDelete()}>
+						<AlertDialogAction submitChord variant="destructive" onClick={() => void confirmDelete()}>
 							<Icons.Trash />
 							{tr.text(F_Msgs.deleteAction())}
 						</AlertDialogAction>

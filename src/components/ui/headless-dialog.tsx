@@ -3,6 +3,7 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -19,7 +20,8 @@ interface DialogProps {
 
 const HeadlessDialog = ({ open, onOpenChange, children, unmount }: DialogProps) => {
 	return (
-		<Dialog open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount}>
+		// the submit scope is the root rather than the panel: a click on dead space in the panel focuses the root
+		<Dialog open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount} {...SubmitChord.scopeAttrs('dialog')}>
 			{children}
 		</Dialog>
 	)
@@ -71,7 +73,10 @@ const HeadlessDialogContent = React.forwardRef<
 						</DraggableWindowOutlet>
 					</BaseZIndexContext.Provider>
 					{showCloseButton && (
-						<CloseButton className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5">
+						<CloseButton
+							{...SubmitChord.closeAttrs}
+							className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5"
+						>
 							<Cross2Icon />
 							<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
 						</CloseButton>

@@ -22,6 +22,7 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import * as Browser from '@/lib/browser'
 import * as Obj from '@/lib/object-utils'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -358,7 +359,14 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		/>
 	)
 	const submitButton = (
-		<Button variant="primary" size="sm" className={cn(phone && 'h-[34px] w-full')} onClick={handleSubmit} disabled={!canSubmit}>
+		<Button
+			submitChord="manual"
+			variant="primary"
+			size="sm"
+			className={cn(phone && 'h-[34px] w-full')}
+			onClick={handleSubmit}
+			disabled={!canSubmit}
+		>
 			{tr.text(V_Msgs.submit())}
 		</Button>
 	)
@@ -399,7 +407,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 					)}
 					<span className="flex-1" />
-					<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
+					<Button
+						{...SubmitChord.closeAttrs}
+						variant="ghost"
+						size="icon-sm"
+						onClick={props.onClose}
+						aria-label={tr.text(UI_Msgs.close())}
+					>
 						<Icons.X />
 					</Button>
 				</HeadlessDialogHeader>
@@ -466,7 +480,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 											<LayerFilterMenu stores={{ filterMenu: frameKey }} />
 										</div>
 										<DialogFooter>
-											<Button variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
+											<Button submitChord variant="primary" size="sm" onClick={() => setFiltersOpen(false)}>
 												{tr.text(UI_Msgs.done())}
 											</Button>
 										</DialogFooter>

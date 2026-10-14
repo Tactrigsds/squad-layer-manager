@@ -1,6 +1,7 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import * as React from 'react'
 
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
@@ -59,6 +60,7 @@ const PopoverContent = React.forwardRef<
 					className,
 				)}
 				style={{ zIndex: contentZIndex, ...style }}
+				{...SubmitChord.scopeAttrs('popover')}
 				{...props}
 			>
 				<BaseZIndexContext.Provider value={contentZIndex}>

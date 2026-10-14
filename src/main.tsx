@@ -5,6 +5,7 @@ import { enableMapSet } from 'immer'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
+import * as SubmitChord from '@/lib/submit-chord'
 import * as Catalogues from '@/messages/catalogues'
 import * as MsgFmt from '@/messages/format'
 import * as AnnouncementsClient from '@/systems/announcements.client'
@@ -44,6 +45,7 @@ if (import.meta.env.DEV) await Catalogues.registerPseudo()
 	Catalogues.register()
 	// one viewer per tab, so the locale is ambient; this reads their stored choice and falls back to the browser
 	MessagesClient.setup()
+	SubmitChord.setup()
 	ThemeClient.setup()
 	SiteMode.setup()
 	TextEntryFocus.setup()

@@ -172,6 +172,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						</TooltipContent>
 					</Tooltip>
 					<Button
+						submitChord="manual"
 						variant="primary"
 						disabled={!settingsChanged || saving || !!validationErrors}
 						onClick={() => void saveAll({ settings: stores.squadServer!, repeatRulesetEditor })}

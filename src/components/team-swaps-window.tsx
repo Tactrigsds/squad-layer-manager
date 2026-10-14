@@ -137,7 +137,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 						>
 							<Icons.Sword />
 						</Button>
-						<Button size="sm" variant={forceSave ? 'destructive' : 'primary'} onClick={finishOrSave}>
+						<Button submitChord="manual" size="sm" variant={forceSave ? 'destructive' : 'primary'} onClick={finishOrSave}>
 							{saveLabel}
 						</Button>
 					</ButtonGroup>
@@ -164,6 +164,7 @@ function TeamSwapsWindow({ stores }: TeamSwapsWindowProps) {
 						<AlertDialogFooter>
 							<AlertDialogCancel>{tr.text(SM_Msgs.cancel())}</AlertDialogCancel>
 							<AlertDialogAction
+								submitChord
 								className={buttonVariants({ variant: 'destructive' })}
 								onClick={() => TSWClient.Actions.executeTeamswaps(stores)}
 							>

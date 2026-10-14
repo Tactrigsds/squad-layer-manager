@@ -590,7 +590,7 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel onClick={onCancel}>{tr.text(F_Msgs.cancel())}</AlertDialogCancel>
-					<Button variant="destructive" onClick={onDelete}>
+					<Button submitChord variant="destructive" onClick={onDelete}>
 						<Icons.Trash />
 						{tr.text(F_Msgs.deleteAction())}
 					</Button>

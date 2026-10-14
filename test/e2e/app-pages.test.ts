@@ -713,6 +713,27 @@ test.describe('history page', () => {
 		await expect(page.getByRole('table', { name: 'Player results' })).toBeVisible({ timeout: 20_000 })
 	})
 
+	// Inside an open picker the chord picks the highlighted option and closes, and must not also run the page behind
+	// it. Outside one it clicks Run from wherever focus is.
+	test('the submit chord picks in an open picker, then runs the page', async ({ app, page }) => {
+		await page.goto(historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+
+		const picker = page.getByRole('combobox', { name: 'Server' })
+		const pickedBefore = await picker.innerText()
+		const executedUrl = page.url()
+		await picker.click()
+		await expect(page.locator('[cmdk-item][data-selected="true"]')).toHaveCount(1)
+		await page.keyboard.press('ControlOrMeta+Enter')
+
+		await expect(picker).toHaveAttribute('aria-expanded', 'false')
+		await expect(picker).not.toHaveText(pickedBefore)
+		expect(page.url()).toBe(executedUrl)
+
+		await page.keyboard.press('ControlOrMeta+Enter')
+		await expect(page).not.toHaveURL(executedUrl)
+	})
+
 	// A results row expands into the events behind its own count, fetched as rendered html and filled into a
 	// panel row by the delegated handlers rather than by react.
 	test('a player row opens the events behind its count', async ({ app, page }) => {

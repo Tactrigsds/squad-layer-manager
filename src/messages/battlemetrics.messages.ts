@@ -149,8 +149,6 @@ export const notePlaceholder = def(
 
 export const noteSignature = def('Signed as "{signature}"', (signature: string) => ({ signature }))
 
-export const noteSubmitHint = def('Ctrl + Enter to add')
-
 export const noteAdded = def((notedCount: number, playerCount: number) => ({
 	toast: [
 		playerCount === 1

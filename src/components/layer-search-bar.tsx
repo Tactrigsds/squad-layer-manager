@@ -4,6 +4,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
+import * as SubmitChord from '@/lib/submit-chord'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -64,8 +65,8 @@ function SearchEditor(props: { frameKey: SelectLayersFrame.Key; onDone: () => vo
 				onChange={(e) => setTextDebounced(e.target.value)}
 				onKeyDown={(e) => {
 					if (e.key === 'Enter' || e.key === 'Escape') {
-						// Escape is the search box's, not the dialog's
-						e.stopPropagation()
+						// Escape is the search box's, not the dialog's. Ctrl+Enter is the dialog's submit
+						if (!SubmitChord.isSubmitChord(e)) e.stopPropagation()
 						e.currentTarget.blur()
 					}
 				}}
