@@ -9,6 +9,7 @@ import postcss from 'postcss'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import Markdown, { type Components, type ExtraProps } from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
 import { rolldown } from 'rolldown'
@@ -18,9 +19,11 @@ import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import * as Paths from '$root/paths'
 import * as Site from '@/components/docs-site/site'
 import { assertNever } from '@/lib/type-guards'
+import * as CL from '@/models/changelog.models'
 import * as DS from '@/models/docs-site.models'
 import * as PLG from '@/models/plugins.models'
 import * as Project from '@/models/project.models'
+import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // Builds the documentation site. Run with `pnpm docs:build`, or `pnpm docs:dev` to rebuild on change and serve it.
 //
@@ -198,6 +201,30 @@ async function buildVersion(highlighter: Highlighter) {
 	await buildSearchIndex(dir)
 }
 
+// The changelog pages are rendered from the fragments: the changelog lists each release, and Latest changes lists the
+// fragments in changes/ that no release has shipped yet.
+function pageSource(page: DS.Page, problems: LinkProblem[]) {
+	if (page.file !== 'CHANGELOG.md' && page.file !== 'changes') return fs.readFileSync(path.join(ROOT, page.file), 'utf8')
+	const loaded = ChangelogFiles.load(path.join(ROOT, 'changelog'), path.join(ROOT, 'changes'))
+	for (const message of loaded.errors) problems.push({ file: 'changes/', message })
+	if (page.file === 'CHANGELOG.md') {
+		return [
+			'# Changelog',
+			'',
+			'[Latest changes](changes) lists the changes merged into main since the last release.',
+			CL.renderReleases(loaded.releases, Project.REPO_URL),
+		].join('\n')
+	}
+	return [
+		'# Latest changes',
+		'',
+		'These changes are merged into main and will ship in the next release.',
+		loaded.pending.length > 0
+			? CL.renderEntries(loaded.pending, '##')
+			: '\nNo changes have been merged into main since the last release.\n',
+	].join('\n')
+}
+
 // renders `pages` into `dir`, and returns the images they embed
 function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlighter: Highlighter, problems: LinkProblem[]) {
 	const assets = new Set<string>()
@@ -205,7 +232,7 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 	const pageLinks: { from: DS.Page; link: DS.Link }[] = []
 
 	for (const page of pages) {
-		const source = fs.readFileSync(path.join(ROOT, page.file), 'utf8')
+		const source = pageSource(page, problems)
 		checkFences(page, source, problems)
 		if (source !== PLG.withCurrentApiRange(source))
 			problems.push({ file: page.file, message: `an example apiVersion is not ${PLG.currentApiRange()}: run \`pnpm api:report\`` })
@@ -216,6 +243,7 @@ function renderPages(pages: DS.Page[], dir: string, site: Site.SiteInfo, highlig
 				{
 					remarkPlugins: [remarkGfm],
 					rehypePlugins: [
+						rehypeRaw,
 						rehypeSlug,
 						[rehypeShikiFromHighlighter, highlighter, { theme: 'css-variables', addLanguageClass: true }],
 						() => (tree: HastNode) => collectHeadings(tree, headings),
@@ -351,8 +379,8 @@ function migrateLegacyFolders() {
 				[`${SITE_ROOT}${name}/`, `${SITE_ROOT}${target}/`],
 				[`${SITE_ROOT}next/`, `${SITE_ROOT}${DS.LATEST_VERSION}/`],
 				[`data-version="${name}"`, `data-version="${target}"${release ? ` data-release="${release}"` : ''}`],
-				[`Documentation version: ${name}`, `Documentation version: ${DS.versionLabel(target, release)}`],
-				[`>${name === 'next' ? 'Unreleased' : name}<`, `>${DS.versionLabel(target, release)}<`],
+				[`Documentation version: ${name}`, `Documentation version: ${target}`],
+				[`>${name === 'next' ? 'Unreleased' : name}<`, `>${target}<`],
 			])
 			console.log(`docs: moved ${name}/ to ${target}/`)
 		}

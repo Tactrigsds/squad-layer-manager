@@ -16,7 +16,10 @@ on:
       paths:
          - 'docs/**'
          - 'CONTRIBUTING.md'
-         - 'CHANGELOG.md'
+         - 'changelog/**'
+         - 'changes/**'
+         - 'src/models/changelog.models.ts'
+         - 'src/systems/changelog-files.server.ts'
          - 'src/components/docs-site/**'
          - 'src/components/logo-mark.tsx'
          - 'src/docs-site.css'

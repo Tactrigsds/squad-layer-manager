@@ -167,8 +167,8 @@ function SupportLink({ className }: { className: string }) {
 function VersionMenu({ site, className }: { site: SiteInfo; className: string }) {
 	return (
 		<details className={`docs-version ${className}`} data-version-menu="">
-			<summary aria-label={`Documentation version: ${DS.versionLabel(site.version, site.release)}`}>
-				{DS.versionLabel(site.version, site.release)}
+			<summary aria-label={`Documentation version: ${site.version}`}>
+				{site.version}
 				<ChevronDown className="size-3.5" aria-hidden="true" />
 			</summary>
 			<div className="docs-version-panel" data-version-list="">
@@ -324,10 +324,12 @@ function SourceLinks({ site, page }: { site: SiteInfo; page: DS.Page }) {
 function SourceLinkPair({ site, page }: { site: SiteInfo; page: DS.Page }) {
 	return (
 		<>
-			<a href={`${site.repoUrl}/blob/${site.ref}/${page.file}`} className="docs-quiet-link">
-				<Code className="size-4" aria-hidden="true" />
-				View source
-			</a>
+			{page.generatedBy !== `${page.file}/` && (
+				<a href={`${site.repoUrl}/blob/${site.ref}/${page.file}`} className="docs-quiet-link">
+					<Code className="size-4" aria-hidden="true" />
+					View source
+				</a>
+			)}
 			{page.generatedBy ? (
 				<a href={`${site.repoUrl}/tree/${site.ref}/${page.generatedBy}`} className="docs-quiet-link">
 					<Pencil className="size-4" aria-hidden="true" />

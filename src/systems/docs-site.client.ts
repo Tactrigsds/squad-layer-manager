@@ -331,7 +331,6 @@ function setupLightbox() {
 	})
 }
 
-// A released version's pages are frozen, so the list of versions, and whether this one is outdated, come from the root.
 // remembers whether the reader collapsed the table of contents, across pages and visits
 const TOC_COLLAPSED_KEY = 'docs-toc-collapsed'
 
@@ -361,6 +360,7 @@ function setupTocToggle() {
 	})
 }
 
+// A released version's pages are frozen, so the list of versions, and whether this one is outdated, come from the root.
 async function setupVersions() {
 	const lists = document.querySelectorAll('[data-version-list]')
 	const banner = document.querySelector<HTMLElement>('[data-version-banner]')
