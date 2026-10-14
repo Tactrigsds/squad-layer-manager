@@ -183,8 +183,9 @@ function prepareStatements(db: DB.Db) {
 					// a join log only knows the tagless name, and reports it as the username too. Keep the stored
 					// tagged username while it still ends in that name.
 					username: sql`CASE WHEN excluded.username = excluded.usernameNoTag AND substr(${Schema.players.username}, -length(excluded.username)) = excluded.username THEN ${Schema.players.username} ELSE excluded.username END`,
-					// polled players never carry it, so only a join log may set it
-					usernameNoTag: sql`coalesce(excluded.usernameNoTag, ${Schema.players.usernameNoTag})`,
+					// polled players never carry it, so only a join log may set it. A polled rename keeps the stored one
+					// only while the new username still ends in it.
+					usernameNoTag: sql`CASE WHEN excluded.usernameNoTag IS NOT NULL THEN excluded.usernameNoTag WHEN substr(excluded.username, -length(${Schema.players.usernameNoTag})) = ${Schema.players.usernameNoTag} THEN ${Schema.players.usernameNoTag} END`,
 					modifiedAt: sql`excluded.modifiedAt`,
 				},
 			})

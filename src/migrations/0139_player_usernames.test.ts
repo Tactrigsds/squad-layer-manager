@@ -135,6 +135,19 @@ describe('0139_player_usernames', () => {
 		])
 	})
 
+	test('clears a tagless name the username no longer ends in', async () => {
+		const db = makeDb()
+		insertPlayer(db, 'stale', 'Bo', 50, 'Smelly Pee')
+		insertPlayer(db, 'tagged', '[TT] grey', 50, 'grey')
+
+		await up(db)
+
+		const noTag = (eosId: string) =>
+			(db.prepare(`SELECT usernameNoTag FROM players WHERE eosId = ?`).get(eosId) as { usernameNoTag: string | null }).usernameNoTag
+		expect(noTag('stale')).toBeNull()
+		expect(noTag('tagged')).toBe('grey')
+	})
+
 	test('records later changes and finds players by any name they have had', async () => {
 		const db = makeDb()
 		insertPlayer(db, 'p1', 'Alpha', 50)

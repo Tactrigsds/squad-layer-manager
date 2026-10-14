@@ -15,7 +15,13 @@ import type { MigrationDriver } from '@/server/migrate'
 //
 // usernameSearch is rebuilt over these names instead of players. It drops usernameNoTag: every value that column
 // takes is a suffix of some recorded username, so a substring search over the names already finds it.
+//
+// Clears a usernameNoTag that is no longer a suffix of the username. The upsert used to keep the old one across a
+// rename it learned of from a roster poll.
 export async function up(db: MigrationDriver): Promise<void> {
+	db.exec(`UPDATE players SET usernameNoTag = NULL
+		WHERE usernameNoTag IS NOT NULL AND substr(username, -length(usernameNoTag)) <> usernameNoTag`)
+
 	db.exec(`CREATE TABLE playerUsernames (
 		playerId TEXT NOT NULL REFERENCES players(eosId) ON DELETE CASCADE,
 		time INTEGER NOT NULL,
