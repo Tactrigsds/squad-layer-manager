@@ -7,6 +7,7 @@
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 
 import * as RC from './render-context'
@@ -38,7 +39,7 @@ export function set(hostKey: string, selection: RC.RowSelection | undefined) {
 
 /** What makes an element a feed's selectable host, for a feed whose rows react renders (see ServerEvent). */
 export function hostAttrs(scopeId: string): RC.Attrs {
-	return { [RC.SCOPE_ATTR]: scopeId, [RC.SELECTABLE_ATTR]: scopeId }
+	return { [RC.SCOPE_ATTR]: scopeId, [RC.SELECTABLE_ATTR]: scopeId, ...KBClient.typeAttrs('feed') }
 }
 
 export function hostOf(hostKey: string): Element | null {

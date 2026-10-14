@@ -9,7 +9,11 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
+import { toast } from '@/lib/toast'
+import * as UNDO from '@/lib/undo-stack'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as EFB from '@/models/editable-filter-builders.models'
 import * as FE from '@/models/filter-edit.models'
 import * as FR from '@/models/filter-references.models'
@@ -18,6 +22,7 @@ import * as LQY from '@/models/layer-queries.models'
 import type * as UP from '@/models/user-presence.models'
 import * as FilterEditClient from '@/systems/filter-edit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -63,6 +68,8 @@ type FilterEditorBase = {
 	createHints: Map<string, CreateHint>
 	// nodes whose comment is open for editing rather than displayed
 	editedComments: Set<string>
+	// this client's own edits. An entry holds the ops that reverse it, recomputed each time it is undone or redone
+	undo: UNDO.Stack<UndoData>
 	// the one node showing its editor instead of its compact form. A node has to be asked for by name, so
 	// opening one closes whichever was open, and a node that goes away takes its editor with it.
 	editingNodeId: string | null
@@ -87,6 +94,11 @@ export type FilterEditor = {
 
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = FRM.KeyProp<Types>
+
+export type UndoData = { ops: FE.NewClientOp[] }
+
+// the newer entry's inverse runs first, since its edit happened last
+const mergeUndo = (older: UndoData, newer: UndoData): UndoData => ({ ops: [...newer.ops, ...older.ops] })
 
 export type Types = {
 	name: 'filterEditor'
@@ -134,6 +146,7 @@ const setup: Frame['setup'] = (args) => {
 		presenceEvent$,
 		createHints: new Map(),
 		editedComments: new Set(),
+		undo: UNDO.empty(),
 		editingNodeId: null,
 
 		validatedFilter: null,
@@ -181,7 +194,10 @@ const setup: Frame['setup'] = (args) => {
 				const prev = get().session
 				const next = ODSM.Client.applyUpdate(prev, update, FE.reducer, {
 					onSideEffects: (ses) => {
-						for (const se of ses) emitPresenceEvent(presenceEvent$, se)
+						for (const se of ses) {
+							emitPresenceEvent(presenceEvent$, se)
+							if (discardsOthersEdits(se)) set({ undo: UNDO.empty() })
+						}
 					},
 					onDiverged: (phase, error) =>
 						console.error(`${phase === 'op' ? 'incoming' : 'acked'} filter ops diverged from the server:`, error.data),
@@ -211,6 +227,13 @@ function commitSession(set: Zus.Setter<FilterEditor>, session: ODSM.Client.Sessi
 		meta: state.draft.meta,
 		modified: FE.isModified(state),
 	})
+}
+
+// the edits this client could undo were discarded with the draft
+function discardsOthersEdits(se: FE.SideEffect) {
+	if (se.code !== 'op-outcome' || !se.success) return false
+	if (se.op.code === 'discard-abandoned-edits') return true
+	return se.op.code === 'reset-to-saved' && se.op.userId !== UsersClient.loggedInUserId
 }
 
 function emitPresenceEvent(presenceEvent$: Rx.Subject<UP.PresenceEvent>, se: FE.SideEffect) {
@@ -259,6 +282,10 @@ export namespace Sel {
 	export const commentEdited = (id: string) => (state: FilterEditor) => state.editedComments.has(id)
 
 	export const nodeEditing = (id: string) => (state: FilterEditor) => state.editingNodeId === id
+
+	export const undoEntry = (state: FilterEditor) => UNDO.peekUndo(state.undo)
+
+	export const redoEntry = (state: FilterEditor) => UNDO.peekRedo(state.undo)
 }
 
 export type CommonNodeActions = {
@@ -307,36 +334,102 @@ export namespace Actions {
 		return Zus.resolveStore<FilterEditor>(stores.filterEditor)
 	}
 
-	// authors ops on the local timeline and sends them on, exactly as the queue does. A batch the reducer
-	// refuses against local state is dropped here rather than sent -- see ODSM.Client.processOutgoingOps.
 	export function dispatch(stores: KeyProp, ...newOps: FE.NewClientOp[]) {
+		send(stores, newOps, { record: true })
+	}
+
+	// consecutive edits with the same key, close together, undo as one
+	export function dispatchKeyed(stores: KeyProp, undoKey: string, ...newOps: FE.NewClientOp[]) {
+		send(stores, newOps, { record: true, undoKey })
+	}
+
+	// Authors ops on the local timeline and sends them on, exactly as the queue does. A batch the reducer refuses
+	// against local state is dropped here rather than sent -- see ODSM.Client.processOutgoingOps. Returns the ops that
+	// reverse the batch, or null when it was refused or cannot be reversed.
+	function send(
+		stores: KeyProp,
+		newOps: FE.NewClientOp[],
+		opts: { record: boolean; undoKey?: string },
+	): { opIds: string[]; inverse: FE.NewClientOp[] | null } | null {
 		const userId = UsersClient.loggedInUserId
-		if (!userId) return
+		if (!userId) return null
 		const s = store(stores)
 		const ops = newOps.map((op) => ({ ...op, opId: FE.createOpId(), userId }) as FE.Op)
 		const prev = s.getState().session
 		const res = ODSM.Client.processOutgoingOps(prev, ops, FE.reducer)
-		if (res.rejected) return
+		if (res.rejected) return null
+		const inverse = FE.invertOps(prev.localState, newOps)
+		const opIds = ops.map((op) => op.opId)
 		commitSession(s.setState, res.session)
+		if (opts.record && inverse) {
+			const entry: UNDO.Entry<UndoData> = {
+				id: opIds[0],
+				kind: newOps.at(-1)!.code,
+				opIds,
+				at: Date.now(),
+				key: opts.undoKey,
+				data: { ops: inverse },
+			}
+			s.setState({ undo: UNDO.push(s.getState().undo, entry, mergeUndo) })
+		}
 		const state = s.getState()
 		// a filter that has not been created yet has no session on the server to dispatch to
-		if (!state.shared || !state.editedFilterId) return
+		if (!state.shared || !state.editedFilterId) return { opIds, inverse }
 		// an edit made without pressing anything still claims an editing session, which is what keeps the
 		// shared draft alive. A save ends everyone's session, so it must not re-open one.
 		if (!ops.some((op) => op.code === 'save')) UPClient.Actions.ensureEditingFilter(state.editedFilterId)
-		void FilterEditClient.dispatchOps(state.editedFilterId, ops).then((res) => {
+		const sent = FilterEditClient.dispatchOps(state.editedFilterId, ops).catch((error: unknown) => {
+			console.error('filter ops dispatch failed:', error)
+			return { code: 'err:dispatch-failed' as const }
+		})
+		void sent.then((res) => {
 			if (res.code === 'ok') return
 			// the server never applied these, and a pending op that is never acked doesn't just lose its own
 			// edit: until pendingOps drains, no later server update reaches localState at all
-			const dropped = ODSM.Client.dropPendingOps(
-				s.getState().session,
-				ops.map((op) => op.opId),
-				FE.reducer,
-			)
+			const dropped = ODSM.Client.dropPendingOps(s.getState().session, opIds, FE.reducer)
 			commitSession(s.setState, dropped)
+			let undo = s.getState().undo
+			for (const opId of opIds) undo = UNDO.removeByOpId(undo, opId)
+			s.setState({ undo })
 			if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
 			else console.error('filter ops refused by the server:', res.code)
 		})
+		return { opIds, inverse }
+	}
+
+	export function undo(stores: KeyProp) {
+		const entry = UNDO.peekUndo(store(stores).getState().undo)
+		if (entry) step(stores, entry, 'undo')
+	}
+
+	export function redo(stores: KeyProp) {
+		const entry = UNDO.peekRedo(store(stores).getState().undo)
+		if (entry) step(stores, entry, 'redo')
+	}
+
+	// Sends an entry's reversing ops, and keeps what reverses them in turn for the other direction. Ops another user's
+	// edit has made impossible, such as an update to a node they deleted, are refused here and the entry is dropped.
+	function step(stores: KeyProp, entry: UNDO.Entry<UndoData>, direction: 'undo' | 'redo') {
+		const s = store(stores)
+		const sent = send(stores, entry.data.ops, { record: false })
+		if (!sent || !sent.inverse) {
+			s.setState({ undo: UNDO.removeEntry(s.getState().undo, entry.id) })
+			toast.error(...tr.toast(UI_Msgs.cannotUndo()))
+			return
+		}
+		const moved: UNDO.Entry<UndoData> = { ...entry, opIds: sent.opIds, data: { ops: sent.inverse } }
+		const stack = s.getState().undo
+		s.setState({ undo: direction === 'undo' ? UNDO.undone(stack, moved) : UNDO.redone(stack, moved) })
+		pruneNodeChrome(s)
+	}
+
+	// an undo can take away the node whose editor or comment is open
+	function pruneNodeChrome(s: Zus.StoreApi<FilterEditor>) {
+		const state = s.getState()
+		const tree = state.tree
+		const editedComments = new Set([...state.editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
+		const editingNodeId = state.editingNodeId && tree.nodes.has(state.editingNodeId) ? state.editingNodeId : null
+		s.setState({ editedComments, editingNodeId })
 	}
 
 	export function moveNode(stores: KeyProp, nodeId: string, parentId: string, index: number) {
@@ -344,7 +437,7 @@ export namespace Actions {
 	}
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
-		dispatch(stores, { code: 'replace-tree', tree: FE.toTree(filter) })
+		dispatchKeyed(stores, 'replace-tree', { code: 'replace-tree', tree: FE.toTree(filter) })
 		store(stores).setState({ createHints: new Map(), editedComments: new Set(), editingNodeId: null })
 	}
 
@@ -353,7 +446,7 @@ export namespace Actions {
 	}
 
 	export function setNodeComment(stores: KeyProp, id: string, comment: string | null) {
-		dispatch(stores, { code: 'set-comment', nodeId: id, comment: comment?.trim() || null })
+		dispatchKeyed(stores, `set-comment:${id}`, { code: 'set-comment', nodeId: id, comment: comment?.trim() || null })
 	}
 
 	export function setCommentEdited(stores: KeyProp, id: string, edited: boolean) {
@@ -367,17 +460,12 @@ export namespace Actions {
 	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
 		const current = store(stores).getState().tree.nodes.get(id)
 		if (!current) return
-		dispatch(stores, { code: 'update-node', nodeId: id, node: Im.produce(current, cb) })
+		dispatchKeyed(stores, `update-node:${id}`, { code: 'update-node', nodeId: id, node: Im.produce(current, cb) })
 	}
 
 	export function deleteNode(stores: KeyProp, id: string) {
 		dispatch(stores, { code: 'delete-node', nodeId: id })
-		const s = store(stores)
-		const state = s.getState()
-		const tree = state.tree
-		const editedComments = new Set([...state.editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
-		const editingNodeId = state.editingNodeId && tree.nodes.has(state.editingNodeId) ? state.editingNodeId : null
-		s.setState({ editedComments, editingNodeId })
+		pruneNodeChrome(store(stores))
 	}
 
 	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType, index?: number) {
@@ -402,15 +490,29 @@ export namespace Actions {
 	}
 
 	export function setMeta(stores: KeyProp, patch: Partial<FE.Meta>) {
-		dispatch(stores, { code: 'set-meta', patch })
+		dispatchKeyed(stores, `set-meta:${Object.keys(patch).sort().join(',')}`, { code: 'set-meta', patch })
 	}
 
 	export function save(stores: KeyProp) {
 		dispatch(stores, { code: 'save' })
 	}
 
+	// a discard is the one edit that throws away work, so it offers its undo where the user is looking
 	export function reset(stores: KeyProp) {
+		const before = store(stores).getState().undo
 		dispatch(stores, { code: 'reset-to-saved' })
+		const entry = UNDO.peekUndo(store(stores).getState().undo)
+		if (!entry || entry === UNDO.peekUndo(before) || entry.kind !== 'reset-to-saved') return
+		const [message, toastOpts] = tr.toast(F_Msgs.editsDiscarded())
+		toast.info(message, {
+			...toastOpts,
+			action: {
+				label: tr.text(UI_Msgs.undo()),
+				onClick: () => {
+					if (UNDO.peekUndo(store(stores).getState().undo)?.id === entry.id) undo(stores)
+				},
+			},
+		})
 	}
 }
 

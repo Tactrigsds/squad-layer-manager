@@ -139,3 +139,17 @@ export const finishEditingAnyway = def('Finish Editing Anyway')
 // -------- output and feeds --------
 
 export const wrapLines = def('Wrap lines')
+
+// -------- undo and redo --------
+
+export const undo = def('Undo')
+
+export const redo = def('Redo')
+
+export const cannotUndo = def(() => ({
+	toast: [t('That edit can no longer be undone')],
+}))
+
+export const nothingToUndo = def((direction: 'undo' | 'redo') => ({
+	toast: [t('{direction, select, undo {Nothing to undo} other {Nothing to redo}}', { direction })],
+}))

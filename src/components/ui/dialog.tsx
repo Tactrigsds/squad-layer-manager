@@ -3,12 +3,14 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
-import * as SubmitChord from '@/lib/submit-chord'
 import { keepOpenOnToastClick } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
+import type * as KEYS from '@/models/keybinds.models'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { DraggableWindowOutlet } from './draggable-window'
 
@@ -36,14 +38,20 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 // phone the panel fills the viewport and the body scrolls.
 const DialogContent = React.forwardRef<
 	React.ElementRef<typeof DialogPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, onInteractOutside, ...props }, ref) => {
+	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+		// the keybinding scope of a dialog with bindings of its own. A plain dialog opens one of type `dialog`
+		kbScope?: KBClient.ScopeHandle<KEYS.Extending<'dialog'>>
+	}
+>(({ className, children, style, onInteractOutside, kbScope: kbScopeProp, ...props }, ref) => {
+	const plainScope = KBClient.useScope('dialog', {})
+	const kbScope = kbScopeProp ?? plainScope
 	const phone = Browser.useIsSmallViewport()
 	const outletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
 
 	const combinedRef = (node: HTMLDivElement | null) => {
 		contentRef.current = node
+		kbScope.ref(node)
 		if (typeof ref === 'function') {
 			ref(node)
 		} else if (ref) {
@@ -72,21 +80,22 @@ const DialogContent = React.forwardRef<
 					onInteractOutside?.(e)
 					keepOpenOnToastClick(e)
 				}}
-				{...SubmitChord.scopeAttrs('dialog')}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={zIndex}>
-					<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
-						{children}
-					</DraggableWindowOutlet>
-					<DialogPrimitive.Close
-						{...SubmitChord.closeAttrs}
-						className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5"
-					>
-						<Cross2Icon />
-						<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
-					</DialogPrimitive.Close>
-				</BaseZIndexContext.Provider>
+				<KBClient.Context.Provider value={kbScope.id}>
+					<BaseZIndexContext.Provider value={zIndex}>
+						<DraggableWindowOutlet outletKey={outletKey} getElement={() => contentRef.current}>
+							{children}
+						</DraggableWindowOutlet>
+						<DialogPrimitive.Close
+							{...SubmitChordClient.closeAttrs}
+							className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5"
+						>
+							<Cross2Icon />
+							<span className="sr-only">{tr.text(UI_Msgs.close())}</span>
+						</DialogPrimitive.Close>
+					</BaseZIndexContext.Provider>
+				</KBClient.Context.Provider>
 			</DialogPrimitive.Content>
 		</DialogPortal>
 	)

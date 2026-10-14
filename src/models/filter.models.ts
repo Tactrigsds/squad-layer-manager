@@ -1048,6 +1048,18 @@ export function moveNode(tree: FilterNodeTree, id: string, parentId: string, ind
 	return { rootId: tree.rootId, nodes: tree.nodes, children, parents }
 }
 
+// The subtree at `id` as a standalone tree, keeping its ids, which is what putting a deleted node back needs
+export function subtreeAt(tree: FilterNodeTree, id: string): FilterNodeTree {
+	const sub: FilterNodeTree = { rootId: id, nodes: new Map(), children: new Map(), parents: new Map() }
+	for (const nodeId of subtreeIds(tree, id)) {
+		sub.nodes.set(nodeId, tree.nodes.get(nodeId)!)
+		const children = tree.children.get(nodeId)
+		if (children) sub.children.set(nodeId, children)
+		if (nodeId !== id) sub.parents.set(nodeId, tree.parents.get(nodeId)!)
+	}
+	return sub
+}
+
 // The subtree at `targetId` as a standalone tree, with a fresh id for every node. Callers mint the copy so that
 // every replica applies the same one: a reducer that called this would give each replica different ids. Node
 // objects are shared, never mutated.

@@ -3,11 +3,12 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { DraggableWindowOutlet } from './draggable-window'
 
@@ -19,10 +20,11 @@ interface DialogProps {
 }
 
 const HeadlessDialog = ({ open, onOpenChange, children, unmount }: DialogProps) => {
+	const kbScope = KBClient.useScope('dialog', {})
 	return (
-		// the submit scope is the root rather than the panel: a click on dead space in the panel focuses the root
-		<Dialog open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount} {...SubmitChord.scopeAttrs('dialog')}>
-			{children}
+		// the keybinding scope is the root rather than the panel: a click on dead space in the panel focuses the root
+		<Dialog ref={kbScope.ref} open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount}>
+			<KBClient.Context.Provider value={kbScope.id}>{children}</KBClient.Context.Provider>
 		</Dialog>
 	)
 }
@@ -74,7 +76,7 @@ const HeadlessDialogContent = React.forwardRef<
 					</BaseZIndexContext.Provider>
 					{showCloseButton && (
 						<CloseButton
-							{...SubmitChord.closeAttrs}
+							{...SubmitChordClient.closeAttrs}
 							className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm absolute inset-e-1.5 top-1.5"
 						>
 							<Cross2Icon />

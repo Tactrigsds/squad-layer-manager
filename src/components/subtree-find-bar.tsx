@@ -26,9 +26,9 @@ type Props = {
 }
 
 export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey = true, trigger = true }: Props) {
-	const [open, counter, caseSensitive, wholeWord, supported] = Zus.useStore(
+	const [open, counter, caseSensitive, wholeWord, supported, inputRequest] = Zus.useStore(
 		stores.subtreeFind,
-		(s) => [s.open, FindFrame.Sel.counter(s), s.caseSensitive, s.wholeWord, s.supported] as const,
+		(s) => [s.open, FindFrame.Sel.counter(s), s.caseSensitive, s.wholeWord, s.supported, s.inputRequest] as const,
 	)
 	const inputRef = React.useRef<HTMLInputElement>(null)
 	const barRef = React.useRef<HTMLDivElement>(null)
@@ -38,26 +38,14 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 		if (defaultOpen) FindFrame.Actions.open(stores)
 	}, [defaultOpen, stores])
 
-	// ctrl+F is only intercepted while the reader is at the subtree this bar searches, so the browser's own find
-	// still answers everywhere else on the page. Hover counts as well as focus, because the usual thing to search
-	// is a scrolling region holding nothing focusable to have clicked on. `:hover` is read on the keystroke rather
-	// than tracked, so watching for it costs nothing.
 	React.useEffect(() => {
 		if (!hotkey) return
 		const onKeyDown = (e: KeyboardEvent) => {
-			const isFind = e.key === 'f' && !e.altKey && (e.ctrlKey || e.metaKey)
-			if (!isFind && e.key !== 'Escape') return
+			if (e.key !== 'Escape') return
 			const state = Zus.getState(stores.subtreeFind)
 			const root = state.engine.root
 			const active = document.activeElement
 			const focused = !!active && (!!root?.contains(active) || !!barRef.current?.contains(active))
-			if (isFind) {
-				if (!focused && !root?.matches(':hover')) return
-				e.preventDefault()
-				FindFrame.Actions.open(stores)
-				inputRef.current?.select()
-				return
-			}
 			// Escape dismisses the search the reader is looking at, from anywhere inside it -- clicking a result
 			// blurs the input, and until it is dismissed every match stays painted. It also answers when nothing at
 			// all holds focus, which is where the browser leaves you after dismissing its own widgets, and where no
@@ -75,8 +63,8 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 	}, [hotkey, stores])
 
 	React.useEffect(() => {
-		if (open) inputRef.current?.focus()
-	}, [open])
+		if (open) inputRef.current?.select()
+	}, [open, inputRequest])
 
 	// collapsed, the bar is the button that opens it, in the same slot the caller positioned. Anything relying on
 	// ctrl+F alone stays undiscoverable, and the searched region is usually not somewhere a reader thinks to press it.

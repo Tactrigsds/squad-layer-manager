@@ -230,6 +230,28 @@ test.describe('collaborative queue editing', () => {
 			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeHidden({ timeout: 15_000 })
 			await expect(panelA.getByRole('listitem')).toHaveCount(1)
 
+			// -------- undo and redo --------
+			// the delete button went with its row, so nothing has focus, and the key goes to the queue A last pressed in.
+			// Undo reverts only A's own edit: B's delete stays
+			await page.keyboard.press('Control+z')
+			for (const panel of [panelA, panelB]) {
+				await expect(panel.getByRole('listitem').first()).toContainText('Harju_RAAS_v1', { timeout: 15_000 })
+				await expect(panel.getByRole('listitem')).toHaveCount(2)
+			}
+			await page.keyboard.press('Control+y')
+			await expect(panelB.getByText('Harju_RAAS_v1')).toBeHidden({ timeout: 15_000 })
+
+			await panelB.getByRole('button', { name: 'Undo' }).click()
+			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeVisible({ timeout: 15_000 })
+			// a row's menu opens no keybinding scope of its own, so a key pressed in it reaches the queue it opened from
+			await panelB.getByText(layerText('Sumari_RAAS_v1')).first().click({ button: 'right' })
+			await expect(pageB.getByRole('menu')).toBeVisible()
+			await pageB.keyboard.press('Control+Shift+z')
+			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeHidden({ timeout: 15_000 })
+			await pageB.keyboard.press('Escape')
+			await expect(pageB.getByRole('menu')).toBeHidden()
+			await expect(panelA.getByRole('listitem')).toHaveCount(1)
+
 			// A leaves the session; B, now the only editor, saves what the two of them built
 			await page.getByRole('button', { name: 'Finish Editing' }).click()
 			await pageB.getByRole('button', { name: 'Save', exact: true }).click()

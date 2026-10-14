@@ -55,6 +55,8 @@ export type Engine = {
 export type Store = {
 	engine: Engine
 	open: boolean
+	// bumped to have the bar select its input, as the find key does when the bar is already open
+	inputRequest: number
 	/** the query the reported counts belong to, which is what the bar renders against */
 	query: string
 	matchCount: number
@@ -103,6 +105,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	args.set({
 		engine,
 		open: false,
+		inputRequest: 0,
 		query: '',
 		matchCount: 0,
 		currentIndex: -1,
@@ -312,6 +315,12 @@ export namespace Actions {
 
 	export function prev(stores: KeyProp) {
 		controls.get(engineOf(stores))?.step(-1)
+	}
+
+	// opens the bar and selects its input, which the find key does
+	export function requestInput(stores: KeyProp) {
+		open(stores)
+		store(stores).setState((state) => ({ inputRequest: state.inputRequest + 1 }))
 	}
 
 	export function open(stores: KeyProp) {

@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
-import { Braces, Columns3, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
+import { Braces, Columns3, ExternalLink, Minus, Plus, RotateCcw, TextCursorInput } from 'lucide-react'
 import React from 'react'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -27,6 +27,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
@@ -45,6 +46,7 @@ import { Input } from './ui/input'
 import { Separator } from './ui/separator.tsx'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
+import { UndoRedoButtons } from './undo-redo-buttons'
 
 const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
 
@@ -70,6 +72,7 @@ const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
 export default function FilterCard(props: FilterCardProps & ({ children: React.ReactNode; builderOnly?: false } | { builderOnly: true })) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
+	const kbScope = KBClient.useScope('filter-editor', {})
 
 	DndKit.useDragEnd((event) => {
 		if (!event.over) return
@@ -110,6 +113,10 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	const [nodeStore, modified, editingNodeId] = Zus.useStore(
 		props.stores.filterEditor,
 		Zus.useShallow((s) => [s.nodeMapStore, s.modified, s.editingNodeId] as const),
+	)
+	const [undoKind, redoKind] = Zus.useStore(
+		props.stores.filterEditor,
+		Zus.useShallow((s) => [EditFrame.Sel.undoEntry(s)?.kind ?? null, EditFrame.Sel.redoEntry(s)?.kind ?? null] as const),
 	)
 
 	// Escape returns the open node to its compact form. It listens on the document because clicking a
@@ -153,7 +160,7 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	}
 
 	const rendered = (
-		<div defaultValue="builder" className="w-full space-x-2 flex">
+		<div ref={kbScope.ref} defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1 min-w-0 overflow-x-auto">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
@@ -184,11 +191,23 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 						</TooltipContent>
 					</Tooltip>
 
+					<UndoRedoButtons
+						size="icon"
+						undo={{
+							description: undoKind && tr.text(F_Msgs.undoTooltip('undo', undoKind)),
+							onClick: () => EditFrame.Actions.undo(props.stores),
+						}}
+						redo={{
+							description: redoKind && tr.text(F_Msgs.undoTooltip('redo', redoKind)),
+							onClick: () => EditFrame.Actions.redo(props.stores),
+						}}
+					/>
+
 					{/* -------- reset filter -------- */}
 					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
-								<Undo2 className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
+								<RotateCcw className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
@@ -222,10 +241,11 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 		</div>
 	)
 
+	// the leaf nodes are portalled into the tree, so the scope reaches them through context rather than the DOM
 	return (
-		<>
+		<KBClient.Context.Provider value={kbScope.id}>
 			{rendered} {leafNodes}
-		</>
+		</KBClient.Context.Provider>
 	)
 }
 
@@ -377,7 +397,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 			{!isRootNode && (
 				<>
 					<DuplicateButton onClick={actions.common.duplicate} />
-					<Button size="icon" variant="ghost" onClick={deleteNode}>
+					<Button size="icon" variant="ghost" aria-label={tr.text(F_Msgs.removeNode())} onClick={deleteNode}>
 						<Minus color="hsl(var(--destructive))" />
 					</Button>
 				</>

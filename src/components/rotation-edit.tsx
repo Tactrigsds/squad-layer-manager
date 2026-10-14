@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner'
 import TabsList from '@/components/ui/tabs-list'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { UndoRedoButtons } from '@/components/undo-redo-buttons'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
@@ -36,6 +37,7 @@ import * as UP from '@/models/user-presence.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -243,49 +245,53 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 	const dragDepth = React.useRef(0)
 	const overlayZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const carriesFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
+	const kbScope = KBClient.useScope('rotation-editor', {})
 	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
 	return (
-		<section
-			className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
-			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
-			onDragEnter={(e) => {
-				if (!carriesFiles(e) || writeDenied) return
-				dragDepth.current++
-				setDragging(true)
-			}}
-			onDragLeave={(e) => {
-				if (!carriesFiles(e) || writeDenied) return
-				dragDepth.current = Math.max(0, dragDepth.current - 1)
-				if (dragDepth.current === 0) setDragging(false)
-			}}
-			onDragOverCapture={(e) => {
-				if (!carriesFiles(e)) return
-				e.preventDefault()
-				e.stopPropagation()
-				e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
-			}}
-			onDropCapture={(e) => {
-				if (!carriesFiles(e)) return
-				e.preventDefault()
-				e.stopPropagation()
-				dragDepth.current = 0
-				setDragging(false)
-				const file = e.dataTransfer.files[0]
-				if (!file || writeDenied) return
-				setIsEditing(true)
-				void RotationEditorFrame.Actions.openFile(props.listHost, file)
-			}}
-		>
-			{props.children}
-			{dragging && (
-				<div
-					style={{ zIndex: overlayZIndex }}
-					className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
-				>
-					{tr.text(ROT_Msgs.dropFileHint())}
-				</div>
-			)}
-		</section>
+		<KBClient.Context.Provider value={kbScope.id}>
+			<section
+				ref={kbScope.ref}
+				className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
+				aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
+				onDragEnter={(e) => {
+					if (!carriesFiles(e) || writeDenied) return
+					dragDepth.current++
+					setDragging(true)
+				}}
+				onDragLeave={(e) => {
+					if (!carriesFiles(e) || writeDenied) return
+					dragDepth.current = Math.max(0, dragDepth.current - 1)
+					if (dragDepth.current === 0) setDragging(false)
+				}}
+				onDragOverCapture={(e) => {
+					if (!carriesFiles(e)) return
+					e.preventDefault()
+					e.stopPropagation()
+					e.dataTransfer.dropEffect = writeDenied ? 'none' : 'copy'
+				}}
+				onDropCapture={(e) => {
+					if (!carriesFiles(e)) return
+					e.preventDefault()
+					e.stopPropagation()
+					dragDepth.current = 0
+					setDragging(false)
+					const file = e.dataTransfer.files[0]
+					if (!file || writeDenied) return
+					setIsEditing(true)
+					void RotationEditorFrame.Actions.openFile(props.listHost, file)
+				}}
+			>
+				{props.children}
+				{dragging && (
+					<div
+						style={{ zIndex: overlayZIndex }}
+						className="pointer-events-none absolute inset-0 flex items-center justify-center rounded border-2 border-dashed border-primary bg-background/80 p-4 text-center text-sm font-semibold"
+					>
+						{tr.text(ROT_Msgs.dropFileHint())}
+					</div>
+				)}
+			</section>
+		</KBClient.Context.Provider>
 	)
 }
 
@@ -357,6 +363,10 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 		),
 	)
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+	const [undoKind, redoKind] = Zus.useStore(
+		props.listHost,
+		Zus.useShallow((s) => [LayerQueuePrt.Sel.undoEntry(s)?.kind ?? null, LayerQueuePrt.Sel.redoEntry(s)?.kind ?? null] as const),
+	)
 	const queue = { queue: props.listHost }
 	// each action starts editing first, as Add Layers does, so nobody has to press Start Editing before using one
 	const editing = (action: () => void) => () => {
@@ -368,7 +378,7 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 
 	const clear = () => {
 		const itemIds = Zus.getState(props.listHost).queue.layerList.map((item) => item.itemId)
-		void LayerQueuePrt.Actions.dispatch(queue, { op: 'clear', itemIds })
+		void LayerQueuePrt.Actions.dispatch(queue, { op: 'clear', itemIds }, { undoToast: true })
 	}
 
 	return (
@@ -419,15 +429,26 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 					{tr.text(ROT_Msgs.openFile())}
 				</Button>
 			</PermissionDeniedTooltip>
+			<UndoRedoButtons
+				disabled={!!writeDenied}
+				undo={{
+					description: undoKind && tr.text(LL_Msgs.undoTooltip('undo', undoKind)),
+					onClick: editing(() => LayerQueuePrt.Actions.undo(queue)),
+				}}
+				redo={{
+					description: redoKind && tr.text(LL_Msgs.undoTooltip('redo', redoKind)),
+					onClick: editing(() => LayerQueuePrt.Actions.redo(queue)),
+				}}
+			/>
 			<Button
 				variant="ghost"
 				size="icon-sm"
 				aria-label={tr.text(LL_Msgs.reset())}
 				title={tr.text(LL_Msgs.reset())}
 				disabled={!!writeDenied || !isModified}
-				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }))}
+				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }, { undoToast: true }))}
 			>
-				<Icons.Undo className="rtl:-scale-x-100" />
+				<Icons.RotateCcw className="rtl:-scale-x-100" />
 			</Button>
 			<CopyDownloadButtons listHost={props.listHost} view={view} />
 		</div>

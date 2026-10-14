@@ -277,7 +277,7 @@ async function analyzeAndApplyUnsafe(key: StateKey, text: string) {
 	)
 	runtime.synced = next
 	if (next === mod.serialize(list, format, configuredTags())) return
-	await LayerQueuePrt.Actions.dispatch({ queue: key }, { op: 'add', ...LL.placementTarget(list, 'replace'), items })
+	await LayerQueuePrt.Actions.dispatch({ queue: key }, { op: 'add', ...LL.placementTarget(list, 'replace'), items }, { undoKey: 'text' })
 }
 
 export namespace Actions {

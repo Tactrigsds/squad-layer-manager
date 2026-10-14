@@ -6,10 +6,10 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { SubmitChordKbd } from '@/components/ui/kbd'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as DH from '@/models/display-helpers.models'
+import * as KEYS from '@/models/keybinds.models'
 import { tr } from '@/systems/messages.client'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
@@ -489,7 +489,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						shouldFilter={drillEntry ? true : !props.setInputValue}
 						className={cn('min-h-0', sheet && 'flex-1')}
 						onKeyDown={(e) => {
-							if (SubmitChord.isSubmitChord(e)) {
+							if (KEYS.matches(e, 'combo-box-commit')) {
 								// claimed here, before cmdk would toggle the option without closing
 								e.preventDefault()
 								submitHighlighted(e.currentTarget)

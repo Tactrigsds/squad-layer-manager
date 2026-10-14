@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { useDebouncedCommit } from '@/lib/use-debounced-commit'
@@ -35,6 +34,7 @@ import * as L from '@/models/layer.models'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 // The query builder's rail: a scope block every query has (server, time, player, user), then the optional
 // fields for the current result type, then a "+ Filter" menu offering the rest.
@@ -722,7 +722,7 @@ function DraftInput(props: Omit<React.ComponentProps<typeof Input>, 'onChange' |
 			onChange={(e) => commit.schedule(e.target.value)}
 			onBlur={commit.flush}
 			onKeyDown={(e) => {
-				if (SubmitChord.isSubmitChord(e)) commit.flush()
+				if (SubmitChordClient.isSubmitChord(e)) commit.flush()
 				onKeyDown?.(e)
 			}}
 		/>

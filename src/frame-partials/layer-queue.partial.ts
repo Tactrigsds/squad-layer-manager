@@ -5,9 +5,11 @@ import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
+import * as UNDO from '@/lib/undo-stack'
 import * as Zus from '@/lib/zustand'
 import * as BB_Msgs from '@/messages/backburner.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
@@ -40,6 +42,8 @@ export type State = {
 	// presence-panel event text (both surface on the queue tab's presence panel)
 	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	committing: boolean
+	// this client's own edits. An entry holds the ops whose `revert` undoes or redoes it, in the order they were sent
+	undo: UNDO.Stack<UndoData>
 
 	// -------- derived properties --------
 	layerList: LL.List
@@ -51,6 +55,10 @@ export type State = {
 }
 
 export type Args = FRM.SetupArgs<object, Store, Store>
+
+export type UndoData = { opIds: string[] }
+
+const mergeUndo = (older: UndoData, newer: UndoData): UndoData => ({ opIds: [...older.opIds, ...newer.opIds] })
 
 export function initLayerQueue(args: Args, host: LL.ListHost) {
 	const set = Zus.toPartialSetter(args.set, 'queue')
@@ -128,6 +136,7 @@ export function initLayerQueue(args: Args, host: LL.ListHost) {
 
 		syncedOp$: new Rx.Subject(),
 		presenceEvent$,
+		undo: UNDO.empty(),
 
 		// derived
 		layerList: initRbSession.localState.list,
@@ -149,7 +158,13 @@ export function initLayerQueue(args: Args, host: LL.ListHost) {
 				onRejected: (reason, opIds) => console.debug(`queue op ${opIds.join(', ')} rejected by the server: ${reason}`),
 				onUnknownAcks: (opIds) => console.warn(`received ack for unknown op ${opIds.join(', ')}`),
 				onSyncedOps: (ops) => {
-					for (const op of ops) get().syncedOp$.next(op)
+					for (const op of ops) {
+						get().syncedOp$.next(op)
+						// the edits this client could undo were discarded with the draft
+						const discarded =
+							op.op === 'discard-abandoned-queue-edits' || (op.op === 'reset-to-saved' && op.userId !== UsersClient.loggedInUserId)
+						if (discarded) set({ undo: UNDO.empty() })
+					}
 				},
 			})
 			if (next !== prev) set({ rbSession: next })
@@ -331,6 +346,12 @@ export namespace Sel {
 	export function mutations(store: Store) {
 		return store.queue.mutations
 	}
+	export function undoEntry(store: Store) {
+		return UNDO.peekUndo(store.queue.undo)
+	}
+	export function redoEntry(store: Store) {
+		return UNDO.peekRedo(store.queue.undo)
+	}
 	export function isModified(store: Store) {
 		return store.queue.isModified
 	}
@@ -400,8 +421,19 @@ export namespace Actions {
 		return await dispatch(stores, { op: 'add', ...target, items: LL.withTags(items, args.tags) })
 	}
 
+	export type DispatchOpts = {
+		// consecutive edits with the same key, close together, undo as one
+		undoKey?: string
+		// consecutive edits in the same group undo as one, however long apart they land
+		undoGroup?: string
+		// shows a toast with an Undo button once the edit is applied
+		undoToast?: boolean
+		// called with the op's id once it is applied locally, before it is sent
+		onApplied?: (opId: string) => void
+	}
+
 	// try to call this such that react will batch the rerenders. Resolves to whether the server accepted the op.
-	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation): Promise<boolean> {
+	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation, opts?: DispatchOpts): Promise<boolean> {
 		const slice = Zus.toPartialStore(stores.queue, 'queue')
 		const userId = UsersClient.loggedInUserId!
 		const localState = slice.getState().rbSession.localState
@@ -441,7 +473,24 @@ export namespace Actions {
 			console.debug('layer queue op rejected:', (outgoing.error.data as SLL.Rejection).code)
 			return false
 		}
-		slice.setState({ rbSession: outgoing.session })
+		const recorded = newOp.op !== 'revert' && !!SLL.findRevertRecord(outgoing.session.localState, op.opId)
+		let entry: UNDO.Entry<UndoData> | undefined
+		if (recorded) {
+			entry = {
+				id: op.opId,
+				kind: op.op,
+				opIds: [op.opId],
+				at: Date.now(),
+				key: opts?.undoKey ?? defaultUndoKey(op),
+				group: opts?.undoGroup,
+				data: { opIds: [op.opId] },
+			}
+			slice.setState({ rbSession: outgoing.session, undo: UNDO.push(slice.getState().undo, entry, mergeUndo) })
+		} else {
+			slice.setState({ rbSession: outgoing.session })
+		}
+		if (entry && opts?.undoToast) showUndoToast(stores, entry)
+		opts?.onApplied?.(op.opId)
 
 		const host = slice.getState().host
 		// a draft edit registers the user as an editor, so no one has to press "Start Editing" first
@@ -467,14 +516,74 @@ export namespace Actions {
 		return false
 	}
 
+	// edits made by dragging or typing in one control, which arrive as a run of ops
+	function defaultUndoKey(op: SLL.Operation): string | undefined {
+		if (op.op === 'configure-vote' || op.op === 'edit-note') return `${op.op}:${op.itemId}`
+	}
+
 	// a refused op stays applied to the local state until we replay the timeline without it. leaving it pending
 	// also pins localState to the moment of refusal, so the queue would stop reflecting the server entirely.
 	function rollbackOp(slice: Zus.StoreApi<State>, opId: string) {
-		slice.setState({ rbSession: ODSM.Client.dropPendingOps(slice.getState().rbSession, [opId], SLL.reducer) })
+		const state = slice.getState()
+		slice.setState({
+			rbSession: ODSM.Client.dropPendingOps(state.rbSession, [opId], SLL.reducer),
+			undo: UNDO.removeByOpId(state.undo, opId),
+		})
 	}
 
-	export function dispatchItemOp(stores: KeyProp, itemId: string, newItemOp: SLL.NewContextItemOperation) {
-		void dispatch(stores, { ...newItemOp, itemId })
+	function showUndoToast(stores: KeyProp, entry: UNDO.Entry<UndoData>) {
+		const kind = entry.kind as 'delete' | 'clear' | 'reset-to-saved'
+		const [message, toastOpts] = tr.toast(LL_Msgs.undoableDone(kind))
+		toast.info(message, {
+			...toastOpts,
+			action: { label: tr.text(UI_Msgs.undo()), onClick: () => undoEntry(stores, entry.id) },
+		})
+	}
+
+	export function undo(stores: KeyProp) {
+		const entry = UNDO.peekUndo(Zus.getState(stores.queue).queue.undo)
+		if (entry) step(stores, entry, 'undo')
+	}
+
+	export function redo(stores: KeyProp) {
+		const entry = UNDO.peekRedo(Zus.getState(stores.queue).queue.undo)
+		if (entry) step(stores, entry, 'redo')
+	}
+
+	// undoes one entry wherever it is on the stack, which is what a toast's Undo button names. An entry with later
+	// edits on top of it is reverted on its own and leaves the stack: redoing it would come out of order.
+	export function undoEntry(stores: KeyProp, entryId: string) {
+		const stack = Zus.getState(stores.queue).queue.undo
+		const entry = UNDO.find(stack, entryId)
+		if (!entry || !stack.past.includes(entry)) return
+		if (UNDO.peekUndo(stack) === entry) return step(stores, entry, 'undo')
+		const slice = Zus.toPartialStore(stores.queue, 'queue')
+		slice.setState({ undo: UNDO.removeEntry(slice.getState().undo, entryId) })
+		let applied = false
+		void dispatch(stores, { op: 'revert', opIds: entry.data.opIds.toReversed() }, { onApplied: () => (applied = true) })
+		if (!applied) toast.error(...tr.toast(UI_Msgs.cannotUndo()))
+	}
+
+	// reverts the ops an entry last sent, newest first, which undoes it if it is on the undo side and redoes it if it is
+	// on the redo side. The revert op is then the one to revert to go back again.
+	function step(stores: KeyProp, entry: UNDO.Entry<UndoData>, direction: 'undo' | 'redo') {
+		const slice = Zus.toPartialStore(stores.queue, 'queue')
+		const revertOp: SLL.NewClientOperation = { op: 'revert', opIds: entry.data.opIds.toReversed() }
+		let opId: string | undefined
+		// a refusal from the server drops the entry by this op's id, in rollbackOp
+		void dispatch(stores, revertOp, { onApplied: (id) => (opId = id) })
+		if (!opId) {
+			slice.setState({ undo: UNDO.removeEntry(slice.getState().undo, entry.id) })
+			toast.error(...tr.toast(UI_Msgs.cannotUndo()))
+			return
+		}
+		const moved: UNDO.Entry<UndoData> = { ...entry, opIds: [opId], data: { opIds: [opId] } }
+		const stack = slice.getState().undo
+		slice.setState({ undo: direction === 'undo' ? UNDO.undone(stack, moved) : UNDO.redone(stack, moved) })
+	}
+
+	export function dispatchItemOp(stores: KeyProp, itemId: string, newItemOp: SLL.NewContextItemOperation, opts?: DispatchOpts) {
+		void dispatch(stores, { ...newItemOp, itemId }, opts)
 	}
 
 	export function addVoteItems(stores: KeyProp, itemId: string, choices: LL.NewItem[]) {

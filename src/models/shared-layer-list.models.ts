@@ -22,6 +22,10 @@ const opPropsBase = { opId: z.string() }
 const opPropsClient = { userId: USR.UserIdSchema.optional(), source: LL.SourceSchema.optional() }
 const opPropsEditWindow = { editWindowSeqId: z.number() }
 
+// shared between every user editing the list, and dropped oldest first. A client keeps fewer undo entries than this,
+// so only a busy shared session evicts a record someone could still undo
+export const MAX_REVERT_RECORDS = 500
+
 // when present ensures that this op is only applied during the edit window it was intended for
 function getItemOpEntries<Props extends { [key: string]: z.ZodType }>(props: Props) {
 	return [
@@ -250,6 +254,15 @@ function buildOperationSchema<
 			...editWindowProps,
 			op: z.literal('reset-to-saved'),
 		}),
+		// puts back what the user's own earlier ops replaced or removed, from the records every replica keeps of them
+		// (see RevertRecord). `opIds` are reverted in the order given, so an undone run lists its newest op first.
+		z.object({
+			...baseProps,
+			...clientProps,
+			...editWindowProps,
+			op: z.literal('revert'),
+			opIds: z.array(z.string()).min(1).max(MAX_REVERT_RECORDS),
+		}),
 		// the queue-side counterpart of discard-abandoned-request-edits
 		z.object({
 			...baseProps,
@@ -274,6 +287,7 @@ const CLIENT_OPCODE = z.enum([
 	'clear',
 	'save',
 	'reset-to-saved',
+	'revert',
 	'backburner-add',
 	'backburner-update',
 	'backburner-remove',
@@ -319,6 +333,21 @@ export type State = {
 	backburner: BB.BackburnerItem[]
 	savedBackburner: BB.BackburnerItem[]
 	backburnerEditWindowSeqId: number
+	// what each recent user op did to the draft, oldest first, for `revert`
+	revertRecords: RevertRecord[]
+}
+
+// The top-level items one op replaced or removed, as they were before it, and the ids of the ones it put in their
+// place. An item the op only moved or edited is in both. Undo is a `revert` naming the op, so the items come from
+// here rather than from the client: a client may not add an item carrying another user's note, or credit a tag to
+// anyone but itself, and putting a deleted item back has to do both.
+export type RevertRecord = {
+	opId: string
+	userId: USR.UserId
+	// the top-level item order before the op, which is where a restored item finds its place again
+	prevIds: LL.ItemId[]
+	before: LL.Item[]
+	after: LL.ItemId[]
 }
 
 // the typed payload carried by a RejectedError thrown from the reducer, for the dispatcher to surface
@@ -396,10 +425,13 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 	// ops in a batch are dependent, so a single skipped op rejects the whole batch (RejectedError)
 	// rather than applying a partial result
 	for (const op of ops) {
+		const prevList = RECORDED_OPCODES.has(op.op) ? [...state.list] : undefined
 		const success = applyOperation(state, op, emit)
 		emit({ code: 'op-outcome', op, success })
 		if (!success) throw new ODSM.RejectedError<Rejection>({ code: 'op-skipped', op }, { message: `operation ${op.op} skipped` })
+		if (prevList) recordRevert(state, op, prevList)
 	}
+	normalizeMutations(state)
 	reshare(oldState, state)
 	validateList(state.list, oldState.list, 'invalid-list', 'list')
 	validateList(state.savedList, oldState.savedList, 'invalid-saved-list', 'savedList')
@@ -683,8 +715,13 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		case 'discard-abandoned-queue-edits': {
 			session.list = [...session.savedList]
 			closeEditWindow(session)
+			// nobody is left whose edits these were. A user's reset stays revertible, which is how it is undone
+			if (newOp.op === 'discard-abandoned-queue-edits') session.revertRecords = []
 			break
 		}
+
+		case 'revert':
+			return applyRevert(session, newOp)
 
 		default:
 			assertNever(newOp)
@@ -868,6 +905,145 @@ function saveList(
 	onSideEffect?.({ code: 'request-list-save', list: session.savedList, prevList, opId: op.opId, lastSaveOpId: session.lastSaveOpId })
 }
 
+const RECORDED_OPCODES = new Set<OpCode>([
+	'add',
+	'move',
+	'swap-factions',
+	'edit-layer',
+	'add-tag',
+	'remove-tag',
+	'add-note',
+	'edit-note',
+	'delete-note',
+	'clone',
+	'configure-vote',
+	'delete',
+	'clear',
+	'reset-to-saved',
+	'revert',
+])
+
+// `prevList` is a copy of the list before `op`. No item is ever mutated in place, so an item with the same reference
+// on both sides is one the op did not touch.
+function recordRevert(state: State, op: Operation, prevList: LL.List) {
+	if (!('userId' in op) || op.userId === undefined) return
+	if (Arr.shallowEquals(prevList, state.list)) return
+	const prevRefs = new Set(prevList)
+	const nextRefs = new Set(state.list)
+	const before = prevList.filter((item) => !nextRefs.has(item))
+	const after = state.list.filter((item) => !prevRefs.has(item)).map((item) => item.itemId)
+	if (before.length === 0 && after.length === 0) return
+	const record: RevertRecord = { opId: op.opId, userId: op.userId, prevIds: prevList.map((item) => item.itemId), before, after }
+	const kept = state.revertRecords.length >= MAX_REVERT_RECORDS ? state.revertRecords.slice(1) : state.revertRecords
+	state.revertRecords = [...kept, record]
+}
+
+export function findRevertRecord(state: State, opId: string): RevertRecord | undefined {
+	for (let i = state.revertRecords.length - 1; i >= 0; i--) {
+		if (state.revertRecords[i].opId === opId) return state.revertRecords[i]
+	}
+}
+
+// Takes out what each op put in, then puts back what it replaced, each item after the nearest item that preceded it
+// before the op and is still in the list. Another user's later edit to one of those items is overwritten. A user may
+// only revert their own ops, and an op whose record was evicted cannot be reverted at all.
+function applyRevert(session: State, op: Extract<Operation, { op: 'revert' }>): boolean {
+	const records: RevertRecord[] = []
+	for (const opId of op.opIds) {
+		const record = findRevertRecord(session, opId)
+		if (!record || record.userId !== op.userId) return false
+		records.push(record)
+	}
+	const list = session.list
+	const mutations = session.mutations
+	const restoredIds: LL.ItemId[] = []
+	for (const record of records) {
+		for (const itemId of record.after) {
+			const found = LL.findItemById(list, itemId)
+			if (!found || found.index.innerIndex !== null) continue
+			for (const { item } of LL.iterItems(found.item)) ItemMut.tryApplyMutation('removed', item.itemId, mutations)
+			list.splice(found.index.outerIndex, 1)
+		}
+		// an id the restored item carries may have moved into a vote, or out of one, since
+		for (const restored of record.before) {
+			for (const { item } of LL.iterItems(restored)) LL.deleteItem(list, item.itemId)
+		}
+		for (const restored of record.before) {
+			const at = restoreIndex(list, record.prevIds, restored.itemId)
+			list.splice(at, 0, restored)
+			for (const { item } of LL.iterItems(restored)) restoredIds.push(item.itemId)
+		}
+	}
+	normalizeMutations(session, restoredIds)
+	return true
+}
+
+function restoreIndex(list: LL.List, prevIds: LL.ItemId[], itemId: LL.ItemId): number {
+	const prevIndex = prevIds.indexOf(itemId)
+	for (let i = prevIndex - 1; i >= 0; i--) {
+		const at = list.findIndex((item) => item.itemId === prevIds[i])
+		if (at !== -1) return at + 1
+	}
+	return 0
+}
+
+// Brings the draft's highlights back in line with what actually differs from the saved list: an item edited back to
+// how it was saved, or returned to its place, stops showing as edited or moved, and an item an undo put back shows as
+// whatever it is relative to the saved list. A highlight is only ever cleared here, never raised, except on `extraIds`.
+// Raising one needs the op that caused it: moving one item shifts every item between, and only the moved one moved.
+function normalizeMutations(state: State, extraIds: LL.ItemId[] = []) {
+	const mutations = state.mutations
+	const ids = new Set<LL.ItemId>(extraIds)
+	for (const set of [mutations.added, mutations.removed, mutations.moved, mutations.edited]) {
+		for (const id of set) ids.add(id)
+	}
+	if (ids.size === 0) return
+	const extra = new Set(extraIds)
+	const current = indexItems(state.list)
+	const saved = indexItems(state.savedList)
+	const currentRanks = commonRanks(current, saved)
+	const savedRanks = commonRanks(saved, current)
+	for (const id of ids) {
+		const item = current.get(id)
+		const savedItem = saved.get(id)
+		if (!item) {
+			mutations.added.delete(id)
+			mutations.edited.delete(id)
+			mutations.moved.delete(id)
+			if (savedItem) mutations.removed.add(id)
+			else mutations.removed.delete(id)
+			continue
+		}
+		mutations.removed.delete(id)
+		if (!savedItem) {
+			mutations.added.add(id)
+			mutations.edited.delete(id)
+			mutations.moved.delete(id)
+			continue
+		}
+		mutations.added.delete(id)
+		if (item === savedItem || Obj.deepEqual(item, savedItem)) mutations.edited.delete(id)
+		else if (extra.has(id)) mutations.edited.add(id)
+		if (currentRanks.get(id) === savedRanks.get(id)) mutations.moved.delete(id)
+		else if (extra.has(id)) mutations.moved.add(id)
+	}
+}
+
+function indexItems(list: LL.List): Map<LL.ItemId, LL.Item> {
+	const index = new Map<LL.ItemId, LL.Item>()
+	for (const { item } of LL.iterItems(...list)) index.set(item.itemId, item)
+	return index
+}
+
+// each id's position among the ids both lists hold, in this list's order
+function commonRanks(index: Map<LL.ItemId, LL.Item>, other: Map<LL.ItemId, LL.Item>): Map<LL.ItemId, number> {
+	const ranks = new Map<LL.ItemId, number>()
+	for (const id of index.keys()) {
+		if (other.has(id)) ranks.set(id, ranks.size)
+	}
+	return ranks
+}
+
 // every save path ends the edit window it committed: the draft's mutation highlights are spent, and latent ops
 // authored against the old window must be discarded rather than applied on top of the saved list
 function closeEditWindow(session: State) {
@@ -897,6 +1073,7 @@ export function createNewState(list?: LL.List, backburner?: BB.BackburnerItem[],
 		backburner: backburner ? [...backburner] : [],
 		savedBackburner: backburner ? [...backburner] : [],
 		backburnerEditWindowSeqId: 0,
+		revertRecords: [],
 	}
 }
 

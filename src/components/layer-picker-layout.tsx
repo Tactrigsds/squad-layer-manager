@@ -13,11 +13,11 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Browser from '@/lib/browser'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
@@ -95,7 +95,7 @@ function LayerPickerDesktop(props: LayerPickerLayoutProps) {
 				)}
 				<span className="flex-1" />
 				<Button
-					{...SubmitChord.closeAttrs}
+					{...SubmitChordClient.closeAttrs}
 					variant="ghost"
 					size="icon-sm"
 					onClick={props.onClose}

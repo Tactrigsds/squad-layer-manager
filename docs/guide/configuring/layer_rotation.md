@@ -140,6 +140,18 @@ own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer
 _Vote Display Options_ sets which parts of each choice players see when a generated vote starts. The map is always
 shown, because the map is the one part the choices are certain to differ by.
 
+## Undoing edits
+
+Use _Undo_ and _Redo_ in the queue's header, or Ctrl+Z and Ctrl+Y (⌘Z and ⇧⌘Z on a Mac), to step back and forward
+through your own edits to the queue. A saved rotation's editor provides the same buttons and keys. Click in an
+editor before pressing the keys, so the keys reach that editor. Inside a text field, Ctrl+Z and Ctrl+Y undo and redo
+the typing instead.
+
+An undo takes back only your own edits. Another admin editing the queue at the same time keeps their edits, unless that
+admin changed the same layer after you did. After a layer is deleted, the queue is cleared or the queue's edits are
+discarded, SLM shows a message with an _Undo_ button. An edit can still be undone after a save. The undo is then a new
+change that needs saving. Once another admin discards the queue's edits, there is nothing left to undo.
+
 ## Saved rotations
 
 Creating a rotation needs `rotations:create`. Whoever created a rotation can edit it, along with the users and roles

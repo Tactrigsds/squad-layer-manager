@@ -11,13 +11,13 @@ import {
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 import * as TextEntryFocus from '@/systems/text-entry-focus.client'
 
 import PhoneFiltersTab from './layer-picker-phone-filters.tsx'
@@ -91,7 +91,13 @@ export default function LayerPickerPhone(props: {
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 				)}
 				<span className="flex-1" />
-				<Button {...SubmitChord.closeAttrs} variant="ghost" size="icon" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
+				<Button
+					{...SubmitChordClient.closeAttrs}
+					variant="ghost"
+					size="icon"
+					onClick={props.onClose}
+					aria-label={tr.text(UI_Msgs.close())}
+				>
 					<Icons.X />
 				</Button>
 			</HeadlessDialogHeader>
