@@ -88,7 +88,12 @@ export type AuthedUser = USR.Ctx & AuthSession
 export type AttachedFastify = Db & Partial<ResolvedRoute> & CS.AbortSignal
 export type Websocket = CS.Ctx & { ws: ws.WebSocket }
 export const WebsocketDef = CD.defCtx<Websocket>()(['ws'], { name: 'websocket' })
-export type OrpcSessionBase = CS.Ctx & AuthedUser & WSSession & Websocket & FastifyRequest & Db
+// Whether the connection's client runs the layer data this server serves. Layer ids cross the socket as dense ids,
+// which only mean the same thing on both ends of one layer data, so a client on any other is refused everything but
+// the config that tells it to reload (see the staleLayerData middleware in orpc-base.ts).
+export type LayerDataSession = { layerDataCurrent: boolean }
+
+export type OrpcSessionBase = CS.Ctx & AuthedUser & WSSession & Websocket & FastifyRequest & Db & LayerDataSession
 
 export type OrpcBase = OrpcSessionBase & CS.AbortSignal
 

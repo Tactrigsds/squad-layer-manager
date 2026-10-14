@@ -6,6 +6,7 @@ import { WebSocket } from 'ws'
 import * as Color from '@/lib/color'
 import * as FB from '@/models/filter-builders.models'
 import type * as L from '@/models/layer.models'
+import * as PA from '@/models/procedure-access.models'
 import type * as SC from '@/models/server-console.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
@@ -13,7 +14,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 import { ADMIN_USER, type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
 import { appEventTypes, filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
-import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
+import { createOrpcClient, firstYield, layerDataHash, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
 // disables entries, but nothing stops a caller from asking anyway -- these assert the handlers themselves
@@ -563,5 +564,19 @@ describe('local admin list sources', () => {
 		} finally {
 			expect(await adminClient.settings.global.updateSettings({ adminLists: original })).toMatchObject({ code: 'ok' })
 		}
+	})
+})
+
+// Layer ids cross the socket as dense ids, which mean the same layer on both ends only of one layer data, so a page
+// still running the layer data from before a deploy is refused everything but the config it reloads on.
+describe('a client on other layer data than the server', () => {
+	it('is refused every procedure but the config', async () => {
+		const stale = await createOrpcClient(app, ADMIN_USER, { layerDataHash: 'not-the-servers-layer-data' })
+		await expect(stale.layerQueries.getLayerInfo({ layerId: LAYERS.narvaRaas })).rejects.toMatchObject({
+			code: 'PRECONDITION_FAILED',
+			message: PA.STALE_LAYER_DATA,
+		})
+		const config = await firstYield((signal) => stale.config.watchConfig(undefined, { signal }), { label: 'the config' })
+		expect(config.layerDataHash).toBe(await layerDataHash(app))
 	})
 })
