@@ -7,10 +7,8 @@ import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
 import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
-import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
-import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -18,18 +16,17 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as WarnChat from '@/systems/warn-chat.client'
 
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, type MenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
+import { ReasonPicker } from './reason-picker'
 import { ContextMenuShortcut } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
-import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 // When the selection is exactly one squad's full membership (and nothing else), returns that squad so the
-// warn action can route to the squad details window; otherwise null (mixed/partial selection).
+// warn tags the squad; otherwise null (mixed/partial selection).
 export function detectFullSquadSelection(
 	selectedIds: SM.PlayerId[],
 	players: SM.Player[],
@@ -72,7 +69,6 @@ export default function PlayerBulkContextMenuOptions({
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
 	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
-	const openOrFocusWindow = useOpenOrFocusWindow()
 	// holds the latest custom-reason input value; the alert dialog only resolves a button id, so we read the
 	// reason from here rather than the (unmounting) DOM input when the dialog confirms
 	const customReasonRef = React.useRef('')
@@ -269,17 +265,6 @@ export default function PlayerBulkContextMenuOptions({
 		})
 	}
 
-	// a full-squad selection warns via the squad details window (prefixed @Squad); anything else routes to the
-	// server activity "selected" warn box, which warns exactly the current selection
-	function warn() {
-		if (fullSquad) {
-			openOrFocusWindow(WINDOW_ID.enum['squad-details'], { uniqueSquadId: fullSquad.uniqueId, stores })
-			WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: fullSquad.uniqueId })
-		} else {
-			WarnChat.requestWarnFocus({ kind: 'server-activity' })
-		}
-	}
-
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
@@ -312,22 +297,35 @@ export default function PlayerBulkContextMenuOptions({
 		})
 	}
 
-	async function warnPreset() {
+	// a full-squad selection is warned as the squad, which tags the message with @Squad<id>
+	async function warn() {
+		customReasonRef.current = ''
 		presetReasonRef.current = ''
-		const msg = tr.confirm(SM_Msgs.warnPreset({ ...msgTarget, fullSquad: !!fullSquad }))
+		const msg = tr.confirm(SM_Msgs.warn({ ...msgTarget, fullSquad: !!fullSquad }))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
-					<ReasonPicker action="warn" presetRef={presetReasonRef} required squadName={fullSquad?.squadName} />
+					<ReasonPicker
+						action="warn"
+						presetRef={presetReasonRef}
+						customRef={customReasonRef}
+						required
+						squadName={fullSquad?.squadName}
+					/>
 					{selectedPlayerList()}
 				</div>
 			),
 			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
-		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		const input = SquadServerClient.readReasonInput({
+			action: 'warn',
+			required: true,
+			presetRef: presetReasonRef,
+			customRef: customReasonRef,
+		})
 		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({
 			serverId,
@@ -339,7 +337,7 @@ export default function PlayerBulkContextMenuOptions({
 			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, input.presetReasonLabel)))
 	}
 
 	return (
@@ -402,13 +400,11 @@ export default function PlayerBulkContextMenuOptions({
 			<PlayerOpenLinksSub playerIds={playerIds} slots={slots} stores={stores} />
 			<PlayerCopyIdsSub playerIds={playerIds} slots={slots} stores={stores} />
 			<Separator />
-			<WarnReasonsSub
-				slots={slots}
-				denied={warnDenied}
-				label={fullSquad ? tr.text(SM_Msgs.warnSquadLabel()) : tr.text(SM_Msgs.warnLabel())}
-				onCustom={warn}
-				onPreset={warnPreset}
-			/>
+			<PermissionDeniedTooltip denied={warnDenied}>
+				<Item onClick={warn} disabled={!!warnDenied || playerIds.length === 0}>
+					{fullSquad ? tr.text(SM_Msgs.warnSquadLabel()) : tr.text(SM_Msgs.warnLabel())}
+				</Item>
+			</PermissionDeniedTooltip>
 			<AddPlayerFlagsMenuItem
 				slots={slots}
 				playerIds={playerIds}

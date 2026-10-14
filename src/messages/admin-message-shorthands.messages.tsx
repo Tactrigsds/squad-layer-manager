@@ -79,8 +79,6 @@ export const customReason = def('Custom')
 
 export const noReason = def('None')
 
-export const presetReasonItem = def('Message Shorthand')
-
 export const reasonPicker = def('Reason')
 
 export const enterReason = def('Enter a reason')
