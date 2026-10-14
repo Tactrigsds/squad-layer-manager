@@ -365,6 +365,13 @@ the tests after it fail for want of the state earlier tests made.
 CI's runners are about half as fast as a development machine. Reproduce a failure that only happens in CI by
 building the CI image (`docker build --target test`) and running it with `--cpus=1.5`.
 
+When a failure looks like a flake, search the GitHub issues for it (`gh issue list --search`). A failure the
+current branch caused is a regression, not a flake: fix it on the branch.
+
+- If no issue covers it, file one with the failing test, the error and the evidence (the CI run, the trace), tell
+  the user about it, and suggest fixing it where the fix looks within reach.
+- If an issue already covers it, name the issue to the user and do not suggest fixing it.
+
 # Changelog
 
 When a change is something a user or operator could notice without reading the code or the logs, add a fragment
