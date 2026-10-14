@@ -253,6 +253,8 @@ async function init(
 	}
 
 	if (input.layerData) L.setLayerData(input.layerData)
+	const idLayoutMismatch = LC.checkDenseIdLayout(engine.query<LE.IdLayoutResponse>({ kind: 'idLayout' }))
+	if (idLayoutMismatch) throw new Error(`the layer table and the layer data disagree on layer ids: ${idLayoutMismatch}`)
 	log.info('layer engine ready: %s layers%s', engine.rowCount, prev ? ' (rebuilt for a new layer pool)' : '')
 
 	return {

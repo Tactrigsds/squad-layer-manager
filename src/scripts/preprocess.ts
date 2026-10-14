@@ -153,7 +153,7 @@ async function main() {
 // Builds the factored artifact the query engine reads (see models/layer-artifact.models.ts and layer-engine/src/store.rs).
 //
 // Two passes, so the whole table never exists as JS objects: first the base layers, which fix the row order (ascending
-// packed id, which the engine binary-searches and which groups layers of a map together); then the extra-cols csv,
+// layer id, which groups each layer's rows into one contiguous block); then the extra-cols csv,
 // whose rows are placed by looking their id up in that order. Columns are built straight into typed arrays with the
 // null sentinels already written.
 async function buildLayerArtifact(
