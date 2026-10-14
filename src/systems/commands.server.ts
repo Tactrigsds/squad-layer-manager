@@ -56,6 +56,26 @@ export function setup() {
 
 type HandlerResult = { code: string; msg?: string } | undefined
 
+// The codes a command returns when it failed on SLM's side. Every other error code is a caller's mistake, which the
+// command has already warned them about.
+const FAULT_CODES = new Set([
+	'err:invalid-chat-channel',
+	'err:rcon-error',
+	'err:rcon',
+	'err:plugin-failed',
+	'err:unexpected',
+	'err:bm-request-failed',
+])
+
+// A caller's mistake is routine (an unknown command, an argument that resolved to nobody), so it is logged at info.
+// Only a fault is logged at error.
+export function logResult(msg: SM.RconEvents.ChatMessage, res: HandlerResult) {
+	if (!res || res.code === 'ok') return
+	const typed = msg.message.trim()
+	if (FAULT_CODES.has(res.code)) log.error({ code: res.code }, 'command "%s" failed: %s', typed, res.msg ?? res.code)
+	else log.info({ code: res.code }, 'command "%s" rejected: %s', typed, res.msg ?? res.code)
+}
+
 // Core commands plus whatever the active plugins contribute. Core first, so a plugin can never shadow one: the
 // first trigger match wins, and the settings schema only polices collisions between the configs it stores.
 // The conflict set as last logged. Compared rather than accumulated, so a steady state is logged once instead

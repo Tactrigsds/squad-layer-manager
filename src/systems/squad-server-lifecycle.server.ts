@@ -571,19 +571,11 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 									time: event.time,
 								})
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some(({ prefix }) => event.message.startsWith(prefix))) {
-									opts.push(
-										Commands.handleCommand(ctx, event).then((res) => {
-											if (res && res?.code !== 'ok') SquadServer.log.error(res)
-										}),
-									)
+									opts.push(Commands.handleCommand(ctx, event).then((res) => Commands.logResult(event, res)))
 								} else if (CommandPrompts.capturesAnswer(serverId, SM.PlayerIds.getPlayerId(event.playerIds), event)) {
 									// a number this player was just asked for outranks the same number as a vote: the prompt was
 									// solicited from them seconds ago and clears itself either way (see command-prompts.server)
-									opts.push(
-										Commands.handleChoiceAnswer(ctx, event).then((res) => {
-											if (res && res?.code !== 'ok') SquadServer.log.error(res)
-										}),
-									)
+									opts.push(Commands.handleChoiceAnswer(ctx, event).then((res) => Commands.logResult(event, res)))
 								} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
 									opts.push(Vote.handleVote(ctx, event))
 								}
