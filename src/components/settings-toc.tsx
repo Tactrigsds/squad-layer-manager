@@ -51,8 +51,8 @@ function deepStable<A extends unknown[], R>(selector: (...args: A) => R): (...ar
 }
 const selectTocModes = deepStable(SettingsEditorFrame.Sel.tocModes)
 const selectCommentedAnchorIds = deepStable(SettingsEditorFrame.Sel.commentedAnchorIds)
-function selectAdminActionReasons(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
-	return SettingsEditorFrame.Sel.globalDraft(...states)?.adminActionReasons
+function selectAdminMessageShorthands(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
+	return SettingsEditorFrame.Sel.globalDraft(...states)?.adminMessageShorthands
 }
 function selectMessageVariables(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
 	return SettingsEditorFrame.Sel.globalDraft(...states)?.messageVariables
@@ -88,7 +88,7 @@ function stripNullable(node: Node): Node {
 function tocEntries(path: string, value: unknown): TocEntry[] {
 	if (!Array.isArray(value)) return []
 	switch (path) {
-		case 'adminActionReasons':
+		case 'adminMessageShorthands':
 			return value.map((r: { label?: string; keywords?: string[] }, i) => ({
 				label: r?.label || `#${i + 1}`,
 				keywords: r?.keywords ?? [],
@@ -379,7 +379,7 @@ function useSectionState(sectionKeys: SettingsEditorFrame.Key[]) {
 	return {
 		modes: Zus.useStore(...sectionKeys, selectTocModes),
 		commentedIdList: Zus.useStore(...sectionKeys, selectCommentedAnchorIds),
-		adminActionReasons: Zus.useStore(...sectionKeys, selectAdminActionReasons),
+		adminMessageShorthands: Zus.useStore(...sectionKeys, selectAdminMessageShorthands),
 		messageVariables: Zus.useStore(...sectionKeys, selectMessageVariables),
 	}
 }
@@ -399,7 +399,7 @@ export default function SettingsToc({
 	servers: { id: string; displayName: string }[]
 	sectionKeys: SettingsEditorFrame.Key[]
 }) {
-	const { modes, commentedIdList, adminActionReasons, messageVariables } = useSectionState(sectionKeys)
+	const { modes, commentedIdList, adminMessageShorthands, messageVariables } = useSectionState(sectionKeys)
 	const { globalMode, serverModes, pluginModes, newServerMode, creatingServer } = modes
 	const commentedIds = React.useMemo(() => new Set(commentedIdList), [commentedIdList])
 	const [query, setQuery] = React.useState('')
@@ -433,9 +433,9 @@ export default function SettingsToc({
 	}, [perms, servers])
 
 	const globalEntries = React.useMemo((): EntriesByPath => {
-		const sources: Record<string, unknown> = { adminActionReasons, messageVariables }
+		const sources: Record<string, unknown> = { adminMessageShorthands, messageVariables }
 		return new Map([...TOC_ENTRY_PATHS].map((p) => [p, tocEntries(p, sources[p])]))
-	}, [adminActionReasons, messageVariables])
+	}, [adminMessageShorthands, messageVariables])
 
 	// the field anchors only exist in the GUI editor; in YAML mode a section collapses to a single leaf
 	const globalChildren = React.useMemo(

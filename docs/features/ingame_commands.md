@@ -15,9 +15,9 @@ top.
 
 ![the commands page](../images/configuring/commands_page.png)
 
-A command's details list each of its arguments, the reasons configured for it, and examples to copy.
+A command's details list each of its arguments, the message shorthands configured for it, and examples to copy.
 
-![the details of /timeout, with its arguments, configured reasons and examples](../images/features/command_timeout.png)
+![the details of /timeout, with its arguments, configured message shorthands and examples](../images/features/command_timeout.png)
 
 ![the details of /swapnow, with the ways to name a team](../images/features/command_swapnow.png)
 
@@ -39,6 +39,6 @@ failing. SLM warns the player with up to 3 of the closest matches. Typing 1 to 3
 
 ![a mistyped player name in /warn, the numbered choices, and the warn sent after picking one](../images/features/command_typo_prompt.png)
 
-Typo correction covers player names, squads, teams, flags, action reasons, `/help` sections and the words of a layer
+Typo correction covers player names, squads, teams, flags, message shorthands, `/help` sections and the words of a layer
 request. When a command has more than one word to correct, SLM asks about each in turn, or takes one number per
 question at once, such as `1 2`. A choice expires after 45 seconds, or when the player types another command.

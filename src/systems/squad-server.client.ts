@@ -8,10 +8,10 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import * as AppRoutesClient from '@/systems/app-routes.client'
@@ -140,7 +140,7 @@ export function useWarnPlayersMutation() {
 // server-side check so the dialog can fail fast with a toast). Returns null when blocked; otherwise the
 // mutation inputs (at most one of the two set).
 export function readReasonInput(opts: {
-	action: AAR.AdminActionType
+	action: AMS.AdminActionType
 	required: boolean
 	presetRef: React.MutableRefObject<string>
 	customRef?: React.MutableRefObject<string>
@@ -148,7 +148,7 @@ export function readReasonInput(opts: {
 	const presetReasonLabel = opts.presetRef.current || undefined
 	const reason = presetReasonLabel ? undefined : opts.customRef?.current.trim() || undefined
 	if (opts.required && !presetReasonLabel && !reason) {
-		toast.error(...tr.toast(SM_Msgs.reasonRequired(tr.text(AAR_Msgs.actionNames[opts.action]))))
+		toast.error(...tr.toast(SM_Msgs.reasonRequired(tr.text(AMS_Msgs.actionNames[opts.action]))))
 		return null
 	}
 	return { reason, presetReasonLabel }

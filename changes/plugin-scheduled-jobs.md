@@ -15,4 +15,4 @@ The audit log records a job run that fails, including one still waiting when its
 long, a run an admin started by hand or stopped, and every run of a job that asks for its successes to be recorded. A job that runs for a server also appears
 in that server's activity feed.
 
-The plugin API is version 0.15.1, which adds `slm/plugin/schedule`. A plugin built for 0.15 keeps working.
+The plugin API adds `slm/plugin/schedule`.

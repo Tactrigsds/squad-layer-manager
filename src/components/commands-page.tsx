@@ -11,7 +11,7 @@ import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CMD_Msgs from '@/messages/command.messages'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import type * as PLG from '@/models/plugins.models'
@@ -94,7 +94,7 @@ function CommandDetails({
 	shortcuts: Shortcut[]
 	settings: PublicSettings
 }) {
-	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
+	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminMessageShorthands }
 	const args = CMDH.describeArgs(cmdId, cmd, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
@@ -422,7 +422,7 @@ function commandEntry(
 	cmdId: CMD.CommandId,
 	cmd: CMD.CommandConfig,
 	sectionLabel: string,
-	requiredReasonActions: readonly AAR.AdminActionType[],
+	requiredReasonActions: readonly AMS.AdminActionType[],
 ): Entry {
 	const primary = CMD.primaryTrigger(cmd)
 	const groups = CMDH.triggerGroups(cmdId, cmd, requiredReasonActions)

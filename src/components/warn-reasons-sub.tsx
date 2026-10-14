@@ -3,8 +3,8 @@ import React from 'react'
 import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import type * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -29,9 +29,9 @@ export function WarnReasonsSub(props: {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
 	const hasReasons = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
-		(s) => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
+		(s) => !!s && AMS.shorthandsForAction(s.adminMessageShorthands, 'warn').length > 0,
 	)
-	const label = props.label ?? tr.text(AAR_Msgs.actionNames.warn)
+	const label = props.label ?? tr.text(AMS_Msgs.actionNames.warn)
 	const disabled = !!props.denied || props.disabled
 
 	if (!hasReasons) {
@@ -49,9 +49,9 @@ export function WarnReasonsSub(props: {
 			<Sub>
 				<SubTrigger disabled={disabled}>{label}</SubTrigger>
 				<SubContent>
-					<Item onClick={props.onCustom}>{tr.text(AAR_Msgs.customReason())}</Item>
+					<Item onClick={props.onCustom}>{tr.text(AMS_Msgs.customReason())}</Item>
 					<Separator />
-					<Item onClick={props.onPreset}>{tr.text(AAR_Msgs.presetReasonItem())}</Item>
+					<Item onClick={props.onPreset}>{tr.text(AMS_Msgs.presetReasonItem())}</Item>
 				</SubContent>
 			</Sub>
 		</PermissionDeniedTooltip>
@@ -65,7 +65,7 @@ const CUSTOM = '__custom__'
 // label to `presetRef` and any custom text to `customRef` (refs because the alert dialog unmounts its content on
 // confirm). Preset-only actions with no configured presets render nothing.
 export function ReasonPicker(props: {
-	action: AAR.AdminActionType
+	action: AMS.AdminActionType
 	presetRef: React.MutableRefObject<string>
 	// pass when free-text reasons are allowed for this action (warn/kill/kick); omit for preset-only actions
 	customRef?: React.MutableRefObject<string>
@@ -79,7 +79,7 @@ export function ReasonPicker(props: {
 	autoOpen?: boolean
 }) {
 	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
-		s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
+		s ? AMS.shorthandsForAction(s.adminMessageShorthands, props.action) : [],
 	)
 	const { presetRef, customRef } = props
 	const allowCustom = !!customRef
@@ -101,7 +101,9 @@ export function ReasonPicker(props: {
 		// why instead of silently rendering nothing
 		if (props.required) {
 			return (
-				<p className="text-xs text-destructive">{tr.text(AAR_Msgs.noReasonsConfigured(tr.text(AAR_Msgs.actionNames[props.action])))}</p>
+				<p className="text-xs text-destructive">
+					{tr.text(AMS_Msgs.noShorthandsConfigured(tr.text(AMS_Msgs.actionNames[props.action])))}
+				</p>
 			)
 		}
 		return null
@@ -113,11 +115,11 @@ export function ReasonPicker(props: {
 		<div className="grid gap-2">
 			<Label>
 				{tr.richText(
-					AAR_Msgs.reasonLabel(
+					AMS_Msgs.reasonLabel(
 						props.required ? (
-							<span className="text-destructive">{tr.text(AAR_Msgs.reasonRequired())}</span>
+							<span className="text-destructive">{tr.text(AMS_Msgs.reasonRequired())}</span>
 						) : (
-							<span className="text-muted-foreground">{tr.text(AAR_Msgs.reasonOptional())}</span>
+							<span className="text-muted-foreground">{tr.text(AMS_Msgs.reasonOptional())}</span>
 						),
 					),
 				)}
@@ -125,17 +127,17 @@ export function ReasonPicker(props: {
 			{reasons.length > 0 && (
 				<ComboBox
 					ref={comboRef}
-					title={tr.text(AAR_Msgs.reasonPicker())}
+					title={tr.text(AMS_Msgs.reasonPicker())}
 					className="w-full"
 					value={selected}
 					// configured order, with Custom/None pinned first
 					sort={false}
 					options={[
-						{ value: CUSTOM, label: allowCustom ? tr.text(AAR_Msgs.customReason()) : tr.text(AAR_Msgs.noReason()) },
+						{ value: CUSTOM, label: allowCustom ? tr.text(AMS_Msgs.customReason()) : tr.text(AMS_Msgs.noReason()) },
 						...reasons.map((reason) => ({
 							value: reason.label,
 							keywords: reason.keywords,
-							description: AAR.reasonText(props.action, reason),
+							description: AMS.shorthandText(props.action, reason),
 						})),
 					]}
 					onSelect={(value) => {
@@ -148,7 +150,7 @@ export function ReasonPicker(props: {
 			{customVisible && (
 				<Input
 					autoComplete="off"
-					placeholder={tr.text(AAR_Msgs.enterReason())}
+					placeholder={tr.text(AMS_Msgs.enterReason())}
 					defaultValue={customRef!.current}
 					onChange={(e) => {
 						customRef!.current = e.target.value
@@ -172,8 +174,8 @@ export function ReasonPicker(props: {
 // resolves to the entered duration (empty while it's unparseable, so {{#duration}} sections drop out); other
 // {{variables}} come from the configured Message Variables. Renders nothing until there's some text to show.
 export function ReasonMessagePreview(props: {
-	action: AAR.AdminActionType
-	reason?: AAR.AdminActionReason
+	action: AMS.AdminActionType
+	reason?: AMS.AdminMessageShorthand
 	customText?: string
 	durationMs?: number
 	squadName?: string
@@ -186,11 +188,11 @@ export function ReasonMessagePreview(props: {
 	if (props.action === 'timeout')
 		base.duration = props.durationMs && props.durationMs > 0 ? ZodUtils.formatHumanTime(props.durationMs) : ''
 	const vars = Templating.resolveTemplateVars(messageVariables, base)
-	const text = props.reason ? AAR.formatAppliedReason(props.action, props.reason, { vars }) : Templating.renderTemplate(custom!, vars)
+	const text = props.reason ? AMS.formatShorthand(props.action, props.reason, { vars }) : Templating.renderTemplate(custom!, vars)
 
 	return (
 		<div className="grid gap-1">
-			<span className="text-xs text-muted-foreground">{tr.text(AAR_Msgs.messagePreview())}</span>
+			<span className="text-xs text-muted-foreground">{tr.text(AMS_Msgs.messagePreview())}</span>
 			<MessagePreviewBox>{text}</MessagePreviewBox>
 		</div>
 	)

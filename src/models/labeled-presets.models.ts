@@ -3,7 +3,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
 
-// shared shape for admin-configurable presets addressable from in-game chat (admin action reasons).
+// shared shape for admin-configurable presets addressable from in-game chat (message shorthands).
 // The label names the preset in menus and the audit log; the keywords are what chat matches against, and are
 // deliberately the only thing it matches: a preset arg is only recognized as one token, so a label with whitespace
 // would silently be unreachable.

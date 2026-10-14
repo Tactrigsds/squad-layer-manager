@@ -3,7 +3,7 @@ import type * as React from 'react'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import type * as RRS from '@/models/repeat-rulesets.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
@@ -30,7 +30,7 @@ export function selectRepeatRulesets(s: PublicSettings | undefined): readonly RR
 
 // whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).
 // warns aren't configurable here: they always require one.
-export function useReasonRequired(action: AAR.RequirableAdminActionType): boolean {
+export function useReasonRequired(action: AMS.RequirableAdminActionType): boolean {
 	return Zus.useStore(PublicSettingsStore, (s) => s?.requireReasonFor.includes(action) ?? false)
 }
 

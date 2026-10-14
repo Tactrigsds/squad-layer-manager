@@ -4,7 +4,7 @@ import * as React from 'react'
 import * as DH from '@/lib/display-helpers'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as I18n from '@/messages/i18n'
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as LL from '@/models/layer-list.models'
@@ -365,7 +365,7 @@ const QUEUE_UPDATE_VERBS: Record<AppEvents.QueueUpdateKind, TString> = {
 // `playerName` resolves an eos id for the types that name a player the caller can't otherwise identify.
 export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.PlayerId) => string | undefined): string {
 	const players = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
-	const forReason = (reason: AAR.AppliedReason | undefined) => (reason?.label ? ` for ${reason.label}` : '')
+	const forReason = (reason: AMS.AppliedReason | undefined) => (reason?.label ? ` for ${reason.label}` : '')
 	switch (e.type) {
 		case 'PLAYER_WARNED':
 			// preset-reason warns embed the label in the delivered message, so it isn't repeated here

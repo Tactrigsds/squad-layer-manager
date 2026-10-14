@@ -5,10 +5,10 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
 import * as MH from '@/models/match-history.models'
@@ -36,10 +36,10 @@ export async function emitAppEvent(ctx: SQS.Ctx & C.Db & CS.AbortSignal, appEven
 	ctx.server.appEvent$.emit(appEvent)
 }
 
-// resolves a preset admin-action reason against the current global settings. handlers call this before executing
+// resolves a message shorthand against the current global settings. handlers call this before executing
 // anything so a stale preset (deleted/retargeted since the client loaded it) fails the whole action.
-export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLabel: string) {
-	return AAR.resolveReasonByLabel(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
+export function resolvePresetReason(action: AMS.AdminActionType, presetReasonLabel: string) {
+	return AMS.resolveShorthandByLabel(Settings.GLOBAL_SETTINGS.adminMessageShorthands, action, presetReasonLabel)
 }
 
 // the variable context for reason/broadcast message templates: the admin-configured custom variables, expanded
@@ -54,12 +54,12 @@ export function messageVars(extra?: Record<string, string>): Record<string, stri
 // and none was provided, else null. A warn is nothing but its reason, so one is always required (which is why
 // warn isn't configurable in requireReasonFor).
 export function reasonRequirementError(
-	action: AAR.AdminActionType,
+	action: AMS.AdminActionType,
 	hasReason: boolean,
 ): { code: 'err:reason-required'; msg: string } | null {
 	if (hasReason) return null
 	const required = action === 'warn' || Settings.GLOBAL_SETTINGS.requireReasonFor.some((a) => a === action)
-	if (required) return { code: 'err:reason-required', msg: `A reason is required for ${AAR_Msgs.actionNames[action].original}.` }
+	if (required) return { code: 'err:reason-required', msg: `A reason is required for ${AMS_Msgs.actionNames[action].original}.` }
 	return null
 }
 
@@ -68,21 +68,21 @@ export function reasonRequirementError(
 // message variables so custom and preset text render identically everywhere. `applied` is undefined only when
 // no reason was given and the action doesn't require one.
 export function resolveReasonInput(
-	action: AAR.AdminActionType,
+	action: AMS.AdminActionType,
 	input: { reason?: string; presetReasonLabel?: string },
 	extraVars?: Record<string, string>,
 ):
-	| { code: 'ok'; applied?: AAR.AppliedReason }
+	| { code: 'ok'; applied?: AMS.AppliedReason }
 	| { code: 'err:reason-required'; msg: string }
-	| Exclude<AAR.ResolveReasonRes, { code: 'ok' }> {
+	| Exclude<AMS.ResolveShorthandRes, { code: 'ok' }> {
 	const rr = reasonRequirementError(action, !!(input.reason || input.presetReasonLabel))
 	if (rr) return rr
 	if (input.presetReasonLabel) {
 		const res = resolvePresetReason(action, input.presetReasonLabel)
 		if (res.code !== 'ok') return res
-		return { code: 'ok', applied: AAR.applyReason(action, res.reason, messageVars(extraVars)) }
+		return { code: 'ok', applied: AMS.applyShorthand(action, res.shorthand, messageVars(extraVars)) }
 	}
-	if (input.reason) return { code: 'ok', applied: AAR.applyCustomReason(input.reason, messageVars(extraVars)) }
+	if (input.reason) return { code: 'ok', applied: AMS.applyCustomReason(input.reason, messageVars(extraVars)) }
 	return { code: 'ok' }
 }
 
@@ -140,11 +140,11 @@ export async function kickPlayersAction(
 	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
-	reason?: AAR.AppliedReason,
+	reason?: AMS.AppliedReason,
 ): Promise<SM.PlayerId[]> {
 	if (targets.length === 0) return []
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-	const message = ctx.tr.text(SM_Msgs.notifyKicked(reason && AAR.renderAppliedReason(reason)))
+	const message = ctx.tr.text(SM_Msgs.notifyKicked(reason && AMS.renderAppliedReason(reason)))
 	let appEvent: AppEvents.PlayerKicked
 	{
 		// The app event can only be written once the roster confirms the kicks, and a kick's server event references it.
@@ -281,7 +281,7 @@ export async function warnPlayers(
 	if (opts?.notifyAdmins === false || actor.type !== 'slm-user') return
 	const audience = await classifyWarnTargets(ctx, targets)
 	if (opts?.notifyAdmins === undefined) {
-		// admin-to-admin chatter shouldn't page the whole admin team; a preset reason is a formal action, so it still does
+		// admin-to-admin chatter shouldn't page the whole admin team; a message shorthand is a formal action, so it still does
 		if (!opts?.reasonLabel && audience.allAdmins) return
 	}
 	const notifyMessage = opts?.adminNotifyMessage ?? reason
@@ -333,7 +333,7 @@ export async function disbandSquadAction(
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
-	reason?: AAR.AppliedReason,
+	reason?: AMS.AppliedReason,
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	const teams = SquadServer.getCurrTeams(ctx)
@@ -365,7 +365,7 @@ export async function disbandSquadAction(
 			ctx,
 			appEvent.id,
 			members,
-			AAR.renderAppliedReason(reason, { audienceTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
+			AMS.renderAppliedReason(reason, { audienceTag: squad ? SM.squadWarnTag(squad) : `@Squad${squadId}` }),
 		)
 	}
 	// name the squad + faction consistently with squad warns (e.g. "disbanded Squad1 (PLA)")
@@ -378,7 +378,7 @@ export async function removePlayersFromSquad(
 	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
-	reason?: AAR.AppliedReason,
+	reason?: AMS.AppliedReason,
 ) {
 	if (targets.length === 0) return
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -400,7 +400,7 @@ export async function removePlayersFromSquad(
 	})
 	await Promise.all(targets.map((target) => SquadRcon.removeFromSquad(ctx, target)))
 	if (reason) {
-		await sendReasonFollowUpWarn(ctx, appEvent.id, targets, AAR.renderAppliedReason(reason))
+		await sendReasonFollowUpWarn(ctx, appEvent.id, targets, AMS.renderAppliedReason(reason))
 	}
 	await notifyAdminsOfWebAction(ctx, appEvent)
 }
@@ -522,7 +522,7 @@ export async function demoteCommanderAction(
 	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
-	reason?: AAR.AppliedReason,
+	reason?: AMS.AppliedReason,
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	const appEvent = AppEvents.create<AppEvents.CommanderDemoted>({
@@ -537,7 +537,7 @@ export async function demoteCommanderAction(
 	await emitAppEvent(ctx, appEvent)
 	await SquadRcon.demoteCommander(ctx, playerId)
 	if (reason) {
-		await sendReasonFollowUpWarn(ctx, appEvent.id, [playerId], AAR.renderAppliedReason(reason))
+		await sendReasonFollowUpWarn(ctx, appEvent.id, [playerId], AMS.renderAppliedReason(reason))
 	}
 	await notifyAdminsOfWebAction(ctx, appEvent)
 }

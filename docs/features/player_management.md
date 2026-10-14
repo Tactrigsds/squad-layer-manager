@@ -47,15 +47,15 @@ On a phone, the same actions open from a menu button at the end of each player's
 Roles decide which of these actions each admin may take, and can cap some of them, such as the longest timeout. See
 [Permissions and access control](permissions.md).
 
-### Action reasons
+### Message shorthands
 
-An action reason is a preset message for a common offence, such as teamkilling or wasting assets. Each reason holds
-one message per action, so a warn for teamkilling can read "Do not team kill." while a kick for the same reason reads
-"You have been kicked for team killing." The dashboard's action dialogs offer the reasons in a list, beside a custom
-message. In game, a reason's keyword takes the place of the message: `/kick Kestrel tk` kicks Kestrel with the
-_Teamkilling_ reason's kick message.
+A message shorthand is a preset message for a common offence, such as teamkilling or wasting assets. Each shorthand
+holds one message per action, so a warn for teamkilling can read "Do not team kill." while a kick for the same
+offence reads "You have been kicked for team killing." The dashboard's action dialogs offer the shorthands in a list,
+beside a custom message. In game, a shorthand's keyword takes the place of the message: `/kick Kestrel tk` kicks
+Kestrel with the _Teamkilling_ shorthand's kick message.
 
-![choosing a reason in the Kick Players dialog](../images/configuring/kick_dialog.png)
+![choosing a shorthand in the Kick Players dialog](../images/configuring/kick_dialog.png)
 
 An install can require a reason for chosen actions. See
 [Admin actions and commands](../guide/configuring/admin_actions.md#warns-broadcasts-and-admin-actions).

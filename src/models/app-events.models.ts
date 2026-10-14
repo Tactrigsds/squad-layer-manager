@@ -5,7 +5,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as EM from '@/models/event-meta.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
@@ -62,17 +62,17 @@ export type Base = z.infer<z.ZodObject<typeof baseShape>>
 
 const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) => z.object({ ...baseShape, type: z.literal(type), ...shape })
 
-// an admin-action reason snapshotted at action time (template + variable values; see AAR.AppliedReason), so
+// an action's reason snapshotted at action time (template + variable values; see AMS.AppliedReason), so
 // renaming/deleting the preset or editing message variables later doesn't corrupt history. The delivered text
-// is AAR.renderAppliedReason(reason) -- re-renderable, e.g. with a substituted remaining timeout duration.
-const AppliedActionReasonSchema = AAR.AppliedReasonSchema
-export type AppliedActionReason = AAR.AppliedReason
+// is AMS.renderAppliedReason(reason) -- re-renderable, e.g. with a substituted remaining timeout duration.
+const AppliedActionReasonSchema = AMS.AppliedReasonSchema
+export type AppliedActionReason = AMS.AppliedReason
 
 export const PlayerWarnedSchema = event('PLAYER_WARNED', {
 	message: z.string(),
 	// the players this warn action targeted (eos ids)
 	targets: z.array(SM.PlayerIdSchema),
-	// set when the message came from a preset admin-action reason
+	// set when the message came from a message shorthand
 	reasonLabel: z.string().optional(),
 })
 export type PlayerWarned = z.infer<typeof PlayerWarnedSchema>
@@ -101,7 +101,7 @@ export type TeamChangeForced = z.infer<typeof TeamChangeForcedSchema>
 export const PlayerKilledSchema = event('PLAYER_KILLED', {
 	targets: z.array(SM.PlayerIdSchema),
 	reason: z.string().optional(),
-	// set when the reason came from a preset admin-action reason
+	// set when the reason came from a message shorthand
 	reasonLabel: z.string().optional(),
 })
 export type PlayerKilled = z.infer<typeof PlayerKilledSchema>

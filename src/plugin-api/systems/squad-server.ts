@@ -8,7 +8,7 @@
  * slm/systems/app-events only writes PLUGIN_EVENT.
  */
 import * as Rx from '@/lib/rxjs'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import type * as CS from '@/models/context-shared.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -31,7 +31,7 @@ export async function kickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.Pl
  * players, such as Squad's developers, and the PLAYER_KICKED app event lists only the players it kicked.
  */
 export async function tryKickPlayers(ctx: PluginsSys.ServerCtx<any>, targets: SM.PlayerId[], reason?: string) {
-	const applied = reason === undefined ? undefined : AAR.applyCustomReason(reason, {})
+	const applied = reason === undefined ? undefined : AMS.applyCustomReason(reason, {})
 	return await SquadServerActions.kickPlayersAction(ctx, targets, { type: 'plugin', pluginId: ctx.plugin.id }, applied)
 }
 

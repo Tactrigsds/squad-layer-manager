@@ -3,7 +3,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
@@ -12,7 +12,7 @@ import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as V_Msgs from '@/messages/vote.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as BB from '@/models/backburner.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
@@ -626,7 +626,7 @@ async function resolveArgDefs(
 				break
 			}
 			case 'reason': {
-				const res = CMD.resolveReasonArg(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window)
+				const res = CMD.resolveReasonArg(Settings.GLOBAL_SETTINGS.adminMessageShorthands, def.action, window)
 				if (res.code !== 'ok') {
 					const hard = collect(def, { code: 'err:near-miss', msg: res.msg, typed: window[0], cause: 'no-match', choices: res.choices })
 					if (hard) return hard
@@ -636,7 +636,7 @@ async function resolveArgDefs(
 				break
 			}
 			case 'preset-reason': {
-				const res = CMD.resolveReasonToken(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window[0])
+				const res = CMD.resolveReasonToken(Settings.GLOBAL_SETTINGS.adminMessageShorthands, def.action, window[0])
 				if (res.code !== 'ok') {
 					const hard = collect(def, { code: 'err:near-miss', msg: res.msg, typed: window[0], cause: 'no-match', choices: res.choices })
 					if (hard) return hard
@@ -1167,30 +1167,30 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const target = args.player
 		const targetId = SM.PlayerIds.getPlayerId(target.ids)
 		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServerActions.messageVars())
-		const message = AAR.renderAppliedReason(applied)
+		const message = AMS.renderAppliedReason(applied)
 		await SquadServerActions.warnPlayers(h.ctx, [targetId], message, ingameActor(h.sender), { reasonLabel: applied.label })
 		// echo the exact delivered text so the admin sees what the player got (preset labels are embedded in it)
 		await h.reply(CMD_Msgs.warned(target.ids.username, message))
 		return { code: 'ok' }
 	},
 
-	listWarnReasons: async (h) => {
-		const reasons = Settings.GLOBAL_SETTINGS.adminActionReasons
-		if (reasons.length === 0) {
-			await h.reply(CMD_Msgs.noReasonsConfigured())
+	listMessageShorthands: async (h) => {
+		const shorthands = Settings.GLOBAL_SETTINGS.adminMessageShorthands
+		if (shorthands.length === 0) {
+			await h.reply(CMD_Msgs.noShorthandsConfigured())
 			return { code: 'ok' }
 		}
-		// label + aliases + the actions each reason is set up for; the texts themselves are looked up at use time
-		const actionsFor = (r: AAR.AdminActionReason) =>
-			AAR.ADMIN_ACTION_TYPE.options
+		// label + keywords + the actions each shorthand is set up for; the texts themselves are looked up at use time
+		const actionsFor = (r: AMS.AdminMessageShorthand) =>
+			AMS.ADMIN_ACTION_TYPE.options
 				.filter((a) => r.actionTexts[a] !== undefined)
-				.map((a) => h.ctx.tr.text(AAR_Msgs.actionNames[a]))
+				.map((a) => h.ctx.tr.text(AMS_Msgs.actionNames[a]))
 				.join(', ')
-		const entries = reasons.map((r) => {
+		const entries = shorthands.map((r) => {
 			const head = `${r.label} (${r.keywords.join(', ')})`
 			return `${head}\n${actionsFor(r)}`
 		})
-		// each reason is a 2-line block (label, then its actions); blank line between blocks
+		// each shorthand is a 2-line block (label, then its actions); blank line between blocks
 		await h.reply(Arr.paged(entries, 3).map((g) => g.join('\n\n')))
 		return { code: 'ok' }
 	},
@@ -1201,7 +1201,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServerActions.messageVars({ squadName: squad.squadName }))
 		// squad warns carry the same @Squad tag the web squad warn box prepends
-		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
+		const message = AMS.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
 		await SquadServerActions.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
 		const currentMatch = await MatchHistory.requireCurrentMatch(h.ctx)
 		const squadLabel = SM.squadAdminLabel(squad, MH.getTeamFaction(currentMatch, args.squad.teamId))
@@ -1215,7 +1215,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const target = args.player
 		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServerActions.messageVars())
 		// the kill notify delivers the rendered reason verbatim (see h.ctx.tr.warn(SM_Msgs.notifyKilled()))
-		const reason = applied && AAR.renderAppliedReason(applied)
+		const reason = applied && AMS.renderAppliedReason(applied)
 		await SquadServerActions.killPlayersAction(
 			h.ctx,
 			[SM.PlayerIds.getPlayerId(target.ids)],
@@ -1235,7 +1235,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		const applied =
 			args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServerActions.messageVars({ squadName: squad.squadName }))
-		const reason = applied && AAR.renderAppliedReason(applied)
+		const reason = applied && AMS.renderAppliedReason(applied)
 		await SquadServerActions.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
 		await h.reply(CMD_Msgs.killedSquad(squadSubjectLabel(h, squad.squadName, players.length), applied?.label))
 		return { code: 'ok' }
@@ -1286,7 +1286,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 	broadcast: async (h, args) => {
 		const applied = CMD.applyResolvedReason('broadcast', args.reason, SquadServerActions.messageVars())
-		const message = AAR.renderAppliedReason(applied)
+		const message = AMS.renderAppliedReason(applied)
 		await SquadRcon.broadcast(h.ctx, message)
 		return { code: 'ok' }
 	},
@@ -1453,7 +1453,7 @@ async function resolveChatOwner(h: HandlerCtx): Promise<USR.GuiOrChatUserId> {
 }
 
 // enforces the per-action "require a reason" setting; returns the error handler-result to short-circuit, or null
-async function requireReasonGuard(h: HandlerCtx, action: AAR.AdminActionType, hasReason: boolean): Promise<HandlerResult | null> {
+async function requireReasonGuard(h: HandlerCtx, action: AMS.AdminActionType, hasReason: boolean): Promise<HandlerResult | null> {
 	const rr = SquadServerActions.reasonRequirementError(action, hasReason)
 	return rr ? await h.error('reason-required', rr.msg) : null
 }

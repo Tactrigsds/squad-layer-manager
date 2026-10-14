@@ -773,7 +773,7 @@ export type PublicSettings = {
 	rotationTags: SETTINGS.GlobalSettings['rotationTags']
 	defaultRotationRepeatRulesetId: SETTINGS.GlobalSettings['defaultRotationRepeatRulesetId']
 	tickRateThresholds: SETTINGS.GlobalSettings['tickRateThresholds']
-	adminActionReasons: SETTINGS.GlobalSettings['adminActionReasons']
+	adminMessageShorthands: SETTINGS.GlobalSettings['adminMessageShorthands']
 	// the commands page lists these as the presets the broadcast command accepts. Their text is broadcast to the whole
 	// server in the normal course of things, so there's nothing here a player couldn't already see
 	requireReasonFor: SETTINGS.GlobalSettings['requireReasonFor']
@@ -797,7 +797,7 @@ function buildPublicSettings(): PublicSettings {
 		rotationTags: GLOBAL_SETTINGS.rotationTags,
 		defaultRotationRepeatRulesetId: GLOBAL_SETTINGS.defaultRotationRepeatRulesetId,
 		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,
-		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
+		adminMessageShorthands: GLOBAL_SETTINGS.adminMessageShorthands,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
 		messageVariables: GLOBAL_SETTINGS.messageVariables,
 	}

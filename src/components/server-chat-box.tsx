@@ -1,7 +1,7 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { AdminReasonPicker } from '@/components/admin-reason-picker'
+import { AdminShorthandPicker } from '@/components/admin-shorthand-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -10,7 +10,6 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -237,15 +236,14 @@ export default function ServerChatBox({
 			/>
 			{/* warn-admins is a free-form message to admins, with no preset codepath behind it */}
 			{channel !== 'warn-admins' && (
-				<AdminReasonPicker
-					reasons={draft.reasons}
+				<AdminShorthandPicker
+					shorthands={draft.reasons}
 					preview={draft.render}
 					onPick={(reason) => {
 						setMessage(draft.pick(reason))
 						textareaRef.current?.focus()
 					}}
 					disabled={!!channelDenied}
-					title={channel === 'broadcast' ? tr.text(AAR_Msgs.fillWithPresetBroadcast()) : tr.text(AAR_Msgs.fillWithPresetReason())}
 					className={cfg.triggerClass}
 				/>
 			)}

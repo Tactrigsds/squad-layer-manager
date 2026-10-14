@@ -1,6 +1,6 @@
 import * as Templating from '@/lib/templating'
 import { z } from '@/lib/zod'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as LP from '@/models/labeled-presets.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -56,61 +56,64 @@ export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
 	},
 }
 
-export const AdminActionReasonSchema = LP.LabeledPresetSchema.extend({
-	// per-action text; a reason applies to an action iff it has text here
+export const AdminMessageShorthandSchema = LP.LabeledPresetSchema.extend({
+	// per-action text; a shorthand applies to an action iff it has text here
 	actionTexts: z
 		.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1))
 		.prefault({})
 		.meta(
 			SDoc.of({
 				label: t('Action Texts'),
-				description: t('Per-action text. The reason is available for an action only if it has text for that action.'),
+				description: t('Per-action text. The shorthand is available for an action only if it has text for that action.'),
 			}),
 		),
 }).refine((r) => Object.keys(r.actionTexts).length > 0, {
-	error: 'A reason must have text for at least one action',
+	error: 'A shorthand must have text for at least one action',
 	path: ['actionTexts'],
 })
-export type AdminActionReason = z.infer<typeof AdminActionReasonSchema>
+export type AdminMessageShorthand = z.infer<typeof AdminMessageShorthandSchema>
 
-export const AdminActionReasonsSchema = z.array(AdminActionReasonSchema).superRefine(LP.addLabelKeywordUniquenessIssues).prefault([])
+export const AdminMessageShorthandsSchema = z
+	.array(AdminMessageShorthandSchema)
+	.superRefine(LP.addLabelKeywordUniquenessIssues)
+	.prefault([])
 
-export function reasonsForAction(reasons: AdminActionReason[], action: AdminActionType): AdminActionReason[] {
-	return reasons.filter((r) => r.actionTexts[action] !== undefined)
+export function shorthandsForAction(shorthands: AdminMessageShorthand[], action: AdminActionType): AdminMessageShorthand[] {
+	return shorthands.filter((s) => s.actionTexts[action] !== undefined)
 }
 
-// the text delivered for this action. Callers resolve applicability first (reasonsForAction / resolveReason),
-// so the fallback is unreachable for a reason that's actually available for the action.
-export function reasonText(action: AdminActionType, reason: AdminActionReason): string {
-	return reason.actionTexts[action] ?? ''
+// the text delivered for this action. Callers resolve applicability first (shorthandsForAction / resolveShorthand),
+// so the fallback is unreachable for a shorthand that's actually available for the action.
+export function shorthandText(action: AdminActionType, shorthand: AdminMessageShorthand): string {
+	return shorthand.actionTexts[action] ?? ''
 }
 
-export type ResolveReasonRes =
-	| { code: 'ok'; reason: AdminActionReason }
-	| { code: 'err:reason-not-found'; msg: string }
-	| { code: 'err:reason-not-applicable'; msg: string }
+export type ResolveShorthandRes =
+	| { code: 'ok'; shorthand: AdminMessageShorthand }
+	| { code: 'err:shorthand-not-found'; msg: string }
+	| { code: 'err:shorthand-not-applicable'; msg: string }
 
-// how in-game chat resolves a reason: by keyword only. A preset argument is matched as exactly one token, so a label
+// how in-game chat resolves a shorthand: by keyword only. A preset argument is matched as exactly one token, so a label
 // with whitespace would silently be unreachable -- hence keywords, which can't contain any and are required.
-export function resolveReason(reasons: AdminActionReason[], action: AdminActionType, keyword: string): ResolveReasonRes {
-	return checkApplicable(LP.findByKeyword(reasons, keyword), action, keyword)
+export function resolveShorthand(shorthands: AdminMessageShorthand[], action: AdminActionType, keyword: string): ResolveShorthandRes {
+	return checkApplicable(LP.findByKeyword(shorthands, keyword), action, keyword)
 }
 
-// how the web GUI resolves a reason the admin picked from a menu: by label, the preset's identity. Handlers re-resolve
+// how the web GUI resolves a shorthand the admin picked from a menu: by label, the preset's identity. Handlers re-resolve
 // against current settings so a preset deleted or retargeted since the client loaded it fails the whole action.
-export function resolveReasonByLabel(reasons: AdminActionReason[], action: AdminActionType, label: string): ResolveReasonRes {
-	return checkApplicable(LP.findByLabel(reasons, label), action, label)
+export function resolveShorthandByLabel(shorthands: AdminMessageShorthand[], action: AdminActionType, label: string): ResolveShorthandRes {
+	return checkApplicable(LP.findByLabel(shorthands, label), action, label)
 }
 
-function checkApplicable(reason: AdminActionReason | undefined, action: AdminActionType, token: string): ResolveReasonRes {
-	if (!reason) return { code: 'err:reason-not-found', msg: `Admin action reason "${token}" no longer exists` }
-	if (reason.actionTexts[action] === undefined) {
+function checkApplicable(shorthand: AdminMessageShorthand | undefined, action: AdminActionType, token: string): ResolveShorthandRes {
+	if (!shorthand) return { code: 'err:shorthand-not-found', msg: `Message shorthand "${token}" no longer exists` }
+	if (shorthand.actionTexts[action] === undefined) {
 		return {
-			code: 'err:reason-not-applicable',
-			msg: `Admin action reason "${reason.label}" is not applicable to ${AAR_Msgs.actionNames[action].original}`,
+			code: 'err:shorthand-not-applicable',
+			msg: `Message shorthand "${shorthand.label}" is not applicable to ${AMS_Msgs.actionNames[action].original}`,
 		}
 	}
-	return { code: 'ok', reason }
+	return { code: 'ok', shorthand }
 }
 
 // a reason as applied to a concrete action: the unrendered template plus the variable values in effect at
@@ -127,8 +130,8 @@ export const AppliedReasonSchema = z.object({
 })
 export type AppliedReason = z.infer<typeof AppliedReasonSchema>
 
-export function applyReason(action: AdminActionType, reason: AdminActionReason, vars: Record<string, string>): AppliedReason {
-	return { label: reason.label, template: reasonText(action, reason), vars }
+export function applyShorthand(action: AdminActionType, shorthand: AdminMessageShorthand, vars: Record<string, string>): AppliedReason {
+	return { label: shorthand.label, template: shorthandText(action, shorthand), vars }
 }
 
 export function applyCustomReason(text: string, vars: Record<string, string>): AppliedReason {
@@ -144,10 +147,10 @@ export function renderAppliedReason(applied: AppliedReason, opts?: { audienceTag
 }
 
 // convenience for previews and one-shot renders: apply + render in one step
-export function formatAppliedReason(
+export function formatShorthand(
 	action: AdminActionType,
-	reason: AdminActionReason,
+	shorthand: AdminMessageShorthand,
 	opts?: { audienceTag?: string; vars?: Record<string, string> },
 ): string {
-	return renderAppliedReason(applyReason(action, reason, opts?.vars ?? {}), { audienceTag: opts?.audienceTag })
+	return renderAppliedReason(applyShorthand(action, shorthand, opts?.vars ?? {}), { audienceTag: opts?.audienceTag })
 }

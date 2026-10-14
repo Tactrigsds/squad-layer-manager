@@ -91,7 +91,7 @@ export const timeoutTooLong = def((maxDuration: string) => ({
 export const warnPreset = def((target: Tgt.Target) => ({
 	confirm: {
 		title: t('Warn {targetNoun}', { targetNoun: Tgt.noun(target) }),
-		description: t('Warn {targetSubject} with a preset reason?', { targetSubject: Tgt.subject(target) }),
+		description: t('Warn {targetSubject} with a message shorthand?', { targetSubject: Tgt.subject(target) }),
 		confirmLabel: t('Warn'),
 	},
 }))

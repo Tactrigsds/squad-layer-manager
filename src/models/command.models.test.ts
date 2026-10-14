@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMD from '@/models/command.models'
 
-function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.AdminActionReason {
+function reason(label: string, opts: Partial<AMS.AdminMessageShorthand> = {}): AMS.AdminMessageShorthand {
 	return { label, keywords: [label.toLowerCase()], actionTexts: { warn: `${label} warn text` }, ...opts }
 }
 
@@ -158,7 +158,7 @@ describe('resolveReasonArg', () => {
 		const res = CMD.resolveReasonArg(reasons, 'warn', ['tq'])
 		expect(res.code).toBe('err:unknown-preset')
 		if (res.code === 'err:unknown-preset') {
-			expect(res.msg).toContain('Unknown reason "tq"')
+			expect(res.msg).toContain('Unknown shorthand "tq"')
 			expect(res.msg).not.toContain('Available:')
 		}
 	})
@@ -184,7 +184,7 @@ describe('resolveReasonArg', () => {
 		expect(res.code).toBe('err:unknown-preset')
 		if (res.code === 'err:unknown-preset') {
 			expect(res.msg).toContain("isn't set up for Kick")
-			expect(res.msg).not.toContain('Unknown reason')
+			expect(res.msg).not.toContain('Unknown shorthand')
 		}
 	})
 

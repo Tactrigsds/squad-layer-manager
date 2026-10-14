@@ -2,11 +2,11 @@
 // classic JSX runtime can render it
 import * as React from 'react'
 
-import type * as AAR from '@/models/admin-action-reasons.models'
+import type * as AMS from '@/models/admin-message-shorthands.models'
 import { def, raw, rt, t, type TString } from '@/models/messages.models'
 
-// The preset reasons an admin picks from when warning, kicking or timing a player out. Each carries one text per
-// action it applies to, plus the keywords that select it in chat.
+// The message shorthands an admin picks from when warning, kicking or timing a player out. Each carries one text
+// per action it applies to, plus the keywords that select it in chat.
 
 export const labelColumn = def('Label')
 
@@ -16,12 +16,15 @@ export const keywordsColumn = def('Keywords')
 
 export const labelPlaceholder = def('Label')
 
-// a reason is offered per action, so one with no text at all is offered nowhere
-export const noActionTexts = def('Add text for at least one action, otherwise this reason can never be used.')
+// a shorthand is offered per action, so one with no text at all is offered nowhere
+export const noActionTexts = def('Add text for at least one action, otherwise this shorthand can never be used.')
 
-export const removeActionText = def('Remove {action} text (this reason will no longer be available for that action)', (action: string) => ({
-	action,
-}))
+export const removeActionText = def(
+	'Remove {action} text (this shorthand will no longer be available for that action)',
+	(action: string) => ({
+		action,
+	}),
+)
 
 export const actionTextPlaceholder = def('Sent when performing {action}', (action: string) => ({ action }))
 
@@ -76,7 +79,7 @@ export const customReason = def('Custom')
 
 export const noReason = def('None')
 
-export const presetReasonItem = def('Preset Reason')
+export const presetReasonItem = def('Message Shorthand')
 
 export const reasonPicker = def('Reason')
 
@@ -84,22 +87,20 @@ export const enterReason = def('Enter a reason')
 
 export const messagePreview = def('Message preview')
 
-export const noReasonsConfigured = def(
-	'A reason is required for {actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).',
+export const noShorthandsConfigured = def(
+	'A reason is required for {actionName}, but no message shorthands are configured for it (see Message Shorthands in settings).',
 	(actionName: string) => ({ actionName }),
 )
 
-export const presetReasonPicker = def('Preset reason')
+export const presetReasonPicker = def('Message shorthand')
 
-export const searchReasons = def('Search reasons...')
+export const searchShorthands = def('Search shorthands...')
 
-export const noReasonsFound = def('No reasons found.')
+export const noShorthandsFound = def('No shorthands found.')
 
-export const fillWithPresetReason = def('Fill the box with a preset reason')
+export const fillWithShorthand = def('Fill the box with a message shorthand')
 
-export const fillWithPresetBroadcast = def('Fill the box with a preset broadcast')
-
-export const actionNames: Record<AAR.AdminActionType, TString> = {
+export const actionNames: Record<AMS.AdminActionType, TString> = {
 	warn: t('Warn'),
 	broadcast: t('Broadcast'),
 	kill: t('Kill'),

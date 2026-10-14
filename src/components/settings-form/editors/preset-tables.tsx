@@ -24,15 +24,15 @@ import { MessagePreviewBox } from '@/components/warn-reasons-sub'
 import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'
-import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
+import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
-import * as AAR from '@/models/admin-action-reasons.models'
+import * as AMS from '@/models/admin-message-shorthands.models'
 import * as LP from '@/models/labeled-presets.models'
 import * as LTag from '@/models/layer-tags.models'
 import { tr } from '@/systems/messages.client'
 
-// shared table shell for the label/keywords preset lists (admin action reasons)
+// shared table shell for the label/keywords preset lists (message shorthands)
 type PresetRowProps = {
 	idx: number
 	parent$: ValueState
@@ -103,7 +103,7 @@ function PresetTableField({
 	)
 }
 
-export function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
+export function AdminMessageShorthandsField({ value$, reset$, onChange }: OverrideProps) {
 	return (
 		<PresetTableField
 			value$={value$}
@@ -111,13 +111,13 @@ export function AdminActionReasonsField({ value$, reset$, onChange }: OverridePr
 			onChange={onChange}
 			headers={
 				<>
-					<TableHead className="w-44">{tr.text(AAR_Msgs.labelColumn())}</TableHead>
-					<TableHead>{tr.text(AAR_Msgs.textsColumn())}</TableHead>
+					<TableHead className="w-44">{tr.text(AMS_Msgs.labelColumn())}</TableHead>
+					<TableHead>{tr.text(AMS_Msgs.textsColumn())}</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
 			newRow={() => ({ label: '', keywords: [], actionTexts: {} })}
-			Row={AdminActionReasonRow}
+			Row={AdminMessageShorthandRow}
 		/>
 	)
 }
@@ -237,37 +237,37 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 	)
 }
 
-function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
+function AdminMessageShorthandRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const label$ = scopeValue(row$, 'label')
 	const keywords$ = scopeValue(row$, 'keywords')
 	const actionTexts$ = scopeValue(row$, 'actionTexts')
 	const { idPrefix } = React.useContext(FormOptionsContext)
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
-	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
-	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
-	const remainingActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
+	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AMS.AdminActionType, string>> | undefined) ?? {}
+	const presentActions = AMS.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
+	const remainingActions = AMS.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
 
-	const setField = (key: keyof AAR.AdminActionReason) => (v: any) => {
-		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+	const setField = (key: keyof AMS.AdminMessageShorthand) => (v: any) => {
+		const arr = [...((parent$.getValue() as AMS.AdminMessageShorthand[]) ?? [])]
 		arr[idx] = { ...arr[idx], [key]: v }
 		parentOnChange(arr)
 	}
 	// non-structural: text edit within an existing action key (no reset$; the textarea stays mounted)
-	const setActionText = (action: AAR.AdminActionType) => (v: string) => {
-		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+	const setActionText = (action: AMS.AdminActionType) => (v: string) => {
+		const arr = [...((parent$.getValue() as AMS.AdminMessageShorthand[]) ?? [])]
 		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: v } }
 		parentOnChange(arr)
 	}
 	// structural: adding/removing an action key mounts/unmounts a textarea, so re-seed uncontrolled inputs via reset$
-	const addAction = (action: AAR.AdminActionType) => {
-		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+	const addAction = (action: AMS.AdminActionType) => {
+		const arr = [...((parent$.getValue() as AMS.AdminMessageShorthand[]) ?? [])]
 		arr[idx] = { ...arr[idx], actionTexts: { ...arr[idx].actionTexts, [action]: '' } }
 		parentOnChange(arr)
 		reset$.next()
 	}
-	const removeAction = (action: AAR.AdminActionType) => {
-		const arr = [...((parent$.getValue() as AAR.AdminActionReason[]) ?? [])]
+	const removeAction = (action: AMS.AdminActionType) => {
+		const arr = [...((parent$.getValue() as AMS.AdminMessageShorthand[]) ?? [])]
 		const nextTexts = { ...arr[idx].actionTexts }
 		delete nextTexts[action]
 		arr[idx] = { ...arr[idx], actionTexts: nextTexts }
@@ -277,34 +277,34 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 
 	return (
 		// the cell padding keeps the anchor highlight ring, drawn just outside the row, clear of the neighbouring rows' inputs
-		<TableRow id={`${idPrefix}adminActionReasons.${idx}`} className="scroll-mt-2 [&>td]:py-1.5">
+		<TableRow id={`${idPrefix}adminMessageShorthands.${idx}`} className="scroll-mt-2 [&>td]:py-1.5">
 			<TableCell className="align-top gap-0.5 h-full">
 				<TextInputField
 					value$={label$}
 					reset$={reset$}
 					onChange={setField('label')}
 					numeric={false}
-					placeholder={tr.text(AAR_Msgs.labelPlaceholder())}
+					placeholder={tr.text(AMS_Msgs.labelPlaceholder())}
 				/>
 				<KeywordsCell value$={keywords$} reset$={reset$} seedFrom$={label$} onChange={setField('keywords')} />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
-					{presentActions.length === 0 && <p className="text-xs text-destructive">{tr.text(AAR_Msgs.noActionTexts())}</p>}
+					{presentActions.length === 0 && <p className="text-xs text-destructive">{tr.text(AMS_Msgs.noActionTexts())}</p>}
 					{presentActions.map((action) => {
 						const text$ = scopeValue(actionTexts$, action)
 						return (
 							<div key={action} className="rounded-md border">
 								<div className="flex items-center justify-between px-2 pt-1">
 									<span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-										{tr.text(AAR_Msgs.actionNames[action])}
+										{tr.text(AMS_Msgs.actionNames[action])}
 									</span>
 									<Button
 										type="button"
 										size="icon"
 										variant="ghost"
 										className="h-5 w-5 text-destructive"
-										title={tr.text(AAR_Msgs.removeActionText(tr.text(AAR_Msgs.actionNames[action])))}
+										title={tr.text(AMS_Msgs.removeActionText(tr.text(AMS_Msgs.actionNames[action])))}
 										onClick={() => removeAction(action)}
 									>
 										<Icons.X className="h-3.5 w-3.5" />
@@ -314,20 +314,20 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 									value$={text$}
 									reset$={reset$}
 									onChange={setActionText(action)}
-									placeholder={tr.text(AAR_Msgs.actionTextPlaceholder(tr.text(AAR_Msgs.actionNames[action])))}
+									placeholder={tr.text(AMS_Msgs.actionTextPlaceholder(tr.text(AMS_Msgs.actionNames[action])))}
 								/>
 							</div>
 						)
 					})}
 					{remainingActions.length > 0 && (
-						<Select value="" onValueChange={(a) => addAction(a as AAR.AdminActionType)}>
+						<Select value="" onValueChange={(a) => addAction(a as AMS.AdminActionType)}>
 							<SelectTrigger className="h-8">
-								<SelectValue placeholder={tr.text(AAR_Msgs.addActionText())} />
+								<SelectValue placeholder={tr.text(AMS_Msgs.addActionText())} />
 							</SelectTrigger>
 							<SelectContent>
 								{remainingActions.map((a) => (
 									<SelectItem key={a} value={a}>
-										{tr.text(AAR_Msgs.actionNames[a])}
+										{tr.text(AMS_Msgs.actionNames[a])}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -355,42 +355,45 @@ const PREVIEW_SQUAD_NAME = 'Squad1'
 // entry so custom variables referencing them render as they would at action time. timeouts are shown with a 2h
 // sample duration, and again with the remaining duration (what enforcement re-renders on rejoin) so
 // {{#duration}} sections can be checked both ways.
-function reasonPreviewEntries(reason: AAR.AdminActionReason, varDefs: Templating.TemplateVarDef[]): { context: string; text: string }[] {
-	const applied = (action: AAR.AdminActionType, opts?: { audienceTag?: string; extraVars?: Record<string, string> }) =>
-		AAR.formatAppliedReason(action, reason, {
+function reasonPreviewEntries(
+	reason: AMS.AdminMessageShorthand,
+	varDefs: Templating.TemplateVarDef[],
+): { context: string; text: string }[] {
+	const applied = (action: AMS.AdminActionType, opts?: { audienceTag?: string; extraVars?: Record<string, string> }) =>
+		AMS.formatShorthand(action, reason, {
 			audienceTag: opts?.audienceTag,
 			vars: Templating.resolveTemplateVars(varDefs, { squadName: '', ...opts?.extraVars }),
 		})
 	const entries: { context: string; text: string }[] = []
 	// kill/kick/timeout have squad forms delivering the same action text with {{squadName}} set, so a squad entry
 	// is added only when it actually renders differently
-	const pushSquadVariant = (action: AAR.AdminActionType, extraVars?: Record<string, string>) => {
+	const pushSquadVariant = (action: AMS.AdminActionType, extraVars?: Record<string, string>) => {
 		const base = applied(action, { extraVars })
 		const squad = applied(action, { extraVars: { ...extraVars, squadName: PREVIEW_SQUAD_NAME } })
 		if (squad !== base) {
-			entries.push({ context: tr.text(AAR_Msgs.previewSquadVariant(tr.text(AAR_Msgs.actionNames[action]))), text: squad })
+			entries.push({ context: tr.text(AMS_Msgs.previewSquadVariant(tr.text(AMS_Msgs.actionNames[action]))), text: squad })
 		}
 	}
 	// one entry per action the reason carries text for; squad-directed actions get the @Squad1 tag
-	for (const action of AAR.ADMIN_ACTION_TYPE.options) {
+	for (const action of AMS.ADMIN_ACTION_TYPE.options) {
 		if (reason.actionTexts[action] === undefined) continue
 		if (action === 'warn') {
-			entries.push({ context: tr.text(AAR_Msgs.previewWarn()), text: applied('warn') })
+			entries.push({ context: tr.text(AMS_Msgs.previewWarn()), text: applied('warn') })
 			entries.push({
-				context: tr.text(AAR_Msgs.previewWarnSquad()),
+				context: tr.text(AMS_Msgs.previewWarnSquad()),
 				text: applied('warn', { audienceTag: '@Squad1', extraVars: { squadName: PREVIEW_SQUAD_NAME } }),
 			})
 			continue
 		}
 		if (action === 'timeout') {
-			entries.push({ context: tr.text(AAR_Msgs.previewTimeout()), text: applied('timeout', { extraVars: { duration: '2h' } }) })
+			entries.push({ context: tr.text(AMS_Msgs.previewTimeout()), text: applied('timeout', { extraVars: { duration: '2h' } }) })
 			pushSquadVariant('timeout', { duration: '2h' })
-			entries.push({ context: tr.text(AAR_Msgs.previewTimeoutExpired()), text: applied('timeout', { extraVars: { duration: '' } }) })
+			entries.push({ context: tr.text(AMS_Msgs.previewTimeoutExpired()), text: applied('timeout', { extraVars: { duration: '' } }) })
 			continue
 		}
-		const squadTargeted = AAR.ADMIN_ACTIONS[action].targetKind === 'squad'
+		const squadTargeted = AMS.ADMIN_ACTIONS[action].targetKind === 'squad'
 		entries.push({
-			context: tr.text(AAR_Msgs.actionNames[action]),
+			context: tr.text(AMS_Msgs.actionNames[action]),
 			text: applied(action, {
 				audienceTag: squadTargeted ? '@Squad1' : undefined,
 				extraVars: squadTargeted ? { squadName: PREVIEW_SQUAD_NAME } : undefined,
@@ -418,35 +421,35 @@ const trWithDocLink = tr.withTags({
 function TemplateSyntaxHint() {
 	return (
 		<p className="text-xs text-muted-foreground [&_a]:text-info [&_a]:hover:underline">
-			{trWithDocLink.richText(AAR_Msgs.templateSyntaxHint())}
+			{trWithDocLink.richText(AMS_Msgs.templateSyntaxHint())}
 		</p>
 	)
 }
 
 function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
-	const raw = useFieldValue(row$) as Partial<AAR.AdminActionReason> | undefined
+	const raw = useFieldValue(row$) as Partial<AMS.AdminMessageShorthand> | undefined
 	const varDefs = React.useContext(MessageVarsContext)
 	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
 	const actionTexts = Object.fromEntries(
 		Object.entries(raw?.actionTexts ?? {}).map(([action, text]) => [
 			action,
-			(text ?? '').trim() || tr.text(AAR_Msgs.previewMissingActionText()),
+			(text ?? '').trim() || tr.text(AMS_Msgs.previewMissingActionText()),
 		]),
-	) as Partial<Record<AAR.AdminActionType, string>>
-	const reason: AAR.AdminActionReason = {
-		label: raw?.label?.trim() || tr.text(AAR_Msgs.previewMissingLabel()),
+	) as Partial<Record<AMS.AdminActionType, string>>
+	const reason: AMS.AdminMessageShorthand = {
+		label: raw?.label?.trim() || tr.text(AMS_Msgs.previewMissingLabel()),
 		keywords: raw?.keywords ?? [],
 		actionTexts,
 	}
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title={tr.text(AAR_Msgs.previewTitle())}>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title={tr.text(AMS_Msgs.previewTitle())}>
 					<Icons.Eye className="h-4 w-4" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
-				<p className="text-xs text-muted-foreground">{tr.text(AAR_Msgs.previewBlurb())}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(AMS_Msgs.previewBlurb())}</p>
 				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, varDefs).map((entry) => (
 					<div key={entry.context} className="space-y-1">
@@ -562,7 +565,7 @@ function KeywordsCell({
 				if (elt) scheduleKeywordsFit(elt)
 			}}
 			defaultValue={format(value$.getValue())}
-			placeholder={tr.text(AAR_Msgs.keywordsPlaceholder())}
+			placeholder={tr.text(AMS_Msgs.keywordsPlaceholder())}
 			onChange={(e) => push(parse(e.currentTarget.value))}
 		/>
 	)

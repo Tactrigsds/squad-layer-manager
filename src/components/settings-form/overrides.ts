@@ -24,7 +24,7 @@ import {
 	PluginServerField,
 	PluginServerMultiField,
 } from '@/components/settings-form/editors/plugin-fields'
-import { AdminActionReasonsField, LayerTagsField } from '@/components/settings-form/editors/preset-tables'
+import { AdminMessageShorthandsField, LayerTagsField } from '@/components/settings-form/editors/preset-tables'
 import { RbacSuperCallout } from '@/components/settings-form/editors/rbac'
 import { CounterbalanceGroupsField, CounterbalancePickFirstField } from '@/components/settings-form/editors/teamswap-counterbalance'
 import type { OverrideProps, Path, SchemaNode } from '@/components/settings-form/settings-form.helpers'
@@ -60,7 +60,7 @@ export function overrideFor(path: Path, _node: SchemaNode): React.FC<OverridePro
 	if (path.length === 1 && last === 'color') return ServerColorField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
-	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
+	if (path.length === 1 && last === 'adminMessageShorthands') return AdminMessageShorthandsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
 	if (path.length === 1 && last === 'layerTags') return LayerTagsField
