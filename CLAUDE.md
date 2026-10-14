@@ -283,7 +283,8 @@ with longer strings and look at the result.
 # Testing
 
 Reserve unit tests for code that is both actually complex and largely self-contained, or at least isolatable. Do not
-unit test trivial code.
+unit test trivial code. Any unit test may be written as a temporary aid during development, as long as it is
+deleted afterwards.
 
 Cover most complex features with integration or e2e tests instead. Do not try to exercise all codepaths; focus on
 the tricky ones. Where convenient, use semantic html tags, which make the playwright code better and improve
