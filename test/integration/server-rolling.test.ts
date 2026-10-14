@@ -289,7 +289,7 @@ describe('the event archive', () => {
 		const players = await client.history.query({ query: { type: 'players', name: 'archive_subj' } })
 		expect(players.code).toBe('ok')
 		if (players.code !== 'ok' || players.type !== 'players') return
-		expect(players.rows.some((r) => r.username?.includes('archive_subject'))).toBe(true)
+		expect(players.rowsHtml.some((html) => html.includes('archive_subject'))).toBe(true)
 
 		const events = await client.history.query({ query: { player: 'archive_subject' } })
 		expect(events.code).toBe('ok')
@@ -433,7 +433,9 @@ describe('the event archive', () => {
 		expect(matches.code).toBe('ok')
 		if (matches.code !== 'ok' || matches.type !== 'matches') return
 		expect(matches.total).toBeGreaterThan(0)
-		for (const match of matches.matches) expect(matches.eventCounts[match.historyEntryId]).toBeGreaterThan(0)
+		expect(matches.rowsHtml.length).toBe(matches.matches.length)
+		for (const match of matches.matches)
+			expect(matches.rowsHtml.join('')).toContain(`data-dom-row-events="match:${match.historyEntryId}"`)
 	})
 
 	// App events are SLM's own actions, indexed in appEvents plus its association sidecar rather than in
@@ -690,7 +692,7 @@ describe('the event archive', () => {
 		expect(feed.code).toBe('ok')
 		if (feed.code !== 'ok' || feed.type !== 'matches') return
 		expect(feed.total).toBeGreaterThan(0)
-		for (const match of feed.matches) expect(feed.eventCounts[match.historyEntryId] ?? 0).toBeGreaterThan(0)
+		for (const match of feed.matches) expect(feed.rowsHtml.join('')).toContain(`data-dom-row-events="match:${match.historyEntryId}"`)
 	})
 
 	// the player field accepts a name, so the picker's list has to resolve to the same ids the filter does

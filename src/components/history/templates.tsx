@@ -1,8 +1,6 @@
-// static-render calls these components directly, so the react compiler must not inject its memo-cache hook
-'use no memo'
-
-// The history page's player and match result rows, as inert jsx. No interactivity of their own; the
-// layer-info opener rides the shared delegated handlers. Same idiom as the feed's rows.
+// The history page's player and match result rows, as inert jsx the server renders to html (see
+// history.server.ts). No interactivity of their own: every interaction is an attribute the delegated handlers
+// read (see feed/interactions.ts).
 
 import React from 'react'
 
@@ -11,11 +9,11 @@ import { Icon } from '@/components/feed/icons'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
 import * as MsgFmt from '@/messages/format'
+import * as I18n from '@/messages/i18n'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
-import { tr } from '@/systems/messages.client'
 
 // align-top so a row whose events are expanded keeps its own columns beside the first of them, rather than
 // centring them against the whole expansion
@@ -73,7 +71,7 @@ function CopyId(props: { kind: SM_Msgs.IdKind; id: string }) {
 		<button
 			type="button"
 			className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-			title={tr.text(SM_Msgs.copyIdHint(props.kind))}
+			title={I18n.ambient.text(SM_Msgs.copyIdHint(props.kind))}
 			{...RC.copyAttrs(props.id)}
 		>
 			<span className="font-mono ltr-isolate">{props.id}</span>

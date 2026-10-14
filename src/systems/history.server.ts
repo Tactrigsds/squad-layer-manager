@@ -1,5 +1,7 @@
 import * as E from 'drizzle-orm'
 import { Worker } from 'node:worker_threads'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import * as Schema from '$root/drizzle/schema'
 import * as MatchSummary from '@/components/feed/match-summary'
@@ -7,6 +9,7 @@ import { renderRow } from '@/components/feed/render'
 import * as RC from '@/components/feed/render-context'
 import * as RowText from '@/components/feed/row-text'
 import * as ResultTable from '@/components/history/result-table'
+import * as HistoryTemplates from '@/components/history/templates'
 import { createId } from '@/lib/id'
 import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
@@ -230,6 +233,15 @@ async function matchesPage(ctx: QueryCtx, resolved: Resolved, query: HQ.Query, p
 	}
 }
 
+// a matches page as the rows the page and the text table are built from
+function matchRows(res: Extract<Awaited<ReturnType<typeof matchesPage>>, { code: 'ok' }>): ResultTable.MatchRow[] {
+	return res.matches.map((details) => ({
+		details,
+		events: res.eventCounts[details.historyEntryId] ?? 0,
+		setBy: MatchSummary.setByText(details.layerSource, res.setByNames),
+	}))
+}
+
 // The names behind each match's layer source, for its "set by" cell. One query per kind of id over the whole page.
 async function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): Promise<MatchSummary.SetByNames> {
 	const userIds = new Set<bigint>()
@@ -339,12 +351,31 @@ export const router = {
 				case 'players': {
 					const res = await playersPage(ctx, resolved, input.query, input.page)
 					if (res.code !== 'ok') return res
-					return { ...res, type: 'players' as const, unrecognisedLayerMatches }
+					const timeZone = resultZone(input.query, input.render, () => [HQ.soleServerId(input.query)])
+					const rowsHtml = withResultsAmbient(input.render, timeZone, () =>
+						res.rows.map((row) => renderToStaticMarkup(createElement(HistoryTemplates.PlayerRow, { row, timeZone }))),
+					)
+					return { code: 'ok' as const, type: 'players' as const, rowsHtml, total: res.total, unrecognisedLayerMatches }
 				}
 				case 'matches': {
 					const res = await matchesPage(ctx, resolved, input.query, input.page)
 					if (res.code !== 'ok') return res
-					return { ...res, type: 'matches' as const, unrecognisedLayerMatches }
+					const timeZone = resultZone(input.query, input.render, () => res.matches.map((details) => details.serverId))
+					const { displayTeamsNormalized } = input.render
+					const rowsHtml = withResultsAmbient(input.render, timeZone, () =>
+						matchRows(res).map((row) =>
+							renderToStaticMarkup(createElement(HistoryTemplates.MatchRow, { ...row, displayTeamsNormalized, timeZone })),
+						),
+					)
+					// the matches stay as data: the events a row expands to resolve their match tooltips and server frames against them
+					return {
+						code: 'ok' as const,
+						type: 'matches' as const,
+						rowsHtml,
+						matches: res.matches,
+						total: res.total,
+						unrecognisedLayerMatches,
+					}
 				}
 				default:
 					assertNever(input.query.type)
@@ -779,11 +810,7 @@ export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: '
 		case 'matches': {
 			const res = await matchesPage(ctx, resolved, query, page - 1)
 			if (res.code !== 'ok') return res
-			const rows = res.matches.map((details) => ({
-				details,
-				events: res.eventCounts[details.historyEntryId] ?? 0,
-				setBy: MatchSummary.setByText(details.layerSource, res.setByNames),
-			}))
+			const rows = matchRows(res)
 			const timeZone = resultZone(query, render, () => res.matches.map((details) => details.serverId))
 			const body = withResultsAmbient(render, timeZone, () => format(ResultTable.matchesTable(rows, tableOpts(timeZone))))
 			return { code: 'ok' as const, body, next: nextPage(res.total, HQ.PAGE_SIZES.matches) }
