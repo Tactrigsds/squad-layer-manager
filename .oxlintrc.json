@@ -161,9 +161,49 @@
 		},
 		{
 			// a plugin's bare 'zod' resolves to the app's own instance, through the importmap in index.html
-			"files": ["plugins/**", "test/fixtures/plugin-*/**", "src/lib/zod.ts"],
+			"files": ["plugins/**", "test/fixtures/plugin-*/**"],
 			"rules": {
 				"eslint/no-restricted-imports": "off"
+			}
+		},
+		{
+			// src/lib holds generic code with no domain knowledge, so it imports only itself and packages. An override
+			// replaces the base rule's options, so the zod restriction is repeated here.
+			"files": ["src/lib/**"],
+			"rules": {
+				"eslint/no-restricted-imports": [
+					"error",
+					{
+						"paths": [
+							{
+								"name": "zod",
+								"message": "import from '@/lib/zod' instead"
+							}
+						],
+						"patterns": [
+							{
+								"group": ["@/**", "!@/lib/**", "$root/**", "../**"],
+								"message": "src/lib imports only src/lib and installed packages. Move the code that needs this out of src/lib, or pass it in."
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/lib/zod.ts"],
+			"rules": {
+				"eslint/no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": ["@/**", "!@/lib/**", "$root/**", "../**"],
+								"message": "src/lib imports only src/lib and installed packages. Move the code that needs this out of src/lib, or pass it in."
+							}
+						]
+					}
+				]
 			}
 		},
 		{

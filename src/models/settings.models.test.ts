@@ -1,4 +1,6 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, it, test } from 'vitest'
+
+import * as ZodUtils from '@/lib/zod-utils'
 
 import * as AppEvents from './app-events.models'
 import type * as LQY from './layer-queries.models'
@@ -331,5 +333,19 @@ describe('setting mutation paths', () => {
 
 	test('still accepts a path to a real setting', () => {
 		expect(SETTINGS.SettingMutationSchema.safeParse({ path: ['queue', 'mainPool', 'poolFilter'], value: null }).success).toBe(true)
+	})
+})
+
+describe('ZodUtils.schemaAtPath over the settings schema', () => {
+	it('resolves every path the settings form offers a scoped JSON editor for', () => {
+		const parsed = SETTINGS.parseGlobalSettings({})
+		expect(parsed.success).toBe(true)
+		for (const path of ['rbac', 'commands', 'playerGroupings', 'layerTable']) {
+			const sub = ZodUtils.schemaAtPath(SETTINGS.GlobalSettingsSchema, path.split('.'))
+			expect(sub, path).toBeDefined()
+			// the editor writes back through encode, so each subtree must survive the decoded -> input round trip
+			const decoded = path.split('.').reduce<any>((acc, key) => acc?.[key], parsed.data)
+			expect(() => sub!.encode(decoded), path).not.toThrow()
+		}
 	})
 })
