@@ -98,10 +98,7 @@ export const router = {
 				.where(input.before !== undefined ? E.lt(Schema.appEvents.time, new Date(input.before)) : undefined)
 				.orderBy(E.desc(Schema.appEvents.time))
 				.limit(input.limit)
-			const events = rows.map(AppEvents.fromRow).filter((e: AppEvents.AppEvent | null): e is AppEvents.AppEvent => e !== null)
-			if (events.length < rows.length) {
-				module.getLogger().warn('dropped %d unparseable app-event row(s) from audit list', rows.length - events.length)
-			}
+			const events = AppEvents.fromRows({ ...ctx, log: module.getLogger() }, rows, 'the audit list')
 			// the audit log has no roster to resolve against, so the players an event names (its actor, its targets)
 			// would otherwise read as eos ids
 			const playerIds = [

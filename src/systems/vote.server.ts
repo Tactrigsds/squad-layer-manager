@@ -590,6 +590,7 @@ export const endVote = Instr.spanOp(
 		if (!listItem || !LL.isVoteItem(listItem)) throw new Error('Invalid vote item')
 		let endingVoteState: V.EndingVoteState
 		let tally: V.Tally | null = null
+		let winnerLayerId: string | null = null
 		if (Object.values(ctx.vote.state.votes).length === 0) {
 			endingVoteState = {
 				code: 'ended:insufficient-votes',
@@ -613,7 +614,9 @@ export const endVote = Instr.spanOp(
 				...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
 				winnerId,
 			}
-			if (winnerChoice) listItem.layerId = winnerChoice.layerId
+			// listItem is the saved queue's own object, so it is not written to: set-vote-result derives the winning
+			// layerId itself, and a write here would reach the QUEUE_UPDATED prevList, which then fails to parse
+			winnerLayerId = winnerChoice?.layerId ?? null
 		}
 
 		ctx.vote.state = null
@@ -655,7 +658,7 @@ export const endVote = Instr.spanOp(
 				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 				causeId: null,
 				reason: opts.reason,
-				winnerLayerId: endingVoteState.code === 'ended:winner' ? listItem.layerId : null,
+				winnerLayerId,
 				// the tally is keyed by queue item id, which means nothing once the item is gone: resolve it to layers
 				tally: tally
 					? listItem.choices.map((choice) => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))

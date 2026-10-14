@@ -194,3 +194,10 @@ export function schemaAtPath(schema: z.ZodType, path: readonly (string | number)
 	}
 	return cur
 }
+
+/** The first `max` issues of a failed parse as one line of `path: message` pairs, for a log entry. */
+export function summarizeIssues(error: z.ZodError, max = 3): string {
+	const shown = error.issues.slice(0, max).map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+	const more = error.issues.length - shown.length
+	return more > 0 ? `${shown.join('; ')} (+${more} more)` : shown.join('; ')
+}

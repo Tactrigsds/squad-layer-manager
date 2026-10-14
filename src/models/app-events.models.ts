@@ -5,7 +5,9 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AMS from '@/models/admin-message-shorthands.models'
+import type * as CS from '@/models/context-shared.models'
 import * as EM from '@/models/event-meta.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
@@ -961,15 +963,17 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 	return rows
 }
 
-// reconstructs an app event from a row and validates the payload blob against its schema. returns null (rather than
-// throwing) for rows that don't parse -- an append-only audit log accumulates old-shaped rows across schema changes,
-// and one bad row shouldn't break the whole feed/list. callers filter nulls (and may log the drop).
-export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
+export type RowParseResult = { code: 'ok'; event: AppEvent } | { code: 'err:unparseable'; error: string }
+
+// reconstructs an app event from a row and validates the payload blob against its schema. Never throws: an
+// append-only audit log accumulates old-shaped rows across schema changes, and one bad row shouldn't break the whole
+// feed/list. The layer id refinement throws when layer data isn't loaded, so the parse is guarded too.
+export function parseRow(row: SchemaModels.AppEvent): RowParseResult {
 	let payload: unknown
 	try {
 		payload = superjson.deserialize(row.data as any)
-	} catch {
-		return null
+	} catch (err) {
+		return { code: 'err:unparseable', error: `payload did not deserialize: ${String(err)}` }
 	}
 	const actor =
 		row.actorType === 'slm-user'
@@ -990,6 +994,33 @@ export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
 		causeId: row.causeId,
 		instanceId: row.instanceId,
 	}
-	const parsed = AppEventSchema.safeParse(candidate)
-	return parsed.success ? parsed.data : null
+	try {
+		const parsed = AppEventSchema.safeParse(candidate)
+		return parsed.success
+			? { code: 'ok', event: parsed.data }
+			: { code: 'err:unparseable', error: ZodUtils.summarizeIssues(parsed.error) }
+	} catch (err) {
+		return { code: 'err:unparseable', error: String(err) }
+	}
+}
+
+export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
+	const res = parseRow(row)
+	return res.code === 'ok' ? res.event : null
+}
+
+// The batch counterpart to parseRow. Drops are logged with each row's id, type and parse error, since a dropped row
+// is history the audit log and feed silently stop showing.
+export function fromRows(ctx: CS.Log, rows: SchemaModels.AppEvent[], readBy: string): AppEvent[] {
+	const events: AppEvent[] = []
+	const dropped: { id: AppEventId; type: string; error: string }[] = []
+	for (const row of rows) {
+		const res = parseRow(row)
+		if (res.code === 'ok') events.push(res.event)
+		else dropped.push({ id: row.id, type: row.type, error: res.error })
+	}
+	if (dropped.length > 0) {
+		ctx.log.warn({ dropped }, 'dropped %d unparseable app-event row(s) from %s', dropped.length, readBy)
+	}
+	return events
 }

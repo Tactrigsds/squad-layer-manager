@@ -55,19 +55,12 @@ export const readMatchFeeds = Instr.spanOp(
 			.orderBy(E.asc(Schema.appEvents.time))
 
 		const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
-		let dropped = 0
-		for (const row of rawAppEvents) {
-			const appEvent = AppEvents.fromRow(row)
-			if (!appEvent) {
-				dropped++
-				continue
-			}
-			if (!AppEvents.isFeedVisible(appEvent) || row.matchId === null) continue
-			let events = appEventsByMatch.get(row.matchId)
-			if (!events) appEventsByMatch.set(row.matchId, (events = []))
+		for (const appEvent of AppEvents.fromRows(ctx, rawAppEvents, 'the match feed')) {
+			if (!AppEvents.isFeedVisible(appEvent) || appEvent.matchId === null) continue
+			let events = appEventsByMatch.get(appEvent.matchId)
+			if (!events) appEventsByMatch.set(appEvent.matchId, (events = []))
 			events.push(appEvent)
 		}
-		if (dropped > 0) ctx.log.warn('dropped %d unparseable app-event row(s) from the match feed', dropped)
 
 		const eventsByMatch = new Map<number, CHAT.Event[]>()
 		for (const matchId of matchIds) {

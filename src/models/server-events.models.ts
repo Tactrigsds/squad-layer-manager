@@ -731,12 +731,14 @@ export const EVENT_META = {
 // dropped RESET/PLAYER_CONNECTED silently skews a roster rather than just hiding a line. That's the argument for
 // keeping these schemas permissive about fields the data never guaranteed (see `adminGroups`) instead of tightening
 // them and dropping history. Anything dropped here is logged by the callers.
-export function fromEventRow(row: SchemaModels.ServerEvent): Event | null {
+export type EventRowParseResult = { code: 'ok'; event: Event } | { code: 'err:unparseable'; error: string }
+
+export function parseEventRow(row: SchemaModels.ServerEvent): EventRowParseResult {
 	let payload: unknown
 	try {
 		payload = superjson.deserialize(row.data as any, { inPlace: true })
-	} catch {
-		return null
+	} catch (err) {
+		return { code: 'err:unparseable', error: `payload did not deserialize: ${String(err)}` }
 	}
 	const candidate = {
 		...(payload as object),
@@ -746,22 +748,29 @@ export function fromEventRow(row: SchemaModels.ServerEvent): Event | null {
 		matchId: row.matchId,
 	}
 	const parsed = EventSchema.safeParse(candidate)
-	return parsed.success ? (parsed.data as Event) : null
+	return parsed.success
+		? { code: 'ok', event: parsed.data as Event }
+		: { code: 'err:unparseable', error: ZodUtils.summarizeIssues(parsed.error) }
+}
+
+export function fromEventRow(row: SchemaModels.ServerEvent): Event | null {
+	const res = parseEventRow(row)
+	return res.code === 'ok' ? res.event : null
 }
 
 // The batch counterpart to fromEventRow, for the usual case of reading a match's events. Drops are always logged
-// with the offending row ids: an unparseable row here means replayed state silently disagrees with what actually
-// happened, which is worth a look even though it can't be allowed to break the read.
+// with the offending row ids and parse errors: an unparseable row here means replayed state silently disagrees with
+// what actually happened, which is worth a look even though it can't be allowed to break the read.
 export function fromEventRows(ctx: CS.Log, rows: SchemaModels.ServerEvent[]): Event[] {
 	const events: Event[] = []
-	const dropped: number[] = []
+	const dropped: { id: number; type: string; error: string }[] = []
 	for (const row of rows) {
-		const event = fromEventRow(row)
-		if (event) events.push(event)
-		else dropped.push(row.id)
+		const res = parseEventRow(row)
+		if (res.code === 'ok') events.push(res.event)
+		else dropped.push({ id: row.id, type: row.type, error: res.error })
 	}
 	if (dropped.length > 0) {
-		ctx.log.warn({ droppedEventIds: dropped }, 'dropped %d unparseable server-event row(s)', dropped.length)
+		ctx.log.warn({ dropped }, 'dropped %d unparseable server-event row(s)', dropped.length)
 	}
 	return events
 }

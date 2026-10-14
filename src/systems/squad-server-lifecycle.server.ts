@@ -731,9 +731,9 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 	// this buffer is the feed, so it has to hold what the live path would have pushed -- not every row the audit
 	// log kept. Without the isFeedVisible filter an audit-only event (a queue-driven MAP_SET) reappears as its own
 	// feed entry after a restart, duplicating the QUEUE_UPDATED it was folded into.
-	server.emittedAppEvents = appEventRows
-		.map((r) => AppEvents.fromRow(r))
-		.filter((e): e is AppEvents.AppEvent => e !== null && AppEvents.isFeedVisible(e))
+	server.emittedAppEvents = AppEvents.fromRows({ ...ctx, log: SquadServer.log }, appEventRows, 'the live feed backfill').filter(
+		AppEvents.isFeedVisible,
+	)
 })
 
 const onNewGameDuringSync =
