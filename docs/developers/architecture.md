@@ -912,10 +912,14 @@ tightly-coupled code mostly pins the implementation in place, so it costs refact
 Neither heavy suite needs an external service, because the emulator stands in for one.
 
 Both are dominated by two costs. **Booting apps:** a fixture is a whole server process and a run boots dozens, so
-both suites bundle the server once with rolldown rather than loading its module graph through tsx on every boot.
-**Waiting on polls:** the app learns the roster from a polled `ListPlayers`, so a test that acts in-game and then
-asserts cannot resolve faster than two poll intervals. Poll interval, worker count and per-boot cost all trade
-against each other, so none should be changed without re-measuring the whole suite.
+both suites bundle the server once with rolldown rather than loading its module graph through tsx on every boot, and
+a file whose tests differ only in starting state re-arranges one running app between them (test/harness/rearrange.ts).
+**Waiting on the app:** the app learns the roster from a polled `ListPlayers` and the match from a tailed log, so a
+test that acts in-game has to wait for it to catch up. Tests ask the app instead of waiting out an interval: the
+control socket's `sync-roster` fetches the roster at once and answers when the event pipeline holds it, and
+`ingest-status` reports how far the pipeline has read the log. In the browser, src/systems/readiness.client.ts marks
+`<html>` with `data-ready` and `data-app-ready` as the client finishes starting. Poll interval, worker count and
+per-boot cost all trade against each other, so none should be changed without re-measuring the whole suite.
 
 ## Browser support
 

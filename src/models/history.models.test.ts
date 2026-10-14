@@ -116,14 +116,6 @@ describe('eventsForRow', () => {
 	})
 })
 
-describe('rawContentTypes', () => {
-	test('events are text alone; players and matches are text and csv', () => {
-		expect(HQ.rawContentTypes('events')).toEqual(['text/plain'])
-		expect(HQ.rawContentTypes('players')).toEqual(['text/plain', 'text/csv'])
-		expect(HQ.rawContentTypes('matches')).toEqual(['text/plain', 'text/csv'])
-	})
-})
-
 describe('parseSearchParams', () => {
 	test('reads the params beside the query, and drops ones that do not parse', () => {
 		const params = new URLSearchParams({

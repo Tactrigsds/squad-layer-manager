@@ -200,6 +200,20 @@ function prepareStatements(db: DB.Db) {
 			})
 			.where(E.eq(Schema.players.eosId, ph('eosId')))
 			.prepare(),
+		// steamId and epicId are unique, but an account's eos id can change under the same one. The newest sighting
+		// keeps it. Placeholders wrapped in sql skip the columns' encoders, so they take the stored forms.
+		releaseSteamId: db
+			.update(Schema.players)
+			.set({ steamId: null, modifiedAt: sql`${ph('nowMs')}` })
+			.where(E.and(E.eq(Schema.players.steamId, sql`${ph('steamId')}`), E.ne(Schema.players.eosId, ph('eosId'))))
+			.returning({ eosId: Schema.players.eosId })
+			.prepare(),
+		releaseEpicId: db
+			.update(Schema.players)
+			.set({ epicId: null, modifiedAt: sql`${ph('nowMs')}` })
+			.where(E.and(E.eq(Schema.players.epicId, ph('epicId')), E.ne(Schema.players.eosId, ph('eosId'))))
+			.returning({ eosId: Schema.players.eosId })
+			.prepare(),
 		selectPlayerExists: db
 			.select({ eosId: Schema.players.eosId })
 			.from(Schema.players)
@@ -311,9 +325,23 @@ function insertAssociationRows(ctx: CS.Log, statements: Statements, rows: EventA
 	const eventTime = eventIndexRow.time
 	const insertedEosIds = new Set<string>()
 	for (const player of rows.playerRows) {
+		const steamId = player.steamId === null || player.steamId === undefined ? null : player.steamId.toString()
+		const nowMs = eventTime.getTime()
+		if (steamId !== null) {
+			const released = statements.releaseSteamId.all({ steamId, eosId: player.eosId, nowMs })
+			if (released.length > 0) {
+				ctx.log.warn({ steamId, from: released.map((r) => r.eosId), to: player.eosId }, 'steam id moved to another eos id')
+			}
+		}
+		if (player.epicId) {
+			const released = statements.releaseEpicId.all({ epicId: player.epicId, eosId: player.eosId, nowMs })
+			if (released.length > 0) {
+				ctx.log.warn({ epicId: player.epicId, from: released.map((r) => r.eosId), to: player.eosId }, 'epic id moved to another eos id')
+			}
+		}
 		statements.upsertPlayer.run({
 			eosId: player.eosId,
-			steamId: player.steamId === null || player.steamId === undefined ? null : player.steamId.toString(),
+			steamId,
 			username: player.username,
 			usernameNoTag: player.usernameNoTag ?? null,
 			epicId: player.epicId ?? null,

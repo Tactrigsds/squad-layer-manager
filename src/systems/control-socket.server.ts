@@ -2,8 +2,11 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as path from 'node:path'
 
+import * as Prom from '@/lib/promise-utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared.models'
+import type * as PendingEvents from '@/models/pending-events.models'
+import * as SM from '@/models/squad.models'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
@@ -12,6 +15,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as EventArchive from '@/systems/event-archive.server'
 import * as MatchLayers from '@/systems/match-layers.server'
 import * as PluginsSys from '@/systems/plugins.server'
+import * as SquadServer from '@/systems/squad-server.server'
 
 /**
  * A unix socket for operating the running app from inside its own container, where there is no session to
@@ -41,6 +45,25 @@ const archiveEnvBuilder = Env.getEnvBuilder({ ...Env.groups.backups })
 
 const DEFAULT_ANNOUNCEMENT_DURATION = '15m'
 const MAX_ANNOUNCEMENT_DURATION_MS = 24 * 60 * 60 * 1000
+
+const SYNC_ROSTER_TIMEOUT_MS = 15_000
+
+function rosterApplied(state: PendingEvents.State, players: SM.Player[]) {
+	return players.every((player) => {
+		const id = SM.PlayerIds.getPlayerId(player.ids)
+		if (player.teamId === null) return state.unassignedPlayers.has(id)
+		const held = state.currTeams?.players.get(id)
+		return held !== undefined && held.teamId === player.teamId && held.squadId === player.squadId
+	})
+}
+
+function managedServerCtx(serverId: string) {
+	try {
+		return SquadServer.resolveCtx(SquadServer.getBaseCtx(), serverId)
+	} catch {
+		return null
+	}
+}
 
 async function handle(req: Request): Promise<Response> {
 	switch (req.command) {
@@ -89,6 +112,35 @@ async function handle(req: Request): Promise<Response> {
 		}
 		case 'clear-announcement':
 			return { code: 'ok', cleared: Announcements.clear() }
+		// fetches a server's player list now rather than at its next poll, and answers once the event pipeline holds every
+		// player in it on the team and in the squad it reports. Players who left are not waited on: the pipeline drops
+		// one only after several polls without them.
+		case 'sync-roster': {
+			const serverId = typeof req.args?.serverId === 'string' ? req.args.serverId : ''
+			const ctx = managedServerCtx(serverId)
+			if (!ctx) return { code: 'err:server-not-loaded', serverId }
+			ctx.squadRcon.teams.invalidate(ctx)
+			const teams = await ctx.squadRcon.teams.get(ctx)
+			if (teams.code !== 'ok') return teams
+			const deadline = Date.now() + SYNC_ROSTER_TIMEOUT_MS
+			while (!rosterApplied(ctx.server.eventState, teams.players)) {
+				if (Date.now() > deadline) return { code: 'err:timeout', message: 'the event pipeline did not take up the roster' }
+				await Prom.sleep(50, ctx.signal)
+			}
+			return { code: 'ok', players: teams.players.length }
+		}
+		// how far a server's event pipeline has read its log, as the time of the newest log event it has taken up, and
+		// whether its rcon is connected
+		case 'ingest-status': {
+			const serverId = typeof req.args?.serverId === 'string' ? req.args.serverId : ''
+			const ctx = managedServerCtx(serverId)
+			if (!ctx) return { code: 'err:server-not-loaded', serverId }
+			return {
+				code: 'ok',
+				lastLogEventTime: ctx.server.eventState.lastKnownLogEventTime,
+				rconConnected: ctx.rcon.connected,
+			}
+		}
 		default:
 			return { code: 'err:unknown-command', command: req.command }
 	}

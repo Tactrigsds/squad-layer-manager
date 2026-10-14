@@ -1,5 +1,6 @@
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { role } from '../harness/arrange'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // What a restricted user is shown, against one app holding both sides of the console line. The Settings
@@ -33,9 +34,9 @@ test.afterAll(async () => {
 
 test.describe('a dashboard-only user', () => {
 	test('is withheld the Settings link, and shown what they do and do not hold', async ({ page }) => {
-		await page.goto(app.loginUrl(VIEWER))
+		await gotoReady(page, app.loginUrl(VIEWER))
 		// they really are on the dashboard, so the missing link below is about permissions and not a dead session
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 		await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0)
 
 		await page.getByLabel('User menu').click()
@@ -58,8 +59,8 @@ test.describe('a dashboard-only user', () => {
 
 	// history:query is its own grant: site access alone no longer reaches the history, in any of its forms
 	test('is withheld the history page, and its text form', async ({ page }) => {
-		await page.goto(app.loginUrl(VIEWER))
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, app.loginUrl(VIEWER))
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 		await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveCount(0)
 
 		await page.goto(app.loginUrl(VIEWER, '/history'))
@@ -73,9 +74,9 @@ test.describe('a dashboard-only user', () => {
 	})
 
 	test('is withheld the server console', { tag: '@firefox' }, async ({ page }) => {
-		await page.goto(app.loginUrl(VIEWER))
+		await gotoReady(page, app.loginUrl(VIEWER))
 		// they really are on the dashboard: the denial below is about the console, not a broken session
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 
 		await page.getByRole('button', { name: 'Server Actions' }).click()
 		const item = page.getByRole('menuitem', { name: 'Server Console' })
@@ -90,8 +91,8 @@ test.describe('a dashboard-only user', () => {
 
 test.describe('a console-reader user', { tag: '@firefox' }, () => {
 	test('is granted the console by the permission alone', async ({ page }) => {
-		await page.goto(app.loginUrl(READER))
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, app.loginUrl(READER))
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 
 		await page.getByRole('button', { name: 'Server Actions' }).click()
 		await page.getByRole('menuitem', { name: 'Server Console' }).click()

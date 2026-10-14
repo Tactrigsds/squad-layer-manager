@@ -5,6 +5,7 @@ import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerText, queue, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { savedPool, savedQueue } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // One queue, followed through its whole life against a single app: rendered as seeded, edited and
@@ -42,8 +43,8 @@ test.afterAll(async () => {
 
 test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	test('renders the seeded queue in order, and keeps the game server on its head', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 		const queuePanel = Dash.queueSection(page)
 
 		// the layer names the app renders for the ids we seeded, in the order we seeded them
@@ -58,8 +59,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	})
 
 	test('leaving the dashboard with a draft nobody else holds warns first, then discards it', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const queuePanel = Dash.queueSection(page)
 		await page.getByRole('button', { name: 'Start Editing' }).click()
@@ -82,14 +83,14 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		await expect(page.getByText('Your unsaved edits have been discarded')).toBeVisible()
 
 		// and it really is gone server-side: the deleted item is back on the way in
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 		await expect(queuePanel.getByRole('listitem').filter({ hasText: layerText('Gorodok_RAAS_v1') })).toBeVisible()
 	})
 
 	test('deleting the head, saving, and pushing the new head to the game server', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const queuePanel = Dash.queueSection(page)
 		const items = queuePanel.getByRole('listitem')
@@ -125,8 +126,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	})
 
 	test('a map roll consumes the head and pushes the next one', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const queuePanel = Dash.queueSection(page)
 		await expect(queuePanel.getByText('Sumari_Seed_v1')).toBeVisible()
 
@@ -142,8 +143,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	})
 
 	test('generates a vote from the pool and saves it into the queue', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
 
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Gen Vote' }).click()
@@ -200,8 +201,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	// the vote item's config popover holds a pending config that is only committed by its own Save, so closing
 	// it has to discard what was typed rather than leave it to be picked up the next time it opens
 	test('a vote config is discarded when its popover closes, and kept when saved', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		const queuePanel = Dash.queueSection(page)
 		const voteItem = queuePanel.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Vote' }) })
@@ -226,8 +227,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	})
 
 	test('generates a vote when the queue runs out, once the pool configuration asks for one', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		await page.getByRole('button', { name: 'Pool Configuration' }).click()
 		await page.getByRole('button', { name: 'Generation' }).click()

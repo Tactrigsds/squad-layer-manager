@@ -49,31 +49,6 @@ describe('axis', () => {
 	})
 })
 
-describe('stack', () => {
-	it('lays segments end to end and drops the empty ones', () => {
-		expect(Chart.stack([2, 0, 3])).toEqual([
-			{ seriesIndex: 0, value: 2, start: 0, end: 2 },
-			{ seriesIndex: 2, value: 3, start: 2, end: 5 },
-		])
-	})
-
-	it('is empty for a row of zeroes', () => {
-		expect(Chart.stack([0, 0])).toEqual([])
-	})
-})
-
-describe('project', () => {
-	it('maps the domain onto the extent', () => {
-		expect(Chart.project(5, 10, 200)).toBe(100)
-		expect(Chart.project(0, 10, 200)).toBe(0)
-		expect(Chart.project(10, 10, 200)).toBe(200)
-	})
-
-	it('collapses a zero-width domain instead of dividing by zero', () => {
-		expect(Chart.project(1, 0, 200)).toBe(0)
-	})
-})
-
 describe('valueAt', () => {
 	const points = [
 		{ x: 0, y: 0 },

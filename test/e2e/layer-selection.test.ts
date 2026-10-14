@@ -5,6 +5,7 @@ import * as FB from '@/models/filter-builders.models'
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, layerText, queue, role, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 import { settledText, settledTextAfter } from './settle'
 
@@ -129,8 +130,8 @@ async function openExplore(page: Page) {
 // text being typed. The list stays open while it is walked, with the recalled search marked.
 test.describe('the layer search box', () => {
 	test('steps through recent searches with the arrow keys', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const dialog = await openExplore(page)
 		const box = dialog.getByRole('searchbox', { name: 'Search layers' })
 		const search = async (text: string) => {
@@ -174,8 +175,8 @@ test.describe('the layer search box', () => {
 // Runs before the tests that edit the queue: it reloads the page, which would drop an editing session.
 test.describe('the explore-layers collection', () => {
 	test('opens on the default collection, then on whatever the user last picked', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		const dialog = await openExplore(page)
 		const collection = dialog.getByRole('combobox', { name: 'Collection' })
@@ -192,8 +193,8 @@ test.describe('the explore-layers collection', () => {
 	})
 
 	test('leaves the collection cleared once the user clears it', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		const dialog = await openExplore(page)
 		const collection = dialog.getByRole('combobox', { name: 'Collection' })
@@ -208,8 +209,8 @@ test.describe('the explore-layers collection', () => {
 	})
 
 	test('focusing a layer sets the collection it is in', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		const dialog = await openExplore(page)
 		// pinned to the one layer rather than to its map: with the collection cleared below, every mod's Narva
@@ -242,8 +243,8 @@ test.describe('applied filters', () => {
 	// the pool's own filters are already rendered as pinned controls, so offering them again in the
 	// extras picker would produce two controls for one constraint
 	test('the extras picker offers only filters the pool does not already pin', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const dialog = await openAddLayers(page)
 
 		// both pinned controls render, which is what makes their absence from the picker meaningful
@@ -260,8 +261,8 @@ test.describe('applied filters', () => {
 	// an extra arrives disabled and only constrains the query once switched on, so the two steps are
 	// asserted separately: adding one must not silently narrow the results
 	test('an added extra filter constrains the query only once enabled', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const dialog = await openAddLayers(page)
 
 		// the pinned control only renders once its filter entity has arrived, which is what gates the pool
@@ -289,8 +290,8 @@ test.describe('applied filters', () => {
 
 	// the picker sits inside the dialog, so the chord must stop at the picker rather than submit the dialog
 	test('Ctrl+Enter in the extras picker toggles the highlighted filter and closes only the picker', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const dialog = await openAddLayers(page)
 
 		await dialog.getByRole('button', { name: 'Edit extra filters' }).click()
@@ -307,8 +308,8 @@ test.describe('applied filters', () => {
 
 test.describe('the filter menu', { tag: '@firefox' }, () => {
 	test('holds the filter menu to one layer at a time, and keeps the queried columns consistent', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const dialog = await openAddLayers(page)
 
 		// picking a Layer backfills the columns it is composed of (see LayerFilterMenuPrt.Actions.setComparison):
@@ -384,8 +385,8 @@ test.describe('installed mods', () => {
 	}
 
 	test('a layer from a mod the server does not have is listed but unselectable, force-write included', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		// the constraint does not narrow the query, so a SuperMod layer is still listed -- with no checkbox on it
 		const dialog = await openAddLayersOn(page, 'SuperMod')
@@ -412,8 +413,8 @@ test.describe('installed mods', () => {
 	test('installing the mod in settings makes its layers selectable, and uninstalling them takes it back', async ({ page }) => {
 		await setModInstalled(page, 'SuperMod', true)
 
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const installed = await openAddLayersOn(page, 'SuperMod')
 		await expect(firstRow(installed).getByRole('checkbox', { name: 'Select row' })).toHaveCount(1)
 		await firstRow(installed).click()
@@ -421,8 +422,8 @@ test.describe('installed mods', () => {
 
 		await setModInstalled(page, 'SuperMod', false)
 
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		const uninstalled = await openAddLayersOn(page, 'SuperMod')
 		await expect(firstRow(uninstalled).getByRole('checkbox', { name: 'Select row' })).toHaveCount(0)
 		await firstRow(uninstalled).click()
@@ -432,8 +433,8 @@ test.describe('installed mods', () => {
 
 test.describe('pasting a rotation', () => {
 	test('reports each unusable line with its reason, keeps the text, and adds raw layers only with validation off', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Add Rotation' }).click()
 		const dialog = page.getByRole('dialog', { name: 'Add Rotation' })
@@ -505,8 +506,8 @@ test.describe('pasting a rotation', () => {
 
 test.describe('pool membership and force-write', () => {
 	test('out-of-pool layers are viewable but unselectable without force-write', async ({ page }) => {
-		await page.goto(app.loginUrl(WRITER))
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(WRITER))
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Add Layers' }).click()
@@ -558,8 +559,8 @@ test.describe('pool membership and force-write', () => {
 	// dialog's simulation could not narrow it: an admin simulating the loss of force-write still got selectable
 	// out-of-pool rows, which is the one thing the simulation is there to show them
 	test('simulating away force-write disables out-of-pool rows', async ({ page }) => {
-		await page.goto(app.loginUrl(FORCE_WRITER))
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(FORCE_WRITER))
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 
 		await setForceWriteSimulatedAway(page, true)
@@ -577,8 +578,8 @@ test.describe('pool membership and force-write', () => {
 	})
 
 	test('edit dialog applies the pool only when the edited layer is in it', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		const queuePanel = Dash.queueSection(page)
 		const items = queuePanel.getByRole('listitem')
@@ -610,8 +611,8 @@ test.describe('pool membership and force-write', () => {
 	})
 
 	test('adds a chosen out-of-pool layer to the head of the queue', { tag: '@firefox' }, async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		// the admin is a superuser, so the out-of-pool row accepts the selection and Submit arms

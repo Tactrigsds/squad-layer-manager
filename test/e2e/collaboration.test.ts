@@ -8,6 +8,7 @@ import { type AppFixture, createAppFixture, type TestUser } from '../harness/app
 import { filter, LAYERS, layerText, queue, role, rotation } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { savedQueue, savedRotation } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // Two people working on the same queue, against one app. Edits are operations broadcast between
@@ -60,8 +61,8 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 		const second = await browser.newContext()
 		const pageB = await second.newPage()
 		try {
-			await page.goto(app.loginUrl())
-			await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+			await gotoReady(page, app.loginUrl())
+			await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 			const queuePanel = Dash.queueSection(page)
 			const item = queuePanel.getByRole('listitem').filter({ hasText: layerText('Harju_RAAS_v1') })
@@ -180,8 +181,8 @@ test.describe('shared query engine', () => {
 	test('a second tab in the same session gets a working layer table', async ({ page }) => {
 		const pageB = await page.context().newPage()
 		try {
-			await page.goto(app.loginUrl())
-			await expect(Dash.queueLabel(page, /^Queue/)).toBeVisible({ timeout: 25_000 })
+			await gotoReady(page, app.loginUrl())
+			await expect(Dash.queueLabel(page, /^Queue/)).toBeVisible()
 			await pageB.goto(app.loginUrl())
 			await expect(Dash.queueLabel(pageB, /^Queue/)).toBeVisible({ timeout: 25_000 })
 			for (const p of [page, pageB]) {
@@ -301,8 +302,8 @@ test.describe('collaborative rotation editing', () => {
 	})
 
 	test('finding, cloning, archiving and deleting a rotation from the rotations page', async ({ page, browser }) => {
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible()
 		await openPath(page, '/rotations')
 		await expect(page.getByRole('link', { name: 'Weekend Competitive' })).toBeVisible({ timeout: 15_000 })
 
@@ -402,8 +403,8 @@ test.describe('collaborative rotation editing', () => {
 
 	// replaces the queue, so it runs last
 	test('adding a saved rotation to the queue in place of what was there', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueSection(page)).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueSection(page)).toBeVisible()
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Add Rotation' }).click()
 		const dialog = page.getByRole('dialog', { name: 'Add Rotation' })
@@ -437,8 +438,8 @@ test.describe('collaborative rotation editing', () => {
 	})
 
 	test("downloading a rotation's layers, and editing them as YAML", async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible()
 		await openPath(page, '/rotations/weekend')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
 
@@ -454,6 +455,8 @@ test.describe('collaborative rotation editing', () => {
 		const editor = page.getByRole('textbox', { name: 'Layers as YAML' })
 		await expect(editor).toContainText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
 		await page.getByRole('button', { name: 'Start Editing' }).click()
+		// the editor is read-only until editing has started, and drops keystrokes while it is
+		await expect(editor).toBeEditable()
 		await editor.click()
 		await page.keyboard.press('ControlOrMeta+a')
 		await page.keyboard.insertText(
@@ -524,8 +527,8 @@ test.describe('collaborative rotation editing', () => {
 	})
 
 	test('the layer pickers keep the collection and the applied filters from Explore Layers and across rotations', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations' })).toBeVisible()
 
 		await page.getByRole('button', { name: 'Explore Layers' }).click()
 		const explore = page.getByRole('dialog', { name: 'Layers' })
@@ -567,8 +570,8 @@ test.describe('collaborative rotation editing', () => {
 	})
 
 	test('a rotation tag can be made from the rotation editor and lands on the rotation', async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible()
 		await openPath(page, '/rotations/midweek')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
 
@@ -588,8 +591,8 @@ test.describe('collaborative rotation editing', () => {
 	})
 
 	test("a queue item's menu switches its tags and manages its notes", async ({ page }) => {
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible({ timeout: 25_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('link', { name: 'Rotations', exact: true })).toBeVisible()
 		await openPath(page, '/rotations/weekend')
 		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible({ timeout: 15_000 })
 		await page.getByRole('button', { name: 'Start Editing' }).click()
