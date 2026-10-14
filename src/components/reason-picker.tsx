@@ -5,58 +5,13 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as AMS from '@/models/admin-message-shorthands.models'
-import type * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 import ComboBox, { type ComboBoxHandle } from './combo-box/combo-box'
-import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import type { MenuSlots } from './player-context-menu-options'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { useBlockDialogSubmit } from './ui/lazy-alert-dialog'
-
-// the Warn menu entry: a flat item when no warn presets are configured (which leaves only the custom path),
-// otherwise a sub-menu offering Custom (the warn box) or Preset Reason (the warn dialog)
-export function WarnReasonsSub(props: {
-	slots: MenuSlots
-	denied: RBAC.PermissionDeniedResponse | null
-	disabled?: boolean
-	label?: string
-	onCustom: () => void
-	onPreset: () => void
-}) {
-	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
-	const hasReasons = Zus.useStore(
-		SettingsClient.PublicSettingsStore,
-		(s) => !!s && AMS.shorthandsForAction(s.adminMessageShorthands, 'warn').length > 0,
-	)
-	const label = props.label ?? tr.text(AMS_Msgs.actionNames.warn)
-	const disabled = !!props.denied || props.disabled
-
-	if (!hasReasons) {
-		return (
-			<PermissionDeniedTooltip denied={props.denied}>
-				<Item onClick={props.onCustom} disabled={disabled}>
-					{label}
-				</Item>
-			</PermissionDeniedTooltip>
-		)
-	}
-
-	return (
-		<PermissionDeniedTooltip denied={props.denied}>
-			<Sub>
-				<SubTrigger disabled={disabled}>{label}</SubTrigger>
-				<SubContent>
-					<Item onClick={props.onCustom}>{tr.text(AMS_Msgs.customReason())}</Item>
-					<Separator />
-					<Item onClick={props.onPreset}>{tr.text(AMS_Msgs.presetReasonItem())}</Item>
-				</SubContent>
-			</Sub>
-		</PermissionDeniedTooltip>
-	)
-}
 
 const CUSTOM = '__custom__'
 

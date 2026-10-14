@@ -8,10 +8,8 @@ import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
-import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
-import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -19,12 +17,12 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as WarnChat from '@/systems/warn-chat.client'
 
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
+import { ReasonPicker } from './reason-picker'
 import {
 	ContextMenuItem,
 	ContextMenuLabel,
@@ -35,7 +33,6 @@ import {
 	ContextMenuSubTrigger,
 } from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
-import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 const contextMenuSlots: MenuSlots = {
 	Item: ContextMenuItem,
@@ -61,7 +58,6 @@ export function SquadMenuItems({
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
-	const openOrFocusWindow = useOpenOrFocusWindow()
 	// holds the preset-reason pick in the disband/kill/kick/timeout dialogs; the alert dialog only resolves a button
 	// id and unmounts its content on confirm, so the pick is read from here
 	const presetReasonRef = React.useRef('')
@@ -83,7 +79,7 @@ export function SquadMenuItems({
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
-	const { squadPlayerIds, squadExists, uniqueId } = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+	const { squadPlayerIds, squadExists } = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
 		const state = ChatPrt.Sel.chatState(chatStore)
 		const liveSquad = SM.findSquadForPlayer(state.squads, squad)
 		const squadPlayerIds = ChatPrt.Sel.players(chatStore)
@@ -137,28 +133,27 @@ export function SquadMenuItems({
 		}
 	}
 
-	// open (or raise) the squad's details window and focus its warn box (which prefixes @Squad<id>)
-	function warn() {
-		if (uniqueId === null) return
-		openOrFocusWindow(WINDOW_ID.enum['squad-details'], { uniqueSquadId: uniqueId, stores })
-		WarnChat.requestWarnFocus({ kind: 'squad', uniqueSquadId: uniqueId })
-	}
-
-	async function warnSquadPreset() {
+	async function warnSquad() {
+		customReasonRef.current = ''
 		presetReasonRef.current = ''
-		const msg = tr.confirm(SM_Msgs.warnPreset(msgTarget))
+		const msg = tr.confirm(SM_Msgs.warn(msgTarget))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
-					<ReasonPicker action="warn" presetRef={presetReasonRef} required squadName={squad.squadName} />
+					<ReasonPicker action="warn" presetRef={presetReasonRef} customRef={customReasonRef} required squadName={squad.squadName} />
 				</div>
 			),
 			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
-		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		const input = SquadServerClient.readReasonInput({
+			action: 'warn',
+			required: true,
+			presetRef: presetReasonRef,
+			customRef: customReasonRef,
+		})
 		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({
 			serverId,
@@ -170,7 +165,7 @@ export function SquadMenuItems({
 			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, input.presetReasonLabel)))
 	}
 
 	async function killSquad() {
@@ -405,14 +400,11 @@ export function SquadMenuItems({
 			{!omitWarn && (
 				<>
 					<Separator />
-					<WarnReasonsSub
-						slots={slots}
-						denied={warnDenied}
-						disabled={uniqueId === null || squadPlayerIds.length === 0}
-						label={tr.text(SM_Msgs.warnSquadLabel())}
-						onCustom={warn}
-						onPreset={warnSquadPreset}
-					/>
+					<PermissionDeniedTooltip denied={warnDenied}>
+						<Item onClick={warnSquad} disabled={!!warnDenied || squadPlayerIds.length === 0}>
+							{tr.text(SM_Msgs.warnSquadLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
 				</>
 			)}
 			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={tr.text(SM_Msgs.addFlagsToSquad())} />

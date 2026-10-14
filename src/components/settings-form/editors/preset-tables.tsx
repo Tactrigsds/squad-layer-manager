@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { ColorPicker } from '@/components/color-picker'
+import { MessagePreviewBox } from '@/components/reason-picker'
 import { TextInputField } from '@/components/settings-form/controls'
 import {
 	DEBOUNCE_MS,
@@ -20,7 +21,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { MessagePreviewBox } from '@/components/warn-reasons-sub'
 import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
 import * as Templating from '@/lib/templating'

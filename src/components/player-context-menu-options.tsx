@@ -10,14 +10,12 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import type * as BM from '@/models/battlemetrics.models'
-import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
-import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -27,11 +25,11 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as WarnChat from '@/systems/warn-chat.client'
 
 import { PlayerFlagsMenuItem } from './bm-flag-workflows'
 import { AddNoteMenuItem } from './bm-note-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
+import { ReasonPicker } from './reason-picker'
 import {
 	ContextMenuItem,
 	ContextMenuLabel,
@@ -44,7 +42,6 @@ import {
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
-import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 export type MenuSlots = {
 	Item: React.ComponentType<{ onClick?: () => void; disabled?: boolean; className?: string; children?: React.ReactNode }>
@@ -356,8 +353,7 @@ function FramedPlayerMenuItems({
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
-	const openOrFocusWindow = useOpenOrFocusWindow()
-	// holds the latest custom-reason input value (kill + kick + timeout dialogs); the alert dialog only resolves a
+	// holds the latest custom-reason input value (warn + kill + kick + timeout dialogs); the alert dialog only resolves a
 	// button id, so we read the reason from here rather than the (unmounting) DOM input when the dialog confirms
 	const customReasonRef = React.useRef('')
 	// same mechanism for the preset-reason pick in the action confirmation dialogs; reset on each dialog open
@@ -590,34 +586,34 @@ function FramedPlayerMenuItems({
 		})
 	}
 
-	// open (or raise) the player's details window and focus its warn box, rather than a one-off dialog
-	function warn() {
-		openOrFocusWindow(WINDOW_ID.enum['player-details'], { playerId, stores })
-		WarnChat.requestWarnFocus({ kind: 'player', playerId })
-	}
-
-	async function warnPreset() {
+	async function warn() {
+		customReasonRef.current = ''
 		presetReasonRef.current = ''
-		const msg = tr.confirm(SM_Msgs.warnPreset(msgTarget))
+		const msg = tr.confirm(SM_Msgs.warn(msgTarget))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
-					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+					<ReasonPicker action="warn" presetRef={presetReasonRef} customRef={customReasonRef} required />
 				</div>
 			),
 			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
-		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
+		const input = SquadServerClient.readReasonInput({
+			action: 'warn',
+			required: true,
+			presetRef: presetReasonRef,
+			customRef: customReasonRef,
+		})
 		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 		if (res.code !== 'ok') {
 			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, input.presetReasonLabel)))
 	}
 
 	function copyTeleportCommand() {
@@ -914,7 +910,11 @@ function FramedPlayerMenuItems({
 			key: 'player',
 			items: [
 				!omitWarn && isOnServer && (
-					<WarnReasonsSub key="warn" slots={slots} denied={warnDenied} onCustom={warn} onPreset={warnPreset} />
+					<PermissionDeniedTooltip key="warn" denied={warnDenied}>
+						<Item onClick={warn} disabled={!!warnDenied}>
+							{tr.text(SM_Msgs.warnLabel())}
+						</Item>
+					</PermissionDeniedTooltip>
 				),
 				isOnServer && (
 					<Item key="teleport" onClick={copyTeleportCommand}>

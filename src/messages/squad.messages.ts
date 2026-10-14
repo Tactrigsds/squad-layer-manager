@@ -88,16 +88,21 @@ export const timeoutTooLong = def((maxDuration: string) => ({
 	toast: [t('Duration too long'), { description: t('Your maximum timeout is {maxDuration}', { maxDuration }) }],
 }))
 
-export const warnPreset = def((target: Tgt.Target) => ({
+export const warn = def((target: Tgt.Target) => ({
 	confirm: {
 		title: t('Warn {targetNoun}', { targetNoun: Tgt.noun(target) }),
-		description: t('Warn {targetSubject} with a message shorthand?', { targetSubject: Tgt.subject(target) }),
+		description: t('Warn {targetSubject}?', { targetSubject: Tgt.subject(target) }),
 		confirmLabel: t('Warn'),
 	},
 }))
 
-export const warned = def((target: Tgt.Target, presetReasonLabel: string) => ({
-	toast: [t('Warned {targetAffected} for {presetReasonLabel}', { targetAffected: Tgt.affected(target), presetReasonLabel })],
+// presetReasonLabel is absent for a custom reason
+export const warned = def((target: Tgt.Target, presetReasonLabel?: string) => ({
+	toast: [
+		presetReasonLabel
+			? t('Warned {targetAffected} for {presetReasonLabel}', { targetAffected: Tgt.affected(target), presetReasonLabel })
+			: t('Warned {targetAffected}', { targetAffected: Tgt.affected(target) }),
+	],
 }))
 
 export const warnFailed = def((reason: string) => ({

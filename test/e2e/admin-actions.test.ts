@@ -69,9 +69,7 @@ test.describe('admin actions from the teams panel', () => {
 		const row = panel.getByRole('row', { name: /sq_member/ })
 		await expect(row).toBeVisible({ timeout: 20_000 })
 		await row.click({ button: 'right' })
-		// warn is a submenu offering the warn box (Custom) or the preset-reason dialog
-		await page.getByRole('menuitem', { name: 'Warn' }).hover()
-		await page.getByRole('menuitem', { name: 'Message Shorthand' }).click()
+		await page.getByRole('menuitem', { name: 'Warn' }).click()
 		const dialog = page.getByRole('alertdialog', { name: 'Warn Player' })
 		// the reason list opens with the dialog, and warning is held until one is picked
 		const confirm = dialog.getByRole('button', { name: 'Warn', exact: true })
