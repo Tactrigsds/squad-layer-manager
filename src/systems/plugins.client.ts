@@ -3,6 +3,7 @@ import type { ClientLink } from '@orpc/client'
 import type { AnyRouter, RouterClient } from '@orpc/server'
 import * as React from 'react'
 
+import * as CssRules from '@/lib/css-rules'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
@@ -14,6 +15,7 @@ import * as PLG from '@/models/plugins.models'
 import type * as PA from '@/models/procedure-access.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -116,6 +118,12 @@ function nextRegKey(pluginId: string) {
 	return `${pluginId}:${regCounter++}`
 }
 
+// The user's switch for hiding plugin UI. Each registry read checks it, so the plugins keep running and their
+// registrations come back as they were.
+function uiDisabled() {
+	return ClientOnlySettings.Store.getState().pluginUiDisabled
+}
+
 function bumpVersion() {
 	Store.setState((s) => ({ ...s, version: s.version + 1 }))
 }
@@ -166,6 +174,7 @@ const NO_SLOT_REGS: SlotReg[] = []
 
 /** The anchor's registrations. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
 export function getSlotRegs(anchor: SlotAnchorId): SlotReg[] {
+	if (uiDisabled()) return NO_SLOT_REGS
 	return slotRegs.get(anchor) ?? NO_SLOT_REGS
 }
 
@@ -217,6 +226,7 @@ export function registerEventRenderer(
 
 /** The renderer for a plugin's `name`d events. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
 export function getEventRenderer(pluginId: string, name: string): EventRendererReg | null {
+	if (uiDisabled()) return null
 	const regs = eventRenderers.get(rendererKey(pluginId, name))
 	// last registration wins, so a plugin re-registering a name replaces rather than shadows
 	return regs?.[regs.length - 1] ?? null
@@ -373,6 +383,11 @@ function readInput(input: Zus.AnyInput<any>): unknown {
 
 const NO_DECOS: DecorationEntry[] = []
 
+function decorationRegs(anchor: DecorationAnchorId): DecorationReg[] {
+	if (uiDisabled()) return []
+	return decoRegs.get(anchor) ?? []
+}
+
 // Manual subscription rather than one Zus.useStore per registration, so the hook count stays fixed
 // while plugins register and unregister at runtime.
 export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: DecorationAnchors[A]): DecorationEntry[] {
@@ -382,7 +397,7 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 	const subscribe = React.useCallback(
 		(onChange: () => void) => {
 			const unsubs: (() => void)[] = []
-			for (const reg of decoRegs.get(anchor) ?? []) {
+			for (const reg of decorationRegs(anchor)) {
 				for (const input of reg.stores(props)) unsubs.push(subscribeInput(input, onChange))
 			}
 			return () => {
@@ -394,7 +409,7 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 	)
 	const getSnapshot = () => {
 		const decos: DecorationEntry[] = []
-		for (const reg of decoRegs.get(anchor) ?? []) {
+		for (const reg of decorationRegs(anchor)) {
 			const states = reg.stores(props).map(readInput)
 			try {
 				const selected = reg.select(...states, props)
@@ -415,31 +430,88 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 
 // ---- stylesheets ----
 
-// A packaged client's compiled stylesheet, one <link> per plugin. Unlike its module, css unloads: an
-// upgrade swaps the link and a stop removes it, with no reload asked for.
-const styleLinks = new Map<string, HTMLLinkElement>()
+// A packaged client's compiled stylesheet. Its Tailwind utilities are merged into the app's own utilities layer
+// (see lib/css-rules.ts), because as a separate sheet a base utility the plugin also uses would override the app's
+// variants of it on the app's own elements. The rest of the sheet, the plugin's own css, is adopted as is. A relative
+// url() in a merged utility resolves against the app's stylesheet, not the plugin's.
+//
+// Unlike its module, css unloads: an upgrade swaps the sheet and a stop removes it, with no reload asked for.
+type PluginStyles = { sheet: CSSStyleSheet; utilities: CSSLayerBlockRule | null }
+const loadedStyles = new Map<string, PluginStyles>()
+const requestedStyles = new Map<string, { href: string | null; applied: Promise<void> }>()
+let adoptedSheets: CSSStyleSheet[] = []
+let mergedUtilities: CSSRule[] = []
 
 // Resolves once the sheet is applied, so a client loaded after it never paints unstyled. A sheet that
 // fails to load resolves too: the client still runs, with the failure in the console.
 function syncStyles(info: PLG.RuntimeInfo, href: string | null): Promise<void> {
-	const current = styleLinks.get(info.id)
-	if (current?.getAttribute('href') === href) return Promise.resolve()
-	current?.remove()
-	styleLinks.delete(info.id)
-	if (!href) return Promise.resolve()
-	const link = document.createElement('link')
-	link.rel = 'stylesheet'
-	link.href = href
-	styleLinks.set(info.id, link)
-	return new Promise((resolve) => {
-		link.onload = () => resolve()
-		link.onerror = () => {
-			pluginLogger(info).error('loading its stylesheet failed: %s', href)
-			resolve()
+	const requested = requestedStyles.get(info.id)
+	if ((requested?.href ?? null) === href) return requested?.applied ?? Promise.resolve()
+	const applied = (async () => {
+		let next: PluginStyles | null = null
+		if (href) {
+			try {
+				next = await fetchStyles(href)
+			} catch (err) {
+				pluginLogger(info).error(err, 'loading its stylesheet failed: %s', href)
+			}
+			if (requestedStyles.get(info.id)?.href !== href) return
 		}
-		document.head.append(link)
-	})
+		if (next) loadedStyles.set(info.id, next)
+		else loadedStyles.delete(info.id)
+		applyStyles()
+	})()
+	requestedStyles.set(info.id, { href, applied })
+	return applied
 }
+
+async function fetchStyles(href: string): Promise<PluginStyles> {
+	const res = await fetch(href)
+	if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+	const sheet = new CSSStyleSheet({ baseURL: href })
+	sheet.replaceSync(await res.text())
+	const at = Array.from(sheet.cssRules).findIndex((r) => r instanceof CSSLayerBlockRule && r.name === 'utilities')
+	if (at === -1) return { sheet, utilities: null }
+	const utilities = sheet.cssRules[at] as CSSLayerBlockRule
+	sheet.deleteRule(at)
+	return { sheet, utilities }
+}
+
+// Re-applies every loaded sheet from scratch: one plugin's merged rules can anchor another's, so removing a single
+// plugin's is not safe.
+function applyStyles() {
+	const sheets = uiDisabled() ? [] : Array.from(loadedStyles.values(), (s) => s.sheet)
+	document.adoptedStyleSheets = [...document.adoptedStyleSheets.filter((s) => !adoptedSheets.includes(s)), ...sheets]
+	adoptedSheets = sheets
+	CssRules.remove(mergedUtilities)
+	mergedUtilities = []
+	const target = appUtilitiesLayer()
+	if (!target || uiDisabled()) return
+	for (const styles of loadedStyles.values()) {
+		if (styles.utilities) CssRules.merge(target, styles.utilities, mergedUtilities)
+	}
+}
+
+// Adopted sheets are not in document.styleSheets, so the first utilities layer found there is the app's.
+function appUtilitiesLayer() {
+	for (const sheet of document.styleSheets) {
+		let rules: CSSRuleList
+		try {
+			rules = sheet.cssRules
+		} catch {
+			// a cross-origin sheet, such as a font's
+			continue
+		}
+		for (const rule of rules) {
+			if (rule instanceof CSSLayerBlockRule && rule.name === 'utilities') return rule
+		}
+	}
+}
+
+// vite replaces the app's stylesheet on an edit, dropping the merged rules with it
+import.meta.hot?.on('vite:afterUpdate', () => {
+	if (loadedStyles.size > 0) applyStyles()
+})
 
 // ---- host lifecycle ----
 
@@ -488,6 +560,11 @@ export namespace Actions {
 
 export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 	builtins = builtinPlugins
+	ClientOnlySettings.Store.subscribe((s, prev) => {
+		if (s.pluginUiDisabled === prev.pluginUiDisabled) return
+		applyStyles()
+		bumpVersion()
+	})
 	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(builtinPlugins.map((e) => [e.manifest.id, e.manifest])) }))
 	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((next) => {
 		const infos = next.plugins as PLG.RuntimeInfo[]
@@ -553,7 +630,11 @@ function prefetch(href: string, rel: 'modulepreload' | 'preload') {
 	prefetched.add(href)
 	const link = document.createElement('link')
 	link.rel = rel
-	if (rel === 'preload') link.as = 'style'
+	// a stylesheet is fetched and parsed by syncStyles, and only a preload that matches fetch()'s defaults is reused
+	if (rel === 'preload') {
+		link.as = 'fetch'
+		link.crossOrigin = 'anonymous'
+	}
 	link.href = href
 	document.head.append(link)
 }

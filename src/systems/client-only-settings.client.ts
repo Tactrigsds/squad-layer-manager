@@ -38,6 +38,8 @@ export type ClientOnlySettingsStore = {
 	// rather than command strings so a pin survives an admin renaming the command; ids for commands that no longer
 	// exist are ignored on read rather than pruned, since a downgrade shouldn't silently drop them.
 	pinnedCommands: string[]
+	// hides every plugin's slots, decorations, event renderers and styles, to tell a plugin's effect on a page from the app's
+	pluginUiDisabled: boolean
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(
@@ -53,6 +55,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 			primaryPanelTab: 'VIEWING_QUEUE',
 			dashboardTab: 'queue',
 			pinnedCommands: [],
+			pluginUiDisabled: false,
 		}),
 		{
 			name: 'settings:v1',
@@ -86,6 +89,9 @@ export namespace Sel {
 export namespace Actions {
 	export function setDisplayTeamsNormalized(value: boolean) {
 		Store.setState({ displayTeamsNormalized: value })
+	}
+	export function setPluginUiDisabled(value: boolean) {
+		Store.setState({ pluginUiDisabled: value })
 	}
 	export function setChartsTab(value: ChartsTab) {
 		Store.setState({ chartsTab: value })

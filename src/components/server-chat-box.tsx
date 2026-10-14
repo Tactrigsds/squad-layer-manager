@@ -195,6 +195,8 @@ export default function ServerChatBox({
 						data-tour="activity-warn-channel"
 						className={cn(
 							'fd-btn fd-btn-sm w-auto min-w-24 gap-1.5 px-2 bg-ctl shrink-0 [&>span]:whitespace-nowrap [&>span]:overflow-visible',
+							// match the event filter button beside it, which the phone layout places here
+							'max-phone:h-(--ctl-sm) max-phone:text-xs',
 							cfg.triggerClass,
 						)}
 					>
