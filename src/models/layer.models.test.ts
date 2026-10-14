@@ -279,3 +279,38 @@ describe('world partitioning layers', () => {
 		).toBe('Yehorivka_TC_v1_WP')
 	})
 })
+
+describe('layerMatchesIngameLayerClassname', () => {
+	function layerNamed(name: string) {
+		const avail = L.StaticLayerComponents.layerFactionAvailability[name]
+		const team1 = avail.find((e) => e.allowedTeams.includes(1))!
+		const team2 = avail.find((e) => e.allowedTeams.includes(2) && e.Faction !== team1.Faction)!
+		const layer = L.parseRawLayerText(`${name} ${team1.Faction}+${team1.Unit} ${team2.Faction}+${team2.Unit}`)!
+		expect(L.isRawLayer(layer)).toBe(false)
+		expect(L.toLayer(layer.id).Layer).toBe(name)
+		return layer.id
+	}
+
+	it('matches a layer to the world of the same name', () => {
+		expect(L.layerMatchesIngameLayerClassname(layerNamed('Sumari_Seed_v1'), 'Sumari_Seed_v1')).toBe(true)
+		expect(L.layerMatchesIngameLayerClassname(layerNamed('Narva_RAAS_v1'), 'Narva_RAAS_v1')).toBe(true)
+	})
+
+	it('matches an FRAAS layer to its RAAS world', () => {
+		const fraas = L.StaticLayerComponents.mapLayers.find((c) => c.Gamemode === 'FRAAS')!.Layer
+		expect(L.layerMatchesIngameLayerClassname(layerNamed(fraas), fraas.replace('FRAAS', 'RAAS'))).toBe(true)
+	})
+
+	it('matches a Jensens Range layer to its world', () => {
+		const id = layerNamed('JensensRange_WPMC-TLF')
+		expect(id).toBe('JR-TR:WPMC-CA:TLF-CA')
+		expect(L.layerMatchesIngameLayerClassname(id, 'Jensens_Range_WPMC-TLF')).toBe(true)
+		expect(L.layerMatchesIngameLayerClassname(id, 'JensensRange_WPMC-TLF')).toBe(true)
+	})
+
+	it('rejects the world of a different layer', () => {
+		expect(L.layerMatchesIngameLayerClassname(layerNamed('JensensRange_WPMC-TLF'), 'Jensens_Range_USA-PLA')).toBe(false)
+		expect(L.layerMatchesIngameLayerClassname(layerNamed('Narva_RAAS_v1'), 'Narva_AAS_v1')).toBe(false)
+		expect(L.layerMatchesIngameLayerClassname(layerNamed('Narva_RAAS_v1'), 'Jensens_Range_WPMC-TLF')).toBe(false)
+	})
+})

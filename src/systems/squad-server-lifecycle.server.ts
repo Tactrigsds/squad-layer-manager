@@ -571,19 +571,11 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 									time: event.time,
 								})
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some(({ prefix }) => event.message.startsWith(prefix))) {
-									opts.push(
-										Commands.handleCommand(ctx, event).then((res) => {
-											if (res && res?.code !== 'ok') SquadServer.log.error(res)
-										}),
-									)
+									opts.push(Commands.handleCommand(ctx, event).then((res) => Commands.logResult(event, res)))
 								} else if (CommandPrompts.capturesAnswer(serverId, SM.PlayerIds.getPlayerId(event.playerIds), event)) {
 									// a number this player was just asked for outranks the same number as a vote: the prompt was
 									// solicited from them seconds ago and clears itself either way (see command-prompts.server)
-									opts.push(
-										Commands.handleChoiceAnswer(ctx, event).then((res) => {
-											if (res && res?.code !== 'ok') SquadServer.log.error(res)
-										}),
-									)
+									opts.push(Commands.handleChoiceAnswer(ctx, event).then((res) => Commands.logResult(event, res)))
 								} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
 									opts.push(Vote.handleVote(ctx, event))
 								}
@@ -739,9 +731,9 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 	// this buffer is the feed, so it has to hold what the live path would have pushed -- not every row the audit
 	// log kept. Without the isFeedVisible filter an audit-only event (a queue-driven MAP_SET) reappears as its own
 	// feed entry after a restart, duplicating the QUEUE_UPDATED it was folded into.
-	server.emittedAppEvents = appEventRows
-		.map((r) => AppEvents.fromRow(r))
-		.filter((e): e is AppEvents.AppEvent => e !== null && AppEvents.isFeedVisible(e))
+	server.emittedAppEvents = AppEvents.fromRows({ ...ctx, log: SquadServer.log }, appEventRows, 'the live feed backfill').filter(
+		AppEvents.isFeedVisible,
+	)
 })
 
 const onNewGameDuringSync =

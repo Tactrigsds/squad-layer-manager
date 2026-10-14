@@ -126,6 +126,9 @@ export type TestUser = {
 	// grants every permission via the SUPER_USERS bootstrap. Off by default for seeded users, so a test
 	// can have someone the permission checks actually say no to.
 	superUser?: boolean
+	// false seeds only the discord account, and its steam links as assigned by ADMIN_USER, which is what an admin
+	// assigning a link to somebody who has never signed in leaves behind
+	signedIn?: boolean
 }
 
 export type AppFixtureOptions = {
@@ -221,7 +224,8 @@ export type AppFixture = {
 	otelLabels: Record<string, string>
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
 	loginUrl: (user?: TestUser, path?: string) => string
-	// resolves once the app's event pipeline holds the emulator's current players. The app reads the roster from a
+	// resolves once the app's event pipeline is synced, has processed a fresh poll, and holds the emulator's current
+	// players. A roll in progress therefore has to complete first. The app reads the roster from a
 	// polled ListPlayers, so a player who just joined isn't known to it yet -- anything that resolves a player (chat
 	// commands, warns) needs this first. Fetches the roster on demand (the sync-roster control command).
 	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
@@ -575,13 +579,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	await db
 		.insert(Schema.discordAccounts)
 		.values(users.map((u) => ({ discordId: u.discordId, username: u.username, updatedAt: new Date() })))
-	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId })))
+	const signedIn = users.filter((u) => u.signedIn ?? true)
+	await db.insert(Schema.users).values(signedIn.map((u) => ({ discordId: u.discordId })))
 	const steamLinks = users.flatMap((u) =>
 		(u.steamIds ?? []).map((steamId) => ({
 			steam64Id: BigInt(steamId),
 			discordId: u.discordId,
-			origin: 'self-serve' as const,
-			linkedBy: u.discordId,
+			...((u.signedIn ?? true)
+				? { origin: 'self-serve' as const, linkedBy: u.discordId }
+				: { origin: 'assigned' as const, linkedBy: ADMIN_USER.discordId }),
 		})),
 	)
 	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
@@ -592,7 +598,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		await db
 			.insert(Schema.tutorialPromptDismissals)
 			.values(
-				users.flatMap((u) =>
+				signedIn.flatMap((u) =>
 					TUT.SurfaceIdSchema.options.map((surfaceId) => ({ userId: u.discordId, surfaceId, dismissedAt: new Date() })),
 				),
 			)

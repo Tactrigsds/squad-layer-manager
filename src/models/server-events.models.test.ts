@@ -128,7 +128,9 @@ describe('fromEventRows', () => {
 
 		expect(events.map((e) => e.id)).toEqual([1])
 		expect(warn).toHaveBeenCalledTimes(1)
-		expect(warn.mock.calls[0][0]).toEqual({ droppedEventIds: [2] })
+		expect(warn.mock.calls[0][0]).toEqual({
+			dropped: [{ id: 2, type: 'PLAYER_JOINED_SQUAD', error: expect.stringContaining('uniqueId') }],
+		})
 	})
 
 	it('stays quiet when every row parses', () => {

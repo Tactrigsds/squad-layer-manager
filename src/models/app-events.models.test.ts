@@ -1,5 +1,5 @@
 import superjson from 'superjson'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import * as AppEvents from '@/models/app-events.models'
 import type * as LL from '@/models/layer-list.models'
@@ -49,6 +49,12 @@ describe('app-events persistence', () => {
 		// simulate an old/corrupt row whose payload no longer matches the schema
 		row.data = superjson.serialize({ choiceCount: 'not-a-number' })
 		expect(AppEvents.fromRow(row)).toBeNull()
+
+		const warn = vi.fn()
+		expect(AppEvents.fromRows({ log: { warn } } as any, [row], 'the audit list')).toEqual([])
+		expect(warn.mock.calls[0][0]).toEqual({
+			dropped: [{ id: e.id, type: 'VOTE_STARTED', error: expect.stringContaining('choiceCount') }],
+		})
 	})
 
 	it('returns null when a required payload field is missing', () => {

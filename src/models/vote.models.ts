@@ -209,11 +209,12 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 	for (const [choice, votes] of tally.entries()) {
 		percentages.set(choice, (totalVotes > 0 ? votes / totalVotes : 0) * 100)
 	}
-	const turnoutPercentage = (totalVotes / numPlayers) * 100
+	// a server reporting no players would otherwise make this Infinity, which VOTE_ENDED cannot be read back with
+	const turnoutPercentage = numPlayers > 0 ? (totalVotes / numPlayers) * 100 : 0
 	return {
 		totals: tally,
 		totalVotes,
-		turnoutPercentage: isNaN(turnoutPercentage) ? 0 : turnoutPercentage,
+		turnoutPercentage,
 		percentages,
 		leaders: leaders,
 	}

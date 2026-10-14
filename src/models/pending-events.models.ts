@@ -212,7 +212,9 @@ export type State = {
 	expectations: EventExpectation[]
 
 	nextLayerId: L.LayerId | null
-	expectedNewLayerId: L.LayerId | null
+	// set by a TransitionMap NEW_GAME to the layer the roll should load, and consumed by the real-layer NEW_GAME. Null
+	// when no TransitionMap preceded, as when the game server starts
+	expectedNewLayer: { layerId: L.LayerId | null } | null
 
 	currentMatch:
 		| {
@@ -269,6 +271,9 @@ export type State = {
 
 	// the tickets the last TICKETS_CHANGED reported, so a poll only emits one when they move
 	lastTickets: { matchId: number; tickets: SM.Tickets } | null
+
+	// the polledAt of the newest teams update this pipeline has processed
+	teamsPolledThrough: number | null
 
 	counters: {
 		squadId: Generator<number, never, unknown>
@@ -334,8 +339,9 @@ export function init(opts: {
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
 		lastTickets: null,
+		teamsPolledThrough: null,
 		nonSyncedSince: null,
-		expectedNewLayerId: null,
+		expectedNewLayer: null,
 		eventBufs: {
 			rconEmittedEvents: [],
 			logEvents: [],
@@ -625,6 +631,7 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
 		}
 	}
+	if (teamsReady > 0) state.teamsPolledThrough = Math.max(state.teamsPolledThrough ?? 0, teamsUpdates[teamsReady - 1].polledAt)
 	return pass.events
 }
 
@@ -950,20 +957,25 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			state.unknownSquadStreaks.clear()
 			state.squadCreatedAtAwaitingPoll.clear()
 			state.unassignedPlayers.clear()
-			state.expectedNewLayerId = state.nextLayerId
+			state.expectedNewLayer = { layerId: state.nextLayerId }
 			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
 		} else {
 			// Enter 'rolling' but do NOT commit `newGameEvent` yet. The rolling TEAMS_UPDATE branch keys off
 			// `newGameEvent` (and only guards `currentMatch !== 'PENDING'`), so committing it before we've resolved
 			// the new match would let the next poll complete the roll against the stale (previous) match.
 			state.syncState = { type: 'rolling' }
-			let newLayerId = state.expectedNewLayerId
-			state.expectedNewLayerId = null
+			const expectedNewLayer = state.expectedNewLayer
+			state.expectedNewLayer = null
+			let newLayerId = expectedNewLayer?.layerId ?? null
 			if (!newLayerId || !L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
-				if (pendingEvent.layerClassname) {
-					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+				if (!expectedNewLayer) {
+					log.info(
+						`${pendingEvent.layerClassname} loaded without a TransitionMap, as on a server start. Resolving the layer over RCON`,
+					)
+				} else if (!newLayerId) {
+					log.warn(`${pendingEvent.layerClassname} loaded while the next layer was unknown. Resolving the layer over RCON`)
 				} else {
-					log.warn('expectedNewLayerId is null')
+					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
 				}
 				const layersStatus = await state.hooks.fetchLayersStatus()
 				if (!layersStatus) {
@@ -1167,10 +1179,26 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 
 		case 'PLAYER_KICKED_CHAIN': {
 			const events = pendingEvent.events
+			let player: SM.PlayerId
+			if (events.PLAYER_KICKED) {
+				player = SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds)
+			} else {
+				const held = SM.PlayerIds.findByDisplayName(
+					[...state.currTeams.players.values()],
+					(p) => p.ids,
+					events.KICKING_PLAYER.playerIds.username,
+				)
+				if (!held) {
+					// a player can be kicked mid-connect, before any roster holds them
+					log.info('Kicked player not resolved in currTeams: "%s"', events.KICKING_PLAYER.playerIds.username)
+					break
+				}
+				player = SM.PlayerIds.getPlayerId(held.ids)
+			}
 			await emit(state, pass, {
 				...base,
 				type: 'PLAYER_KICKED',
-				player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
+				player,
 				reason: events.KICKING_PLAYER.reason,
 			})
 			break
@@ -1188,10 +1216,11 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		}
 
 		case 'PLAYER_WARNED': {
-			// the RCON acknowledgement only echoes the display name
-			const player = SM.PlayerIds.find([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds, { inexact: true })
+			const player = SM.PlayerIds.findByDisplayName([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds.username)
 			if (!player) {
-				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
+				// the server only acknowledges a warn to a connected player, so the roster is behind or holds two
+				// players by that name
+				log.warn('Warned player not resolved in currTeams: "%s"', pendingEvent.playerIds.username)
 				break
 			}
 			await emit(state, pass, {

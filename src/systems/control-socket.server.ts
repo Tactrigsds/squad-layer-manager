@@ -48,8 +48,12 @@ const MAX_ANNOUNCEMENT_DURATION_MS = 24 * 60 * 60 * 1000
 
 const SYNC_ROSTER_TIMEOUT_MS = 15_000
 
-function rosterApplied(state: PendingEvents.State, players: SM.Player[]) {
-	return players.every((player) => {
+// Whether the pipeline is synced, has processed this poll, and holds its roster. The roster alone is not enough: it
+// matches before a poll that only moved the tickets is processed, and mid-roll the pipeline keeps the pre-roll roster.
+function rosterApplied(state: PendingEvents.State, teams: { players: SM.Player[]; polledAt: number }) {
+	if (state.syncState.type !== 'synced') return false
+	if (state.teamsPolledThrough === null || state.teamsPolledThrough < teams.polledAt) return false
+	return teams.players.every((player) => {
 		const id = SM.PlayerIds.getPlayerId(player.ids)
 		if (player.teamId === null) return state.unassignedPlayers.has(id)
 		const held = state.currTeams?.players.get(id)
@@ -123,7 +127,7 @@ async function handle(req: Request): Promise<Response> {
 			const teams = await ctx.squadRcon.teams.get(ctx)
 			if (teams.code !== 'ok') return teams
 			const deadline = Date.now() + SYNC_ROSTER_TIMEOUT_MS
-			while (!rosterApplied(ctx.server.eventState, teams.players)) {
+			while (!rosterApplied(ctx.server.eventState, teams)) {
 				if (Date.now() > deadline) return { code: 'err:timeout', message: 'the event pipeline did not take up the roster' }
 				await Prom.sleep(50, ctx.signal)
 			}

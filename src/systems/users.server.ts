@@ -430,9 +430,8 @@ export async function recordDiscordAccount(ctx: C.Db, discordId: bigint, usernam
 
 export async function getUser(ctx: C.Db, discordId: bigint) {
 	const [dbUser] = await selectUsers(ctx).where(E.eq(Schema.users.discordId, discordId))
-	const user = await buildUser(dbUser)
-	if (!user) return
-	return user
+	if (!dbUser) return
+	return await buildUser(dbUser)
 }
 
 // The discord identity a steam account is linked to, which need not have signed into SLM: a link assigned by an
@@ -492,8 +491,8 @@ export async function buildUser(dbUser: DbUser): Promise<USR.User> {
 	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, dbUser.discordId)
 	if (memberRes.code !== 'ok') {
 		// falling back to the db is what an install without discord does for every user it ever builds, which is
-		// a line at boot rather than one per lookup
-		if (memberRes.code !== 'err:disabled') {
+		// a line at boot rather than one per lookup. Discord.fetchMember reports a non-member itself, once.
+		if (memberRes.code === 'err:discord') {
 			log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
 		}
 		return {

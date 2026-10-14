@@ -37,7 +37,11 @@ const module = initModule('discord')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-let client!: D.Client
+// Settles once setup knows whether there is a bot: with the logged-in client, or with null when the integration is
+// off. Anything reaching discord awaits it, since boot runs other systems alongside the login. Rejects when the login
+// fails, which fails boot as well.
+const clientReady = Promise.withResolvers<D.Client | null>()
+clientReady.promise.catch(() => {})
 
 // resolved once at setup; null when the integration is disabled or the guild couldn't be fetched
 let homeGuildName: string | null = null
@@ -104,6 +108,24 @@ async function login(intents: D.GatewayIntentBits[]) {
 	return loggingIn
 }
 
+// Message Content is privileged: the login fails outright unless it is switched on in the developer portal. What
+// needs it is optional, so an install that has not switched it on logs in again without it.
+async function loginWithBestIntents() {
+	try {
+		const client = await login(MESSAGE_INTENTS)
+		messageContent = true
+		return client
+	} catch (err) {
+		if (!isDisallowedIntents(err)) throw err
+		log.warn(
+			'Message Content Intent is off for the bot in the discord developer portal, so SLM cannot read messages in your discord server; logging in without it',
+		)
+		const client = await login(BASE_INTENTS)
+		messageContent = false
+		return client
+	}
+}
+
 // the gateway closing on a privileged intent the portal has not granted. @discordjs/ws rejects the login with a plain
 // Error for it, and discord.js has a code of its own for the same thing
 function isDisallowedIntents(err: unknown) {
@@ -116,21 +138,17 @@ export async function setup() {
 	ENV = envBuilder()
 	if (!ENV.DISCORD_ENABLED) {
 		log.info('Discord integration is off (DISCORD_ENABLED=false); users resolve from the db and guild roles go unread')
+		clientReady.resolve(null)
 		return
 	}
-	// Message Content is privileged: the login fails outright unless it is switched on in the developer portal. What
-	// needs it is optional, so an install that has not switched it on logs in again without it.
+	let client: D.Client
 	try {
-		client = await login(MESSAGE_INTENTS)
-		messageContent = true
+		client = await loginWithBestIntents()
 	} catch (err) {
-		if (!isDisallowedIntents(err)) throw err
-		log.warn(
-			'Message Content Intent is off for the bot in the discord developer portal, so SLM cannot read messages in your discord server; logging in without it',
-		)
-		client = await login(BASE_INTENTS)
-		messageContent = false
+		clientReady.reject(err)
+		throw err
 	}
+	clientReady.resolve(client)
 
 	// everything SLM resolves (members, roles, emojis) is scoped to the home guild, so an install in any other
 	// one serves nobody and leaves the app with a presence no one here manages. Leave on sight, and sweep what
@@ -308,7 +326,8 @@ export function isEnabled() {
 }
 
 async function fetchGuild(guildId: bigint) {
-	if (!ENV.DISCORD_ENABLED) {
+	const client = await clientReady.promise
+	if (!client) {
 		return {
 			code: 'err:disabled' as const,
 			msg: 'discord integration disabled',
@@ -333,35 +352,45 @@ async function fetchGuild(guildId: bigint) {
 	}
 }
 
-type MemberLookupFailure = { code: 'err:discord'; err: string; errCode: number | string }
+type NotAMember = { code: 'err:not-a-member'; msg: string }
 
 // Someone who has left the guild (or never joined) is looked up by every user build that names them: a REST round
-// trip and a 404 each time. Remembered for a while instead, and forgotten as soon as they join.
-const NOT_A_MEMBER_TTL_MS = 10 * 60 * 1000
-const notAMember = new Map<string, { expiresAt: number; res: MemberLookupFailure }>()
+// trip and a 404 each time. Remembered instead, and checked again once RECHECK_NOT_A_MEMBER_MS has passed. An entry
+// is kept past that point so the check does not report the same person twice, and is dropped when they join.
+const RECHECK_NOT_A_MEMBER_MS = 10 * 60 * 1000
+const notAMember = new Map<string, { recheckAt: number }>()
+
+// A snowflake carries its milliseconds since 2015 above bit 22. Ids SLM makes up for people who are not on discord,
+// such as the tutorial's second admin, are smaller than that.
+function isSnowflake(id: bigint) {
+	return id >> 22n > 0n
+}
 
 export async function fetchMember(guildId: bigint, memberId: bigint) {
 	const guildRes = await fetchGuild(guildId)
 	if (guildRes.code !== 'ok') return guildRes
+	if (!isSnowflake(memberId)) return { code: 'err:not-a-member', msg: `${memberId} is not a discord user id` } satisfies NotAMember
 
 	const key = `${guildId}:${memberId}`
 	const known = notAMember.get(key)
-	if (known) {
-		if (known.expiresAt > Date.now()) return known.res
-		notAMember.delete(key)
+	if (known && known.recheckAt > Date.now()) {
+		return { code: 'err:not-a-member', msg: `${memberId} is not a member of guild ${guildId}` } satisfies NotAMember
 	}
 	try {
 		const member = await guildRes.guild.members.fetch(memberId.toString())
+		notAMember.delete(key)
 		return { code: 'ok' as const, member }
 	} catch (err) {
-		log.warn({ err }, 'Failed to fetch member with id %s', memberId)
-		if (err instanceof D.DiscordAPIError) {
-			const res: MemberLookupFailure = { code: 'err:discord', err: err.message, errCode: err.code }
-			if (err.code === D.RESTJSONErrorCodes.UnknownMember || err.code === D.RESTJSONErrorCodes.UnknownUser) {
-				notAMember.set(key, { expiresAt: Date.now() + NOT_A_MEMBER_TTL_MS, res })
-			}
-			return res
+		if (
+			err instanceof D.DiscordAPIError &&
+			(err.code === D.RESTJSONErrorCodes.UnknownMember || err.code === D.RESTJSONErrorCodes.UnknownUser)
+		) {
+			if (!known) log.info('Discord user %s is not a member of guild %s (%s)', memberId, guildId, err.message)
+			notAMember.set(key, { recheckAt: Date.now() + RECHECK_NOT_A_MEMBER_MS })
+			return { code: 'err:not-a-member', msg: `${memberId} is not a member of guild ${guildId}` } satisfies NotAMember
 		}
+		log.warn({ err }, 'Failed to fetch member with id %s', memberId)
+		if (err instanceof D.DiscordAPIError) return { code: 'err:discord' as const, err: err.message, errCode: err.code }
 		throw err
 	}
 }
@@ -441,7 +470,8 @@ export async function listGuildChannels() {
  * of an err:discord here; the id naming nothing reachable is the other.
  */
 export async function postMessage(channelId: string, content: string) {
-	if (!ENV.DISCORD_ENABLED) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
+	const client = await clientReady.promise
+	if (!client) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
 	try {
 		const channel = await client.channels.fetch(channelId)
 		if (!channel?.isTextBased() || !channel.isSendable()) {
@@ -462,7 +492,8 @@ export async function postMessage(channelId: string, content: string) {
  * outcome as having deleted it.
  */
 export async function deleteMessage(channelId: string, messageId: string) {
-	if (!ENV.DISCORD_ENABLED) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
+	const client = await clientReady.promise
+	if (!client) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
 	try {
 		const channel = await client.channels.fetch(channelId)
 		if (!channel?.isTextBased()) return { code: 'err:not-postable' as const, msg: `channel ${channelId} is not one this bot can reach` }
@@ -486,7 +517,7 @@ export const orpcRouter = {
 		let emojis = await guild.emojis.fetch()
 
 		if (ENV.NODE_ENV === 'development') {
-			emojis = client.emojis.cache
+			emojis = guild.client.emojis.cache
 		}
 		return emojis.map((emoji) => toNormalizedEmoji(emoji))
 	}),

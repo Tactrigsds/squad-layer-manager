@@ -515,7 +515,7 @@ describe('PendingEvents', () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			await syncUp(state, { layerId: LAYER_A })
 
-			// TransitionMap first (sets expectedNewLayerId = nextLayerId)
+			// TransitionMap first (sets expectedNewLayer to nextLayerId)
 			state.nextLayerId = LAYER_A
 			PendingEvents.onLogEvent(state, {
 				type: 'NEW_GAME',
@@ -1441,6 +1441,51 @@ describe('PendingEvents', () => {
 		})
 	})
 
+	describe('PLAYER_KICKED_CHAIN', () => {
+		function kickChain(username: string, kicked?: string): SM.LogEvents.AnyChainEvent {
+			const base = { time: 200, chainID: 7, raw: '' }
+			return {
+				type: 'PLAYER_KICKED_CHAIN',
+				time: 200,
+				events: {
+					KICKING_PLAYER: { ...base, type: 'KICKING_PLAYER', reason: 'Kicked from the server: crash', playerIds: { username } },
+					...(kicked && {
+						PLAYER_KICKED: {
+							...base,
+							type: 'PLAYER_KICKED',
+							playerIds: { eos: kicked, username },
+							source: { type: 'rcon' as const },
+						},
+					}),
+				},
+			}
+		}
+
+		it("takes the player from an admin's kick line", async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.onLogEvent(state, kickChain('eos-001', 'eos-001'))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			expect((await collect(state)).find((e) => e.type === 'PLAYER_KICKED')).toMatchObject({ player: 'eos-001' })
+		})
+
+		it('resolves a kick no admin issued by the kicked name', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1, { ids: { eos: 'eos-001', username: '[TT] ninny' } })], [])
+			PendingEvents.onLogEvent(state, kickChain('[TT]  ninny'))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			expect((await collect(state)).find((e) => e.type === 'PLAYER_KICKED')).toMatchObject({
+				player: 'eos-001',
+				reason: 'Kicked from the server: crash',
+			})
+		})
+
+		it('drops a kick no admin issued for a player the roster does not hold', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.onLogEvent(state, kickChain('Stranger'))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			expect((await collect(state)).find((e) => e.type === 'PLAYER_KICKED')).toBeUndefined()
+		})
+	})
+
 	describe('application-event attribution (warn expectations)', () => {
 		function warnEvent(reason: string, username: string, time: number): SM.RconEvents.Event {
 			return { type: 'PLAYER_WARNED', time, reason, playerIds: { username } }
@@ -1457,6 +1502,15 @@ describe('PendingEvents', () => {
 			expect(warn).toBeDefined()
 			expect(warn.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
+		})
+
+		it('records a warn whose echoed name has a doubled space after the tag', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1, { ids: { eos: 'eos-001', username: '[TT] Soldierklint' } })], [])
+			PendingEvents.onRconEvent(state, warnEvent('stop', '[TT]  Soldierklint', 200))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			expect(events.find((e) => e.type === 'PLAYER_WARNED')).toMatchObject({ player: 'eos-001', reason: 'stop' })
 		})
 
 		it('does not attribute when the reason does not match, and leaves the expectation armed', async () => {

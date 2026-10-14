@@ -91,6 +91,7 @@ import * as m0136 from './0136_scheduled_job_runs'
 import * as m0137 from './0137_balance_triggers_unbundled'
 import * as m0138 from './0138_message_shorthands'
 import * as m0139 from './0139_player_usernames'
+import * as m0140 from './0140_queue_updated_vote_layer_ids'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -169,4 +170,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0137_balance_triggers_unbundled', up: m0137.up },
 	{ name: '0138_message_shorthands', up: m0138.up },
 	{ name: '0139_player_usernames', up: m0139.up },
+	{ name: '0140_queue_updated_vote_layer_ids', up: m0140.up },
 ]
