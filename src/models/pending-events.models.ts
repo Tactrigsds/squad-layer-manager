@@ -272,6 +272,9 @@ export type State = {
 	// the tickets the last TICKETS_CHANGED reported, so a poll only emits one when they move
 	lastTickets: { matchId: number; tickets: SM.Tickets } | null
 
+	// the polledAt of the newest teams update this pipeline has processed
+	teamsPolledThrough: number | null
+
 	counters: {
 		squadId: Generator<number, never, unknown>
 		pendingEventId: Generator<number, never, unknown>
@@ -336,6 +339,7 @@ export function init(opts: {
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
 		lastTickets: null,
+		teamsPolledThrough: null,
 		nonSyncedSince: null,
 		expectedNewLayer: null,
 		eventBufs: {
@@ -627,6 +631,7 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 			state.log.error(err, 'Error while processing event %s (%s)', pendingEvent.type, pendingEvent.id)
 		}
 	}
+	if (teamsReady > 0) state.teamsPolledThrough = Math.max(state.teamsPolledThrough ?? 0, teamsUpdates[teamsReady - 1].polledAt)
 	return pass.events
 }
 

@@ -1021,8 +1021,10 @@ describe('packaged plugins', () => {
 		await app.waitForRosterSync()
 
 		app.emu.world.chat(admin, 'ChatAdmin', '/hello world')
-		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('world')), { label: "the plugin command's reply" })
-		expect(Inspect.warnsTo(app, admin).at(-1)).toContain(`hello world on ${app.serverId}`)
+		const reply = await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('world')), {
+			label: "the plugin command's reply",
+		})
+		expect(reply).toContain(`hello world on ${app.serverId}`)
 
 		// declared allowedChats is admin-only, so the same words in all-chat are not a command at all
 		app.emu.world.chat(admin, 'ChatAll', '/hello nobody-should-see-this')

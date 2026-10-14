@@ -224,7 +224,8 @@ export type AppFixture = {
 	otelLabels: Record<string, string>
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
 	loginUrl: (user?: TestUser, path?: string) => string
-	// resolves once the app's event pipeline holds the emulator's current players. The app reads the roster from a
+	// resolves once the app's event pipeline is synced, has processed a fresh poll, and holds the emulator's current
+	// players. A roll in progress therefore has to complete first. The app reads the roster from a
 	// polled ListPlayers, so a player who just joined isn't known to it yet -- anything that resolves a player (chat
 	// commands, warns) needs this first. Fetches the roster on demand (the sync-roster control command).
 	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
