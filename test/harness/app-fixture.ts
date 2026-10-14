@@ -18,7 +18,7 @@ import * as RRS from '@/models/repeat-rulesets.models'
 import * as ROT from '@/models/rotations.models'
 import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import * as TUT from '@/models/tutorial.models'
 import * as Migrate from '@/server/migrate'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
@@ -221,10 +221,14 @@ export type AppFixture = {
 	otelLabels: Record<string, string>
 	// url that logs the given user in via the query-param auth bypass, for the e2e client to open
 	loginUrl: (user?: TestUser, path?: string) => string
-	// resolves once the app's roster cache reflects the emulator's current players. The app reads the
-	// roster from a polled ListPlayers, so a player who just joined isn't known to it yet -- anything
-	// that resolves a player (chat commands, warns) needs this first.
+	// resolves once the app's event pipeline holds the emulator's current players. The app reads the roster from a
+	// polled ListPlayers, so a player who just joined isn't known to it yet -- anything that resolves a player (chat
+	// commands, warns) needs this first. Fetches the roster on demand (the sync-roster control command).
 	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
+	// resolves once the app's event pipeline has taken up every line the emulated server has logged so far
+	waitForLogIngested: (opts?: { timeoutMs?: number }) => Promise<void>
+	// resolves once the app's rcon connection to the emulated server is up, or down
+	waitForRconConnected: (connected: boolean, opts?: { timeoutMs?: number }) => Promise<void>
 	// Resolves once the emulated server's next layer is the head of the app's queue. The server rolls to
 	// whatever it holds as next, falling back to the layer it is already on, and the app pushes the head there
 	// over rcon only after it has saved the queue -- so a roll staged off the saved queue alone can play the
@@ -341,10 +345,16 @@ function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string 
 
 const LOG_FILE_POLL_INTERVAL = 250
 
-// How long after the emulator logs something before the app is certain to have read it: one poll of the log tail
-// plus the parser's wait for the tick to go quiet (squad-server-lifecycle.server.ts derives both from the same interval),
-// with the same again for slack. A test that needs the app to have *seen* something has to wait this out.
-export const LOG_INGEST_SETTLE_MS = (LOG_FILE_POLL_INTERVAL + LOG_FILE_POLL_INTERVAL * 1.5) * 2
+// the time stamped on the newest entry of a SquadGame.log, as the app's parser reads it
+const LOG_ENTRY_STAMP = /^\[(\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}:\d{3})\]/
+function lastLoggedTime(logPath: string): number | null {
+	const lines = fs.readFileSync(logPath, 'utf8').split('\n')
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const stamp = LOG_ENTRY_STAMP.exec(lines[i])
+		if (stamp) return SM.LogEvents.parseTimestamp(stamp[1])
+	}
+	return null
+}
 
 // Durations that would make a test sit and wait. Every one is a setting or an env var, which are the
 // only levers we have: the app runs in its own process, so its timers can't be faked. Tests override
@@ -816,6 +826,30 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				label: 'roster sync',
 				timeoutMs: syncOpts?.timeoutMs ?? 25_000,
 			})
+		},
+		waitForLogIngested: async (waitOpts) => {
+			const logged = lastLoggedTime(squadLogPath)
+			if (logged === null) return
+			await waitFor(
+				async () => {
+					const status = await fixture.control('ingest-status', { serverId })
+					return (
+						status.code === 'ok' &&
+						(status.lastLogEventTime as number | null) !== null &&
+						(status.lastLogEventTime as number) >= logged
+					)
+				},
+				{ label: 'the app to take up what the server logged', timeoutMs: waitOpts?.timeoutMs ?? 20_000, intervalMs: 50 },
+			)
+		},
+		waitForRconConnected: async (connected, waitOpts) => {
+			await waitFor(
+				async () => {
+					const status = await fixture.control('ingest-status', { serverId })
+					return status.code === 'ok' && status.rconConnected === connected
+				},
+				{ label: `the app's rcon to be ${connected ? 'up' : 'down'}`, timeoutMs: waitOpts?.timeoutMs ?? 20_000, intervalMs: 50 },
+			)
 		},
 		waitForNextLayerSync: async (syncOpts) => {
 			await waitFor(

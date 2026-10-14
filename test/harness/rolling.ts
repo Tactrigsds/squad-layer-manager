@@ -1,4 +1,4 @@
-import { type AppFixture, createAppFixture, LOG_INGEST_SETTLE_MS } from './app-fixture'
+import { type AppFixture, createAppFixture } from './app-fixture'
 import { LAYERS, queue } from './arrange'
 import { latestMatch as latestMatchOf } from './inspect'
 
@@ -80,14 +80,14 @@ export async function createRollingFixture(opts?: { env?: Record<string, string>
 		withRconOffline: async (fn) => {
 			const port = app.emu.rconPort
 			await app.emu.rcon.goOffline()
-			await new Promise((resolve) => setTimeout(resolve, 500))
+			await app.waitForRconConnected(false)
 			try {
 				return fn()
 			} finally {
 				// Hold the window open until the app has read what `fn` logged. Bringing RCON back sooner lets the poll
 				// that completes the roll beat those lines into the pipeline, which is a different scenario: the app
 				// would then see the connect/disconnect against the settled new match rather than mid-roll.
-				await new Promise((resolve) => setTimeout(resolve, LOG_INGEST_SETTLE_MS))
+				await app.waitForLogIngested()
 				await app.emu.rcon.goOnline(port)
 			}
 		},

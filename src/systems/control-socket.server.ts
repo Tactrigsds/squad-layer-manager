@@ -129,6 +129,18 @@ async function handle(req: Request): Promise<Response> {
 			}
 			return { code: 'ok', players: teams.players.length }
 		}
+		// how far a server's event pipeline has read its log, as the time of the newest log event it has taken up, and
+		// whether its rcon is connected
+		case 'ingest-status': {
+			const serverId = typeof req.args?.serverId === 'string' ? req.args.serverId : ''
+			const ctx = managedServerCtx(serverId)
+			if (!ctx) return { code: 'err:server-not-loaded', serverId }
+			return {
+				code: 'ok',
+				lastLogEventTime: ctx.server.eventState.lastKnownLogEventTime,
+				rconConnected: ctx.rcon.connected,
+			}
+		}
 		default:
 			return { code: 'err:unknown-command', command: req.command }
 	}
