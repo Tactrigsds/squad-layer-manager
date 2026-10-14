@@ -18,7 +18,7 @@ import type * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
-import type * as SS from '@/models/server-state.models'
+import * as SS from '@/models/server-state.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -254,7 +254,11 @@ export async function updateServerState(
 ) {
 	const serverState = await getServerState(ctx)
 	const newServerState = { ...serverState, ...changes }
-	await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, changes)).where(E.eq(Schema.servers.id, ctx.serverId))
+	await ctx
+		.db()
+		.update(Schema.servers)
+		.set(superjsonify(Schema.servers, SS.toStoredChanges(changes)))
+		.where(E.eq(Schema.servers.id, ctx.serverId))
 	const update: SS.LQStateUpdate = { state: newServerState, source }
 
 	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next(update))

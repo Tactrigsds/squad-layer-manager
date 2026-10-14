@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
+import type * as L from '@/models/layer.models'
 import type * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 
@@ -154,7 +155,7 @@ describe('chat.models application-event collapse', () => {
 			id: 1,
 			time: 101,
 			matchId: 1,
-			layerId: 'l1',
+			layerId: 'l1' as L.LayerId,
 			source: { type: 'event', id: 'app-q' },
 		}
 		CHAT.handleEvent(state, mapSet)
@@ -498,7 +499,7 @@ describe('chat.models recent players', () => {
 		return { type: 'RESET', id, time: 100 + id, matchId: 1, source, state: { players, squads: [] } }
 	}
 	function newGame(id: number): SE.NewGame {
-		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' as L.LayerId }
 	}
 	const recentIds = (state: CHAT.ChatState) => [...state.interpolatedState.recentPlayers.values()].map((p) => p.ids.eos)
 
@@ -578,7 +579,7 @@ describe('chat.models recent squads', () => {
 		return { type: 'SQUAD_RENAMED', id, time: 100 + id, matchId: 1, uniqueId, oldSquadName, newSquadName }
 	}
 	function newGame(id: number): SE.NewGame {
-		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' as L.LayerId }
 	}
 	function joinedSquad(playerEos: SM.PlayerId, uniqueId: number, id: number): SE.PlayerJoinedSquad {
 		return { type: 'PLAYER_JOINED_SQUAD', id, time: 100 + id, matchId: 1, uniqueId, player: playerEos }
@@ -906,7 +907,7 @@ describe('live buffer match pruning', () => {
 		return { type: 'RCON_CONNECTED', id, time: 100 + id, matchId, reconnected }
 	}
 	function newGame(id: number, matchId: number): SE.NewGame {
-		return { type: 'NEW_GAME', id, time: 100 + id, matchId, source: 'server-roll', layerId: 'l1' }
+		return { type: 'NEW_GAME', id, time: 100 + id, matchId, source: 'server-roll', layerId: 'l1' as L.LayerId }
 	}
 
 	function playedMatch() {

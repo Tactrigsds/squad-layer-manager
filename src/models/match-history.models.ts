@@ -341,8 +341,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	}
 	const shared = {
 		layerSource: layerSource,
-		// TODO: find a smart way to handle legacy layer ids
-		layerId: entry.layerId,
+		layerId: L.readStoredLayerId(entry.layerId),
 		rawLayerCommandText: entry.rawLayerCommandText ?? undefined,
 		startTime: entry.startTime ?? undefined,
 		historyEntryId: entry.id,
@@ -425,7 +424,7 @@ export const NO_LAYER_PARTS: LayerParts = {
 	layerTeam2Unit: null,
 }
 
-export function layerParts(layerId: string): LayerParts {
+export function layerParts(layerId: L.LayerId): LayerParts {
 	let layer: L.UnvalidatedLayer
 	try {
 		layer = L.toLayer(layerId)
@@ -457,7 +456,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 	}
 	const entry: SchemaModels.MatchHistory = {
 		id: matchDetails.historyEntryId,
-		layerId,
+		layerId: L.toLayerText(layerId),
 		serverId: matchDetails.serverId,
 		rawLayerCommandText: matchDetails.rawLayerCommandText ?? null,
 		lqItemId: matchDetails.lqItemId ?? null,
@@ -562,7 +561,7 @@ export function getNewMatchHistoryEntry(opts: {
 }) {
 	const source = opts.lqItem?.source ?? opts.source
 	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
-		layerId: opts.lqItem?.layerId ?? opts.layerId,
+		layerId: L.toLayerText(opts.lqItem?.layerId ?? opts.layerId),
 		serverId: opts.serverId,
 		rawLayerCommandText: L.getLayerCommand(opts.layerId, 'set-next'),
 		startTime: opts.startTime,

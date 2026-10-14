@@ -139,7 +139,7 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.type).toBe('single-list-item')
-		expect(generated.layerId).toMatch(/^FL-/)
+		expect(generated.layerId).toMatch(/^Fallujah_/)
 		expect(generated.source).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
 
 		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'the request being consumed', timeoutMs: 20_000 })
@@ -163,7 +163,7 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.type).toBe('single-list-item')
-		expect(generated.layerId).toMatch(/^SK-/)
+		expect(generated.layerId).toMatch(/^Skorpo_/)
 		// nothing was requested this time, so the item is plainly generated
 		expect(generated.source.type).toBe('generated')
 

@@ -131,7 +131,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		app.roll()
 
 		const newMatch = await app.waitForNewMatch(oldMatch.id)
-		expect(L.layerMatchesIngameLayerClassname(newMatch.layerId, 'Mutaha_Skirmish_v1')).toBe(true)
+		expect(L.layerMatchesIngameLayerClassname(L.readStoredLayerId(newMatch.layerId), 'Mutaha_Skirmish_v1')).toBe(true)
 		expect(setByTypeOf(app, newMatch.id)).toBe('ingame-vote')
 		// the head was never set as next, so a layer it had no part in choosing must not consume it
 		expect(savedQueue(app)[0]?.itemId).toBe(headBefore?.itemId)

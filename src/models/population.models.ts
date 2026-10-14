@@ -5,6 +5,7 @@
 // Who counts as idle is player-activity.models.ts's rule. A sample counts players against every threshold the
 // setting offers.
 import * as CHAT from '@/models/chat.models'
+import type * as L from '@/models/layer.models'
 import * as Activity from '@/models/player-activity.models'
 import * as SM from '@/models/squad.models'
 
@@ -384,7 +385,7 @@ export function addToBuckets(buckets: Buckets, samples: Samples, parity: number,
 }
 
 // A match as a range's chart marks it: a solid line where it started, a dashed one where its round ended.
-export type Band = { ordinal: number; layerId: string; start: number; roundEnd: number | null }
+export type Band = { ordinal: number; layerId: L.LayerId; start: number; roundEnd: number | null }
 
 /**
  * A range's chart from the server: every finished match in it, bucketed, and their bands. `pending` counts the

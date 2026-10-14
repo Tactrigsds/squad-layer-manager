@@ -90,7 +90,7 @@ const ADD_TARGET = { map: 'Chora', gamemode: 'TC', faction: 'CAF' }
 // the gamemode and faction from ADD_TARGET are still set when this step runs, so the second map has to carry
 // layers for them: AlBasrah has no TC layers at all, which left the step with an empty table
 const ADD_SECOND = { map: 'Yehorivka' }
-const LAYERS = TUT.LQ_TUTORIAL_LAYERS
+const LAYERS = () => TUT.lqTutorialLayers()
 
 // whether the filter menu comparison currently selects `value`, whichever comp shape the menu item holds
 function compSelects(node: any, value: string): boolean {
@@ -162,9 +162,9 @@ function simToggleHideRepeats() {
 	PoolCheckboxesPrt.Actions.setCheckbox({ poolCheckboxes: addDialogFrame() } as any, 'dnr', 'regular')
 }
 
-function simSelect(layerId: string) {
+function simSelect(layerId: L.LayerId) {
 	LayerTablePrt.Actions.setSelected({ layerTable: addDialogFrame() } as any, (prev) =>
-		prev.includes(layerId as L.LayerId) ? prev : [...prev, layerId as L.LayerId],
+		prev.includes(layerId) ? prev : [...prev, layerId],
 	)
 }
 
@@ -187,7 +187,7 @@ function simReorder(ctx: Tour.SimulateCtx) {
 // the canonical removal is the last seed layer, so the CAF picks that trip the save warning stay in the draft
 function simRemoveSeed(ctx: Tour.SimulateCtx) {
 	const items = list(ctx.run)
-	const target = items.find((it) => it.layerId === LAYERS.initial[2]) ?? items[items.length - 1]
+	const target = items.find((it) => it.layerId === LAYERS().initial[2]) ?? items[items.length - 1]
 	if (target) LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, { op: 'delete' })
 }
 
@@ -301,7 +301,7 @@ function resetClient(run: Tour.RunStores) {
 // and that layer is a constant of the scenario.
 async function scoreSupport(): Promise<{ any: boolean; builtin: boolean; categories: boolean; balance: number; asymmetry: number }> {
 	try {
-		const layer = await LayerQueriesClient.fetchLayerInfo(LAYERS.initial[0])
+		const layer = await LayerQueriesClient.fetchLayerInfo(LAYERS().initial[0])
 		const scores = LC.partitionScores(layer, LC.getEffectiveColumnConfig())
 		const balance = scores.diffs['Balance_Differential']
 		const asymmetry = scores.other['Asymmetry_Score']
@@ -331,21 +331,22 @@ function signedScore(value: number) {
 // One per region of the tour whose server state differs; the stage ids are the scenario's cp-* stages. `ready`
 // pins the state the client must observe before replaying simulates on top of it.
 
-function cpReady(opts: { head: string; length: number; editing: boolean }): Tour.StateSelector<boolean> {
+// `head` is read when the selector runs: the ids only exist once layer data has loaded
+function cpReady(opts: { head: () => L.LayerId; length: number; editing: boolean }): Tour.StateSelector<boolean> {
 	return {
 		inputs: (run) => [run.squadServer, UPClient.Store],
 		select: (s: any, upState: any) => {
 			const items = s.queue.layerList
-			return items.length === opts.length && items[0]?.layerId === opts.head && editingQueue.select(upState) === opts.editing
+			return items.length === opts.length && items[0]?.layerId === opts.head() && editingQueue.select(upState) === opts.editing
 		},
 	}
 }
 
 const CP = {
-	fresh: { stage: 'cp-fresh', ready: cpReady({ head: LAYERS.initial[0], length: 3, editing: false }) },
-	edited: { stage: 'cp-edited', ready: cpReady({ head: LAYERS.picks.chora, length: 5, editing: true }) },
-	saved: { stage: 'cp-saved', ready: cpReady({ head: LAYERS.picks.chora, length: 4, editing: false }) },
-	postForce: { stage: 'cp-post-force', ready: cpReady({ head: LAYERS.picks.yehorivka, length: 3, editing: false }) },
+	fresh: { stage: 'cp-fresh', ready: cpReady({ head: () => LAYERS().initial[0], length: 3, editing: false }) },
+	edited: { stage: 'cp-edited', ready: cpReady({ head: () => LAYERS().picks.chora, length: 5, editing: true }) },
+	saved: { stage: 'cp-saved', ready: cpReady({ head: () => LAYERS().picks.chora, length: 4, editing: false }) },
+	postForce: { stage: 'cp-post-force', ready: cpReady({ head: () => LAYERS().picks.yehorivka, length: 3, editing: false }) },
 	generated: {
 		stage: 'cp-generated',
 		ready: {
@@ -643,7 +644,7 @@ export async function buildSteps() {
 				type: 'state',
 				inputs: () => [addDialogFrame()],
 				select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
-				simulate: () => simSelect(LAYERS.picks.chora),
+				simulate: () => simSelect(LAYERS().picks.chora),
 			},
 		},
 		{
@@ -669,7 +670,7 @@ export async function buildSteps() {
 				// a count would also pass on the layer picked two steps ago, and this step is about seeing a selection
 				// the filters have hidden, which only reads as that if the second pick really is from the second map
 				select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
-				simulate: () => simSelect(LAYERS.picks.yehorivka),
+				simulate: () => simSelect(LAYERS().picks.yehorivka),
 			},
 		},
 		{

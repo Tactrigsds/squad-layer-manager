@@ -77,7 +77,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 	function setAdditionType(newAdditionType: SelectMode) {
 		if (newAdditionType === 'vote') {
 			setSelectedLayers((prev) => {
-				const seenIds = new Set<string>()
+				const seenIds = new Set<L.LayerId>()
 				return prev.filter((layerId) => {
 					if (seenIds.has(layerId)) {
 						return false

@@ -147,7 +147,7 @@ export namespace LayerDetails {
 			),
 		),
 	}
-	// The reading of the number is written for the scenario's head layer (see LQ_TUTORIAL_LAYERS): ADF has the
+	// The reading of the number is written for the scenario's head layer (see lqTutorialLayers): ADF has the
 	// edge, and it is a small one. The number itself comes from the install's own layer data.
 	export const balanceScore = {
 		title: def('Balance score'),

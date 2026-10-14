@@ -374,7 +374,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		<AdvancedVoteConfigEditor
 			stores={{ listHost: props.stores.listHost }}
 			config={voteConfig}
-			choices={choices.map((c) => c.layerId).filter((id): id is string => !!id)}
+			choices={choices.map((c) => c.layerId).filter((id): id is L.LayerId => id !== undefined)}
 			onChange={handleSetVoteConfig}
 			previewPlaceholder="Generate layers to see vote preview"
 			includeResetToDefault={false}

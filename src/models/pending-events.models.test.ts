@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import * as Gen from '@/lib/generator-utils'
 import type * as CS from '@/models/context-shared.models'
-import type * as L from '@/models/layer.models'
+import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
@@ -10,10 +10,10 @@ import * as SM from '@/models/squad.models'
 
 // --- Layer IDs (from layer.test.ts) ---
 // Gorodok_RAAS_v1, Faction_1=RGF ('Russian Ground Forces'), Faction_2=ADF ('Australian Defence Force')
-const LAYER_A = 'RAW:Gorodok_RAAS_v1 RGF+CombinedArms ADF+Mechanized' as L.LayerId
+const LAYER_A = L.fromStoredLayerText('RAW:Gorodok_RAAS_v1 RGF+CombinedArms ADF+Mechanized')!
 const LAYER_A_CLASSNAME = 'Gorodok_RAAS_v1'
 // Narva_RAAS_v1, Faction_1=CAF, Faction_2=RGF
-const LAYER_B = 'RAW:Narva_RAAS_v1 CAF+CombinedArms RGF+CombinedArms' as L.LayerId
+const LAYER_B = L.fromStoredLayerText('RAW:Narva_RAAS_v1 CAF+CombinedArms RGF+CombinedArms')!
 
 // --- Helpers ---
 
@@ -1429,7 +1429,7 @@ describe('PendingEvents', () => {
 		})
 
 		it('leaves one on a training layer unrecorded, unless the setting says otherwise', async () => {
-			const TRAINING = 'JR-TR:WPMC-CA:TLF-CA' as L.LayerId
+			const TRAINING = L.fromLayerText('JensensRange_WPMC-TLF:WPMC+CombinedArms:TLF+CombinedArms')!
 			const skipping = makeSyncedState([makePlayer('eos-atk', 2)], [])
 			skipping.currentMatch = { historyEntryId: 1, layerId: TRAINING }
 			expect((await destroyVehicle(skipping)).filter((e) => e.type === 'VEHICLE_DESTROYED')).toHaveLength(0)

@@ -12,22 +12,25 @@ import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import { buildQueryConstraints, getLayerItemStatuses, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 
+// a layer id from its canonical text, against the layer data the tests load
+const id = (text: string) => L.fromLayerText(text)!
+
 // Team A of the previous match played USA, team B played RGF.
-const PREVIOUS = 'GD-RAAS-V1:USA-CA:RGF-CA'
+const PREVIOUS = id('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')
 // teams alternate slots, so at the cursor these read team A = RGF, team B = USA: the same two factions, sides swapped
-const SIDES_SWAPPED = 'NV-RAAS-V1:USA-CA:RGF-CA'
-const SAME_SIDES = 'NV-RAAS-V1:RGF-CA:USA-CA'
+const SIDES_SWAPPED = id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')
+const SAME_SIDES = id('Narva_RAAS_v1:RGF+CombinedArms:USA+CombinedArms')
 
 // Team A of the previous match ran Mechanized, team B ran AirAssault. Queueing this same layer again swaps which
 // team holds which unit, because the parity flips: at the cursor team A runs AirAssault and team B Mechanized.
-const PREVIOUS_UNITS = 'HJ-RAAS-V1:RGF-MZ:PLA-AA'
+const PREVIOUS_UNITS = id('Harju_RAAS_v1:RGF+Mechanized:PLA+AirAssault')
 // team A = Mechanized, matching the previous team A; team B = Armored, matching nothing. As a matchup this is
 // Armored vs Mechanized, which is not the previous matchup at all.
-const UNITS_ONE_SIDE = 'FL-RAAS-V2:TLF-AR:ADF-MZ'
+const UNITS_ONE_SIDE = id('Fallujah_RAAS_v2:TLF+Armored:ADF+Mechanized')
 // the same two units as PREVIOUS_UNITS with the slots swapped: a different layer, the same matchup
-const UNITS_REVERSED = 'HJ-RAAS-V1:PLA-AA:RGF-MZ'
+const UNITS_REVERSED = id('Harju_RAAS_v1:PLA+AirAssault:RGF+Mechanized')
 // both sides run CombinedArms, so the matchup is its own mirror
-const PREVIOUS_MIRROR_UNITS = 'NV-RAAS-V1:USA-CA:RGF-CA'
+const PREVIOUS_MIRROR_UNITS = id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')
 
 const COLUMNS = Object.keys(LC.BASE_COLUMN_CONFIG.defs)
 
@@ -48,7 +51,7 @@ const unit = (value: string) => Number(LC.dbValue('Unit_1', value, ctx))
 
 // one played match, so the cursor sits at index 1 and the target match has the opposite team parity: its team A is
 // the _2 slot
-const listAfter = (layerId: string): LQY.LayerItemsState => ({
+const listAfter = (layerId: L.LayerId): LQY.LayerItemsState => ({
 	layerItems: [{ type: 'match-history-entry', itemId: 1, layerId }],
 	firstLayerItemParity: 0,
 })
@@ -208,7 +211,7 @@ describe('the unit matchup options offered in settings', () => {
 })
 
 describe('the match descriptors a UnitMatchup repeat rule produces', () => {
-	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
+	const fieldsFor = (rule: LQY.RepeatRule, layerId: L.LayerId) =>
 		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
 
 	const rule: LQY.RepeatRule = { label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }
@@ -237,9 +240,9 @@ describe('the match descriptors a UnitMatchup repeat rule produces', () => {
 })
 
 describe('the match descriptors a Faction repeat rule produces', () => {
-	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
+	const fieldsFor = (rule: LQY.RepeatRule, layerId: L.LayerId) =>
 		(getRepeatRuleMatchDescriptors(list, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
-	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: string) =>
+	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: L.LayerId) =>
 		(getRepeatRuleMatchDescriptors(list, 1, 'rule', rule, layerId) ?? []).map((d) => [d.field, d.sourceField])
 
 	const rule: LQY.RepeatRule = { label: 'Faction', field: 'Faction', within: 3 }
@@ -271,9 +274,9 @@ describe('the match descriptors a Faction repeat rule produces', () => {
 })
 
 describe('the match descriptors a Unit repeat rule produces', () => {
-	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
+	const fieldsFor = (rule: LQY.RepeatRule, layerId: L.LayerId) =>
 		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
-	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: string) =>
+	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: L.LayerId) =>
 		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => [d.field, d.sourceField])
 
 	const rule: LQY.RepeatRule = { label: 'Unit', field: 'Unit', within: 3 }
@@ -321,18 +324,18 @@ describe('reading a repeat match descriptor from the source item', () => {
 // ---------------------------- the lookback window ----------------------------
 
 const HISTORY = [
-	'GD-RAAS-V1:USA-CA:RGF-CA',
-	'NV-RAAS-V1:USA-CA:RGF-CA',
-	'FL-RAAS-V1:USA-CA:RGF-CA',
-	'YH-RAAS-V1:USA-CA:RGF-CA',
-	'CH-RAAS-V1:USA-CA:RGF-CA',
-	'MT-RAAS-V1:USA-CA:RGF-CA',
+	id('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Yehorivka_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Chora_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Mutaha_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
 ]
-const QUEUED = ['SM-RAAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA']
+const QUEUED = [id('Sumari_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'), id('Tallil_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')]
 
-const historyItems = (layerIds: string[]): LQY.LayerItem[] =>
+const historyItems = (layerIds: L.LayerId[]): LQY.LayerItem[] =>
 	layerIds.map((layerId, i) => ({ type: 'match-history-entry', itemId: i + 1, layerId }) as LQY.LayerItem)
-const queueItems = (layerIds: string[]): LQY.LayerItem[] =>
+const queueItems = (layerIds: L.LayerId[]): LQY.LayerItem[] =>
 	layerIds.map((layerId, i) => ({ type: 'single-list-item', itemId: `q${i}`, layerId }) as LQY.LayerItem)
 const stateOf = (items: LQY.LayerItem[], firstLayerItemParity = 0): LQY.LayerItemsState => ({ layerItems: items, firstLayerItemParity })
 
@@ -342,15 +345,15 @@ function cursorIndexOf(list: LQY.LayerItemsState, cursor: LL.Cursor) {
 	return LQY.resolveCursorIndex(list, LQY.fromLayerListCursor(list, cursor))!.outerIndex
 }
 
-function offsetsFor(rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, layerId: string) {
+function offsetsFor(rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, layerId: L.LayerId) {
 	const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndexOf(list, cursor), 'rule', rule, layerId) ?? []
 	return descriptors.map((d) => d.repeatOffset)
 }
 
-const mapsRepeating = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, candidates: string[]) =>
+const mapsRepeating = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, candidates: L.LayerId[]) =>
 	candidates.filter((id) => offsetsFor(rule, list, cursor, id).length > 0).map((id) => L.toLayer(id).Map)
 
-const voteItem = (choices: string[], voteTookPlace: boolean, layerId = choices[0]): LQY.LayerItem => ({
+const voteItem = (choices: L.LayerId[], voteTookPlace: boolean, layerId = choices[0]): LQY.LayerItem => ({
 	type: 'vote-list-item',
 	itemId: 'vote',
 	layerId,
@@ -374,7 +377,12 @@ describe('the window a repeat rule looks back over', () => {
 	})
 
 	it('stops at a seeding match rather than counting past it', () => {
-		const withSeed = ['GD-RAAS-V1:USA-CA:RGF-CA', 'NV-RAAS-V1:USA-CA:RGF-CA', 'FL-SD-V1:USA-CA:RGF-CA', 'CH-RAAS-V1:USA-CA:RGF-CA']
+		const withSeed = [
+			id('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+			id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+			id('Fallujah_Seed_v1:USA+CombinedArms:RGF+CombinedArms'),
+			id('Chora_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+		]
 		const seedList = stateOf(historyItems(withSeed))
 		expect(mapsRepeating(mapRule, seedList, { type: 'end' }, withSeed)).toEqual(['Chora'])
 	})
@@ -394,12 +402,16 @@ describe('where the cursor sits in the queue', () => {
 
 	it('reports a queued repeat at the offset of its queue position', () => {
 		// Tallil sits last in the queue, one slot behind a layer added after it
-		expect(offsetsFor(mapRule, list, { type: 'end' }, 'TL-RAAS-V1:USA-CA:RGF-CA')).toEqual([1])
+		expect(offsetsFor(mapRule, list, { type: 'end' }, id('Tallil_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'))).toEqual([1])
 	})
 })
 
 describe('a vote earlier in the list', () => {
-	const CHOICES = ['SM-RAAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA', 'AB-RAAS-V1:USA-CA:RGF-CA']
+	const CHOICES = [
+		id('Sumari_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+		id('Tallil_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+		id('AlBasrah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	]
 	const hidden = (list: LQY.LayerItemsState) => CHOICES.filter((id) => evalIr(whereFor(mapRule, list), id)).map((id) => L.toLayer(id).Map)
 
 	it('counts every choice while the vote has yet to take place', () => {
@@ -439,10 +451,10 @@ describe('a vote earlier in the list', () => {
 })
 
 describe('seeding and training layers', () => {
-	const SEED = 'FL-SD-V1:USA-CA:RGF-CA'
-	const TRAINING = 'JR-TR:WPMC-CA:TLF-CA'
+	const SEED = id('Fallujah_Seed_v1:USA+CombinedArms:RGF+CombinedArms')
+	const TRAINING = id('JensensRange_WPMC-TLF:WPMC+CombinedArms:TLF+CombinedArms')
 	const factionRule: LQY.RepeatRule = { label: 'Faction', field: 'Faction', within: 4 }
-	const repeats = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, candidate: string) => {
+	const repeats = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, candidate: L.LayerId) => {
 		const indicated =
 			(getRepeatRuleMatchDescriptors(list, cursorIndexOf(list, { type: 'end' }), 'rule', rule, candidate) ?? []).length > 0
 		const hidden = evalIr(whereFor(rule, list), candidate)
@@ -455,26 +467,32 @@ describe('seeding and training layers', () => {
 	})
 
 	it('never repeat an earlier layer', () => {
-		const list = stateOf([...historyItems(['FL-RAAS-V1:USA-CA:RGF-CA'])])
+		const list = stateOf([...historyItems([id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')])])
 		expect(repeats(mapRule, list, SEED)).toBe(false)
 		expect(repeats(factionRule, stateOf(historyItems([PREVIOUS])), SEED)).toBe(false)
-		expect(repeats(factionRule, stateOf(historyItems(['GD-RAAS-V1:WPMC-CA:TLF-CA'])), TRAINING)).toBe(false)
+		expect(repeats(factionRule, stateOf(historyItems([id('Gorodok_RAAS_v1:WPMC+CombinedArms:TLF+CombinedArms')])), TRAINING)).toBe(false)
 	})
 
 	it('end lookback while queued, as a played one does', () => {
-		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
+		const GORODOK = id('Gorodok_RAAS_v2:RGF+CombinedArms:USA+CombinedArms')
 		expect(repeats(mapRule, stateOf(historyItems([PREVIOUS])), GORODOK)).toBe(true)
 		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), GORODOK)).toBe(false)
-		expect(repeats(mapRule, stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]), 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
+		expect(
+			repeats(
+				mapRule,
+				stateOf([...historyItems([PREVIOUS]), ...queueItems([SEED])]),
+				id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+			),
+		).toBe(false)
 		// at the cursor team A plays the _2 slot, USA, as the seeding layer's team A did
 		expect(repeats(factionRule, stateOf(queueItems([SEED])), SAME_SIDES)).toBe(false)
 	})
 
 	it('end lookback from a pending vote only when every choice is one', () => {
-		const GORODOK = 'GD-RAAS-V2:RGF-CA:USA-CA'
-		const mixed = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, 'NV-RAAS-V1:USA-CA:RGF-CA'], false)])
-		expect(repeats(mapRule, mixed, 'FL-RAAS-V1:USA-CA:RGF-CA')).toBe(false)
-		expect(repeats(mapRule, mixed, 'NV-RAAS-V2:USA-CA:RGF-CA')).toBe(true)
+		const GORODOK = id('Gorodok_RAAS_v2:RGF+CombinedArms:USA+CombinedArms')
+		const mixed = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')], false)])
+		expect(repeats(mapRule, mixed, id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'))).toBe(false)
+		expect(repeats(mapRule, mixed, id('Narva_RAAS_v2:USA+CombinedArms:RGF+CombinedArms'))).toBe(true)
 		expect(repeats(mapRule, mixed, GORODOK)).toBe(true)
 
 		const onlySeedingAndTraining = stateOf([...historyItems([PREVIOUS]), voteItem([SEED, TRAINING], false)])
@@ -482,7 +500,7 @@ describe('seeding and training layers', () => {
 	})
 })
 
-function evalIr(ir: LE.Ir, layerId: string): boolean {
+function evalIr(ir: LE.Ir, layerId: L.LayerId): boolean {
 	const layer = L.toLayer(layerId) as Record<string, string | undefined>
 	switch (ir.op) {
 		case 'true':
@@ -521,18 +539,19 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 
 	const LAYER_POOL = (() => {
 		const teams = ['USA-CA', 'RGF-CA', 'USA-MT', 'PLA-AR', 'ADF-MZ', 'TLF-AR', 'BAF-CA', 'CAF-CA']
-		const pool: string[] = []
+		const pool: L.LayerId[] = []
+		// spelled in the old abbreviated format, which is the compact way to sweep a grid of maps and modes
 		for (const map of ['GD', 'NV', 'FL', 'YH', 'CH', 'MT', 'SM', 'TL', 'AB', 'KD']) {
 			for (const gamemode of ['RAAS', 'AAS', 'TC', 'SD']) {
 				for (const version of ['V1', 'V2']) {
 					for (let i = 0; i < teams.length; i++) {
-						const id = `${map}-${gamemode}-${version}:${teams[i]}:${teams[(i + 1) % teams.length]}`
-						if (L.isKnownLayer(id)) pool.push(id)
+						const layerId = L.fromStoredLayerText(`${map}-${gamemode}-${version}:${teams[i]}:${teams[(i + 1) % teams.length]}`)
+						if (layerId !== undefined && L.isKnownLayer(layerId)) pool.push(layerId)
 					}
 				}
 			}
 		}
-		return [...pool, 'JR-TR:WPMC-CA:TLF-CA']
+		return [...pool, id('JensensRange_WPMC-TLF:WPMC+CombinedArms:TLF+CombinedArms')]
 	})()
 
 	const FIELDS: LQY.RepeatRule['field'][] = ['Map', 'Layer', 'Gamemode', 'Size', 'Faction', 'Unit', 'Alliance', 'UnitMatchup']
@@ -583,8 +602,17 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 // A queued item's violations come from getLayerItemStatuses, which walks the list; a candidate row in the select
 // layers dialog comes from queryLayers, which resolves a cursor and post-processes each row. Both end up in
 // getRepeatRuleMatchDescriptors, so the risk is the index they hand it.
-const SLOT_HISTORY = ['GD-RAAS-V1:USA-CA:RGF-CA', 'NV-RAAS-V1:USA-CA:RGF-CA', 'FL-RAAS-V1:USA-CA:RGF-CA', 'CH-RAAS-V1:USA-CA:RGF-CA']
-const SLOT_QUEUE = ['GD-RAAS-V2:RGF-CA:USA-CA', 'NV-AAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA']
+const SLOT_HISTORY = [
+	id('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Chora_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+]
+const SLOT_QUEUE = [
+	id('Gorodok_RAAS_v2:RGF+CombinedArms:USA+CombinedArms'),
+	id('Narva_AAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	id('Tallil_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+]
 
 const slotList = (): LQY.LayerItemsState => ({
 	layerItems: [
@@ -690,16 +718,18 @@ describe('the constraints each path builds from the same settings', () => {
 // anding them regularly asks for a layer that repeats every rule at once.
 describe('the Hide Repeats filter', () => {
 	const filterList: LQY.LayerItemsState = {
-		layerItems: [{ type: 'match-history-entry', itemId: 1, layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' }] as LQY.LayerItem[],
+		layerItems: [
+			{ type: 'match-history-entry', itemId: 1, layerId: id('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms') },
+		] as LQY.LayerItem[],
 		firstLayerItemParity: 0,
 	}
 
 	const CANDIDATES = {
 		// same map, different gamemode and factions
-		mapOnly: 'GD-AAS-V1:ADF-CA:PLA-CA',
+		mapOnly: id('Gorodok_AAS_v1:ADF+CombinedArms:PLA+CombinedArms'),
 		// the same layer with the faction slots swapped, which at the next parity puts each faction back on its own side
-		everyRule: 'GD-RAAS-V1:RGF-CA:USA-CA',
-		unrelated: 'NV-AAS-V2:ADF-CA:PLA-CA',
+		everyRule: id('Gorodok_RAAS_v1:RGF+CombinedArms:USA+CombinedArms'),
+		unrelated: id('Narva_AAS_v2:ADF+CombinedArms:PLA+CombinedArms'),
 	}
 
 	const whereForApplyAs = (applyAs: SETTINGS.PoolFilterApplyAs) => {
@@ -712,7 +742,7 @@ describe('the Hide Repeats filter', () => {
 		return compiled.where
 	}
 
-	function matches(where: LE.Ir, layerId: string): boolean {
+	function matches(where: LE.Ir, layerId: L.LayerId): boolean {
 		const layer = L.toLayer(layerId) as Record<string, string | undefined>
 		switch (where.op) {
 			case 'true':
