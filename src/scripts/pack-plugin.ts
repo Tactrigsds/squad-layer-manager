@@ -176,8 +176,8 @@ function readPackageJson(dir: string): PackageJson {
 // The client's stylesheet: the Tailwind utilities its sources use, plus its own client.css if it has
 // one. The app's stylesheet is built from the app's sources alone, so a utility the app happens not to
 // use exists nowhere unless the plugin brings it. `@reference` reads the app's theme and variants without
-// re-emitting any of them, and the utilities land in the app's own cascade layer, so the two sheets read
-// as one.
+// re-emitting any of them. The client merges the utilities layer into the app's own in Tailwind's order (see
+// syncStyles in plugins.client.ts), so the two sheets read as one.
 async function compileStyles(): Promise<string> {
 	const ownCss = path.join(srcDir, 'client.css')
 	const input = [

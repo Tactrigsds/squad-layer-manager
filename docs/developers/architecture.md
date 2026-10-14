@@ -90,6 +90,7 @@ rejects a second alias for a module, and an alias that already names another mod
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
 | `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
 | `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
+| `CssRules`                       | `css-rules`                                                   | merging two Tailwind-compiled sheets in order      |
 | `TZ`                             | `time-zones`                                                  | wall-clock times in a named IANA zone              |
 | `SubmitChord`                    | `submit-chord`                                                | ctrl/cmd+enter clicks the scope's submit button    |
 

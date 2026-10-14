@@ -3,6 +3,7 @@ import type { ClientLink } from '@orpc/client'
 import type { AnyRouter, RouterClient } from '@orpc/server'
 import * as React from 'react'
 
+import * as CssRules from '@/lib/css-rules'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
@@ -415,31 +416,86 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 
 // ---- stylesheets ----
 
-// A packaged client's compiled stylesheet, one <link> per plugin. Unlike its module, css unloads: an
-// upgrade swaps the link and a stop removes it, with no reload asked for.
-const styleLinks = new Map<string, HTMLLinkElement>()
+// A packaged client's compiled stylesheet. Its Tailwind utilities are merged into the app's own utilities layer
+// (see lib/css-rules.ts), because as a separate sheet a base utility the plugin also uses would override the app's
+// variants of it on the app's own elements. The rest of the sheet, the plugin's own css, is adopted as is. A relative
+// url() in a merged utility resolves against the app's stylesheet, not the plugin's.
+//
+// Unlike its module, css unloads: an upgrade swaps the sheet and a stop removes it, with no reload asked for.
+type PluginStyles = { sheet: CSSStyleSheet; utilities: CSSLayerBlockRule | null }
+const appliedStyles = new Map<string, PluginStyles>()
+const requestedStyles = new Map<string, { href: string | null; applied: Promise<void> }>()
+let mergedUtilities: CSSRule[] = []
 
 // Resolves once the sheet is applied, so a client loaded after it never paints unstyled. A sheet that
 // fails to load resolves too: the client still runs, with the failure in the console.
 function syncStyles(info: PLG.RuntimeInfo, href: string | null): Promise<void> {
-	const current = styleLinks.get(info.id)
-	if (current?.getAttribute('href') === href) return Promise.resolve()
-	current?.remove()
-	styleLinks.delete(info.id)
-	if (!href) return Promise.resolve()
-	const link = document.createElement('link')
-	link.rel = 'stylesheet'
-	link.href = href
-	styleLinks.set(info.id, link)
-	return new Promise((resolve) => {
-		link.onload = () => resolve()
-		link.onerror = () => {
-			pluginLogger(info).error('loading its stylesheet failed: %s', href)
-			resolve()
+	const requested = requestedStyles.get(info.id)
+	if ((requested?.href ?? null) === href) return requested?.applied ?? Promise.resolve()
+	const applied = (async () => {
+		let next: PluginStyles | null = null
+		if (href) {
+			try {
+				next = await fetchStyles(href)
+			} catch (err) {
+				pluginLogger(info).error(err, 'loading its stylesheet failed: %s', href)
+			}
+			if (requestedStyles.get(info.id)?.href !== href) return
 		}
-		document.head.append(link)
-	})
+		const current = appliedStyles.get(info.id)
+		const others = document.adoptedStyleSheets.filter((s) => s !== current?.sheet)
+		document.adoptedStyleSheets = next ? [...others, next.sheet] : others
+		if (next) appliedStyles.set(info.id, next)
+		else appliedStyles.delete(info.id)
+		remergeUtilities()
+	})()
+	requestedStyles.set(info.id, { href, applied })
+	return applied
 }
+
+async function fetchStyles(href: string): Promise<PluginStyles> {
+	const res = await fetch(href)
+	if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+	const sheet = new CSSStyleSheet({ baseURL: href })
+	sheet.replaceSync(await res.text())
+	const at = Array.from(sheet.cssRules).findIndex((r) => r instanceof CSSLayerBlockRule && r.name === 'utilities')
+	if (at === -1) return { sheet, utilities: null }
+	const utilities = sheet.cssRules[at] as CSSLayerBlockRule
+	sheet.deleteRule(at)
+	return { sheet, utilities }
+}
+
+// Re-merges from scratch: one plugin's rules can anchor another's, so removing a single plugin's is not safe.
+function remergeUtilities() {
+	CssRules.remove(mergedUtilities)
+	mergedUtilities = []
+	const target = appUtilitiesLayer()
+	if (!target) return
+	for (const styles of appliedStyles.values()) {
+		if (styles.utilities) CssRules.merge(target, styles.utilities, mergedUtilities)
+	}
+}
+
+// Adopted sheets are not in document.styleSheets, so the first utilities layer found there is the app's.
+function appUtilitiesLayer() {
+	for (const sheet of document.styleSheets) {
+		let rules: CSSRuleList
+		try {
+			rules = sheet.cssRules
+		} catch {
+			// a cross-origin sheet, such as a font's
+			continue
+		}
+		for (const rule of rules) {
+			if (rule instanceof CSSLayerBlockRule && rule.name === 'utilities') return rule
+		}
+	}
+}
+
+// vite replaces the app's stylesheet on an edit, dropping the merged rules with it
+import.meta.hot?.on('vite:afterUpdate', () => {
+	if (appliedStyles.size > 0) remergeUtilities()
+})
 
 // ---- host lifecycle ----
 
@@ -553,7 +609,11 @@ function prefetch(href: string, rel: 'modulepreload' | 'preload') {
 	prefetched.add(href)
 	const link = document.createElement('link')
 	link.rel = rel
-	if (rel === 'preload') link.as = 'style'
+	// a stylesheet is fetched and parsed by syncStyles, and only a preload that matches fetch()'s defaults is reused
+	if (rel === 'preload') {
+		link.as = 'fetch'
+		link.crossOrigin = 'anonymous'
+	}
 	link.href = href
 	document.head.append(link)
 }
