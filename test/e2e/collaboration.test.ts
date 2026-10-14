@@ -519,7 +519,7 @@ test.describe('collaborative rotation editing', () => {
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible()
 		await expect(page.getByRole('textbox', { name: 'Layers as YAML' })).toHaveText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
 
-		await page.getByRole('button', { name: 'Reset' }).click()
+		await page.getByRole('button', { name: 'Reset', exact: true }).click()
 		await expect(page.getByRole('heading', { name: 'Layers (2)' })).toBeVisible()
 	})
 
