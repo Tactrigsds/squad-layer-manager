@@ -3,6 +3,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import type { MenuSlots } from '@/components/player-context-menu-options'
+import { keepOpenOnToastClick } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -47,6 +48,7 @@ export function MenuSheet(props: {
 					style={{ zIndex }}
 					aria-describedby={undefined}
 					onOpenAutoFocus={(e) => e.preventDefault()}
+					onInteractOutside={keepOpenOnToastClick}
 				>
 					<BaseZIndexContext.Provider value={zIndex}>
 						<SheetBody {...props} />

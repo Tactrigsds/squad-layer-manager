@@ -18,3 +18,10 @@ function warning(message: ReactNode, opts?: ExternalToast) {
 // error/warning, and with warnings always dismissable. Import this instead of sonner's toast; every other method (info, success, dismiss,
 // promise, plain toast()) is passed through unchanged.
 export const toast = Object.assign((message: ReactNode, opts?: ExternalToast) => base(message, opts), base, { error, warning })
+
+export const TOASTER_HOST_ID = 'toasts'
+
+/** For a Radix layer's onInteractOutside: a click on a toast must not dismiss the layer. */
+export function keepOpenOnToastClick(event: Event) {
+	if (event.target instanceof Element && event.target.closest(`#${TOASTER_HOST_ID}`)) event.preventDefault()
+}

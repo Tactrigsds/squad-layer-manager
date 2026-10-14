@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
 import * as SubmitChord from '@/lib/submit-chord'
+import { keepOpenOnToastClick } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -36,7 +37,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
 	React.ElementRef<typeof DialogPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, ...props }, ref) => {
+>(({ className, children, style, onInteractOutside, ...props }, ref) => {
 	const phone = Browser.useIsSmallViewport()
 	const outletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
@@ -67,6 +68,10 @@ const DialogContent = React.forwardRef<
 					phone && 'inset-0 max-w-none rounded-none border-0 max-h-none overflow-y-auto',
 				)}
 				style={zIndexStyle}
+				onInteractOutside={(e) => {
+					onInteractOutside?.(e)
+					keepOpenOnToastClick(e)
+				}}
 				{...SubmitChord.scopeAttrs('dialog')}
 				{...props}
 			>
