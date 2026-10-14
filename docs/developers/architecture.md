@@ -55,6 +55,10 @@ The layering is `lib` -> `models` -> `systems` -> `components`/`routes`, and it 
 `import type` erases at compile time, so it cannot create a cycle, and the codebase uses upward type imports freely. An
 upward value import deserves a second look. The handful that exist are debts rather than precedent.
 
+`src/lib` is stricter. It imports only other `src/lib` modules and installed packages, type imports included, and
+`pnpm run lint` rejects anything else. Lib code that needs something from the app takes it as an argument, as
+`AsyncResource` takes the `OtelModule` it opens spans through.
+
 ### The `.server` / `.client` / `.shared` suffix
 
 Every file in `src/systems` declares which side of the wire it runs on. `*.server.ts` runs in node only and may

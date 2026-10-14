@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import * as SETTINGS from '@/models/settings.models'
-
 import * as ZodUtils from './zod-utils'
 import { z } from './zod.ts'
 
@@ -37,18 +35,6 @@ describe('ZodUtils.schemaAtPath', () => {
 		expect(ZodUtils.schemaAtPath(schema, ['missing'])).toBeUndefined()
 		expect(ZodUtils.schemaAtPath(schema, ['list', 0, 'leaf'])).toBeUndefined()
 		expect(ZodUtils.schemaAtPath(schema, ['rec', 'anything'])).toBeUndefined()
-	})
-
-	it('resolves every path the settings form offers a scoped JSON editor for', () => {
-		const parsed = SETTINGS.parseGlobalSettings({})
-		expect(parsed.success).toBe(true)
-		for (const path of ['rbac', 'commands', 'playerGroupings', 'layerTable']) {
-			const sub = ZodUtils.schemaAtPath(SETTINGS.GlobalSettingsSchema, path.split('.'))
-			expect(sub, path).toBeDefined()
-			// the editor writes back through encode, so each subtree must survive the decoded -> input round trip
-			const decoded = path.split('.').reduce<any>((acc, key) => acc?.[key], parsed.data)
-			expect(() => sub!.encode(decoded), path).not.toThrow()
-		}
 	})
 })
 
