@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
-import { makePlayer } from '@/emulator'
+import { eosIdForName, makePlayer } from '@/emulator'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
@@ -140,6 +140,26 @@ describe('app boot against emulator', () => {
 		// necessarily served a response containing them
 		app.emu.rcon.commandLog.length = 0
 		await app.emu.expectCommand(/^ListPlayers$/, { timeoutMs: 20_000 })
+	})
+
+	// An account's eos id can change under the same steam id. Storing the second one used to fail every poll on
+	// players.steamId, which left the roster stuck; the newest sighting now takes the steam id over.
+	it('moves a steam id to the eos id it reappears under', async () => {
+		const steam = '76561198000000077'
+		const before = app.emu.world.connectPlayer(
+			makePlayer({ name: ' relinked_before', steam, eos: eosIdForName('relinked-a'), teamId: 1 }),
+		)
+		await app.waitForRosterSync()
+		app.emu.world.disconnectPlayer(before)
+		const after = app.emu.world.connectPlayer(makePlayer({ name: ' relinked_after', steam, eos: eosIdForName('relinked-b'), teamId: 1 }))
+		await app.waitForRosterSync()
+
+		const db = app.readDb()
+		try {
+			expect(db.prepare(`SELECT eosId FROM players WHERE steamId = ?`).all(steam)).toEqual([{ eosId: after.eos }])
+		} finally {
+			db.close()
+		}
 	})
 })
 
