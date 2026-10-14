@@ -25,8 +25,9 @@ sender's name.
 
 ## Match history
 
-The match history lists each match's layer, length, outcome and who set it. Open a match to read its log and how the
-teams were made up, or drag the match into the queue to play its layer again.
+The match history lists each match's layer, length, outcome and who set it. While a match is in progress, its row
+displays each team's tickets as they change, once spoilers are shown (see _Spoilers_ below). Open a match to read its log and how the teams were made up, or drag the
+match into the queue to play its layer again.
 
 ![the match history](../images/features/match_history.png)
 
@@ -51,11 +52,20 @@ group.
 
 ### Scoreline
 
-The _Scoreline_ chart lists each team's tickets, kills, deaths and wounds, and plots kills, deaths or the kill lead
-across the match. The kill lead is how far one team's kills are ahead of the other's, shaded in the leading team's
-colour.
+The _Scoreline_ chart lists each team's tickets, kills, deaths and wounds, and plots kills, deaths, the kill lead or
+tickets across the match. Tickets update live while the match is in progress. The kill lead is how far one team's kills
+are ahead of the other's, shaded in the leading team's colour.
 
 ![the kill lead across a match](../images/features/scoreline.png)
+
+### Spoilers
+
+The current match's scoreline, its tickets, and each player's role, vehicle and kills, wounds and deaths are hidden by
+default, since they can give an in-game advantage. Turn on _Show Spoilers_ in the teams panel, or click any hidden value,
+to show all of them at once. _Hide Spoilers_ above the _Scoreline_ chart hides them again.
+
+Spoilers show by themselves when a match ends, since the scores are public then. They hide again when the next match
+starts, unless _Show Spoilers_ was turned on by hand. A past match's scoreline is never hidden.
 
 ### Population
 

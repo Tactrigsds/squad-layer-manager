@@ -38,6 +38,8 @@ export type WorldOptions = {
 
 export type EmuPlayer = Fmt.PlayerLike
 
+const STARTING_TICKETS = 300
+
 const DEFAULT_CURRENT: Fmt.LayerLike = {
 	level: 'Harju',
 	layer: 'Harju_RAAS_v1',
@@ -142,6 +144,8 @@ export class World {
 	// salt for fabricated player ids, so concurrent instances don't collide (see makePlayer); undefined = unsalted
 	idSalt: string | undefined
 	teams: Fmt.TeamLike[] = []
+	// team 1's then team 2's, as ListSquads prints them. A death costs the victim's team one.
+	tickets: [number, number] = [STARTING_TICKETS, STARTING_TICKETS]
 	currentLayer: Fmt.LayerLike
 	nextLayer: Fmt.LayerLike | null
 	knownLayers: Set<string> | null
@@ -330,6 +334,7 @@ export class World {
 	}
 
 	killPlayer(victim: EmuPlayer, attacker: EmuPlayer, weapon = 'BP_M4_M68') {
+		if (victim.teamId === 1 || victim.teamId === 2) this.tickets[victim.teamId - 1] = Math.max(0, this.tickets[victim.teamId - 1] - 1)
 		this.#log(Fmt.logDie(victim, attacker, 100, weapon))
 	}
 
@@ -379,9 +384,10 @@ export class World {
 	endMatch(opts?: { winnerTeamId?: number; source?: string }) {
 		const winner = this.teams.find((t) => t.id === (opts?.winnerTeamId ?? 1))!
 		const loser = this.teams.find((t) => t.id !== winner.id)!
+		this.tickets[loser.id - 1] = 0
 		const lines = [
 			Fmt.logRoundEnded(),
-			Fmt.logRoundDecided('won', winner, winner.name, 300, this.currentLayer),
+			Fmt.logRoundDecided('won', winner, winner.name, this.tickets[winner.id - 1], this.currentLayer),
 			Fmt.logRoundDecided('lost', loser, loser.name, 0, this.currentLayer),
 		]
 		if (opts?.source) lines.push(Fmt.logMatchEnded(opts.source))
@@ -411,6 +417,7 @@ export class World {
 		this.nextLayer = null
 		// the new layer brings new factions, so the teams are new too
 		this.#resolveTeams()
+		this.tickets = [STARTING_TICKETS, STARTING_TICKETS]
 		this.matchStartedAt = this.#now()
 		for (const p of this.players.values()) {
 			p.squadId = null
@@ -500,6 +507,7 @@ export class World {
 						creatorEos: s.creator.eos,
 						creatorSteam: s.creator.steam,
 					})),
+					this.tickets,
 				)
 			case 'AdminListDisconnectedPlayers':
 				return Fmt.listDisconnectedPlayers()

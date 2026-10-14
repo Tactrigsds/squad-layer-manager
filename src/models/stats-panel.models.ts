@@ -23,26 +23,35 @@ export type TeamDisplay = { label: string; color: string }
 
 export type BreakdownMember = { id: SM.PlayerId; name: string }
 
+export type TicketSample = { time: number; tickets: SM.Tickets }
+
 /**
  * When each team's kills and deaths landed over a match, in ms since the epoch, in the order they happened. Index 0
  * is team 1. Counted by the same rule as the stored scoreline (MH.combatCredit), so the chart and Match History agree.
+ * `tickets` holds each TICKETS_CHANGED, in order.
  */
 export type ScorelineTimeline = {
 	kills: readonly [readonly number[], readonly number[]]
 	deaths: readonly [readonly number[], readonly number[]]
 	wounds: readonly [number, number]
+	tickets: readonly TicketSample[]
 }
 
-type MutableTimeline = { kills: [number[], number[]]; deaths: [number[], number[]]; wounds: [number, number] }
+type MutableTimeline = { kills: [number[], number[]]; deaths: [number[], number[]]; wounds: [number, number]; tickets: TicketSample[] }
 
-const EMPTY_TIMELINE: ScorelineTimeline = { kills: [[], []], deaths: [[], []], wounds: [0, 0] }
+const EMPTY_TIMELINE: ScorelineTimeline = { kills: [[], []], deaths: [[], []], wounds: [0, 0], tickets: [] }
 
 function copyTimeline(timeline: ScorelineTimeline): MutableTimeline {
 	return {
 		kills: [[...timeline.kills[0]], [...timeline.kills[1]]],
 		deaths: [[...timeline.deaths[0]], [...timeline.deaths[1]]],
 		wounds: [timeline.wounds[0], timeline.wounds[1]],
+		tickets: [...timeline.tickets],
 	}
+}
+
+function ticketSample(event: CHAT.EventEnriched): TicketSample | null {
+	return event.type === 'TICKETS_CHANGED' ? { time: event.time, tickets: [event.team1Tickets, event.team2Tickets] } : null
 }
 
 function addCombat(timeline: MutableTimeline, event: CHAT.EventEnriched, credit: { deathTo: number; creditTo: number }) {
@@ -60,6 +69,8 @@ function historicalTimeline(events: readonly CHAT.EventEnriched[]): ScorelineTim
 	if (!timeline) {
 		const built = copyTimeline(EMPTY_TIMELINE)
 		for (const event of events) {
+			const sample = ticketSample(event)
+			if (sample) built.tickets.push(sample)
 			const credit = MH.combatCredit(event)
 			if (credit) addCombat(built, event, credit)
 		}
@@ -71,7 +82,7 @@ function historicalTimeline(events: readonly CHAT.EventEnriched[]): ScorelineTim
 
 /**
  * The live match's timeline, scanning only the buffer entries appended since the previous call, like
- * CHAT.createBufferFilter. The result keeps its identity until a combat event arrives, and is copied rather than
+ * CHAT.createBufferFilter. The result keeps its identity until a combat or ticket event arrives, and is copied rather than
  * appended to when one does, so a chart holding the previous one never sees it change.
  */
 function createTimelineTracker() {
@@ -93,6 +104,12 @@ function createTimelineTracker() {
 		for (; scanned < entries.length; scanned++) {
 			const event = entries[scanned]
 			if (event.matchId !== matchId) continue
+			const sample = ticketSample(event)
+			if (sample) {
+				next ??= copyTimeline(result)
+				next.tickets.push(sample)
+				continue
+			}
 			const credit = MH.combatCredit(event)
 			if (!credit) continue
 			next ??= copyTimeline(result)
@@ -120,6 +137,10 @@ function cumulative(times: readonly number[], start: number): Chart.Point[] {
 	const points: Chart.Point[] = [{ x: 0, y: 0 }]
 	for (let i = 0; i < times.length; i++) points.push({ x: Math.max(0, times[i] - start), y: i + 1 })
 	return points
+}
+
+function ticketPoints(samples: readonly TicketSample[], team: 0 | 1, start: number): Chart.Point[] {
+	return samples.map((sample) => ({ x: Math.max(0, sample.time - start), y: sample.tickets[team] }))
 }
 
 // team 1's kills minus team 2's, over time
@@ -330,10 +351,11 @@ function toView(
 
 export type Scoreline = {
 	stats: MH.MatchCombatStats
-	// each team's tickets once the round has ended with a result
-	tickets: [number, number] | null
+	// the round's final tickets once it has ended with a result, otherwise the latest the server reported
+	tickets: SM.Tickets | null
 	winner: SM.TeamId | null
-	chart: { series: Chart.LineSeries[]; xMax: number; signed: boolean }
+	// `empty` when the chosen metric has nothing to draw yet
+	chart: { series: Chart.LineSeries[]; xMax: number; signed: boolean; fitY: boolean; empty: boolean }
 }
 
 export type Breakdown = {
@@ -395,6 +417,21 @@ export namespace Sel {
 		if (matchId === undefined) return null
 		const tally = store.chat.chatState.combatTally
 		return tally?.matchId === matchId ? tally.stats : MH.EMPTY_COMBAT_STATS
+	}
+
+	// The current match's scoreline is a spoiler: 'hidden' until spoilers are shown, then 'shown'. A past match's is
+	// 'public'.
+	export function scorelineSpoiler(
+		...[store, currentMatch]: [store: ChatPrt.Store & { showSpoilers: boolean }, currentMatch: MH.MatchDetails | undefined]
+	): 'hidden' | 'shown' | 'public' {
+		if (ChatPrt.Sel.selectedMatchOrdinal(store) !== null || !currentMatch) return 'public'
+		return store.showSpoilers ? 'shown' : 'hidden'
+	}
+
+	// the current match's tickets as the server last reported them, or null before the first report
+	export function liveTickets(...[store, currentMatch]: TeamInputs): SM.Tickets | null {
+		const tickets = store.chat.chatState.liveTickets
+		return tickets && tickets.matchId === currentMatch?.historyEntryId ? tickets.tickets : null
 	}
 
 	const groupingIds = RSel.createDeepSelector(
@@ -520,7 +557,7 @@ export namespace Sel {
 					team2: { kills: timeline.kills[1].length, wounds: timeline.wounds[1], deaths: timeline.deaths[1].length },
 				}
 
-				let tickets: [number, number] | null = null
+				let tickets: SM.Tickets | null = timeline.tickets.at(-1)?.tickets ?? null
 				let winner: SM.TeamId | null = null
 				if (match.status === 'post-game' && (match.outcome.type === 'team1' || match.outcome.type === 'team2')) {
 					tickets = [match.outcome.team1Tickets, match.outcome.team2Tickets]
@@ -534,11 +571,16 @@ export namespace Sel {
 					firstEvent = Math.min(firstEvent, times[0])
 					lastEvent = Math.max(lastEvent, times[times.length - 1])
 				}
+				if (timeline.tickets.length > 0) {
+					firstEvent = Math.min(firstEvent, timeline.tickets[0].time)
+					lastEvent = Math.max(lastEvent, timeline.tickets[timeline.tickets.length - 1].time)
+				}
 				const start = match.startTime?.getTime() ?? (Number.isFinite(firstEvent) ? firstEvent : 0)
 				const end = match.status === 'post-game' && match.endTime instanceof Date ? match.endTime.getTime() : lastEvent
 				const xMax = Math.max(end - start, lastEvent - start, 60_000)
 
 				let series: Chart.LineSeries[]
+				let empty = !MH.hasCombat(stats)
 				switch (metric) {
 					case 'kills':
 					case 'deaths': {
@@ -556,11 +598,20 @@ export namespace Sel {
 							{ key: 'lead', label: teamDisplays[0].label, color: teamDisplays[0].color, points: killLead(timeline.kills, start) },
 						]
 						break
+					case 'tickets':
+						series = teamDisplays.map((team, i) => ({
+							key: `team${i + 1}`,
+							label: team.label,
+							color: team.color,
+							points: ticketPoints(timeline.tickets, i as 0 | 1, start),
+						}))
+						empty = timeline.tickets.length === 0
+						break
 					default:
 						assertNever(metric)
 				}
 
-				return { stats, tickets, winner, chart: { series, xMax, signed: metric === 'lead' } }
+				return { stats, tickets, winner, chart: { series, xMax, signed: metric === 'lead', fitY: metric === 'tickets', empty } }
 			},
 		),
 	)

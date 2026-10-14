@@ -714,7 +714,7 @@ const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_C
 // PLAYER_WARNED names both the app event and the server event (see EVENT_TYPES), so dropping it drops both
 const ADMIN_APP_EVENT_TYPES = APP_EVENT_TYPE.options.filter((type) => type !== 'PLAYER_WARNED')
 // roster bookkeeping rather than anything a player did; only ALL shows them
-const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED', 'RESET', 'TEAMS_POLLED_UPDATE']
+const BOOKKEEPING_TYPES = ['PLAYER_RECONCILED', 'PLAYER_DETAILS_CHANGED', 'RESET', 'TEAMS_POLLED_UPDATE', 'TICKETS_CHANGED']
 
 const NOT_TEAMKILL: F.CompNode = {
 	type: 'eq',

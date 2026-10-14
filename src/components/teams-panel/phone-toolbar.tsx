@@ -221,7 +221,7 @@ export function PhoneSortSheet(props: {
 				{tr.text(SM_Msgs.adminsOnly())}
 			</label>
 			<label className={row} title={tr.text(SM_Msgs.showSpoilersHint())}>
-				<Switch checked={showSpoilers} onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)} />
+				<Switch checked={showSpoilers} onCheckedChange={(checked) => SquadServerFrame.Actions.setShowSpoilers(props.stores, checked)} />
 				{tr.text(SM_Msgs.showSpoilers())}
 				<span className="ms-auto font-mono text-xs text-text-3">{tr.text(SM_Msgs.spoilersOnHint())}</span>
 			</label>

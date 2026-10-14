@@ -620,6 +620,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 							{ players: teamsRes.players, squads: teamsRes.squads },
 							receivedAt,
 							teamsRes.polledAt,
+							teamsRes.tickets,
 						)
 					})
 				}),

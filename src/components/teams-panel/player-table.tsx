@@ -78,7 +78,7 @@ export function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends
 	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const savedSwaps = Zus.useStore(props.stores.squadServer!, (s) => TSWClient.Sel.localState(s).savedSwaps)
 	const sorting = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.sorting(props.sortingTarget))
-	const showSpoilers = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.showSpoilers)
+	const showSpoilers = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.showSpoilers)
 	const squadGroupsEnabled = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadGroupsEnabled(props.sortingTarget))
 	const squadCollapse = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadCollapse)
 	const phone = Browser.useIsSmallViewport()

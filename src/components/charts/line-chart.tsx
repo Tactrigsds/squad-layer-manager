@@ -26,6 +26,8 @@ export function LineChart(props: {
 	formatX: (x: number) => string
 	xTicks: (xMax: number, targetTicks: number) => number[]
 	signed?: { above: string; below: string }
+	// fit the y axis to the data rather than starting it at zero
+	fitY?: boolean
 	ariaLabel?: string
 	className?: string
 	renderTooltip?: (x: number, values: (number | undefined)[]) => React.ReactNode
@@ -35,10 +37,12 @@ export function LineChart(props: {
 	const [hoverX, setHoverX] = React.useState<number | null>(null)
 	const clipId = React.useId()
 
+	let minY = Infinity
 	let maxY = 0
 	let maxAbs = 0
 	for (const series of props.series) {
 		for (const point of series.points) {
+			if (point.y < minY) minY = point.y
 			if (point.y > maxY) maxY = point.y
 			if (Math.abs(point.y) > maxAbs) maxAbs = Math.abs(point.y)
 		}
@@ -48,7 +52,9 @@ export function LineChart(props: {
 	const targetYTicks = Math.max(2, Math.floor(plotHeight / 32))
 	const yAxis = props.signed
 		? Chart.signedAxis(maxAbs, Math.max(1, Math.floor(targetYTicks / 2)))
-		: { min: 0, ...Chart.axis(maxY, targetYTicks, { integer: true }) }
+		: props.fitY && minY !== Infinity
+			? Chart.rangeAxis(minY, maxY, targetYTicks)
+			: { min: 0, ...Chart.axis(maxY, targetYTicks, { integer: true }) }
 	const formatY = (value: number) => (props.signed && value > 0 ? `+${value}` : String(value))
 
 	const finals = props.series.map((series) => series.points[series.points.length - 1]?.y ?? 0)

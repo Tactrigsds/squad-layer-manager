@@ -629,7 +629,11 @@ export const UniqueTeamsSchema = z.object({
 // pipeline orders teams polls by this, NOT by when the response arrived: a response can be in flight across a
 // map roll, so it still reflects the pre-roll roster while arriving after the roll's NEW_GAME log. Timestamping
 // at receive time would let that stale snapshot complete the roll; polledAt keeps it correctly pre-boundary.
-export type TeamsRes<P = Player> = ({ code: 'ok'; polledAt: number } & Teams<P>) | RconError
+// `tickets` is null when ListSquads did not print both teams' tickets.
+export type TeamsRes<P = Player> = ({ code: 'ok'; polledAt: number; tickets: Tickets | null } & Teams<P>) | RconError
+
+// each team's tickets, team 1 first
+export type Tickets = [team1: number, team2: number]
 
 export namespace Squads {
 	// identifies a squad across teams

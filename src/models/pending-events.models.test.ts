@@ -976,6 +976,27 @@ describe('PendingEvents', () => {
 	})
 
 	describe('TEAMS_UPDATE reconciliation (synced)', () => {
+		it('yields TICKETS_CHANGED only when the polled tickets move', async () => {
+			const p1 = makePlayer('eos-001', 1)
+			const state = makeSyncedState([p1], [])
+			const polls: [number, SM.Tickets | null][] = [
+				[200, [300, 300]],
+				[300, [300, 300]],
+				[400, null],
+				[500, [299, 300]],
+			]
+			const emitted: SE.Event[] = []
+			for (const [time, tickets] of polls) {
+				PendingEvents.onTeamsPolled(state, makeTeams([p1]), time, time, tickets)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(time + 1))
+				emitted.push(...(await collect(state)).filter((e) => e.type === 'TICKETS_CHANGED'))
+			}
+			expect(emitted).toMatchObject([
+				{ time: 200, team1Tickets: 300, team2Tickets: 300 },
+				{ time: 500, team1Tickets: 299, team2Tickets: 300 },
+			])
+		})
+
 		it('yields PLAYER_CHANGED_TEAM when a player switches teams', async () => {
 			const p1 = makePlayer('eos-001', 1)
 			const state = makeSyncedState([p1], [])

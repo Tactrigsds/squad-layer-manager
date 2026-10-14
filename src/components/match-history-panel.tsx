@@ -4,6 +4,7 @@ import React from 'react'
 
 import { contextMenuSlots } from '@/components/player-context-menu-options'
 import { ServerActionMenuItems } from '@/components/server-actions-dropdown'
+import { SpoilerRedaction } from '@/components/spoiler-redaction'
 import { getTeamsDisplay } from '@/components/teams-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +12,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigg
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as Typo from '@/lib/typography'
@@ -330,6 +331,9 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
 	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
+	const showSpoilers = Zus.useStore(stores.squadServer!, SquadServerFrame.Sel.showSpoilers)
+	// the current match's tickets, outcome and K/D are spoilers
+	const spoilersHidden = entry.isCurrentMatch && !showSpoilers
 
 	// Determine if this match is being viewed in the activity panel
 	const isViewingThisMatch =
@@ -448,7 +452,9 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	}
 
 	// Build outcome display if available
-	if (entry.status === 'post-game') {
+	if (spoilersHidden) {
+		outcomeDisp = <SpoilerRedaction stores={stores} className="h-4 w-20" />
+	} else if (entry.status === 'post-game') {
 		if (entry.outcome.type === 'draw') {
 			outcomeDisp = <span className="text-sm">{tr.text(MH_Msgs.draw())}</span>
 		} else if (entry.outcome.type === 'unknown') {
@@ -477,6 +483,12 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		}
 	} else if (!entry.isCurrentMatch) {
 		outcomeDisp = <span className="text-sm">-</span>
+	} else {
+		outcomeDisp = (
+			<React.Suspense fallback={null}>
+				<LiveMatchTickets stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+			</React.Suspense>
+		)
 	}
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal, globalSettings.displayTeamsNormalized, extraLayerStyles)
@@ -533,7 +545,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		</>
 	)
 
-	const kd = entry.isCurrentMatch ? (
+	const kd = spoilersHidden ? null : entry.isCurrentMatch ? (
 		<React.Suspense fallback={null}>
 			<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 		</React.Suspense>
@@ -680,6 +692,26 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 				<LayerContextMenuOptions layerIds={[entry.layerId]} historyEntryIds={[entry.historyEntryId]} labelled={entry.isCurrentMatch} />
 			</ContextMenuContent>
 		</ContextMenu>
+	)
+}
+
+// the current match's tickets as the server last reported them, in the row's team order
+function LiveMatchTickets(props: { stores: SquadServerFrame.KeyProp; parity: number; normalized: boolean }) {
+	const squadServer = props.stores.squadServer!
+	const serverId = squadServer.serverId
+	const tickets = Zus.useStore_Susp(
+		squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettingsStore,
+		StatsModels.Sel.liveTickets,
+	)
+	if (!tickets) return null
+	const [left, right] = props.normalized && props.parity % 2 === 1 ? [tickets[1], tickets[0]] : tickets
+	return (
+		<span data-tour="mh-outcome" className="font-mono" aria-label={tr.text(MH_Msgs.tickets())}>
+			{left} - {right}
+		</span>
 	)
 }
 

@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest'
 
 import * as Chart from '@/lib/chart'
 
+describe('rangeAxis', () => {
+	it('fits the data instead of starting at zero, with whole ticks at both ends', () => {
+		const axis = Chart.rangeAxis(287, 300, 4)
+		expect(axis.min).toBeLessThanOrEqual(287)
+		expect(axis.min).toBeGreaterThan(0)
+		expect(axis.max).toBeGreaterThanOrEqual(300)
+		expect(axis.ticks[0]).toBe(axis.min)
+		expect(axis.ticks[axis.ticks.length - 1]).toBe(axis.max)
+		expect(axis.ticks.every(Number.isInteger)).toBe(true)
+	})
+
+	it('gives a flat series a usable domain rather than a zero-height one', () => {
+		const axis = Chart.rangeAxis(300, 300, 4)
+		expect(axis.min).toBeLessThan(300)
+		expect(axis.max).toBeGreaterThan(300)
+	})
+})
+
 describe('axis', () => {
 	it('covers the data and ends on a tick', () => {
 		const axis = Chart.axis(37, 4, { integer: true })

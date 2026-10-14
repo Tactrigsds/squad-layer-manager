@@ -34,7 +34,6 @@ export type TeamsPanel = {
 	searchQuery: string
 	showSelected: boolean
 	adminsOnly: boolean
-	showSpoilers: boolean
 	// role and group are deliberately shared across the tables so a filter set on one applies to both
 	roleFilter: string | null
 	groupFilter: string | null
@@ -55,7 +54,7 @@ export type TeamsPanel = {
 export type Store = { teamsPanel: TeamsPanel }
 
 // read off the enclosing frame: the panel's filters compose with the roster and with the shared player selection
-export type Deps = ChatPrt.Store & { playerSelection: Record<SM.PlayerId, boolean> }
+export type Deps = ChatPrt.Store & { playerSelection: Record<SM.PlayerId, boolean>; showSpoilers: boolean }
 
 export type Key = FRM.InstanceKeyOfState<Store & Deps>
 export type KeyProp = { teamsPanel: Key }
@@ -71,7 +70,6 @@ export function initTeamsPanel(args: Args) {
 		searchQuery: '',
 		showSelected: false,
 		adminsOnly: false,
-		showSpoilers: false,
 		roleFilter: null,
 		groupFilter: null,
 		squadFilters: { A: null, B: null, combined: null },
@@ -234,9 +232,6 @@ export namespace Sel {
 	export function isSquadCollapsed(collapse: { base: boolean; overrides: Record<string, boolean> }, key: string) {
 		return collapse.overrides[key] ?? collapse.base
 	}
-	export function showSpoilers(store: Store) {
-		return store.teamsPanel.showSpoilers
-	}
 	export function splitTables(store: Store) {
 		return store.teamsPanel.splitTables
 	}
@@ -284,7 +279,7 @@ export namespace Sel {
 
 	// what the panel header reads, likewise as one subscription
 	export const headerState = RSel.createSelector(
-		[showSelected, adminsOnly, showSpoilers, roleFilter],
+		[showSelected, adminsOnly, (store: Store & Pick<Deps, 'showSpoilers'>) => store.showSpoilers, roleFilter],
 		(showSelected, adminsOnly, showSpoilers, roleFilter) => ({ showSelected, adminsOnly, showSpoilers, roleFilter }),
 	)
 
@@ -462,10 +457,6 @@ export namespace Actions {
 		slice(stores).setState({ showSelected })
 	}
 
-	export function setShowSpoilers(stores: KeyProp, showSpoilers: boolean) {
-		slice(stores).setState({ showSpoilers })
-	}
-
 	// turning the roster filter on turns the chat feed's ADMIN filter on with it; turning it off leaves the feed
 	// alone, so narrowing both then widening one keeps the other where the user put it
 	export function setAdminsOnly(stores: KeyProp, adminsOnly: boolean) {
@@ -554,7 +545,7 @@ export namespace Actions {
 		if (columnId === 'squad') setSquadFilter(stores, target, null)
 	}
 
-	// deliberately leaves showSpoilers and showSelected alone (both are view preferences rather than filters), and
+	// deliberately leaves showSelected alone (a view preference rather than a filter), and
 	// writes adminsOnly without touching the chat feed's own filter
 	export function reset(stores: KeyProp) {
 		slice(stores).setState({

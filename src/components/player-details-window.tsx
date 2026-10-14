@@ -28,7 +28,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as Browser from '@/lib/browser'
 import { useNow } from '@/lib/react'
@@ -318,7 +318,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 			return SM.PlayerIds.find(enriched, (p) => p.ids, playerId) ?? null
 		},
 	)
-	const showSpoilers = Zus.useStore(squadServerFrameKey, TeamsPanelPrt.Sel.showSpoilers)
+	const showSpoilers = Zus.useStore(squadServerFrameKey, SquadServerFrame.Sel.showSpoilers)
 	const phone = Browser.useIsSmallViewport()
 
 	const connectionStatus = data?.connectionStatus ?? null

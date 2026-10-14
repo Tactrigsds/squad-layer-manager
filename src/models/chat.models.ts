@@ -233,6 +233,7 @@ export type EventEnriched =
 	| (SE.PlayerJoinedSquad<SM.Player> & { squad: SM.UniqueSquad })
 	| (SE.PlayerPromotedToLeader<SM.Player> & { squad: SM.UniqueSquad })
 	| SE.TeamsPolledUpdate
+	| SE.TicketsChanged
 	| (SE.SquadDisbanded & { squad: SM.UniqueSquad })
 	| (SE.PlayerLeftSquad<SM.Player> & { wasLeader: boolean; squad: SM.UniqueSquad })
 	| (SE.SquadCreated & { creator: SM.Player; squad: SM.UniqueSquad })
@@ -320,6 +321,8 @@ const RENDERS_IN_FEED = {
 	PLAYER_JOINED_SQUAD: () => true,
 	PLAYER_PROMOTED_TO_LEADER: () => true,
 	TEAMS_POLLED_UPDATE: () => false,
+	// drawn by the scoreline and Match History instead
+	TICKETS_CHANGED: () => false,
 	PLAYER_DIED: () => true,
 	PLAYER_WOUNDED: () => true,
 	VEHICLE_DESTROYED: () => true,
@@ -391,6 +394,7 @@ export namespace Wire {
 		NEW_GAME: { rosters: ['state'] },
 		RESET: { rosters: ['state'] },
 		TEAMS_POLLED_UPDATE: {},
+		TICKETS_CHANGED: {},
 		INGAME_VOTE_STARTED: {},
 		RCON_CONNECTED: {},
 		RCON_DISCONNECTED: {},
@@ -499,6 +503,9 @@ export type ChatState = {
 
 	// the latest match's scoreline, counted an event at a time as the buffer fills
 	combatTally: { matchId: number; stats: MH.MatchCombatStats } | null
+
+	// the latest match's tickets, as its last TICKETS_CHANGED reported them
+	liveTickets: { matchId: number; tickets: SM.Tickets } | null
 }
 
 export function getInitialInterpolatedState(): InterpolableState {
@@ -521,6 +528,7 @@ export function getInitialChatState(): ChatState {
 		connectionError: null,
 		freshConnectionMatchId: null,
 		combatTally: null,
+		liveTickets: null,
 	}
 }
 
@@ -574,6 +582,8 @@ export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opt
 		const tally = state.combatTally?.matchId === enriched.matchId ? state.combatTally : null
 		const stats = MH.addCombatEvent(tally?.stats ?? MH.EMPTY_COMBAT_STATS, enriched)
 		if (stats !== tally?.stats) state.combatTally = { matchId: enriched.matchId, stats }
+	} else if (enriched.type === 'TICKETS_CHANGED') {
+		state.liveTickets = { matchId: enriched.matchId, tickets: [enriched.team1Tickets, enriched.team2Tickets] }
 	}
 	// collapse any server event attributed to an app event (source={type:'event'}) into that app event's entry, so a
 	// bulk action renders as one expandable summary. Falls back to a standalone entry if the app event isn't buffered.
@@ -605,6 +615,7 @@ function dropOtherMatches(state: ChatState, matchId: number) {
 	}
 	if (state.freshConnectionMatchId !== matchId) state.freshConnectionMatchId = null
 	if (state.combatTally && state.combatTally.matchId !== matchId) state.combatTally = null
+	if (state.liveTickets && state.liveTickets.matchId !== matchId) state.liveTickets = null
 }
 
 // searched from the end: the app event a server event is attributed to is almost always among the latest entries
@@ -939,6 +950,7 @@ export function interpolateEvent(state: InterpolableState, event: SE.Event, opts
 		case 'RCON_CONNECTED':
 		case 'RCON_DISCONNECTED':
 		case 'TEAMS_POLLED_UPDATE':
+		case 'TICKETS_CHANGED':
 		case 'INGAME_VOTE_STARTED': {
 			if (event.type === 'INGAME_VOTE_STARTED' && event.container !== 'Vote_NextLayer')
 				return noop("Skipping INGAME_VOTE_STARTED that doesn't have container Vote_NextLayer")

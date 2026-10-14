@@ -483,7 +483,7 @@ function resetClient(run: Tour.RunStores, plan: GroupingPlan) {
 	const store = DraggableWindowStore.getState()
 	for (const w of [...store.windows]) store.closeWindow(w.id)
 	SquadServerFrame.Actions.resetTeamsPanel(stores(run))
-	TeamsPanelPrt.Actions.setShowSpoilers(panelStores(run), false)
+	SquadServerFrame.Actions.setShowSpoilers(stores(run), false)
 	clearSearchInput()
 	const host = feedHost()
 	const key = host && Selection.keyOf(host)
@@ -719,8 +719,8 @@ export function buildSteps(plan: GroupingPlan) {
 			advanceFromPrevious: {
 				type: 'state',
 				inputs: (run) => [run.squadServer],
-				select: TeamsPanelPrt.Sel.showSpoilers,
-				simulate: (ctx) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores(ctx.run), true),
+				select: SquadServerFrame.Sel.showSpoilers,
+				simulate: (ctx) => SquadServerFrame.Actions.setShowSpoilers(stores(ctx.run), true),
 			},
 		},
 		{ id: 'selecting', anchor: 'teams-tables', interact: 'free', msg: PMTUT_Msgs.selecting, prepare: ensureTeamsShown },
