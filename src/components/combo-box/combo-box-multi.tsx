@@ -17,6 +17,7 @@ import { LOADING, POPOVER_SIZING_CLASSES } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
 import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './groupings.tsx'
+import { clearOnMiddleClickProps } from './middle-click.ts'
 import {
 	ALL_GROUPS,
 	type ComboBoxGroupingDef,
@@ -302,8 +303,18 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}
 	const showChips = chipDisplay && displayValues.length > 0
+	// while open the working copy holds the selection, and confirm or close applies it as usual
+	const clearValues = () => {
+		if (open && useInternalState) setInternalValues([])
+		else if (props.confirm) props.onConfirm?.([])
+		else _onSelect([])
+	}
 	const trigger = (
-		<PopoverTrigger asChild data-combobox-trigger="">
+		<PopoverTrigger
+			asChild
+			data-combobox-trigger=""
+			{...clearOnMiddleClickProps(disabled || displayValues.length === 0 ? undefined : clearValues)}
+		>
 			{React.isValidElement(props.children) ? (
 				props.children
 			) : (

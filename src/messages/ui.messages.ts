@@ -24,6 +24,8 @@ export const selectAll = def('Select All')
 
 export const clearAll = def('Clear All')
 
+export const middleClickClear = def('Middle-click: clear')
+
 export const noResults = def('No results found.')
 
 // the tab that lifts the group filter, showing every group's options at once
