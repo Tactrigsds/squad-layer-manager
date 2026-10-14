@@ -270,7 +270,7 @@ export default function NavBar() {
 					</a>
 				</DropdownMenuItem>
 			)}
-			<DropdownMenuItem asChild>
+			<DropdownMenuItem asChild className="text-pink-400">
 				<a href={Project.DONATION_URL} target="_blank" rel="noopener noreferrer">
 					<Icons.Heart />
 					{tr.text(APP_Msgs.supportSlm())}
