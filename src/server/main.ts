@@ -48,6 +48,7 @@ import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServerLifecycle from '@/systems/squad-server-lifecycle.server'
 import * as Steam from '@/systems/steam.server'
+import * as StoredLayerIds from '@/systems/stored-layer-ids.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Tutorials from '@/systems/tutorials.server'
@@ -131,6 +132,7 @@ await Instr.spanOp('main', { module }, async () => {
 	History.setup()
 	MatchTallies.setup()
 	MatchLayers.setup()
+	StoredLayerIds.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off
 	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

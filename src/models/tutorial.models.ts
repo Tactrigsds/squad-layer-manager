@@ -1,4 +1,5 @@
 import { z } from '@/lib/zod'
+import * as L from '@/models/layer.models'
 
 // Mirrors sandbox.models.ts: schemas and metas only, so this stays importable from the client.
 // The executor (setup and stages) is src/systems/tutorials.server.ts.
@@ -27,10 +28,23 @@ export const TOUR_HANDLES = {
 // Arms against AFU Light Infantry is slightly in ADF's favor and visibly asymmetric without leaving the pool,
 // which is what those two cards say. It is on Harju, the map the emulator opens on, so the head still carries a
 // repeat indicator for the step that points at one. Changing it means rechecking both.
-export const LQ_TUTORIAL_LAYERS = {
-	initial: ['HJ-AAS-V1:ADF-CA:AFU-LI', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA'],
-	picks: { chora: 'CH-TC-V1:CAF-CA:MEI-CA', yehorivka: 'YH-TC-V1:CAF-CA:RGF-CA' },
+const LQ_TUTORIAL_LAYER_TEXT = {
+	initial: [
+		'Harju_AAS_v1:ADF+CombinedArms:AFU+LightInfantry',
+		'Harju_RAAS_v1:RGF+Mechanized:PLA+AirAssault',
+		'Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms',
+	],
+	picks: { chora: 'Chora_TC_v1:CAF+CombinedArms:MEI+CombinedArms', yehorivka: 'Yehorivka_TC_v1:CAF+CombinedArms:RGF+CombinedArms' },
 } as const
+
+// the layer queue scenario's layers as ids, which only exist once layer data has loaded
+export function lqTutorialLayers() {
+	const id = (text: string) => L.fromLayerText(text)!
+	return {
+		initial: LQ_TUTORIAL_LAYER_TEXT.initial.map(id),
+		picks: { chora: id(LQ_TUTORIAL_LAYER_TEXT.picks.chora), yehorivka: id(LQ_TUTORIAL_LAYER_TEXT.picks.yehorivka) },
+	}
+}
 
 // The player management scenario's roster, shared by the server setup and the client steps so both halves name the
 // same people. Eight a side, so a lone /switch queues rather than firing on the spot. Each player's team is the raw

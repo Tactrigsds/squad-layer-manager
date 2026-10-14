@@ -911,11 +911,35 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 
 // ---- persistence (appEvents table); actor is flattened into columns, payload goes in the data blob ----
 
+// the payload fields that hold layer ids, by name, across every app event type
+const LAYER_ID_FIELDS = new Set(['layerId', 'layerIds', 'winnerLayerId', 'choices'])
+
+// A copy of `value` with every dense layer id under a LAYER_ID_FIELDS key as canonical text. Descends plain objects and
+// arrays only, so the bigints, dates and maps superjson carries are left as they are.
+function withLayerIdsAsText<T>(value: T): T {
+	const convert = (v: unknown, underLayerKey: boolean): unknown => {
+		if (typeof v === 'number' && underLayerKey) return L.toLayerText(v as L.LayerId)
+		if (Array.isArray(v)) return v.map((item) => convert(item, underLayerKey))
+		if (v && Object.getPrototypeOf(v) === Object.prototype) {
+			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, convert(field, LAYER_ID_FIELDS.has(key))]))
+		}
+		return v
+	}
+	return convert(value, false) as T
+}
+
 // bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.
 export const CURRENT_APP_EVENT_VERSION = 1
 
 export function toRow(e: AppEvent, redact: RedactSettingValue): SchemaModels.NewAppEvent {
-	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
+	// Encoded through the same schema rows are read with, so every layer id the payload holds, however deeply, is
+	// stored as canonical text: a dense id only means something against the layer data that produced it. Encoding
+	// validates, and an event that fails its schema is still written (and dropped, with its id named, on read), so
+	// its layer ids are converted by field name instead.
+	const encoded = z.safeEncode(AppEventSchema, e)
+	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = (
+		encoded.success ? encoded.data : withLayerIdsAsText(e)
+	) as AppEvent
 	// credentials are stripped here rather than only at the emitters: this is the one path into the table, so no
 	// future caller can persist a credential by forgetting to redact it first
 	const redacted =
@@ -953,7 +977,7 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 		}
 	}
 	for (const [layerId, kind] of iterAssocLayerIds(e)) {
-		rows.push({ dimension: 'layer', value: layerId, time, appEventId: e.id, role: kind })
+		rows.push({ dimension: 'layer', value: L.toLayerText(layerId), time, appEventId: e.id, role: kind })
 	}
 	// one role, unlike the other dimensions: iterAssocUserIds already folds the actor in with the users an
 	// event attributes to, and no query has yet wanted to tell those apart

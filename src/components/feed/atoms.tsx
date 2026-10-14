@@ -155,10 +155,10 @@ export type TeamFactionProps = {
 
 export function TeamFactionDisplay(props: TeamFactionProps) {
 	const displayTeamsNormalized = props.normalized
-	const [partialLayer, error] = withThrown(() => (typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer))
+	const [partialLayer, error] = withThrown(() => L.toLayer(props.layer))
 
 	if (error || !partialLayer) {
-		const layerId = typeof props.layer === 'string' ? props.layer : props.layer.id
+		const layerId = typeof props.layer === 'object' ? props.layer.id : props.layer
 		return (
 			<span
 				className="inline-block whitespace-nowrap text-destructive cursor-help"
@@ -167,7 +167,7 @@ export function TeamFactionDisplay(props: TeamFactionProps) {
 					[RC.TIP_ATTR]: error instanceof Error ? error.message : 'Unknown error',
 				}}
 			>
-				{layerId}
+				{String(layerId)}
 			</span>
 		)
 	}
@@ -315,7 +315,7 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 		Collection: combineStyles('Collection'),
 	} satisfies Record<keyof L.KnownLayer, string | undefined>
 
-	if (!partialLayer.Layer) return <span className="ltr-isolate">{props.layerId.slice('RAW:'.length)}</span>
+	if (!partialLayer.Layer) return <span className="ltr-isolate">{L.toLayerText(props.layerId)}</span>
 
 	const backfilled = { ...(backfillLayer ?? {}), ...partialLayer }
 	const hasFactions = !!backfilled.Faction_1 && !!backfilled.Faction_2

@@ -256,7 +256,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 					stores.layerTable,
 					UsersClient.loggedInUserQueryOptions,
 					RbacClient.RbacStore,
-					LayerTablePrt.Sel.rowSelectionStatus(row.id),
+					LayerTablePrt.Sel.rowSelectionStatus(row.original.id),
 				)
 
 				if (blockedByMods) {
@@ -410,7 +410,7 @@ export default function LayerTable(props: {
 				pageSize: frameState.pageSize,
 			},
 		},
-		getRowId: (row) => row.id,
+		getRowId: (row) => String(row.id),
 		onColumnVisibilityChange,
 		onPaginationChange,
 		getCoreRowModel: getCoreRowModel(),
@@ -506,7 +506,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 		props.stores.layerTable,
 		UsersClient.loggedInUserQueryOptions,
 		RbacClient.RbacStore,
-		LayerTablePrt.Sel.rowSelectionStatus(row.id),
+		LayerTablePrt.Sel.rowSelectionStatus(row.original.id),
 	)
 	function toggleRow() {
 		if (isUnselectable) return
@@ -579,7 +579,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 			<ContextMenuContent>
 				<LayerTableContextMenuItems layerId={row.original.id} stores={props.stores} />
 				{canFocusLayers && (
-					<ContextMenuItem onClick={() => getStore().onLayerFocused?.(row.id)}>
+					<ContextMenuItem onClick={() => getStore().onLayerFocused?.(row.original.id)}>
 						<span>{tr.text(L_Msgs.focusLayer())}</span>
 						<ContextMenuShortcut>{tr.text(L_Msgs.focusLayerShortcut())}</ContextMenuShortcut>
 					</ContextMenuItem>

@@ -99,7 +99,7 @@ export async function ensureInstance(serverId: string, conn: SETTINGS.SandboxCon
 	await emu.start({ rconPort: 0 })
 	// hold the requested layer as next before SLM's first reconcile, so a scenario-seeded queue head is not
 	// displaced by the emulator default (see nextLayerId on SandboxConnectionSchema)
-	if (conn.nextLayerId) emu.world.handleCommand(L.getLayerCommand(conn.nextLayerId as L.LayerId, 'set-next'))
+	if (conn.nextLayerId) emu.world.handleCommand(L.getLayerCommand(L.readStoredLayerId(conn.nextLayerId), 'set-next'))
 	const list = SB.initAdminList()
 	const changed$ = new Rx.Subject<void>()
 	const instance: SandboxInstance = {

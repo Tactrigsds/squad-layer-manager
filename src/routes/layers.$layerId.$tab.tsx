@@ -10,11 +10,13 @@ import { tr } from '@/systems/messages.client'
 export const Route = createFileRoute('/layers/$layerId/$tab')({
 	component: RouteComponent,
 	beforeLoad: ({ params }) => {
-		if (L.parseLayerId(params.layerId).code === 'ok') {
-			throw redirect({ to: '.', params: (prev) => ({ ...prev, layerId: L.getLayerCommand(params.layerId, 'none') }) })
+		// links written before the URL took the command form carry an old abbreviated id or canonical text
+		const linked = params.layerId.includes(':') ? L.fromStoredLayerText(params.layerId) : undefined
+		if (linked !== undefined) {
+			throw redirect({ to: '.', params: (prev) => ({ ...prev, layerId: L.getLayerCommand(linked, 'none') }) })
 		}
 		const layer = L.parseRawLayerText(params.layerId)
-		if (!layer || L.isRawLayerId(layer.id)) throw notFound()
+		if (!layer || L.isRawLayer(layer)) throw notFound()
 		let tab: 'details' | 'scores'
 		if (params.tab === 'scores') {
 			tab = 'scores'

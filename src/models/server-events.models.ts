@@ -8,7 +8,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared.models'
 import * as DSTR from '@/models/destruction.models'
 import { type EventMeta, iterAssocLayers, iterAssocValues, type LayerAssocKind, meta } from '@/models/event-meta.models'
-import type * as L from '@/models/layer.models'
+import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 
@@ -509,11 +509,9 @@ export type NewEvent = Types.DistributiveOmit<Event, 'id'>
 // of P). The types stay hand-written rather than inferred from these schemas because they're generic over P and zod
 // can't express that; `assertEventSchemaMatchesType` below is what keeps the two from drifting.
 //
-// layerId is a bare z.string() here, NOT L.LayerIdSchema. That schema refines against the loaded layer components,
-// so it would drop any event referencing a layer since retired from them -- history shouldn't vanish from the feed
-// because a layer was removed. It also throws outright (escaping safeParse) when layer data isn't loaded, which is
-// a bad failure mode for a boundary whose whole contract is not to throw. All 223 distinct layerIds currently in
-// prod pass it anyway, so validating here would buy nothing for that risk.
+// layerId reads through L.LayerIdSchema, which takes stored text in any format that ever wrote it and keeps a layer
+// since retired from the layer data as a text id, so history never vanishes from the feed because a layer was
+// removed. Rows are written through withStoredLayerIds, so the db holds canonical text and never a dense id.
 
 const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
 	z.object({ ...BaseSchema.shape, type: ZodUtils.internedLiteral(type), ...shape })
@@ -524,14 +522,14 @@ const MapSetSourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: ZodUtils.internedLiteral('observed') }),
 ])
 
-export const MapSetSchema = event('MAP_SET', { layerId: z.string(), source: MapSetSourceSchema.optional() })
+export const MapSetSchema = event('MAP_SET', { layerId: L.LayerIdSchema, source: MapSetSourceSchema.optional() })
 export const IngameVoteStartedSchema = event('INGAME_VOTE_STARTED', {
 	container: z.string(),
 	choices: z.array(z.string()),
 })
 export const NewGameSchema = event('NEW_GAME', {
 	source: ZodUtils.internedEnum(['slm-started', 'rcon-reconnected', 'server-roll', 'new-game-detected']),
-	layerId: z.string(),
+	layerId: L.LayerIdSchema,
 	state: SM.UniqueTeamsSchema.optional(),
 })
 export const ResetSchema = event('RESET', {
@@ -544,7 +542,7 @@ export const RoundEndedSchema = event('ROUND_ENDED', {
 	outcome: MH.MatchOutcomeSchema,
 	action: z
 		.discriminatedUnion('type', [
-			z.object({ type: ZodUtils.internedLiteral('AdminChangeLayer'), layerId: z.string(), source: ActionSourceSchema }),
+			z.object({ type: ZodUtils.internedLiteral('AdminChangeLayer'), layerId: L.LayerIdSchema, source: ActionSourceSchema }),
 			z.object({ type: ZodUtils.internedLiteral('AdminEndMatch'), source: ActionSourceSchema }),
 		])
 		.optional(),
@@ -784,6 +782,22 @@ function metaOf(event: Event<AnyPlayer>): EventMeta<Event<AnyPlayer>> {
 
 export function* iterAssocLayerIds(event: Event<AnyPlayer>): Generator<readonly [L.LayerId, LayerAssocKind]> {
 	yield* iterAssocLayers(metaOf(event), event)
+}
+
+// The event as it is persisted: every layer id as canonical text, which is all a dense id can be written as. Covers
+// exactly the event types whose metas name layers.
+export function withStoredLayerIds<E extends NewEvent>(event: E): E {
+	switch (event.type) {
+		case 'MAP_SET':
+		case 'NEW_GAME':
+			return { ...event, layerId: L.toLayerText(event.layerId) }
+		case 'ROUND_ENDED':
+			return event.action?.type === 'AdminChangeLayer'
+				? { ...event, action: { ...event.action, layerId: L.toLayerText(event.action.layerId) } }
+				: event
+		default:
+			return event
+	}
 }
 
 export function* iterAssocPlayers(event: Event<SM.PlayerId | SM.Player>) {

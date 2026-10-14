@@ -22,12 +22,17 @@ export function displayLayer(
 	displayProps?: LayerDisplayProp[],
 	delimit?: string,
 ) {
-	const possibleUnknown = typeof _possibleUnknown === 'string' ? L.fromPossibleRawId(_possibleUnknown) : _possibleUnknown
+	const possibleUnknown = L.toLayer(_possibleUnknown)
 	if (L.isKnownLayer(possibleUnknown)) {
 		return toShortLayerName(possibleUnknown, you, displayProps, delimit)
 	}
 
-	return possibleUnknown.id.slice('RAW:'.length)
+	return rawLayerName(possibleUnknown)
+}
+
+// a layer the layer data does not hold, named the way an admin would type it: its server command arguments
+export function rawLayerName(layer: L.UnvalidatedLayer) {
+	return L.getLayerCommand(layer, 'none')
 }
 
 export type LayerDisplayPropsStatuses = Record<LayerDisplayProp, boolean>
@@ -100,10 +105,10 @@ export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?:
 	return parts.join(' - ')
 }
 
-export function toFullLayerNameFromId(id: string, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+export function toFullLayerNameFromId(id: L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	const layer = L.toLayer(id)
 	if (L.isKnownLayer(layer)) return toFullLayerName(layer, you, displayProps)
-	return layer.id.slice('RAW:'.length)
+	return rawLayerName(layer)
 }
 
 export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?: LayerDisplayProp[], delimit?: string) {
@@ -216,12 +221,11 @@ export function toShortTeamsDisplay(layer: Partial<L.KnownLayer>, you?: 1 | 2, d
 	return ''
 }
 
-export function toShortLayerNameFromId(id: string, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
-	const res = L.fromPossibleRawId(id)
-	return displayLayer(res, you, displayProps)
+export function toShortLayerNameFromId(id: L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+	return displayLayer(id, you, displayProps)
 }
 
-export function toExtraShortLayerNameFromId(id: string, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
+export function toExtraShortLayerNameFromId(id: L.LayerId, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	return toShortLayerNameFromId(id, you, displayProps).replace(' - ', ' ')
 }
 

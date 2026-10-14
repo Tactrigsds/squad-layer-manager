@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import type * as CS from '@/models/context-shared.models'
+import type * as L from '@/models/layer.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as PLG from '@/models/plugins.models'
 import type * as PA from '@/models/procedure-access.models'
@@ -79,7 +80,7 @@ export type DecorationEntry = Decoration & { regKey: string }
 export type DecorationAnchors = {
 	// layerId and ordinal come along because a decoration describing the match needs them to name a
 	// side: which faction a normalized team held depends on both
-	'match-history:row': { serverId: string; matchId: number; layerId: string; ordinal: number }
+	'match-history:row': { serverId: string; matchId: number; layerId: L.LayerId; ordinal: number }
 }
 export type DecorationAnchorId = keyof DecorationAnchors
 

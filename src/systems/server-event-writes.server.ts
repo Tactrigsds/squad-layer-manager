@@ -33,7 +33,7 @@ type EventAssociationRows = {
 }
 
 function buildEventRow(event: SE.NewEvent) {
-	const persisted = Obj.omit(event, ['type', 'time', 'matchId'])
+	const persisted = Obj.omit(SE.withStoredLayerIds(event), ['type', 'time', 'matchId'])
 	// queryable projection of source when it links to an app event
 	const source = (event as { source?: { type: string; id?: string } }).source
 	return {

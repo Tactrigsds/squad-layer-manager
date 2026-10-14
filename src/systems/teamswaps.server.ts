@@ -717,8 +717,9 @@ const dispatchOp = Instr.spanOp(
 							if (isManual && (await notifiesAdmins(ctx, isManual.source))) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
 								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
-								const layerRes = L.parseLayerId(currentMatch.layerId)
-								const layer = 'layer' in layerRes ? layerRes.layer : null
+								const current = L.toLayer(currentMatch.layerId)
+								const layer =
+									current.Faction_1 && current.Faction_2 ? { Faction_1: current.Faction_1, Faction_2: current.Faction_2 } : null
 								const swapped =
 									toSwap.length <= NAMED_PLAYER_LIMIT
 										? buildSwapGroups(toSwap, se.swaps, teamsRes.players, layer, currentMatch.ordinal)
@@ -791,8 +792,9 @@ const dispatchOp = Instr.spanOp(
 						) {
 							const name = await resolveSourceName(ctx, se.source)
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
-							const layerRes = L.parseLayerId(currentMatch.layerId)
-							const layer = 'layer' in layerRes ? layerRes.layer : null
+							const current = L.toLayer(currentMatch.layerId)
+							const layer =
+								current.Faction_1 && current.Faction_2 ? { Faction_1: current.Faction_1, Faction_2: current.Faction_2 } : null
 							const currPlayers = [...(SquadServer.getCurrTeams(ctx)?.players.values() ?? [])]
 							const groups = (playerIds: SM.PlayerId[], swaps: TSW.TeamswapCollection) =>
 								buildSwapGroups(playerIds, swaps, currPlayers, layer, currentMatch.ordinal)

@@ -545,10 +545,15 @@ export function enumIncludes(arr: readonly unknown[], value: unknown): boolean {
 export function dbValue(columnName: string, value: InputValue, ctx?: Ctx, components = L.StaticLayerComponents): DbValueResult {
 	const def = getColumnDef(columnName, ctx?.effectiveColsConfig)!
 	if (columnName === 'id') {
-		if (!L.isKnownLayer(value as string)) {
-			return UnmappedDbValue
-		}
-		return packId(value as L.LayerId, components)
+		// a dense id, or text as filters store it (canonical, or a legacy id from before it). Text naming a layer the
+		// table has no row for is unmapped.
+		const id =
+			typeof value === 'number'
+				? L.checkDenseId(value, components)
+				: typeof value === 'string'
+					? L.fromStoredLayerText(value, components)
+					: undefined
+		return id !== undefined && L.isDenseLayerId(id) ? id : UnmappedDbValue
 	}
 	switch (def.type) {
 		case 'string': {
@@ -586,9 +591,7 @@ export function fromDbValue(
 ) {
 	const columnDef = getColumnDef(columnName, ctx?.effectiveColsConfig)
 	if (!columnDef) return value
-	if (columnName === 'id') {
-		return unpackId(value as number, components)
-	}
+	if (columnName === 'id') return value as L.DenseLayerId
 
 	switch (columnDef.type) {
 		case 'string': {
@@ -806,8 +809,14 @@ export function fromDenseId(id: number, layout = denseIdLayout()): [number, numb
 	return [layer, faction1, side1 - faction1 * layout.units, faction2, side2 - faction2 * layout.units]
 }
 
+// The dense id of a known layer. Computed from the layer's parts rather than read off its id, so preprocess can pack
+// layers it identified before the components were complete.
 export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
-	const layer = typeof layerOrId === 'string' ? L.toLayer(layerOrId) : layerOrId
+	if (typeof layerOrId === 'number') {
+		if (L.checkDenseId(layerOrId, components) === undefined) throw new Error(`dense id ${layerOrId} names no layer`)
+		return layerOrId
+	}
+	const layer = typeof layerOrId === 'object' ? layerOrId : L.toLayer(layerOrId, components)
 
 	if (!L.isKnownLayer(layer, components)) {
 		throw new Error('Cannot pack raw or invalid layer to integer')
@@ -856,29 +865,6 @@ export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {
 
 export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.StaticLayerComponents) {
 	return layers.map((l) => packId(l, components))
-}
-
-export function unpackId(id: number, components = L.StaticLayerComponents) {
-	const indexes = fromDenseId(id, denseIdLayout(components))
-	if (!indexes) throw new Error(`dense id ${id} names no layer in the components`)
-	const [layerIndex, faction1Index, unit1Index, faction2Index, unit2Index] = indexes
-
-	const layer = components.layers[layerIndex]
-	const config = L.getLayerConfig(layer, components)
-	if (!config) throw new Error(`dense id references layer ${layer}, which is not in the catalog`)
-	return L.getKnownLayerId(
-		{
-			Map: config.Map,
-			Gamemode: config.Gamemode,
-			LayerVersion: config.LayerVersion,
-			Collection: L.layerConfigCollection(config, components),
-			Faction_1: components.factions[faction1Index],
-			Unit_1: components.units[unit1Index],
-			Faction_2: components.factions[faction2Index],
-			Unit_2: components.units[unit2Index],
-		},
-		components,
-	)!
 }
 
 export function toRow(layer: L.KnownLayer, ctx: Ctx, components = L.StaticLayerComponents): LayerRow {

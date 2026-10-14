@@ -41,7 +41,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 	})
 }
 
-function isTrainingLayer(layerId: string) {
+function isTrainingLayer(layerId: L.LayerId) {
 	try {
 		return L.toLayer(layerId)?.Gamemode === 'Training'
 	} catch {

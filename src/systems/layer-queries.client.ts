@@ -672,7 +672,7 @@ async function setup() {
 }
 
 export function getLayerInfoQueryOptions(layer: L.LayerId | L.KnownLayer) {
-	const input = { layerId: typeof layer === 'string' ? layer : layer.id }
+	const input = { layerId: typeof layer === 'object' ? layer.id : layer }
 	return RPC.orpc.layerQueries.getLayerInfo.queryOptions({ input, staleTime: Infinity })
 }
 

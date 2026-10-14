@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest'
 import * as ItemMut from '@/lib/item-mutations'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
+import type * as L from '@/models/layer.models'
 
 // every case below warns on ids the list does not carry, which is the plain single-item shape: only vote choices need
 // the list, and the one case that does builds its own
 const LIST: LL.List = []
 
 function single(itemId: string): LL.SingleItem {
-	return { type: 'single-list-item', itemId, layerId: 'L1', source: { type: 'generated' } }
+	return { type: 'single-list-item', itemId, layerId: 'L1' as L.LayerId, source: { type: 'generated' } }
 }
 
 function mutations(sets: Partial<Record<ItemMut.MutType, string[]>>): ItemMut.Mutations {
@@ -26,10 +27,10 @@ function descriptor(sourceItemId: LQY.ItemId, opts?: RepeatOpts): LQY.RepeatMatc
 		type: 'repeat-rule',
 		constraintId: `layer-pool:main:${opts?.rule ?? 'Map'}`,
 		field,
-		layerId: 'L1',
+		layerId: 'L1' as L.LayerId,
 		repeatOffset: opts?.offset ?? 1,
 		sourceItemId,
-		sourceLayerId: 'L1',
+		sourceLayerId: 'L1' as L.LayerId,
 		sourceField: field,
 	}
 }
@@ -101,7 +102,7 @@ describe('filterEditInducedWarnings', () => {
 		const vote: LL.Item = {
 			type: 'vote-list-item',
 			itemId: 'v',
-			layerId: 'L1',
+			layerId: 'L1' as L.LayerId,
 			source: { type: 'generated' },
 			choices: [single('c1'), single('c2')],
 		}

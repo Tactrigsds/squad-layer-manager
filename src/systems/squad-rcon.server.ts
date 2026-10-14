@@ -548,9 +548,7 @@ export const setNextLayer = Instr.spanOp(
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
 		if (!newStatus.data.nextLayer) {
-			throw new Error(
-				`Failed to set next layer. Expected ${typeof layer === 'string' ? layer : JSON.stringify(layer)}, received undefined`,
-			)
+			throw new Error(`Failed to set next layer. Expected ${L.getLayerCommand(layer, 'none')}, received undefined`)
 		}
 
 		if (newStatus.data.nextLayer && !L.areLayersCompatible(layer, newStatus.data.nextLayer)) {
