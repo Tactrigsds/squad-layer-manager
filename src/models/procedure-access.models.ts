@@ -233,7 +233,13 @@ export const PROCEDURE_ACCESS = {
 	'sandbox.execute': onServer('sandbox:control'),
 	'sandbox.listVerbs': Access.PUBLIC,
 
-	'serverConsole.watch': onServer('squad-server:view-console'),
+	'serverConsole.watch': Access.req((i: ServerInput) =>
+		Req.any(
+			Req.perm('squad-server:view-console', { serverId: i.serverId }),
+			Req.perm('squad-server:write-console', { serverId: i.serverId }),
+		),
+	),
+	'serverConsole.execute': onServer('squad-server:write-console'),
 
 	'tutorials.list': Access.PUBLIC,
 	'tutorials.getDismissedPrompts': Access.SELF,

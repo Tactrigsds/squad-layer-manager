@@ -140,7 +140,10 @@ export default class Rcon extends EventEmitter<Events> {
 	// reqId is the packet id the exchange rode on, so a reader can pair a response with its command. Commands are
 	// in flight concurrently, and their responses do not necessarily come back in the order they were sent, so
 	// position in the stream does not correlate them. Absent on a packet the server pushed unprompted.
-	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
+	//
+	// issuer names the user who typed the command into a console, on both the command and its response.
+	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number, issuer?: string) => void
+	private issuers = new Map<number, string>()
 
 	// Whether this client can reach the server at all, for an operator rather than for a log file. Carries the
 	// transport's label (host:port) because that is the thing they have to check, never the password.
@@ -150,7 +153,7 @@ export default class Rcon extends EventEmitter<Events> {
 		serverId: string
 		transport: RconTransport
 		autoReconnectDelay?: number
-		onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
+		onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number, issuer?: string) => void
 		onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
 	}) {
 		super()
@@ -239,7 +242,7 @@ export default class Rcon extends EventEmitter<Events> {
 		},
 		async (
 			body: string,
-			_opts?: { level?: LOG.Level; signal?: AbortSignal },
+			_opts?: { level?: LOG.Level; signal?: AbortSignal; issuer?: string },
 		): Promise<{ code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }> => {
 			if (typeof body !== 'string') {
 				throw new Error('Rcon.execute() body must be a string.')
@@ -285,7 +288,7 @@ export default class Rcon extends EventEmitter<Events> {
 					Rx.take(1),
 					Rx.map((data) => ({ code: 'ok' as const, data: data as string })),
 				)
-				this.#send(body, this.msgId)
+				this.#send(body, this.msgId, _opts?.issuer)
 				this.msgId++
 				const result = await Rx.Ext.firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
 				recordOutcome(result.code === 'ok' ? 'ok' : 'error')
@@ -301,8 +304,11 @@ export default class Rcon extends EventEmitter<Events> {
 		this.#writeBuf(this.#encode(this.type.auth, 2147483647, password))
 	}
 
-	#send(body: string, id = 99): void {
-		this.onTraffic?.('recv', body, id)
+	#send(body: string, id = 99, issuer?: string): void {
+		// ids are reused once msgId wraps, so a stale issuer from a timed-out command is overwritten here
+		if (issuer === undefined) this.issuers.delete(id)
+		else this.issuers.set(id, issuer)
+		this.onTraffic?.('recv', body, id, issuer)
 		this.#write(this.type.command, id, body)
 		this.#write(this.type.command, id + 2)
 	}
@@ -404,8 +410,10 @@ export default class Rcon extends EventEmitter<Events> {
 
 	#onResponse(packet: { size: number; id: number; type: number; body: string }): void {
 		if (packet.body === '') {
-			if (this.responseString.body) this.onTraffic?.('send', this.responseString.body, this.responseString.id - 2)
-			this.emit(`response${this.responseString.id - 2}`, this.responseString.body)
+			const reqId = this.responseString.id - 2
+			if (this.responseString.body) this.onTraffic?.('send', this.responseString.body, reqId, this.issuers.get(reqId))
+			this.issuers.delete(reqId)
+			this.emit(`response${reqId}`, this.responseString.body)
 			this.responseString.body = ''
 		} else if (!packet.body.includes('')) {
 			this.responseString.body = this.responseString.body += packet.body

@@ -75,6 +75,7 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'sandbox.watchState': S,
 	'sandbox.execute': S,
 	'serverConsole.watch': S,
+	'serverConsole.execute': S,
 }
 
 // every permission there is, unrestricted: what a super user holds

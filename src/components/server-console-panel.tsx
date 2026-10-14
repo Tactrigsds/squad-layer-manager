@@ -4,6 +4,7 @@ import React from 'react'
 import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as ConsoleFrame from '@/frames/server-console.frame'
@@ -15,17 +16,19 @@ import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SC_Msgs from '@/messages/server-console.messages'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
+import * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
+import * as RbacClient from '@/systems/rbac.client'
 
-// The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
-// route around every other permission and leave no app event behind.
+// The tail of what a squad server is saying and being told. The rcon tab also runs raw rcon commands for a user
+// holding squad-server:write-console.
 
 function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?: string } {
 	switch (event.type) {
 		case 'rcon':
 			return {
-				prefix: event.dir === 'recv' ? 'rcon <-' : 'rcon ->',
+				prefix: event.dir === 'recv' ? `${event.issuer ?? 'rcon'} <-` : 'rcon ->',
 				body: event.body,
 				tone: event.dir === 'recv' ? 'text-info dark:text-info' : 'text-ok dark:text-ok',
 			}
@@ -60,6 +63,12 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	const tab = Zus.useStore(stores.serverConsole, (s) => s.tab)
 	const hideNoise = Zus.useStore(stores.serverConsole, (s) => s.hideNoise)
 	const denied = Zus.useStore(stores.serverConsole, (s) => s.denied)
+	const showSlmRequests = Zus.useStore(stores.serverConsole, (s) => s.showSlmRequests)
+	const showEvents = Zus.useStore(stores.serverConsole, (s) => s.showEvents)
+	const serverId = Zus.useStore(stores.serverConsole, (s) => s.serverId)
+	const executing = Zus.useStore(stores.serverConsole, (s) => s.executing)
+	const executeError = Zus.useStore(stores.serverConsole, (s) => s.executeError)
+	const executeDenied = RbacClient.useAccess('serverConsole.execute', { serverId })
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
@@ -79,9 +88,9 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 
 	return (
 		<div className={cn('flex min-h-0 flex-col rounded-md border', className)}>
-			<div className="flex items-center gap-1 border-b px-1 py-1">
-				<div role="tablist" aria-label={tr.text(SC_Msgs.channelTablist())} className="flex items-center gap-1">
-					{SC.TABS.map((t) => (
+			<div className="flex flex-wrap items-center gap-1 border-b px-1 py-1">
+				<div role="tablist" aria-label={tr.text(SC_Msgs.channelTablist())} className="flex flex-wrap items-center gap-1">
+					{SC.CONSOLE_CHANNEL.options.map((t) => (
 						<Button
 							key={t}
 							type="button"
@@ -96,15 +105,42 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 						</Button>
 					))}
 				</div>
-				<label className="ms-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-					<Checkbox
-						checked={hideNoise}
-						aria-label={tr.text(SC_Msgs.hideNoise())}
-						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on)}
-					/>
-					{tr.text(SC_Msgs.hideNoise())}
-					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
-				</label>
+				<div className="ms-auto flex flex-wrap items-center gap-x-3 gap-y-1 pe-1">
+					{tab === 'rcon' && (
+						<>
+							<label
+								className="flex items-center gap-1.5 text-xs text-muted-foreground"
+								title={tr.text(SC_Msgs.showSlmRequestsHint())}
+							>
+								<Checkbox
+									checked={showSlmRequests}
+									aria-label={tr.text(SC_Msgs.showSlmRequests())}
+									onCheckedChange={(on) => ConsoleFrame.Actions.setShowSlmRequests(stores, on)}
+								/>
+								{tr.text(SC_Msgs.showSlmRequests())}
+							</label>
+							<label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={tr.text(SC_Msgs.showEventsHint())}>
+								<Checkbox
+									checked={showEvents}
+									aria-label={tr.text(SC_Msgs.showEvents())}
+									onCheckedChange={(on) => ConsoleFrame.Actions.setShowEvents(stores, on)}
+								/>
+								{tr.text(SC_Msgs.showEvents())}
+							</label>
+						</>
+					)}
+					{(tab === 'log' || (tab === 'rcon' && showSlmRequests)) && (
+						<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+							<Checkbox
+								checked={hideNoise}
+								aria-label={tr.text(SC_Msgs.hideNoise())}
+								onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on)}
+							/>
+							{tr.text(SC_Msgs.hideNoise())}
+							{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
+						</label>
+					)}
+				</div>
 				<Button
 					type="button"
 					size="icon"
@@ -144,6 +180,43 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					</Button>
 				)}
 			</div>
+			{tab === 'rcon' && !executeDenied && (
+				<form
+					className="flex flex-col gap-1 border-t p-1"
+					onSubmit={(e) => {
+						e.preventDefault()
+						scrollToBottom()
+						void ConsoleFrame.Actions.execute(stores, e.currentTarget.elements.namedItem('command') as HTMLInputElement)
+					}}
+				>
+					<div className="flex items-center gap-1">
+						<Input
+							name="command"
+							autoComplete="off"
+							onKeyDown={(e) => {
+								if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+								if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+								e.preventDefault()
+								ConsoleFrame.Actions.recallCommand(stores, e.currentTarget, e.key === 'ArrowUp' ? 'older' : 'newer')
+							}}
+							spellCheck={false}
+							maxLength={SM.RCON_MAX_BUF_LEN}
+							aria-label={tr.text(SC_Msgs.commandInput())}
+							placeholder={tr.text(SC_Msgs.commandPlaceholder())}
+							className="h-7 min-w-0 grow font-mono text-xs"
+						/>
+						<Button type="submit" size="sm" className="h-7 px-2 text-xs" disabled={executing}>
+							{executing ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.CornerDownLeft className="h-3.5 w-3.5" />}
+							{tr.text(SC_Msgs.run())}
+						</Button>
+					</div>
+					{executeError && (
+						<p role="alert" className="text-xs text-destructive">
+							{executeError}
+						</p>
+					)}
+				</form>
+			)}
 		</div>
 	)
 }

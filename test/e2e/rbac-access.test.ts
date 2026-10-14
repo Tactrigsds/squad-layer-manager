@@ -97,6 +97,9 @@ test.describe('a console-reader user', { tag: '@firefox' }, () => {
 		await page.getByRole('menuitem', { name: 'Server Console' }).click()
 		const output = page.getByRole('tabpanel', { name: /console output$/ })
 		await expect(output).toBeVisible({ timeout: 20_000 })
+		// reading the console does not extend to running commands on the server
+		await expect(page.getByRole('textbox', { name: 'RCON command' })).toHaveCount(0)
+		await page.getByRole('checkbox', { name: 'Show SLM requests' }).click()
 		await expect(output.getByText('rcon <-').first()).toBeVisible({ timeout: 30_000 })
 	})
 })

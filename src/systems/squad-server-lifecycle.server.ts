@@ -169,7 +169,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	const rcon = new Rcon({
 		serverId,
 		transport: rconTransport,
-		onTraffic: (dir, body, reqId) => ServerConsole.record(serverId, { type: 'rcon', dir, body, reqId, time: Date.now() }),
+		onTraffic: (dir, body, reqId, issuer) =>
+			ServerConsole.record(serverId, { type: 'rcon', dir, body, reqId, time: Date.now(), ...(issuer === undefined ? {} : { issuer }) }),
 		onStatus: (level, message, detail) => ServerConsole.recordSlm(serverId, level, message, detail),
 	})
 	rcon.ensureConnected()

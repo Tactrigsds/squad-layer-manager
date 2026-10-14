@@ -383,6 +383,16 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			</Atoms.EventLine>
 		)
 	}
+	if (appEvent.type === 'RCON_COMMAND_RUN') {
+		return (
+			<Atoms.EventLine
+				time={event.time}
+				icon={<EventIcon name="SquareTerminal" className={appEvent.error ? 'text-danger' : 'text-warn'} />}
+			>
+				{tr.richText(AppEvents_Msgs.rconCommandRun(actorLabel, appEvent.command, appEvent.error))}
+			</Atoms.EventLine>
+		)
+	}
 	// the ADMIN_BROADCAST server event this produced is attributed to it and collapses under this entry, so the
 	// broadcast is shown once, with its sender
 	if (appEvent.type === 'BROADCAST_SENT') {

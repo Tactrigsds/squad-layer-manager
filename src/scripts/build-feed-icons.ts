@@ -38,6 +38,7 @@ const USED = [
 	'ListPlus',
 	'ListX',
 	'Lock',
+	'SquareTerminal',
 	'LockOpen',
 	'Map',
 	'Megaphone',

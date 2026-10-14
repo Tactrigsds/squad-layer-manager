@@ -11,9 +11,15 @@ function store(events: ConsoleEvent[], over: Partial<ConsoleFrame.Store> = {}): 
 	return {
 		serverId: 'server-1',
 		events,
-		tab: 'unified',
+		tab: 'rcon',
 		hideNoise: true,
+		showSlmRequests: true,
+		showEvents: true,
 		denied: false,
+		executing: false,
+		executeError: null,
+		historyCursor: null,
+		historyDraft: '',
 		...over,
 	}
 }
@@ -23,6 +29,9 @@ function store(events: ConsoleEvent[], over: Partial<ConsoleFrame.Store> = {}): 
 const recv = (body: string, reqId = 1): ConsoleEvent => ({ type: 'rcon', dir: 'recv', body, time: 0, seq: 0, reqId })
 const send = (body: string, reqId = 1): ConsoleEvent => ({ type: 'rcon', dir: 'send', body, time: 0, seq: 0, reqId })
 const log = (line: string): ConsoleEvent => ({ type: 'log', line, time: 0, seq: 0 })
+const userRecv = (body: string, reqId = 1): ConsoleEvent => ({ type: 'rcon', dir: 'recv', body, time: 0, seq: 0, reqId, issuer: 'grey' })
+const userSend = (body: string, reqId = 1): ConsoleEvent => ({ type: 'rcon', dir: 'send', body, time: 0, seq: 0, reqId, issuer: 'grey' })
+const chat: ConsoleEvent = { type: 'rcon', dir: 'send', body: '[ChatAll] Alice: hi', time: 0, seq: 0 }
 
 describe('Sel.view', () => {
 	it('drops a poll whose answer has not changed, request included', () => {
@@ -72,14 +81,13 @@ describe('Sel.view', () => {
 	})
 
 	it('never hides a chat packet, which the server pushes without being asked', () => {
-		const chat: ConsoleEvent = { type: 'rcon', dir: 'send', body: '[ChatAll] Alice: hi', time: 0, seq: 0 }
 		const view = ConsoleFrame.Sel.view(store([chat, chat]))
 		expect(view.events).toEqual([chat, chat])
 	})
 
 	it('hides the tick rate heartbeat but not the rest of the log', () => {
 		const view = ConsoleFrame.Sel.view(
-			store([log('LogSquad: USQGameState: Server Tick Rate: 60.00'), log('LogSquad: Warning: something happened')]),
+			store([log('LogSquad: USQGameState: Server Tick Rate: 60.00'), log('LogSquad: Warning: something happened')], { tab: 'log' }),
 		)
 		expect(view.events).toEqual([log('LogSquad: Warning: something happened')])
 		expect(view.hidden).toBe(1)
@@ -98,5 +106,22 @@ describe('Sel.view', () => {
 		)
 		expect(view.events).toEqual([recv('ListPlayers'), send('a')])
 		expect(view.hidden).toBe(0)
+	})
+
+	it('shows only commands a user ran while SLM requests and events are hidden', () => {
+		const events = [recv('ListPlayers', 1), send('players', 1), chat, userRecv('ListSquads', 2), userSend('squads', 2)]
+		const view = ConsoleFrame.Sel.view(store(events, { showSlmRequests: false, showEvents: false }))
+		expect(view.events).toEqual([userRecv('ListSquads', 2), userSend('squads', 2)])
+	})
+
+	it('shows events without SLM requests', () => {
+		const view = ConsoleFrame.Sel.view(store([recv('ListPlayers', 1), send('players', 1), chat], { showSlmRequests: false }))
+		expect(view.events).toEqual([chat])
+	})
+
+	it('never hides a command a user ran twice with the same answer', () => {
+		const events = [userRecv('ListSquads', 1), userSend('squads', 1), userRecv('ListSquads', 2), userSend('squads', 2)]
+		const view = ConsoleFrame.Sel.view(store(events))
+		expect(view.events).toEqual(events)
 	})
 })

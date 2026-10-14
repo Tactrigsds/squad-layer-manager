@@ -132,6 +132,13 @@ export const BroadcastSentSchema = event('BROADCAST_SENT', {
 })
 export type BroadcastSent = z.infer<typeof BroadcastSentSchema>
 
+// a raw rcon command typed into the server console. error is set when the command got no response.
+export const RconCommandRunSchema = event('RCON_COMMAND_RUN', {
+	command: z.string(),
+	error: z.string().optional(),
+})
+export type RconCommandRun = z.infer<typeof RconCommandRunSchema>
+
 // a plain kick: the players are removed from the server and may rejoin immediately. A kick with an attached
 // timeout is PLAYER_TIMED_OUT instead.
 export const PlayerKickedSchema = event('PLAYER_KICKED', {
@@ -494,6 +501,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	CommanderDemotedSchema,
 	FogOfWarToggledSchema,
 	BroadcastSentSchema,
+	RconCommandRunSchema,
 	PlayerKickedSchema,
 	PlayerTimedOutSchema,
 	TimeoutCancelledSchema,
@@ -593,6 +601,7 @@ export const APP_EVENT_META = {
 	SQUAD_RENAMED: EM.meta<SquadRenamed>(),
 	FOG_OF_WAR_TOGGLED: EM.meta<FogOfWarToggled>(),
 	BROADCAST_SENT: EM.meta<BroadcastSent>(),
+	RCON_COMMAND_RUN: EM.meta<RconCommandRun>(),
 	MATCH_ENDED: EM.meta<MatchEnded>(),
 	VOTE_ABORTED: EM.meta<VoteAborted>(),
 	LAYER_REQUEST_ADDED: EM.meta<LayerRequestAdded>(),
