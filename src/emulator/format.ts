@@ -135,10 +135,10 @@ export function listPlayers(players: PlayerLike[], disconnected: PlayerLike[]): 
 	return lines.join('\n')
 }
 
-export function listSquads(teams: TeamLike[], squads: SquadLike[]): string {
+export function listSquads(teams: TeamLike[], squads: SquadLike[], tickets: readonly number[]): string {
 	const lines = ['----- Active Squads -----']
 	for (const team of teams) {
-		lines.push(`Team ID: ${team.id} (${team.name})`)
+		lines.push(`Team ID: ${team.id} (${team.name}) - Tickets: ${tickets[team.id - 1]}`)
 		for (const s of squads.filter((s) => s.teamId === team.id)) {
 			lines.push(
 				`ID: ${s.squadId} | Name: ${s.name} | Size: ${s.size} | Locked: ${

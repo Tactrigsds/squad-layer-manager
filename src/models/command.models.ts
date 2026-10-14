@@ -277,6 +277,14 @@ export const COMMAND_DECLARATIONS = {
 		args: [],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['shownext', 'sn'], enabled: true, quickReference: true },
 	}),
+	// admin chat only by default: the scoreline is a spoiler in the web UI too
+	...declareCommand('tickets', {
+		label: t('Tickets', undefined, { context: 'command' }),
+		section: 'general',
+		access: Access.PUBLIC,
+		args: [],
+		defaults: { allowedChats: ['admin'], triggers: ['tickets'], enabled: true, quickReference: false },
+	}),
 	...declareCommand('enableSlmUpdates', {
 		label: t('Enable SLM Updates', undefined, { context: 'command' }),
 		section: 'votes',

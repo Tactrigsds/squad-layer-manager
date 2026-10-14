@@ -7,6 +7,7 @@ import { useMeasuredWidth } from '@/components/charts/measure'
 import { IdleSwatch, PopulationChart as PopulationChartSvg } from '@/components/charts/population-chart'
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import HistoricalMatchBanner from '@/components/historical-match-banner'
+import { SpoilerRedaction } from '@/components/spoiler-redaction'
 import { TabBar } from '@/components/tab-bar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -26,7 +27,6 @@ import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
-import * as MH from '@/models/match-history.models'
 import * as Pop from '@/models/population.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -439,6 +439,8 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 	)
 	const teams = Zus.useStore_Susp(squadServer, currentMatch$, recentMatches$, ClientOnlySettings.Store, StatsModels.Sel.teams)
 	const metric = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.scorelineMetric)
+	const spoiler = Zus.useStore_Susp(squadServer, currentMatch$, StatsModels.Sel.scorelineSpoiler)
+	const hidden = spoiler === 'hidden'
 
 	const controls = (
 		<ToggleGroup
@@ -458,6 +460,16 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 			))}
 		</ToggleGroup>
 	)
+	const hideSpoilers = spoiler === 'shown' && (
+		<button
+			type="button"
+			className="fd-btn fd-btn-ghost fd-btn-sm"
+			onClick={() => SquadServerFrame.Actions.setShowSpoilers(props.stores, false)}
+		>
+			<Icons.EyeOff className="size-3.5" />
+			{tr.text(SM_Msgs.hideSpoilers())}
+		</button>
+	)
 
 	return (
 		<div className={cn('flex flex-col min-w-0', props.inWindow && 'flex-1 min-h-0')}>
@@ -465,25 +477,35 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 				stores={props.stores}
 				tab="scoreline"
 				inWindow={props.inWindow}
-				controls={controls}
+				controls={
+					<>
+						{controls}
+						{hideSpoilers}
+					</>
+				}
 				help={
 					<HelpButton>
 						<p>{tr.text(MH_Msgs.scorelineDescription())}</p>
 					</HelpButton>
 				}
 			/>
-			<ScorelineTable scoreline={scoreline} teams={teams} />
+			<ScorelineTable scoreline={scoreline} teams={teams} hidden={hidden} stores={props.stores} />
 			<div
 				className={cn('px-1.5 pb-1.5', props.inWindow ? 'flex-1 min-h-[120px]' : 'shrink-0')}
 				style={props.inWindow ? undefined : { height: SCORELINE_CHART_HEIGHT }}
 			>
-				{scoreline && MH.hasCombat(scoreline.stats) ? (
+				{hidden ? (
+					<SpoilerRedaction stores={props.stores} className="size-full">
+						<span className="text-sm">{tr.text(SM_Msgs.hiddenWithSpoilers())}</span>
+					</SpoilerRedaction>
+				) : scoreline && !scoreline.chart.empty ? (
 					<LineChart
 						series={scoreline.chart.series}
 						xMax={scoreline.chart.xMax}
 						xTicks={minuteTicks}
 						formatX={formatElapsed}
 						signed={scoreline.chart.signed ? { above: teams[0].color, below: teams[1].color } : undefined}
+						fitY={scoreline.chart.fitY}
 						ariaLabel={tr.text(MH_Msgs.scorelineMetric(metric))}
 						renderTooltip={(x, values) => (
 							<ScorelineTooltip
@@ -497,7 +519,11 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 					/>
 				) : (
 					<div className="h-full flex items-center justify-center text-text-3 text-sm">
-						{scoreline ? tr.text(MH_Msgs.noCombatYet()) : <span className="fd-spin size-5!" />}
+						{scoreline ? (
+							tr.text(metric === 'tickets' ? MH_Msgs.noTicketsYet() : MH_Msgs.noCombatYet())
+						) : (
+							<span className="fd-spin size-5!" />
+						)}
 					</div>
 				)}
 			</div>
@@ -506,8 +532,14 @@ function ScorelineChart(props: { stores: SquadServerFrame.KeyProp; historicalEve
 }
 
 // Each team's totals: one row per team, one column per figure, so the table keeps its height at any width.
-function ScorelineTable(props: { scoreline: StatsModels.Scoreline | null; teams: [StatsModels.TeamDisplay, StatsModels.TeamDisplay] }) {
+function ScorelineTable(props: {
+	scoreline: StatsModels.Scoreline | null
+	teams: [StatsModels.TeamDisplay, StatsModels.TeamDisplay]
+	hidden: boolean
+	stores: SquadServerFrame.KeyProp
+}) {
 	const { scoreline } = props
+	const redacted = <SpoilerRedaction stores={props.stores} className="h-4 w-12 align-middle" />
 	const rows = props.teams.map((team, i) => {
 		const stats = scoreline ? (i === 0 ? scoreline.stats.team1 : scoreline.stats.team2) : null
 		return { key: `team${i + 1}`, team, stats, tickets: scoreline?.tickets?.[i] ?? null, won: scoreline?.winner === i + 1 }
@@ -550,7 +582,9 @@ function ScorelineTable(props: { scoreline: StatsModels.Scoreline | null; teams:
 								</span>
 							</th>
 							<td className={cell}>
-								{row.tickets !== null ? (
+								{props.hidden ? (
+									redacted
+								) : row.tickets !== null ? (
 									<span className="inline-flex items-center gap-1 justify-end">
 										{row.won && <b className="text-ok">{tr.text(MH_Msgs.resultMark(true))}</b>}
 										{row.tickets}
@@ -564,10 +598,12 @@ function ScorelineTable(props: { scoreline: StatsModels.Scoreline | null; teams:
 									</Tooltip>
 								)}
 							</td>
-							<td className={cell}>{row.stats?.kills ?? '-'}</td>
-							<td className={cell}>{row.stats?.deaths ?? '-'}</td>
-							<td className={cell}>{row.stats ? DH.formatRatio(row.stats.kills, row.stats.deaths) : '-'}</td>
-							<td className={cell}>{row.stats?.wounds ?? '-'}</td>
+							<td className={cell}>{props.hidden ? redacted : (row.stats?.kills ?? '-')}</td>
+							<td className={cell}>{props.hidden ? redacted : (row.stats?.deaths ?? '-')}</td>
+							<td className={cell}>
+								{props.hidden ? redacted : row.stats ? DH.formatRatio(row.stats.kills, row.stats.deaths) : '-'}
+							</td>
+							<td className={cell}>{props.hidden ? redacted : (row.stats?.wounds ?? '-')}</td>
 						</tr>
 					))}
 				</tbody>

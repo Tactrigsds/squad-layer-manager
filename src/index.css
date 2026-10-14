@@ -12,6 +12,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* stands in for a value hidden with spoilers (see SpoilerRedaction) */
+@utility spoiler-hatch {
+	background: repeating-linear-gradient(135deg, var(--line) 0 5px, var(--panel-hi) 5px 7px);
+}
+
 /* for identifiers, IDs and code, which read left to right inside right-to-left text */
 @utility ltr-isolate {
 	direction: ltr;

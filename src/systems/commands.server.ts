@@ -1,4 +1,5 @@
 import * as Arr from '@/lib/array-utils'
+import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
@@ -6,6 +7,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
+import * as MH_Msgs from '@/messages/match-history.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
@@ -15,6 +17,7 @@ import * as V_Msgs from '@/messages/vote.messages'
 import * as AMS from '@/models/admin-message-shorthands.models'
 import * as BB from '@/models/backburner.models'
 import * as BM from '@/models/battlemetrics.models'
+import * as CHAT from '@/models/chat.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared.models'
@@ -773,6 +776,35 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 	showNext: async (h) => {
 		await LayerQueue.warnShowNext(h.ctx, h.msg.playerIds, { isAdmin: h.sender.isAdmin })
+		return { code: 'ok' }
+	},
+
+	// Replays the current match's events the way the web client's live feed does, so the reply agrees with its
+	// Scoreline. A command is rare enough that a walk of one match's events per call beats keeping a tally.
+	tickets: async (h) => {
+		const match = await MatchHistory.getCurrentMatch(h.ctx)
+		if (!match) return await h.error('no-current-match', h.ctx.tr.text(MH_Msgs.noCurrentMatch()))
+		const state = CHAT.getInitialChatState()
+		for (const event of h.ctx.server.emittedEvents) CHAT.handleEvent(state, event)
+		const stats = state.combatTally?.matchId === match.historyEntryId ? state.combatTally.stats : MH.EMPTY_COMBAT_STATS
+		let tickets = state.liveTickets?.matchId === match.historyEntryId ? state.liveTickets.tickets : null
+		if (match.status === 'post-game' && (match.outcome.type === 'team1' || match.outcome.type === 'team2')) {
+			tickets = [match.outcome.team1Tickets, match.outcome.team2Tickets]
+		}
+		const layer = L.toLayer(match.layerId)
+		const factions = L.isKnownLayer(layer) ? [layer.Faction_1, layer.Faction_2] : [null, null]
+		const teams = ([1, 2] as const).map((teamId): MH_Msgs.TicketsReportTeam => {
+			const team = teamId === 1 ? stats.team1 : stats.team2
+			return {
+				teamId,
+				faction: factions[teamId - 1] ?? null,
+				tickets: tickets?.[teamId - 1] ?? null,
+				kills: team.kills,
+				deaths: team.deaths,
+				kd: DH.formatRatio(team.kills, team.deaths),
+			}
+		})
+		await h.reply(MH_Msgs.ticketsReport(teams))
 		return { code: 'ok' }
 	},
 

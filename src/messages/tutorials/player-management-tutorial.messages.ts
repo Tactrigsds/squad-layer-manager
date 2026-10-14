@@ -273,7 +273,7 @@ export const showSpoilers = {
 	title: def('Hidden columns'),
 	body: def(
 		rt(
-			'Role and kills, wounds and deaths are hidden by default, since they can give an in-game advantage. Turn on <em>Show Spoilers</em> to show them.',
+			"Role, kills, wounds and deaths, and the live match's scoreline and tickets, are hidden by default, since they can give an in-game advantage. Turn on <em>Show Spoilers</em>, or click any hidden value, to show them all.",
 		),
 	),
 }

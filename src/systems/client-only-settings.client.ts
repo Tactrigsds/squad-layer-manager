@@ -3,8 +3,8 @@ import * as Zus from '@/lib/zustand'
 export type ChartsTab = 'teams' | 'scoreline' | 'population'
 export const CHARTS_TABS: readonly ChartsTab[] = ['teams', 'scoreline', 'population']
 // what the scoreline chart plots over the match; 'lead' is team 1's kills minus team 2's
-export type ScorelineMetric = 'kills' | 'deaths' | 'lead'
-export const SCORELINE_METRICS: readonly ScorelineMetric[] = ['kills', 'deaths', 'lead']
+export type ScorelineMetric = 'kills' | 'deaths' | 'lead' | 'tickets'
+export const SCORELINE_METRICS: readonly ScorelineMetric[] = ['kills', 'deaths', 'lead', 'tickets']
 // how much the population chart spans: the displayed match, or the last 6 hours, day or week of matches
 export type PopulationRange = 'match' | '6h' | '24h' | '7d'
 export const POPULATION_RANGES: readonly PopulationRange[] = ['match', '6h', '24h', '7d']

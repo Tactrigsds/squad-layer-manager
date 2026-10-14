@@ -38,6 +38,7 @@ export type {
 	SquadDisbanded,
 	SquadRenamed,
 	TeamsPolledUpdate,
+	TicketsChanged,
 	UnpossessedAdminCamera,
 	VehicleDestroyed,
 } from '@/models/server-events.models'

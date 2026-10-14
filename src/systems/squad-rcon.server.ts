@@ -200,19 +200,21 @@ async function fetchSquads(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	if (resSquad.code !== 'ok') return resSquad
 
 	const squads: SM.Squad[] = []
+	const tickets: (number | null)[] = [null, null]
 	let teamName: string | undefined
 	let teamId: number | undefined
 
-	if (!resSquad.data || resSquad.data.length === 0) return { code: 'ok' as const, squads }
+	if (!resSquad.data || resSquad.data.length === 0) return { code: 'ok' as const, squads, tickets: null }
 
 	for (const line of resSquad.data.split('\n')) {
 		const match = line.match(
 			/ID: (?<squadId>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/,
 		)
-		const matchSide = line.match(/Team ID: (\d) \((.+)\)/)
+		const matchSide = line.match(/Team ID: (\d) \((.+)\)(?: - Tickets: (-?\d+))?\s*$/)
 		if (matchSide) {
 			teamId = +matchSide[1]
 			teamName = matchSide[2]
+			if (matchSide[3] !== undefined && (teamId === 1 || teamId === 2)) tickets[teamId - 1] = +matchSide[3]
 		}
 		if (!match) continue
 		const ids = match.groups as any
@@ -243,6 +245,7 @@ async function fetchSquads(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	return {
 		code: 'ok' as const,
 		squads,
+		tickets: tickets[0] !== null && tickets[1] !== null ? ([tickets[0], tickets[1]] satisfies SM.Tickets) : null,
 	}
 }
 
@@ -309,6 +312,7 @@ async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvoca
 		polledAt,
 		players,
 		squads,
+		tickets: squadsRes.tickets,
 	}
 }
 

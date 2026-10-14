@@ -822,6 +822,7 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 		case 'RESET':
 		case 'PLAYER_DETAILS_CHANGED':
 		case 'TEAMS_POLLED_UPDATE':
+		case 'TICKETS_CHANGED':
 		case 'NOOP':
 			return null
 		default:

@@ -47,6 +47,20 @@ export function axis(dataMax: number, targetTicks = 4, opts?: { integer?: boolea
 	return { max, ticks }
 }
 
+// An integer axis fitted to [dataMin, dataMax] rather than starting at zero, each end rounded out to a tick.
+export function rangeAxis(dataMin: number, dataMax: number, targetTicks = 4): { min: number; max: number; ticks: number[] } {
+	if (!(dataMax > dataMin)) {
+		dataMin = Math.floor(dataMin) - 1
+		dataMax = Math.ceil(dataMax) + 1
+	}
+	const step = niceStep((dataMax - dataMin) / Math.max(1, targetTicks), true)
+	const min = Math.floor(dataMin / step) * step
+	const max = Math.ceil(dataMax / step) * step
+	const ticks: number[] = []
+	for (let i = 0; min + i * step <= max; i++) ticks.push(min + i * step)
+	return { min, max, ticks }
+}
+
 function round(v: number) {
 	return Math.round(v * 1e6) / 1e6
 }

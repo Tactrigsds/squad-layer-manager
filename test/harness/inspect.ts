@@ -214,6 +214,22 @@ export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	}
 }
 
+// the tickets a match's latest TICKETS_CHANGED recorded, team 1 first
+export function latestTickets(app: AppFixture, matchId: number): [number, number] | undefined {
+	const db = app.readDb()
+	try {
+		const row = db
+			.prepare(`SELECT data FROM serverEvents WHERE type = 'TICKETS_CHANGED' AND matchId = ? ORDER BY id DESC LIMIT 1`)
+			.get(matchId) as { data: string } | undefined
+		if (!row) return undefined
+		const parsed = JSON.parse(row.data)
+		const data = parsed.json ?? parsed
+		return [data.team1Tickets, data.team2Tickets]
+	} finally {
+		db.close()
+	}
+}
+
 // the procedures a user was refused and what they lacked, from the audit log
 export function refusals(app: AppFixture, userId: bigint): { procedure: string; failures: string[] }[] {
 	const db = app.readDb()

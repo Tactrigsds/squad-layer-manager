@@ -105,6 +105,12 @@ describe('server rolling: the roster across the roll', () => {
 		expect(stats.team1).toEqual({ kills: 2, wounds: 1, deaths: 1 })
 		expect(stats.team2).toEqual({ kills: 1, wounds: 0, deaths: 2 })
 
+		// each death cost its team a ticket, which the teams poll read from ListSquads and the chart replays
+		const replay = await client.matchHistory.getMatchEvents({ serverId: app.serverId, ordinal: matchOrdinal(app, oldMatch.id) })
+		if (!('events' in replay)) throw new Error(`expected the match feed, got ${JSON.stringify(replay)}`)
+		const tickets = CHAT.Wire.decode(replay.events).filter((e) => e.type === 'TICKETS_CHANGED')
+		expect(tickets).toContainEqual(expect.objectContaining({ team1Tickets: 299, team2Tickets: 298 }))
+
 		// the same replay stores the match's population, which the chart's day and week ranges read back
 		const samples = await app.waitFor(() => matchPopulation(app, oldMatch.id), {
 			label: 'the finished match’s population samples reaching their table',

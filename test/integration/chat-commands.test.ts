@@ -5,7 +5,7 @@ import { makePlayer } from '@/emulator'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
-import { appEventTypes, latestMatch, savedBmToken, savedQueue, warnsTo } from '../harness/inspect'
+import { appEventTypes, latestMatch, latestTickets, savedBmToken, savedQueue, warnsTo } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 
 // In-game admin commands: the emulator sends chat as a player, the app parses it, authorizes the
@@ -73,6 +73,21 @@ describe('in-game admin commands', () => {
 			label: 'the vote choices in the reply to shownext',
 			timeoutMs: 20_000,
 		})
+	})
+
+	it("answers tickets with each team's tickets and K/D", async () => {
+		// a suicide: team 1 loses a ticket and gains a death, but no team gains a kill
+		app.emu.world.killPlayer(admin, admin)
+		const matchId = latestMatch(app).id
+		await app.waitFor(() => latestTickets(app, matchId)?.[0] === 299 || undefined, { label: 'the lost ticket recorded' })
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('tickets'))
+
+		const reply = await app.waitFor(() => warnsToAdmin().find((w) => w.includes('tickets,')), {
+			label: 'the reply to tickets',
+			timeoutMs: 20_000,
+		})
+		expect(reply).toMatch(/Team 1 \(.+\): 299 tickets, K\/D 0\.00 \(0\/1\)/)
+		expect(reply).toMatch(/Team 2 \(.+\): 300 tickets, K\/D - \(0\/0\)/)
 	})
 
 	it('starts a vote from admin chat, broadcasting the choices in game', async () => {

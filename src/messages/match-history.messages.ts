@@ -1,4 +1,4 @@
-import { def } from '@/models/messages.models'
+import { def, join, t } from '@/models/messages.models'
 
 export const title = def('Match History')
 
@@ -77,20 +77,47 @@ export const chartPoppedOut = def('This chart is open in its own window.')
 export const returnChartToPanel = def('Return to panel')
 
 export const scorelineMetric = def(
-	'{metric, select, kills {Kills} deaths {Deaths} lead {Kill lead} other {{metric}}}',
-	(metric: 'kills' | 'deaths' | 'lead') => ({ metric }),
+	'{metric, select, kills {Kills} deaths {Deaths} lead {Kill lead} tickets {Tickets} other {{metric}}}',
+	(metric: 'kills' | 'deaths' | 'lead' | 'tickets') => ({ metric }),
 )
 
 export const scorelineDescription = def(
-	"Each team's kills, deaths and wounds in this match, and the chosen one over time. Kill lead is how far one team's kills are ahead of the other's, shaded in the leading team's colour. Teamkills and suicides count as deaths but not as kills.",
+	"Each team's tickets, kills, deaths and wounds in this match, and the chosen one over time. Tickets update live while the round plays. Kill lead is how far one team's kills are ahead of the other's, shaded in the leading team's colour. Teamkills and suicides count as deaths but not as kills.",
 )
 
 export const tickets = def('Tickets')
 
 export const winner = def('Won')
 
-// in the tickets slot until the round is over
-export const ticketsPending = def('Squad reports tickets when the round ends.')
+// in the tickets slot when no tickets were recorded, such as for a match played before SLM recorded them
+export const ticketsPending = def('SLM has not recorded tickets for this match.')
+
+export const noTicketsYet = def('No tickets recorded')
+
+export type TicketsReportTeam = { teamId: 1 | 2; faction: string | null; tickets: number | null; kills: number; deaths: number; kd: string }
+
+// the reply to the tickets command, a line per team
+export const ticketsReport = def((teams: readonly TicketsReportTeam[]) => ({
+	warn: join(
+		teams.map((team) =>
+			t(
+				'Team {teamId}{hasFaction, select, yes { ({faction})} other {}}: {hasTickets, select, yes {{tickets} tickets} other {tickets unknown}}, K/D {kd} ({kills}/{deaths})',
+				{
+					teamId: team.teamId,
+					faction: team.faction,
+					hasFaction: team.faction ? 'yes' : 'no',
+					tickets: team.tickets,
+					hasTickets: team.tickets !== null ? 'yes' : 'no',
+					kd: team.kd,
+					kills: team.kills,
+					deaths: team.deaths,
+				},
+			),
+		),
+	),
+}))
+
+export const noCurrentMatch = def('There is no match in progress.')
 
 export const noCombatYet = def('No kills yet')
 

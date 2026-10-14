@@ -19,7 +19,14 @@ import * as VEH from '@/models/vehicles.models'
 // NEW_GAME, so gating on receive time would let that stale snapshot complete the roll. Everything else, including
 // ordering, stays on `time` -- a poll whose snapshot reflects a just-landed connect must sort after that connect's
 // log, and the sync boundary (unlike a roll) is never straddled by an in-flight poll (see the syncing branch).
-type TeamsUpdateEvent = { type: 'TEAMS_UPDATE'; id: number; teams: SM.Teams; time: number; polledAt: number }
+type TeamsUpdateEvent = {
+	type: 'TEAMS_UPDATE'
+	id: number
+	teams: SM.Teams
+	tickets: SM.Tickets | null
+	time: number
+	polledAt: number
+}
 export type Attribution = {
 	type: 'MAP_SET_ATTRIBUTION'
 	itemId: string
@@ -260,6 +267,9 @@ export type State = {
 	// vehicle and deployable health and crews, for working out what was destroyed (see destruction.models.ts)
 	destruction: DSTR.State
 
+	// the tickets the last TICKETS_CHANGED reported, so a poll only emits one when they move
+	lastTickets: { matchId: number; tickets: SM.Tickets } | null
+
 	counters: {
 		squadId: Generator<number, never, unknown>
 		pendingEventId: Generator<number, never, unknown>
@@ -323,6 +333,7 @@ export function init(opts: {
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
+		lastTickets: null,
 		nonSyncedSince: null,
 		expectedNewLayerId: null,
 		eventBufs: {
@@ -471,12 +482,12 @@ export function onRconEvent(state: State, event: SM.RconEvents.Event) {
 // `polledAt` (ListPlayers issue time) defaults to `time` (receive time) for callers that don't distinguish the
 // two -- collapsing them just reverts to receive-time boundary gating, the pre-fix behavior. Production always
 // passes a distinct polledAt so an in-flight-across-a-roll response is gated correctly; see TeamsUpdateEvent.
-export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polledAt: number = time) {
+export function onTeamsPolled(state: State, teams: SM.Teams, time: number, polledAt: number = time, tickets: SM.Tickets | null = null) {
 	const lastEvent = state.eventBufs.teamsUpdates.at(-1)
 	if (!!lastEvent && lastEvent.time > time) {
 		throw new Error(`Teams polled with time ${time} is older than last event time ${lastEvent.time}`)
 	}
-	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, time, polledAt })
+	state.eventBufs.teamsUpdates.push({ type: 'TEAMS_UPDATE', id: Gen.next(state.counters.pendingEventId), teams, tickets, time, polledAt })
 }
 
 // Builds an event: stamps expectation attribution, then persists it to get its id. Called at the point each
@@ -1713,6 +1724,13 @@ async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: 
 	const nextSquads: SM.UniqueSquad[] = []
 	const base = { matchId: state.currentMatch.historyEntryId, time: event.time }
 	const log = state.log
+
+	const tickets = event.tickets
+	const last = state.lastTickets?.matchId === base.matchId ? state.lastTickets.tickets : null
+	if (tickets && (tickets[0] !== last?.[0] || tickets[1] !== last?.[1])) {
+		state.lastTickets = { matchId: base.matchId, tickets }
+		await emitUnapplied(state, out, { type: 'TICKETS_CHANGED', team1Tickets: tickets[0], team2Tickets: tickets[1], ...base })
+	}
 
 	let emittedEvent = false
 

@@ -283,6 +283,15 @@ export type TeamsPolledUpdate = {
 
 export const TEAMS_POLLED_UPDATE_META = meta<TeamsPolledUpdate>()
 
+// Each team's tickets as a teams poll read them from ListSquads, emitted when either changes.
+export type TicketsChanged = {
+	type: 'TICKETS_CHANGED'
+	team1Tickets: number
+	team2Tickets: number
+} & Base
+
+export const TICKETS_CHANGED_META = meta<TicketsChanged>()
+
 export type PlayerKicked<P = SM.PlayerId> = {
 	type: 'PLAYER_KICKED'
 	reason?: string
@@ -450,6 +459,7 @@ export type SyntheticEvent<P = SM.PlayerId> =
 	| PlayerJoinedSquad<P>
 	| PlayerPromotedToLeader<P>
 	| TeamsPolledUpdate
+	| TicketsChanged
 
 export type Event<P = SM.PlayerId> =
 	| MapSet
@@ -486,6 +496,7 @@ export type Event<P = SM.PlayerId> =
 	| PlayerJoinedSquad<P>
 	| PlayerPromotedToLeader<P>
 	| TeamsPolledUpdate
+	| TicketsChanged
 
 // An event before it has been written to the db. `id` is serverEvents.id, allocated by the insert, so it only
 // exists once the row does -- see the createEvent hook in pending-events.models.ts.
@@ -629,6 +640,7 @@ export const SquadRenamedSchema = event('SQUAD_RENAMED', {
 export const PlayerJoinedSquadSchema = event('PLAYER_JOINED_SQUAD', { uniqueId: z.number(), player: SM.PlayerIdSchema })
 export const PlayerPromotedToLeaderSchema = event('PLAYER_PROMOTED_TO_LEADER', { uniqueId: z.number(), player: SM.PlayerIdSchema })
 export const TeamsPolledUpdateSchema = event('TEAMS_POLLED_UPDATE', {})
+export const TicketsChangedSchema = event('TICKETS_CHANGED', { team1Tickets: z.number(), team2Tickets: z.number() })
 
 export const EventSchema = z.discriminatedUnion('type', [
 	MapSetSchema,
@@ -663,6 +675,7 @@ export const EventSchema = z.discriminatedUnion('type', [
 	PlayerJoinedSquadSchema,
 	PlayerPromotedToLeaderSchema,
 	TeamsPolledUpdateSchema,
+	TicketsChangedSchema,
 ])
 
 // The schemas above and the `Event` union have to describe the same shape, but neither can be derived from the
@@ -705,6 +718,7 @@ export const EVENT_META = {
 	DEPLOYABLE_DESTROYED: DEPLOYABLE_DESTROYED_META,
 	FOB_RADIO_DAMAGED: FOB_RADIO_DAMAGED_META,
 	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,
+	TICKETS_CHANGED: TICKETS_CHANGED_META,
 	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
 	// its own event does not have fails here
 } satisfies { [K in Event['type']]: EventMeta<Extract<Event<AnyPlayer>, { type: K }>> }

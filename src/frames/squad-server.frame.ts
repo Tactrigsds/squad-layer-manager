@@ -39,6 +39,11 @@ export type State = ChatPrt.Store &
 	TeamsPanelPrt.Store & {
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
+		// reveals everything that is hidden by default because it can give an in-game advantage: the roster's role,
+		// vehicle and K/W/D, and the live match's scoreline and tickets
+		showSpoilers: boolean
+		// whether showSpoilers was turned on by the current match reaching post-game rather than by the user
+		spoilersShownAutomatically: boolean
 		// the selection once it stops moving. drag-to-select writes playerSelection once per row the cursor crosses, and
 		// consumers that do real work per change (the activity feed re-filters its whole event buffer) read this instead.
 		settledSelectedPlayerIds: Set<SM.PlayerId>
@@ -78,6 +83,8 @@ export const frame = frameManager.createFrame<Types>({
 			...ListHostPrt.INITIAL,
 			listHost: { type: 'server', serverId: args.input.serverId },
 			playerSelection: {},
+			showSpoilers: false,
+			spoilersShownAutomatically: false,
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
 		// after the set above: its sync reads playerSelection on the first update, and every init emits one
@@ -95,6 +102,26 @@ export const frame = frameManager.createFrame<Types>({
 					Rx.distinctUntilChanged(sameSelection),
 				)
 				.subscribe((settledSelectedPlayerIds) => args.set({ settledSelectedPlayerIds })),
+		)
+
+		// Post-game scores are public, so spoilers show by themselves once each match ends. A reveal made that way is taken
+		// back when the next match starts; one the user made stays.
+		let lastMatchId: number | null = null
+		let autoShownFor: number | null = null
+		args.cleanup.push(
+			MatchHistoryClient.currentMatch$(args.input.serverId)
+				.pipe(ReactRx.retryHot())
+				.subscribe((match) => {
+					if (!match) return
+					if (match.historyEntryId !== lastMatchId) {
+						lastMatchId = match.historyEntryId
+						if (args.get().spoilersShownAutomatically) args.set({ showSpoilers: false, spoilersShownAutomatically: false })
+					}
+					if (match.status === 'post-game' && autoShownFor !== match.historyEntryId) {
+						autoShownFor = match.historyEntryId
+						if (!args.get().showSpoilers) args.set({ showSpoilers: true, spoilersShownAutomatically: true })
+					}
+				}),
 		)
 
 		args.cleanup.push(
@@ -138,6 +165,9 @@ export namespace Sel {
 	}
 	// memoized on the selection object, which setSelection replaces wholesale, so the Set stays reference-stable
 	export const selectedPlayerIds = RSel.createSelector([playerSelection], toSelectedIds)
+	export function showSpoilers(s: State) {
+		return s.showSpoilers
+	}
 	export function settledSelectedPlayerIds(s: State) {
 		return s.settledSelectedPlayerIds
 	}
@@ -245,6 +275,10 @@ function visiblePlayerSet(stores: KeyProp): Set<SM.PlayerId> | null {
 export namespace Actions {
 	function store(stores: KeyProp) {
 		return Zus.resolveStore<State>(stores.squadServer!)
+	}
+
+	export function setShowSpoilers(stores: KeyProp, showSpoilers: boolean) {
+		store(stores).setState({ showSpoilers, spoilersShownAutomatically: false })
 	}
 
 	export function setSelection(

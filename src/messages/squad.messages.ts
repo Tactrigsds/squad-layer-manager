@@ -376,7 +376,15 @@ export const adminsOnly = def('Admins Only')
 
 export const showSpoilers = def('Show Spoilers')
 
-export const showSpoilersHint = def('Show K/W/D, role and vehicle columns')
+export const showSpoilersHint = def("Show K/W/D, role and vehicle columns, and the live match's scoreline and tickets")
+
+export const hideSpoilers = def('Hide Spoilers')
+
+// on a value hidden with spoilers, while the pointer is over it
+export const revealSpoilers = def('Reveal')
+
+// in place of the live match's scoreline chart while spoilers are hidden
+export const hiddenWithSpoilers = def('Hidden with spoilers')
 
 // the role filter survives spoilers being hidden, so it says so rather than silently narrowing the roster
 export const hiddenRoleFilter = def('Role filter is active but hidden with spoilers')
@@ -557,7 +565,7 @@ export const sortKills = def('Kills')
 
 export const selectedOnly = def('Selected only')
 
-export const spoilersOnHint = def('role · vehicle · K/W/D')
+export const spoilersOnHint = def('role · vehicle · K/W/D · scoreline')
 
 export const selectedCount = def('{count, plural, one {# selected} other {# selected}}', (count: number) => ({ count }))
 

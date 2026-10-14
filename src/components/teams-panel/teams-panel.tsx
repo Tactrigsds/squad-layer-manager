@@ -182,7 +182,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								<Switch
 									id={showSpoilersId}
 									checked={showSpoilers}
-									onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)}
+									onCheckedChange={(checked) => SquadServerFrame.Actions.setShowSpoilers(props.stores, checked)}
 								/>
 								<Label htmlFor={showSpoilersId} className="fd-lbl-plain" title={tr.text(SM_Msgs.showSpoilersHint())}>
 									{tr.text(SM_Msgs.showSpoilers())}

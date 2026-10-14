@@ -114,6 +114,7 @@ export const descriptions = {
 	abortVote: t('Abort the current vote'),
 	endVoteEarly: t('End the current vote early'),
 	showNext: t('Show the next item in the queue'),
+	tickets: t("Show each team's tickets and K/D in the current match"),
 	enableSlmUpdates: t('Allow SLM to set the next layer'),
 	disableSlmUpdates: t('Prevent SLM from setting the next layer'),
 	getSlmUpdatesEnabled: t('Check if SLM is allowed to set the next layer'),
