@@ -347,7 +347,7 @@ export function LayerInfoButton(props: { layerId: L.LayerId; children: React.Rea
 	return (
 		<button
 			type="button"
-			className="text-start text-primary underline-offset-4 [&:hover>span]:underline"
+			className="text-start text-primary underline-offset-4 [&:hover_span]:underline"
 			{...RC.windowAttrs({ windowId: WINDOW_ID.enum['layer-info'], arg: { layerId: props.layerId }, preload: true })}
 		>
 			{props.children}
