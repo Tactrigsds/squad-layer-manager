@@ -290,23 +290,80 @@ Cover most complex features with integration or e2e tests instead. Do not try to
 the tricky ones. Where convenient, use semantic html tags, which make the playwright code better and improve
 accessibility as a side effect.
 
-Favour vertical scenario files over per-system ones. In test/integration and test/e2e every app fixture boots the
-real app as a child process, so fixtures are the unit of both isolation and cost. Before writing a new test file or
-booting a fresh fixture, look for an existing scenario file whose app config can carry the test, and extend its
-journey: order tests so earlier ones hand their state to later ones, with destructive steps last. Boot a separate
-app only when the config is the subject of the test (auth mode, otel, generation weights, a second server, agent
-mode) or when the test dirties state nothing after it can tolerate. When two files' configs differ only in seeded
-data, re-pick the data so one fixture serves both before accepting a second boot.
-
-Arrange through the harness, not inline: seeding via createAppFixture options, builders in test/harness/arrange.ts
-(queue, filter, role, ...), db and RCON readers in test/harness/inspect.ts (savedQueue, warnsTo, latestMatch, ...).
-Do not re-implement these in a test file.
+When an integration test and an e2e test would cover the same behavior, write only the e2e test. Put the checks the
+page cannot see, such as a refusal from the server or a stored row, in the same e2e file as assertions through an
+oRPC client (test/harness/orpc-client.ts) or the db readers, on the same fixture.
 
 `pnpm test:integration` and `pnpm test:e2e [spec...]` need no environment setup. Extra args to `test:e2e` go to
 playwright. Nothing under test/harness may import `@/messages/i18n`: it imports JSON, which Playwright cannot load.
 Tests must not depend on `data/generated/messages`, which exists locally but not in CI.
 
-Whenever we add or modify integration/e2e tests, or behavior which may affect one or more existing tests integration/e2e tests, let's take extra care that we have not introduced any flaky/race condition behaviors, in either the test itself or the excercized logic. Run the relevant tests multiple times to catch any potential flakiness.
+## Fixtures
+
+Favour vertical scenario files over per-system ones. In test/integration and test/e2e every app fixture boots the
+real app as a child process, so fixtures are the unit of both isolation and cost. Before writing a new test file or
+booting a fresh fixture, look for an existing scenario file whose app config can carry the test, and extend its
+journey: order tests so earlier ones hand their state to later ones, with destructive steps last. Boot a separate
+app only when the config is the subject of the test (auth mode, otel, env vars, a second server, agent mode).
+
+A test that needs its own queue, layer requests, repeat rules, pool or settings re-arranges the running app with
+`rearrange()` (test/harness/rearrange.ts) instead of booting one. `rearrange()` cannot add filters, users, roles or
+in-game admins, so seed at boot every one that any test in the file needs: one that nothing references is inert. Give each test's pool through `rearrange()`'s `pool` option, which starts from the defaults, so no test
+reads the pool an earlier one configured.
+
+Merge files to save boots where the boot is most of a file's cost. Do not merge into the longest files: the suites
+run files in parallel, so the longest file sets the wall time.
+
+Arrange through the harness, not inline: seeding via createAppFixture options, builders in test/harness/arrange.ts
+(queue, filter, role, ...), db and RCON readers in test/harness/inspect.ts (savedQueue, warnsTo, latestMatch, ...).
+Do not re-implement these in a test file.
+
+Keep emulated data to what a real server can produce. A steam id belongs to one account, so do not connect two
+names under one steam id unless the test is about that.
+
+An oRPC test client stays open for the life of its app. Closing one while the app is up rejects its subscriptions
+with nothing awaiting them, which fails whichever test runs next.
+
+## Waiting
+
+Never wait on a duration. `waitForTimeout`, a sleep, or a timeout picked to cover how long something usually takes
+all become flakes on a slower machine. Wait for a signal the app publishes instead, and when the app publishes none,
+add one to the app:
+
+- Page loads go through `gotoReady()` (test/harness/ready.ts). It waits for `data-app-ready`, which
+  src/systems/readiness.client.ts sets once the client has started. A test that needs the layer engine passes
+  `signals: ['layer-engine']`. The assertions after it keep the default timeout.
+- Roster changes go through `waitForRosterSync()`, and log lines through `waitForLogIngested()`. Both ask the app
+  over its control socket (src/systems/control-socket.server.ts) instead of waiting out a poll interval.
+- Settled client state is marked on the element it concerns, as the filter editor marks `data-draft-validated`
+  once its warnings reflect the current draft.
+- A hot stream is subscribed to before the test acts on it, never after.
+
+An assertion that something did not happen proves nothing until the code that decides it has run. Wait for a
+positive signal of that first, then assert the absence.
+
+Before typing into an editor that a button makes editable, wait for `toBeEditable()`: the editor drops keystrokes
+while it is read-only.
+
+Playwright fails a locator that matches two elements at once, without retrying. A transient element that shares the
+role a test looks for, such as a spinner with `role="status"` inside a status, therefore fails the test whenever an
+assertion lands while it shows, and a slower machine shows it longer. Do not nest an element inside another of the
+same role.
+
+Inline timeouts are for waits on the server's own timers, such as a vote or a roll, and only then.
+
+## Flakes
+
+Whenever a change adds or modifies an integration or e2e test, or changes behavior those tests exercise, check that
+it adds no race, in the test or in the code it exercises. Run the relevant tests several times, each time as its own
+run. `--repeat-each` is no check on a journey spec: its repeats share one app, so each starts from the state the last
+one left.
+
+When several tests in a journey spec fail, read the first failure. A failure restarts the worker on a fresh app, so
+the tests after it fail for want of the state earlier tests made.
+
+CI's runners are about half as fast as a development machine. Reproduce a failure that only happens in CI by
+building the CI image (`docker build --target test`) and running it with `--cpus=1.5`.
 
 # Changelog
 
