@@ -342,11 +342,6 @@ export function sortReleases(names: string[]) {
 	})
 }
 
-// `release` is the release a stable folder was built from
-export function versionLabel(version: string, release: string | null) {
-	return version === STABLE_VERSION && release ? `stable (${release})` : version
-}
-
 // The site root's versions.json, read by every page to list the versions and flag an outdated one, and by the app to
 // pick its docs. `stable` is the release the stable folder holds. `versions` lists every folder: latest, stable, then
 // releases newest first. App builds from before the folders were renamed read `versions` too.

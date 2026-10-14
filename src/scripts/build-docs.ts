@@ -351,8 +351,8 @@ function migrateLegacyFolders() {
 				[`${SITE_ROOT}${name}/`, `${SITE_ROOT}${target}/`],
 				[`${SITE_ROOT}next/`, `${SITE_ROOT}${DS.LATEST_VERSION}/`],
 				[`data-version="${name}"`, `data-version="${target}"${release ? ` data-release="${release}"` : ''}`],
-				[`Documentation version: ${name}`, `Documentation version: ${DS.versionLabel(target, release)}`],
-				[`>${name === 'next' ? 'Unreleased' : name}<`, `>${DS.versionLabel(target, release)}<`],
+				[`Documentation version: ${name}`, `Documentation version: ${target}`],
+				[`>${name === 'next' ? 'Unreleased' : name}<`, `>${target}<`],
 			])
 			console.log(`docs: moved ${name}/ to ${target}/`)
 		}

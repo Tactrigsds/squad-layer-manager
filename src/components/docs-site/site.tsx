@@ -167,8 +167,8 @@ function SupportLink({ className }: { className: string }) {
 function VersionMenu({ site, className }: { site: SiteInfo; className: string }) {
 	return (
 		<details className={`docs-version ${className}`} data-version-menu="">
-			<summary aria-label={`Documentation version: ${DS.versionLabel(site.version, site.release)}`}>
-				{DS.versionLabel(site.version, site.release)}
+			<summary aria-label={`Documentation version: ${site.version}`}>
+				{site.version}
 				<ChevronDown className="size-3.5" aria-hidden="true" />
 			</summary>
 			<div className="docs-version-panel" data-version-list="">
