@@ -127,6 +127,11 @@ function verify(bytes: Buffer, legacy: { rowCount: number; columns: LegacyColumn
 		const spec = manifest.columns[c]
 		const source = legacy.columns.find((column) => column.name === spec.name)
 		if (!source) throw new Error(`column ${spec.name} is not in the source artifact`)
+		// a legacy artifact stored ids in an older encoding; SLMC3 recomputes them from the other columns
+		if (spec.scope === 'id') {
+			console.log(`  ${spec.name.padEnd(22)} ${spec.scope.padEnd(9)} recomputed, not compared`)
+			continue
+		}
 		const expanded = LA.expandColumn(art, c)
 		for (let i = 0; i < legacy.rowCount; i++) {
 			const want = source.values[i] === source.nullValue ? LA.NULL_I32 : source.values[i]

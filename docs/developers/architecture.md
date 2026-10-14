@@ -715,9 +715,14 @@ source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collecti
 column is how filters and pools single a source out.
 
 Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
-later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
-packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
-which is the row id the store indexes by.
+later upgrade it once new layer data makes it resolvable. For the engine, a known layer is a dense integer id: the
+layer index in the high bits, and in the low bits the layer's cell in its option grid, whose rows are the layer's
+distinct team-1 faction/unit sides and whose columns are its team-2 sides. Every grid for one layer data version uses
+the same low-bit width, sized to the largest grid, so an id decodes with a shift, a division and two table reads and
+stays under 2^30, where JS keeps integers unboxed. Ids ascend in the table's row order, and the engine maps one to its
+row through a per-pattern cell table without searching. `LC.denseIdLayout` derives the grids from the layer components
+and `Store::index_dense_ids` from the artifact; both hosts check that the two agree when the engine loads. The ids are
+only meaningful against the layer data that produced them, so they are never stored.
 
 The set of columns is not fixed: `layer-columns.models.ts` combines base columns with server-configurable extra columns
 into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
@@ -730,7 +735,7 @@ sorting, paging, distinct values and weighted random selection. **One module ser
 browser's query worker load the same `.wasm`. It is immutable for its lifetime. That makes caching evaluated bitsets
 safe and shipping the same engine to both sides practical.
 
-**Nothing is stored per row.** Rows are packed-id order, which groups them into one contiguous block per layer, and a
+**Nothing is stored per row.** Rows are layer-id order, which groups them into one contiguous block per layer, and a
 block's rows are the cross product of that layer's faction/unit availability. That makes the row space highly redundant,
 and the store exploits it: a layer's own columns are held once per block (928 of them), the per-team columns once per
 distinct availability pattern (314, shared by every block that repeats one), and the score columns once per (layer,
