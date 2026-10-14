@@ -79,6 +79,8 @@ the share of the players who leave each hour.
 Use the history page to search past events, players and matches by player, time, event type, layer, outcome and more.
 A query can be saved privately or shared with other admins, and results export as text or CSV.
 
+A player can be searched by a Steam or EOS ID, or by part of any username they have gone by, including previous ones.
+
 ![the history page](../images/features/history.png)
 
 ### Time zones

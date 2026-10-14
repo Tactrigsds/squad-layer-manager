@@ -28,6 +28,7 @@ type EventAssociationRows = {
 	playerIndexRows: PendingIndexRow[]
 	squadRows: SchemaModels.NewSquad[]
 	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
+	rename?: { eosId: string; username: string }
 	chatSearchRow?: { message: string; serverEventId: number; playerId: string; matchId: number; serverId: string; time: number }
 }
 
@@ -124,7 +125,10 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 				}
 			: undefined
 
-	return { eventIndexRow, playerRows, playerIndexRows, squadRows, squadAssociationRows, chatSearchRow }
+	const rename =
+		event.type === 'PLAYER_DETAILS_CHANGED' && event.newUsername ? { eosId: event.player, username: event.newUsername } : undefined
+
+	return { eventIndexRow, playerRows, playerIndexRows, squadRows, squadAssociationRows, rename, chatSearchRow }
 }
 
 function prepareStatements(db: DB.Db) {
@@ -184,6 +188,16 @@ function prepareStatements(db: DB.Db) {
 					modifiedAt: sql`excluded.modifiedAt`,
 				},
 			})
+			.prepare(),
+		renamePlayer: db
+			.update(Schema.players)
+			.set({
+				username: sql`${ph('username')}`,
+				// still valid if only the tag changed
+				usernameNoTag: sql`CASE WHEN substr(${ph('username')}, -length(${Schema.players.usernameNoTag})) = ${Schema.players.usernameNoTag} THEN ${Schema.players.usernameNoTag} END`,
+				modifiedAt: sql`${ph('time')}`,
+			})
+			.where(E.eq(Schema.players.eosId, ph('eosId')))
 			.prepare(),
 		selectPlayerExists: db
 			.select({ eosId: Schema.players.eosId })
@@ -292,6 +306,8 @@ function insertAssociationRows(ctx: CS.Log, statements: Statements, rows: EventA
 	statements.insertEventIndex.run({ ...eventIndexRow, damageSourceId, targetId })
 
 	const now = new Date()
+	// the event's time rather than now: the username-history triggers stamp a new name with modifiedAt
+	const eventTime = eventIndexRow.time
 	const insertedEosIds = new Set<string>()
 	for (const player of rows.playerRows) {
 		statements.upsertPlayer.run({
@@ -300,10 +316,11 @@ function insertAssociationRows(ctx: CS.Log, statements: Statements, rows: EventA
 			username: player.username,
 			usernameNoTag: player.usernameNoTag ?? null,
 			epicId: player.epicId ?? null,
-			now,
+			now: eventTime,
 		})
 		insertedEosIds.add(player.eosId)
 	}
+	if (rows.rename) statements.renamePlayer.run({ ...rows.rename, time: eventTime.getTime() })
 	const playerKnown = (eosId: string) => insertedEosIds.has(eosId) || statements.selectPlayerExists.get({ eosId }) !== undefined
 
 	for (const { damageSource: _damageSource, target: _target, ...row } of rows.playerIndexRows) {

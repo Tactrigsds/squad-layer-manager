@@ -485,6 +485,16 @@ export const middleClickDeleteSwap = def('Middle-click: delete swap')
 
 export const playerDetailsTitle = def('Player Details')
 
+export const previousUsernamesCount = def('+{count}', (count: number) => ({ count }))
+
+export const showPreviousUsernames = def('Show previous usernames')
+
+export const previousUsernamesTitle = def('Usernames')
+
+export const usernameCurrentSince = def('Current since {from}', (from: string) => ({ from }))
+
+export const usernameUsedRange = def('{from} to {to}', (from: string, to: string) => ({ from, to }))
+
 // the player details window's section on the match in progress, present only while the player is in it
 export const thisMatch = def('This match')
 

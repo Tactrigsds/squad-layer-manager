@@ -14,7 +14,7 @@ import { tr } from '@/systems/messages.client'
 //
 // Right-justified, and clipped by the button rather than widening it: on one too narrow for the whole word the
 // left of it is what goes, since that is the end a right-justified overflow runs off.
-export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string }) {
+export function CopyIdButton({ kind, id, hideLabel }: { kind: SM_Msgs.IdKind; id: string; hideLabel?: boolean }) {
 	const [copied, setCopied] = React.useState(false)
 	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
 	const zIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
@@ -41,7 +41,7 @@ export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string })
 			title={tr.text(SM_Msgs.copyIdHint(kind))}
 			onClick={handleClick}
 		>
-			<span className={cn('font-mono text-muted-foreground', hidden)}>{SM_Msgs.idKindLabels[kind]}:</span>
+			{!hideLabel && <span className={cn('font-mono text-muted-foreground', hidden)}>{SM_Msgs.idKindLabels[kind]}:</span>}
 			<span className={cn('min-w-0 truncate font-mono ltr-isolate', hidden)}>{id}</span>
 			<Icons.Copy className={cn('h-3 w-3', hidden)} />
 			{copied && (

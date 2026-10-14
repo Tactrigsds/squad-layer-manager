@@ -90,6 +90,7 @@ import * as m0135 from './0135_filter_miss_exemption'
 import * as m0136 from './0136_scheduled_job_runs'
 import * as m0137 from './0137_balance_triggers_unbundled'
 import * as m0138 from './0138_message_shorthands'
+import * as m0139 from './0139_player_usernames'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -167,4 +168,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0136_scheduled_job_runs', up: m0136.up },
 	{ name: '0137_balance_triggers_unbundled', up: m0137.up },
 	{ name: '0138_message_shorthands', up: m0138.up },
+	{ name: '0139_player_usernames', up: m0139.up },
 ]

@@ -32,6 +32,7 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchPopulation from '@/systems/match-population.server'
 import * as MatchTallies from '@/systems/match-tallies.server'
+import * as PlayerUsernames from '@/systems/player-usernames.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
@@ -344,7 +345,7 @@ export const matchHistoryRouter = {
 			// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
 			// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
 			// Issued alongside the other two reads rather than before them: none of the three needs another's answer.
-			const [connectionRows, playerRows, adminLists] = await Promise.all([
+			const [connectionRows, playerRows, adminLists, usernames] = await Promise.all([
 				ctx
 					.db()
 					.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
@@ -362,6 +363,7 @@ export const matchHistoryRouter = {
 				// window asks by eos
 				ctx.db().select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, playerId)),
 				AdminList.getListsForServerId(ctx, input.serverId),
+				PlayerUsernames.getPeriods(ctx, playerId),
 			])
 
 			const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: playerId, steam: playerRows[0]?.steamId?.toString() }
@@ -378,7 +380,7 @@ export const matchHistoryRouter = {
 						? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }
 						: { status: 'offline', lastSeen: null }
 
-			return { connectionStatus, isAdmin, adminGroups: standing.groups, adminListUrls: standing.listUrls }
+			return { connectionStatus, isAdmin, adminGroups: standing.groups, adminListUrls: standing.listUrls, usernames }
 		}),
 
 	// Player-specific events are drawn from the enriched events of the recent matches, cached or re-read per page.

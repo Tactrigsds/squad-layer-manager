@@ -31,6 +31,7 @@ import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
+import * as PlayerUsernames from '@/systems/player-usernames.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -399,13 +400,14 @@ export const router = {
 	// the admin-list groups they hold are true of the person; whether those groups make them an admin is a property of
 	// the lists a *server* recognises, so there is deliberately no isAdmin here and the window shows no badge.
 	playerInfo: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const [[row], adminLists] = await Promise.all([
+		const [[row], adminLists, usernames] = await Promise.all([
 			ctx
 				.db()
 				.select({ username: Schema.players.username, steamId: Schema.players.steamId })
 				.from(Schema.players)
 				.where(E.eq(Schema.players.eosId, input.playerId)),
 			AdminList.getAllLists(ctx),
+			PlayerUsernames.getPeriods(ctx, input.playerId),
 		])
 		if (!row) return { code: 'err:not-found' as const }
 		const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: input.playerId, steam: row.steamId?.toString() }
@@ -416,6 +418,7 @@ export const router = {
 			steamId: row.steamId?.toString() ?? null,
 			adminGroups: standing.groups,
 			adminListUrls: standing.listUrls,
+			usernames,
 		}
 	}),
 

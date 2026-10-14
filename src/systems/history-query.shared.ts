@@ -179,22 +179,19 @@ export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<stri
 export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<string[]> {
 	const trimmed = name.trim()
 	if (trimmed === '') return []
-	// the trigram index answers substring matches of three or more code points (see migration 0108); a
-	// shorter needle falls back to scanning players, which is what every needle cost before the index
+	// Matches previous names as well as current ones. The trigram index answers substring matches of three or
+	// more code points (see migration 0139); a shorter needle falls back to scanning every recorded name.
 	if (Str.codePointLength(trimmed) >= 3) {
-		const rows = ctx
-			.db()
-			.all<{ eosId: string }>(sql`SELECT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${ftsPhrase(trimmed)} LIMIT ${MAX_NAME_MATCHES}`)
+		const rows = ctx.db().all<{
+			eosId: string
+		}>(sql`SELECT DISTINCT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${ftsPhrase(trimmed)} LIMIT ${MAX_NAME_MATCHES}`)
 		return rows.map((r) => r.eosId)
 	}
-	const needle = likeContains(trimmed)
 	const rows = await ctx
 		.db()
-		.select({ eosId: Schema.players.eosId })
-		.from(Schema.players)
-		.where(
-			E.or(sql`${Schema.players.username} LIKE ${needle} ESCAPE '\\'`, sql`${Schema.players.usernameNoTag} LIKE ${needle} ESCAPE '\\'`),
-		)
+		.selectDistinct({ eosId: Schema.playerUsernames.playerId })
+		.from(Schema.playerUsernames)
+		.where(sql`${Schema.playerUsernames.username} LIKE ${likeContains(trimmed)} ESCAPE '\\'`)
 		.limit(MAX_NAME_MATCHES)
 	return rows.map((r) => r.eosId)
 }
