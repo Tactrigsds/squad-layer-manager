@@ -156,6 +156,8 @@ function getInitialFilterStates(context: Context, listHost: ListHostPrt.Key | un
 	let poolApplyAs: ApplyAs = 'regular'
 	if (listHost) {
 		const pool = ListHostPrt.Sel.settings(Zus.getState(listHost)).queue.mainPool
+		// an extra naming the pool filter is hidden here, and must not constrain the query behind the pool's own toggle
+		if (pool.poolFilter) filterStates.delete(pool.poolFilter.filterId)
 		for (const { filterId, applyAs } of pool.defaultSelectable) {
 			// when editing an already saved layer, secondary filters start off so the current layer stays visible
 			filterStates.set(filterId, context === 'edit' ? 'disabled' : applyAs)
@@ -226,10 +228,10 @@ export namespace Sel {
 
 	export const poolFilter = RSel.createSelector([mainPool], (pool) => pool?.poolFilter ?? null)
 
-	// the pool's configured secondary filters. they render pinned, so an extra naming one is not also drawn as an extra
 	export const selectableFilterIds = RSel.createSelector([mainPool], (pool) => pool?.defaultSelectable.map((c) => c.filterId) ?? [])
 
-	const pinnedFilterIds = RSel.createSelector([poolFilter, selectableFilterIds], (poolFilter, selectable) => {
+	// the pool filter and the pool's secondary filters. they render pinned, so an extra naming one is not also drawn as an extra
+	export const pinnedFilterIds = RSel.createSelector([poolFilter, selectableFilterIds], (poolFilter, selectable) => {
 		const pinned = new Set<F.FilterEntityId>(selectable)
 		if (poolFilter) pinned.add(poolFilter.filterId)
 		return pinned
@@ -238,9 +240,9 @@ export namespace Sel {
 	export const extraFilterIds = RSel.createSelector(
 		[
 			(store: Store, _listHost: ListHostPrt.Store | undefined, extras: LQY.ExtraQueryFiltersStore) => extraFilters(store, extras),
-			(_store: Store, listHost: ListHostPrt.Store | undefined) => selectableFilterIds(listHost),
+			(_store: Store, listHost: ListHostPrt.Store | undefined) => pinnedFilterIds(listHost),
 		],
-		(extras, selectable) => Array.from(extras).filter((id) => !selectable.includes(id)),
+		(extras, pinned) => Array.from(Gen.filter(extras, (id) => !pinned.has(id))),
 	)
 
 	// filters the user can still pull in as an extra: everything the pool does not already pin
@@ -311,16 +313,15 @@ export namespace Actions {
 	export function selectExtraFilters(stores: KeyProp, update: React.SetStateAction<F.FilterEntityId[]>) {
 		const state = Zus.getState(stores.appliedFilters)
 		const current = state.appliedFilters.localExtraFilters ?? ExtraFiltersStore.getState().extraFilters
-		let filterIds = typeof update === 'function' ? update(Array.from(current)) : update
 		const listHost = state.listHost
-		if (listHost) {
-			const pool = ListHostPrt.Sel.settings(Zus.getState(listHost)).queue.mainPool
-			const configuredIds = new Set([
-				...(pool.poolFilter ? [pool.poolFilter.filterId] : []),
-				...pool.defaultSelectable.map((c) => c.filterId),
-			])
-			filterIds = filterIds.filter((id) => !configuredIds.has(id))
-		}
+		// `update` sees only the extras this instance draws. pinned ones are hidden from it and kept, so they still
+		// show where this pool does not pin them
+		const pinned = listHost ? Sel.pinnedFilterIds(Zus.getState(listHost)) : new Set<F.FilterEntityId>()
+		const hidden: F.FilterEntityId[] = []
+		const visible: F.FilterEntityId[] = []
+		for (const id of current) (pinned.has(id) ? hidden : visible).push(id)
+		const updated = typeof update === 'function' ? update(visible) : update
+		const filterIds = [...updated.filter((id) => !pinned.has(id)), ...hidden]
 		if (state.appliedFilters.localExtraFilters) {
 			const localExtraFilters = new Set(filterIds)
 			// mirror the global-scope subscription: dropping an extra drops its applied state too
