@@ -114,10 +114,12 @@ export function SearchErrors(props: {
 // recent searches once there are some, else the search tips, while the box is empty
 export function SearchSuggestions(props: { frameKey: SelectLayersFrame.Key; setInput: (value: string) => void }) {
 	const empty = Zus.useStore(props.frameKey, (s) => LayerSearchPrt.Sel.text(s).trim().length === 0)
+	const recallCursor = Zus.useStore(props.frameKey, LayerSearchPrt.Sel.recallCursor)
+	const recallDraft = Zus.useStore(props.frameKey, LayerSearchPrt.Sel.recallDraft)
 	const history = Zus.useStore(LayerSearchPrt.SearchPrefsStore, (s) => s.searches)
 	const tipsDismissed = Zus.useStore(LayerSearchPrt.SearchPrefsStore, (s) => s.tipsDismissed)
 	const [examples] = React.useState(exampleSearches)
-	if (!empty) return null
+	if (!empty && recallCursor === null) return null
 	if (history.length > 0) {
 		return (
 			<section className="fd-panel flex flex-col">
@@ -128,18 +130,21 @@ export function SearchSuggestions(props: { frameKey: SelectLayersFrame.Key; setI
 					</Button>
 				</div>
 				<ul>
-					{history.map((search) => (
-						<li key={search}>
-							<button
-								type="button"
-								onClick={() => props.setInput(search)}
-								className="flex min-h-(--mi-h) w-full items-center gap-2.5 border-t border-line px-3 text-start hover:bg-ctl"
-							>
-								<Icons.History className="size-4 shrink-0 text-text-3" />
-								<span className="min-w-0 flex-1 truncate font-mono text-sm">{search}</span>
-							</button>
-						</li>
-					))}
+					{history.map((search, i) =>
+						search === recallDraft ? null : (
+							<li key={search}>
+								<button
+									type="button"
+									aria-current={i === recallCursor || undefined}
+									onClick={() => props.setInput(search)}
+									className="flex min-h-(--mi-h) w-full items-center gap-2.5 border-t border-line px-3 text-start hover:bg-ctl aria-current:bg-ctl"
+								>
+									<Icons.History className="size-4 shrink-0 text-text-3" />
+									<span className="min-w-0 flex-1 truncate font-mono text-sm">{search}</span>
+								</button>
+							</li>
+						),
+					)}
 				</ul>
 			</section>
 		)

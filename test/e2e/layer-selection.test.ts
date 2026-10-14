@@ -120,13 +120,59 @@ async function setForceWriteSimulatedAway(page: Page, simulatedAway: boolean) {
 	await expect(dialog).toHaveCount(0)
 }
 
+async function openExplore(page: Page) {
+	await page.getByRole('button', { name: 'Explore Layers' }).click()
+	return page.getByRole('dialog', { name: 'Layers' })
+}
+
+// The recent searches are listed below the box, so Down walks into them, newest first, and Up walks back out to the
+// text being typed. The list stays open while it is walked, with the recalled search marked.
+test.describe('the layer search box', () => {
+	test('steps through recent searches with the arrow keys', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		const dialog = await openExplore(page)
+		const box = dialog.getByRole('searchbox', { name: 'Search layers' })
+		const search = async (text: string) => {
+			await dialog.getByRole('button', { name: 'Search layers' }).click()
+			await box.fill(text)
+			await box.press('Enter')
+			await expect(box).toHaveCount(0)
+		}
+		await search('narva aas')
+		await search('goro raas')
+
+		await dialog.getByRole('button', { name: 'Search layers' }).click()
+		await box.fill('lar')
+		const recalled = dialog.locator('button[aria-current="true"]')
+		await box.press('ArrowDown')
+		await expect(box).toHaveValue('goro raas')
+		await expect(recalled).toHaveText('goro raas')
+		await box.press('ArrowDown')
+		await expect(box).toHaveValue('narva aas')
+		await expect(recalled).toHaveText('narva aas')
+		// the oldest is as far as it goes
+		await box.press('ArrowDown')
+		await expect(box).toHaveValue('narva aas')
+		await box.press('ArrowUp')
+		await expect(box).toHaveValue('goro raas')
+		await box.press('ArrowUp')
+		await expect(box).toHaveValue('lar')
+		await expect(dialog.getByText('Recent searches')).toHaveCount(0)
+
+		// the search already in the box is neither listed nor stepped onto
+		await box.fill('goro raas')
+		await box.press('ArrowDown')
+		await expect(box).toHaveValue('narva aas')
+		const listed = dialog.locator('section', { has: page.getByRole('heading', { name: 'Recent searches' }) }).getByRole('listitem')
+		await expect(listed).toHaveText(['narva aas'])
+		await box.press('ArrowUp')
+		await expect(box).toHaveValue('goro raas')
+	})
+})
+
 // Runs before the tests that edit the queue: it reloads the page, which would drop an editing session.
 test.describe('the explore-layers collection', () => {
-	async function openExplore(page: Page) {
-		await page.getByRole('button', { name: 'Explore Layers' }).click()
-		return page.getByRole('dialog', { name: 'Layers' })
-	}
-
 	test('opens on the default collection, then on whatever the user last picked', async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })

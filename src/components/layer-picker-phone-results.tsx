@@ -355,7 +355,7 @@ function Pagination(props: { frameKey: SelectLayersFrame.Key }) {
 
 function SearchView(props: ViewProps) {
 	const { frameKey, setView } = props
-	const { inputRef, initialText, setTextDebounced, finish, setInput, keepFocus } = useSearchInput(frameKey)
+	const { inputRef, initialText, onType, finish, setInput, keepFocus, recallOnArrow } = useSearchInput(frameKey)
 
 	return (
 		<>
@@ -386,8 +386,9 @@ function SearchView(props: ViewProps) {
 							placeholder={tr.text(L_Msgs.searchLayers())}
 							defaultValue={initialText}
 							className="ps-9"
-							onChange={(e) => setTextDebounced(e.target.value)}
+							onChange={(e) => onType(e.target.value)}
 							onKeyDown={(e) => {
+								if (recallOnArrow(e)) return
 								if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
 							}}
 							onBlur={() => {

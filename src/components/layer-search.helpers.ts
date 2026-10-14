@@ -40,7 +40,32 @@ export function useSearchInput(frameKey: SelectLayersFrame.Key) {
 		if (e.target !== inputRef.current) e.preventDefault()
 	}, [])
 
-	return { inputRef, initialText, setTextDebounced, finish, setInput, keepFocus }
+	// Down steps into the recent searches listed below the box, and Up steps back out towards the text being typed. Goes
+	// through the debounce, as typing does, so a keystroke still pending cannot land on top of the recall. Returns
+	// whether the key was handled.
+	const recallOnArrow = React.useCallback(
+		(e: React.KeyboardEvent<HTMLInputElement>) => {
+			if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false
+			if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
+			e.preventDefault()
+			const input = e.currentTarget
+			if (LayerSearchPrt.Actions.recallSearch({ layerSearch: frameKey }, input, e.key === 'ArrowDown' ? 'older' : 'newer')) {
+				setTextDebounced(input.value)
+			}
+			return true
+		},
+		[frameKey, setTextDebounced],
+	)
+
+	const onType = React.useCallback(
+		(value: string) => {
+			LayerSearchPrt.Actions.endRecall({ layerSearch: frameKey })
+			setTextDebounced(value)
+		},
+		[frameKey, setTextDebounced],
+	)
+
+	return { inputRef, initialText, onType, finish, setInput, keepFocus, recallOnArrow }
 }
 
 // a typed word can be wrong twice in one search, so each error is keyed by its word and which occurrence it is

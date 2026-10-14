@@ -21,6 +21,10 @@ export type LayerSearchSlice = {
 	textItems: Record<string, F.EditableCompNode> | null
 	// filters named in the text. They narrow the results like any other search word and leave the applied filters alone
 	filterIds: F.FilterEntityId[]
+	// the index into SearchPrefsStore.searches the box shows while stepping through the recent searches with the arrow
+	// keys, or null on the text being typed, which is kept in historyDraft meanwhile
+	historyCursor: number | null
+	historyDraft: string
 }
 
 export type Store = { layerSearch: LayerSearchSlice } & LayerFilterMenuPrt.Store
@@ -30,7 +34,16 @@ export type KeyProp = { layerSearch: Key }
 type Args = FRM.SetupArgs<object, Store>
 
 export function initLayerSearch(args: Args) {
-	Zus.toPartialSetter(args.set, 'layerSearch')({ text: '', textItems: null, filterIds: [] } satisfies LayerSearchSlice)
+	Zus.toPartialSetter(
+		args.set,
+		'layerSearch',
+	)({
+		text: '',
+		textItems: null,
+		filterIds: [],
+		historyCursor: null,
+		historyDraft: '',
+	} satisfies LayerSearchSlice)
 }
 
 const TEAM_TEXT_COLUMNS = (['Alliance', 'Faction', 'Unit'] as const satisfies F.PhysicalTeamColumn[]).map(
@@ -108,6 +121,16 @@ export namespace Sel {
 
 	export function text(state: Store) {
 		return textIsSource(state) ? state.layerSearch.text : writtenBack(state).text
+	}
+
+	export function recallCursor(state: Store) {
+		return state.layerSearch.historyCursor
+	}
+
+	// the text the recent searches are recalled from: what is typed in the box, or what was typed before the recall
+	// began. A recent search identical to it is neither listed nor stepped onto.
+	export function recallDraft(state: Store) {
+		return (state.layerSearch.historyCursor === null ? text(state) : state.layerSearch.historyDraft).trim()
 	}
 
 	// constraints set in Advanced search that the text cannot show, and that the next search typed will clear
@@ -188,8 +211,42 @@ export namespace Actions {
 		})
 	}
 
+	// Steps through the recent searches, newest first, and back past the newest to the text that was being typed,
+	// passing over a search identical to that text. Puts the result in the input, and returns whether it changed.
+	export function recallSearch(stores: KeyProp, input: HTMLInputElement, direction: 'older' | 'newer'): boolean {
+		const slice = Zus.toPartialStore(stores.layerSearch, 'layerSearch')
+		const { historyCursor, historyDraft } = slice.getState()
+		const searches = SearchPrefsStore.getState().searches
+		const draft = historyCursor === null ? input.value : historyDraft
+		// the search already in the box is usually the newest one recorded, and stepping onto it would change nothing
+		const isDraft = (i: number) => searches[i] === draft.trim()
+		let cursor: number | null
+		if (direction === 'older') {
+			let i = historyCursor === null ? 0 : historyCursor + 1
+			while (i < searches.length && isDraft(i)) i++
+			if (i >= searches.length) return false
+			cursor = i
+		} else {
+			if (historyCursor === null) return false
+			let i = historyCursor - 1
+			while (i >= 0 && isDraft(i)) i--
+			cursor = i < 0 ? null : i
+		}
+		slice.setState({ historyCursor: cursor, historyDraft: draft })
+		input.value = cursor === null ? draft : searches[cursor]
+		input.setSelectionRange(input.value.length, input.value.length)
+		return true
+	}
+
+	// typing over a recalled search makes it the text being typed
+	export function endRecall(stores: KeyProp) {
+		const slice = Zus.toPartialStore(stores.layerSearch, 'layerSearch')
+		if (slice.getState().historyCursor !== null) slice.setState({ historyCursor: null, historyDraft: '' })
+	}
+
 	// records the search as it stands once the user is done with the box
 	export function commit(stores: KeyProp) {
+		Zus.toPartialStore(stores.layerSearch, 'layerSearch').setState({ historyCursor: null, historyDraft: '' })
 		const text = Sel.text(Zus.getState(stores.layerSearch)).trim()
 		if (!text) return
 		SearchPrefsStore.setState((state) => ({
