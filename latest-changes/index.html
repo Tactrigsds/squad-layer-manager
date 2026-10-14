@@ -113,6 +113,10 @@ the <code>/shorthands</code> trigger for it.</p>
 <p><strong>Changed:</strong> <em>Warn</em> in the player, squad and selection menus opens a dialog, like <em>Kick</em>. Pick a message shorthand or choose <em>Custom</em> to type your own warning.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> In-game commands answer a player whose Steam account an admin linked to somebody who has never signed into SLM.</p>
+<p>SLM sent no reply to any command from such a player, and ran none of them.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> When someone deletes a filter, anyone else viewing that filter is returned to the <em>Filters</em> page, even with unsaved changes, since they can no longer be saved. A toast on the <em>Filters</em> page names who deleted the filter.</p>
 </li>
 <li>
@@ -145,6 +149,20 @@ that server until the player left. The Steam account now moves to the player&#x2
 <li>
 <p><strong>Fixed:</strong> A queued seeding or training layer ends a repeat rule&#x27;s lookback, as a played one does.</p>
 <p>A layer queued after a seeding or training layer no longer counts as a repeat of anything before the seeding or training layer. <em>Fix Repeats</em> leaves queued seeding and training layers where they are. The layer table&#x27;s <em>Hide Repeats</em> no longer hides seeding and training layers, and the layer table no longer marks them as repeats.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The audit log shows the queue update that records a vote&#x27;s result.</p>
+<p>When a choice other than the first won a vote, the queue update that applied the result was missing from the audit
+log. The update also dropped out of the activity feed once SLM restarted or the match ended. The upgrade restores the updates
+that are already recorded.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The activity feed and history now record warns and kicks that SLM used to miss.</p>
+<p>A warn was missing when the player&#x27;s in-game name had just changed, such as a clan tag appearing or disappearing,
+or a doubled space after the tag. A kick that no admin issued was missing too.</p>
+<p>A kick from SLM no longer counts as refused when the player takes a moment to leave the server. Before, the feed did not
+show who made such a kick, admins in game were not told about it, and the AFK kicker kicked more players than the
+queue needed.</p>
 </li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
@@ -306,8 +324,19 @@ upgrade deletes the plugin&#x27;s settings.</p>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
-<li><strong>Added:</strong> The plugin API is version 0.16. Plugins can read, add and remove the contributors of a filter or rotation, and copy one filter&#x27;s or rotation&#x27;s contributors to another. Plugins can read and change SLM&#x27;s global settings and their server&#x27;s settings.</li>
-<li><strong>Changed:</strong> The plugin API is version 0.18, because the settings type plugins read gained the <code>tickets</code> command. A plugin built for 0.17 does not load until its <code>apiVersion</code> is raised to <code>^0.18</code>. Plugins also receive a <code>TICKETS_CHANGED</code> server event each time either team&#x27;s tickets change.</li>
-<li><strong>Changed:</strong> The plugin API is version 0.17, because the settings type plugins read gained the <code>squad-server:write-console</code> permission. A plugin built for 0.16 does not load until its <code>apiVersion</code> is raised to <code>^0.17</code>.</li>
+<li>
+<p><strong>Added:</strong> The plugin API is version 0.16. Plugins can read, add and remove the contributors of a filter or rotation, and copy one filter&#x27;s or rotation&#x27;s contributors to another. Plugins can read and change SLM&#x27;s global settings and their server&#x27;s settings.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The plugin API is version 0.18, because the settings type plugins read gained the <code>tickets</code> command. A plugin built for 0.17 does not load until its <code>apiVersion</code> is raised to <code>^0.18</code>. Plugins also receive a <code>TICKETS_CHANGED</code> server event each time either team&#x27;s tickets change.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The plugin API is version 0.17, because the settings type plugins read gained the <code>squad-server:write-console</code> permission. A plugin built for 0.16 does not load until its <code>apiVersion</code> is raised to <code>^0.17</code>.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A user who has left your Discord server is logged once, rather than with a warning each time SLM shows their name.</p>
+<p>Startup no longer logs <code>Cannot read properties of undefined (reading &#x27;guilds&#x27;)</code> errors, and SLM no longer asks Discord
+about the tutorial&#x27;s stand-in admin.</p>
+</li>
 </ul>
 </details></div></article><footer class="docs-page-footer"><div class="docs-source"><code>changes</code><div class="ms-auto flex flex-wrap gap-x-5 gap-y-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changes/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changes/</a></div></div><nav aria-label="Previous and next" class="docs-pager"><a href="/squad-layer-manager/changelog/"><span class="docs-label flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-left size-3.5" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>Previous</span><span class="font-semibold text-text">Changelog</span></a></nav></footer></main><aside aria-label="On this page" class="docs-toc max-xl:hidden"><div class="flex items-center justify-between pb-1"><div class="docs-label">On this page</div></div><a href="#for-users" data-level="0">For users</a><a href="#for-operators" data-level="0">For operators</a><div class="mt-5 flex flex-col gap-2"><a href="https://github.com/Tactrigsds/squad-layer-manager/tree/main/changes/" class="docs-quiet-link"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil size-4" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg>Generated from changes/</a></div></aside></div><dialog id="docs-search" class="docs-search" aria-label="Search the docs"><form class="docs-search-field" method="dialog"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-[18px] shrink-0 text-text-2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><label for="docs-search-input" class="sr-only">Search</label><input id="docs-search-input" type="search" placeholder="Search the docs" autoComplete="off" spellCheck="false" role="combobox" aria-expanded="false" aria-controls="docs-search-results"/><kbd class="docs-kbd">esc</kbd></form><ul id="docs-search-results" class="docs-search-results" role="listbox" aria-label="Results"></ul><p class="docs-search-status" aria-live="polite"></p><div class="docs-search-keys" aria-hidden="true"><span><kbd class="docs-kbd">↑</kbd> <kbd class="docs-kbd">↓</kbd> move</span><span><kbd class="docs-kbd">↵</kbd> open</span></div></dialog><dialog id="docs-lightbox" class="docs-lightbox" aria-label="Image viewer" tabindex="-1"><div class="docs-lightbox-stage"><img alt="" draggable="false"/></div><p class="docs-lightbox-caption"></p><button type="button" class="docs-lightbox-close" data-lightbox-close="" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x size-6" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></dialog></body></html>
