@@ -285,7 +285,7 @@ export function rowPlayerId(target: EventTarget): SM.PlayerId | null {
 
 // What a table's one context menu is showing. Rows and squad labels mount no menu of their own: right-click and
 // long-press are delegated to the table body, which reads the target off the element hit, the same way the
-// activity feed's rows work (docs/developers/architecture.md, "The activity feed is built as dom").
+// activity feed's rows work (docs/developers/architecture.md, "Send markup, not data").
 export type RowMenuTarget = { kind: 'player'; playerId: SM.PlayerId } | { kind: 'squad'; squad: SM.UniqueSquad }
 
 // a squad label or squad header row wins over the player row around it

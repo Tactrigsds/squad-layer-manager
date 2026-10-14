@@ -13,8 +13,8 @@ document disagree, the code wins. Individual modules document their own quirks i
 - [Client-side patterns](#client-side-patterns)
 - [ODSM: optimistic distributed state](#odsm-optimistic-distributed-state)
 - [The domain layer](#the-domain-layer)
-- [Messages and locales](#messages-and-locales)
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
+- [Messages and locales](#messages-and-locales)
 - [Data and persistence](#data-and-persistence)
 - [Plugins](#plugins)
 - [Observability](#observability)
@@ -391,26 +391,61 @@ Conventions from CLAUDE.md, each with a specific reason:
   `teams-panel/player-table.tsx`, and the feed below). `Tooltip` keeps its state machine in a plain object
   (`use-follow-tooltip.ts`) and mounts its node only while open, so a closed one costs three hooks.
 
-### The activity feed is built as dom, not rendered
+### Send markup, not data, where the client only displays it
 
-`src/components/feed` builds the server activity feed's rows with `document.createElement` instead of react. The reason
-is one number: opening a past match mounts ~600 rows and ~10,000 nodes in a single update, which react spent ~200ms on
-and the browser spends ~35ms on. The rows have nothing react was buying: no state, no changing props, no children that
-reorder.
+Where the client displays a result and does nothing else with it, the server sends the result as html rather than as
+data for the client to render. The client inserts the markup without turning data into nodes, and a row's template runs
+in one place.
 
-What they do have is a context menu, a tooltip and a window to open per name. Those became one delegated handler each
-(`interactions.ts`) plus one shared radix instance each (`dom-overlays.tsx`), rather than one root per name. An element
-carries its payload as a symbol-keyed expando and the handler reads it back at interaction time, so a row closes over
-nothing. The ambient state a row is built against (which server, how teams are labelled, the active player grouping) is
-a `RenderCtx` (`render-context.ts`). Its identity determines whether a row is stale.
+Anything the client needs from an element after it is inserted is written onto the markup as a data attribute: the
+player a context menu is for, the window a name opens and its argument, the match a tooltip describes, the key a
+results row expands by. Delegated handlers (`feed/interactions.ts`) read the attributes off the element hit at
+interaction time, so the client keeps no per-row state. `feed/render-context.ts` declares every attribute
+(`MENU_ATTR`, `WINDOW_ARG_ATTR`, `ROW_EVENTS_ATTR`, ...) and the helpers that write them.
 
-The pieces are shared rather than duplicated: `atoms.ts` builds a player, a squad, a team, a layer and a timestamp, and
-the react components of the same names (`PlayerDisplay`, `SquadDisplay`, `TeamFactionDisplay`, `MapLayerDisplay`,
-`EventTime`, `ShortLayerName`) are wrappers that mount what it builds into a `display:contents` host. `rows.ts` builds
-every row type except `APP_EVENT`, which stays a react component portalled into a placeholder. App events are a fraction
-of a percent of a feed, and they query, expand and attribute in ways that would need most of a component model rebuilt.
-Messages resolve through `@/messages/i18n-dom`, which shares the catalogue, the ICU evaluation and the message builders
-with the react path and differs only in what it assembles at the end.
+Data the client uses beyond displaying a row still travels as data. A matches page sends its `MH.MatchDetails` beside
+its markup, because tooltips and the events under an expanded row resolve their match against them. Writing a whole
+match onto every row that names it would repeat it many times per page.
+
+The history page applies this to every result type. `history.query` renders events with the feed's row templates
+(`feed/rows.tsx`), and players and matches with `history/templates.tsx`, all on the server, and returns them as
+`rowsHtml`. The page inserts the strings into a list or a table body. Expanding a results row fetches more markup,
+which `interactions.ts` inserts into the row's panel. `format: 'wire'` is the exception: the player details window
+asks for events as data, because it interleaves past events with live ones.
+
+A view that keeps changing its data on the client needs the data. The live activity feed receives events over a
+subscription and appends a row for each, so it builds its rows on the client, as the next section describes.
+
+### Consider the dom api over react on very hot render paths
+
+React pays for every fiber it creates. In a dialog the cost is noise. In a list that mounts hundreds of rows in one
+update, it dominates: opening a past match in the activity feed mounts ~600 rows and ~10,000 nodes at once, which
+react spent ~200ms on and the browser spends ~35ms on. On a render path that hot, build the nodes with the dom api
+instead.
+
+The approach fits rows that react buys nothing for: no state, no props that change after mount, no children that
+reorder. The feed's rows are inert jsx templates with no hooks or handlers (`feed/rows.tsx`, `feed/atoms.tsx`).
+`feed/static-render.ts` walks a template straight to dom nodes, and `feed/feed-list.tsx` appends them. Interaction
+works as it does for server markup: one delegated handler per kind of interaction (`interactions.ts`) and one shared
+radix instance per overlay (`dom-overlays.tsx`), rather than one react root per name.
+
+A history result is the same kind of row list, running to thousands of events, so the history page builds no rows on
+the client at all. The server renders the same templates to html, and the browser parses each
+page of markup in one pass. Rows offscreen are held behind `content-visibility: auto`, so the browser lays out only
+the rows in view. The activity feed and the history page draw a row from the same template, so a row looks the same
+in both.
+
+### Feed and history rows
+
+The ambient state a row is built against (which server, how teams are labelled, the active player grouping) is a
+`RenderCtx` (`feed/render-context.ts`). Its identity determines whether a row is stale.
+
+`feed/atoms.tsx` builds a player, a squad, a team, a layer and a timestamp. The react components of the same names
+(`PlayerDisplay`, `SquadDisplay`, `TeamFactionDisplay`, `MapLayerDisplay`, `ShortLayerName`) mount those atoms, so a
+react view and a feed row draw the same markup. `feed/rows.tsx` holds a template for every row type. A plugin event
+that its plugin renders itself is the exception: the plugin's renderer is a react component, so `feed-list.tsx`
+portals it into a placeholder row. Templates take their text from `I18n.ambient`, which the server points at the
+viewer's locale while it renders a page.
 
 Every top-level row carries its event's id (`data-dom-row`), plus the ids of any events it folds in. A row selection
 (`selection.ts`) is two of those ids, dragged from the rows' time gutter and painted back on as an attribute, so it
@@ -500,61 +535,47 @@ next-layer badge, render only for a server host.
 
 ## The domain layer
 
-### Filters
+### Entities
 
-A filter is a recursive AST that is **operator-primary**: the operator name carries what used to be separate
-negation and conjunction flags. Comparisons (`eq`, `lt`, `gt`, `in`, `inrange`) constrain their first argument to be
-a column rather than a bare constant, since every value-first comparison has a column-first equivalent. Blocks
-(`all`, `some`, `none`, `notall`) fold the old and/or x negation matrix into four self-negating quantifiers. A
-filter can also reference another filter entity by id.
+An entity is a named thing that users create, share and edit, such as a filter or a rotation. Entities share one
+pattern, so the server, the client and plugins treat each entity alike. Rotations follow the pattern most closely,
+and a new entity copies their shape:
 
-Validation is two-tiered: `EditableFilterNode` is what the editor manipulates mid-keystroke, with everything
-optional, against a fully-valid `FilterNode`. Errors are collected **by path** rather than thrown, so the editor can
-highlight the exact offending node.
-
-Builders are layered and each only knows the level below it: `filter-builders.models.ts` constructs `FilterNode`s, and
-`constraint-builders.models.ts` wraps those into query `Constraint`s.
-
-`filter-references.models.ts` answers where a filter entity is used: another filter's apply-filter operator, or a
-server's pool configuration, transitively through the filters that configuration applies. The server recomputes the
-index whenever a filter or a server's settings change, streams it to clients, and refuses to delete a filter that
-has any reference, or to store an apply-filter loop (which has no fixed point once the references are inlined).
-
-### Repeat rulesets and rotations
-
-A repeat ruleset (`src/models/repeat-rulesets.models.ts`, `RRS`) is a named list of repeat rules, kept in the global
-settings under `repeatRulesets`. A server points at one with `queue.mainPool.repeatRulesetId`, and a rotation with its
-`repeatRulesetId` column, so several servers and rotations can share one. Code says "repeat ruleset" in full except
-where the context already does, such as inside `RRS`.
-
-A rotation (`src/models/rotations.models.ts`) is an ordered `LL.List` kept in the `rotations` table, with owner and
-contributor rows mirroring filters'. Its items are anonymized on save: no sources, tag attribution or note authors.
-`ROT.toQueueItems` turns them into new queue items with fresh ids, the virtual `from-rotation:<rotationId>` tag and
-notes stamped with `fromRotation`. The queue server accepts notes on a new item only in that shape, so nobody can
-file a note in someone else's name.
-
-### Layers
-
-`LayerId` is a **structured string**, not an opaque id:
-
-```
-<Map>-<Gamemode>[-<Version>][-<Collection>]:<Faction1>[-<Unit1Abbr>]:<Faction2>[-<Unit2Abbr>]
-```
-
-The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
-`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Id resolution is a catalog lookup over
-`mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
-source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collection becomes the id's Collection segment. The Collection
-column is how filters and pools single a source out.
-
-Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
-later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
-packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
-which is the row id the store indexes by.
-
-The set of columns is not fixed: `layer-columns.models.ts` combines base columns with server-configurable extra columns
-into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
-must always produce the same object.
+- **Model.** `rotations.models.ts` declares the entity (`RotationSchema`), what a create accepts
+  (`NewRotationSchema`), what a patch may change (`MetaPatchSchema`, `UpdatePatchSchema`) and the row mapping
+  (`toRow`). The id is a readable slug derived from the name (`idFromName`), so urls, commands and plugin code can
+  name a rotation.
+- **Owner and contributors.** An owner is a user, a plugin or the system (`F.FilterOwner`), stored in mutually
+  exclusive columns under a check constraint. Contributors are users or roles, stored in tables of their own
+  (`rotationUserContributors`, `rotationRoleContributors`). RBAC infers a role from each (`rotation-owner`,
+  `rotation-user-contributor`, `rotation-role-contributor`), and those roles grant permissions scoped to the one
+  rotation (`rotations:write`, `rotations:manage`). A global permission (`rotations:write-all`) covers every rotation.
+  A write that changes an owner or a contributor invalidates the cached permissions of the users it affects.
+- **Access.** Every procedure declares its access in `procedure-access.models.ts` (see
+  [Declared access](#declared-access)). Reads are public. A write requires the scoped permission, resolved from its
+  input (`RBAC.getWritePermReqForRotation`). A procedure checks access in its handler only when its input cannot name the
+  requirement: adding a contributor depends on the rotation's owner.
+- **One write path.** `rotation.server.ts` exports one function per write (`createRotation`, `updateRotation`,
+  `deleteRotation`, `cloneRotation`, `addContributor`, ...). The orpc router and the plugin API
+  (`plugin-api/systems/rotation.ts`) call the same functions, so a plugin's write lands the way an admin's does. Each
+  write runs its read-modify-write in a transaction, then emits the mutation and records an app event
+  (`ROTATION_CHANGED`, `ROTATION_CONTRIBUTOR_CHANGED`) against its actor.
+- **Change streams.** `rotationMutation$` carries every committed write. Clients subscribe to `watchChanges` for
+  summaries of every change and to `watchRotation` for one rotation in full. `watchChanges` opens with `subscribed` on
+  every subscription, so a client that reconnects refetches what it missed.
+- **Unbounded listing.** Nothing holds every rotation. Lists, pickers and change streams carry a `Summary` without the
+  items, the index page searches page by page with a cursor (`SearchInputSchema`, `SearchPage`), and only an open
+  rotation is sent in full. Filters predate this, and every client holds every filter in full. A new entity follows
+  rotations.
+- **References.** The server refuses to delete an entity that something still uses. Repeat rulesets show the hook:
+  `rotation.server.ts` registers the rulesets its rows point at with `Settings.registerRepeatRulesetUsers`, and a
+  delete of a ruleset in use fails with `err:repeat-ruleset-in-use`.
+- **Client.** `rotation.client.ts` wraps the procedures in react-query options and invalidates whatever a change
+  touches. A page that edits a rotation is a frame (`rotation-editor.frame.ts`). Index pages share their controls
+  (`entity-index.tsx`, `contributors-popover.tsx`).
+- **Shared drafts, where several users edit at once.** A rotation's items are a shared draft (`rotation-edit.server.ts`)
+  that reuses the queue's list session and [ODSM](#odsm-optimistic-distributed-state), and a save writes the draft
+  to the rotation. Fields outside the draft save as soon as they change.
 
 ### Events: three distinct things with similar names
 
@@ -588,58 +609,28 @@ path-restricted grants that the flat grammar cannot express. Permissions are com
 into a traced list where every grant records which role granted it, so the UI and the audit log can both explain
 why someone has access.
 
-## Messages and locales
+### Layers
 
-Every string a person reads is kept in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs` namespace
-that mirrors the domain's models alias. The tree is isomorphic, and the same message feeds an in-game RCON broadcast
-and the web app's preview of that broadcast, so it must not import anything node-only.
+`LayerId` is a **structured string**, not an opaque id:
 
-`Msgs.def` takes the shape that fits. Most messages are a plain string. One that takes arguments declares an ICU
-pattern plus a mapping from its own parameters to that pattern's values, so the call site keeps an ordinary typed
-signature:
-
-```ts
-export const close = Msgs.def('Close')
-export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
+```
+<Map>-<Gamemode>[-<Version>][-<Collection>]:<Faction1>[-<Unit1Abbr>]:<Faction2>[-<Unit2Abbr>]
 ```
 
-A message with more than a string to say returns a **target map** instead, whose shared logic is kept in the factory's
-closure. The targets are `text`, `toast`, `richText`, `confirm`, `warn` and `broadcast`. A message offers whichever it
-has something sensible to say on, and the compiler rejects the others.
+The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
+`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Id resolution is a catalog lookup over
+`mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
+source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collection becomes the id's Collection segment. The Collection
+column is how filters and pools single a source out.
 
-Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical but
-whose translations differ are told apart by a `context`, which is part of the key and never rendered. The English
-template and translations are kept in `src/messages/locales/`. Generated compiled catalogues are kept out of source
-control.
+Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
+later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
+packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
+which is the row id the store indexes by.
 
-**Patterns are compiled, not parsed.** The development and build hooks resolve each pattern's structure ahead of time
-into `<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to
-its own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
-at runtime. Holding a parsed AST and its formatter per message cost 2.4 MB, against 170 KB for the compiled form.
-
-**A message interpolates its arguments only if the extractor saw it.** One defined where the extractor does not read, a
-test file for instance, renders its pattern verbatim until it registers a compiled form of its own. `pnpm i18n:lint`
-holds that guarantee across `src`, and the unit suite validates the generated catalogue.
-
-English is not registered the way other locales are. `@/messages/i18n` carries it built in, so no boot path can miss
-it, and value formatting (`{n, number}`, `{d, date}`) is rejected at build time: format the value at the call site
-and interpolate the result, as `src/messages/format.ts` does.
-
-**Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
-ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players rather
-than for whoever is looking at the web app, so they are handed a locale explicitly. The browser also sets `<html lang
-dir>` from it, and the CSS relies on that. Layout uses logical properties (`ms-*`, `inset-s-*`, `text-start`), `pnpm
-lint` rejects physical ones, and `:lang()` rules in `theme.css` adjust casing, tracking, line height and fonts per
-script.
-
-**Pseudo-locales show what a translation would break.** Development builds carry `en-XA`, which pads every message by
-about 40% and accents it, and `ar-XB`, the same text right to left. Pick one from the language menu. A message still
-in plain English under `en-XA` is not going through the messages system.
-
-**Settings describe themselves.** A setting's name, description and option names are zod metadata beside the field,
-`.meta(SDoc.of({ label: t('Log File'), description: t('...') }))` (see `src/models/schema-docs.models.ts`). They
-survive `z.toJSONSchema`, so the settings form, its table of contents and the YAML editor's hover all read the same
-text. A unit test fails on any setting without a label. Mark a subtree `opaque` when it is edited as one value.
+The set of columns is not fixed: `layer-columns.models.ts` combines base columns with server-configurable extra columns
+into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
+must always produce the same object.
 
 ## The layer engine (rust/wasm)
 
@@ -708,6 +699,59 @@ drops it, because loading costs considerably more resident memory than holding i
 
 The data it reads is a versioned pair of artifacts. See [layer_data.md](../guide/operations/layer_data.md).
 
+## Messages and locales
+
+Every string a person reads is kept in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs` namespace
+that mirrors the domain's models alias. The tree is isomorphic, and the same message feeds an in-game RCON broadcast
+and the web app's preview of that broadcast, so it must not import anything node-only.
+
+`Msgs.def` takes the shape that fits. Most messages are a plain string. One that takes arguments declares an ICU
+pattern plus a mapping from its own parameters to that pattern's values, so the call site keeps an ordinary typed
+signature:
+
+```ts
+export const close = Msgs.def('Close')
+export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
+```
+
+A message with more than a string to say returns a **target map** instead, whose shared logic is kept in the factory's
+closure. The targets are `text`, `toast`, `richText`, `confirm`, `warn` and `broadcast`. A message offers whichever it
+has something sensible to say on, and the compiler rejects the others.
+
+Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical but
+whose translations differ are told apart by a `context`, which is part of the key and never rendered. The English
+template and translations are kept in `src/messages/locales/`. Generated compiled catalogues are kept out of source
+control.
+
+**Patterns are compiled, not parsed.** The development and build hooks resolve each pattern's structure ahead of time
+into `<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to
+its own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
+at runtime. Holding a parsed AST and its formatter per message cost 2.4 MB, against 170 KB for the compiled form.
+
+**A message interpolates its arguments only if the extractor saw it.** One defined where the extractor does not read, a
+test file for instance, renders its pattern verbatim until it registers a compiled form of its own. `pnpm i18n:lint`
+holds that guarantee across `src`, and the unit suite validates the generated catalogue.
+
+English is not registered the way other locales are. `@/messages/i18n` carries it built in, so no boot path can miss
+it, and value formatting (`{n, number}`, `{d, date}`) is rejected at build time: format the value at the call site
+and interpolate the result, as `src/messages/format.ts` does.
+
+**Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
+ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players rather
+than for whoever is looking at the web app, so they are handed a locale explicitly. The browser also sets `<html lang
+dir>` from it, and the CSS relies on that. Layout uses logical properties (`ms-*`, `inset-s-*`, `text-start`), `pnpm
+lint` rejects physical ones, and `:lang()` rules in `theme.css` adjust casing, tracking, line height and fonts per
+script.
+
+**Pseudo-locales show what a translation would break.** Development builds carry `en-XA`, which pads every message by
+about 40% and accents it, and `ar-XB`, the same text right to left. Pick one from the language menu. A message still
+in plain English under `en-XA` is not going through the messages system.
+
+**Settings describe themselves.** A setting's name, description and option names are zod metadata beside the field,
+`.meta(SDoc.of({ label: t('Log File'), description: t('...') }))` (see `src/models/schema-docs.models.ts`). They
+survive `z.toJSONSchema`, so the settings form, its table of contents and the YAML editor's hover all read the same
+text. A unit test fails on any setting without a label. Mark a subtree `opaque` when it is edited as one value.
+
 ## Data and persistence
 
 better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state is stored in JSON
@@ -759,113 +803,86 @@ env schema's `.meta()`. Connection secrets are sealed at the db boundary only, a
 
 ## Plugins
 
-[writing_plugins.md](writing_plugins.md) is the author-facing guide. This is the host's side of the same contract.
+[writing_plugins.md](writing_plugins.md) and [plugin_ui.md](plugin_ui.md) describe what a plugin author writes and
+what a plugin can do. This section describes only how the host implements that contract. Where a guide already states
+a behaviour, the section links to it rather than repeating it.
 
-Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`, imported
-by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a client entry and
-migrations. They import the core exclusively through the `slm/*` alias, which resolves to the curated entry files in
+**The surface.** A plugin imports the core only through the `slm/*` alias, which resolves to the curated entry files in
 `src/plugin-api/`. Each entry names its exports explicitly, so nothing joins the contract by accident. Lifecycle and
-host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion, `persistAppEvent`) are reachable in core
-and absent here. A few entries add plugin-shaped adapters instead (`slm/plugin/*`, `AppEvents.emit`). Third-party
-packages stay out: `slm/lib/rxjs-ext` exposes our rxjs additions and nothing else, and a plugin imports `rxjs` itself,
-which carries its own semver. One tsconfig path covers tsc, tsx and the rolldown server bundle. Vite and vitest carry
-a hand-written alias.
+host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion, `persistAppEvent`) stay reachable in
+core and absent from the entries. A few entries add plugin-shaped adapters instead (`slm/plugin/*`, `AppEvents.emit`).
+One tsconfig path covers tsc, tsx and the rolldown server bundle. Vite and vitest carry a hand-written alias.
 
-**The plugin way is the core way.** A plugin receives a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin` for
-identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
-`Servers.setup(ctx, cb)` runs `cb` once per managed server, now and future, with a cleanup scoped to the (plugin,
-server) pair. It runs on server teardown or plugin stop, whichever comes first.
+**The plugin way is the core way.** A plugin receives a real ctx (`P.Ctx`) and uses the same idioms core systems do:
+`durableSub` pipelines, `Cleanup.Tasks`, watch streams. A plugin api function is a thin adapter over the core
+function that does the same job, so a plugin's write lands the way an admin's does. The guide's
+[server entry](writing_plugins.md#the-server-entry) lists the ctx.
 
-The host (`src/systems/plugins.server.ts`) owns lifecycle (inactive → activating → active → stopping, or errored),
-serialized behind one mutex. Activation failures (bad config, failed migration, thrown `activate`) land the plugin in
-`errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations but
-the old module graph stays in memory. Re-activation reuses it.
+**Lifecycle.** The host (`src/systems/plugins.server.ts`) moves a plugin through inactive → activating → active →
+stopping, or errored, serialized behind one mutex. An activation failure lands the plugin in `errored` and never fails
+the boot. ESM cannot unload, so deactivation tears down subscriptions and registrations and leaves the module graph in
+memory.
 
-**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/builtins.server.ts` and is built
-into the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
-already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it names:
-`plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`. `pnpm
-plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same folder and
-runs the local copy, so a plugin keeps working when its origin does not. Refresh is the only thing that fetches again,
-and a directory placed there by hand is picked up by rescan.
+**Sources.** A builtin is registered statically in `plugins/builtins.server.ts` (server) and `plugins/builtins.ts`
+(client), and is built into the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` holding a
+`plugin.json` and the prebuilt esm bundles it names. In dev, every other directory under `plugins/` is loaded from
+source: `tsx watch` on the server, vite's own module graph on the client, which is where a plugin's HMR comes from. The
+client discovers through a virtual module rather than a glob guarded on `import.meta.env.DEV`, since a glob's imports
+are real and survive into a build. [Packing and publishing](writing_plugins.md#packing-and-publishing) and
+[The dev loop](writing_plugins.md#the-dev-loop) describe both from the author's side.
 
-**In dev, every other directory under `plugins/` is loaded from source too**, so a plugin author's own repo cloned in
-there runs with nothing to register: `tsx watch` on the server, vite's own module graph on the client, which is where a
-plugin's HMR comes from. Discovery is dev-only on both halves. The client discovers through a virtual module rather than
-a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
+**Shared packages.** A package's bundles import `slm/*` and the shared packages in
+`models/plugin-api-shim.models.ts` (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers. The host resolves
+each to a generated shim module re-exporting its own instance: on the server through a `module.registerHooks`
+resolver, in the browser through the import map in `index.html` and the `/plugin-api/*` route. The export names come
+from `models/plugin-api-exports.models.ts`, generated beside the API report, since the server serves the browser's
+shims but cannot import the client entries to enumerate them. In dev, a plugin repo's own `node_modules` can hold a
+second copy of a shared package. Vite's `resolve.dedupe` and the server's resolve hook, installed before discovery
+imports any manifest, send those imports to the host's copy. `plugin:pack` refuses CommonJS because a CommonJS
+module's `require()` of an external stays a runtime call, and the browser has no `require`.
 
-**A package carries no copy of SLM.** Its bundles import `slm/*` and the shared packages in
-`models/plugin-api-shim.models.ts` (rxjs, zod, drizzle-orm, react, react-dom) as bare specifiers, and the host resolves each
-to a generated shim module re-exporting its own instance: on the server through a `module.registerHooks` resolver, in
-the browser through the import map in `index.html` and the `/plugin-api/*` route. That is what keeps one zod (or
-`configSchema instanceof z.ZodObject` fails) and one React (or hooks break) in play. The export names come from
-`models/plugin-api-exports.models.ts`, generated beside the API report, since the server serves the browser's shims but
-cannot import the client entries to enumerate them.
+**Module urls.** Every bundle url carries its content hash, so a refreshed package is a new module and the server
+loads a clean graph. A packaged plugin's server bundle url also carries an activation counter, so starting a stopped
+plugin evaluates a fresh graph rather than re-running `activate()` against what the previous run left behind. A
+builtin's modules are in the app bundle, so its module scope lasts for the process. Nothing is reclaimed either way:
+Node's module map has no eviction, and V8 drops the compilation cache only under a GC it never runs on its own.
+[Things that will bite you](writing_plugins.md#things-that-will-bite-you) states the consequences for an author.
 
-**Everything else a package imports is bundled, and only as ESM.** `plugin:pack` builds each entry for the platform
-that loads it, so npm dependencies resolve, and fails on an import nothing at load time could answer. It refuses
-CommonJS: a CommonJS module's `require()` of an external stays a runtime call, and the browser has no `require`. In
-dev, a plugin repo's own `node_modules` can hold a second copy of a shared package. Vite's `resolve.dedupe` and the
-server's resolve hook, installed before discovery imports any manifest, send those imports to the host's copy.
+**Telemetry.** The host builds each plugin an otel module named `plugin:<id>` (`PLG.moduleName`) and hands it over as
+`ctx.module`. The prefix is the whole separation: it is the tracer and log scope, it prefixes every
+`spanOp`/`durableSub` name, and it lands as `slm.module.name` on the plugin's records. `spanOp` reads id and version
+off `ctx.plugin` through `CONTEXT_ATTR_MAPPING`, so `slm.op.duration` is groupable by plugin rather than by string
+prefix. Source, declared api range and current status are recorded on two host gauges, `slm.plugin.info` and
+`slm.plugin.status`, joined on `slm.plugin.id`, rather than stamped onto every series a plugin emits. Plugins get no
+meter of their own yet. `spanOp` already gives every op rate, error and duration.
 
-**Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new module
-and the server loads a clean graph, with the old one still in memory but unreachable. A page that already evaluated the
-previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be halfway
-through a queue edit.
+**Persistence.** Per-plugin migrations follow the contract of core `.ts` migrations and are ledgered in
+`_plugin_migrations`. The runner diffs `sqlite_master` around each migration and rejects DDL outside the plugin's
+`p_<id>_` prefix. Config is stored in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's
+zod schema, and rendered by the same schema-driven settings form as every other setting.
 
-**Module scope belongs to one activation, for a packaged plugin.** The server bundle's url also carries an activation
-counter, so starting a stopped plugin evaluates a fresh graph rather than re-running `activate()` against what the
-previous run left behind. A builtin cannot do this, since its modules are in the app bundle: there, module scope lasts
-for the process. Two things follow either way. First, nothing is ever reclaimed. Node's module map has no eviction, and
-V8 drops the compilation cache only under a GC it never runs on its own. Each activation leaves a graph in memory,
-bounded by how often an admin restarts a plugin. Second, a side effect started at module scope is outside the lifecycle.
-Teardown undoes what went through `ctx.cleanup`, the registration APIs and the abort signal, so a subscription taken at
-module scope keeps running after the plugin stops. Keep plugin state in `activate()`.
-
-**Telemetry is namespaced the same way persistence is.** The host builds each plugin an otel module named `plugin:<id>`
-(`PLG.moduleName`) and hands it over as `ctx.module`, with `ctx.log` already its logger. That prefix is the whole
-separation: it is the tracer and log scope, it prefixes every `spanOp`/`durableSub` name, and it lands as
-`slm.module.name` on the plugin's records. A plugin cannot name itself: `slm/server/logger` exposes only `childModule`,
-which narrows the scope it was given. Identity rides along without a call site asking for it: the logger binds
-`slm.plugin.id/version/source`, and `spanOp` reads id and version off `ctx.plugin` through `CONTEXT_ATTR_MAPPING`, so
-`slm.op.duration` is groupable by plugin rather than by string prefix. The browser half mirrors it, so one plugin reads
-the same on both sides. What is left (source, declared api range, current status) is on two host gauges,
-`slm.plugin.info` and `slm.plugin.status`, to be joined on `slm.plugin.id`, rather than stamped onto every series a
-plugin emits. Plugins get no meter of their own yet. `spanOp` already gives every op rate, error and duration.
-
-**Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with `p_<id>_`,
-and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`) run at activation
-rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside the plugin's prefix.
-Config is stored in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's zod schema, and
-rendered by the same schema-driven settings form as everything else. `PluginConfig.get(ctx)` always reads the latest
-saved value, so config changes need no restart.
-
-**The surface documents itself through JSDoc**, on the declaration rather than the `slm/*` entry. A docblock above an
+**JSDoc documents the surface**, on the declaration rather than the `slm/*` entry. A docblock above an
 `export ... from` reaches nobody, since TypeScript resolves a re-export to its original. Declarations are documented
-where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B normalization, what `getRecentMatches` holds,
-`dispatchOp` going through the same path as the web client), left alone where the name already states it.
+where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B normalization, what `getRecentMatches`
+holds, `dispatchOp` going through the same path as the web client), and left alone where the name already states it.
 
 **The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every export
-reachable through the slm/* entries, with values carrying their resolved signatures. `pnpm api:report` regenerates it
+reachable through the `slm/*` entries, with values carrying their resolved signatures. `pnpm api:report` regenerates it
 and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines are breaking, added lines
-additive). The diff is judged against origin/main's copy, so a branch bumps once. Which component each moves follows
-semver, so at today's 0.1.0 that is the minor and the patch. CI and the pre-push hook run `pnpm api:report:check`,
-which fails on a stale report or a missing bump. The report records exports and signatures, not the internal structure of named types. Reshaping a
-model type without renaming it is review's to catch, and the report diff is what flags the PR as touching the plugin API
-at all.
+additive). The diff is judged against origin/main's copy, so a branch bumps once. CI and the pre-push hook run
+`pnpm api:report:check`, which fails on a stale report or a missing bump. The report records exports and signatures,
+not the internal structure of named types. Reshaping a model type without renaming it is review's to catch, and the
+report diff flags the PR as touching the plugin API at all. [API versions](writing_plugins.md#api-versions) describes
+how a manifest's range is matched.
 
-**A plugin's rpc is oRPC.** Its server half builds a router with `Rpc.os<typeof manifest>()`, whose procedures receive
-that plugin's per-server ctx, and registers it. The client is created from the router's _type_ (`import type { router }
-from './server.ts'`, erased at compile time), so nothing on the client is annotated by hand: `Rpc.client<typeof router>`
-for plain procedures, `Rpc.stores<typeof router>` for async-generator ones, which become keyed families of stores. The
-router is never mounted on the core router, which is frozen at module evaluation. Both clients are oRPC clients over a
-custom link that tunnels through the generic `plugins.rpcCall` and `plugins.rpcStream` procedures, and the streaming one
-keeps `stream$`'s re-projection, so a server coming back self-heals the stream.
+**Plugin rpc.** A plugin's router is never mounted on the core router, which is frozen at module evaluation. Both
+plugin clients are oRPC clients over a custom link that tunnels through the generic `plugins.rpcCall` and
+`plugins.rpcStream` procedures, and the streaming one keeps `stream$`'s re-projection, so a server coming back
+self-heals the stream. [Your own rpc](writing_plugins.md#your-own-rpc) describes the author's side.
 
-**Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points (each
-boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The builtin set
-is registered statically in `plugins/builtins.ts` (client) and `plugins/builtins.server.ts` (server) so both bundles
-include them. A packaged plugin registers nothing: the host finds it in `PLUGINS_DIR`.
+**Client anchors.** `Slots.register` mounts a component at a host-placed anchor point, each wrapped in an error
+boundary. `Decorations.register` contributes data (tint, badge, title) that the host styles itself.
+[Plugin UI](plugin_ui.md) lists the anchors.
 
 ## Observability
 
