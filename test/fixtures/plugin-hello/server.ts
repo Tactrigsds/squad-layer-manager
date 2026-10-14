@@ -84,6 +84,8 @@ const rotationChanges: string[] = []
 const rulesetChanges: string[][] = []
 // installedMods after each change to a server's settings, by server
 const serverSettingsChanges = new Map<string, string[][]>()
+// what armEvent is waiting for, by event type, until takeEvent collects it
+const armed = new Map<string, Promise<{ type: string } | null>>()
 
 // what blocks a run of gatedJob, below
 const GatedMode = z.enum(['gate', 'delay', 'forever', 'eager'])
@@ -425,23 +427,39 @@ export const router = {
 		.input(z.object({}))
 		.handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
 
-	// resolves with the first event of `type` seen after subscribing, or null once `ms` has passed
-	nextEvent: os
+	// subscribes before it answers, so whatever the caller does next is seen. The stream is hot: a call that only
+	// subscribed on arrival could miss an event sent alongside it. takeEvent collects what was caught.
+	armEvent: os
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ type: z.string(), ms: z.number() }))
 		.handler(async ({ context, input }) => {
-			return await new Promise<{ type: string } | null>((resolve) => {
-				const timer = setTimeout(() => {
-					sub.unsubscribe()
-					resolve(null)
-				}, input.ms)
-				const sub = SquadServer.events$(context).subscribe((event) => {
-					if (event.type !== input.type) return
-					clearTimeout(timer)
-					sub.unsubscribe()
-					resolve({ type: event.type })
-				})
-			})
+			armed.set(
+				input.type,
+				new Promise<{ type: string } | null>((resolve) => {
+					const timer = setTimeout(() => {
+						sub.unsubscribe()
+						resolve(null)
+					}, input.ms)
+					const sub = SquadServer.events$(context).subscribe((event) => {
+						if (event.type !== input.type) return
+						clearTimeout(timer)
+						sub.unsubscribe()
+						resolve({ type: event.type })
+					})
+				}),
+			)
+			return { armed: true }
+		}),
+
+	// the first event of `type` seen since armEvent, or null once its `ms` passed with none
+	takeEvent: os
+		.meta({ access: RBAC.Access.PUBLIC })
+		.input(z.object({ type: z.string() }))
+		.handler(async ({ input }) => {
+			const caught = armed.get(input.type)
+			if (!caught) throw new Error(`nothing armed for ${input.type}`)
+			armed.delete(input.type)
+			return await caught
 		}),
 
 	endMatch: os

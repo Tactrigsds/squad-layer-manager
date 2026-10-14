@@ -7,6 +7,7 @@ import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { savedPool, savedServerRepeatRuleset } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { rearrange, type RearrangeOptions } from '../harness/rearrange'
 import { expect, test } from './fixtures'
 
@@ -77,8 +78,8 @@ test.describe('queue item constraints', () => {
 				pool.indicateMatches.push('seed-layers')
 			},
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const items = Dash.queueSection(page).getByRole('listitem')
 		const indicators = (layerName: string) => items.filter({ hasText: layerName }).getByRole('button', { name: 'Layer indicators' })
@@ -124,8 +125,8 @@ test.describe('queue item constraints', () => {
 			// both rules are broken by the second Gorodok, so what the tooltip omits is down to `indicate` alone
 			repeatRules: [MAP_RULE, { label: 'Recent map', field: 'Map', within: 4, warn: true, indicate: false }],
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const items = Dash.queueSection(page).getByRole('listitem')
 		await items
@@ -142,8 +143,8 @@ test.describe('queue item constraints', () => {
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 			repeatRules: [MAP_RULE],
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
 
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 		await page.getByRole('button', { name: 'Add Layers' }).click()
@@ -198,8 +199,8 @@ test.describe('queue item constraints', () => {
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
 			repeatRules: [MAP_RULE],
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const items = Dash.queueSection(page).getByRole('listitem')
 		// the repeat is detected and indicated on the item; it is the save-time warning that is scoped to the session
@@ -244,8 +245,8 @@ test.describe('queue item constraints', () => {
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.narvaRaas, LAYERS.gorodokAas),
 			repeatRules: [{ ...MAP_RULE, within: 2 }],
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (4)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (4)')).toBeVisible()
 
 		const items = Dash.queueSection(page).getByRole('listitem')
 		await expect(items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' })).toHaveCount(0)
@@ -288,8 +289,8 @@ test.describe('queue item constraints', () => {
 				pool.skipWarningsForTags = [planned.id]
 			},
 		})
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (3)')).toBeVisible()
 
 		const items = Dash.queueSection(page).getByRole('listitem')
 		// the repeat is still detected and still indicated on the item; only the warning is suppressed
@@ -340,8 +341,8 @@ test.describe('queue item constraints', () => {
 	// rules into the server's ruleset. The last leg points the server at another ruleset.
 	test('persists pool configuration edits made in the window', async ({ page }) => {
 		await arrange({ repeatRules: [...RRS.DEFAULT_RULES] })
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('button', { name: 'Pool Configuration' })).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('button', { name: 'Pool Configuration' })).toBeVisible()
 		await page.getByRole('button', { name: 'Pool Configuration' }).click()
 
 		const section = page.getByRole('region', { name: 'Skip warnings for' })

@@ -7,6 +7,7 @@ import type { AppFixture } from '../harness/app-fixture'
 import * as Dash from '../harness/dashboard'
 import { dragFrom } from '../harness/drag'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { expect, SHARED_SERVER_TIME_ZONE, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
@@ -472,8 +473,8 @@ plainTest.describe('settings page', () => {
 		await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
 		await expect(page.getByText('Settings saved')).toBeVisible()
 
-		await page.goto(app.loginUrl(app.adminUser, '/settings'))
-		await expect(page.locator('[id="setting:requireReasonFor"]')).toContainText('agreed with the head admins', { timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(app.adminUser, '/settings'))
+		await expect(page.locator('[id="setting:requireReasonFor"]')).toContainText('agreed with the head admins')
 	})
 })
 
@@ -672,8 +673,8 @@ test.describe('history page', () => {
 	// The tabs name what the results answer. They used to follow the draft instead, so a switch that could
 	// not re-run moved the tab and left the page on the previous type.
 	test('switching result type re-runs and takes the url with it', async ({ app, page }) => {
-		await page.goto(historyUrl(app, 'type=events'))
-		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		await resultTab(page, 'Players').click()
 		await expect(page).toHaveURL(/type=players/)
@@ -688,8 +689,8 @@ test.describe('history page', () => {
 	// answering a query nobody asked for. Switching type stays available: it is still a switch of what is
 	// being built, and Run catches the page up once the tree is finishable again.
 	test('an unfinished filter replaces the results, and the type still switches', async ({ app, page }) => {
-		await page.goto(historyUrl(app, 'type=events'))
-		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		await page.getByRole('button', { name: 'Advanced' }).click()
 		await page.getByRole('button', { name: 'Add to this group' }).first().click()
@@ -716,8 +717,8 @@ test.describe('history page', () => {
 	// Inside an open picker the chord picks the highlighted option and closes, and must not also run the page behind
 	// it. Outside one it clicks Run from wherever focus is.
 	test('the submit chord picks in an open picker, then runs the page', async ({ app, page }) => {
-		await page.goto(historyUrl(app, 'type=events'))
-		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, 'type=events'))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		const picker = page.getByRole('combobox', { name: 'Server' })
 		const pickedBefore = await picker.innerText()
@@ -775,13 +776,13 @@ test.describe('history page', () => {
 		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
 
 		// longer than anything this app has played, so the filter has to empty the results
-		await page.goto(historyUrl(app, 'type=matches&durationMin=100000'))
-		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, 'type=matches&durationMin=100000'))
+		await expect(page.getByText('0 results')).toBeVisible()
 	})
 
 	test('clear all empties every field the rail is holding', async ({ app, page }) => {
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&servers=%5B%22${app.serverId}%22%5D`))
-		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&servers=%5B%22${app.serverId}%22%5D`))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		const clear = page.getByRole('button', { name: 'Clear All', exact: true })
 		await expect(clear).toBeEnabled()
@@ -801,8 +802,8 @@ test.describe('history page', () => {
 		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
 
 		// a chat message is not part of the audit trail, so the same query under SLM Events matches nothing
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&feed=SLM_EVENTS`))
-		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&feed=SLM_EVENTS`))
+		await expect(page.getByText('0 results')).toBeVisible()
 	})
 
 	// The channel is written into the index as the message is recorded, so this covers the whole path: the
@@ -813,8 +814,8 @@ test.describe('history page', () => {
 		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
 
 		// the seeded message went to all chat, so asking for the admin channel has to miss it
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&channel=ChatAdmin`))
-		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&channel=ChatAdmin`))
+		await expect(page.getByText('0 results')).toBeVisible()
 	})
 
 	// `player` matches an event the player is named in at all, which for a kill is both ends of it. The role
@@ -826,16 +827,16 @@ test.describe('history page', () => {
 			historyUrl(app, `type=events&feed=ALL&types=%5B%22PLAYER_DIED%22%5D&players=%5B%22${eos}%22%5D&playerRole=${role}`)
 		const total = page.getByText(/^\d+ results?$/)
 
-		await page.goto(kills(attacker, 'attacker'))
-		await expect(total).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, kills(attacker, 'attacker'))
+		await expect(total).toBeVisible()
 		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
 
 		// the same player, the other end: they did the killing, so they were nobody's victim
-		await page.goto(kills(attacker, 'victim'))
-		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, kills(attacker, 'victim'))
+		await expect(page.getByText('0 results')).toBeVisible()
 
-		await page.goto(kills(victim, 'victim'))
-		await expect(total).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, kills(victim, 'victim'))
+		await expect(total).toBeVisible()
 		expect(Number.parseInt(await total.innerText(), 10)).toBeGreaterThan(0)
 	})
 
@@ -851,12 +852,12 @@ test.describe('history page', () => {
 		expect(matchId).toBeGreaterThan(0)
 
 		// the same events, asked for by the id their rows carry
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=${matchId}`))
-		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=${matchId}`))
+		await expect(results.getByText(HISTORY_NEEDLE).first()).toBeVisible()
 
 		// no match has this id, so nothing can be from it
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=999999`))
-		await expect(page.getByText('0 results')).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=999999`))
+		await expect(page.getByText('0 results')).toBeVisible()
 	})
 
 	// A match row's menu acts on the layer that was played, which needs no server frame -- the delegated
@@ -920,8 +921,8 @@ test.describe('history page', () => {
 	test('filters matches by several outcomes at once', async ({ app, page }) => {
 		const total = page.getByText(/^\d+ results?$/)
 		const count = async (search: string) => {
-			await page.goto(historyUrl(app, search))
-			await expect(total).toBeVisible({ timeout: 30_000 })
+			await gotoReady(page, historyUrl(app, search))
+			await expect(total).toBeVisible()
 			return Number.parseInt(await total.innerText(), 10)
 		}
 
@@ -1023,8 +1024,8 @@ test.describe('history page', () => {
 			timeoutMs: 30_000,
 		})
 
-		await page.goto(link)
-		await expect(selected).toHaveCount(3, { timeout: 30_000 })
+		await gotoReady(page, link)
+		await expect(selected).toHaveCount(3)
 		await expect(selected.first()).toBeInViewport()
 		await expect(rowWith(later)).toHaveCount(0)
 		await expect(page.getByLabel('To', { exact: true })).toHaveValue(/^\d{4}-\d\d-\d\dT\d\d:\d\d$/)
@@ -1159,8 +1160,8 @@ test.describe('history page', () => {
 	// Last: it leaves a saved query behind. Saving names the query the page is working on, so the next save
 	// updates that one rather than duplicating it under a second name.
 	test('saves a query, then updates it in place', async ({ app, page }) => {
-		await page.goto(historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
-		await expect(page.getByText(/^\d+ results?$/)).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}`))
+		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		const name = `e2e saved ${Date.now()}`
 		await page.getByRole('button', { name: 'Save', exact: true }).click()

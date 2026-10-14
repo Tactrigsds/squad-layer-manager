@@ -113,7 +113,9 @@ export function eosIdForName(name: string, salt?: string): string {
 
 export function makePlayer(opts: Partial<EmuPlayer> & { name: string }, salt?: string): EmuPlayer {
 	return {
-		eos: opts.eos ?? eosIdForName(opts.name, salt),
+		// keyed on an explicit steam id where there is one: an account has one of each, so two names given the same
+		// steam id are the same player and must not come out as two eos ids
+		eos: opts.eos ?? eosIdForName(opts.steam ?? opts.name, salt),
 		steam: opts.steam ?? steamIdForName(opts.name, salt),
 		name: opts.name,
 		teamId: opts.teamId ?? null,

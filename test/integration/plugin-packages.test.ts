@@ -978,11 +978,9 @@ describe('packaged plugins', () => {
 		const speaker = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_event_watcher', teamId: 1 }))
 		await app.waitForRosterSync()
 
-		const pending = call<{ type: string } | null>('nextEvent', { type: 'CHAT_MESSAGE', ms: 20_000 })
-		// the stream is hot, so anything before the subscription attaches is missed
-		await new Promise((resolve) => setTimeout(resolve, 500))
+		await call('armEvent', { type: 'CHAT_MESSAGE', ms: 20_000 })
 		app.emu.world.chat(speaker, 'ChatAll', 'hello from a test')
-		expect(await pending).toMatchObject({ type: 'CHAT_MESSAGE' })
+		expect(await call<{ type: string } | null>('takeEvent', { type: 'CHAT_MESSAGE' })).toMatchObject({ type: 'CHAT_MESSAGE' })
 	})
 
 	// endMatch is host-owned precisely so the round end is attributed. A plugin cannot emit MATCH_ENDED

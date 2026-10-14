@@ -207,9 +207,11 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 	)
 
 	const _nodeMapStore = Zus.useStore(stores.filterEditor, (s) => s.nodeMapStore)
+	const validationCurrent = Zus.useStore(stores.filterEditor, EditFrame.Sel.validationCurrent)
 
 	return (
-		<div className="container mx-auto flex flex-col gap-2">
+		// marked once the warnings below reflect the current draft, for anything that has to wait on them
+		<div className="container mx-auto flex flex-col gap-2" data-draft-validated={validationCurrent || undefined}>
 			{cloning && <CloneFilterDialog source={props.entity} onClose={() => setCloning(false)} />}
 			<div className="flex justify-between">
 				{!editingDetails ? (

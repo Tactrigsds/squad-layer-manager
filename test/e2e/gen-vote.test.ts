@@ -8,6 +8,7 @@ import * as SETTINGS from '@/models/settings.models'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { gotoReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
 import { expect, test } from './fixtures'
 
@@ -77,8 +78,8 @@ async function arrangeAndOpen(
 		},
 		pool: (pool) => selectableFilter(pool, opts.selectable),
 	})
-	await page.goto(app.loginUrl())
-	await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
+	await gotoReady(page, app.loginUrl())
+	await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
 	await page.getByRole('button', { name: 'Start Editing' }).click()
 	await page.getByRole('button', { name: 'Gen Vote' }).click()
 	return page.getByRole('dialog', { name: 'Generate Vote' })

@@ -8,6 +8,7 @@ import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { belowItem, centerOf, dragFrom } from '../harness/drag'
 import { savedBackburner } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
 import { expect, test } from './fixtures'
 
@@ -95,8 +96,8 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID }))
 		await app.waitForRosterSync()
 
-		await page.goto(app.loginUrl())
-		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
 
 		// a request arriving from chat shows up in the panel without a reload
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))

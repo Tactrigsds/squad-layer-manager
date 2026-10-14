@@ -5,6 +5,7 @@ import * as FB from '@/models/filter-builders.models'
 
 import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harness/app-fixture'
 import { filter } from '../harness/arrange'
+import { gotoReady } from '../harness/ready'
 
 // Playwright fixture: one app instance + one emulated squad server per test file (worker-scoped),
 // so a test can drive the real UI, act "in game" through the emulator, and assert against the UI,
@@ -89,7 +90,7 @@ async function attachAppLog(testInfo: TestInfo, app: AppFixture) {
 // can read the page without naming `app` at all and would otherwise silently get a blank one.
 export const sharedAppTest = test.extend({
 	page: async ({ page, app }, use) => {
-		await page.goto(app.loginUrl())
+		await gotoReady(page, app.loginUrl())
 		await use(page)
 	},
 })

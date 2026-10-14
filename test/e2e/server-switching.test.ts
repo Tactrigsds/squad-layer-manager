@@ -1,4 +1,5 @@
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // Regression: switching servers left everything outside the route -- the picker's own label, and the actions in
@@ -21,8 +22,8 @@ test.afterAll(async () => {
 test.describe('switching servers', () => {
 	test('takes the rest of the page with it', async ({ page }) => {
 		const second = app.second!
-		await page.goto(app.loginUrl())
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, app.loginUrl())
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 
 		// the picker names the server the page is showing, which starts as the default one
 		const picker = page.getByRole('button', { name: 'Emulated Server' })
@@ -42,8 +43,8 @@ test.describe('switching servers', () => {
 	// the fix the menu on the new server's page was still acting on the old server
 	test('points the server actions at the server now being shown', async ({ page }) => {
 		const second = app.second!
-		await page.goto(app.loginUrl(app.adminUser, `/servers/${second.serverId}`))
-		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
+		await gotoReady(page, app.loginUrl(app.adminUser, `/servers/${second.serverId}`))
+		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 
 		// arriving directly, the console opened from here is the second server's
 		await page.getByRole('button', { name: 'Server Actions' }).click()

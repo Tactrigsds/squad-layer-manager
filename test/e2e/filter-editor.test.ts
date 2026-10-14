@@ -5,6 +5,7 @@ import * as FB from '@/models/filter-builders.models'
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queue, role } from '../harness/arrange'
 import { filterOwner } from '../harness/inspect'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
@@ -105,8 +106,8 @@ test.describe('filter references', () => {
 		await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
 
 		// the filter the pool names directly says so on its own line, rather than among the other pool uses
-		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-harju'))
-		await expect(references.getByText('Pool filter for:')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(app.adminUser, '/filters/raas-harju'))
+		await expect(references.getByText('Pool filter for:')).toBeVisible()
 
 		// and it leads the index, ahead of the alphabetically earlier filters, saying which server it is for
 		await page.goto(app.loginUrl(app.adminUser, '/filters'))
@@ -116,8 +117,8 @@ test.describe('filter references', () => {
 		await expect(leadCard).toContainText('Emulated Server')
 
 		// a filter nothing points at still deletes, and a second tab showing it is sent back to the index and told why
-		await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
-		await expect(page.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(app.adminUser, '/filters/unused'))
+		await expect(page.getByText('Nothing references this filter')).toBeVisible()
 		const otherTab = await page.context().newPage()
 		await otherTab.goto(app.loginUrl(app.adminUser, '/filters/unused'))
 		await expect(otherTab.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
@@ -150,8 +151,8 @@ test.describe('filter references', () => {
 		await page.goBack()
 		await page.waitForURL('**/filters/raas-only*')
 		// a leaked tree from raas-harju would close a reference loop here, so the cycle alert doubles as the
-		// poison detector. It arrives asynchronously (debounced editor sync + validation), so settle first
-		await page.waitForTimeout(1_000)
+		// poison detector. It arrives asynchronously (throttled validation), so wait for that to catch up first
+		await expect(page.locator('[data-draft-validated]')).toHaveCount(1)
 		await expect(page.getByRole('alert').filter({ hasText: 'raas-only ->' })).toHaveCount(0)
 		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 
@@ -161,12 +162,12 @@ test.describe('filter references', () => {
 	})
 
 	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
-		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+		await gotoReady(page, app.loginUrl(app.adminUser, '/filters/raas-only'), { signals: ['layer-engine'] })
 
 		// the editor is only live once its first validation has run, which is what constrains the layer table to
 		// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
 		// The positive wait comes first: the absence check passes vacuously while the table has no rows at all.
-		await expect(page.getByRole('row').filter({ hasText: /RAAS/ }).first()).toBeVisible({ timeout: 20_000 })
+		await expect(page.getByRole('row').filter({ hasText: /RAAS/ }).first()).toBeVisible()
 		await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0)
 
 		await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })

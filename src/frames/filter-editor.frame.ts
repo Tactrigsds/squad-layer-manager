@@ -68,6 +68,8 @@ type FilterEditorBase = {
 	editingNodeId: string | null
 
 	validatedFilter: F.FilterNode | null
+	// the tree the fields below were derived from; it is `tree` once validation has caught up with the last edit
+	validatedTree: F.FilterNodeTree | null
 	// the apply-filter loop this edit would create, if any. A loop has no fixed point once the referenced
 	// filters are inlined, so the server refuses to store one and saving is blocked here first.
 	referenceCycle: F.FilterEntityId[] | null
@@ -135,6 +137,7 @@ const setup: Frame['setup'] = (args) => {
 		editingNodeId: null,
 
 		validatedFilter: null,
+		validatedTree: null,
 		referenceCycle: null,
 		modified: false,
 		valid: false,
@@ -151,6 +154,7 @@ const setup: Frame['setup'] = (args) => {
 		const referenceCycle = validatedFilter && state.editedFilterId ? findCycle(state.editedFilterId, validatedFilter) : null
 		set({
 			validatedFilter: validatedFilter ?? null,
+			validatedTree: state.tree,
 			referenceCycle,
 			baseQueryInput,
 			valid: validatedFilter !== null && !referenceCycle,
@@ -226,6 +230,8 @@ const NO_CHILDREN: readonly string[] = []
 
 export namespace Sel {
 	export const rootId = (state: FilterEditor) => state.tree.rootId
+
+	export const validationCurrent = (state: FilterEditor) => state.validatedTree === state.tree
 
 	export const depth = (id: string | undefined) => (state: FilterEditor) => (id ? F.nodeDepth(state.tree, id) : undefined)
 

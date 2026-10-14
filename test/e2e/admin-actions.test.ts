@@ -271,8 +271,9 @@ test.describe('admin actions from the teams panel', () => {
 		const joiners = [await join('cb_first'), await join('cb_brief')]
 		await expect(countdown).toBeVisible({ timeout: 20_000 })
 		app.emu.world.disconnectPlayer(joiners.pop()!)
+		// the countdown is the server's published deadline, cleared only once its timer is dropped, so a hidden one
+		// means no re-pick is coming (setupInstance in teamswaps.server.ts)
 		await expect(countdown).toBeHidden({ timeout: 20_000 })
-		await page.waitForTimeout(10_000)
 		await expect(counterbalanced).toHaveCount(2)
 
 		// 2v4 again, and this time it stays that way until the countdown ends: one counterbalance swap is dropped
@@ -297,7 +298,6 @@ test.describe('admin actions from the teams panel', () => {
 		await expect(countdown).toBeVisible({ timeout: 20_000 })
 		await page.getByRole('button', { name: 'Skip' }).click()
 		await expect(countdown).toBeHidden({ timeout: 20_000 })
-		await page.waitForTimeout(10_000)
 		await expect(page.locator('[data-tour="swap-badge"]')).toHaveCount(1)
 
 		await page.locator('[data-tour="swap-badge"]', { hasText: 'loner' }).getByRole('button', { name: 'Delete swap' }).click()

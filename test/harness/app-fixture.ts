@@ -811,11 +811,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		otelLabels,
 		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,
 		waitForRosterSync: async (syncOpts) => {
-			// two polls, not one: the roster resource fetches under a mutex, so the second ListPlayers
-			// can only have been issued after the first one's response was parsed and cached
-			const from = emu.rcon.commandLog.length
-			await waitFor(() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2, {
-				label: 'roster poll',
+			// fetched on demand rather than waiting out two poll intervals; retried while the server is still loading
+			await waitFor(async () => (await fixture.control('sync-roster', { serverId })).code === 'ok' || null, {
+				label: 'roster sync',
 				timeoutMs: syncOpts?.timeoutMs ?? 25_000,
 			})
 		},

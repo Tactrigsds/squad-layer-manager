@@ -1,3 +1,4 @@
+import zlib from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
@@ -142,11 +143,11 @@ describe('the event archive', () => {
 		}
 	}
 
-	function archiveRow(matchId: number): { eventCount: number; bytes: number } | undefined {
+	function archiveRow(matchId: number): { eventCount: number; events: Buffer } | undefined {
 		const db = app.readDb()
 		try {
-			return db.prepare(`SELECT eventCount, length(events) AS bytes FROM archivedMatches WHERE matchId = ?`).get(matchId) as
-				| { eventCount: number; bytes: number }
+			return db.prepare(`SELECT eventCount, events FROM archivedMatches WHERE matchId = ?`).get(matchId) as
+				| { eventCount: number; events: Buffer }
 				| undefined
 		} finally {
 			db.close()
@@ -183,8 +184,9 @@ describe('the event archive', () => {
 		if (!archived) throw new Error('the finished match was not compacted')
 		expect(hotEventCount(played.id)).toBe(0)
 		expect(archived.eventCount).toBe(hotBefore)
-		// the whole point of packing them: a match costs a fraction of what its rows did
-		expect(archived.bytes).toBeLessThan(hotBefore * 100)
+		// the whole point of packing them: a match costs a fraction of what its rows did. Measured against the blob's own
+		// contents, since a per-event figure depends on how many events the match happened to collect
+		expect(archived.events.length).toBeLessThan(zlib.zstdDecompressSync(archived.events).length)
 
 		const after = await client.matchHistory.getMatchEvents({ serverId: app.serverId, ordinal })
 		expect(after).toEqual(before)

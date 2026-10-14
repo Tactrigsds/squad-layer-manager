@@ -5,6 +5,7 @@ import { role } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { savedQueue } from '../harness/inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // The tutorial as a reader meets it: the index page starts a run, the tour narrates the real dashboard, and the
@@ -182,8 +183,8 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 				localStorage.setItem(key, JSON.stringify({ state: { primaryPanelTab: 'VIEWING_TEAMS' }, version: 0 }))
 			}
 		})
-		await page.goto(app.loginUrl(USER, '/tutorials'))
-		await expect(page.getByRole('heading', { name: 'Tutorials' })).toBeVisible({ timeout: 20_000 })
+		await gotoReady(page, app.loginUrl(USER, '/tutorials'))
+		await expect(page.getByRole('heading', { name: 'Tutorials' })).toBeVisible()
 		const entry = page.getByRole('listitem').filter({ hasText: TUTORIAL })
 		await entry.getByRole('button', { name: 'Start', exact: true }).click()
 
