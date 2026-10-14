@@ -21,6 +21,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 
 import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as DW from '@/models/draggable-windows.models'
 import { tr } from '@/systems/messages.client'
@@ -378,6 +379,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				role="dialog"
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
+				{...SubmitChord.scopeAttrs('window')}
 				className={cn(
 					// w-max: a fixed box with auto width shrinks to the space between its left edge and the viewport's
 					// right edge, so it would squeeze as it is dragged past the right edge
@@ -485,6 +487,7 @@ export function DraggableWindowDragBar({ className, children, ref, ...props }: D
 				<button
 					type="button"
 					data-window-control="close"
+					{...SubmitChord.closeAttrs}
 					onClick={close}
 					className="fd-btn fd-btn-ghost fd-btn-ico"
 					aria-label={tr.text(UI_Msgs.closeWindow())}
@@ -559,6 +562,7 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 			ref={ref}
 			type="button"
 			data-window-control="close"
+			{...SubmitChord.closeAttrs}
 			onClick={handleClick}
 			className={cn('fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm', className)}
 			aria-label={tr.text(UI_Msgs.closeWindow())}

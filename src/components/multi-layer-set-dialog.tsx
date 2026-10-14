@@ -60,7 +60,12 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 						<Button variant="outline" onClick={() => setOpen(false)}>
 							{tr.text(UI_Msgs.cancel())}
 						</Button>
-						<Button variant="primary" onClick={handleSubmit} disabled={layers.length === 0 || errors.length > 0 || pending}>
+						<Button
+							submitChord
+							variant="primary"
+							onClick={handleSubmit}
+							disabled={layers.length === 0 || errors.length > 0 || pending}
+						>
 							{tr.text(L_Msgs.addLayers(layers.length))}
 						</Button>
 					</div>

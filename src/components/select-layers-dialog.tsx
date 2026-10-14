@@ -133,7 +133,15 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		/>
 	)
 	const submitButton = submit && (
-		<Button data-tour="add-submit" variant="primary" size="sm" disabled={!canSubmit} onClick={submit} className={cn(phone && 'w-full')}>
+		<Button
+			data-tour="add-submit"
+			submitChord
+			variant="primary"
+			size="sm"
+			disabled={!canSubmit}
+			onClick={submit}
+			className={cn(phone && 'w-full')}
+		>
 			{phone && selectedCount > 0 ? tr.text(L_Msgs.submitCount(selectedCount)) : tr.text(L_Msgs.submit())}
 		</Button>
 	)

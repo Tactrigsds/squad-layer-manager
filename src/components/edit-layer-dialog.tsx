@@ -76,7 +76,14 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			tourPrefix="edit-layer"
 			canToggleColumns={false}
 			footer={
-				<Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit} className={cn(phone ? 'w-full' : 'ms-auto')}>
+				<Button
+					submitChord="manual"
+					variant="primary"
+					size="sm"
+					disabled={!canSubmit}
+					onClick={submit}
+					className={cn(phone ? 'w-full' : 'ms-auto')}
+				>
 					{tr.text(L_Msgs.submit())}
 				</Button>
 			}

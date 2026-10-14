@@ -13,6 +13,7 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import type * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -93,7 +94,13 @@ function LayerPickerDesktop(props: LayerPickerLayoutProps) {
 					<HeadlessDialogDescription className="basis-auto truncate">· {props.description}</HeadlessDialogDescription>
 				)}
 				<span className="flex-1" />
-				<Button variant="ghost" size="icon-sm" onClick={props.onClose} aria-label={tr.text(UI_Msgs.close())}>
+				<Button
+					{...SubmitChord.closeAttrs}
+					variant="ghost"
+					size="icon-sm"
+					onClick={props.onClose}
+					aria-label={tr.text(UI_Msgs.close())}
+				>
 					<Icons.X />
 				</Button>
 			</HeadlessDialogHeader>

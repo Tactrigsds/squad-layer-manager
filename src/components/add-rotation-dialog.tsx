@@ -121,7 +121,7 @@ export function AddRotationDialog(props: {
 						<Button variant="outline" onClick={() => setOpen(false)}>
 							{tr.text(UI_Msgs.cancel())}
 						</Button>
-						<Button variant="primary" onClick={() => void submit()} disabled={blocked}>
+						<Button submitChord="manual" variant="primary" onClick={() => void submit()} disabled={blocked}>
 							{tr.text(tab === 'paste' && !pasted.hasVotes ? L_Msgs.addLayers(count) : LL_Msgs.addRotationItems(count))}
 						</Button>
 					</div>

@@ -20,6 +20,8 @@ type AlertDialogButton = {
 	id: string
 	label: React.ReactNode
 	variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+	// see Button's submitChord. Defaults to true for the first button
+	submitChord?: boolean
 }
 
 type AlertDialogOptions = {
@@ -143,11 +145,12 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 					)}
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>{tr.text(UI_Msgs.cancel())}</AlertDialogCancel>
-						{options?.buttons?.map((button) => {
+						{options?.buttons?.map((button, i) => {
 							const variant = button.variant ?? (isDestructive ? 'destructive' : undefined)
 							return (
 								<AlertDialogAction
 									key={button.id}
+									submitChord={button.submitChord ?? i === 0}
 									className={variant ? buttonVariants({ variant }) : undefined}
 									disabled={submitBlocked}
 									onClick={() => handleButtonClick(button.id)}

@@ -1121,7 +1121,9 @@ function RepeatRulesetNameDialog(props: {
 						maxLength={RRS.MAX_NAME_LENGTH}
 						onChange={(e) => setName(e.target.value)}
 						onKeyDown={(e) => {
-							if (e.key === 'Enter') void submit()
+							if (e.key !== 'Enter') return
+							e.preventDefault()
+							void submit()
 						}}
 					/>
 					{taken && <p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.repeatRulesetNameTaken(trimmed))}</p>}
@@ -1145,7 +1147,7 @@ function RepeatRulesetNameDialog(props: {
 					<Button variant="outline" onClick={props.onClose}>
 						{tr.text(UI_Msgs.cancel())}
 					</Button>
-					<Button variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
+					<Button submitChord="manual" variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
 						{submitting && <Spinner className="animate-spin" />}
 						{tr.text(props.mode === 'new' ? SETTINGS_Msgs.createRepeatRuleset() : SETTINGS_Msgs.saveRepeatRulesetName())}
 					</Button>
@@ -1169,6 +1171,7 @@ function RepeatRulesetSaveRow(props: { repeatRulesetEditor: RepeatRulesetEditorF
 				<span className="sr-only">{tr.text(SETTINGS_Msgs.resetChanges())}</span>
 			</Button>
 			<Button
+				submitChord="manual"
 				variant="primary"
 				disabled={!props.modified || props.saving}
 				onClick={() => void RepeatRulesetEditorFrame.Actions.save(stores)}

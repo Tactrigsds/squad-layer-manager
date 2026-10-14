@@ -149,6 +149,7 @@ export function SwapsPanel({
 							<AlertDialogFooter>
 								<AlertDialogCancel>{tr.text(SM_Msgs.cancel())}</AlertDialogCancel>
 								<AlertDialogAction
+									submitChord
 									className={buttonVariants({ variant: 'destructive' })}
 									onClick={() => TSWClient.Actions.executeTeamswaps(stores)}
 								>

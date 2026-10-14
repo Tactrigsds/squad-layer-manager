@@ -1280,7 +1280,7 @@ function VoteDisplayPropsForm(props: {
 				onChange={setLocalConfig}
 			/>
 			{!props.readonly && (
-				<Button variant="primary" className="w-full mt-4" size="sm" onClick={handleSave}>
+				<Button submitChord variant="primary" className="w-full mt-4" size="sm" onClick={handleSave}>
 					{tr.text(V_Msgs.saveVoteConfig())}
 				</Button>
 			)}

@@ -74,9 +74,15 @@ test.describe('admin actions from the teams panel', () => {
 		// the reason list opens with the dialog, and warning is held until one is picked
 		const confirm = dialog.getByRole('button', { name: 'Warn', exact: true })
 		await expect(confirm).toBeDisabled()
-		await page.getByRole('option', { name: 'Toxicity', exact: true }).click()
+		// the submit chord in the open reason list picks the highlighted reason and leaves the dialog open, and a
+		// second one warns
+		await page.keyboard.type('Toxicity')
+		await expect(page.getByRole('option', { name: 'Toxicity', exact: true })).toHaveAttribute('aria-selected', 'true')
+		await page.keyboard.press('ControlOrMeta+Enter')
+		await expect(page.getByRole('option', { name: 'Toxicity', exact: true })).toBeHidden()
 		await expect(confirm).toBeEnabled()
-		await confirm.click()
+		await page.keyboard.press('ControlOrMeta+Enter')
+		await expect(confirm).toBeHidden()
 
 		await app.waitFor(() => warnsTo(member.eos).length > 0, { label: 'the warn reaching the game', timeoutMs: 20_000 })
 		expect(warnsTo(member.eos)[0]).toContain('Cut out the toxicity')

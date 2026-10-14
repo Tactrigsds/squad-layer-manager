@@ -1,6 +1,7 @@
 import { CheckIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 
 type CheckedState = boolean | 'indeterminate'
@@ -36,7 +37,7 @@ const Checkbox = React.forwardRef<HTMLButtonElement, CheckboxProps>(
 				onKeyDown={(e) => {
 					onKeyDown?.(e)
 					// WAI-ARIA checkboxes toggle on Space only
-					if (!e.defaultPrevented && e.key === 'Enter') e.preventDefault()
+					if (!e.defaultPrevented && e.key === 'Enter' && !SubmitChord.isSubmitChord(e)) e.preventDefault()
 				}}
 				onClick={(e) => {
 					onClick?.(e)

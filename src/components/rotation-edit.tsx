@@ -315,7 +315,7 @@ function OpenedFileDialog(props: { listHost: RotationEditorFrame.Key }) {
 					<Button variant="outline" onClick={place('end')}>
 						{tr.text(LL_Msgs.placeEnd())}
 					</Button>
-					<Button variant="primary" onClick={place('replace')}>
+					<Button submitChord="manual" variant="primary" onClick={place('replace')}>
 						{tr.text(LL_Msgs.placeReplace())}
 					</Button>
 				</DialogFooter>
@@ -685,7 +685,7 @@ function FieldDialog(props: { rotation: ROT.Rotation; field: 'name' | 'descripti
 						<Button type="button" variant="ghost" onClick={props.onClose}>
 							{tr.text(UI_Msgs.cancel())}
 						</Button>
-						<Button type="submit" variant="primary">
+						<Button submitChord="manual" type="submit" variant="primary">
 							{tr.text(ROT_Msgs.saveDetails())}
 						</Button>
 					</DialogFooter>

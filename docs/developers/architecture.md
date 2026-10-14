@@ -91,6 +91,7 @@ rejects a second alias for a module, and an alias that already names another mod
 | `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
 | `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
 | `TZ`                             | `time-zones`                                                  | wall-clock times in a named IANA zone              |
+| `SubmitChord`                    | `submit-chord`                                                | ctrl/cmd+enter clicks the scope's submit button    |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
 convention.

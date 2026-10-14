@@ -341,14 +341,7 @@ function LayerTagDialogBody(props: { kind: TagKind; state: LTag.Tag | 'new'; onC
 						: tr.text(isNew ? LTag_Msgs.newRotationTagBlurb() : LTag_Msgs.editRotationTagBlurb())}
 				</DialogDescription>
 			</DialogHeader>
-			<div
-				className="space-y-3"
-				onKeyDown={(e) => {
-					if (!Browser.isSubmitChord(e)) return
-					e.preventDefault()
-					submit()
-				}}
-			>
+			<div className="space-y-3">
 				<div className="space-y-1">
 					<Label htmlFor="layer-tag-label">{tr.text(LTag_Msgs.labelColumn())}</Label>
 					<Input
@@ -412,7 +405,7 @@ function LayerTagDialogBody(props: { kind: TagKind; state: LTag.Tag | 'new'; onC
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(LTag_Msgs.cancel())}
 				</Button>
-				<Button variant="primary" disabled={!canSave} onClick={submit}>
+				<Button submitChord="manual" variant="primary" disabled={!canSave} onClick={submit}>
 					{isNew ? tr.text(LTag_Msgs.create()) : tr.text(LTag_Msgs.save())}
 				</Button>
 			</DialogFooter>

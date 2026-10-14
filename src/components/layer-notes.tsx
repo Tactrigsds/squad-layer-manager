@@ -270,11 +270,6 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 				className="min-h-24 text-sm"
 				placeholder={tr.text(LNote_Msgs.placeholder())}
 				onChange={(e) => setLength(e.target.value.trim().length)}
-				onKeyDown={(e) => {
-					if (!Browser.isSubmitChord(e)) return
-					e.preventDefault()
-					submit()
-				}}
 			/>
 			<span className="text-xs text-muted-foreground">
 				{length} / {LNote.MAX_LENGTH}
@@ -283,7 +278,7 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 				<Button variant="outline" onClick={props.onClose}>
 					{tr.text(LNote_Msgs.cancel())}
 				</Button>
-				<Button variant="primary" disabled={length === 0} onClick={submit}>
+				<Button submitChord variant="primary" disabled={length === 0} onClick={submit}>
 					{existing ? tr.text(LNote_Msgs.save()) : tr.text(LNote_Msgs.add())}
 				</Button>
 			</DialogFooter>

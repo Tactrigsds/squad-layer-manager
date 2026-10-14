@@ -2,6 +2,8 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import * as React from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
+import { SubmitChordKbd } from '@/components/ui/kbd'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
@@ -36,6 +38,7 @@ const AlertDialogContent = React.forwardRef<
 					className,
 				)}
 				style={{ zIndex, ...style }}
+				{...SubmitChord.scopeAttrs('dialog')}
 				{...props}
 			>
 				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
@@ -78,9 +81,20 @@ AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayNam
 const AlertDialogAction = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Action>,
 	// destructive for an action that cannot be undone, such as a delete
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & { variant?: 'primary' | 'destructive' }
->(({ className, variant, ...props }, ref) => (
-	<AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants({ variant: variant ?? 'primary' }), className)} {...props} />
+	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & {
+		variant?: 'primary' | 'destructive'
+		submitChord?: SubmitChord.ButtonMode | boolean
+	}
+>(({ className, variant, submitChord, children, ...props }, ref) => (
+	<AlertDialogPrimitive.Action
+		ref={ref}
+		className={cn(buttonVariants({ variant: variant ?? 'primary' }), className)}
+		{...SubmitChord.buttonAttrs(submitChord)}
+		{...props}
+	>
+		{children}
+		{submitChord && <SubmitChordKbd className="pointer-coarse:hidden" />}
+	</AlertDialogPrimitive.Action>
 ))
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName
 
@@ -88,7 +102,12 @@ const AlertDialogCancel = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
 >(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Cancel ref={ref} className={cn(buttonVariants({ variant: 'outline' }), className)} {...props} />
+	<AlertDialogPrimitive.Cancel
+		ref={ref}
+		className={cn(buttonVariants({ variant: 'outline' }), className)}
+		{...SubmitChord.closeAttrs}
+		{...props}
+	/>
 ))
 AlertDialogCancel.displayName = AlertDialogPrimitive.Cancel.displayName
 
