@@ -226,6 +226,14 @@ on in the others until the page is reloaded. Editing an existing layer still ope
 </ul>
 </li>
 <li>
+<p><strong>Breaking:</strong> The plugin API is version 0.19. A plugin built for an earlier version does not load until its <code>apiVersion</code> is raised to <code>^0.19</code> and it is repacked with <code>pnpm plugin:pack</code>.</p>
+<p>The built-in plugins are already updated. Changes since 0.18:</p>
+<ul>
+<li>The layer naming functions moved from <code>slm/lib/display-helpers</code> to <code>slm/models/display-helpers</code>. Change a plugin&#x27;s
+imports to the new specifier. The functions are unchanged.</li>
+</ul>
+</li>
+<li>
 <p><strong>Breaking:</strong> The plugin API is version 0.16. A packed plugin that declares <code>^0.13</code> does not load until it is rebuilt against 0.16.</p>
 <p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.16</code> in its manifest and
 repack it with <code>pnpm plugin:pack</code>. Changes since 0.13:</p>
