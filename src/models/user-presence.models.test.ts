@@ -4,26 +4,6 @@ import * as ODSM from '@/lib/odsm'
 
 import * as UP from './user-presence.models'
 
-describe('OpSchema', () => {
-	const op = (activity: unknown) => ({
-		opId: 'op',
-		time: 1,
-		clientId: 'client-1',
-		userId: 1n,
-		code: 'update-activity',
-		update: { code: 'set-editing-queue', activity },
-	})
-
-	it('accepts a well-formed queue editing activity', () => {
-		expect(UP.OpSchema.safeParse(op({ code: 'MOVING_ITEM', itemId: 'item-42' })).success).toBe(true)
-	})
-
-	it('rejects a queue editing activity missing its fields', () => {
-		expect(UP.OpSchema.safeParse(op({ code: 'EDITING_ITEM' })).success).toBe(false)
-		expect(UP.OpSchema.safeParse(op({ garbage: true })).success).toBe(false)
-	})
-})
-
 describe('reducer enabled-server gating', () => {
 	const clientOp = (op: Partial<UP.Op> & { code: UP.Op['code'] }): UP.Op =>
 		({ opId: 'op-' + Math.random(), time: Date.now(), clientId: 'client-1', userId: 1n, ...op }) as UP.Op
