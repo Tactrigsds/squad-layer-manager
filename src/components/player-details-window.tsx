@@ -26,6 +26,7 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
@@ -147,6 +148,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	// the same secondary filter the framed window has, applied in sql rather than over a rendered feed
 	const [feed, setFeed] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const [activityExpanded, setActivityExpanded] = React.useState(false)
+	const [wrapLines, setWrapLines] = React.useState(true)
 	const eventsQuery = React.useMemo(
 		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'DEFAULT' ? undefined : feed }),
 		[playerId, feed],
@@ -217,11 +219,14 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
 				<div className="flex items-center gap-1 w-full">
 					<h3 className="me-auto">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+					<WrapLinesToggle wrap={wrapLines} onToggle={() => setWrapLines((v) => !v)} variant="ghost" className="h-6 w-6" />
 					<ActivityExpandToggle expanded={activityExpanded} onToggle={() => setActivityExpanded((v) => !v)} />
 					{/* no selectedOnly: this window has no teams panel selection to restrict against */}
 					<EventFilterSelect variant="ghost" value={feed} onValueChange={setFeed} />
 				</div>
-				<HistoryEvents query={eventsQuery} showTotal={false} linkable className="flex min-h-0 flex-1 flex-col gap-1" />
+				<div data-nowrap={wrapLines ? undefined : ''} className="flex min-h-0 flex-1 flex-col">
+					<HistoryEvents query={eventsQuery} showTotal={false} linkable className="flex min-h-0 flex-1 flex-col gap-1" />
+				</div>
 			</div>
 		</div>
 	)
@@ -319,6 +324,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const isOnline = !!livePlayer
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const [activityExpanded, setActivityExpanded] = React.useState(false)
+	const [wrapLines, setWrapLines] = React.useState(true)
 	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
 	// the player's events on this server through the same filter, newest first, so a selection of recent rows has its
 	// ends on the first pages of the history results
@@ -534,6 +540,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 			<div data-tour="player-details-activity" className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="flex items-center gap-1 w-full">
 					<h3 className="me-auto">{tr.text(CHAT_Msgs.activityTitle())}</h3>
+					<WrapLinesToggle wrap={wrapLines} onToggle={() => setWrapLines((v) => !v)} variant="ghost" className="h-6 w-6" />
 					<ActivityExpandToggle expanded={activityExpanded} onToggle={() => setActivityExpanded((v) => !v)} />
 					<EventFilterSelect
 						variant="ghost"
@@ -553,6 +560,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 						<div
 							ref={contentRef}
 							{...Selection.hostAttrs(feedCtx.scopeId)}
+							data-nowrap={wrapLines ? undefined : ''}
 							className={cn('flex flex-col gap-0.5 min-h-0 w-full max-w-175', Selection.HOST_CLASS)}
 						>
 							{isLoadingOlder && filteredEvents.length === 0 && (

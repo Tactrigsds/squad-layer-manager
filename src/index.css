@@ -105,6 +105,22 @@
 	color: hsl(var(--warning-foreground));
 }
 
+/* a feed with line wrapping turned off (src/components/wrap-lines-toggle.tsx): each row stays on one line and is
+   cut short where it runs out of room. Cut rather than scrolled sideways, because the history page gives its rows
+   content-visibility, whose paint containment clips a row at its own width anyway. */
+[data-nowrap] .wrap-anywhere {
+	white-space: nowrap;
+	overflow-wrap: normal;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	/* a radix ScrollArea lays its content out as a table, which grows to the unwrapped text's width otherwise */
+	contain: inline-size;
+}
+
+[data-nowrap] .wrap-anywhere .flex-wrap {
+	flex-wrap: nowrap;
+}
+
 @keyframes anchor-highlight-flash {
 	0% {
 		box-shadow:

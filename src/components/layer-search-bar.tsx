@@ -42,12 +42,15 @@ export default function LayerSearchBar(props: { frameKey: SelectLayersFrame.Key 
 
 function SearchEditor(props: { frameKey: SelectLayersFrame.Key; onDone: () => void }) {
 	const { frameKey } = props
-	const { inputRef, initialText, setTextDebounced, finish, setInput, keepFocus } = useSearchInput(frameKey)
+	const { inputRef, initialText, onType, finish, setInput, keepFocus, recallOnArrow } = useSearchInput(frameKey)
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
 	const hasErrors = Zus.useStore(frameKey, (s) => LayerSearchPrt.Sel.errors(s).length > 0)
-	const empty = Zus.useStore(frameKey, (s) => LayerSearchPrt.Sel.text(s).trim().length === 0)
+	const offersSuggestions = Zus.useStore(
+		frameKey,
+		(s) => LayerSearchPrt.Sel.text(s).trim().length === 0 || LayerSearchPrt.Sel.recallCursor(s) !== null,
+	)
 	const hasSuggestions = Zus.useStore(LayerSearchPrt.SearchPrefsStore, (s) => s.searches.length > 0 || !s.tipsDismissed)
-	const showPanel = hasErrors || (empty && hasSuggestions)
+	const showPanel = hasErrors || (offersSuggestions && hasSuggestions)
 
 	return (
 		<div className="relative min-w-0 flex-1">
@@ -62,8 +65,9 @@ function SearchEditor(props: { frameKey: SelectLayersFrame.Key; onDone: () => vo
 				placeholder={tr.text(L_Msgs.searchLayers())}
 				defaultValue={initialText}
 				className="ps-8 font-mono"
-				onChange={(e) => setTextDebounced(e.target.value)}
+				onChange={(e) => onType(e.target.value)}
 				onKeyDown={(e) => {
+					if (recallOnArrow(e)) return
 					if (e.key === 'Enter' || e.key === 'Escape') {
 						// Escape is the search box's, not the dialog's. Ctrl+Enter is the dialog's submit
 						if (!SubmitChord.isSubmitChord(e)) e.stopPropagation()

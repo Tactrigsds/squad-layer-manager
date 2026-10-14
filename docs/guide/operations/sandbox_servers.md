@@ -11,12 +11,13 @@ credentials.
 
 Set a server's connection type to `sandbox`, or let startup seed one (see below). Drive it from **Server Actions ->
 Sandbox Controls**, which appears only on sandbox servers, and only for users holding `sandbox:control` on that server.
-From there, connect fabricated players, speak as them in all or admin chat, form squads, end matches, and drop the RCON
+From there, connect fabricated players, speak as them in all or admin chat, form squads and parties, end matches, and drop the RCON
 connection to watch SLM reconnect.
 
 ![Sandbox Controls with six fabricated players](../../images/operations/sandbox_controls.png)
 
-The window also embeds the [server console](server_console.md). Check the roster, chat and queue on the dashboard.
+Check the roster, chat and queue on the dashboard. Open the [server console](server_console.md) from **Server
+Actions -> Server Console** to watch the server's raw traffic.
 
 ## Seeding
 

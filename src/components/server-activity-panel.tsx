@@ -13,6 +13,7 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSubtreeFind } from '@/components/use-subtree-find'
+import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
@@ -39,6 +40,7 @@ function ServerChatEvents(props: {
 	stores: SquadServerFrame.KeyProp
 }) {
 	const selectedMatchOrdinal = Zus.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
+	const wrapLines = Zus.useStore(props.stores.squadServer!, (s) => s.chat.wrapLines)
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const synced = props.synced
@@ -52,6 +54,7 @@ function ServerChatEvents(props: {
 	// the loading overlay covers the scroll affordance, not the other way round
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
+	const feedControlsZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 
 	// "Selected Only" has nothing to match against until the teams panel has a selection, so the feed is
@@ -63,7 +66,14 @@ function ServerChatEvents(props: {
 
 	return (
 		<div ref={findScopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
-			<SubtreeFindBar stores={findStores} className="absolute inset-e-3 top-1" />
+			<div style={{ zIndex: feedControlsZIndex }} className="absolute inset-e-3 top-1 flex items-start gap-1">
+				<SubtreeFindBar stores={findStores} />
+				<WrapLinesToggle
+					wrap={wrapLines}
+					onToggle={() => ChatPrt.Actions.setWrapLines({ chat: props.stores.squadServer! }, !wrapLines)}
+					className="h-7 w-7 max-phone:size-(--ctl-sm) shadow-md"
+				/>
+			</div>
 			{!synced && selectedMatchOrdinal === null && (
 				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
 					<span className="fd-spin size-6!" />
@@ -77,7 +87,12 @@ function ServerChatEvents(props: {
 			<HistoricalMatchBanner stores={props.stores} className="flex-shrink-0" />
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} data-tour="activity-feed" className="flex flex-col gap-px pe-3 min-h-0 w-full">
+				<div
+					ref={eventsContainerRef}
+					data-tour="activity-feed"
+					data-nowrap={wrapLines ? undefined : ''}
+					className="flex flex-col gap-px pe-3 min-h-0 w-full"
+				>
 					{noPlayersSelected && <div className="text-text-3 text-sm text-center py-6">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-text-3 text-sm text-center py-6">

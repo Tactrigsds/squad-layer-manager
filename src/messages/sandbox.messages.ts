@@ -40,8 +40,6 @@ export const adminListSection = def('Admin list')
 
 export const popOut = def('Pop out')
 
-export const consoleSection = def('Server console')
-
 export const nobodyConnected = def('Nobody connected.')
 
 export const searchPlayers = def('Search players')
@@ -55,6 +53,8 @@ export const playerColumn = def('Player')
 export const teamColumn = def('Team')
 
 export const squadColumn = def('Squad')
+
+export const partyColumn = def('Party')
 
 export const adminColumn = def('Admin')
 
@@ -77,6 +77,14 @@ export const noSquad = def('No squad')
 export const createSquad = def('Create squad')
 
 export const squadLeader = def('{playerName} leads this squad', (playerName: string) => ({ playerName }))
+
+export const partyPicker = def("{playerName}'s party", (playerName: string) => ({ playerName }))
+
+export const partyOption = def('{partyId} ({size})', (partyId: string, size: number) => ({ partyId, size }))
+
+export const noParty = def('No party')
+
+export const createParty = def('Create party')
 
 export const groupsColumn = def('Groups')
 

@@ -267,6 +267,9 @@ export const permissionDescriptions = {
 	'squad-server:view-console': def(
 		"Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the dashboard does. Read-only: it cannot issue commands.",
 	),
+	'squad-server:write-console': def(
+		"Read the server's console and run any rcon command from it. A raw rcon command skips every other SLM permission, so the permission grants everything the server's rcon can do, including bans, layer changes and server restarts.",
+	),
 	'sandbox:control': def(
 		'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. Has no effect on a server backed by a real squad server.',
 	),

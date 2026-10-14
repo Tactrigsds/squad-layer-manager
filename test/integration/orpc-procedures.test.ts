@@ -13,7 +13,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
-import { filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
+import { appEventTypes, filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -24,6 +24,8 @@ import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from
 
 const DASHBOARD_ONLY: TestUser = { discordId: 900000000000000051n, username: 'test-dashboard-only' }
 const CONSOLE_READER: TestUser = { discordId: 900000000000000052n, username: 'test-console-reader' }
+// holds write-console alone, which grants reading the console as well
+const CONSOLE_WRITER: TestUser = { discordId: 900000000000000055n, username: 'test-console-writer' }
 // may edit the roles and the admin lists, while holding no more than the dashboard
 const ROLE_EDITOR: TestUser = { discordId: 900000000000000053n, username: 'test-role-editor' }
 // loses site access mid-session, so nothing else in the file may sign in as them
@@ -33,6 +35,7 @@ let app: AppFixture
 let adminClient: TestOrpcClient
 let dashboardOnlyClient: TestOrpcClient
 let consoleReaderClient: TestOrpcClient
+let consoleWriterClient: TestOrpcClient
 let roleEditorClient: TestOrpcClient
 
 beforeAll(async () => {
@@ -46,13 +49,16 @@ beforeAll(async () => {
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'pool-only', mode: 'include' }
 		},
-		users: [DASHBOARD_ONLY, CONSOLE_READER, ROLE_EDITOR, EVICTED],
+		users: [DASHBOARD_ONLY, CONSOLE_READER, CONSOLE_WRITER, ROLE_EDITOR, EVICTED],
 		unreachableServer: true,
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
 			settings.rbac.roles['dashboard-only'] = role(['site:authorized', 'squad-server:view'], { users: [DASHBOARD_ONLY] })
 			settings.rbac.roles['console-reader'] = role(['site:authorized', 'squad-server:view', 'squad-server:view-console'], {
 				users: [CONSOLE_READER],
+			})
+			settings.rbac.roles['console-writer'] = role(['site:authorized', 'squad-server:view', 'squad-server:write-console'], {
+				users: [CONSOLE_WRITER],
 			})
 			settings.rbac.roles['role-editor'] = {
 				...role(['site:authorized', 'squad-server:view'], { users: [ROLE_EDITOR] }),
@@ -66,6 +72,7 @@ beforeAll(async () => {
 	adminClient = await createOrpcClient(app)
 	dashboardOnlyClient = await createOrpcClient(app, DASHBOARD_ONLY)
 	consoleReaderClient = await createOrpcClient(app, CONSOLE_READER)
+	consoleWriterClient = await createOrpcClient(app, CONSOLE_WRITER)
 	roleEditorClient = await createOrpcClient(app, ROLE_EDITOR)
 }, 120_000)
 
@@ -141,14 +148,18 @@ describe('changeFilterOwner', () => {
 })
 
 describe('serverConsole.watch', () => {
-	it('refuses a user holding squad-server:view but not view-console', async () => {
+	it('refuses a user holding squad-server:view but neither console permission', async () => {
 		const client = dashboardOnlyClient
 		const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
 			label: 'the denial',
 		})
 
 		// and it denies by refusing to send anything, not by sending the traffic with a flag attached
-		expect(first).toEqual({ code: 'err:permission-denied', checkType: 'all', failures: ['squad-server:view-console'] })
+		expect(first).toEqual({
+			code: 'err:permission-denied',
+			checkType: 'any',
+			failures: ['squad-server:view-console', 'squad-server:write-console'],
+		})
 	})
 
 	it('streams the traffic to a user who holds view-console', async () => {
@@ -223,6 +234,28 @@ describe('serverConsole.watch', () => {
 		)
 
 		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
+	})
+})
+
+describe('serverConsole.execute', () => {
+	it('refuses a user holding view-console but not write-console', async () => {
+		const res = await consoleReaderClient.serverConsole.execute({ serverId: app.serverId, command: 'ListSquads' })
+		expect(res).toMatchObject({ code: 'err:permission-denied', failures: ['squad-server:write-console'] })
+	})
+
+	it('runs a command, tags its traffic with the user who ran it, and records it', async () => {
+		const res = await consoleWriterClient.serverConsole.execute({ serverId: app.serverId, command: 'ListSquads' })
+		expect(res).toEqual({ code: 'ok' })
+
+		// the response is emitted before execute resolves, so the backlog already holds both halves
+		const first = await firstYield((signal) => consoleWriterClient.serverConsole.watch({ serverId: app.serverId }, { signal }), {
+			label: 'the console backlog',
+		})
+		if (first.code !== 'ok') throw new Error(`expected the backlog, got ${first.code}`)
+		const issued = first.events.filter((e) => e.type === 'rcon' && e.issuer !== undefined)
+		expect(issued.map((e) => e.type === 'rcon' && e.dir)).toEqual(['recv', 'send'])
+		expect(issued[0]).toMatchObject({ body: 'ListSquads' })
+		expect(appEventTypes(app)).toContain('RCON_COMMAND_RUN')
 	})
 })
 

@@ -178,6 +178,7 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('squad-server:kick-players', 'server'),
 	...definePermission('squad-server:timeout-players', 'timeout'),
 	...definePermission('squad-server:view-console', 'server'),
+	...definePermission('squad-server:write-console', 'server'),
 
 	...definePermission('sandbox:control', 'server'),
 

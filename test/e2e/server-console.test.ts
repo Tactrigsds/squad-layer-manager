@@ -36,6 +36,7 @@ async function openConsole(page: Page) {
 sharedAppTest.describe('server console', () => {
 	sharedAppTest('shows the rcon commands and responses the app and the server actually exchange', async ({ page, app }) => {
 		const output = await openConsole(page)
+		await page.getByRole('checkbox', { name: 'Show SLM requests' }).click()
 
 		// the app polls the server on a timer, so traffic arrives without the test provoking any. Both directions
 		// are asserted: a console that only showed what we sent would hide half of every exchange.
@@ -50,6 +51,43 @@ sharedAppTest.describe('server console', () => {
 		expect(app.emu.rcon.commandLog.some((c) => c.body === 'ListPlayers')).toBe(true)
 	})
 
+	sharedAppTest('runs a command typed into the rcon tab and shows only its own exchange', async ({ page, app }) => {
+		const output = await openConsole(page)
+		const input = page.getByRole('textbox', { name: 'RCON command' })
+		await input.fill('ListSquads')
+		await input.press('Enter')
+
+		await expect(output.getByText(/^ListSquads$/).first()).toBeVisible({ timeout: 30_000 })
+		await expect(output.getByText(/Active Squads/).first()).toBeVisible()
+		await expect(input).toHaveValue('')
+		// SLM's own polls stay hidden, so the only command in view is the one typed here
+		await expect(output.getByText('rcon <-')).toHaveCount(0)
+		expect(app.emu.rcon.commandLog.some((c) => c.body === 'ListSquads')).toBe(true)
+
+		// the arrow keys recall earlier commands like a shell, and come back down to the line being typed
+		await input.fill('ShowNextMap')
+		await input.press('Enter')
+		await expect(input).toHaveValue('')
+		await input.fill('List')
+		await input.press('ArrowUp')
+		await expect(input).toHaveValue('ShowNextMap')
+		await input.press('ArrowUp')
+		await expect(input).toHaveValue('ListSquads')
+		await input.press('ArrowUp')
+		await expect(input).toHaveValue('ListSquads')
+		await input.press('ArrowDown')
+		await expect(input).toHaveValue('ShowNextMap')
+		await input.press('ArrowDown')
+		await expect(input).toHaveValue('List')
+
+		// and the history outlives the window
+		await page.reload()
+		const reopened = page.getByRole('textbox', { name: 'RCON command' })
+		if (!(await reopened.isVisible())) await openConsole(page)
+		await reopened.press('ArrowUp')
+		await expect(reopened).toHaveValue('ShowNextMap')
+	})
+
 	sharedAppTest('carries a player command through to its own channel', async ({ page, app }) => {
 		const output = await openConsole(page)
 
@@ -58,13 +96,14 @@ sharedAppTest.describe('server console', () => {
 		await app.waitForRosterSync()
 		app.emu.world.chat(talker, 'ChatAll', 'hello from the wire')
 
-		// the unified tab carries everything, including what a player typed
-		await expect(output.getByText('hello from the wire').first()).toBeVisible({ timeout: 30_000 })
+		// the server pushes chat over rcon as an event, which the rcon tab shows once asked to
+		await page.getByRole('checkbox', { name: 'Show events' }).click()
+		await expect(output.getByText(/hello from the wire/).first()).toBeVisible({ timeout: 30_000 })
 
-		// and the channel filter narrows to it, attributed to whoever said it
+		// and the player channel carries it too, attributed to whoever said it
 		await page.getByRole('tab', { name: 'Player Commands' }).click()
 		const commands = page.getByRole('tabpanel', { name: /Player Commands console output/ })
-		await expect(commands.getByText('hello from the wire')).toBeVisible()
+		await expect(commands.getByText('hello from the wire')).toBeVisible({ timeout: 30_000 })
 		await expect(commands.getByText(/ChatAll.*e2e_talker/)).toBeVisible()
 		// the filter is exclusive: rcon traffic does not leak into the player channel
 		await expect(commands.getByText('rcon <-')).toHaveCount(0)
@@ -75,6 +114,7 @@ sharedAppTest.describe('server console', () => {
 
 		// the filter is on by default and says how much it is withholding, so it never silently swallows anything
 		const hideNoise = page.getByRole('checkbox', { name: 'Hide noise' })
+		await page.getByRole('checkbox', { name: 'Show SLM requests' }).click()
 		await expect(hideNoise).toBeChecked()
 		await expect(page.getByText(/Hide noise\s*\(\d+\)/)).toBeVisible({ timeout: 30_000 })
 
@@ -100,6 +140,7 @@ sharedAppTest.describe('server console', () => {
 		const scrollHeight = () => viewport.evaluate((el) => el.scrollHeight)
 
 		// the polls are what make the console outgrow its panel within the life of a test
+		await page.getByRole('checkbox', { name: 'Show SLM requests' }).click()
 		const hideNoise = page.getByRole('checkbox', { name: 'Hide noise' })
 		await hideNoise.click()
 		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(await viewport.evaluate((el) => el.clientHeight))

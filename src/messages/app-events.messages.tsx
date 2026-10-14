@@ -75,6 +75,12 @@ export const fogOfWarToggled = def((actor: React.ReactNode, enabled: boolean) =>
 	rt('{actor} turned fog of war {enabled, select, yes {on} other {off}}', { actor, enabled: enabled ? 'yes' : 'no' }),
 )
 
+export const rconCommandRun = def((actor: React.ReactNode, command: string, error?: string) =>
+	error
+		? rt('{actor} ran the rcon command "{command}", which failed: {error}', { actor, command, error })
+		: rt('{actor} ran the rcon command "{command}"', { actor, command }),
+)
+
 export const broadcastSent = def((actor: React.ReactNode, message: string) => rt('{actor} broadcast "{message}"', { actor, message }))
 
 export const playerTimedOut = def((actor: React.ReactNode, target: React.ReactNode, duration: string, reasonLabel?: string) =>
@@ -387,6 +393,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return `demoted a commander${forReason(e.reason)}`
 		case 'FOG_OF_WAR_TOGGLED':
 			return `turned fog of war ${e.enabled ? 'on' : 'off'}`
+		case 'RCON_COMMAND_RUN':
+			return `ran the rcon command "${e.command}"${e.error ? `, which failed: ${e.error}` : ''}`
 		case 'BROADCAST_SENT':
 			// preset broadcasts embed nothing extra; the label is implicit in the configured message
 			return `broadcast: "${e.message}"`

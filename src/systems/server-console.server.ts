@@ -1,11 +1,18 @@
 import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
+import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
 import * as SC from '@/models/server-console.models'
+import * as SM from '@/models/squad.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as MatchHistory from '@/systems/match-history.server'
+import * as SquadServerActions from '@/systems/squad-server-actions.server'
+import * as SquadServer from '@/systems/squad-server.server'
 
-// What each squad server is saying and being told, kept per server as a short tail. Every connection type feeds
+// What each squad server is saying and being told, kept per server as a short tail. A user holding
+// squad-server:write-console can also run raw rcon commands here, each recorded as an RCON_COMMAND_RUN app event.
+// Every connection type feeds
 // this the same way, so the console reads identically whether the server is real, tunnelled through an agent, or
 // emulated in-process.
 //
@@ -122,5 +129,29 @@ export const orpcRouter = {
 				Rx.Ext.withAbortSignal(signal!),
 			)
 			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
+
+	// The response reaches the caller through watch, tagged with their name, like the rest of the server's traffic.
+	execute: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string(), command: z.string().trim().min(1).max(SM.RCON_MAX_BUF_LEN) }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const res = await ctx.rcon.execute(input.command, { level: 'info', signal: ctx.signal, issuer: ctx.user.displayName })
+			await SquadServerActions.emitAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.RconCommandRun>({
+					type: 'RCON_COMMAND_RUN',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: ctx.serverId,
+					matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+					causeId: null,
+					command: input.command,
+					...(res.code === 'ok' ? {} : { error: res.msg }),
+				}),
+			)
+			return res.code === 'ok' ? { code: 'ok' as const } : res
 		}),
 }

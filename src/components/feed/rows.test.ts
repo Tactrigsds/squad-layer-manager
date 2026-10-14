@@ -57,6 +57,7 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	SQUAD_RENAMED: { teamId: 1, squadId: 1, squadName: 'Squad 1' },
 	COMMANDER_DEMOTED: { target: 'eos1' },
 	FOG_OF_WAR_TOGGLED: { enabled: true },
+	RCON_COMMAND_RUN: { command: 'AdminListDisconnectedPlayers' },
 	MATCH_ENDED: {},
 	VOTE_STARTED: { choiceCount: 3 },
 	VOTE_ENDED: { reason: 'vote-timeout', winnerLayerId: 'GD-RAAS-V1:USA-CA:RGF-CA' },
