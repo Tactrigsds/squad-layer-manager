@@ -296,7 +296,7 @@ import { LayerName } from 'slm/components/layer'
 ```
 
 Pass `allowShowInfo={false}` to render the name as plain text. For a layer's name inside a string, such as a feed line's
-title, use `slm/lib/display-helpers`.
+title, use `slm/models/display-helpers`.
 
 ### Settings link
 

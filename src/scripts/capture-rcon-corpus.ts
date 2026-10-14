@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { anonymizeIps } from './anonymize-ips'
 
 // Captures ground-truth RCON traffic from a real squad server for the emulator corpus.
-// Unlike lib/rcon/core-rcon.ts this client records every raw packet (hex + decoded fields),
+// Unlike systems/core-rcon.server.ts this client records every raw packet (hex + decoded fields),
 // so we learn the framing-level behavior (packet ids, terminator sequences, multi-packet
 // responses) that the app's client abstracts away.
 //

@@ -75,7 +75,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.18',
+	apiVersion: '^0.19',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -838,9 +838,9 @@ absent.
 | `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
 | `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
 | `slm/models/rbac`                                          | the permission vocabulary                    |
+| `slm/models/display-helpers`                               | naming a layer in text                       |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages              |
 | `slm/lib/templating`                                       | rendering the {{var}} templates admins write |
-| `slm/lib/display-helpers`                                  | naming a layer in text                       |
 
 Five packages also come from SLM: `rxjs`, `zod`, `drizzle-orm`, `react` and `react-dom`. [Dependencies](#dependencies)
 describes them, and how to use any other package.

@@ -87,7 +87,8 @@ rejects a second alias for a module, and an alias that already names another mod
 | `Rx`                             | `rxjs`                                                        | rxjs itself, plus our own operators under `Rx.Ext` |
 | `Zus`                            | `zustand`                                                     | zustand itself, plus our store helpers             |
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
-| `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
+| `ItemMut`                        | `item-mutations`                                              |                                                    |
+| `GCtx`                           | `generic-ctx`                                                 | contexts with no domain knowledge                  |
 | `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
 | `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
 | `CssRules`                       | `css-rules`                                                   | merging two Tailwind-compiled sheets in order      |
@@ -153,9 +154,11 @@ For observables, the same rule applies with the ctx as the first element of the 
 
 **A domain's contexts are kept in that domain's models file.** `V.Ctx` is the vote context, `MH.Ctx` the match-history
 one, reached under the same namespace as the rest of that domain, with the runtime object it carries at
-`Ctx.Payload`. Two modules stay general rather than domain-owned: `src/models/context-shared.models.ts` (`CS`) is the leaf
-every context composes on, and `src/server/context.ts` (`C`) holds server infrastructure with no domain models file,
-plus the composition root `ManagedServer`.
+`Ctx.Payload`. Three modules stay general rather than domain-owned. `src/lib/generic-ctx.ts` (`GCtx`) holds the
+contexts with no domain knowledge (abort signal, logger, span links, deferred work), so code in `src/lib` can take
+them. `src/models/context-shared.models.ts` (`CS`) re-exports all of `GCtx` and adds `ServerId`, and is the leaf every
+context composes on. `src/server/context.ts` (`C`) holds server infrastructure with no domain models file, plus the
+composition root `ManagedServer`.
 
 **Contexts are types, so they erase.** Each therefore has a **def** beside it, following the `XSchema` convention,
 giving something to merge, project and check at runtime:
@@ -184,6 +187,11 @@ duration rather than acquiring them by hand.
 
 Declared mutexes make `spanOp` structural as well as observational. `durableSub` is the RxJS counterpart for long-lived
 pipelines, with the same treatment plus error recovery.
+
+Code in `src/lib` cannot import the server, so it opens spans through the `OtelModule` it is handed.
+`module.spanOp(name, opts, cb)` is `spanOp` with `module` filled in, and `module.child(name)` narrows the module to a
+named part of it. `createModule` in `src/server/instrumentation.ts` builds every module, which is how the server's
+`spanOp` reaches lib code such as `AsyncResource`.
 
 ### ManagedServer: one live game server
 

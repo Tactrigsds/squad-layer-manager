@@ -26,13 +26,6 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
 import * as ReactRx from '@/lib/react-rxjs'
-import {
-	ADVANCED_GLOBAL_SETTINGS_PATHS,
-	ADVANCED_SERVER_SETTINGS_PATHS,
-	GLOBAL_SETTINGS_GROUPS,
-	SERVER_SETTINGS_PRIORITY_KEYS,
-} from '@/lib/settings-groups'
-import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -42,12 +35,19 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
+import {
+	ADVANCED_GLOBAL_SETTINGS_PATHS,
+	ADVANCED_SERVER_SETTINGS_PATHS,
+	GLOBAL_SETTINGS_GROUPS,
+	SERVER_SETTINGS_PRIORITY_KEYS,
+} from '@/models/settings-groups.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsNav from '@/systems/settings-nav.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 

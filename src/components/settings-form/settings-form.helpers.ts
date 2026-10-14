@@ -1,12 +1,12 @@
 import React from 'react'
 
 import * as Rx from '@/lib/rxjs'
-import { LOCAL_YAML_EDITOR_PATHS } from '@/lib/settings-groups'
 import type * as Templating from '@/lib/templating'
 import type { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import { LOCAL_YAML_EDITOR_PATHS } from '@/models/settings-groups.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'

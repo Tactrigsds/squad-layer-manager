@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { matchLog } from '@/lib/log-parsing'
-import Rcon from '@/lib/rcon/core-rcon'
-import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as DSTR from '@/models/destruction.models'
 import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
+import Rcon from '@/systems/core-rcon.server'
+import * as CoreRcon from '@/systems/core-rcon.server'
 
 import { Emulator, makePlayer } from './index'
 

@@ -2,7 +2,7 @@ import EventEmitter from 'node:events'
 import * as fsp from 'node:fs/promises'
 import { StringDecoder } from 'node:string_decoder'
 
-import { getChildModule, type OtelModule } from './otel'
+import type { OtelModule } from './otel'
 
 // Tails a SquadGame.log on the local filesystem, emitting 'chunk' events as the file grows.
 // Same shape as SftpTail, so squad-server's log pipeline treats the two interchangeably.
@@ -42,7 +42,7 @@ export class FileTail extends EventEmitter {
 	constructor(options: FileTailOptions) {
 		super()
 		this.options = options
-		this.log = getChildModule(options.parentModule, 'file-tail').getLogger()
+		this.log = options.parentModule.child('file-tail').getLogger()
 	}
 
 	watch() {

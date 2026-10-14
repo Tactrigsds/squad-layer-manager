@@ -7,6 +7,7 @@ import { useState } from 'react'
 import React from 'react'
 import Markdown from 'react-markdown'
 
+import * as Typo from '@/components/typography'
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -22,7 +23,6 @@ import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
-import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ValidationErrors from '@/lib/validation-errors'
 import * as Zus from '@/lib/zustand'

@@ -1,4 +1,4 @@
-import * as DH from '@/lib/display-helpers.ts'
+import * as DH from '@/models/display-helpers.models'
 
 import type { ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'

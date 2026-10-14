@@ -1,10 +1,10 @@
 import * as React from 'react'
 
 import * as Gen from '@/lib/generator-utils'
+import type * as GCtx from '@/lib/generic-ctx'
 import * as Obj from '@/lib/object-utils'
 import * as ReactUtils from '@/lib/react'
 import * as Zus from '@/lib/zustand'
-import type * as CS from '@/models/context-shared.models'
 
 import * as Cleanup from './cleanup'
 import * as Rx from './rxjs'
@@ -110,7 +110,7 @@ type DirectInstanceKey = RawInstanceKey
 type ReleaseListener = { key: RawInstanceKey; run: () => void }
 
 export class FrameManager {
-	constructor(private ctx: CS.Log) {}
+	constructor(private ctx: GCtx.Log) {}
 
 	// there may be multiple keys for the same instance<. the inner key is always a "direct" unexposted reference
 	private keys = new WeakMap<RawInstanceKey, DirectInstanceKey>()

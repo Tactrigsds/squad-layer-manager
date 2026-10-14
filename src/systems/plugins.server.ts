@@ -27,6 +27,7 @@ import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -161,16 +162,15 @@ const lifecycleMtx = new Mutex()
 function pluginModule(entry: Entry): OtelModule {
 	const base = initModule(PLG.moduleName(entry.manifest.id))
 	let log: CS.Logger | undefined
-	return {
-		name: base.name,
-		tracer: base.tracer,
-		getLogger: () =>
+	return Instr.createModule(
+		base.name,
+		() =>
 			(log ??= base.getLogger().child({
 				[ATTRS.Plugin.ID]: entry.manifest.id,
 				[ATTRS.Plugin.VERSION]: entry.manifest.version,
 				[ATTRS.Plugin.SOURCE]: entry.source,
 			})),
-	}
+	)
 }
 
 function requireRuntime(pluginId: string): Runtime {

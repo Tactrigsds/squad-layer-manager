@@ -33,14 +33,6 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'TooltipContent',
 		'TooltipTrigger',
 	],
-	'slm/lib/display-helpers': [
-		'toExtraShortLayerNameFromId',
-		'toFullLayerName',
-		'toFullLayerNameFromId',
-		'toShortLayerName',
-		'toShortLayerNameFromId',
-		'toShortTeamsDisplay',
-	],
 	'slm/lib/rxjs-ext': [
 		'bufferBurst',
 		'distinctDeepEquals',
@@ -87,6 +79,14 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'useStore_Susp',
 	],
 	'slm/models/constraint-builders': ['filterAnon', 'filterEntity', 'filterMenuItems', 'poolFilter', 'repeatRule'],
+	'slm/models/display-helpers': [
+		'toExtraShortLayerNameFromId',
+		'toFullLayerName',
+		'toFullLayerNameFromId',
+		'toShortLayerName',
+		'toShortLayerNameFromId',
+		'toShortTeamsDisplay',
+	],
 	'slm/models/filter-builders': [
 		'allowMatchups',
 		'and',

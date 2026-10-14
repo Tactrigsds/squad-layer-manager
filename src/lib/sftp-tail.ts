@@ -4,9 +4,9 @@ import type { SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
 import { StringDecoder } from 'string_decoder'
 
-import type * as CS from '@/models/context-shared.models'
+import type * as GCtx from '@/lib/generic-ctx'
 
-import { getChildModule, type OtelModule } from './otel'
+import type { OtelModule } from './otel'
 
 export type SftpTailOptions = {
 	username: string
@@ -61,7 +61,7 @@ export class SftpTail extends EventEmitter {
 	private decoder = new StringDecoder('utf8')
 	private isConnected = false
 	private consecutiveFailures = 0
-	private log: CS.Logger
+	private log: GCtx.Logger
 
 	constructor(options: SftpTailOptions) {
 		super()
@@ -80,7 +80,7 @@ export class SftpTail extends EventEmitter {
 		this.lastByteReceived = null
 		this.fetchLoopActive = false
 		this.fetchLoopPromise = null
-		const module = getChildModule(options.parentModule, 'sftp-tail')
+		const module = options.parentModule.child('sftp-tail')
 		this.log = module.getLogger()
 	}
 

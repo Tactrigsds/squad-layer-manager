@@ -16,7 +16,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Chart from '@/lib/chart'
-import * as DH from '@/lib/display-helpers'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -601,7 +601,7 @@ function ScorelineTable(props: {
 							<td className={cell}>{props.hidden ? redacted : (row.stats?.kills ?? '-')}</td>
 							<td className={cell}>{props.hidden ? redacted : (row.stats?.deaths ?? '-')}</td>
 							<td className={cell}>
-								{props.hidden ? redacted : row.stats ? DH.formatRatio(row.stats.kills, row.stats.deaths) : '-'}
+								{props.hidden ? redacted : row.stats ? Str.formatRatio(row.stats.kills, row.stats.deaths) : '-'}
 							</td>
 							<td className={cell}>{props.hidden ? redacted : (row.stats?.wounds ?? '-')}</td>
 						</tr>

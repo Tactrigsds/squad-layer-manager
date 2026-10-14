@@ -18,8 +18,8 @@ import {
 	WriteAccessContext,
 } from '@/components/settings-form/settings-form.helpers'
 import type * as Rx from '@/lib/rxjs'
-import type { SettingsGroup } from '@/lib/settings-groups'
 import { z } from '@/lib/zod'
+import type { SettingsGroup } from '@/models/settings-groups.models'
 import type * as RBAC from '@/rbac.models'
 
 export default function SettingsForm({

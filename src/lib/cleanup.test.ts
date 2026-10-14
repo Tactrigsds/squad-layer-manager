@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import * as CS from '@/models/context-shared.models'
+import * as GCtx from '@/lib/generic-ctx'
 
 import * as Cleanup from './cleanup'
 import * as Rx from './rxjs'
 
 function testCtx() {
 	const errors: unknown[] = []
-	const log = { error: (err: unknown) => errors.push(err) } as unknown as CS.Logger
-	return { ctx: { ...CS.init(), log }, errors }
+	const log = { error: (err: unknown) => errors.push(err) } as unknown as GCtx.Logger
+	return { ctx: { ...GCtx.init(), log }, errors }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))

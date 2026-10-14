@@ -31,10 +31,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDebounced } from '@/hooks/use-debounce'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
-import * as SettingsNav from '@/lib/settings-nav'
+import { useDebounced } from '@/lib/use-debounce'
 import { cn } from '@/lib/utils'
 import type { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
@@ -46,6 +45,7 @@ import type * as CMD from '@/models/command.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
+import * as SettingsNav from '@/systems/settings-nav.client'
 
 // the per-field reset affordances: reset-to-saved (undo local edits back to the persisted baseline) and, when the field
 // has a schema default, a "default: <value>" hint plus reset-to-default. Both buttons stay mounted and disable when the

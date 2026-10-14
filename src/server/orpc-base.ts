@@ -2,7 +2,7 @@ import * as Otel from '@opentelemetry/api'
 import { os } from '@orpc/server'
 import type Pino from 'pino'
 
-import { getChildModule, type OtelModule } from '@/lib/otel.ts'
+import type { OtelModule } from '@/lib/otel.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
@@ -26,7 +26,7 @@ const AsyncGeneratorFunction = Object.getPrototypeOf(async function* () {}).cons
 const base = os.$config({ initialInputValidationIndex: Number.NEGATIVE_INFINITY }).$context<C.OrpcBase>().$meta<OrpcMeta>({})
 
 export const getOrpcBase = (module: OtelModule) => {
-	const submodule = getChildModule(module, 'orpc')
+	const submodule = module.child('orpc')
 	const spanOpMiddleware = base.middleware((opts) => {
 		type Opts = typeof opts
 		const meta = opts.procedure['~orpc'].meta

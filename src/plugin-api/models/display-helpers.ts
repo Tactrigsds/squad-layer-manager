@@ -13,5 +13,5 @@ export {
 	toShortLayerName,
 	toShortLayerNameFromId,
 	toShortTeamsDisplay,
-} from '@/lib/display-helpers'
-export type { LayerDisplayProp } from '@/lib/display-helpers'
+} from '@/models/display-helpers.models'
+export type { LayerDisplayProp } from '@/models/display-helpers.models'

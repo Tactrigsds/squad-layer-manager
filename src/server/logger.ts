@@ -7,25 +7,22 @@ import pino from 'pino'
 import format from 'quick-format-unescaped'
 
 import { flattenObjToAttrs } from '@/lib/object-utils'
-import type { OtelModule } from '@/lib/otel'
+import type * as OtelMod from '@/lib/otel'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared.models'
 import * as LOG from '@/models/logs.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 
 import * as Env from './env'
+import * as Instr from './instrumentation'
 export let baseLogger!: CS.Logger
 
 /** Names a logger for a subsystem. A plugin's ctx.log is already a child of its own module logger. */
-export function initModule(name: string): OtelModule {
+export function initModule(name: string): OtelMod.OtelModule {
 	// memoized: spanOp calls getLogger() on every invocation, and each pino child allocation also
 	// invalidates the bindings cache below, which is keyed on the logger instance.
 	let log: pino.Logger | undefined
-	return {
-		name: name,
-		getLogger: () => (log ??= baseLogger.child({ [ATTRS.Module.NAME]: name })),
-		tracer: Otel.trace.getTracer(name),
-	}
+	return Instr.createModule(name, () => (log ??= baseLogger.child({ [ATTRS.Module.NAME]: name })))
 }
 
 // The otel SDK is pushed in by otel.server's setupOtel (via setOtelSdk) rather than imported, so

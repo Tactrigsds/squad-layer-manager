@@ -10,7 +10,7 @@ export const TUTORIAL_FILTERS = {
 	large: { name: 'Large Layers', emoji: '🗺️' },
 } as const
 
-// Global-handle ids (src/lib/use-state-with-global-handle.ts) for the component-local state a tour jump has to
+// Global-handle ids (useState_withGlobalHandle in src/systems/tutorials.client.ts) for the component-local state a tour jump has to
 // drive. Here so the owning components and the steps files share one vocabulary.
 export const TOUR_HANDLES = {
 	poolConfigTab: 'pool-config-tab',

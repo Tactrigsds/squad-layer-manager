@@ -1,8 +1,8 @@
 import type * as FormatjsDuration from '@formatjs/intl-durationformat'
 import * as dateFns from 'date-fns'
 
-import * as DH from '@/lib/display-helpers'
 import * as I18n from '@/messages/i18n'
+import * as DH from '@/models/display-helpers.models'
 import type * as L from '@/models/layer.models'
 import { t } from '@/models/messages.models'
 

@@ -1,6 +1,6 @@
 import { AsyncResource } from 'async_hooks'
 
-import * as CS from '@/models/context-shared.models'
+import * as GCtx from '@/lib/generic-ctx'
 
 import * as Rx from './rxjs'
 
@@ -81,13 +81,13 @@ export function isolateCb<T>(cb: () => T) {
  * span and points back at the cause. Making handlers children instead would let one request's trace
  * absorb every downstream handler it triggered, without bound.
  */
-export class TracedSubject<T, Base extends CS.Ctx = CS.Ctx> extends IsolatedSubject<[Base & CS.Otel, T]> {
+export class TracedSubject<T, Base extends GCtx.Ctx = GCtx.Ctx> extends IsolatedSubject<[Base & GCtx.Otel, T]> {
 	constructor(private readonly base: Base) {
 		super()
 	}
 
 	/** emit `value`, stamped with a link to whatever span is active right now */
 	emit(value: T) {
-		this.next([CS.storeLinkToActiveSpan(this.base, 'event.emitter'), value])
+		this.next([GCtx.storeLinkToActiveSpan(this.base, 'event.emitter'), value])
 	}
 }

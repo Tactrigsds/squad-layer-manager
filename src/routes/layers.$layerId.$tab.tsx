@@ -2,8 +2,8 @@ import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import * as React from 'react'
 
 import { LayerInfo } from '@/components/layer-info'
-import * as DH from '@/lib/display-helpers.ts'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as DH from '@/models/display-helpers.models'
 import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
 

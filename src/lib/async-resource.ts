@@ -1,15 +1,12 @@
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
 
-import * as CS from '@/models/context-shared.models'
-import * as LOG from '@/models/logs.models'
-import type * as C from '@/server/context.ts'
-import * as Instr from '@/server/instrumentation'
-
+import * as CD from './ctx-def'
 import { withThrownAsync } from './error'
+import * as GCtx from './generic-ctx'
 import { createId } from './id'
 import { IsolatedSubject } from './isolated-subject'
-import { getChildModule, type OtelModule } from './otel'
+import type { OtelModule } from './otel'
 import * as Prom from './promise-utils'
 import * as Rx from './rxjs'
 
@@ -19,7 +16,6 @@ type AsyncResourceOpts<T> = {
 	isErrorResponse: (value: T) => boolean
 	retryDelay: number
 	deferredTimeout: number
-	log?: CS.Logger
 
 	// called when a fetch fails for real (non-abort, retries exhausted). without a handler the error escalates to an
 	// unhandled rejection and crashes the process, so long-lived resources should provide one (e.g. to tear down their owner)
@@ -29,6 +25,12 @@ type AsyncResourceOpts<T> = {
 export type AsyncResourceInvocationOpts = {
 	ttl: number
 }
+
+export type AsyncResourceInvocation = GCtx.Ctx & {
+	resOpts: AsyncResourceInvocationOpts
+	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
+}
+export const AsyncResourceInvocationDef = CD.defCtx<AsyncResourceInvocation>()(['resOpts', 'refetch'], { name: 'asyncResourceInvocation' })
 
 type AsyncValueState<T> = {
 	value: Promise<T>
@@ -46,8 +48,8 @@ type Subscriber = { kind: 'observer'; ttl: number } | { kind: 'get' }
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
  */
-export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.Ctx> {
-	static includeInvocationCtx<Ctx extends CS.Ctx>(ctx: Ctx, opts: AsyncResourceInvocationOpts): Ctx & C.AsyncResourceInvocation {
+export class AsyncResource<T, Ctx extends GCtx.Ctx & Partial<GCtx.AbortSignal> = GCtx.Ctx> {
+	static includeInvocationCtx<Ctx extends GCtx.Ctx>(ctx: Ctx, opts: AsyncResourceInvocationOpts): Ctx & AsyncResourceInvocation {
 		return {
 			...ctx,
 			resOpts: opts,
@@ -63,11 +65,11 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 	readonly fetchMtx: MutexInterface = new Mutex()
 	private valueSubject = new IsolatedSubject<{ invokerSpanId: string | null; value: T }>()
 	private setupRefetches: (ctx: Ctx) => void
-	private log?: CS.Logger
+	private log: GCtx.Logger
 
 	constructor(
 		private name: string,
-		private cb: (ctx: Ctx & C.AsyncResourceInvocation) => Promise<T>,
+		private cb: (ctx: Ctx & AsyncResourceInvocation) => Promise<T>,
 		parentModule: OtelModule,
 		opts: Partial<AsyncResourceOpts<T>>,
 	) {
@@ -77,35 +79,32 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 			isErrorResponse: opts.isErrorResponse ?? (() => false),
 			retryDelay: opts.retryDelay ?? 0,
 			deferredTimeout: opts.deferredTimeout ?? 2000,
-			log: opts.log,
 			onFatalError: opts.onFatalError,
 		}
-		this.log = opts.log ? LOG.getSubmoduleLogger(this.name, opts.log) : undefined
-		const module = getChildModule(parentModule, this.name)
+		const module = parentModule.child(this.name)
+		this.log = module.getLogger()
 
 		this.setupRefetches = (_ctx: Ctx) => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
 				// a refetch is driven by the ttl timer, not by whatever was being handled when the resource
 				// was first observed, and this loop outlives that by an unbounded amount
-				const ctx = CS.withoutOtelLinks(_ctx)
+				const ctx = GCtx.withoutOtelLinks(_ctx)
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await Instr.spanOp(
-							'refetch',
-							{ module, root: true, levels: { event: 'trace' } },
-							async (ctx: Ctx) => {
+						const shouldBreak = await module
+							.spanOp('refetch', { root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
 								const activettl = Math.min(...this.observerTTLs)
 								await Prom.sleep(activettl)
 								if (!refetching) return true
 								// observers are already counted as subscribers, so skip get()'s registration
 								await this._get(ctx, { ttl: 0 })
-							},
-						)(ctx).catch(() => {
-							// abort means the last subscriber was released and teardown already unsubscribed us; any real
-							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
-							return true
-						})
+							})(ctx)
+							.catch(() => {
+								// abort means the last subscriber was released and teardown already unsubscribed us; any real
+								// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
+								return true
+							})
 						if (shouldBreak) break
 					}
 				})()
@@ -118,10 +117,10 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		}
 	}
 
-	private async fetchValue(ctx: Ctx & C.AsyncResourceInvocation, opts?: { retries?: number }) {
+	private async fetchValue(ctx: Ctx & AsyncResourceInvocation, opts?: { retries?: number }) {
 		const abort = new AbortController()
 		// the only signal cb ever sees -- caller signals only control subscriber membership
-		const fetchCtx: Ctx & C.AsyncResourceInvocation = { ...ctx, signal: abort.signal }
+		const fetchCtx: Ctx & AsyncResourceInvocation = { ...ctx, signal: abort.signal }
 		const state: AsyncValueState<T> = {
 			value: (async (): Promise<T> => {
 				let retriesLeft = opts?.retries ?? this.opts.retries
@@ -139,7 +138,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 							return res as T
 						}
 						if (error instanceof ImmediateRefetchError) {
-							this.log?.warn(error, 'immediate refetch requested: %s', error.message)
+							this.log.warn(error, 'immediate refetch requested: %s', error.message)
 						} else {
 							await Prom.sleep(this.opts.retryDelay, abort.signal)
 						}

@@ -15,7 +15,6 @@ import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Browser from '@/lib/browser'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
-import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
@@ -32,6 +31,7 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as TutorialsClient from '@/systems/tutorials.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -534,7 +534,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const phone = Browser.useIsSmallViewport()
 
 	const warnings = useQueueWarnings(props.stores)
-	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
+	const [warningsRequested, setShowWarnings] = TutorialsClient.useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
 	// nothing to show once the warnings clear, so the toggle falls closed with them
 	const showWarnings = !!warnings && warningsRequested
 

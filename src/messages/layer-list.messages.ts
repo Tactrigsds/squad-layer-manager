@@ -1,7 +1,7 @@
-import * as DH from '@/lib/display-helpers'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as MsgFmt from '@/messages/format'
 import * as CMD from '@/models/command.models'
+import * as DH from '@/models/display-helpers.models'
 import * as LL from '@/models/layer-list.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'

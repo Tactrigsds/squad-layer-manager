@@ -17,7 +17,7 @@ const provider = new node.NodeTracerProvider({ sampler: new tracing.AlwaysOnSamp
 provider.register()
 
 const log = pino({ level: 'info' }, { write: () => {} })
-const module = { name: 'bench', tracer: Otel.trace.getTracer('bench'), getLogger: () => log }
+const module = Instr.createModule('bench', () => log)
 
 const bare = Instr.spanOp('bare', { module }, async () => 1)
 

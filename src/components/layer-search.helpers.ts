@@ -2,7 +2,7 @@ import React from 'react'
 
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import { useDebounced } from '@/hooks/use-debounce'
+import { useDebounced } from '@/lib/use-debounce'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
