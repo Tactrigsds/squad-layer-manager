@@ -404,17 +404,18 @@ function RotationCard(props: { rotation: ROT.Summary; onClone: () => void }) {
 		<RotationMenus rotation={rotation} onClone={props.onClone}>
 			{(actions) => (
 				<li className="relative flex flex-col gap-2 rounded border bg-card p-3 hover:border-primary/50">
-					<div className="flex items-center gap-2 min-w-0">
-						<Link
-							to="/rotations/$rotationId"
-							params={{ rotationId: rotation.id }}
-							className={cn('min-w-0 truncate text-base font-bold', STRETCHED_LINK)}
-						>
-							{rotation.name}
-						</Link>
-						<span className="shrink-0 font-mono text-xs text-muted-foreground">{rotation.id}</span>
+					<div className="flex items-center gap-2">
+						<div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+							<Link
+								to="/rotations/$rotationId"
+								params={{ rotationId: rotation.id }}
+								className={cn('min-w-0 truncate text-base font-bold', STRETCHED_LINK)}
+							>
+								{rotation.name}
+							</Link>
+							<span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{rotation.id}</span>
+						</div>
 						{rotation.archived && <Badge variant="secondary">{tr.text(ROT_Msgs.archivedBadge())}</Badge>}
-						<span className="flex-1" />
 						<RotationActions rotation={rotation} onClone={props.onClone} {...actions} />
 					</div>
 					{rotation.description && <p className="line-clamp-2 text-sm text-muted-foreground">{rotation.description}</p>}
@@ -460,15 +461,15 @@ function RotationRow(props: { rotation: ROT.Summary; query: string; onClone: () 
 			{(actions) => (
 				<li className="relative flex flex-wrap items-center gap-3 px-3 py-2 hover:bg-accent/40">
 					<div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-0.5">
-						<span className="flex min-w-0 items-baseline gap-2">
+						<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
 							<Link
 								to="/rotations/$rotationId"
 								params={{ rotationId: rotation.id }}
-								className={cn('truncate font-bold', STRETCHED_LINK)}
+								className={cn('min-w-0 truncate font-bold', STRETCHED_LINK)}
 							>
 								{rotation.name}
 							</Link>
-							<span className="shrink-0 font-mono text-xs text-muted-foreground">{rotation.id}</span>
+							<span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{rotation.id}</span>
 							<TagChips tagIds={rotation.tags} dots />
 						</span>
 						{rotation.description && <span className="truncate text-xs text-muted-foreground">{rotation.description}</span>}
