@@ -16,6 +16,7 @@ import { LOADING, POPOVER_SIZING_CLASSES } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
 import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './groupings.tsx'
+import { clearOnMiddleClickProps } from './middle-click.ts'
 import {
 	ALL_GROUPS,
 	type ComboBoxGroupingDef,
@@ -276,7 +277,13 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				props.onOpenChange?.(next)
 			}}
 		>
-			<PopoverTrigger asChild data-combobox-trigger="">
+			<PopoverTrigger
+				asChild
+				data-combobox-trigger=""
+				{...clearOnMiddleClickProps(
+					props.allowEmpty && !disabled && props.value !== undefined ? () => _onSelect(undefined) : undefined,
+				)}
+			>
 				{React.isValidElement(props.children) ? (
 					props.children
 				) : (
