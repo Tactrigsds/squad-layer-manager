@@ -44,6 +44,10 @@ showing the rotation&#x27;s name.</p>
 <p><strong>Added:</strong> Automatic vote starts can now be turned on or off, and their delay into the match set, from the <em>Generation &amp; Votes</em> tab of the pool configuration window. The tab was called <em>Generation</em>.</p>
 </li>
 <li>
+<p><strong>Added:</strong> The player details window lists the usernames a player has gone by before. Click the history icon beside the username to see each name and the dates it was used.</p>
+<p>A player can also be found by a previous username in the history page&#x27;s player search.</p>
+</li>
+<li>
 <p><strong>Added:</strong> Servers can share repeat rules. Repeat rules are kept in named repeat rulesets, and each server uses one.</p>
 <p>Pick a server&#x27;s repeat ruleset on the <em>Repeat Rules</em> tab of the pool configuration window, or create or rename one
 there. <em>Save Changes</em> saves edited rules into the repeat ruleset, so every server using it gets them. A new server gets
@@ -248,6 +252,9 @@ in that server&#x27;s activity feed.</p>
 <p>The upgrade grants <code>rotations:create</code> to every role holding <code>filters:create</code>, and <code>rotations:write-all</code> to every role
 holding <code>filters:write-all</code>. Whoever created a rotation can edit it, along with the users and roles added to it as
 contributors.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The first start after upgrading takes longer than usual. SLM reads every recorded match once to collect the usernames players have gone by, so the time grows with the size of your match history.</p>
 </li>
 <li>
 <p><strong>Removed:</strong> SLM no longer ships the Balance Triggers plugin. Balance trigger alerts stop appearing on the dashboard, in match history and in post-roll warns.</p>
