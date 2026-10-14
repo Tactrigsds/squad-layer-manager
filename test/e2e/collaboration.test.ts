@@ -455,6 +455,8 @@ test.describe('collaborative rotation editing', () => {
 		const editor = page.getByRole('textbox', { name: 'Layers as YAML' })
 		await expect(editor).toContainText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
 		await page.getByRole('button', { name: 'Start Editing' }).click()
+		// the editor is read-only until editing has started, and drops keystrokes while it is
+		await expect(editor).toBeEditable()
 		await editor.click()
 		await page.keyboard.press('ControlOrMeta+a')
 		await page.keyboard.insertText(

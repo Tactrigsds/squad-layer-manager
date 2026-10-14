@@ -87,7 +87,8 @@ function SourceStatus(props: { listHost: RotationEditorFrame.Key; formatName: st
 		<div className="flex flex-col gap-2 border-t bg-muted/40 px-3 py-2 text-xs">
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<span role="status" className="inline-flex items-center gap-1.5">
-					{(!analysis || analysis.pending) && <Spinner className="h-3.5 w-3.5 animate-spin" />}
+					{/* not a status of its own: it sits inside one, which already says the text is being read */}
+					{(!analysis || analysis.pending) && <Spinner role={undefined} aria-hidden className="h-3.5 w-3.5 animate-spin" />}
 					{analysis && tr.text(ROT_Msgs.importSummary(props.formatName, analysis.itemCount, analysis.noteCount))}
 				</span>
 				<span className="flex-1" />
