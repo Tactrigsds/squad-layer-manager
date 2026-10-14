@@ -3,6 +3,7 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
@@ -58,6 +59,7 @@ const DialogContent = React.forwardRef<
 			<DialogPrimitive.Content
 				ref={combinedRef}
 				data-phone={phone || undefined}
+				{...SubmitChord.scopeAttrs('dialog')}
 				className={cn(
 					'fd-dlg fixed flex flex-col gap-2 p-2.5 w-full max-w-lg',
 					!phone && 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-h-[calc(100vh-32px)]',

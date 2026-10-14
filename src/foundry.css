@@ -627,6 +627,13 @@
 		border-radius: 2px;
 		color: var(--text-2);
 	}
+	/* on a button the key caps take the button's own color, so they read on any variant */
+	.fd-btn .fd-kbd {
+		background: transparent;
+		border-color: color-mix(in srgb, currentColor 35%, transparent);
+		color: inherit;
+		opacity: 0.75;
+	}
 	.fd-prog {
 		height: 6px;
 		background: var(--ground);
@@ -731,6 +738,25 @@
 		font-family: var(--font-mono);
 		font-size: calc(var(--fs) - 2px);
 		color: var(--text-3);
+	}
+	/* the highlighted row names the submit chord, which picks it. A pseudo-element, so a list thousands of rows
+	   long carries no extra nodes */
+	.fd-mi-chord[data-selected='true']::after {
+		content: var(--submit-chord);
+		flex-shrink: 0;
+		margin-inline-start: auto;
+		padding: 0 4px;
+		font-family: var(--font-mono);
+		font-size: calc(var(--fs) - 2px);
+		border: 1px solid var(--line-soft);
+		border-bottom-width: 2px;
+		border-radius: 2px;
+		color: var(--text-3);
+	}
+	@media (pointer: coarse) {
+		.fd-mi-chord[data-selected='true']::after {
+			content: none;
+		}
 	}
 	.fd-msep {
 		height: 1px;

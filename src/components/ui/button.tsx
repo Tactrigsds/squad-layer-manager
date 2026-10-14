@@ -2,6 +2,8 @@ import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 import * as React from 'react'
 
+import { SubmitChordKbd } from '@/components/ui/kbd'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 
 // One orange per surface: `primary` is the single action the surface exists for, everything else is the raised
@@ -34,12 +36,27 @@ const buttonVariants = cva('fd-btn', {
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
 	asChild?: boolean
+	// makes this the button the submit chord clicks in its scope, and shows the chord on it. See lib/submit-chord.
+	// The hint is left out under asChild, whose single child cannot take a sibling.
+	submitChord?: boolean
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, asChild = false, ...props }, ref) => {
-	const Comp = asChild ? Slot : 'button'
-	return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
-})
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+	({ className, variant, size, asChild = false, submitChord = false, children, ...props }, ref) => {
+		const Comp = asChild ? Slot : 'button'
+		return (
+			<Comp
+				className={cn(buttonVariants({ variant, size, className }))}
+				ref={ref}
+				{...(submitChord && SubmitChord.buttonAttrs())}
+				{...props}
+			>
+				{children}
+				{submitChord && !asChild && <SubmitChordKbd className="pointer-coarse:hidden" />}
+			</Comp>
+		)
+	},
+)
 Button.displayName = 'Button'
 
 export { Button, buttonVariants }

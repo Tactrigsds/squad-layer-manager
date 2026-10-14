@@ -22,7 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDebouncedCommit } from '@/hooks/use-debounced-commit'
-import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
@@ -712,7 +712,7 @@ function BoundInput(props: { type: 'number' | 'datetime-local'; label: string; d
 }
 
 // Typing into the draft re-renders the whole page, so a field's edits reach the draft in batches. A blur or the run
-// chord flushes them first, and the chord's keydown reaches this input before the page's document listener runs.
+// chord flushes them first, and the chord's keydown reaches this input before the submit chord listener runs.
 function DraftInput(props: Omit<React.ComponentProps<typeof Input>, 'onChange' | 'onBlur'> & { onCommit: (value: string) => void }) {
 	const { onCommit, onKeyDown, ...inputProps } = props
 	const commit = useDebouncedCommit(onCommit, 250)
@@ -722,7 +722,7 @@ function DraftInput(props: Omit<React.ComponentProps<typeof Input>, 'onChange' |
 			onChange={(e) => commit.schedule(e.target.value)}
 			onBlur={commit.flush}
 			onKeyDown={(e) => {
-				if (Browser.isSubmitChord(e)) commit.flush()
+				if (SubmitChord.isSubmitChord(e)) commit.flush()
 				onKeyDown?.(e)
 			}}
 		/>

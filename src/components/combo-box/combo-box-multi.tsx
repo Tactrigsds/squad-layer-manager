@@ -3,9 +3,11 @@ import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command.tsx'
+import { SubmitChordKbd } from '@/components/ui/kbd'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
@@ -149,6 +151,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		[open, _onSelect, selectOnClose, setOpen],
 	)
 
+	const toggled = (prev: T[], value: T): T[] => {
+		if (prev.includes(value)) return prev.filter((v) => v !== value)
+		if (selectionLimit && prev.length >= selectionLimit) return prev
+		return [...prev, value]
+	}
+
 	function onSelect(updater: React.SetStateAction<T[]>) {
 		if (useInternalState) {
 			setInternalValues((currentValues) => {
@@ -254,6 +262,24 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const confirmedSet = props.confirm ? new Set(values) : null
 	const hasChanges =
 		confirmedSet !== null && (displayValues.length !== confirmedSet.size || displayValues.some((v) => !confirmedSet.has(v)))
+
+	// The submit chord toggles the highlighted option, then closes, applying the selection as Confirm would. The
+	// confirm button is not marked as a submit chord button: the chord is handled here, and a marked button would
+	// be found by an enclosing dialog's scope when the popover renders inside one.
+	function finishWithChord(command: HTMLElement) {
+		const highlighted = drillEntry ? null : command.querySelector('[cmdk-item][data-selected="true"]')?.getAttribute('data-value')
+		const option = highlighted == null ? undefined : optionsByValue.get((highlighted === NULL ? null : highlighted) as T)
+		const next = option && !option.disabled ? toggled(displayValues, option.value) : displayValues
+		if (props.confirm) {
+			if (next.length !== values.length || next.some((v) => !values.includes(v))) props.onConfirm?.(next)
+		} else if (selectOnClose) {
+			setInternalValues(next)
+			_onSelect(next)
+		} else if (next !== displayValues) {
+			_onSelect(next)
+		}
+		_setOpen(false)
+	}
 
 	const chipDisplay = props.chipDisplay ?? false
 	let valuesDisplay = ''
@@ -452,6 +478,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						shouldFilter={drillEntry ? true : !props.setInputValue}
 						className={cn('min-h-0', sheet && 'flex-1')}
 						onKeyDown={(e) => {
+							if (SubmitChord.isSubmitChord(e)) {
+								// consumed here, so cmdk does not read it as a plain Enter and no enclosing scope submits
+								e.preventDefault()
+								finishWithChord(e.currentTarget)
+								return
+							}
 							if (e.key !== 'Tab') return
 							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
 							if (!tabbed) return
@@ -510,6 +542,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 												{run.options.map((option) => (
 													<CommandItem
 														key={option.value}
+														className="fd-mi-chord"
 														value={option.value === null ? NULL : option.value}
 														keywords={searchKeywords(option)}
 														onMouseEnter={() => showDescription(option.value)}
@@ -520,13 +553,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														}
 														onSelect={() => {
 															if (option.disabled) return
-															onSelect((prevValues) => {
-																if (prevValues.includes(option.value)) {
-																	return prevValues.filter((v) => v !== option.value)
-																} else {
-																	return [...prevValues, option.value]
-																}
-															})
+															onSelect((prevValues) => toggled(prevValues, option.value))
 														}}
 													>
 														<Check
@@ -630,6 +657,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								>
 									<SquareCheck className="h-4 w-4" />
 									<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : tr.text(UI_Msgs.confirm())}</span>
+									<SubmitChordKbd className="pointer-coarse:hidden" />
 								</Button>
 							</div>
 						)}

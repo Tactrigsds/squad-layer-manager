@@ -2,6 +2,7 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import * as React from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 
@@ -31,6 +32,7 @@ const AlertDialogContent = React.forwardRef<
 			<AlertDialogOverlay />
 			<AlertDialogPrimitive.Content
 				ref={ref}
+				{...SubmitChord.scopeAttrs('dialog')}
 				className={cn(
 					'fd-dlg fixed left-1/2 top-1/2 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-2 p-2.5',
 					className,

@@ -12,6 +12,8 @@ import {
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { buttonVariants } from '@/components/ui/button'
+import { SubmitChordKbd } from '@/components/ui/kbd'
+import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'
@@ -20,6 +22,8 @@ type AlertDialogButton = {
 	id: string
 	label: React.ReactNode
 	variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+	// see Button's submitChord
+	submitChord?: boolean
 }
 
 type AlertDialogOptions = {
@@ -151,8 +155,10 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 									className={variant ? buttonVariants({ variant }) : undefined}
 									disabled={submitBlocked}
 									onClick={() => handleButtonClick(button.id)}
+									{...(button.submitChord && SubmitChord.buttonAttrs())}
 								>
 									{button.label}
+									{button.submitChord && <SubmitChordKbd className="pointer-coarse:hidden" />}
 								</AlertDialogAction>
 							)
 						})}

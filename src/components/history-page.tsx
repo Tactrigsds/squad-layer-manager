@@ -16,13 +16,12 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as HistoryFrame from '@/frames/history.frame'
-import * as Browser from '@/lib/browser'
+import * as SubmitChord from '@/lib/submit-chord'
 import * as TZ from '@/lib/time-zones'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
@@ -54,9 +53,6 @@ function okOf<T extends OkRes['type']>(res: QueryRes | undefined, type: T): Extr
 	return res && res.code === 'ok' && res.type === type ? (res as Extract<OkRes, { type: T }>) : undefined
 }
 
-// both modifiers run (see onKeyDown); this is only which one to show
-const RUN_MODIFIER = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '\u2318' : 'Ctrl'
-
 // the saved query the page is working on: what Save updates rather than duplicates
 type SavedAs = { id: string; name: string; visibility: 'private' | 'shared' }
 
@@ -72,24 +68,6 @@ export default function HistoryPage(props: HistoryPageProps) {
 		HistoryClient.pushRecent(query)
 		props.onRun(query)
 	}
-
-	// Runs from anywhere on the page, which is why it listens on the document rather than on the page's own
-	// element: nothing is focused after a load or a click on dead space, so the key event targets `body` and
-	// never reaches a handler mounted inside the tree.
-	// written after render, since a ref written during render keeps React Compiler off this component
-	const runRef = React.useRef(run)
-	React.useLayoutEffect(() => {
-		runRef.current = run
-	})
-	React.useEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (!Browser.isSubmitChord(e)) return
-			e.preventDefault()
-			runRef.current()
-		}
-		document.addEventListener('keydown', onKeyDown)
-		return () => document.removeEventListener('keydown', onKeyDown)
-	}, [])
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
 
@@ -129,19 +107,9 @@ export default function HistoryPage(props: HistoryPageProps) {
 		</Tooltip>
 	)
 	const runButton = (
-		<Tooltip help>
-			<TooltipTrigger asChild>
-				<Button size="sm" variant="primary" className="w-full" onClick={run}>
-					{tr.text(HistoryMsgs.run())}
-				</Button>
-			</TooltipTrigger>
-			<TooltipContent>
-				<KbdGroup>
-					<Kbd>{RUN_MODIFIER}</Kbd>
-					<Kbd>Enter</Kbd>
-				</KbdGroup>
-			</TooltipContent>
-		</Tooltip>
+		<Button size="sm" variant="primary" submitChord className="w-full" onClick={run}>
+			{tr.text(HistoryMsgs.run())}
+		</Button>
 	)
 
 	return (
@@ -151,7 +119,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
 		// w-full: without it the row sizes to its content, so widening the rail grows the page instead of
 		// taking the space from the results
-		<div className="flex h-full min-h-0 w-full gap-2.5">
+		<div className="flex h-full min-h-0 w-full gap-2.5" {...SubmitChord.scopeAttrs('page')}>
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<TabsList
