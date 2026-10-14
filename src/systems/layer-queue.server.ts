@@ -829,7 +829,7 @@ export async function warnShowNext(
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
 		const [user] = await Users.selectUsers(ctx).where(E.eq(Schema.users.discordId, userId))
-		setByUser = await Users.buildUser(user)
+		if (user) setByUser = await Users.buildUser(user)
 	}
 	const isAdmin = playerIds === 'all-admins' || !!opts?.isAdmin
 

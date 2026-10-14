@@ -17,6 +17,8 @@ import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 const ADMIN_STEAM_ID = '76561198000000001'
 // a second in-game admin who runs nothing: he is only here to be a recipient warnAllAdmins would reach
 const OTHER_ADMIN_STEAM_ID = '76561198000000002'
+// linked by an admin to a discord account that has never signed into SLM
+const ASSIGNED_STEAM_ID = '76561198000000078'
 
 let app: AppFixture
 const admin = makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID, teamId: 1 })
@@ -30,6 +32,7 @@ beforeAll(async () => {
 		// (linkedSteamAccounts). Commands need both: the first to be an admin, the second to be allowed.
 		admins: [ADMIN_STEAM_ID, OTHER_ADMIN_STEAM_ID],
 		adminSteamIds: [ADMIN_STEAM_ID],
+		users: [{ discordId: 900000000000000078n, username: 'never-signed-in', steamIds: [ASSIGNED_STEAM_ID], signedIn: false }],
 		serverSettings: (s) => {
 			// so a roll leaves the queue "low" and the app warns every admin about it -- see the roll test
 			s.queue.lowQueueWarningThreshold = 5
@@ -822,6 +825,17 @@ describe('linking a steam account', () => {
 			timeoutMs: 20_000,
 		})
 		expect(await myLinkedSteamIds()).not.toContain(LINK_STEAM_ID)
+	})
+
+	it('answers a player whose link names somebody who has never signed in', async () => {
+		const assigned = makePlayer({ name: 'assigned_link_player', steam: ASSIGNED_STEAM_ID, teamId: 2 })
+		app.emu.world.connectPlayer(assigned)
+		await app.waitForRosterSync()
+		app.emu.world.chat(assigned, 'ChatAll', cmd('link ZZZZZZ'))
+		await app.waitFor(() => warnsTo(app, assigned).some((w) => w.includes('not valid')), {
+			label: 'a rejection of the made-up code',
+			timeoutMs: 20_000,
+		})
 	})
 
 	it('links the sender of a minted code, and spends it', async () => {

@@ -430,9 +430,8 @@ export async function recordDiscordAccount(ctx: C.Db, discordId: bigint, usernam
 
 export async function getUser(ctx: C.Db, discordId: bigint) {
 	const [dbUser] = await selectUsers(ctx).where(E.eq(Schema.users.discordId, discordId))
-	const user = await buildUser(dbUser)
-	if (!user) return
-	return user
+	if (!dbUser) return
+	return await buildUser(dbUser)
 }
 
 // The discord identity a steam account is linked to, which need not have signed into SLM: a link assigned by an
