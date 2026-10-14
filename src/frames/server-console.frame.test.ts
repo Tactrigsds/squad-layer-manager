@@ -15,6 +15,7 @@ function store(events: ConsoleEvent[], over: Partial<ConsoleFrame.Store> = {}): 
 		hideNoise: true,
 		showSlmRequests: true,
 		showEvents: true,
+		wrap: true,
 		denied: false,
 		executing: false,
 		executeError: null,

@@ -133,3 +133,7 @@ export const saveAnyway = def('Save Anyway')
 export const finishEditing = def('Finish Editing')
 
 export const finishEditingAnyway = def('Finish Editing Anyway')
+
+// -------- output and feeds --------
+
+export const wrapLines = def('Wrap lines')

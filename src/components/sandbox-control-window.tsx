@@ -21,11 +21,8 @@ import { tr } from '@/systems/messages.client'
 import type { SandboxControlWindowProps } from './sandbox-control-window.helpers'
 import { SandboxAdminListPanel } from './sandbox-panels'
 import { useOpenSandboxAdminListWindow } from './sandbox-panels.helpers'
-import { ServerConsolePanel } from './server-console-panel'
-import { useOpenServerConsoleWindow } from './server-console-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { useSandboxFrame } from './use-sandbox-frame'
-import { useServerConsoleFrame } from './use-server-console-frame'
 
 DraggableWindowStore.getState().registerDefinition<SandboxControlWindowProps, unknown>({
 	type: WINDOW_ID.enum['sandbox-control'],
@@ -63,8 +60,6 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	const joinRef = React.useRef<HTMLInputElement>(null)
 	const bulkRef = React.useRef<HTMLInputElement>(null)
 	const openAdminList = useOpenSandboxAdminListWindow({ serverId: props.serverId })
-	const openConsole = useOpenServerConsoleWindow({ serverId: props.serverId })
-	const consoleStores = useServerConsoleFrame(props.serverId)
 
 	async function run<V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) {
 		const res = await SandboxFrame.Actions.run(stores, verb, args)
@@ -187,18 +182,6 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 					>
 						<SandboxAdminListPanel stores={stores} />
 					</Section>
-
-					<Section
-						title={tr.text(SB_Msgs.consoleSection())}
-						action={
-							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openConsole()}>
-								<Icons.ExternalLink className="me-1 h-3.5 w-3.5" />
-								{tr.text(SB_Msgs.popOut())}
-							</Button>
-						}
-					>
-						<ServerConsolePanel stores={consoleStores} className="h-64" />
-					</Section>
 				</div>
 			</ScrollArea>
 		</div>
@@ -209,12 +192,17 @@ type RunFn = <V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) =
 
 type PlayerRow = ReturnType<typeof SandboxFrame.Sel.players>[number]
 type SquadRow = ReturnType<typeof SandboxFrame.Sel.squads>[number]
+type PartyRow = ReturnType<typeof SandboxFrame.Sel.parties>[number]
 
 const TEAM_IDS = [1, 2] as const
 
 // Sentinels for the two entries that are not a squad. Squads are keyed by their numeric id, so neither can collide.
 const NO_SQUAD = 'none'
 const NEW_SQUAD = 'new'
+
+// Sentinels for the party picker. Party ids start with '#', so neither can collide.
+const NO_PARTY = 'none'
+const NEW_PARTY = 'new'
 
 function TeamCell({ player, run }: { player: PlayerRow; run: RunFn }) {
 	return (
@@ -283,12 +271,47 @@ function SquadCell({ player, squads, run }: { player: PlayerRow; squads: SquadRo
 	)
 }
 
+// Creating a party takes the lowest id no player is using, the way the server numbers them.
+function PartyCell({ player, parties, run }: { player: PlayerRow; parties: PartyRow[]; run: RunFn }) {
+	function onValueChange(value: string) {
+		if (value === NO_PARTY) {
+			void run('party', { name: player.name, partyId: null })
+			return
+		}
+		if (value === NEW_PARTY) {
+			const taken = new Set(parties.map((p) => p.partyId))
+			let n = 0
+			while (taken.has(`#${n}`)) n++
+			void run('party', { name: player.name, partyId: `#${n}` })
+			return
+		}
+		void run('party', { name: player.name, partyId: value })
+	}
+
+	return (
+		<Select value={player.partyId ?? NO_PARTY} onValueChange={onValueChange}>
+			<SelectTrigger className="h-7 w-auto min-w-[7rem]" aria-label={tr.text(SB_Msgs.partyPicker(player.name))}>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectItem value={NO_PARTY}>{tr.text(SB_Msgs.noParty())}</SelectItem>
+				{parties.map((p) => (
+					<SelectItem key={p.partyId} value={p.partyId}>
+						{tr.text(SB_Msgs.partyOption(p.partyId, p.size))}
+					</SelectItem>
+				))}
+				<SelectItem value={NEW_PARTY}>{tr.text(SB_Msgs.createParty())}</SelectItem>
+			</SelectContent>
+		</Select>
+	)
+}
+
 // The admin checkbox and the group picker are two views of one membership: checking the box puts the player in the
 // default admin group, and clearing it drops every group that would make them an admin. Nothing is stored twice.
 function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyProp; groupNames: string[]; run: RunFn }) {
-	const [{ players, page, pageCount, matched, total }, adminGroups, squads] = Zus.useStore(
+	const [{ players, page, pageCount, matched, total }, adminGroups, squads, parties] = Zus.useStore(
 		stores.sandbox,
-		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? [], SandboxFrame.Sel.squads(s)] as const,
+		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? [], SandboxFrame.Sel.squads(s), SandboxFrame.Sel.parties(s)] as const,
 	)
 	const identifying = new Set(adminGroups.filter((g) => g.permissions.includes('canseeadminchat')).map((g) => g.name))
 	const defaultAdminGroup = [...identifying][0] ?? 'Admin'
@@ -327,6 +350,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 									<TableHead>{tr.text(SB_Msgs.playerColumn())}</TableHead>
 									<TableHead className="w-24">{tr.text(SB_Msgs.teamColumn())}</TableHead>
 									<TableHead className="w-48">{tr.text(SB_Msgs.squadColumn())}</TableHead>
+									<TableHead className="w-28">{tr.text(SB_Msgs.partyColumn())}</TableHead>
 									<TableHead className="w-16">{tr.text(SB_Msgs.adminColumn())}</TableHead>
 									<TableHead className="min-w-[12rem]">{tr.text(SB_Msgs.groupsColumn())}</TableHead>
 									<TableHead className="w-10" />
@@ -341,6 +365,9 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 										</TableCell>
 										<TableCell>
 											<SquadCell player={p} squads={squads} run={run} />
+										</TableCell>
+										<TableCell>
+											<PartyCell player={p} parties={parties} run={run} />
 										</TableCell>
 										<TableCell>
 											<Checkbox

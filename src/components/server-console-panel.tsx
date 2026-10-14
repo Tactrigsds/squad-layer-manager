@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSubtreeFind } from '@/components/use-subtree-find'
+import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { assertNever } from '@/lib/type-guards'
@@ -53,7 +54,9 @@ const ConsoleLine = React.memo(function ConsoleLine({ event }: { event: ConsoleE
 	return (
 		<li className="flex items-start gap-1.5 font-mono text-[11px] leading-tight ltr-isolate">
 			<span className={cn('shrink-0', tone)}>{prefix}</span>
-			<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
+			<span className="min-w-0 whitespace-pre-wrap break-all group-data-nowrap:whitespace-pre group-data-nowrap:break-normal">
+				{body}
+			</span>
 		</li>
 	)
 })
@@ -63,6 +66,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	const tab = Zus.useStore(stores.serverConsole, (s) => s.tab)
 	const hideNoise = Zus.useStore(stores.serverConsole, (s) => s.hideNoise)
 	const denied = Zus.useStore(stores.serverConsole, (s) => s.denied)
+	const wrap = Zus.useStore(stores.serverConsole, (s) => s.wrap)
 	const showSlmRequests = Zus.useStore(stores.serverConsole, (s) => s.showSlmRequests)
 	const showEvents = Zus.useStore(stores.serverConsole, (s) => s.showEvents)
 	const serverId = Zus.useStore(stores.serverConsole, (s) => s.serverId)
@@ -71,6 +75,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	const executeDenied = RbacClient.useAccess('serverConsole.execute', { serverId })
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const outputControlsZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 
 	// each channel is its own tail, so switching to one starts at its end
@@ -153,13 +158,20 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 				</Button>
 			</div>
 			<div ref={findScopeRef} className="relative min-h-0 grow bg-muted/30">
-				<SubtreeFindBar stores={findStores} className="absolute inset-e-3 top-2" />
+				<div style={{ zIndex: outputControlsZIndex }} className="absolute inset-e-3 top-2 flex items-start gap-1">
+					<SubtreeFindBar stores={findStores} />
+					<WrapLinesToggle
+						wrap={wrap}
+						onToggle={() => ConsoleFrame.Actions.setWrap(stores, !wrap)}
+						className="h-7 w-7 max-phone:size-(--ctl-sm) shadow-md"
+					/>
+				</div>
 				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
 					<div ref={contentRef} className="p-1.5">
 						{events.length === 0 ? (
 							<p className="text-xs text-muted-foreground">{tr.text(SC_Msgs.empty())}</p>
 						) : (
-							<ol className="space-y-0.5">
+							<ol className="group space-y-0.5" data-nowrap={wrap ? undefined : ''}>
 								{events.map((event) => (
 									<ConsoleLine key={event.seq} event={event} />
 								))}

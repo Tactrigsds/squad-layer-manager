@@ -22,6 +22,7 @@ export type ChatSlice = {
 	selectedMatchOrdinal: number | null
 	// which body the activity panel shows while a historical match is selected; meaningless when live
 	historicalView: 'feed' | 'teams'
+	wrapLines: boolean
 }
 
 export type Store = {
@@ -46,6 +47,7 @@ export function initChat(args: Args) {
 		eventGeneration: 0,
 		selectedMatchOrdinal: null,
 		historicalView: 'feed',
+		wrapLines: true,
 		handleChatEvents(events) {
 			const config = SettingsClient.getSettings()
 			set((state) => {
@@ -263,5 +265,9 @@ export namespace Actions {
 
 	export function setHistoricalView(stores: KeyProp, view: ChatSlice['historicalView']) {
 		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalView: view })
+	}
+
+	export function setWrapLines(stores: KeyProp, wrapLines: boolean) {
+		Zus.toPartialStore(stores.chat, 'chat').setState({ wrapLines })
 	}
 }

@@ -17,6 +17,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as SubmitChord from '@/lib/submit-chord'
 import * as TZ from '@/lib/time-zones'
@@ -56,6 +57,7 @@ type SavedAs = { id: string; name: string; visibility: 'private' | 'shared' }
 export default function HistoryPage(props: HistoryPageProps) {
 	const draft = Zus.useStore(props.stores.history, (s) => s.draft)
 	const canRun = Zus.useStore(props.stores.history, HistoryFrame.Sel.canRun)
+	const wrapLines = Zus.useStore(props.stores.history, (s) => s.wrapLines)
 	const [savedAs, setSavedAs] = React.useState<SavedAs | null>(null)
 
 	const run = () => {
@@ -138,6 +140,14 @@ export default function HistoryPage(props: HistoryPageProps) {
 						}}
 					/>
 					<SaveControl stores={props.stores} savedAs={savedAs} setSavedAs={setSavedAs} />
+					{props.executed.type === 'events' && (
+						<WrapLinesToggle
+							wrap={wrapLines}
+							onToggle={() => HistoryFrame.Actions.setWrapLines(props.stores, !wrapLines)}
+							variant="ghost"
+							className="h-8 w-8"
+						/>
+					)}
 					<RawMenu query={props.executed} selection={props.selection} />
 					<CopyLinkButton />
 					{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
@@ -162,7 +172,13 @@ export default function HistoryPage(props: HistoryPageProps) {
 						</div>
 					)
 				) : (
-					<Results query={props.executed} onRun={props.onRun} selection={props.selection} onSelect={props.onSelect} />
+					<Results
+						query={props.executed}
+						onRun={props.onRun}
+						selection={props.selection}
+						onSelect={props.onSelect}
+						wrapLines={wrapLines}
+					/>
 				)}
 			</div>
 
@@ -290,17 +306,20 @@ function Results(props: {
 	onRun: (query: HQ.Query) => void
 	selection: HQ.RowSelectionParam | undefined
 	onSelect: (selection: HQ.RowSelectionParam | undefined) => void
+	wrapLines: boolean
 }) {
 	const { query, onRun, selection, onSelect } = props
 	switch (query.type) {
 		case 'events':
 			return (
-				<HistoryEvents
-					query={query}
-					onReorder={(order) => onRun({ ...query, order })}
-					selection={{ value: selection, onChange: onSelect }}
-					linkable
-				/>
+				<div className="contents" data-nowrap={props.wrapLines ? undefined : ''}>
+					<HistoryEvents
+						query={query}
+						onReorder={(order) => onRun({ ...query, order })}
+						selection={{ value: selection, onChange: onSelect }}
+						linkable
+					/>
+				</div>
 			)
 		case 'players':
 			return <PlayersResults query={query} onRun={onRun} />

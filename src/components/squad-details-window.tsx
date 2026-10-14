@@ -18,6 +18,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as Zus from '@/lib/zustand'
@@ -98,6 +99,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const isCurrentMatchSquad = currentMatchEvents.length > 0
 
 	const [squadMessagesOnly, setSquadMessagesOnly] = React.useState(false)
+	const [wrapLines, setWrapLines] = React.useState(true)
 
 	const { data, isPending } = useQuery(
 		RPC.orpc.matchHistory.getSquadDetails.queryOptions({
@@ -209,16 +211,20 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 				<div className="flex-1 px-3 py-0.5 min-w-0 flex flex-col">
 					<div className="flex items-center justify-between gap-2 py-0.5">
 						<h3 className="text-xs font-medium">{tr.text(SM_Msgs.squadEvents())}</h3>
-						<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-							<Checkbox checked={squadMessagesOnly} onCheckedChange={(checked) => setSquadMessagesOnly(checked)} />
-							{tr.text(SM_Msgs.hideTeamChat())}
-						</label>
+						<div className="flex items-center gap-2">
+							<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+								<Checkbox checked={squadMessagesOnly} onCheckedChange={(checked) => setSquadMessagesOnly(checked)} />
+								{tr.text(SM_Msgs.hideTeamChat())}
+							</label>
+							<WrapLinesToggle wrap={wrapLines} onToggle={() => setWrapLines((v) => !v)} variant="ghost" className="h-6 w-6" />
+						</div>
 					</div>
 					<div className="relative flex-1 min-h-0">
 						<ScrollArea ref={scrollAreaRef} className="h-full">
 							<div
 								ref={contentRef}
 								{...Selection.hostAttrs(feedCtx.scopeId)}
+								data-nowrap={wrapLines ? undefined : ''}
 								className={`flex flex-col gap-0.5 min-h-0 w-full max-w-175 ${Selection.HOST_CLASS}`}
 							>
 								{isPending && allEvents.length === 0 && (

@@ -9,6 +9,8 @@ export type SandboxPlayer = {
 	teamId: number | null
 	squadId: number | null
 	isLeader: boolean
+	// as ListPlayers prints it ("#0"), or null outside a party
+	partyId: string | null
 	groups: string[]
 	isAdmin: boolean
 }

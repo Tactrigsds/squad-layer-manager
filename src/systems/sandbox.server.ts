@@ -248,6 +248,7 @@ function sandboxState(instance: SandboxInstance): SandboxState {
 			teamId: p.teamId ?? null,
 			squadId: p.squadId ?? null,
 			isLeader: p.isLeader,
+			partyId: p.partyId,
 			groups: [...(instance.list.memberships.get(name) ?? [])],
 			isAdmin: instance.adminList!.isAdmin(name),
 		})),

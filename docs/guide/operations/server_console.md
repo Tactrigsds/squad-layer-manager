@@ -44,6 +44,11 @@ getting the same answers, plus a tick rate line every couple of seconds. With th
 The count beside the checkbox shows how many entries are hidden. The checkbox appears on the Logs tab, and on the RCON
 tab while **Show SLM requests** is ticked. A command run from the console is never hidden.
 
+## Line wrapping
+
+Long lines wrap by default. Use the wrap button beside the search button to turn wrapping off, so long lines
+scroll sideways instead.
+
 ## Running commands
 
 Type an RCON command into the box at the bottom of the RCON tab and press Enter. The command and the server's response

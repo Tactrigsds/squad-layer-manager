@@ -10,8 +10,7 @@ import { tr } from '@/systems/messages.client'
 
 import { frameManager } from './frame-manager'
 
-// The console's state, keyed by server so every view of one server's tail reads the same buffer: the window, a
-// pop-out of it, and the panel embedded in the sandbox controls.
+// The state of one server's console window.
 
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = FRM.KeyProp<Types>
@@ -31,6 +30,7 @@ export type Store = {
 	hideNoise: boolean
 	showSlmRequests: boolean
 	showEvents: boolean
+	wrap: boolean
 	denied: boolean
 	executing: boolean
 	executeError: string | null
@@ -53,6 +53,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		hideNoise: true,
 		showSlmRequests: false,
 		showEvents: false,
+		wrap: true,
 		denied: false,
 		executing: false,
 		executeError: null,
@@ -188,6 +189,10 @@ export namespace Actions {
 
 	export function setShowEvents(stores: KeyProp, showEvents: boolean) {
 		store(stores).setState({ showEvents })
+	}
+
+	export function setWrap(stores: KeyProp, wrap: boolean) {
+		store(stores).setState({ wrap })
 	}
 
 	export function clear(stores: KeyProp) {

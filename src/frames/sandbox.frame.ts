@@ -98,6 +98,17 @@ export namespace Sel {
 		}
 	}
 
+	// every party at least one player is in, by party id, with its member count
+	export function parties(state: Store): { partyId: string; size: number }[] {
+		const sizes = new Map<string, number>()
+		for (const p of players(state)) {
+			if (p.partyId !== null) sizes.set(p.partyId, (sizes.get(p.partyId) ?? 0) + 1)
+		}
+		return [...sizes]
+			.map(([partyId, size]) => ({ partyId, size }))
+			.sort((a, b) => a.partyId.localeCompare(b.partyId, undefined, { numeric: true }))
+	}
+
 	export function squads(state: Store) {
 		return state.state?.squads ?? EMPTY
 	}

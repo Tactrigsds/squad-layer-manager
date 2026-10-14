@@ -31,6 +31,7 @@ export type Store = {
 	// bumped on every structural change to the tree, so the editor's uncontrolled inputs remount rather than
 	// leaving a removed node's text behind on the sibling that shifted into its place
 	revision: number
+	wrapLines: boolean
 }
 
 function seedTree(query: HQ.Query): HQ.EditableNode {
@@ -41,7 +42,7 @@ export const frame: Frame = frameManager.createFrame<Types>({
 	name: 'history',
 	createKey: (frameId, input) => ({ frameId, initial: input.initial }),
 	setup(args) {
-		args.set({ draft: args.input.initial, tree: seedTree(args.input.initial), revision: 0 } satisfies Store)
+		args.set({ draft: args.input.initial, tree: seedTree(args.input.initial), revision: 0, wrapLines: true } satisfies Store)
 	},
 })
 
@@ -73,6 +74,10 @@ export namespace Actions {
 	export function setDraft(stores: KeyProp, patch: Partial<HQ.Query>) {
 		const s = store(stores)
 		s.setState({ draft: { ...s.getState().draft, ...patch } })
+	}
+
+	export function setWrapLines(stores: KeyProp, wrapLines: boolean) {
+		store(stores).setState({ wrapLines })
 	}
 
 	export function setMode(stores: KeyProp, mode: HQ.Query['mode']) {
