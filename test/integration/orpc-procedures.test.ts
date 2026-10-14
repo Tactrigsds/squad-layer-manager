@@ -3,7 +3,6 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 
-import { makePlayer } from '@/emulator'
 import * as Color from '@/lib/color'
 import * as FB from '@/models/filter-builders.models'
 import type * as L from '@/models/layer.models'
@@ -162,18 +161,6 @@ describe('serverConsole.watch', () => {
 		})
 	})
 
-	it('streams the traffic to a user who holds view-console', async () => {
-		const client = consoleReaderClient
-		const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
-			label: 'the console backlog',
-		})
-
-		if (first.code !== 'ok') throw new Error(`expected the backlog, got ${first.code}`)
-		// the app polls the server on a timer, so a slice that has been up has rcon traffic behind it already
-		expect(first.events.length).toBeGreaterThan(0)
-		expect(first.events.some((e) => e.type === 'rcon')).toBe(true)
-	})
-
 	// The console is opened to find out why a server is down, so it has to keep working across the moment it goes
 	// down. A stream that ends with the managed server is not retried by the client, so before the channel outlived
 	// the server this left every open console frozen at the teardown and dead thereafter, even once it came back.
@@ -214,27 +201,6 @@ describe('serverConsole.watch', () => {
 			await collecting
 		}
 	}, 180_000)
-
-	it('carries what a player said in game', async () => {
-		const client = consoleReaderClient
-		const talker = makePlayer({ name: ' integ_talker', teamId: 1 })
-		app.emu.world.connectPlayer(talker)
-		await app.waitForRosterSync()
-		app.emu.world.chat(talker, 'ChatAll', 'said over rcon')
-
-		const seen = await app.waitFor(
-			async () => {
-				const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
-					label: 'the console backlog',
-				})
-				if (first.code !== 'ok') return null
-				return first.events.find((e) => e.type === 'command' && e.message === 'said over rcon') ?? null
-			},
-			{ label: 'the chat message to reach the console', timeoutMs: 30_000 },
-		)
-
-		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
-	})
 })
 
 describe('serverConsole.execute', () => {

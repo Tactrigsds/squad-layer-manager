@@ -3,6 +3,8 @@ import type { Page } from '@playwright/test'
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { role } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { savedQueue } from '../harness/inspect'
+import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 import { expect, test } from './fixtures'
 
 // The tutorial as a reader meets it: the index page starts a run, the tour narrates the real dashboard, and the
@@ -15,6 +17,11 @@ import { expect, test } from './fixtures'
 // presence identity, and leaves the reader mid-edit on a queue no other scenario would expect to find.
 
 const USER: TestUser = { discordId: 900000000000000063n, username: 'test-tutorial-e2e' }
+const RUN_SERVER_ID = `tutorial-${USER.discordId}`
+
+// owns a scoped server seeded at boot, which no other user should reach
+const OWNER: TestUser = { discordId: 900000000000000061n, username: 'test-scoped-owner' }
+const SCOPED_ID = 'tutorial-owner'
 
 // What the index page calls the scenario. One constant because it is copy, and copy moves.
 const TUTORIAL = 'The layer queue'
@@ -35,15 +42,22 @@ const STEP = {
 const ADDED = ['Chora_TC_v1', 'Yehorivka_TC_v1']
 
 let app: AppFixture
+// opened on first use and never closed: see the teardown note in orpc-client.ts
+const clients = new Map<TestUser, Promise<TestOrpcClient>>()
+function clientFor(user: TestUser = app.adminUser): Promise<TestOrpcClient> {
+	if (!clients.has(user)) clients.set(user, createOrpcClient(app, user))
+	return clients.get(user)!
+}
 
 test.beforeAll(async () => {
 	app = await createAppFixture({
-		users: [USER],
+		users: [USER, OWNER],
 		// this file is the one that asserts on the prompt, and on the tour keeping it out of its own way
 		tutorialPrompts: true,
+		scopedServers: [{ id: SCOPED_ID, displayName: 'Owner Tutorial', owner: OWNER }],
 		globalSettings: (settings) => {
-			// site access only: starting a tutorial is per-user by construction, not a granted role
-			settings.rbac.roles['tutorial-user'] = role(['site:authorized'], { users: [USER] })
+			// site access only: starting a tutorial, and controlling a scoped server, are both per-user by construction
+			settings.rbac.roles['tutorial-user'] = role(['site:authorized'], { users: [USER, OWNER] })
 		},
 	})
 })
@@ -75,6 +89,41 @@ async function expectEditing(page: Page, editing: boolean) {
 		await expect(saveButton(page)).toBeHidden()
 	}
 }
+
+async function deliveredServerIds(client: TestOrpcClient): Promise<string[]> {
+	const settings = await firstYield((signal) => client.settings.public.watchPublicSettings(undefined, { signal }), {
+		label: 'public settings',
+	})
+	return settings.servers.map((s) => s.id)
+}
+
+// A scoped server reaches only its owner. The default admin is a super user, so its exclusion is the strong case: even
+// the wildcard grants a super user holds do not reach a scoped server, while the owner's implicit grant does.
+test('a scoped server reaches its owner and nobody else', async () => {
+	const admin = await clientFor()
+	const owner = await clientFor(OWNER)
+	const ownerIds = await deliveredServerIds(owner)
+	expect(ownerIds).toContain(SCOPED_ID)
+	expect(ownerIds).toContain(app.serverId)
+	const adminIds = await deliveredServerIds(admin)
+	expect(adminIds).toContain(app.serverId)
+	expect(adminIds).not.toContain(SCOPED_ID)
+
+	const watchConsole = (client: TestOrpcClient, serverId: string) =>
+		firstYield((signal) => client.serverConsole.watch({ serverId }, { signal }), { label: `the console of ${serverId}` })
+	expect((await watchConsole(admin, SCOPED_ID)).code).toBe('err:permission-denied')
+	expect((await watchConsole(owner, SCOPED_ID)).code).toBe('ok')
+	expect((await watchConsole(admin, app.serverId)).code).toBe('ok')
+
+	// presence collapses activity on a server outside enabledServers, which would leave the owner's queue read-only
+	await app.waitFor(
+		async () => {
+			const first = await firstYield((signal) => owner.userPresence.watchUpdates(undefined, { signal }), { label: 'presence init' })
+			return (first.code === 'init' && first.state.enabledServers.has(SCOPED_ID)) || null
+		},
+		{ label: 'the scoped server to reach the presence enabled set' },
+	)
+})
 
 // the card's heading is the step's title, so waiting for it is waiting for that step to be narrated -- a jump
 // renders "Preparing..." until its checkpoint and simulates have finished
@@ -333,6 +382,45 @@ test('the player management tutorial, acted on and navigated out of order', asyn
 		await overlay(page).getByRole('button', { name: 'Exit' }).click()
 		await expect(overlay(page)).toHaveCount(0)
 	})
+})
+
+// What the journeys cannot see from the page: refusals, and the bookkeeping behind resume and the prompt. Runs after
+// both journeys have exited their runs, so no run is active.
+test('the tutorial runtime refuses what it cannot do, and keeps its bookkeeping idempotent', async () => {
+	test.setTimeout(180_000)
+	const client = await clientFor(USER)
+	const runState = () => firstYield((signal) => client.tutorials.watchRun(undefined, { signal }), { label: 'run state' })
+	expect(await runState()).toEqual({ code: 'none' })
+	expect(await deliveredServerIds(client)).not.toContain(RUN_SERVER_ID)
+	expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'err:no-active-run' })
+
+	expect(await client.tutorials.start({ scenarioId: 'layer-queue', msIntoDay: 12 * 3_600_000 })).toEqual({
+		code: 'ok',
+		serverId: RUN_SERVER_ID,
+	})
+	expect(await runState()).toEqual({ code: 'active', scenarioId: 'layer-queue', serverId: RUN_SERVER_ID })
+	expect(savedQueue(app, RUN_SERVER_ID)).toHaveLength(3)
+	expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'no-such-stage' })).toEqual({ code: 'err:unknown-stage' })
+
+	// the stage ends the match on the synced head, so the head is consumed rather than the emulator's default seed played
+	expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'play-a-match' })).toMatchObject({ code: 'ok' })
+	await app.waitFor(() => savedQueue(app, RUN_SERVER_ID).length === 2 || null, { label: 'the played head consumed from the queue' })
+
+	expect(await client.tutorials.abandon()).toEqual({ code: 'ok' })
+	expect(await runState()).toEqual({ code: 'none' })
+	expect(await deliveredServerIds(client)).not.toContain(RUN_SERVER_ID)
+
+	// finishing marks the tutorial done, and coming back to it does not un-finish it
+	const layerQueue = async () => (await client.tutorials.getProgress()).find((p) => p.scenarioId === 'layer-queue')
+	await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: null, completed: true })
+	expect(await layerQueue()).toEqual({ scenarioId: 'layer-queue', stepId: null, completed: true })
+	await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'welcome', completed: false })
+	expect(await layerQueue()).toEqual({ scenarioId: 'layer-queue', stepId: 'welcome', completed: true })
+
+	// dismissing twice is the same dismissal, not a second row
+	await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+	await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+	expect((await client.tutorials.getDismissedPrompts()).filter((id) => id === 'server-dashboard')).toHaveLength(1)
 })
 
 // Every step of every tutorial the index page lists, reached the way a reader jumping around the contents would:
