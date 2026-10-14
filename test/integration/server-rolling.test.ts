@@ -9,7 +9,7 @@ import type * as SE from '@/models/server-events.models'
 import * as VEH from '@/models/vehicles.models'
 
 import { LAYERS } from '../harness/arrange'
-import { matchCombatStats, matchOrdinal, matchPopulation } from '../harness/inspect'
+import { latestTickets, matchCombatStats, matchOrdinal, matchPopulation } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 import { createRollingFixture, type RollingFixture } from '../harness/rolling'
 
@@ -95,6 +95,11 @@ describe('server rolling: the roster across the roll', () => {
 		app.emu.world.woundPlayer(target, shooter)
 		app.emu.world.killPlayer(shooter, target)
 		await app.waitForRosterSync()
+		// the roster was already in place before the kills, so the sync can return before the poll carrying the lost
+		// tickets is reconciled. Rolling first would land that poll on the new match.
+		await app.waitFor(() => latestTickets(app, oldMatch.id)?.join() === '299,298' || undefined, {
+			label: 'the lost tickets recorded on the finished match',
+		})
 
 		app.roll()
 		await app.waitForRosterSync()
