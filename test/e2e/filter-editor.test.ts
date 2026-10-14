@@ -348,6 +348,38 @@ test.describe('reading and editing the tree', () => {
 		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
 	})
 
+	// ends where it started, so the draft it leaves matches the saved filter and the next test opens a clean one
+	test('undoes and redoes removing a block, putting it back with its child', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		const rows = rowsOf(page)
+		const original = ['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju']
+		await expect(page.getByRole('row').filter({ hasText: 'Harju' }).first()).toBeVisible({ timeout: 20_000 })
+		await expect(rows).toHaveText(original)
+		const undo = page.getByRole('button', { name: 'Undo', exact: true })
+		const redo = page.getByRole('button', { name: 'Redo', exact: true })
+		await expect(undo).toBeDisabled()
+
+		const block = page.getByRole('button', { name: 'any of', exact: true }).locator('xpath=..')
+		await block.getByRole('button', { name: 'Remove condition' }).click()
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS'])
+
+		// the remove button went with its row, so nothing has focus, and the key goes to the editor last pressed in
+		await page.keyboard.press('Control+z')
+		await expect(rows).toHaveText(original)
+		await redo.click()
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS'])
+		await undo.click()
+		await expect(rows).toHaveText(original)
+
+		// the block came back under the ids it had, so an op naming it still applies
+		await block.getByRole('button', { name: 'Duplicate' }).click()
+		await expect(rows).toHaveText([...original, 'any of', 'Map = Harju'])
+		await page.keyboard.press('Control+z')
+		await expect(rows).toHaveText(original)
+		await expect(undo).toBeDisabled()
+		await expect(redo).toBeEnabled()
+	})
+
 	test('inserts above the first condition, and clones a block with its child', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
 		const rows = rowsOf(page)

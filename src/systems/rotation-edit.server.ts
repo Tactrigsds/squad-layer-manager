@@ -46,6 +46,7 @@ const CLIENT_OPCODES = new Set<SLL.OpCode>([
 	'clear',
 	'save',
 	'reset-to-saved',
+	'revert',
 ])
 
 type Payload = {

@@ -206,16 +206,15 @@ describe('queue saves reset mutation state', () => {
 		expect(listSaves(sideEffects)).toHaveLength(1)
 	})
 
-	// edits that cancel each other out leave the list identical to the saved one, so there is nothing to write --
-	// but the edit window still closed, and a deliberate finish-editing suppresses the abandoned-draft discard,
-	// so nothing else would ever clear the leftover mutations
+	// edits that cancel each other out leave the list identical to the saved one, so there is nothing to show as
+	// changed and nothing to write -- but the save still closes the edit window
 	it('clears mutations when the edits net out to no list change', () => {
 		const item = manualItem()
 		const initial = SLL.createNewState([item])
 		const there = apply(initial, { op: 'edit-layer', itemId: item.itemId, newLayerId: OTHER_LAYER_ID, ...queueProps(initial) }).state
 		const back = apply(there, { op: 'edit-layer', itemId: item.itemId, newLayerId: item.layerId, ...queueProps(there) }).state
 		expect(back.list).toEqual(back.savedList)
-		expect(SLL.hasMutations(back)).toBe(true)
+		expect(SLL.hasMutations(back)).toBe(false)
 
 		const { state, sideEffects } = apply(back, { op: 'save', ...queueProps(back) })
 		expect(SLL.hasMutations(state)).toBe(false)
@@ -260,16 +259,16 @@ describe('queue saves reset mutation state', () => {
 	})
 })
 
-describe('rejections', () => {
-	function rejectionOf(run: () => unknown): SLL.Rejection {
-		try {
-			run()
-		} catch (error) {
-			return (error as ODSM.RejectedError<SLL.Rejection>).data
-		}
-		throw new Error('expected the batch to be rejected')
+function rejectionOf(run: () => unknown): SLL.Rejection {
+	try {
+		run()
+	} catch (error) {
+		return (error as ODSM.RejectedError<SLL.Rejection>).data
 	}
+	throw new Error('expected the batch to be rejected')
+}
 
+describe('rejections', () => {
 	it('reports stale-window backburner ops as skipped', () => {
 		const initial = SLL.createNewState([queueItem()])
 		const rejection = rejectionOf(() =>
@@ -391,6 +390,106 @@ describe('copy-on-write', () => {
 		expect(next.savedList).toBe(state.savedList)
 		expect(next.mutations).toBe(state.mutations)
 		expect(next.savedBackburner).toBe(state.savedBackburner)
+	})
+	describe('revert', () => {
+		function revert(state: SLL.State, opIds: string[], userId: bigint = USER): SLL.Operation {
+			return { op: 'revert', opIds, opId: `op-${counter++}`, userId, editWindowSeqId: state.editWindowSeqId }
+		}
+
+		// every user op that changes the list, undone and then redone
+		it('puts the list back as it was before each op, and redoes it by reverting the revert', () => {
+			let covered = 0
+			for (const build of EVERY_OP) {
+				const initial = baseState()
+				const op = build(initial)
+				if (!('userId' in op) || op.op.startsWith('backburner-')) continue
+				let edited: SLL.State
+				try {
+					edited = apply(initial, op).state
+				} catch {
+					continue
+				}
+				if (Obj.deepEqual(edited.list, initial.list)) continue
+				covered++
+				const undo = revert(edited, [op.opId])
+				const undone = apply(edited, undo).state
+				expect(undone.list, `undo ${op.op}`).toEqual(initial.list)
+				if (op.op !== 'save') expect(SLL.hasMutations(undone), `undo ${op.op}`).toBe(false)
+
+				const redone = apply(undone, revert(undone, [undo.opId])).state
+				expect(redone.list, `redo ${op.op}`).toEqual(edited.list)
+				expect(SLL.hasMutations(redone), `redo ${op.op}`).toBe(SLL.hasMutations(edited))
+			}
+			expect(covered).toBeGreaterThan(10)
+		})
+
+		it("refuses another user's op, and an op it has no record of", () => {
+			const initial = baseState()
+			const del: SLL.Operation = { op: 'delete', itemId: 'item001', ...queueProps(initial) }
+			const edited = apply(initial, del).state
+			expect(rejectionOf(() => apply(edited, revert(edited, [del.opId], OTHER_USER))).code).toBe('op-skipped')
+			expect(rejectionOf(() => apply(edited, revert(edited, ['never-sent']))).code).toBe('op-skipped')
+		})
+
+		it('restores a deleted item with its notes and tag attribution, after a save', () => {
+			const initial = baseState()
+			const del: SLL.Operation = { op: 'delete', itemId: 'item001', ...queueProps(initial) }
+			const saved = apply(apply(initial, del).state, { op: 'save', ...queueProps(initial) }).state
+			expect(saved.savedList.map((item) => item.itemId)).toEqual(['vote001'])
+
+			const { state } = apply(saved, revert(saved, [del.opId]))
+			expect(state.list[0]).toEqual(singleItem())
+			// the saved list no longer has it, so it reads as an addition to be saved
+			expect(state.mutations.added.has('item001')).toBe(true)
+		})
+
+		it("keeps another user's edit to an item it did not touch", () => {
+			const initial = baseState()
+			const del: SLL.Operation = { op: 'delete', itemId: 'item001', ...queueProps(initial) }
+			const afterDelete = apply(initial, del).state
+			const added = queueItem()
+			const otherAdd: SLL.Operation = {
+				op: 'add',
+				items: [added],
+				index: { outerIndex: 1, innerIndex: null },
+				opId: `op-${counter++}`,
+				userId: OTHER_USER,
+				editWindowSeqId: afterDelete.editWindowSeqId,
+			}
+			const both = apply(afterDelete, otherAdd).state
+			const { state } = apply(both, revert(both, [del.opId]))
+			expect(state.list.map((item) => item.itemId)).toEqual(['item001', 'vote001', added.itemId])
+		})
+
+		it('undoes a run of edits newest first, in one op', () => {
+			const initial = baseState()
+			const first: SLL.Operation = { op: 'edit-layer', itemId: 'item001', newLayerId: OTHER_LAYER_ID, ...queueProps(initial) }
+			const second: SLL.Operation = { op: 'swap-factions', itemId: 'item001', ...queueProps(initial) }
+			const edited = apply(initial, first, second).state
+			const { state } = apply(edited, revert(edited, [second.opId, first.opId]))
+			expect(state.list).toEqual(initial.list)
+			expect(SLL.hasMutations(state)).toBe(false)
+		})
+
+		it('brings back a draft that was reset', () => {
+			const initial = baseState()
+			const del: SLL.Operation = { op: 'delete', itemId: 'item001', ...queueProps(initial) }
+			const edited = apply(initial, del).state
+			const reset: SLL.Operation = { op: 'reset-to-saved', ...queueProps(edited) }
+			const discarded = apply(edited, reset).state
+			expect(discarded.list).toEqual(initial.list)
+			const { state } = apply(discarded, revert(discarded, [reset.opId]))
+			expect(state.list).toEqual(edited.list)
+			expect(state.mutations.removed.has('item001')).toBe(true)
+		})
+
+		it('forgets every record once an abandoned draft is discarded', () => {
+			const initial = baseState()
+			const del: SLL.Operation = { op: 'delete', itemId: 'item001', ...queueProps(initial) }
+			const edited = apply(initial, del).state
+			const discarded = apply(edited, { op: 'discard-abandoned-queue-edits', opId: `op-${counter++}` }).state
+			expect(discarded.revertRecords).toEqual([])
+		})
 	})
 })
 

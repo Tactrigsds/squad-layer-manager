@@ -3,6 +3,7 @@
 // items). Everything here is the same for both; what differs is where the list, the settings and the history come from.
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as FRM from '@/lib/frame'
+import { createId } from '@/lib/id'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
@@ -217,14 +218,15 @@ export namespace Actions {
 			}
 
 			const queue = { queue: stores.listHost }
+			const undo: LayerQueuePrt.Actions.DispatchOpts = { undoGroup: `fix-repeats:${createId(8)}` }
 			const current = s.getState().queue.layerList.map((item) => item.itemId)
 			const moves = LL.movesToOrder(current, res.order as LL.ItemId[])
 			for (const itemId of res.swapped) {
-				if (!(await LayerQueuePrt.Actions.dispatch(queue, { op: 'swap-factions', itemId: itemId as LL.ItemId }))) return
+				if (!(await LayerQueuePrt.Actions.dispatch(queue, { op: 'swap-factions', itemId: itemId as LL.ItemId }, undo))) return
 			}
 			for (const move of moves) {
 				const op = { op: 'move' as const, itemId: move.itemId, cursor: move.cursor, newFirstItemId: LL.createItemId() }
-				if (!(await LayerQueuePrt.Actions.dispatch(queue, op))) return
+				if (!(await LayerQueuePrt.Actions.dispatch(queue, op, undo))) return
 			}
 			const affected = new Set([...res.swapped, ...moves.map((move) => move.itemId)])
 			toast.success(

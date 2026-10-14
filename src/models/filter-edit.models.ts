@@ -53,6 +53,14 @@ export const OpSchema = z.discriminatedUnion('code', [
 	// needs a fresh id per node, and a reducer minting them would give every replica a different subtree
 	z.object({ ...clientProps, code: z.literal('clone-node'), nodeId: z.string(), subtree: F.FilterNodeTreeSchema }),
 	z.object({ ...clientProps, code: z.literal('delete-node'), nodeId: z.string() }),
+	// grafts a subtree under `parentId` with the ids it carries, which is how undo puts a deleted node back
+	z.object({
+		...clientProps,
+		code: z.literal('insert-subtree'),
+		parentId: z.string(),
+		index: z.number().int().min(0),
+		subtree: F.FilterNodeTreeSchema,
+	}),
 	// the whole shallow node, not a patch: an operator change rewrites a comparison's arguments wholesale
 	z.object({ ...clientProps, code: z.literal('update-node'), nodeId: z.string(), node: F.ShallowEditableFilterNodeSchema }),
 	z.object({ ...clientProps, code: z.literal('set-comment'), nodeId: z.string(), comment: F.NodeCommentSchema.nullable() }),
@@ -77,6 +85,7 @@ export const CLIENT_OP_CODE = z.enum([
 	'add-node',
 	'clone-node',
 	'delete-node',
+	'insert-subtree',
 	'update-node',
 	'set-comment',
 	'move-node',
@@ -192,6 +201,13 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 			const index = tree.children.get(parentId)!.indexOf(op.nodeId) + 1
 			return withTree(state, F.insertSubtree(tree, parentId, index, op.subtree))
 		}
+		case 'insert-subtree': {
+			if (!tree.children.has(op.parentId) || !F.isWellFormedTree(op.subtree)) return null
+			for (const id of op.subtree.nodes.keys()) {
+				if (tree.nodes.has(id)) return null
+			}
+			return withTree(state, F.insertSubtree(tree, op.parentId, op.index, op.subtree))
+		}
 		case 'delete-node': {
 			// the root has no parent to be removed from
 			if (!tree.parents.has(op.nodeId)) return null
@@ -245,6 +261,77 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 			if (!isModified(state)) return null
 			return { ...state, draft: state.saved }
 		}
+		default:
+			assertNever(op)
+	}
+}
+
+// The ops that take a draft back from what `ops` make of `state` to `state` itself, or null when they cannot be undone.
+// Each op is inverted against the state it applies to, and the inverses run newest first. They name what they restore
+// in full rather than as a difference, so undo overwrites another user's later edit to the same node, and only that.
+export function invertOps(state: State, ops: NewClientOp[]): NewClientOp[] | null {
+	const inverses: NewClientOp[][] = []
+	let current = state
+	for (const op of ops) {
+		const inverse = invertOp(current, op)
+		if (!inverse) return null
+		const next = applyOp(current, { ...op, opId: '', userId: 0n } as Op, () => {})
+		if (!next) return null
+		inverses.push(inverse)
+		current = next
+	}
+	return inverses.reverse().flat()
+}
+
+function invertOp(state: State, op: NewClientOp): NewClientOp[] | null {
+	const tree = state.draft.tree
+	switch (op.code) {
+		case 'add-node':
+			return [{ code: 'delete-node', nodeId: op.nodeId }]
+		case 'clone-node':
+		case 'insert-subtree':
+			return [{ code: 'delete-node', nodeId: op.subtree.rootId }]
+		case 'delete-node': {
+			const parentId = tree.parents.get(op.nodeId)
+			if (parentId === undefined) return null
+			const index = tree.children.get(parentId)!.indexOf(op.nodeId)
+			return [{ code: 'insert-subtree', parentId, index, subtree: F.subtreeAt(tree, op.nodeId) }]
+		}
+		case 'update-node': {
+			const node = tree.nodes.get(op.nodeId)
+			return node ? [{ code: 'update-node', nodeId: op.nodeId, node }] : null
+		}
+		case 'set-comment': {
+			const node = tree.nodes.get(op.nodeId)
+			return node ? [{ code: 'set-comment', nodeId: op.nodeId, comment: node.comment ?? null }] : null
+		}
+		case 'move-node': {
+			const fromId = tree.parents.get(op.nodeId)
+			if (fromId === undefined || !tree.children.has(op.parentId)) return null
+			const fromIndex = tree.children.get(fromId)!.indexOf(op.nodeId)
+			if (fromId !== op.parentId) return [{ code: 'move-node', nodeId: op.nodeId, parentId: fromId, index: fromIndex }]
+			// within one block the index counts the list with the node still in it, so a node that ended up before its
+			// old place has to aim one past it
+			const moved = F.moveNode(tree, op.nodeId, op.parentId, op.index)
+			const landedAt = moved.children.get(fromId)!.indexOf(op.nodeId)
+			return [{ code: 'move-node', nodeId: op.nodeId, parentId: fromId, index: landedAt < fromIndex ? fromIndex + 1 : fromIndex }]
+		}
+		case 'replace-tree':
+			return [{ code: 'replace-tree', tree }]
+		case 'set-meta': {
+			const patch: Partial<Meta> = {}
+			for (const key of Obj.objKeys(Obj.trimUndefined(op.patch))) {
+				;(patch as Record<string, unknown>)[key] = state.draft.meta[key]
+			}
+			return [{ code: 'set-meta', patch }]
+		}
+		case 'reset-to-saved':
+			return [
+				{ code: 'replace-tree', tree },
+				{ code: 'set-meta', patch: state.draft.meta },
+			]
+		case 'save':
+			return null
 		default:
 			assertNever(op)
 	}

@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import * as Im from 'immer'
 import * as Icons from 'lucide-react'
-import { Braces, Columns3, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
+import { Braces, Columns3, ExternalLink, Minus, Plus, RotateCcw, TextCursorInput } from 'lucide-react'
 import React from 'react'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -28,6 +28,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
@@ -45,6 +46,7 @@ import { Input } from './ui/input'
 import { Separator } from './ui/separator.tsx'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
+import { UndoRedoButtons } from './undo-redo-buttons'
 
 const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
 
@@ -111,6 +113,10 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 		props.stores.filterEditor,
 		Zus.useShallow((s) => [s.nodeMapStore, s.modified, s.editingNodeId] as const),
 	)
+	const [undoKind, redoKind] = Zus.useStore(
+		props.stores.filterEditor,
+		Zus.useShallow((s) => [EditFrame.Sel.undoEntry(s)?.kind ?? null, EditFrame.Sel.redoEntry(s)?.kind ?? null] as const),
+	)
 
 	// Escape returns the open node to its compact form. It listens on the document because clicking a
 	// compact row destroys the button that was focused, leaving focus on the body; a popover or dialog
@@ -153,7 +159,7 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	}
 
 	const rendered = (
-		<div defaultValue="builder" className="w-full space-x-2 flex">
+		<div defaultValue="builder" className="w-full space-x-2 flex" {...UndoShortcutClient.scopeAttrs()}>
 			<div className="flex-1 min-w-0 overflow-x-auto">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
@@ -184,11 +190,23 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 						</TooltipContent>
 					</Tooltip>
 
+					<UndoRedoButtons
+						size="icon"
+						undo={{
+							description: undoKind && tr.text(F_Msgs.undoTooltip('undo', undoKind)),
+							onClick: () => EditFrame.Actions.undo(props.stores),
+						}}
+						redo={{
+							description: redoKind && tr.text(F_Msgs.undoTooltip('redo', redoKind)),
+							onClick: () => EditFrame.Actions.redo(props.stores),
+						}}
+					/>
+
 					{/* -------- reset filter -------- */}
 					<Tooltip help>
 						<TooltipTrigger asChild>
 							<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
-								<Undo2 className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
+								<RotateCcw className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
@@ -377,7 +395,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 			{!isRootNode && (
 				<>
 					<DuplicateButton onClick={actions.common.duplicate} />
-					<Button size="icon" variant="ghost" onClick={deleteNode}>
+					<Button size="icon" variant="ghost" aria-label={tr.text(F_Msgs.removeNode())} onClick={deleteNode}>
 						<Minus color="hsl(var(--destructive))" />
 					</Button>
 				</>

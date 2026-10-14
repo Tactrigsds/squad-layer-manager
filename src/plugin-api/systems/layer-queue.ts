@@ -3,10 +3,17 @@
  * edits are ordinary edits. Lifecycle, sync and the router stay with the host.
  */
 import type * as L from '@/models/layer.models'
+import type * as SLL from '@/models/shared-layer-list.models'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 
-export { dispatchOp, getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/systems/layer-queue.server'
+export { getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/systems/layer-queue.server'
+
+type DispatchArgs = Parameters<typeof LayerQueue.dispatchOp>
+
+// `revert` undoes a user's own edits, so it has no place in a plugin's ops
+export const dispatchOp: (ctx: DispatchArgs[0], op: Exclude<SLL.Operation, { op: 'revert' }>, opts?: DispatchArgs[2]) => Promise<void> =
+	LayerQueue.dispatchOp
 
 /**
  * Resolves once nobody has unsaved queue edits open, straight away when nobody has. Pass it as a blocked job's

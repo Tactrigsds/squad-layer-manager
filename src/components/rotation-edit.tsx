@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner'
 import TabsList from '@/components/ui/tabs-list'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { UndoRedoButtons } from '@/components/undo-redo-buttons'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
@@ -40,6 +41,7 @@ import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as RotationClient from '@/systems/rotation.client'
+import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { StartActivityInteraction } from './activity'
@@ -246,6 +248,7 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 	// capture-phase handlers, so the text editor never inserts the file's text where it was dropped
 	return (
 		<section
+			{...UndoShortcutClient.scopeAttrs()}
 			className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
 			aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
 			onDragEnter={(e) => {
@@ -357,6 +360,10 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 		),
 	)
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+	const [undoKind, redoKind] = Zus.useStore(
+		props.listHost,
+		Zus.useShallow((s) => [LayerQueuePrt.Sel.undoEntry(s)?.kind ?? null, LayerQueuePrt.Sel.redoEntry(s)?.kind ?? null] as const),
+	)
 	const queue = { queue: props.listHost }
 	// each action starts editing first, as Add Layers does, so nobody has to press Start Editing before using one
 	const editing = (action: () => void) => () => {
@@ -368,7 +375,7 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 
 	const clear = () => {
 		const itemIds = Zus.getState(props.listHost).queue.layerList.map((item) => item.itemId)
-		void LayerQueuePrt.Actions.dispatch(queue, { op: 'clear', itemIds })
+		void LayerQueuePrt.Actions.dispatch(queue, { op: 'clear', itemIds }, { undoToast: true })
 	}
 
 	return (
@@ -419,15 +426,26 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 					{tr.text(ROT_Msgs.openFile())}
 				</Button>
 			</PermissionDeniedTooltip>
+			<UndoRedoButtons
+				disabled={!!writeDenied}
+				undo={{
+					description: undoKind && tr.text(LL_Msgs.undoTooltip('undo', undoKind)),
+					onClick: editing(() => LayerQueuePrt.Actions.undo(queue)),
+				}}
+				redo={{
+					description: redoKind && tr.text(LL_Msgs.undoTooltip('redo', redoKind)),
+					onClick: editing(() => LayerQueuePrt.Actions.redo(queue)),
+				}}
+			/>
 			<Button
 				variant="ghost"
 				size="icon-sm"
 				aria-label={tr.text(LL_Msgs.reset())}
 				title={tr.text(LL_Msgs.reset())}
 				disabled={!!writeDenied || !isModified}
-				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }))}
+				onClick={editing(() => void LayerQueuePrt.Actions.dispatch(queue, { op: 'reset-to-saved' }, { undoToast: true }))}
 			>
-				<Icons.Undo className="rtl:-scale-x-100" />
+				<Icons.RotateCcw className="rtl:-scale-x-100" />
 			</Button>
 			<CopyDownloadButtons listHost={props.listHost} view={view} />
 		</div>

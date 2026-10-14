@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
+import { UndoRedoButtons } from '@/components/undo-redo-buttons'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
@@ -32,6 +33,7 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as TutorialsClient from '@/systems/tutorials.client'
+import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -279,7 +281,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		const state = Zus.getState(props.stores.squadServer!)
 		// we don't have to include children here
 		const itemIds = state.queue.layerList.map((item) => item.itemId)
-		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds })
+		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds }, { undoToast: true })
 	}
 
 	const fixingRepeats = Zus.useStore(props.stores.squadServer!, (s) => s.fixingRepeats)
@@ -380,6 +382,24 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			{!phone && <span>{tr.text(LL_Msgs.addRotationTitle())}</span>}
 		</StartActivityInteraction>
 	)
+	const queueKey = { queue: props.stores.squadServer! }
+	const [undoKind, redoKind] = Zus.useStore(
+		props.stores.squadServer!,
+		Zus.useShallow((s) => [LayerQueuePrt.Sel.undoEntry(s)?.kind ?? null, LayerQueuePrt.Sel.redoEntry(s)?.kind ?? null] as const),
+	)
+	const undoButtons = (
+		<UndoRedoButtons
+			className={idleHidden}
+			undo={{
+				description: undoKind && tr.text(LL_Msgs.undoTooltip('undo', undoKind)),
+				onClick: () => LayerQueuePrt.Actions.undo(queueKey),
+			}}
+			redo={{
+				description: redoKind && tr.text(LL_Msgs.undoTooltip('redo', redoKind)),
+				onClick: () => LayerQueuePrt.Actions.redo(queueKey),
+			}}
+		/>
+	)
 	const resetButton = (
 		<Tooltip help>
 			<TooltipTrigger asChild>
@@ -387,11 +407,13 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					data-tour="queue-reset"
 					size="icon-sm"
 					disabled={!isModified}
-					onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
+					onClick={() =>
+						LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' }, { undoToast: true })
+					}
 					variant="ghost"
 					className={cn('col-start-1 row-start-1', idleHidden)}
 				>
-					<Icons.Undo className="rtl:-scale-x-100" />
+					<Icons.RotateCcw className="rtl:-scale-x-100" />
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent>
@@ -497,6 +519,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					<div className="flex-1">
 						<QueueHeaderBadges className="flex-wrap" stores={props.stores} />
 					</div>
+					{undoButtons}
 					{resetButton}
 					{stateControls}
 					{settingsButton}
@@ -520,6 +543,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				{addLayersButton}
 				{genVoteButton}
 				{addRotationButton}
+				{undoButtons}
 				{resetButton}
 				{stateControls}
 				{settingsButton}
@@ -539,7 +563,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const showWarnings = !!warnings && warningsRequested
 
 	return (
-		<>
+		<div {...UndoShortcutClient.scopeAttrs()} className="contents">
 			<ValidationWarningsDisplay
 				warnings={warnings ?? []}
 				showWarnings={showWarnings}
@@ -568,7 +592,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 					<LayerList stores={{ listHost: props.stores.squadServer! }} />
 				</div>
 			</StickyGroup>
-		</>
+		</div>
 	)
 }
 

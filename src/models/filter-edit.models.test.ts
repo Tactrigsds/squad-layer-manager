@@ -51,6 +51,7 @@ const EVERY_OP: Array<(state: FE.State) => FE.NewClientOp> = [
 	(s) => ({ code: 'move-node', nodeId: idAt(s, [1]), parentId: idAt(s, []), index: 0 }),
 	(s) => ({ code: 'add-node', parentId: idAt(s, []), nodeId: FE.createNodeId(), node: { type: 'and' }, index: 0 }),
 	(s) => ({ code: 'clone-node', nodeId: idAt(s, [1]), subtree: F.copySubtree(s.draft.tree, idAt(s, [1]))! }),
+	(s) => ({ code: 'insert-subtree', parentId: idAt(s, []), index: 0, subtree: F.copySubtree(s.draft.tree, idAt(s, [1]))! }),
 	() => ({ code: 'set-meta', patch: { name: 'renamed' } }),
 	() => ({ code: 'save' }),
 ]
@@ -193,5 +194,75 @@ describe('the filter draft reducer', () => {
 		const reset = apply(dirtied, { code: 'reset-to-saved' })
 		expect(reset.draft).toBe(saved.saved)
 		expect(FE.isModified(reset)).toBe(false)
+	})
+})
+
+describe('inverting ops', () => {
+	function draftsEqual(a: FE.State, b: FE.State) {
+		return Obj.deepEqual(a.draft.meta, b.draft.meta) && Obj.deepEqual(F.treeToFilterNode(a.draft.tree), F.treeToFilterNode(b.draft.tree))
+	}
+
+	// undo, then redo by inverting the undo, for every op on both a flat and a nested tree
+	it('takes the draft back to where each op started, and forward again', () => {
+		const moves: Array<(state: FE.State) => FE.NewClientOp> = [
+			(s) => ({ code: 'move-node', nodeId: idAt(s, [0]), parentId: idAt(s, []), index: 2 }),
+			(s) => ({ code: 'move-node', nodeId: idAt(s, [1]), parentId: idAt(s, []), index: 0 }),
+			(s) => ({ code: 'move-node', nodeId: idAt(s, [1, 1]), parentId: idAt(s, []), index: 0 }),
+			(s) => ({ code: 'move-node', nodeId: idAt(s, [0]), parentId: idAt(s, [1]), index: 1 }),
+			(s) => ({ code: 'replace-tree', tree: FE.toTree(FB.and([FB.eq('Map', 'Narva')]) as F.EditableFilterNode) }),
+		]
+		let covered = 0
+		for (const makeState of [baseState, nestedState]) {
+			for (const build of [...EVERY_OP, ...moves]) {
+				const initial = makeState()
+				let op: FE.NewClientOp
+				try {
+					op = build(initial)
+				} catch {
+					continue
+				}
+				if (op.code === 'save') {
+					expect(FE.invertOps(initial, [op])).toBeNull()
+					continue
+				}
+				let edited: FE.State
+				try {
+					edited = apply(initial, op)
+				} catch {
+					continue
+				}
+				covered++
+				const undo = FE.invertOps(initial, [op])!
+				const undone = apply(edited, ...undo)
+				expect(draftsEqual(undone, initial), `undo ${op.code}`).toBe(true)
+				const redo = FE.invertOps(edited, undo)!
+				expect(draftsEqual(apply(undone, ...redo), edited), `redo ${op.code}`).toBe(true)
+			}
+		}
+		expect(covered).toBeGreaterThan(15)
+	})
+
+	it('puts a deleted block back with the ids it had, so later ops on them still apply', () => {
+		const initial = nestedState()
+		const blockId = idAt(initial, [1])
+		const childId = idAt(initial, [1, 0])
+		const edited = apply(initial, { code: 'delete-node', nodeId: blockId })
+		const undone = apply(edited, ...FE.invertOps(initial, [{ code: 'delete-node', nodeId: blockId }])!)
+		expect(childrenOf(undone, blockId)).toEqual(childrenOf(initial, blockId))
+		expect(undone.draft.tree.parents.get(childId)).toBe(blockId)
+	})
+
+	it('inverts a batch newest first, and a reset back to the draft it discarded', () => {
+		const initial = baseState()
+		const ops: FE.NewClientOp[] = [
+			{ code: 'update-node', nodeId: idAt(initial, [0]), node: FB.eq('Map', 'Skorpo') },
+			{ code: 'set-comment', nodeId: idAt(initial, [0]), comment: 'first' },
+			{ code: 'set-meta', patch: { name: 'renamed' } },
+		]
+		const edited = apply(initial, ...ops)
+		expect(draftsEqual(apply(edited, ...FE.invertOps(initial, ops)!), initial)).toBe(true)
+
+		const reset = apply(edited, { code: 'reset-to-saved' })
+		expect(draftsEqual(apply(reset, ...FE.invertOps(edited, [{ code: 'reset-to-saved' }])!), edited)).toBe(true)
 	})
 })

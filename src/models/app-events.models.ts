@@ -709,8 +709,9 @@ export function opActor(op: SLL.Operation): Actor {
 // server-side op (a roll, a vote result, a generated item), which is SLM acting on its own.
 function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 	const actors = new Map<LL.ItemId, Actor>()
-	for (const op of ops) {
-		const actor = opActor(op)
+	const byId = new Map(ops.map((op) => [op.opId, op]))
+	// a revert touches what the ops it reverts touched. One reverted before this span leaves nothing to attribute
+	const attribute = (op: SLL.Operation, actor: Actor) => {
 		switch (op.op) {
 			case 'add':
 				// a vote item's choices are added with it, so attribute the whole subtree
@@ -739,6 +740,12 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 			case 'unshift-first-saved-layer':
 				actors.set(op.itemId, actor)
 				break
+			case 'revert':
+				for (const opId of op.opIds) {
+					const reverted = byId.get(opId)
+					if (reverted) attribute(reverted, actor)
+				}
+				break
 			// carry no item of their own: shift-first-saved-layer drops whatever was at the head of the queue, and
 			// the rest are session bookkeeping. backburner ops never touch queue items (their attribution is
 			// carried by the LAYER_REQUEST_* events instead)
@@ -762,6 +769,7 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 				assertNever(op)
 		}
 	}
+	for (const op of ops) attribute(op, opActor(op))
 	return actors
 }
 

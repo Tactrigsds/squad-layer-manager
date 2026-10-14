@@ -157,7 +157,7 @@ export default function BackburnerPanel(props: StoresProp) {
 					const item = LL.findItemById(queueList, event.active.id)?.item
 					if (!item || LL.isVoteItem(item) || !item.layerId) return
 					LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: BB.templateFromLayer(L.toLayer(item.layerId)) })
-					if (canWriteQueue) LayerQueuePrt.Actions.dispatchItemOp(queueKey, event.active.id, { op: 'delete' })
+					if (canWriteQueue) LayerQueuePrt.Actions.dispatchItemOp(queueKey, event.active.id, { op: 'delete' }, { undoToast: true })
 				}
 			},
 			[queueKey, props.stores.squadServer, canWriteQueue, canRequest, consumeRequest],
