@@ -1174,10 +1174,26 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 
 		case 'PLAYER_KICKED_CHAIN': {
 			const events = pendingEvent.events
+			let player: SM.PlayerId
+			if (events.PLAYER_KICKED) {
+				player = SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds)
+			} else {
+				const held = SM.PlayerIds.findByDisplayName(
+					[...state.currTeams.players.values()],
+					(p) => p.ids,
+					events.KICKING_PLAYER.playerIds.username,
+				)
+				if (!held) {
+					// a player can be kicked mid-connect, before any roster holds them
+					log.info('Kicked player not resolved in currTeams: "%s"', events.KICKING_PLAYER.playerIds.username)
+					break
+				}
+				player = SM.PlayerIds.getPlayerId(held.ids)
+			}
 			await emit(state, pass, {
 				...base,
 				type: 'PLAYER_KICKED',
-				player: SM.PlayerIds.getPlayerId(events.PLAYER_KICKED.playerIds),
+				player,
 				reason: events.KICKING_PLAYER.reason,
 			})
 			break
@@ -1195,10 +1211,11 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		}
 
 		case 'PLAYER_WARNED': {
-			// the RCON acknowledgement only echoes the display name
-			const player = SM.PlayerIds.find([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds, { inexact: true })
+			const player = SM.PlayerIds.findByDisplayName([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds.username)
 			if (!player) {
-				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
+				// the server only acknowledges a warn to a connected player, so the roster is behind or holds two
+				// players by that name
+				log.warn('Warned player not resolved in currTeams: "%s"', pendingEvent.playerIds.username)
 				break
 			}
 			await emit(state, pass, {

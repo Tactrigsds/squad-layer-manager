@@ -365,6 +365,46 @@ export namespace PlayerIds {
 		return undefined
 	}
 
+	// Resolves the in-game name the server prints when it acts on a player ("warned player <name>", "Kicking player:
+	// <name>"). That name drifts from the roster's copy between polls: the clan tag comes and goes, and the space after
+	// it can double ("[TT]  Soldierklint"). So whitespace runs are collapsed, and a name that equals a roster name
+	// outright wins over one that matches only once a leading tag is dropped from either side. Two candidates at the
+	// winning tier resolve to nothing.
+	export function findByDisplayName<T>(players: T[], cb: (item: T) => Type, displayName: string): T | undefined {
+		const target = collapseWhitespace(displayName)
+		if (!target) return undefined
+		let exact: T | undefined
+		let exactCount = 0
+		let tagged: T | undefined
+		let taggedCount = 0
+		for (const player of players) {
+			const ids = cb(player)
+			const username = ids.username ? collapseWhitespace(ids.username) : ''
+			if (username === target) {
+				exact = player
+				exactCount++
+				continue
+			}
+			const noTag = ids.usernameNoTag ? collapseWhitespace(ids.usernameNoTag) : ''
+			if (differsByTag(target, username) || noTag === target || differsByTag(target, noTag)) {
+				tagged = player
+				taggedCount++
+			}
+		}
+		if (exactCount > 0) return exactCount === 1 ? exact : undefined
+		return taggedCount === 1 ? tagged : undefined
+	}
+
+	function collapseWhitespace(name: string) {
+		return name.replace(/\s+/g, ' ').trim()
+	}
+
+	// whether one name is the other with a leading tag
+	function differsByTag(a: string, b: string) {
+		if (!a || !b) return false
+		return a.endsWith(' ' + b) || b.endsWith(' ' + a)
+	}
+
 	export function prettyPrint(id: IdQueryOrPlayerId) {
 		const type = normalizeIdQuery(id)
 		const parts: string[] = []
@@ -2016,7 +2056,11 @@ export namespace LogEvents {
 			{ event: AdminEndedMatchDef, optional: true },
 			{ event: LayerChangedDef, optional: true },
 		],
-		PLAYER_KICKED_CHAIN: [{ event: KickingPlayerDef, primary: true }, PlayerKickedDef],
+		// PLAYER_KICKED is an ADMIN COMMAND line, so a kick no admin issued logs only the Kicking line
+		PLAYER_KICKED_CHAIN: [
+			{ event: KickingPlayerDef, primary: true },
+			{ event: PlayerKickedDef, optional: true },
+		],
 		// the choices line precedes the container it belongs to within the tick, which partitionTick allows for
 		INGAME_VOTE_CHAIN: [
 			{ event: IngameVoteStartedDef, primary: true },

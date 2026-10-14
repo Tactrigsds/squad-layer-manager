@@ -505,6 +505,36 @@ describe('LogEvents.parse', () => {
 		})
 	})
 
+	describe('PLAYER_KICKED_CHAIN', () => {
+		const KICKING =
+			'[2026.09.28-14.07.28:997][157]LogOnlineGame: Display: Kicking player:  ykaz ; Reason = Kicked from the server: Asset Waste'
+		const KICKED =
+			'[2026.09.28-14.07.28:997][157]LogSquad: ADMIN COMMAND: Kicked player 5. [Online IDs= EOS: 00023e75db39437b99f27263e161b23e steam: 76561199128478826]  ykaz from RCON'
+
+		it("pairs an admin's kick with its ADMIN COMMAND line", async () => {
+			const errors: Error[] = []
+			const events = await collect([KICKING, KICKED, NEXT_TICK_EVENT].join('\n'), errors)
+			expect(errors).toEqual([])
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'PLAYER_KICKED_CHAIN',
+				events: {
+					KICKING_PLAYER: { reason: 'Kicked from the server: Asset Waste', playerIds: { username: 'ykaz' } },
+					PLAYER_KICKED: { playerIds: { eos: '00023e75db39437b99f27263e161b23e' } },
+				},
+			})
+		})
+
+		it('keeps a kick no admin issued, which logs only the Kicking line', async () => {
+			const errors: Error[] = []
+			const events = await collect([KICKING, NEXT_TICK_EVENT].join('\n'), errors)
+			expect(errors).toEqual([])
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({ type: 'PLAYER_KICKED_CHAIN', events: { KICKING_PLAYER: { playerIds: { username: 'ykaz' } } } })
+			expect((events[0] as { events: object }).events).not.toHaveProperty('PLAYER_KICKED')
+		})
+	})
+
 	describe('continuation lines', () => {
 		it('includes non-log continuation lines in the raw field of the parsed event', async () => {
 			const logWithContinuation = NEW_GAME + '\nsome unexpected continuation text'
@@ -661,6 +691,44 @@ describe('PlayerIds.findByUsernameLoose', () => {
 	it('resolves a fully non-latin name to its own roster entry', () => {
 		const players = [player('a', 'кирикwise d(^. .^)'), player('b', 'Bob')]
 		expect(SM.PlayerIds.findByUsernameLoose(players, (p) => p.ids, '✘✘✘✘✘✘✘ кирикwise d(^. .^)')).toBe(players[0])
+	})
+})
+
+describe('PlayerIds.findByDisplayName', () => {
+	const player = (eos: string, username: string, usernameNoTag?: string) => ({ ids: { eos, username, usernameNoTag } })
+	const find = (players: ReturnType<typeof player>[], name: string) => SM.PlayerIds.findByDisplayName(players, (p) => p.ids, name)
+
+	// echoes from production warn acknowledgements, where one player's echoed name drifted within a session
+	it('ignores a doubled space after the tag', () => {
+		const players = [player('a', '[TT] Soldierklint', 'Soldierklint'), player('b', 'тт Arrow2', 'Arrow2')]
+		expect(find(players, '[TT]  Soldierklint')).toBe(players[0])
+		expect(find(players, 'тт  Arrow2')).toBe(players[1])
+		expect(find(players, 'EnR |  aidanhoff')).toBeUndefined()
+	})
+
+	it('matches an echo that dropped the tag the roster carries, with or without the tagless name', () => {
+		const players = [player('a', '[TT] ninny', 'ninny'), player('b', '[TT] grey275')]
+		expect(find(players, 'ninny')).toBe(players[0])
+		expect(find(players, 'grey275')).toBe(players[1])
+	})
+
+	it('matches an echo carrying a tag the roster lacks', () => {
+		const players = [player('a', 'Arrow2', 'Arrow2'), player('b', 'Witten')]
+		expect(find(players, 'тт Arrow2')).toBe(players[0])
+	})
+
+	it('prefers the player whose name is the echo over one whose name contains it', () => {
+		const players = [player('a', 'Dust', 'Dust'), player('b', 'Dusty', 'Dusty'), player('c', 'Big Dust', 'Big Dust')]
+		expect(find(players, 'Dust')).toBe(players[0])
+	})
+
+	it('resolves to nothing when two players share the name', () => {
+		expect(find([player('a', 'Timmy', 'Timmy'), player('b', 'Timmy', 'Timmy')], 'Timmy')).toBeUndefined()
+		expect(find([player('a', '[A] Timmy', 'Timmy'), player('b', '[B] Timmy', 'Timmy')], 'Timmy')).toBeUndefined()
+	})
+
+	it('does not match a part of a word', () => {
+		expect(find([player('a', 'Dusty', 'Dusty')], 'Dust')).toBeUndefined()
 	})
 })
 
