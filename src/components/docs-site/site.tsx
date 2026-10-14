@@ -324,10 +324,12 @@ function SourceLinks({ site, page }: { site: SiteInfo; page: DS.Page }) {
 function SourceLinkPair({ site, page }: { site: SiteInfo; page: DS.Page }) {
 	return (
 		<>
-			<a href={`${site.repoUrl}/blob/${site.ref}/${page.file}`} className="docs-quiet-link">
-				<Code className="size-4" aria-hidden="true" />
-				View source
-			</a>
+			{page.generatedBy !== `${page.file}/` && (
+				<a href={`${site.repoUrl}/blob/${site.ref}/${page.file}`} className="docs-quiet-link">
+					<Code className="size-4" aria-hidden="true" />
+					View source
+				</a>
+			)}
 			{page.generatedBy ? (
 				<a href={`${site.repoUrl}/tree/${site.ref}/${page.generatedBy}`} className="docs-quiet-link">
 					<Pencil className="size-4" aria-hidden="true" />

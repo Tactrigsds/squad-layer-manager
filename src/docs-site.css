@@ -514,6 +514,11 @@
 			display: none;
 		}
 	}
+	.docs-prose summary {
+		cursor: pointer;
+		font-weight: 600;
+		margin-block-end: 8px;
+	}
 	.docs-prose ul,
 	.docs-prose ol {
 		padding-inline-start: 24px;

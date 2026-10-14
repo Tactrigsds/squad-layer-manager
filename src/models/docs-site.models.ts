@@ -212,6 +212,15 @@ export const PAGES: Page[] = [
 		generatedBy: 'changelog/',
 		unversioned: true,
 	},
+	{
+		file: 'changes',
+		slug: 'latest-changes',
+		label: 'Latest changes',
+		section: 'changelog',
+		group: 'Releases',
+		generatedBy: 'changes/',
+		unversioned: true,
+	},
 ]
 
 // the browser tab title: the site's name alone, or the article in front of it
