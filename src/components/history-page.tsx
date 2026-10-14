@@ -3,13 +3,10 @@ import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
-import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
 import HistoryQueryBar, { HistoryQueryBounds } from '@/components/history-query-bar'
-import * as HistoryTemplates from '@/components/history/templates'
 import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -326,7 +323,8 @@ function usePagedQuery(query: HQ.Query) {
 	const key = React.useMemo(() => JSON.stringify(query), [query])
 	const [page, setPageState] = React.useState<{ key: string; page: number }>({ key, page: 0 })
 	if (page.key !== key) setPageState({ key, page: 0 })
-	const res = useQuery(HistoryClient.queryPageBase({ query, page: page.page }))
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const res = useQuery(HistoryClient.queryPageBase({ query, page: page.page, render: HistoryClient.renderInput(displayTeamsNormalized) }))
 	return {
 		res: res.data,
 		error: res.error,
@@ -361,14 +359,14 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 	)
 }
 
-// rows are inert templates walked straight to dom (see static-render.ts)
-function DomRowsBody(props: { rows: React.ReactNode[]; scopeId?: string }) {
+// rows arrive as the server's markup (see history/templates.tsx)
+function HtmlRowsBody(props: { rowsHtml: string[] | undefined; scopeId?: string }) {
 	const ref = React.useRef<HTMLTableSectionElement | null>(null)
 	React.useLayoutEffect(() => {
 		const body = ref.current
 		if (!body) return
-		body.replaceChildren(...props.rows.flatMap((row) => renderStatic(row) ?? []))
-	})
+		body.innerHTML = props.rowsHtml?.join('') ?? ''
+	}, [props.rowsHtml])
 	// the scope lives on the body rather than around the table: a row's disclosure resolves it by walking up
 	return <tbody ref={ref} {...(props.scopeId ? { [RC.SCOPE_ATTR]: props.scopeId } : {})} />
 }
@@ -461,7 +459,6 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 	// a players page has no matches of its own, so a row's events resolve their server frame from nothing;
 	// the rows they open still name their match, which is all the feed row needs
 	const rowCtx = useRowEvents(props.query, EMPTY_MATCHES)
-	const timeZone = HistoryClient.useResultZone(props.query.tz)
 	const sort = HQ.playerSort(props.query)
 	const sortHeader = (column: HQ.PlayerSortColumn, label: string) => (
 		<SortHeader
@@ -493,12 +490,7 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
-					<DomRowsBody
-						scopeId={rowCtx.scopeId}
-						rows={(ok?.rows ?? []).map((row) => (
-							<HistoryTemplates.PlayerRow key={row.playerId} row={row} timeZone={timeZone} />
-						))}
-					/>
+					<HtmlRowsBody scopeId={rowCtx.scopeId} rowsHtml={ok?.rowsHtml} />
 				</table>
 			</div>
 			<Pager page={page} pageSize={HQ.PAGE_SIZES.players} total={ok?.total} setPage={setPage} />
@@ -511,9 +503,7 @@ const EMPTY_MATCHES: MH.MatchDetails[] = []
 function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 	const { res, error, loading, page, setPage } = usePagedQuery(props.query)
 	const ok = okOf(res, 'matches')
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
 	const rowCtx = useRowEvents(props.query, ok?.matches ?? EMPTY_MATCHES)
-	const timeZone = HistoryClient.useResultZone(props.query.tz)
 	const sort = HQ.matchSort(props.query)
 	const sortHeader = (column: HQ.MatchSortColumn, label: string) => (
 		<SortHeader key={column} column={column} label={label} sort={sort} onSort={(next) => props.onRun({ ...props.query, sort: next })} />
@@ -541,19 +531,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							<th className={`${HEADER_CELL} text-end`}>{tr.text(HistoryMsgs.colEvents())}</th>
 						</tr>
 					</thead>
-					<DomRowsBody
-						scopeId={rowCtx.scopeId}
-						rows={(ok?.matches ?? []).map((m) => (
-							<HistoryTemplates.MatchRow
-								key={m.historyEntryId}
-								details={m}
-								displayTeamsNormalized={displayTeamsNormalized}
-								events={ok?.eventCounts[m.historyEntryId] ?? 0}
-								setBy={MatchSummary.setByText(m.layerSource, ok!.setByNames)}
-								timeZone={timeZone}
-							/>
-						))}
-					/>
+					<HtmlRowsBody scopeId={rowCtx.scopeId} rowsHtml={ok?.rowsHtml} />
 				</table>
 			</div>
 			<Pager page={page} pageSize={HQ.PAGE_SIZES.matches} total={ok?.total} setPage={setPage} />
