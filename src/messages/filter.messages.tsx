@@ -618,3 +618,15 @@ export const nullTestDescriptions: Partial<Record<F.CompOpKey, TString>> = {
 
 export const compOpDescription = (option: F.CompOpSelectOption) =>
 	(option.nullTest && nullTestDescriptions[option.key]) || compOpDescriptions[option.key]
+
+// -------- undo and redo --------
+
+// the tooltip of the undo or redo button, naming the edit it reverses or repeats
+export const undoTooltip = def(
+	'{direction, select, undo {Undo} other {Redo}}: {kind, select, add_node {add condition} clone_node {duplicate} delete_node {delete} insert_subtree {restore} update_node {change condition} set_comment {edit comment} move_node {move} replace_tree {edit text} set_meta {edit details} reset_to_saved {discard edits} other {edit}}',
+	(direction: 'undo' | 'redo', kind: string) => ({ direction, kind: kind.replaceAll('-', '_') }),
+)
+
+export const editsDiscarded = def(() => ({
+	toast: [t('Filter edits discarded')],
+}))

@@ -5,6 +5,7 @@ import * as Schema from '$root/drizzle/schema.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
 import * as ODSM from '@/lib/odsm'
+import * as OrderedLanes from '@/lib/ordered-lanes'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
@@ -1116,73 +1117,81 @@ export const router = {
 	dispatchOp: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
-		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctxRes = await SquadServer.tryCtx(_ctx, serverId)
-			if (ctxRes.code !== 'ok') return ctxRes
-			const ctx = ctxRes.ctx
+		// a client's ops apply in the order it sent them, however long each one's checks below take
+		.handler(({ context: _ctx, input: { serverId, op } }) =>
+			clientOpLanes(`${serverId}:${_ctx.wsClientId}`, async () => {
+				const ctxRes = await SquadServer.tryCtx(_ctx, serverId)
+				if (ctxRes.code !== 'ok') return ctxRes
+				const ctx = ctxRes.ctx
 
-			const userId = (op as { userId?: USR.UserId })?.userId
-			if (userId && ctx.user.discordId !== userId) {
-				return {
-					code: 'err:invalid-user' as const,
-					msg: `Invalid user ${userId} for operation ${op.op} (${op.opId})`,
-				}
-			}
-
-			if (!SLL.isClientOp(op)) return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
-
-			if (SLL.isBackburnerOp(op)) {
-				const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
-				if (backburnerRes) return backburnerRes
-			} else {
-				const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId }))
-				if (authRes) return authRes
-				const noteRes = await tryDenyNoteOp(ctx, op)
-				if (noteRes) return noteRes
-			}
-
-			// Two checks on the layers an op introduces, in order of severity. A layer whose mod the server does not
-			// have cannot load at all, so it is refused outright, no permission involved. Being out of the configured
-			// pool is a policy call, and additionally requires queue:force-write -- checked only when the user lacks
-			// it, to keep the common path cheap.
-			const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
-			if (forceWriteCandidates.length > 0) {
-				const serverState = await SquadServer.getServerState(ctx)
-				const { installedMods } = serverState.settings
-				const unsupported = forceWriteCandidates.filter((layerId) => {
-					const collection = L.toLayer(layerId).Collection
-					return !!collection && !installedMods.includes(collection)
-				})
-				if (unsupported.length > 0) {
+				const userId = (op as { userId?: USR.UserId })?.userId
+				if (userId && ctx.user.discordId !== userId) {
 					return {
-						code: 'err:mods-not-installed' as const,
-						layerIds: unsupported,
-						msg: `This server does not have the mods these layers need: ${unsupported.join(', ')}`,
+						code: 'err:invalid-user' as const,
+						msg: `Invalid user ${userId} for operation ${op.op} (${op.opId})`,
 					}
 				}
 
-				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write', { serverId: ctx.serverId }))
-				if (forceWriteDenied) {
-					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
-					const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
-					const poolRes = await LayerQueriesShared.getLayersOutOfPool({
-						ctx: layerCtx,
-						input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
+				if (!SLL.isClientOp(op)) return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
+
+				if (SLL.isBackburnerOp(op)) {
+					const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
+					if (backburnerRes) return backburnerRes
+				} else {
+					const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId }))
+					if (authRes) return authRes
+					const noteRes = await tryDenyNoteOp(ctx, op)
+					if (noteRes) return noteRes
+				}
+
+				// Two checks on the layers an op introduces, in order of severity. A layer whose mod the server does not
+				// have cannot load at all, so it is refused outright, no permission involved. Being out of the configured
+				// pool is a policy call, and additionally requires queue:force-write -- checked only when the user lacks
+				// it, to keep the common path cheap.
+				const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
+				if (forceWriteCandidates.length > 0) {
+					const serverState = await SquadServer.getServerState(ctx)
+					const { installedMods } = serverState.settings
+					const unsupported = forceWriteCandidates.filter((layerId) => {
+						const collection = L.toLayer(layerId).Collection
+						return !!collection && !installedMods.includes(collection)
 					})
-					if (poolRes.code !== 'ok') {
-						// a broken pool filter shouldn't block all queue edits, so fail open and surface the misconfiguration
-						log.error('force-write pool check failed to build pool constraints: %o', poolRes)
-					} else if (poolRes.outOfPool.length > 0) {
-						return forceWriteDenied
+					if (unsupported.length > 0) {
+						return {
+							code: 'err:mods-not-installed' as const,
+							layerIds: unsupported,
+							msg: `This server does not have the mods these layers need: ${unsupported.join(', ')}`,
+						}
+					}
+
+					const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(
+						ctx,
+						RBAC.perm('queue:force-write', { serverId: ctx.serverId }),
+					)
+					if (forceWriteDenied) {
+						const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)
+						const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
+						const poolRes = await LayerQueriesShared.getLayersOutOfPool({
+							ctx: layerCtx,
+							input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
+						})
+						if (poolRes.code !== 'ok') {
+							// a broken pool filter shouldn't block all queue edits, so fail open and surface the misconfiguration
+							log.error('force-write pool check failed to build pool constraints: %o', poolRes)
+						} else if (poolRes.outOfPool.length > 0) {
+							return forceWriteDenied
+						}
 					}
 				}
-			}
 
-			await dispatchOp(ctx, op, { sourceWsClientId: _ctx.wsClientId })
+				await dispatchOp(ctx, op, { sourceWsClientId: _ctx.wsClientId })
 
-			return { code: 'ok' as const }
-		}),
+				return { code: 'ok' as const }
+			}),
+		),
 }
+
+const clientOpLanes = OrderedLanes.create()
 
 // whether a template has any solutions. Filters ride in the template itself (see BB.withFilters),
 // and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only

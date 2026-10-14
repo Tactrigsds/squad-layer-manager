@@ -41,6 +41,11 @@ It uses _all of_, so a layer has to meet every one of:
 A filter can also be edited as text, from its _Text_ tab, which is quicker for changes such as how the conditions
 nest.
 
+Use _Undo_ and _Redo_ beside _Reset Filter_, or Ctrl+Z and Ctrl+Y (⌘Z and ⇧⌘Z on a Mac), to step back and forward
+through your own edits to a filter. An undo takes back only your own edits, so another user editing the same filter
+keeps their edits. After _Reset Filter_, SLM shows a message with an _Undo_ button. Press it to bring back the
+discarded edits.
+
 ## Pool configuration
 
 _Pool Configuration_ decides which layers count as playable, which ones raise warnings, and how soon a map, layer

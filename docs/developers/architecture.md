@@ -533,6 +533,37 @@ save. `LL.ListHost` names what a list belongs to, a server or a rotation. The li
 supplies: its settings, its repeat rules and its item statuses. Server-only parts of a row, such as vote state and the
 next-layer badge, render only for a server host.
 
+### Undo and redo
+
+Nothing can be taken back out of an ODSM timeline, so undo is a new op that reverses an earlier one, sent like any
+other edit. Each client keeps its own stack (`src/lib/undo-stack.ts`) and undoes only its own edits. Every replica
+sees the undo, and the server needs no notion of history beyond what the op carries.
+
+The two editors build the reversing op differently, because only one of them can trust the client with it:
+
+- **The filter draft** inverts on the client. `FE.invertOps` turns a batch into the ops that reverse it, computed
+  against the state before the batch. An inverse names what it restores in full, so it overwrites another user's
+  later edit to the same node and nothing else. `insert-subtree` exists so a deleted node comes back under its own
+  ids.
+- **The shared layer list** reverts in the reducer. The server refuses a client add that carries another user's note,
+  and re-stamps the tags on any item a client adds, so a client cannot put a deleted item back itself. Instead the
+  reducer keeps a `RevertRecord` per user op: the top-level items the op replaced or removed, found by reference since
+  no item is mutated in place. A `revert` op names op ids, and every replica restores the same items from its own
+  records. Redo is a revert of the revert. Records outlive a save, so an edit stays undoable after it, and the reducer
+  refuses a revert of another user's op.
+
+An undo can return an item to how it was saved, so the reducer clears a highlight once its item matches the saved list
+again.
+
+A client relies on ODSM to apply its ops in the order it sent them, and an undo depends on that: a queue revert that
+lands before the op it reverts finds no record. oRPC handles each websocket message on its own, so a dispatch handler
+takes its session's lock before its first await. The queue's handler awaits permission and pool checks before
+`dispatchOp` takes the queue lock, so it first takes a lane per client (`src/lib/ordered-lanes.ts`) that holds each
+client's ops in arrival order.
+
+`src/systems/undo-shortcut.client.ts` routes the keys. An editor root carries `data-undo-scope` and its buttons `data-undo`, and
+one document listener clicks the button of the scope the key belongs to.
+
 ## The domain layer
 
 ### Entities

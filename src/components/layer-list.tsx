@@ -784,7 +784,9 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 								data-tour={isTourRow ? 'queue-delete' : undefined}
 								title={tr.text(LL_Msgs.deleteItem())}
 								disabled={!canEdit}
-								onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+								onClick={() =>
+									LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' }, { undoToast: true })
+								}
 							>
 								<Icons.X />
 							</Button>
@@ -970,7 +972,9 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										size="icon"
 										title={tr.text(LL_Msgs.deleteItem())}
 										disabled={!canEdit}
-										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
+										onClick={() =>
+											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' }, { undoToast: true })
+										}
 									>
 										<Icons.X />
 									</Button>
@@ -1500,7 +1504,10 @@ function ItemMenuItems(props: {
 						</Menu.Item>
 					</>
 				)}
-				<Menu.Item disabled={!canEdit} onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}>
+				<Menu.Item
+					disabled={!canEdit}
+					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' }, { undoToast: true })}
+				>
 					<Icons.X />
 					{tr.text(LL_Msgs.deleteItem())}
 				</Menu.Item>

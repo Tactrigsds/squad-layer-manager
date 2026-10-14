@@ -412,3 +412,15 @@ export const enableUpdatesCta = def((button: Rendered, alsoStopsIngameVote: bool
 // headings of the add-layers dialog's Summary tab on a phone
 export const addPosition = def('Position')
 export const addTags = def('Tags')
+
+// -------- undo and redo --------
+
+// the tooltip of the undo or redo button, naming the edit it reverses or repeats
+export const undoTooltip = def(
+	'{direction, select, undo {Undo} other {Redo}}: {kind, select, add {add layers} move {move layer} swap_factions {swap factions} edit_layer {change layer} add_tag {add tag} remove_tag {remove tag} add_note {add note} edit_note {edit note} delete_note {delete note} clone {duplicate layer} configure_vote {configure vote} delete {delete layer} clear {clear queue} reset_to_saved {discard edits} other {edit}}',
+	(direction: 'undo' | 'redo', kind: string) => ({ direction, kind: kind.replaceAll('-', '_') }),
+)
+
+export const undoableDone = def((kind: 'delete' | 'clear' | 'reset-to-saved') => ({
+	toast: [t('{kind, select, delete {Layer deleted} clear {Queue cleared} other {Edits discarded}}', { kind })],
+}))
