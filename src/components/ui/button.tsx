@@ -3,8 +3,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import * as React from 'react'
 
 import { SubmitChordKbd } from '@/components/ui/kbd'
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 // One orange per surface: `primary` is the single action the surface exists for, everything else is the raised
 // grey. `outline` and `secondary` are kept as aliases of the grey so older call sites need no change.
@@ -36,16 +36,21 @@ const buttonVariants = cva('fd-btn', {
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
 	asChild?: boolean
-	// makes this the button the submit chord clicks in its scope, and shows the chord on it. See lib/submit-chord.
+	// makes this the button the submit chord clicks in its scope, and shows the chord on it. See systems/submit-chord.client.
 	// The hint is left out under asChild, whose single child cannot take a sibling.
-	submitChord?: SubmitChord.ButtonMode | boolean
+	submitChord?: SubmitChordClient.ButtonMode | boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 	({ className, variant, size, asChild = false, submitChord, children, ...props }, ref) => {
 		const Comp = asChild ? Slot : 'button'
 		return (
-			<Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...SubmitChord.buttonAttrs(submitChord)} {...props}>
+			<Comp
+				className={cn(buttonVariants({ variant, size, className }))}
+				ref={ref}
+				{...SubmitChordClient.buttonAttrs(submitChord)}
+				{...props}
+			>
 				{children}
 				{submitChord && !asChild && <SubmitChordKbd className="pointer-coarse:hidden" />}
 			</Comp>

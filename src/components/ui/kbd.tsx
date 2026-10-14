@@ -1,5 +1,5 @@
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 function Kbd({ className, ...props }: React.ComponentProps<'kbd'>) {
 	return (
@@ -18,8 +18,7 @@ function KbdGroup({ className, ...props }: React.ComponentProps<'div'>) {
 function SubmitChordKbd({ className }: { className?: string }) {
 	return (
 		<Kbd className={className} aria-hidden>
-			{SubmitChord.MODIFIER_LABEL}
-			{SubmitChord.ENTER_LABEL}
+			{SubmitChordClient.LABEL}
 		</Kbd>
 	)
 }

@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as KEYS from '@/models/keybinds.models'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
-import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 
 export type UndoButtonState = {
 	// what the button would undo or redo, or null when there is nothing to
@@ -13,8 +14,8 @@ export type UndoButtonState = {
 	onClick: () => void
 }
 
-// The undo and redo buttons of one editor. The editor's root carries UndoShortcutClient.scopeAttrs(), which is what sends the
-// keys to these buttons.
+// The undo and redo buttons of one editor. They answer the undo and redo keys pressed in the editor's keybinding scope,
+// which clicks them.
 export function UndoRedoButtons(props: {
 	undo: UndoButtonState
 	redo: UndoButtonState
@@ -31,7 +32,7 @@ export function UndoRedoButtons(props: {
 }
 
 function UndoButton(props: {
-	direction: UndoShortcutClient.Direction
+	direction: 'undo' | 'redo'
 	state: UndoButtonState
 	size?: 'icon-sm' | 'icon'
 	disabled?: boolean
@@ -43,7 +44,7 @@ function UndoButton(props: {
 		<Tooltip help>
 			<TooltipTrigger asChild>
 				<Button
-					{...UndoShortcutClient.buttonAttrs(props.direction)}
+					{...KBClient.buttonAttrs(props.direction)}
 					aria-label={label}
 					size={props.size ?? 'icon-sm'}
 					variant="ghost"
@@ -57,7 +58,7 @@ function UndoButton(props: {
 			<TooltipContent>
 				<p className="flex items-center gap-2">
 					<span>{props.state.description ?? label}</span>
-					<Kbd>{UndoShortcutClient.LABELS[props.direction]}</Kbd>
+					<Kbd>{KEYS.label(props.direction)}</Kbd>
 				</p>
 			</TooltipContent>
 		</Tooltip>

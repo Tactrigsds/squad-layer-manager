@@ -3,6 +3,7 @@ import type React from 'react'
 
 import { BottomSheetFrame } from '@/components/ui/bottom-sheet'
 import { PopoverContent } from '@/components/ui/popover.tsx'
+import * as KBClient from '@/systems/keybinds.client'
 
 import { useIsComboBoxSheet } from './sheet.ts'
 
@@ -14,7 +15,13 @@ export function ComboBoxSurface(props: {
 	children: React.ReactNode
 }) {
 	const sheet = useIsComboBoxSheet()
-	if (!sheet) return <PopoverContent {...props.popoverProps}>{props.children}</PopoverContent>
+	const kbScope = KBClient.useScope('combo-box', {})
+	if (!sheet)
+		return (
+			<PopoverContent kbScope={kbScope} {...props.popoverProps}>
+				{props.children}
+			</PopoverContent>
+		)
 	// the scrim sits outside the sheet, so useComboBoxDismissal reads a tap on it as an outside pointerdown
 	return (
 		<PopoverPrimitive.Portal>

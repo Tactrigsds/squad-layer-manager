@@ -4,11 +4,11 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import * as LayerSearchPrt from '@/frame-partials/layer-search.partial.ts'
 import type * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { RichSearchField, SearchErrors, SearchSuggestions } from './layer-search-parts.tsx'
 import { useSearchInput } from './layer-search.helpers.ts'
@@ -70,7 +70,7 @@ function SearchEditor(props: { frameKey: SelectLayersFrame.Key; onDone: () => vo
 					if (recallOnArrow(e)) return
 					if (e.key === 'Enter' || e.key === 'Escape') {
 						// Escape is the search box's, not the dialog's. Ctrl+Enter is the dialog's submit
-						if (!SubmitChord.isSubmitChord(e)) e.stopPropagation()
+						if (!SubmitChordClient.isSubmitChord(e)) e.stopPropagation()
 						e.currentTarget.blur()
 					}
 				}}

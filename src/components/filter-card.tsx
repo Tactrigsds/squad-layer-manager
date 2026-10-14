@@ -27,8 +27,8 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
-import * as UndoShortcutClient from '@/systems/undo-shortcut.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
@@ -72,6 +72,7 @@ const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
 export default function FilterCard(props: FilterCardProps & ({ children: React.ReactNode; builderOnly?: false } | { builderOnly: true })) {
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
+	const kbScope = KBClient.useScope('filter-editor', {})
 
 	DndKit.useDragEnd((event) => {
 		if (!event.over) return
@@ -159,7 +160,7 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	}
 
 	const rendered = (
-		<div defaultValue="builder" className="w-full space-x-2 flex" {...UndoShortcutClient.scopeAttrs()}>
+		<div ref={kbScope.ref} defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1 min-w-0 overflow-x-auto">
 				<div className={activeTab === 'builder' ? '' : 'hidden'}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
@@ -240,10 +241,11 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 		</div>
 	)
 
+	// the leaf nodes are portalled into the tree, so the scope reaches them through context rather than the DOM
 	return (
-		<>
+		<KBClient.Context.Provider value={kbScope.id}>
 			{rendered} {leafNodes}
-		</>
+		</KBClient.Context.Provider>
 	)
 }
 

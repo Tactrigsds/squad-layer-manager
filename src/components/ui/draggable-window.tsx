@@ -14,6 +14,7 @@ import {
 	type WindowDefinition,
 	type WindowState,
 } from '@/systems/draggable-window.client'
+import * as KBClient from '@/systems/keybinds.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
 import { ChevronLeftIcon, Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
@@ -21,10 +22,10 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 
 import * as Browser from '@/lib/browser'
-import * as SubmitChord from '@/lib/submit-chord'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as DW from '@/models/draggable-windows.models'
 import { tr } from '@/systems/messages.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 // ============================================================================
 // Window Instance
@@ -57,6 +58,7 @@ interface DraggableWindowInstanceProps {
 
 function DraggableWindowInstance({ window: windowState, definition }: DraggableWindowInstanceProps) {
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
+	const kbScope = KBClient.useScope('window', {})
 	const dragBarRef = React.useRef<HTMLElement | null>(null)
 	const positionRef = React.useRef<{ x: number; y: number } | null>(null)
 	const dragStartRef = React.useRef<{ mouseX: number; mouseY: number; elementX: number; elementY: number; measure: WindowMeasure } | null>(
@@ -375,11 +377,13 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	return (
 		<DraggableWindowContext.Provider value={contextValue}>
 			<div
-				ref={contentRef}
+				ref={(node) => {
+					contentRef.current = node
+					kbScope.ref(node)
+				}}
 				role="dialog"
 				tabIndex={-1}
 				onMouseDown={handleMouseDown}
-				{...SubmitChord.scopeAttrs('window')}
 				className={cn(
 					// w-max: a fixed box with auto width shrinks to the space between its left edge and the viewport's
 					// right edge, so it would squeeze as it is dragged past the right edge
@@ -390,9 +394,11 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				)}
 				style={{ zIndex: effectiveZIndex, maxWidth: `calc(100vw - ${collisionPadding * 2}px)` }}
 			>
-				<BaseZIndexContext.Provider value={effectiveZIndex}>
-					<Component {...windowState.props} />
-				</BaseZIndexContext.Provider>
+				<KBClient.Context.Provider value={kbScope.id}>
+					<BaseZIndexContext.Provider value={effectiveZIndex}>
+						<Component {...windowState.props} />
+					</BaseZIndexContext.Provider>
+				</KBClient.Context.Provider>
 				{definition.resizable &&
 					!phone &&
 					RESIZE_HANDLES.map((h) => (
@@ -487,7 +493,7 @@ export function DraggableWindowDragBar({ className, children, ref, ...props }: D
 				<button
 					type="button"
 					data-window-control="close"
-					{...SubmitChord.closeAttrs}
+					{...SubmitChordClient.closeAttrs}
 					onClick={close}
 					className="fd-btn fd-btn-ghost fd-btn-ico"
 					aria-label={tr.text(UI_Msgs.closeWindow())}
@@ -562,7 +568,7 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 			ref={ref}
 			type="button"
 			data-window-control="close"
-			{...SubmitChord.closeAttrs}
+			{...SubmitChordClient.closeAttrs}
 			onClick={handleClick}
 			className={cn('fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm', className)}
 			aria-label={tr.text(UI_Msgs.closeWindow())}

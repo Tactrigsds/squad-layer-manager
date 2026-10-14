@@ -3,9 +3,10 @@ import * as React from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
 import { SubmitChordKbd } from '@/components/ui/kbd'
-import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as KBClient from '@/systems/keybinds.client'
+import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 const AlertDialog = AlertDialogPrimitive.Root
 
@@ -28,20 +29,26 @@ const AlertDialogContent = React.forwardRef<
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
 >(({ className, style, children, ...props }, ref) => {
 	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
+	const kbScope = KBClient.useScope('dialog', {})
 	return (
 		<AlertDialogPortal>
 			<AlertDialogOverlay />
 			<AlertDialogPrimitive.Content
-				ref={ref}
+				ref={(node) => {
+					kbScope.ref(node)
+					if (typeof ref === 'function') ref(node)
+					else if (ref) ref.current = node
+				}}
 				className={cn(
 					'fd-dlg fixed left-1/2 top-1/2 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-2 p-2.5',
 					className,
 				)}
 				style={{ zIndex, ...style }}
-				{...SubmitChord.scopeAttrs('dialog')}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
+				<KBClient.Context.Provider value={kbScope.id}>
+					<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
+				</KBClient.Context.Provider>
 			</AlertDialogPrimitive.Content>
 		</AlertDialogPortal>
 	)
@@ -83,13 +90,13 @@ const AlertDialogAction = React.forwardRef<
 	// destructive for an action that cannot be undone, such as a delete
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> & {
 		variant?: 'primary' | 'destructive'
-		submitChord?: SubmitChord.ButtonMode | boolean
+		submitChord?: SubmitChordClient.ButtonMode | boolean
 	}
 >(({ className, variant, submitChord, children, ...props }, ref) => (
 	<AlertDialogPrimitive.Action
 		ref={ref}
 		className={cn(buttonVariants({ variant: variant ?? 'primary' }), className)}
-		{...SubmitChord.buttonAttrs(submitChord)}
+		{...SubmitChordClient.buttonAttrs(submitChord)}
 		{...props}
 	>
 		{children}
@@ -105,7 +112,7 @@ const AlertDialogCancel = React.forwardRef<
 	<AlertDialogPrimitive.Cancel
 		ref={ref}
 		className={cn(buttonVariants({ variant: 'outline' }), className)}
-		{...SubmitChord.closeAttrs}
+		{...SubmitChordClient.closeAttrs}
 		{...props}
 	/>
 ))
