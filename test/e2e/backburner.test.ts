@@ -7,33 +7,40 @@ import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fi
 import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { belowItem, centerOf, dragFrom } from '../harness/drag'
+import { savedBackburner } from '../harness/inspect'
+import { rearrange } from '../harness/rearrange'
 import { expect, test } from './fixtures'
 
 // The backburner panel below the queue: requests arriving from chat show up live, GUI edits are draft
 // state committed by the queue's save flow, and requests move between the panel and the queue by drag.
-// Three apps carry the file -- the dialog-driven tests, the picker drags, and the pinned-template drags --
-// grouped so every locator stays unambiguous while the requests it targets are consumed.
+// One app carries the file. Each group -- the dialog-driven tests, the picker drags, and the pinned-template drags --
+// re-arranges it into its own queue, requests and pool first, so every locator stays unambiguous while the
+// requests it targets are consumed, and no draft one group leaves behind reaches the next.
 
 const ADMIN_STEAM_ID = '76561198000000001'
 
-function savedBackburner(app: AppFixture): { itemId: string }[] {
-	const db = app.readDb()
-	try {
-		const row = db.prepare(`SELECT backburner FROM servers WHERE id = ?`).get(app.serverId) as { backburner: string }
-		return JSON.parse(row.backburner).json
-	} finally {
-		db.close()
-	}
-}
+let app: AppFixture
+
+test.beforeAll(async () => {
+	app = await createAppFixture({
+		admins: [ADMIN_STEAM_ID],
+		adminSteamIds: [ADMIN_STEAM_ID],
+		filters: [
+			filter('no-training', 'No Training', FB.and([FB.neq('Gamemode', 'Training')])),
+			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+		],
+		repeatRules: [],
+	})
+})
+
+test.afterAll(async () => {
+	await app?.dispose()
+})
 
 test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () => {
-	let app: AppFixture
-
 	test.beforeAll(async () => {
-		app = await createAppFixture({
+		await rearrange(app, {
 			layerQueue: queue(LAYERS.gorodokRaas),
-			admins: [ADMIN_STEAM_ID],
-			adminSteamIds: [ADMIN_STEAM_ID],
 			// neither seeded map collides with the Fallujah request the chat test makes, so every row
 			// locator in this describe stays unambiguous whether or not the dialog's Apply was committed
 			backburner: [
@@ -50,23 +57,14 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 					createdAt: 2000,
 				},
 			],
-			filters: [
-				filter('no-training', 'No Training', FB.and([FB.neq('Gamemode', 'Training')])),
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
-			],
-			repeatRules: [],
-			serverSettings: (s) => {
-				s.queue.mainPool.poolFilter = { filterId: 'no-training', mode: 'include' }
-				s.queue.mainPool.layerRequestFilters = [
+			pool: (pool) => {
+				pool.poolFilter = { filterId: 'no-training', mode: 'include' }
+				pool.layerRequestFilters = [
 					{ filterId: 'no-training', applyAs: 'regular' },
 					{ filterId: 'raas-only', applyAs: 'regular' },
 				]
 			},
 		})
-	})
-
-	test.afterAll(async () => {
-		await app?.dispose()
 	})
 
 	test('the request dialog is seeded from the request being edited, and applies the change', async ({ page }) => {
@@ -145,12 +143,10 @@ test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () 
 })
 
 test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
-	let app: AppFixture
-
 	test.beforeAll(async () => {
-		app = await createAppFixture({
+		await rearrange(app, {
 			layerQueue: queue(LAYERS.gorodokRaas),
-			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
+			pool: () => {},
 			backburner: [
 				{
 					itemId: 'req-regular',
@@ -177,12 +173,7 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 					createdAt: 3000,
 				},
 			],
-			repeatRules: [],
 		})
-	})
-
-	test.afterAll(async () => {
-		await app?.dispose()
 	})
 
 	test('drag-combining requests with conflicting filters is rejected with a toast', async ({ page }) => {
@@ -242,11 +233,10 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 })
 
 test.describe('pinned templates and moving queue items out', { tag: '@firefox' }, () => {
-	let app: AppFixture
-
 	test.beforeAll(async () => {
-		app = await createAppFixture({
+		await rearrange(app, {
 			layerQueue: queue(LAYERS.gorodokRaas),
+			pool: () => {},
 			backburner: [
 				{
 					itemId: 'req-sumari-seed',
@@ -255,12 +245,7 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 					createdAt: 1000,
 				},
 			],
-			repeatRules: [],
 		})
-	})
-
-	test.afterAll(async () => {
-		await app?.dispose()
 	})
 
 	test('a request that only one layer satisfies is added straight to the queue, no picker', async ({ page }) => {
