@@ -159,6 +159,12 @@ export const normalizeTeams = def('Normalize Teams')
 
 export const normalizeTeamsHint = def('Show team A first and team B second, instead of team 1 and team 2')
 
+export const hidePluginUi = def('Hide Plugin UI')
+
+export const hidePluginUiHint = def(
+	'Hide the panels, row highlights, activity lines and styles that plugins add. Use this switch to check whether a problem on a page comes from a plugin.',
+)
+
 // -------- theme --------
 
 export const language = def('Language')

@@ -15,6 +15,7 @@ import * as PLG from '@/models/plugins.models'
 import type * as PA from '@/models/procedure-access.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -117,6 +118,12 @@ function nextRegKey(pluginId: string) {
 	return `${pluginId}:${regCounter++}`
 }
 
+// The user's switch for hiding plugin UI. Each registry read checks it, so the plugins keep running and their
+// registrations come back as they were.
+function uiDisabled() {
+	return ClientOnlySettings.Store.getState().pluginUiDisabled
+}
+
 function bumpVersion() {
 	Store.setState((s) => ({ ...s, version: s.version + 1 }))
 }
@@ -167,6 +174,7 @@ const NO_SLOT_REGS: SlotReg[] = []
 
 /** The anchor's registrations. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
 export function getSlotRegs(anchor: SlotAnchorId): SlotReg[] {
+	if (uiDisabled()) return NO_SLOT_REGS
 	return slotRegs.get(anchor) ?? NO_SLOT_REGS
 }
 
@@ -218,6 +226,7 @@ export function registerEventRenderer(
 
 /** The renderer for a plugin's `name`d events. Read it in a `Zus.useStore(Store, ...)` selector so the caller re-renders on a change. */
 export function getEventRenderer(pluginId: string, name: string): EventRendererReg | null {
+	if (uiDisabled()) return null
 	const regs = eventRenderers.get(rendererKey(pluginId, name))
 	// last registration wins, so a plugin re-registering a name replaces rather than shadows
 	return regs?.[regs.length - 1] ?? null
@@ -374,6 +383,11 @@ function readInput(input: Zus.AnyInput<any>): unknown {
 
 const NO_DECOS: DecorationEntry[] = []
 
+function decorationRegs(anchor: DecorationAnchorId): DecorationReg[] {
+	if (uiDisabled()) return []
+	return decoRegs.get(anchor) ?? []
+}
+
 // Manual subscription rather than one Zus.useStore per registration, so the hook count stays fixed
 // while plugins register and unregister at runtime.
 export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: DecorationAnchors[A]): DecorationEntry[] {
@@ -383,7 +397,7 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 	const subscribe = React.useCallback(
 		(onChange: () => void) => {
 			const unsubs: (() => void)[] = []
-			for (const reg of decoRegs.get(anchor) ?? []) {
+			for (const reg of decorationRegs(anchor)) {
 				for (const input of reg.stores(props)) unsubs.push(subscribeInput(input, onChange))
 			}
 			return () => {
@@ -395,7 +409,7 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 	)
 	const getSnapshot = () => {
 		const decos: DecorationEntry[] = []
-		for (const reg of decoRegs.get(anchor) ?? []) {
+		for (const reg of decorationRegs(anchor)) {
 			const states = reg.stores(props).map(readInput)
 			try {
 				const selected = reg.select(...states, props)
@@ -423,8 +437,9 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 //
 // Unlike its module, css unloads: an upgrade swaps the sheet and a stop removes it, with no reload asked for.
 type PluginStyles = { sheet: CSSStyleSheet; utilities: CSSLayerBlockRule | null }
-const appliedStyles = new Map<string, PluginStyles>()
+const loadedStyles = new Map<string, PluginStyles>()
 const requestedStyles = new Map<string, { href: string | null; applied: Promise<void> }>()
+let adoptedSheets: CSSStyleSheet[] = []
 let mergedUtilities: CSSRule[] = []
 
 // Resolves once the sheet is applied, so a client loaded after it never paints unstyled. A sheet that
@@ -442,12 +457,9 @@ function syncStyles(info: PLG.RuntimeInfo, href: string | null): Promise<void> {
 			}
 			if (requestedStyles.get(info.id)?.href !== href) return
 		}
-		const current = appliedStyles.get(info.id)
-		const others = document.adoptedStyleSheets.filter((s) => s !== current?.sheet)
-		document.adoptedStyleSheets = next ? [...others, next.sheet] : others
-		if (next) appliedStyles.set(info.id, next)
-		else appliedStyles.delete(info.id)
-		remergeUtilities()
+		if (next) loadedStyles.set(info.id, next)
+		else loadedStyles.delete(info.id)
+		applyStyles()
 	})()
 	requestedStyles.set(info.id, { href, applied })
 	return applied
@@ -465,13 +477,17 @@ async function fetchStyles(href: string): Promise<PluginStyles> {
 	return { sheet, utilities }
 }
 
-// Re-merges from scratch: one plugin's rules can anchor another's, so removing a single plugin's is not safe.
-function remergeUtilities() {
+// Re-applies every loaded sheet from scratch: one plugin's merged rules can anchor another's, so removing a single
+// plugin's is not safe.
+function applyStyles() {
+	const sheets = uiDisabled() ? [] : Array.from(loadedStyles.values(), (s) => s.sheet)
+	document.adoptedStyleSheets = [...document.adoptedStyleSheets.filter((s) => !adoptedSheets.includes(s)), ...sheets]
+	adoptedSheets = sheets
 	CssRules.remove(mergedUtilities)
 	mergedUtilities = []
 	const target = appUtilitiesLayer()
-	if (!target) return
-	for (const styles of appliedStyles.values()) {
+	if (!target || uiDisabled()) return
+	for (const styles of loadedStyles.values()) {
 		if (styles.utilities) CssRules.merge(target, styles.utilities, mergedUtilities)
 	}
 }
@@ -494,7 +510,7 @@ function appUtilitiesLayer() {
 
 // vite replaces the app's stylesheet on an edit, dropping the merged rules with it
 import.meta.hot?.on('vite:afterUpdate', () => {
-	if (appliedStyles.size > 0) remergeUtilities()
+	if (loadedStyles.size > 0) applyStyles()
 })
 
 // ---- host lifecycle ----
@@ -544,6 +560,11 @@ export namespace Actions {
 
 export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 	builtins = builtinPlugins
+	ClientOnlySettings.Store.subscribe((s, prev) => {
+		if (s.pluginUiDisabled === prev.pluginUiDisabled) return
+		applyStyles()
+		bumpVersion()
+	})
 	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(builtinPlugins.map((e) => [e.manifest.id, e.manifest])) }))
 	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((next) => {
 		const infos = next.plugins as PLG.RuntimeInfo[]

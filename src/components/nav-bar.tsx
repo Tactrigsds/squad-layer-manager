@@ -54,6 +54,7 @@ import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as PageAccess from '@/systems/page-access.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SiteMode from '@/systems/site-mode.client'
@@ -221,6 +222,7 @@ export default function NavBar() {
 				</DropdownMenuSub>
 			)}
 			<NormalizeTeamsToggle />
+			<HidePluginUiToggle />
 			<DropdownMenuSeparator />
 			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
 				<DropdownMenuItem onClick={() => setDropdownState('nickname')}>
@@ -601,6 +603,31 @@ function NormalizeTeamsToggle() {
 				{tr.text(APP_Msgs.normalizeTeams())}
 			</span>
 			<Switch checked={displayTeamsNormalized} tabIndex={-1} className="pointer-events-none" />
+		</DropdownMenuItem>
+	)
+}
+
+// only offered while some running plugin has a client, since nothing else puts plugin UI on a page
+function HidePluginUiToggle() {
+	const hasPluginUi = Zus.useStore(PluginsClient.Store, (s) => s.plugins.some((p) => p.status === 'active' && p.hasClient))
+	const hidden = Zus.useStore(ClientOnlySettings.Store, (s) => s.pluginUiDisabled)
+	if (!hasPluginUi && !hidden) return null
+	return (
+		<DropdownMenuItem
+			role="menuitemcheckbox"
+			aria-checked={hidden}
+			className="justify-between gap-4"
+			title={tr.text(APP_Msgs.hidePluginUiHint())}
+			onSelect={(e) => {
+				e.preventDefault()
+				ClientOnlySettings.Actions.setPluginUiDisabled(!hidden)
+			}}
+		>
+			<span className="flex items-center gap-2">
+				<Icons.Puzzle />
+				{tr.text(APP_Msgs.hidePluginUi())}
+			</span>
+			<Switch checked={hidden} tabIndex={-1} className="pointer-events-none" />
 		</DropdownMenuItem>
 	)
 }
