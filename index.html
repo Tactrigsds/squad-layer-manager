@@ -31,6 +31,8 @@
 	</head>
 	<body>
 		<div class="min-h-screen" id="root"></div>
+		<!-- toasts mount beside #root, not inside it: a Headless UI dialog marks #root inert, see components/ui/sonner.tsx -->
+		<div id="toasts"></div>
 		<!--
       How a packaged plugin's client bundle reaches the app's own React, zustand and slm/* rather than
       shipping copies: every specifier below resolves to a generated shim module that re-exports from

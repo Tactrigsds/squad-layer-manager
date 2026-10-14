@@ -35,6 +35,9 @@ export const ZI_OFFSETS = {
 	// page clears it. TOUR is for a step with no anchor at all, which has nothing to layer against.
 	TOUR_FLOOR: 58,
 	TOUR: 190,
+	// Toasts mount in the root context and must clear the deepest stack nesting can produce (a popover in a
+	// window in a dialog in a dialog), so this is a ceiling over every composed value rather than a band.
+	TOAST: 1000,
 }
 
 /** How many windows can be stacked within one context before ordering degrades. */
