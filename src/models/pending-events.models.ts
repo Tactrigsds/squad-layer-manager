@@ -212,7 +212,9 @@ export type State = {
 	expectations: EventExpectation[]
 
 	nextLayerId: L.LayerId | null
-	expectedNewLayerId: L.LayerId | null
+	// set by a TransitionMap NEW_GAME to the layer the roll should load, and consumed by the real-layer NEW_GAME. Null
+	// when no TransitionMap preceded, as when the game server starts
+	expectedNewLayer: { layerId: L.LayerId | null } | null
 
 	currentMatch:
 		| {
@@ -335,7 +337,7 @@ export function init(opts: {
 		destruction: DSTR.init(),
 		lastTickets: null,
 		nonSyncedSince: null,
-		expectedNewLayerId: null,
+		expectedNewLayer: null,
 		eventBufs: {
 			rconEmittedEvents: [],
 			logEvents: [],
@@ -950,20 +952,25 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			state.unknownSquadStreaks.clear()
 			state.squadCreatedAtAwaitingPoll.clear()
 			state.unassignedPlayers.clear()
-			state.expectedNewLayerId = state.nextLayerId
+			state.expectedNewLayer = { layerId: state.nextLayerId }
 			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
 		} else {
 			// Enter 'rolling' but do NOT commit `newGameEvent` yet. The rolling TEAMS_UPDATE branch keys off
 			// `newGameEvent` (and only guards `currentMatch !== 'PENDING'`), so committing it before we've resolved
 			// the new match would let the next poll complete the roll against the stale (previous) match.
 			state.syncState = { type: 'rolling' }
-			let newLayerId = state.expectedNewLayerId
-			state.expectedNewLayerId = null
+			const expectedNewLayer = state.expectedNewLayer
+			state.expectedNewLayer = null
+			let newLayerId = expectedNewLayer?.layerId ?? null
 			if (!newLayerId || !L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
-				if (pendingEvent.layerClassname) {
-					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+				if (!expectedNewLayer) {
+					log.info(
+						`${pendingEvent.layerClassname} loaded without a TransitionMap, as on a server start. Resolving the layer over RCON`,
+					)
+				} else if (!newLayerId) {
+					log.warn(`${pendingEvent.layerClassname} loaded while the next layer was unknown. Resolving the layer over RCON`)
 				} else {
-					log.warn('expectedNewLayerId is null')
+					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
 				}
 				const layersStatus = await state.hooks.fetchLayersStatus()
 				if (!layersStatus) {

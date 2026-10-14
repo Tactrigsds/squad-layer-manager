@@ -515,7 +515,7 @@ describe('PendingEvents', () => {
 			const { state } = makeState({ layerId: LAYER_A })
 			await syncUp(state, { layerId: LAYER_A })
 
-			// TransitionMap first (sets expectedNewLayerId = nextLayerId)
+			// TransitionMap first (sets expectedNewLayer to nextLayerId)
 			state.nextLayerId = LAYER_A
 			PendingEvents.onLogEvent(state, {
 				type: 'NEW_GAME',

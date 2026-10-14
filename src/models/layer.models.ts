@@ -502,10 +502,25 @@ export function layersEqual(a: LayerId | UnvalidatedLayer, b: LayerId | Unvalida
 	return true
 }
 
+// The world a layer loads is named after the layer, except that these layer prefixes load worlds with a different
+// prefix. Jensens Range layers are named JensensRange_WPMC-TLF but load the world Jensens_Range_WPMC-TLF.
+const WORLD_PREFIX_BY_LAYER_PREFIX: readonly (readonly [layerPrefix: string, worldPrefix: string])[] = [['JensensRange_', 'Jensens_Range_']]
+
+/** Whether `classname`, the world named in the server log when a layer loads, is the world of this layer. */
 export function layerMatchesIngameLayerClassname(_layer: LayerId | UnvalidatedLayer, classname: string) {
 	const layer = toLayer(_layer)
 	const normalizedLayerName = layer.Layer.replace('FRAAS', 'RAAS')
-	return normalizedLayerName === classname
+	if (normalizedLayerName === classname) return true
+	for (const [layerPrefix, worldPrefix] of WORLD_PREFIX_BY_LAYER_PREFIX) {
+		if (
+			normalizedLayerName.startsWith(layerPrefix) &&
+			classname.startsWith(worldPrefix) &&
+			normalizedLayerName.slice(layerPrefix.length) === classname.slice(worldPrefix.length)
+		) {
+			return true
+		}
+	}
+	return false
 }
 
 /** Resolves a raw layer to the known layer it matches, where there is one. Returns the input unchanged otherwise. */
