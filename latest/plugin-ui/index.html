@@ -1,4 +1,4 @@
-<!doctype html><html lang="en" data-base="/squad-layer-manager/latest/" data-root="/squad-layer-manager/" data-version="latest"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Plugin UI - SLM Docs</title><meta name="description" content="Plugin UI, from the Squad Layer Manager documentation."/><link rel="icon" href="/squad-layer-manager/favicon.svg" type="image/svg+xml"/><link rel="preload" href="/squad-layer-manager/latest/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/roboto-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/roboto-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="stylesheet" href="/squad-layer-manager/latest/docs.cd67316895.css"/><script type="module" src="/squad-layer-manager/latest/docs.de19bb960a.js"></script></head><body><a href="#content" class="docs-skip">Skip to content</a><header class="docs-header"><details class="docs-menu lg:hidden"><summary aria-label="Open navigation" class="docs-icon-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu size-5" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></summary><div class="docs-menu-panel"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/latest/layer-selection/">Features</a><a href="/squad-layer-manager/latest/installing/">Setup guide</a><a href="/squad-layer-manager/latest/contributing/" aria-current="page">Developers</a><a href="/squad-layer-manager/latest/faq/">FAQ</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Contributing</div><a href="/squad-layer-manager/latest/contributing/">Getting started</a><a href="/squad-layer-manager/latest/dev-workspaces/">Development workspaces</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Plugins</div><a href="/squad-layer-manager/latest/writing-plugins/">Writing a plugin</a><a href="/squad-layer-manager/latest/plugin-ui/" aria-current="page">Plugin UI</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Reference</div><a href="/squad-layer-manager/latest/architecture/">Architecture</a><a href="/squad-layer-manager/latest/custom-layer-data/">Building custom layer data</a></div></nav><div class="flex flex-wrap items-center gap-3 sm:hidden"><details class="docs-version " data-version-menu=""><summary aria-label="Documentation version: latest">latest<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><a href="https://ko-fi.com/grey275" class="docs-support-btn " aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a></div></div></details><a href="/squad-layer-manager/latest/" class="flex items-center gap-2.5 text-text no-underline"><svg viewBox="0 0 100 100" class="shrink-0 size-7" aria-hidden="true"><path d="M16.67 0L83.33 0C92.54 0 100 7.46 100 16.67L100 83.33C100 92.54 92.54 100 83.33 100L16.67 100C7.46 100 0 92.54 0 83.33L0 16.67C0 7.46 7.46 0 16.67 0Z" class="fill-foreground"></path><path d="M-22.31 22.49L-22.31 22.49Q-22.31 21.71-22.46 21.09Q-22.60 20.47-23.02 19.94Q-23.44 19.40-24.28 18.85Q-25.12 18.31-26.49 17.72L-26.49 17.72Q-28.17 17.03-29.75 16.20Q-31.34 15.37-32.60 14.27Q-33.86 13.16-34.61 11.66Q-35.37 10.16-35.37 8.15L-35.37 8.15Q-35.37 6.19-34.63 4.61Q-33.90 3.02-32.58 1.90Q-31.25 0.78-29.45 0.18Q-27.64-0.42-25.48-0.42L-25.48-0.42Q-22.56-0.42-20.38 0.77Q-18.19 1.95-16.98 4.08Q-15.76 6.21-15.76 9.05L-15.76 9.05L-22.39 9.05Q-22.39 7.81-22.73 6.88Q-23.06 5.94-23.77 5.41Q-24.47 4.87-25.61 4.87L-25.61 4.87Q-26.65 4.87-27.35 5.31Q-28.04 5.75-28.38 6.51Q-28.71 7.26-28.71 8.19L-28.71 8.19Q-28.71 8.92-28.37 9.49Q-28.02 10.06-27.42 10.54Q-26.82 11.02-25.99 11.46Q-25.16 11.90-24.20 12.30L-24.20 12.30Q-22.14 13.12-20.53 14.09Q-18.93 15.05-17.85 16.26Q-16.77 17.47-16.21 18.99Q-15.65 20.51-15.65 22.44L-15.65 22.44Q-15.65 24.42-16.32 26Q-17 27.59-18.25 28.70Q-19.50 29.81-21.28 30.40Q-23.06 30.99-25.27 30.99L-25.27 30.99Q-27.35 30.99-29.28 30.39Q-31.21 29.79-32.71 28.55Q-34.21 27.32-35.10 25.38Q-35.98 23.45-35.98 20.79L-35.98 20.79L-29.30 20.79Q-29.30 22.15-29.06 23.11Q-28.82 24.06-28.30 24.63Q-27.79 25.20-27.02 25.46Q-26.26 25.72-25.19 25.72L-25.19 25.72Q-24.09 25.72-23.46 25.28Q-22.83 24.84-22.57 24.11Q-22.31 23.39-22.31 22.49ZM-7.73 25.17L5.06 25.17L5.06 30.57L-7.73 30.57L-7.73 25.17ZM-12.20 0L-5.52 0L-5.52 30.57L-12.20 30.57L-12.20 0ZM19.62 30.57L10.82 0L16.43 0L21.97 21.04L27.49 0L32.76 0L24.30 30.57L19.62 30.57ZM7.95 30.57L7.95 0L13.55 0L14.50 21.73L14.50 30.57L7.95 30.57ZM29.43 21.73L30.37 0L35.98 0L35.98 30.57L29.43 30.57L29.43 21.73Z" transform="translate(50 34.72)" class="fill-background"></path></svg><span class="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span></a><details class="docs-version max-sm:hidden" data-version-menu=""><summary aria-label="Documentation version: latest">latest<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><button type="button" class="docs-search-btn" data-search-open=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="docs-search-label">Search the docs</span><kbd class="docs-kbd max-sm:hidden">/</kbd></button><div class="ms-auto flex items-center gap-5"><div class="max-lg:hidden"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/latest/layer-selection/">Features</a><a href="/squad-layer-manager/latest/installing/">Setup guide</a><a href="/squad-layer-manager/latest/contributing/" aria-current="page">Developers</a><a href="/squad-layer-manager/latest/faq/">FAQ</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav></div><div class="flex items-center gap-1"><a href="https://ko-fi.com/grey275" class="docs-support-btn me-1 max-sm:hidden" aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a><a href="https://discord.gg/Th7g2nhpR" class="docs-icon-btn" aria-label="SLM on Discord"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager" class="docs-icon-btn" aria-label="SLM on GitHub"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"></path></svg></a></div></div></header><div class="docs-shell"><div class="docs-sidebar-col max-lg:hidden"><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Contributing</div><a href="/squad-layer-manager/latest/contributing/">Getting started</a><a href="/squad-layer-manager/latest/dev-workspaces/">Development workspaces</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Plugins</div><a href="/squad-layer-manager/latest/writing-plugins/">Writing a plugin</a><a href="/squad-layer-manager/latest/plugin-ui/" aria-current="page">Plugin UI</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Reference</div><a href="/squad-layer-manager/latest/architecture/">Architecture</a><a href="/squad-layer-manager/latest/custom-layer-data/">Building custom layer data</a></div></nav></div><main id="content" class="docs-main"><p class="docs-version-banner" data-version-banner="" hidden="" role="note"></p><article class="docs-article" data-pagefind-body=""><div class="docs-label docs-crumbs" data-pagefind-ignore=""><span data-pagefind-filter="section">Developers</span><span aria-hidden="true">/</span><span>Plugins</span></div><div class="docs-prose"><h1 id="plugin-ui" class="docs-heading">Plugin UI</h1>
+<!doctype html><html lang="en" data-base="/squad-layer-manager/latest/" data-root="/squad-layer-manager/" data-version="latest"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Plugin UI - SLM Docs</title><meta name="description" content="Plugin UI, from the Squad Layer Manager documentation."/><link rel="icon" href="/squad-layer-manager/favicon.svg" type="image/svg+xml"/><link rel="preload" href="/squad-layer-manager/latest/fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/roboto-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="preload" href="/squad-layer-manager/latest/fonts/roboto-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin=""/><link rel="stylesheet" href="/squad-layer-manager/latest/docs.a87d89b0b8.css"/><script type="module" src="/squad-layer-manager/latest/docs.de19bb960a.js"></script></head><body><a href="#content" class="docs-skip">Skip to content</a><header class="docs-header"><details class="docs-menu lg:hidden"><summary aria-label="Open navigation" class="docs-icon-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu size-5" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg></summary><div class="docs-menu-panel"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/latest/layer-selection/">Features</a><a href="/squad-layer-manager/latest/installing/">Setup guide</a><a href="/squad-layer-manager/latest/contributing/" aria-current="page">Developers</a><a href="/squad-layer-manager/latest/faq/">FAQ</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Contributing</div><a href="/squad-layer-manager/latest/contributing/">Getting started</a><a href="/squad-layer-manager/latest/dev-workspaces/">Development workspaces</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Plugins</div><a href="/squad-layer-manager/latest/writing-plugins/">Writing a plugin</a><a href="/squad-layer-manager/latest/plugin-ui/" aria-current="page">Plugin UI</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Reference</div><a href="/squad-layer-manager/latest/architecture/">Architecture</a><a href="/squad-layer-manager/latest/custom-layer-data/">Building custom layer data</a></div></nav><div class="flex flex-wrap items-center gap-3 sm:hidden"><details class="docs-version " data-version-menu=""><summary aria-label="Documentation version: latest">latest<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><a href="https://ko-fi.com/grey275" class="docs-support-btn " aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a></div></div></details><a href="/squad-layer-manager/latest/" class="flex items-center gap-2.5 text-text no-underline"><svg viewBox="0 0 100 100" class="shrink-0 size-7" aria-hidden="true"><path d="M16.67 0L83.33 0C92.54 0 100 7.46 100 16.67L100 83.33C100 92.54 92.54 100 83.33 100L16.67 100C7.46 100 0 92.54 0 83.33L0 16.67C0 7.46 7.46 0 16.67 0Z" class="fill-foreground"></path><path d="M-22.31 22.49L-22.31 22.49Q-22.31 21.71-22.46 21.09Q-22.60 20.47-23.02 19.94Q-23.44 19.40-24.28 18.85Q-25.12 18.31-26.49 17.72L-26.49 17.72Q-28.17 17.03-29.75 16.20Q-31.34 15.37-32.60 14.27Q-33.86 13.16-34.61 11.66Q-35.37 10.16-35.37 8.15L-35.37 8.15Q-35.37 6.19-34.63 4.61Q-33.90 3.02-32.58 1.90Q-31.25 0.78-29.45 0.18Q-27.64-0.42-25.48-0.42L-25.48-0.42Q-22.56-0.42-20.38 0.77Q-18.19 1.95-16.98 4.08Q-15.76 6.21-15.76 9.05L-15.76 9.05L-22.39 9.05Q-22.39 7.81-22.73 6.88Q-23.06 5.94-23.77 5.41Q-24.47 4.87-25.61 4.87L-25.61 4.87Q-26.65 4.87-27.35 5.31Q-28.04 5.75-28.38 6.51Q-28.71 7.26-28.71 8.19L-28.71 8.19Q-28.71 8.92-28.37 9.49Q-28.02 10.06-27.42 10.54Q-26.82 11.02-25.99 11.46Q-25.16 11.90-24.20 12.30L-24.20 12.30Q-22.14 13.12-20.53 14.09Q-18.93 15.05-17.85 16.26Q-16.77 17.47-16.21 18.99Q-15.65 20.51-15.65 22.44L-15.65 22.44Q-15.65 24.42-16.32 26Q-17 27.59-18.25 28.70Q-19.50 29.81-21.28 30.40Q-23.06 30.99-25.27 30.99L-25.27 30.99Q-27.35 30.99-29.28 30.39Q-31.21 29.79-32.71 28.55Q-34.21 27.32-35.10 25.38Q-35.98 23.45-35.98 20.79L-35.98 20.79L-29.30 20.79Q-29.30 22.15-29.06 23.11Q-28.82 24.06-28.30 24.63Q-27.79 25.20-27.02 25.46Q-26.26 25.72-25.19 25.72L-25.19 25.72Q-24.09 25.72-23.46 25.28Q-22.83 24.84-22.57 24.11Q-22.31 23.39-22.31 22.49ZM-7.73 25.17L5.06 25.17L5.06 30.57L-7.73 30.57L-7.73 25.17ZM-12.20 0L-5.52 0L-5.52 30.57L-12.20 30.57L-12.20 0ZM19.62 30.57L10.82 0L16.43 0L21.97 21.04L27.49 0L32.76 0L24.30 30.57L19.62 30.57ZM7.95 30.57L7.95 0L13.55 0L14.50 21.73L14.50 30.57L7.95 30.57ZM29.43 21.73L30.37 0L35.98 0L35.98 30.57L29.43 30.57L29.43 21.73Z" transform="translate(50 34.72)" class="fill-background"></path></svg><span class="font-cond text-[15px] font-bold tracking-[0.14em] uppercase">Docs</span></a><details class="docs-version max-sm:hidden" data-version-menu=""><summary aria-label="Documentation version: latest">latest<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-3.5" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary><div class="docs-version-panel" data-version-list=""><a href="/squad-layer-manager/">All versions</a></div></details><button type="button" class="docs-search-btn" data-search-open=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search size-4" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="docs-search-label">Search the docs</span><kbd class="docs-kbd max-sm:hidden">/</kbd></button><div class="ms-auto flex items-center gap-5"><div class="max-lg:hidden"><nav aria-label="Sections" class="docs-sections"><a href="/squad-layer-manager/latest/layer-selection/">Features</a><a href="/squad-layer-manager/latest/installing/">Setup guide</a><a href="/squad-layer-manager/latest/contributing/" aria-current="page">Developers</a><a href="/squad-layer-manager/latest/faq/">FAQ</a><a href="/squad-layer-manager/changelog/">Changelog</a></nav></div><div class="flex items-center gap-1"><a href="https://ko-fi.com/grey275" class="docs-support-btn me-1 max-sm:hidden" aria-label="Support SLM on Ko-fi"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart size-4 text-pri" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Support</a><a href="https://discord.gg/Th7g2nhpR" class="docs-icon-btn" aria-label="SLM on Discord"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager" class="docs-icon-btn" aria-label="SLM on GitHub"><svg viewBox="0 0 24 24" class="size-5" aria-hidden="true" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"></path></svg></a></div></div></header><div class="docs-shell"><div class="docs-sidebar-col max-lg:hidden"><nav aria-label="Pages" class="docs-sidebar"><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Contributing</div><a href="/squad-layer-manager/latest/contributing/">Getting started</a><a href="/squad-layer-manager/latest/dev-workspaces/">Development workspaces</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Plugins</div><a href="/squad-layer-manager/latest/writing-plugins/">Writing a plugin</a><a href="/squad-layer-manager/latest/plugin-ui/" aria-current="page">Plugin UI</a></div><div class="flex flex-col gap-0.5"><div class="docs-label px-2 pb-1.5">Reference</div><a href="/squad-layer-manager/latest/architecture/">Architecture</a><a href="/squad-layer-manager/latest/custom-layer-data/">Building custom layer data</a></div></nav></div><main id="content" class="docs-main"><p class="docs-version-banner" data-version-banner="" hidden="" role="note"></p><article class="docs-article" data-pagefind-body=""><div class="docs-label docs-crumbs" data-pagefind-ignore=""><span data-pagefind-filter="section">Developers</span><span aria-hidden="true">/</span><span>Plugins</span></div><div class="docs-prose"><h1 id="plugin-ui" class="docs-heading">Plugin UI</h1>
 <p>A plugin&#x27;s client entry adds to SLM&#x27;s own pages. It cannot add a page or render anywhere it likes. SLM places
 named anchors in its UI, and a plugin registers into them. This page covers the anchors, the components SLM lends
 a plugin, and how to style and structure the browser half.</p>
@@ -31,13 +31,90 @@ a plugin, and how to style and structure the browser half.</p>
 <p>SLM calls the setup function in every open page when the plugin becomes active. SLM removes everything the setup
 function registered when the plugin stops, so nothing needs cleaning up by hand.</p>
 <p><code>ctx</code> carries:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Field</th><th>What it is</th></tr></thead><tbody><tr><td><code>ctx.plugin</code></td><td>your id and manifest</td></tr><tr><td><code>ctx.log</code></td><td>a browser logger named <code>plugin:&lt;id&gt;</code>, like the server half&#x27;s</td></tr></tbody></table></div>
 <p>The setup function runs once per page, not once per server. A component registered in the setup function receives the id
 of the server it is shown for as a prop.</p>
 <h2 id="anchors" class="docs-heading">Anchors<a href="#anchors" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/plugin_ui.md#anchors" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>An anchor is a place in SLM&#x27;s UI that accepts plugin content. There are three kinds.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Kind</th><th>What is registered</th><th>Who renders it</th></tr></thead><tbody><tr><td>slot</td><td>a React component</td><td>the plugin</td></tr><tr><td>decoration</td><td>data: a tint, a title and a body</td><td>SLM</td></tr><tr><td>feed line</td><td>an icon and a line of content</td><td>SLM, around yours</td></tr></tbody></table></div>
 <p>SLM provides these anchors:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Anchor</th><th>Kind</th><th>Where it is</th><th>Props</th></tr></thead><tbody><tr><td><code>server-dashboard:alerts</code></td><td>slot</td><td>server dashboard, directly below the match history</td><td><code>serverId</code></td></tr><tr><td><code>server-dashboard:queue-alerts</code></td><td>slot</td><td>server dashboard, above the queue, below SLM&#x27;s own queue alerts</td><td><code>serverId</code></td></tr><tr><td><code>match-history:row</code></td><td>decoration</td><td>each row of the match history on the server dashboard</td><td><code>serverId</code>, <code>matchId</code>, <code>layerId</code>, <code>ordinal</code></td></tr><tr><td>your own event names</td><td>feed line</td><td>the activity feed, and the event lists in player and squad windows</td><td>the event</td></tr></tbody></table></div>
 <p>Both slots also appear on the phone layout, in the matches and queue tabs.</p>
 <p>The set is closed and typed. Registering to an anchor that does not exist is a type error. To request a new anchor, open
@@ -134,6 +211,39 @@ at all, because the plugin is stopped or the server is not loaded, throws.</p>
 them in your server half and pass the result to the client through your rpc.</p>
 <h2 id="components" class="docs-heading">Components<a href="#components" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/plugin_ui.md#components" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>SLM lends a plugin some of its own components. Each renders exactly as it does in SLM and fetches its own data.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Import</th><th>Exports</th></tr></thead><tbody><tr><td><code>slm/components/ui</code></td><td><code>Alert</code>, <code>AlertTitle</code>, <code>AlertDescription</code>, <code>Badge</code>, <code>Button</code>, <code>Card</code> and its parts, <code>Tooltip</code>, <code>TooltipTrigger</code>, <code>TooltipContent</code></td></tr><tr><td><code>slm/components/pickers</code></td><td><code>FilterSelect</code>, <code>FilterMultiSelect</code>, <code>ServerSelect</code>, <code>ServerMultiSelect</code>, <code>DiscordChannelSelect</code>, <code>DiscordChannelMultiSelect</code></td></tr><tr><td><code>slm/components/combo-box</code></td><td><code>ComboBox</code>, <code>ComboBoxMulti</code>, <code>LOADING</code></td></tr><tr><td><code>slm/components/layer</code></td><td><code>LayerName</code></td></tr><tr><td><code>slm/components/plugin-settings-link</code></td><td><code>PluginSettingsLink</code></td></tr><tr><td><code>slm/components/icons</code></td><td><code>Icons</code></td></tr></tbody></table></div>
 <h3 id="primitives" class="docs-heading">Primitives<a href="#primitives" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/plugin_ui.md#primitives" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>SLM builds its own panels from <code>slm/components/ui</code>. A slot made of these components matches the page around it, and
@@ -146,6 +256,27 @@ needs no classes of its own.</p>
 <span class="line"><span style="color:var(--shiki-foreground)">&lt;/</span><span style="color:var(--shiki-token-constant)">Alert</span><span style="color:var(--shiki-foreground)">&gt;</span></span>
 <span class="line"><span style="color:var(--shiki-foreground)">&lt;</span><span style="color:var(--shiki-token-constant)">Badge</span><span style="color:var(--shiki-token-function)"> variant</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-token-string-expression)">&quot;outline&quot;</span><span style="color:var(--shiki-foreground)">&gt;12 players&lt;/</span><span style="color:var(--shiki-token-constant)">Badge</span><span style="color:var(--shiki-foreground)">&gt;</span></span>
 <span class="line"><span style="color:var(--shiki-foreground)">&lt;</span><span style="color:var(--shiki-token-constant)">Button</span><span style="color:var(--shiki-token-function)"> variant</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-token-string-expression)">&quot;outline&quot;</span><span style="color:var(--shiki-token-function)"> size</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-token-string-expression)">&quot;sm&quot;</span><span style="color:var(--shiki-token-function)"> onClick</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-foreground)">{roll}&gt;Roll now&lt;/</span><span style="color:var(--shiki-token-constant)">Button</span><span style="color:var(--shiki-foreground)">&gt;</span></span></code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Component</th><th>Variants</th></tr></thead><tbody><tr><td><code>Alert</code></td><td><code>default</code>, <code>info</code>, <code>warning</code>, <code>destructive</code></td></tr><tr><td><code>Badge</code></td><td><code>default</code>, <code>primary</code>, <code>secondary</code>, <code>outline</code>, <code>info</code>, <code>warning</code>, <code>destructive</code></td></tr><tr><td><code>Button</code></td><td><code>default</code>, <code>primary</code>, <code>ok</code>, <code>outline</code>, <code>secondary</code>, <code>ghost</code>, <code>link</code>; sizes <code>sm</code>, <code>lg</code>, <code>icon</code></td></tr></tbody></table></div>
 <p>The host renders a decoration as an <code>Alert</code> with a tint. SLM draws the match history and queue panels with <code>Card</code>.
 <code>Tooltip</code> wraps a <code>TooltipTrigger</code> and a <code>TooltipContent</code>, and positions itself.</p>
@@ -156,6 +287,46 @@ its own options.</p>
 <span class="line"></span>
 <span class="line"><span style="color:var(--shiki-foreground)">&lt;</span><span style="color:var(--shiki-token-constant)">FilterSelect</span><span style="color:var(--shiki-token-function)"> value</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-foreground)">{filterId} </span><span style="color:var(--shiki-token-function)">onChange</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-foreground)">{setFilterId} /&gt;</span></span>
 <span class="line"><span style="color:var(--shiki-foreground)">&lt;</span><span style="color:var(--shiki-token-constant)">ServerMultiSelect</span><span style="color:var(--shiki-token-function)"> values</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-foreground)">{serverIds} </span><span style="color:var(--shiki-token-function)">onChange</span><span style="color:var(--shiki-token-keyword)">=</span><span style="color:var(--shiki-foreground)">{setServerIds} /&gt;</span></span></code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Prop</th><th>Single</th><th>Multi</th></tr></thead><tbody><tr><td>value</td><td><code>value: string | null</code></td><td><code>values: string[]</code></td></tr><tr><td>change</td><td><code>onChange(value: string | null)</code></td><td><code>onChange(values: string[])</code></td></tr><tr><td><code>selectionLimit</code></td><td></td><td>at most this many</td></tr><tr><td><code>disabled</code></td><td>yes</td><td>yes</td></tr><tr><td><code>title</code></td><td>the noun it picks, for its label</td><td>the same</td></tr><tr><td><code>className</code></td><td>yes</td><td>yes</td></tr></tbody></table></div>
 <p>An id that no longer names anything, such as a deleted filter, stays selected rather than being dropped.</p>
 <p>For a setting rather than a choice made in a slot, declare the field in your config schema instead. See
@@ -199,6 +370,35 @@ client. SLM&#x27;s own stylesheet includes only the classes SLM uses, so a class
 In-tree plugins under <code>plugins/</code> skip this step, because <code>pnpm dev</code> compiles their classes with the app.</p>
 <p>For colour, use SLM&#x27;s theme rather than Tailwind&#x27;s palette. The theme follows light and dark mode, and the palette
 does not.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="docs-table"><table><thead><tr><th>Use</th><th>Class</th></tr></thead><tbody><tr><td>secondary text</td><td><code>text-muted-foreground</code></td></tr><tr><td>a panel</td><td><code>bg-card</code>, <code>border</code></td></tr><tr><td>information</td><td><code>text-info</code></td></tr><tr><td>a warning</td><td><code>text-warning</code></td></tr><tr><td>an error or violation</td><td><code>text-destructive</code></td></tr></tbody></table></div>
 <p><code>src/theme.css</code> lists every token.</p>
 <p>Plain CSS goes in <code>client.css</code> next to <code>client.tsx</code>. <code>pnpm plugin:pack</code> compiles that CSS into the same output file, so
