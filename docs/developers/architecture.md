@@ -187,8 +187,7 @@ pipelines, with the same treatment plus error recovery.
 ### ManagedServer: one live game server
 
 `ManagedServer` is a large intersection representing everything about one running Squad server: rcon, vote, layer queue,
-match history, teamswaps, settings, cleanup and an abort signal. SLM does not instantiate Squad servers. It connects to
-and supervises them, so the entity is a server _under management_. That is also the user-facing name.
+match history, teamswaps, settings, cleanup and an abort signal.
 
 Four patterns hold it together, and each recurs elsewhere:
 
