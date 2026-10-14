@@ -2,10 +2,10 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import * as Typo from '@/components/typography'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import * as Typo from '@/lib/typography'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
 import * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'

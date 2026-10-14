@@ -6,10 +6,10 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { SubmitChordKbd } from '@/components/ui/kbd'
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
 import { Popover, PopoverTrigger } from '@/components/ui/popover.tsx'
-import * as DH from '@/lib/display-helpers.ts'
 import * as SubmitChord from '@/lib/submit-chord'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as DH from '@/models/display-helpers.models'
 import { tr } from '@/systems/messages.client'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'

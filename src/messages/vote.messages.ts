@@ -1,5 +1,5 @@
-import * as DH from '@/lib/display-helpers'
 import * as MsgFmt from '@/messages/format'
+import * as DH from '@/models/display-helpers.models'
 import type * as LL from '@/models/layer-list.models'
 import type * as L from '@/models/layer.models'
 import { def, join, t } from '@/models/messages.models'

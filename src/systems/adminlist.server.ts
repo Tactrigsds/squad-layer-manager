@@ -7,9 +7,9 @@ import * as Arr from '@/lib/array-utils'
 import { AsyncResource } from '@/lib/async-resource.ts'
 import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
 import * as OneToMany from '@/lib/one-to-many-map.ts'
-import { WritableBuffer } from '@/lib/rcon/writable-buffer'
 import * as Rx from '@/lib/rxjs'
 import { withSftp } from '@/lib/sftp-file-store.ts'
+import { WritableBuffer } from '@/lib/writable-buffer'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared.models'
 import * as SM from '@/models/squad.models.ts'
@@ -103,7 +103,6 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 			defaultTTL: ttlFor(listId),
 			retries: 3,
 			retryDelay: 1000,
-			log,
 			onFatalError: (err) => {
 				status$.next({ code: 'error', message: err instanceof Error ? err.message : String(err) })
 			},

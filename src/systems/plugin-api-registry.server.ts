@@ -10,11 +10,11 @@ import * as rxjs from 'rxjs'
 
 import * as zod from '@/lib/zod'
 import * as SHIM from '@/models/plugin-api-shim.models'
-import * as libDisplayHelpers from '@/plugin-api/lib/display-helpers'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libTemplating from '@/plugin-api/lib/templating'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
 import * as modelsConstraintBuilders from '@/plugin-api/models/constraint-builders'
+import * as modelsDisplayHelpers from '@/plugin-api/models/display-helpers'
 import * as modelsFilter from '@/plugin-api/models/filter'
 import * as modelsFilterBuilders from '@/plugin-api/models/filter-builders'
 import * as modelsGenVote from '@/plugin-api/models/gen-vote'
@@ -65,11 +65,11 @@ export function setup() {
 	if (installed) return
 	installed = true
 	entries = {
-		'slm/lib/display-helpers': libDisplayHelpers,
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/templating': libTemplating,
 		'slm/lib/zod-utils': libZodUtils,
 		'slm/models/constraint-builders': modelsConstraintBuilders,
+		'slm/models/display-helpers': modelsDisplayHelpers,
 		'slm/models/filter': modelsFilter,
 		'slm/models/gen-vote': modelsGenVote,
 		'slm/models/filter-builders': modelsFilterBuilders,

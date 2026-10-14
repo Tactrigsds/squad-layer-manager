@@ -3,7 +3,6 @@ import type * as Fastify from 'fastify'
 import type * as ws from 'ws'
 
 import type * as AR from '@/app-routes.ts'
-import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
 import type * as Cleanup from '@/lib/cleanup.ts'
 import * as CD from '@/lib/ctx-def'
 import * as CS from '@/models/context-shared.models.ts'
@@ -92,12 +91,6 @@ export const WebsocketDef = CD.defCtx<Websocket>()(['ws'], { name: 'websocket' }
 export type OrpcSessionBase = CS.Ctx & AuthedUser & WSSession & Websocket & FastifyRequest & Db
 
 export type OrpcBase = OrpcSessionBase & CS.AbortSignal
-
-export type AsyncResourceInvocation = CS.Ctx & {
-	resOpts: AsyncResourceInvocationOpts
-	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
-}
-export const AsyncResourceInvocationDef = CD.defCtx<AsyncResourceInvocation>()(['resOpts', 'refetch'], { name: 'asyncResourceInvocation' })
 
 export type ManagedServerCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks

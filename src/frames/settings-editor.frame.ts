@@ -2,9 +2,6 @@ import * as Color from '@/lib/color'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
-import type { SettingChange } from '@/lib/settings-diff'
-import { diffSettings } from '@/lib/settings-diff'
-import { GLOBAL_SETTINGS_GROUPS } from '@/lib/settings-groups'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
@@ -14,6 +11,7 @@ import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as CMD from '@/models/command.models'
 import type * as PLG from '@/models/plugins.models'
 import * as SS from '@/models/server-state.models'
+import { GLOBAL_SETTINGS_GROUPS } from '@/models/settings-groups.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -73,7 +71,7 @@ export type SettingsEditor = {
 	created: boolean
 
 	// derived from the fields above by the frame's update$ subscription
-	changes: SettingChange[]
+	changes: Obj.LeafChange[]
 	issues: readonly z.core.$ZodIssue[]
 	valid: boolean
 }
@@ -209,14 +207,14 @@ export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'cha
 	const value = state.mode === 'yaml' ? state.yamlValid : guiRes?.success ? guiRes.data : null
 	if (state.kind === 'new-server') {
 		return {
-			changes: diffSettings({}, { id: state.newId, displayName: state.newDisplayName, ...(value ?? {}) }),
+			changes: Obj.diffLeaves({}, { id: state.newId, displayName: state.newDisplayName, ...(value ?? {}) }),
 			issues,
 			valid: SS.ServerIdSchema.safeParse(state.newId).success && state.newDisplayName.trim().length > 0 && value !== null,
 		}
 	}
 	const nextEnc = nextEncoded(state, value)
 	return {
-		changes: state.saved !== undefined && nextEnc !== undefined ? diffSettings(state.saved, nextEnc) : [],
+		changes: state.saved !== undefined && nextEnc !== undefined ? Obj.diffLeaves(state.saved, nextEnc) : [],
 		issues,
 		valid: value !== null,
 	}

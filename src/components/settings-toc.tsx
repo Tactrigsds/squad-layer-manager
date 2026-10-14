@@ -6,9 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import * as Obj from '@/lib/object-utils'
-import type { SettingsGroup } from '@/lib/settings-groups'
-import { GLOBAL_SETTINGS_GROUPS, HIDDEN_SETTINGS_KEYS, splitByGroups, TOC_ENTRY_PATHS, TOC_LEAF_PATHS } from '@/lib/settings-groups'
-import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
@@ -16,11 +13,20 @@ import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import type { SettingsGroup } from '@/models/settings-groups.models'
+import {
+	GLOBAL_SETTINGS_GROUPS,
+	HIDDEN_SETTINGS_KEYS,
+	splitByGroups,
+	TOC_ENTRY_PATHS,
+	TOC_LEAF_PATHS,
+} from '@/models/settings-groups.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsNav from '@/systems/settings-nav.client'
 
 // A tree-of-contents for the settings page. Nodes mirror the global-settings schema tree; clicking one scrolls the
 // matching field (anchored by `setting:<path>` ids emitted by SettingsForm) into view within the main scroll column.

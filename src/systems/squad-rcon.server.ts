@@ -1,8 +1,7 @@
-import { AsyncResource } from '@/lib/async-resource'
+import { AsyncResource, type AsyncResourceInvocation } from '@/lib/async-resource'
 import type * as Cleanup from '@/lib/cleanup'
 import { matchLog } from '@/lib/log-parsing'
 import * as Prom from '@/lib/promise-utils'
-import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import * as Rx from '@/lib/rxjs'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared.models'
@@ -11,11 +10,11 @@ import * as Msgs from '@/models/messages.models'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
-import type * as C from '@/server/context.ts'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
+import type { DecodedPacket } from '@/systems/core-rcon.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
 
 const module = initModule('squad-rcon')
@@ -50,7 +49,6 @@ export function initSquadRcon(
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
-			log,
 			onFatalError: opts.onFatalError,
 		},
 	)
@@ -65,7 +63,6 @@ export function initSquadRcon(
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
-			log,
 			onFatalError: opts.onFatalError,
 		},
 	)
@@ -80,7 +77,6 @@ export function initSquadRcon(
 			retries: 4,
 			retryDelay: 1000,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
-			log,
 			onFatalError: opts.onFatalError,
 		},
 	)
@@ -249,7 +245,7 @@ async function fetchSquads(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	}
 }
 
-async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
+async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
 	// stamped before the requests go out so it's a lower bound on the snapshot's validity; see TeamsRes.polledAt
 	const polledAt = Date.now()
 	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])

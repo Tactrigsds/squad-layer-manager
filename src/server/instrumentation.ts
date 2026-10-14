@@ -3,7 +3,7 @@ import type { MutexInterface } from 'async-mutex'
 import type Pino from 'pino'
 
 import { withAcquired } from '@/lib/nodejs-reentrant-mutexes.ts'
-import type { OtelModule } from '@/lib/otel'
+import type * as OtelMod from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.models.ts'
@@ -15,7 +15,6 @@ import * as ATTRS from '@/models/otel-attrs.models.ts'
 import type * as USR from '@/models/users.models'
 
 import type * as C from './context.ts'
-import { baseLogger } from './logger.ts'
 
 const CONTEXT_ATTR_MAPPING = [
 	{
@@ -74,6 +73,24 @@ function getOpDurationHistogram() {
 	return opDuration
 }
 
+/** Builds an OtelModule bound to this file's spanOp, so lib code that is handed the module can open spans. */
+export function createModule(name: string, getLogger: () => Pino.Logger): OtelMod.OtelModule {
+	const module: OtelMod.OtelModule = {
+		name,
+		tracer: Otel.trace.getTracer(name),
+		getLogger,
+		spanOp: (opName, opts, cb) => spanOp(opName, { ...opts, module }, cb),
+		child: (submoduleName) => {
+			const childName = `${name}:${submoduleName}`
+			// memoized: spanOp calls getLogger() on every invocation, and each pino child allocation also
+			// invalidates the bindings cache that the otel bridge in server/logger.ts keys off the instance.
+			let log: Pino.Logger | undefined
+			return createModule(childName, () => (log ??= getLogger().child({ [ATTRS.Module.NAME]: childName })))
+		},
+	}
+	return module
+}
+
 /**
  * Wraps a function so each call is a traced span, with duration recorded and errors marked. `opts.mutexes`
  * takes locks for the call's lifetime, in the order given. Most exported operations in SLM are built with
@@ -81,25 +98,9 @@ function getOpDurationHistogram() {
  */
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
-	opts: {
-		module: OtelModule
-		links?: Otel.Link[]
-		// defaults to INTERNAL. Set CLIENT on egress (rcon, http, sftp) and SERVER on ingress: span kind
-		// is what a service graph and any spanmetrics connector key off, so leaving everything INTERNAL
-		// means we get neither out of spans we're already paying to export.
-		kind?: Otel.SpanKind
-		levels?: {
-			event?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
-			error?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
-			valueError?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
-		}
-		root?: boolean
-		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
-		extraText?: (...args: Parameters<Cb>) => string
-		mutexes?: (...args: Parameters<Cb>) => MutexInterface[] | MutexInterface
-	},
+	opts: OtelMod.SpanOpOpts<Cb> & { module: OtelMod.OtelModule },
 	cb: Cb,
-) {
+): (...args: Parameters<Cb>) => Promise<Awaited<ReturnType<Cb>>> {
 	const fullName = `${opts.module.name}:${name}`
 	const run = withAcquired(opts.mutexes ?? [], cb as Cb)
 	const extraTextPart = (args: any[]) => (opts.extraText ? ` : ${opts.extraText(...(args as Parameters<Cb>)).trim()}` : '')
@@ -208,7 +209,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				span.setAttributes(spanAttrs)
 			}
 
-			const log = opts.module.getLogger() ?? baseLogger
+			const log = opts.module.getLogger()
 			const startedAt = performance.now()
 			let metricOutcome: ATTRS.Op.Outcome = 'ok'
 			try {
@@ -325,7 +326,7 @@ export function recordGenericError(error: unknown, setStatus = true) {
 export function durableSub<T, O>(
 	name: string,
 	opts: {
-		module: OtelModule
+		module: OtelMod.OtelModule
 		levels?: {
 			event?: Pino.Level | ((arg: T) => Pino.Level)
 			error?: Pino.Level | ((arg: T) => Pino.Level)

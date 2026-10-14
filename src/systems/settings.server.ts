@@ -5,7 +5,6 @@ import * as Color from '@/lib/color'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
-import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared.models'
@@ -150,7 +149,7 @@ async function loadGlobalSettings(ctx: C.Db) {
 // what the audit log is allowed to remember about a settings change: everything except the values of the rcon/sftp
 // credentials. toRow redacts these again on the way to the table; doing it here as well keeps the in-flight event
 // (which gets logged and traced) clean too.
-function auditableSettingChanges(changes: SettingChange[]): AppEvents.SettingsUpdated['changes'] {
+function auditableSettingChanges(changes: Obj.LeafChange[]): AppEvents.SettingsUpdated['changes'] {
 	return AppEvents.redactSettingChanges(changes, SETTINGS.redactSettingValue)
 }
 
@@ -587,7 +586,7 @@ async function repeatRulesetIdsInUse(ctx: C.Db): Promise<Set<RRS.RulesetId>> {
 export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.GlobalSettings>, actor: AppEvents.Actor) {
 	const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, ...patch })
 	if (!parseRes.success) return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
-	const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+	const changes = Obj.diffLeaves(GLOBAL_SETTINGS, parseRes.data)
 	if (changes.length === 0) return { code: 'ok' as const }
 	GLOBAL_SETTINGS = parseRes.data
 	await persistGlobalSettings(ctx)
@@ -623,7 +622,7 @@ export async function editServerSettings(
 	actor: AppEvents.Actor,
 	source: SS.LQStateUpdate['source'],
 ) {
-	let changes: SettingChange[] = []
+	let changes: Obj.LeafChange[] = []
 	const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const state = await SquadServer.getServerState(ctx)
 		const next = Obj.deepClone(state.settings)
@@ -632,7 +631,7 @@ export async function editServerSettings(
 		if (!parsed.success) return { code: 'err:invalid-settings' as const, message: parsed.error.message }
 		const repeatRulesetError = unknownRepeatRulesetError(parsed.data)
 		if (repeatRulesetError) return repeatRulesetError
-		changes = diffSettings(state.settings, parsed.data)
+		changes = Obj.diffLeaves(state.settings, parsed.data)
 		await updateServerSettings(ctx, parsed.data, source)
 	})
 	if (res) return res
@@ -680,13 +679,13 @@ export async function setServerRepeatRuleset(ctx: C.Db & CS.ServerId, id: RRS.Ru
 	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) {
 		return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
 	}
-	let changes: SettingChange[] = []
+	let changes: Obj.LeafChange[] = []
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const state = await SquadServer.getServerState(ctx)
 		if (state.settings.queue.mainPool.repeatRulesetId === id) return
 		const next = Obj.deepClone(state.settings)
 		next.queue.mainPool.repeatRulesetId = id
-		changes = diffSettings(state.settings, next)
+		changes = Obj.diffLeaves(state.settings, next)
 		await updateServerSettings(ctx, next, { type: 'plugin', event: 'edit-settings', pluginId })
 	})
 	if (changes.length > 0) {
@@ -868,7 +867,7 @@ const globalRouter = {
 				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 			}
 
-			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
+			const changes = Obj.diffLeaves(GLOBAL_SETTINGS, parseRes.data)
 
 			const keptRepeatRulesetIds = new Set(parseRes.data.repeatRulesets.map((r) => r.id))
 			const removedInUse = [...(await repeatRulesetIdsInUse(ctx))].filter((id) => !keptRepeatRulesetIds.has(id))
@@ -1089,7 +1088,7 @@ const adminRouter = {
 			// a broken prior has nothing to diff against, so every top-level key sent counts as written, connections included
 			const sentKeys = rawSettings && typeof rawSettings === 'object' ? Object.keys(rawSettings) : []
 			const changePaths = priorSettings
-				? diffSettings(priorSettings, rawSettings).map((c) => [c.path])
+				? Obj.diffLeaves(priorSettings, rawSettings).map((c) => [c.path])
 				: (sentKeys.length > 0 ? sentKeys : ['']).map((key) => [key])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(serverId, changePaths))
 			if (denyRes) return denyRes
@@ -1115,7 +1114,7 @@ const adminRouter = {
 			})
 
 			// a repair has no valid prior state to diff against, so every field reads as newly set
-			const changes = diffSettings(priorSettings ?? {}, parseRes.data)
+			const changes = Obj.diffLeaves(priorSettings ?? {}, parseRes.data)
 
 			// the settings-derived fields of the entry are mirrored by updateServerSettings above; `broken` is not one of
 			// them, and this is the only path that can clear it

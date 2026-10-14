@@ -1,9 +1,9 @@
 import React from 'react'
 
+import * as Typo from '@/components/typography'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import * as UI_Msgs from '@/messages/ui.messages'
 import { tr } from '@/systems/messages.client'

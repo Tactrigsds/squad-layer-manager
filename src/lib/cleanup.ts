@@ -1,6 +1,6 @@
 import type { MutexInterface } from 'async-mutex'
 
-import type * as CS from '@/models/context-shared.models'
+import type * as GCtx from '@/lib/generic-ctx'
 
 import * as Rx from './rxjs'
 import { assertNever } from './type-guards'
@@ -38,7 +38,7 @@ function classify(value: unknown): Classified {
 }
 
 // runs cleanup tasks in a FILO fashion, awaiting any that are async. A failing task is logged and the rest still run
-export function runCleanup(ctx: CS.Log, tasks: Tasks): Promise<unknown> {
+export function runCleanup(ctx: GCtx.Log, tasks: Tasks): Promise<unknown> {
 	// concat takes its sources variadically -- `concat(array)` emits the array's members as values and subscribes to
 	// none of them. Each task is also deferred, so the chain runs in sequence: mapping to$ directly would fire every
 	// task's side effect during the map, before the first async one had finished, which is not FILO at all.

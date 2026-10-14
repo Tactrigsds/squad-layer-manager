@@ -8,7 +8,6 @@ import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import * as Browser from '@/lib/browser'
-import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -16,6 +15,7 @@ import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence.models'
 import { DraggableWindowStore, frameDependency } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
+import * as TutorialsClient from '@/systems/tutorials.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
@@ -89,7 +89,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 	const readOnly =
 		!!mainPoolApi.writeDenied && !!autoStartApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
 
-	const [tab, setTab] = useState_withGlobalHandle<'filters' | 'repeatRules' | 'generation' | 'nextLayer'>(
+	const [tab, setTab] = TutorialsClient.useState_withGlobalHandle<'filters' | 'repeatRules' | 'generation' | 'nextLayer'>(
 		TUT.TOUR_HANDLES.poolConfigTab,
 		'filters',
 	)

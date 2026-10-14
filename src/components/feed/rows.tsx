@@ -11,7 +11,6 @@
 
 import React from 'react'
 
-import * as DH from '@/lib/display-helpers'
 import { withThrown } from '@/lib/error'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT_Msgs from '@/messages/chat.messages'
@@ -19,6 +18,7 @@ import * as I18n from '@/messages/i18n'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as DSTR from '@/models/destruction.models'
+import * as DH from '@/models/display-helpers.models'
 import * as LC from '@/models/layer-columns.models'
 import * as L from '@/models/layer.models'
 import * as SE from '@/models/server-events.models'

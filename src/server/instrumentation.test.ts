@@ -5,7 +5,6 @@ import { Mutex } from 'async-mutex'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
-import type { OtelModule } from '@/lib/otel'
 import * as CS from '@/models/context-shared.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as Instr from '@/server/instrumentation'
@@ -17,7 +16,7 @@ const provider = new node.NodeTracerProvider({ spanProcessors: [new SimpleSpanPr
 // registered for its context manager, without which no span is ever active inside a callback
 provider.register()
 const noopLogger: any = new Proxy(() => {}, { get: () => noopLogger, apply: () => undefined })
-const module: OtelModule = { name: 'instrumentation-test', tracer: provider.getTracer('test'), getLogger: () => noopLogger }
+const module = Instr.createModule('instrumentation-test', () => noopLogger)
 
 function spanContext(spanId: string): Otel.SpanContext {
 	return { traceId: '0'.repeat(31) + '1', spanId: '0'.repeat(15) + spanId, traceFlags: Otel.TraceFlags.SAMPLED }

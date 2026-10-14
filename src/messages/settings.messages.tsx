@@ -3,10 +3,10 @@
 // teamswaps.messages.tsx).
 import * as React from 'react'
 
-import type { SettingsGroupSlug } from '@/lib/settings-groups'
-import { humanize } from '@/lib/settings-labels'
+import * as Str from '@/lib/string-utils'
 import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
+import type { SettingsGroupSlug } from '@/models/settings-groups.models'
 import type * as SETTINGS from '@/models/settings.models'
 
 // -------- section names --------
@@ -644,7 +644,7 @@ export const settingsGroupNames: Record<SettingsGroupSlug, TString> = {
 
 // `node` is the JSON schema node for the setting, as rendered; `key` names it when the schema does not
 export function settingLabel(node: unknown, key: string): TString {
-	return SDoc.read(node)?.label ?? raw(humanize(key))
+	return SDoc.read(node)?.label ?? raw(Str.humanize(key))
 }
 
 export function settingDescription(node: unknown): TString | undefined {

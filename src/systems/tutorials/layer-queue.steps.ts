@@ -9,7 +9,6 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
-import { setGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as LQTUT_Msgs from '@/messages/tutorials/layer-queue-tutorial.messages'
 import * as CMD from '@/models/command.models'
@@ -28,6 +27,7 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as Tour from '@/systems/tour.client'
+import * as TutorialsClient from '@/systems/tutorials.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 // The client half of the layer queue tutorial: the step list the tour walks against the live dashboard. The order
@@ -240,7 +240,7 @@ async function simShowSaveWarnings(ctx: Tour.SimulateCtx) {
 	await ListHostPrt.awaitCurrentStatuses(ctx.run.squadServer)
 	await ListHostPrt.refreshSavedQueueWarnings(ctx.run.squadServer)
 	if (ctx.signal.aborted) return
-	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, true)
+	TutorialsClient.setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, true)
 }
 
 async function simOpenLayerDetails(ctx: Tour.SimulateCtx) {
@@ -253,7 +253,7 @@ async function simOpenLayerDetails(ctx: Tour.SimulateCtx) {
 }
 
 function simShowLayerScores() {
-	setGlobalHandle(TUT.TOUR_HANDLES.layerInfoTab, 'scores')
+	TutorialsClient.setGlobalHandle(TUT.TOUR_HANDLES.layerInfoTab, 'scores')
 }
 
 function simCloseLayerDetails() {
@@ -268,11 +268,11 @@ async function simOpenPoolConfig(ctx: Tour.SimulateCtx) {
 }
 
 function simShowRepeatRules() {
-	setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'repeatRules')
+	TutorialsClient.setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'repeatRules')
 }
 
 function simShowNextLayer() {
-	setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'nextLayer')
+	TutorialsClient.setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'nextLayer')
 }
 
 // Close every window a step may have opened and clear stale handle state. Presence-driven dialogs are deliberately
@@ -282,7 +282,7 @@ function simShowNextLayer() {
 function resetClient(run: Tour.RunStores) {
 	const store = DraggableWindowStore.getState()
 	for (const w of [...store.windows]) store.closeWindow(w.id)
-	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
+	TutorialsClient.setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
 	// the tab is a persisted preference, so a reader who left the dashboard on Teams starts here on Teams. Both
 	// panels stay mounted in one grid cell, so the queue anchors still measure and the spotlight lands on a panel
 	// the reader cannot see.

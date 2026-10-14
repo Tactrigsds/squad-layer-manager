@@ -206,11 +206,4 @@ export namespace Battlemetrics {
 	export const AUTH = 'slm.battlemetrics.auth'
 }
 
-export namespace SpanLink {
-	export const SOURCE = 'slm.link-source'
-	export const SOURCE_TYPES = [
-		// the span which invoked the event(or rx emission) that we're currently handling
-		'event.emitter',
-	] as const
-	export type SourceType = (typeof SOURCE_TYPES)[number]
-}
+export { SpanLink } from '@/lib/generic-ctx'

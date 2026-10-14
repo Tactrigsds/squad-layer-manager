@@ -17,11 +17,11 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
-import * as SettingsNav from '@/lib/settings-nav'
+import { useDebounced } from '@/lib/use-debounce'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { tr } from '@/systems/messages.client'
+import * as SettingsNav from '@/systems/settings-nav.client'
 
 const MAX_SHOWN_FIELD_ISSUES = 5
 

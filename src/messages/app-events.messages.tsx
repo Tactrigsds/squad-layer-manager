@@ -1,12 +1,12 @@
 // see settings.messages.tsx on why a messages module with a react target keeps React in scope
 import * as React from 'react'
 
-import * as DH from '@/lib/display-helpers'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as I18n from '@/messages/i18n'
 import type * as AMS from '@/models/admin-message-shorthands.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
+import * as DH from '@/models/display-helpers.models'
 import * as LL from '@/models/layer-list.models'
 import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
 import type * as SM from '@/models/squad.models'

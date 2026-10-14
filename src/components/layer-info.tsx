@@ -5,11 +5,10 @@ import React, { useRef } from 'react'
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as Browser from '@/lib/browser'
-import * as DH from '@/lib/display-helpers.ts'
-import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
+import * as DH from '@/models/display-helpers.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import type * as GLD from '@/models/game-layer-data.models'
 import * as LC from '@/models/layer-columns.models.ts'
@@ -21,6 +20,7 @@ import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
+import * as TutorialsClient from '@/systems/tutorials.client'
 
 import { type LayerInfoWindowProps, pairedScoreDimensions } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
@@ -92,7 +92,10 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 
 function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 	const phone = Browser.useIsSmallViewport()
-	const [selectedTab, setTab] = useState_withGlobalHandle<WindowTab>(TUT.TOUR_HANDLES.layerInfoTab, initialTab || 'details')
+	const [selectedTab, setTab] = TutorialsClient.useState_withGlobalHandle<WindowTab>(
+		TUT.TOUR_HANDLES.layerInfoTab,
+		initialTab || 'details',
+	)
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const layer = L.toLayer(layerId)

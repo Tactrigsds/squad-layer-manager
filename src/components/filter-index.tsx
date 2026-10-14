@@ -7,6 +7,7 @@ import { MatchSnippet, OwnerFilter, SortControl } from '@/components/entity-inde
 import { CloneFilterDialog } from '@/components/filter-clone-dialog'
 import { PermissionDeniedTooltip, ReasonTooltip } from '@/components/permission-denied-tooltip'
 import { RequireAccess } from '@/components/require-access'
+import * as Typo from '@/components/typography'
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -26,9 +27,8 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/lib/toast'
-import * as Typo from '@/lib/typography'
+import { useDebounced } from '@/lib/use-debounce'
 import { cn, STRETCHED_LINK } from '@/lib/utils'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
 import * as F_Msgs from '@/messages/filter.messages'

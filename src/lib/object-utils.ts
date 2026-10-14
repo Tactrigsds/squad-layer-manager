@@ -327,3 +327,19 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 	const proto = Object.getPrototypeOf(value)
 	return proto === Object.prototype || proto === null
 }
+
+export type LeafChange = { path: string; from: unknown; to: unknown }
+
+// a leaf-level diff of two values keyed by dotted path. Objects recurse; arrays and scalars are leaves, so a changed
+// array is a single entry.
+export function diffLeaves(from: any, to: any, path: string[] = [], out: LeafChange[] = []): LeafChange[] {
+	const isPlainObj = (v: any) => v !== null && typeof v === 'object' && !Array.isArray(v)
+	if (isPlainObj(from) && isPlainObj(to)) {
+		for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
+			diffLeaves(from[key], to[key], [...path, key], out)
+		}
+	} else if (!deepEqual(from, to)) {
+		out.push({ path: path.join('.'), from, to })
+	}
+	return out
+}

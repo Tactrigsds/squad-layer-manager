@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 // @vitest-environment happy-dom
-import * as CS from '@/models/context-shared.models'
+import * as GCtx from '@/lib/generic-ctx'
 
 import * as FRM from './frame'
 import * as Prom from './promise-utils'
@@ -9,8 +9,8 @@ import * as Rx from './rxjs'
 
 function manager() {
 	const errors: unknown[] = []
-	const log = { error: (err: unknown) => errors.push(err) } as unknown as CS.Logger
-	return { frameManager: new FRM.FrameManager({ ...CS.init(), log }), errors }
+	const log = { error: (err: unknown) => errors.push(err) } as unknown as GCtx.Logger
+	return { frameManager: new FRM.FrameManager({ ...GCtx.init(), log }), errors }
 }
 
 type Types = { name: 'test'; key: FRM.RawInstanceKey<{ id: string }>; input: { id: string }; state: { id: string } }

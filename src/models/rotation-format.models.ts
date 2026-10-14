@@ -1,3 +1,5 @@
+import * as Yaml from '@/lib/yaml'
+import * as ZodUtils from '@/lib/zod-utils'
 // The exchange formats for a rotation's items, YAML and plain text. Neither carries the rotation's name, description,
 // rotation tags or ruleset. A layer is written as the line SLM sends with AdminSetNextLayer, so a layer line copied
 // from either format pastes into the other.
@@ -12,10 +14,8 @@
 // the next line that is not indented. Tags named above a `# VOTE:` line go on its default choice.
 //
 // WARNING: this pulls in the whole `yaml` package (see src/lib/yaml.ts), so only lazily-loaded code may import it.
-import type * as DH from '@/lib/display-helpers'
-import { LAYER_DISPLAY_PROP } from '@/lib/display-helpers'
-import * as Yaml from '@/lib/yaml'
-import * as ZodUtils from '@/lib/zod-utils'
+import type * as DH from '@/models/display-helpers.models'
+import { LAYER_DISPLAY_PROP } from '@/models/display-helpers.models'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'

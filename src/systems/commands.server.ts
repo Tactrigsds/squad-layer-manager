@@ -1,5 +1,4 @@
 import * as Arr from '@/lib/array-utils'
-import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
@@ -801,7 +800,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				tickets: tickets?.[teamId - 1] ?? null,
 				kills: team.kills,
 				deaths: team.deaths,
-				kd: DH.formatRatio(team.kills, team.deaths),
+				kd: Str.formatRatio(team.kills, team.deaths),
 			}
 		})
 		await h.reply(MH_Msgs.ticketsReport(teams))

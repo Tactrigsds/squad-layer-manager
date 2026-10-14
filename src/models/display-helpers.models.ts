@@ -1,10 +1,9 @@
-import * as Typo from '@/lib/typography'
+import * as Typo from '@/components/typography'
+import { z } from '@/lib/zod'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
-
-import { z } from './zod.ts'
 
 export function toShortUnit(unit: string | null) {
 	if (unit === null) return ''
@@ -271,7 +270,3 @@ export function getTeamColor(teamId: SM.TeamId, parity: number, normalize: boole
 }
 
 // a ratio to two places, or a dash when there is nothing to divide by
-export function formatRatio(numerator: number, denominator: number) {
-	if (denominator === 0) return numerator > 0 ? '\u221e' : '-'
-	return (numerator / denominator).toFixed(2)
-}

@@ -4,9 +4,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
-import type { SettingChange } from '@/lib/settings-diff'
-import { formatChangeValue } from '@/lib/settings-diff'
-import * as SettingsNav from '@/lib/settings-nav'
+import type * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
@@ -15,6 +13,7 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SettingsNav from '@/systems/settings-nav.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 // A single Save/Reset control panel shared by every editable settings section (global settings, each server, the
@@ -27,7 +26,7 @@ function displaySettingValue(path: string, v: unknown): string {
 	return masked === SETTINGS.SECRET_SETTING_MASK ? masked : formatChangeValue(masked)
 }
 
-export function SettingsChangeList({ changes }: { changes: SettingChange[] }) {
+export function SettingsChangeList({ changes }: { changes: Obj.LeafChange[] }) {
 	return (
 		<div className="max-h-[50vh] space-y-2 overflow-y-auto text-sm">
 			{changes.map((c) => (
@@ -247,4 +246,13 @@ export function SettingsSavePanel({
 			</Button>
 		</div>
 	)
+}
+
+function formatChangeValue(v: unknown): string {
+	if (v === undefined) return '(unset)'
+	if (v === null) return 'null'
+	if (typeof v === 'string') return v === '' ? '(empty)' : v
+	if (typeof v === 'boolean' || typeof v === 'number') return String(v)
+	const s = JSON.stringify(v)
+	return s.length > 200 ? s.slice(0, 200) + '…' : s
 }

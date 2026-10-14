@@ -2,8 +2,8 @@ import React from 'react'
 
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import * as DH from '@/lib/display-helpers.ts'
 import * as V_Msgs from '@/messages/vote.messages'
+import * as DH from '@/models/display-helpers.models'
 import { tr } from '@/systems/messages.client'
 
 export type VoteDisplayPropsCheckboxesProps = {

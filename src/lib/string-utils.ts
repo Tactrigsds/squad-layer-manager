@@ -174,3 +174,13 @@ export function simpleUniqueStringMatch(names: string[], target: string) {
 		return { code: 'ok' as const, matched: matched[0] }
 	}
 }
+
+export function formatRatio(numerator: number, denominator: number) {
+	if (denominator === 0) return numerator > 0 ? '\u221e' : '-'
+	return (numerator / denominator).toFixed(2)
+}
+
+export function humanize(key: string): string {
+	const spaced = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ')
+	return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}

@@ -2,6 +2,7 @@ import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 
+import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.models'
 import type * as LOG from '@/models/logs.models'
 import * as ATTRS from '@/models/otel-attrs.models'
@@ -9,8 +10,6 @@ import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
-
-import * as Rx from '../rxjs'
 
 export type DecodedPacket = {
 	type: number

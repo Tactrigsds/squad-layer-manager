@@ -2,8 +2,8 @@ import { Slot } from '@radix-ui/react-slot'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
-import { HELP_TIP_DELAY_MS, useFollowTooltip } from '@/hooks/use-follow-tooltip'
 import * as Flt from '@/lib/floating'
+import { HELP_TIP_DELAY_MS, useFollowTooltip } from '@/lib/use-follow-tooltip'
 import { cn } from '@/lib/utils'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 

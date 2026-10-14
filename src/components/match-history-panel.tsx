@@ -6,6 +6,7 @@ import { contextMenuSlots } from '@/components/player-context-menu-options'
 import { ServerActionMenuItems } from '@/components/server-actions-dropdown'
 import { SpoilerRedaction } from '@/components/spoiler-redaction'
 import { getTeamsDisplay } from '@/components/teams-display'
+import * as Typo from '@/components/typography'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -14,14 +15,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
-import * as DH from '@/lib/display-helpers'
-import * as Typo from '@/lib/typography'
+import * as Str from '@/lib/string-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as DH from '@/models/display-helpers.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
@@ -756,7 +757,7 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 					className="inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5"
 				>
 					{favoursStart && <Icons.ChevronLeft className="rtl:-scale-x-100" />}
-					{DH.formatRatio(favoured.stats.kills, favoured.stats.deaths)}
+					{Str.formatRatio(favoured.stats.kills, favoured.stats.deaths)}
 					{!favoursStart && <Icons.ChevronRight className="rtl:-scale-x-100" />}
 				</span>
 			</TooltipTrigger>
@@ -791,8 +792,8 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 }
 
 const SCORELINE_ROWS = [
-	{ key: 'kd', label: MH_Msgs.kdRatio, value: (stats: MH.TeamCombatStats) => DH.formatRatio(stats.kills, stats.deaths) },
-	{ key: 'wd', label: MH_Msgs.woundRatio, value: (stats: MH.TeamCombatStats) => DH.formatRatio(stats.wounds, stats.deaths) },
+	{ key: 'kd', label: MH_Msgs.kdRatio, value: (stats: MH.TeamCombatStats) => Str.formatRatio(stats.kills, stats.deaths) },
+	{ key: 'wd', label: MH_Msgs.woundRatio, value: (stats: MH.TeamCombatStats) => Str.formatRatio(stats.wounds, stats.deaths) },
 	{ key: 'kills', label: MH_Msgs.killsDealt, value: (stats: MH.TeamCombatStats) => stats.kills },
 	{ key: 'wounds', label: MH_Msgs.woundsDealt, value: (stats: MH.TeamCombatStats) => stats.wounds },
 	{ key: 'deaths', label: MH_Msgs.deathsSuffered, value: (stats: MH.TeamCombatStats) => stats.deaths },

@@ -10,7 +10,7 @@ import { RotationTagSelect } from '@/components/rotation-tag-select'
 import { ServerMultiSelect, ServerSelect } from '@/components/server-select'
 import { DEBOUNCE_MS, type OverrideProps, useFieldValue, useReset } from '@/components/settings-form/settings-form.helpers'
 import { Textarea } from '@/components/ui/textarea'
-import { useDebounced } from '@/hooks/use-debounce'
+import { useDebounced } from '@/lib/use-debounce'
 
 export function PluginFilterField({ value$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$) as string | undefined
