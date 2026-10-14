@@ -363,36 +363,35 @@ describe('the event archive', () => {
 		}
 
 		// The three counts must cover the same events, but the app keeps recording events (queue reminders warn the
-		// admins on a timer). Bound every query at one cutoff, and wait for the log tail to record every event
-		// logged before the cutoff.
+		// admins on a timer). Every query is bounded at one cutoff, and an event from before it can still be landing
+		// while they run, so all three are taken again until they agree: a real gap between the halves never closes.
 		const to = Date.now()
-		await app.waitForRosterSync()
-
-		// basic mode's events default to the DEFAULT feed, which the advanced tree below does not apply
-		const allEvents = await client.history.query({ query: { feed: 'ALL', to } })
-		const onMap = await client.history.query({ query: { feed: 'ALL', map: indexedMap, to } })
-		expect(onMap.code).toBe('ok')
-		if (allEvents.code !== 'ok' || allEvents.type !== 'events') return
-		if (onMap.code !== 'ok' || onMap.type !== 'events') return
-		expect(onMap.total).toBeGreaterThan(0)
-
-		const offMap = await client.history.query({
-			query: {
-				mode: 'advanced',
-				to,
-				q: {
-					type: 'eq',
-					neg: true,
-					args: [
-						{ type: 'column', column: 'layer.map' },
-						{ type: 'value', value: indexedMap },
-					],
-				},
+		const offMapQuery = {
+			mode: 'advanced' as const,
+			to,
+			q: {
+				type: 'eq' as const,
+				neg: true,
+				args: [
+					{ type: 'column' as const, column: 'layer.map' },
+					{ type: 'value' as const, value: indexedMap },
+				],
 			},
-		})
-		expect(offMap.code).toBe('ok')
-		if (offMap.code !== 'ok' || offMap.type !== 'events') return
-		expect(onMap.total! + offMap.total!).toBe(allEvents.total)
+		}
+		const counts = await app.waitFor(
+			async () => {
+				// basic mode's events default to the DEFAULT feed, which the advanced tree does not apply
+				const allEvents = await client.history.query({ query: { feed: 'ALL', to } })
+				const onMap = await client.history.query({ query: { feed: 'ALL', map: indexedMap, to } })
+				const offMap = await client.history.query({ query: offMapQuery })
+				if (allEvents.code !== 'ok' || allEvents.type !== 'events') return null
+				if (onMap.code !== 'ok' || onMap.type !== 'events') return null
+				if (offMap.code !== 'ok' || offMap.type !== 'events') return null
+				return (onMap.total ?? 0) + (offMap.total ?? 0) === allEvents.total ? { onMap: onMap.total ?? 0 } : null
+			},
+			{ label: 'the events on and off the map to add up to all of them' },
+		)
+		expect(counts.onMap).toBeGreaterThan(0)
 	})
 
 	// The player details window interleaves a player's history with the live match's events and punctuates it
