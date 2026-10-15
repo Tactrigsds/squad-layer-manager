@@ -22,10 +22,10 @@ import * as PersistedCache from '@/systems/persistedCache.server'
 // the older formats, so this is for durability rather than correctness: an abbreviation a later layer data drops would
 // leave such an id readable only as the text it was written as.
 //
-// It only touches history, which is never edited in place: match history, the app-event association index, and the
-// server and app events that carry layer ids. The saved queue, rotations and filters are left to rewrite themselves on
-// their next save, because a write here could land between an editor's read and write and undo their edit. Archived
-// matches stay as they were packed; their reads take the older formats too.
+// History (match history, the app-event association index, and the server and app events that carry layer ids) is
+// rewritten in the background after boot. The saved queues and rotations can be edited, so they are rewritten during
+// boot, before the squad servers load or any request is served, where no edit can be in flight. Filters already store
+// canonical text. Archived matches stay as they were packed; their reads take the older formats too.
 
 const module = initModule('stored-layer-ids')
 let log!: CS.Logger
@@ -39,8 +39,9 @@ const PAGE_SIZE = 500
 // the server event types whose payloads hold a layer id
 const LAYER_EVENT_TYPES = ['MAP_SET', 'NEW_GAME', 'ROUND_ENDED'] as const
 
-export function setup() {
+export async function setup() {
 	log = module.getLogger()
+	await canonicalizeEditableRows(DB.addPooledDb({ ...CS.init(), log }))
 	void runAtBoot()
 }
 
@@ -63,6 +64,59 @@ function canonicalFor(text: string): string | undefined {
 	const canonical = L.toLayerText(id)
 	if (canonical === text || L.fromStoredLayerText(canonical) !== id) return undefined
 	return canonical
+}
+
+// A copy of a stored payload with its layer ids as canonical text, or undefined when none needed rewriting
+function canonicalizedPayload(payload: unknown): unknown {
+	let changed = false
+	const next = AppEvents.mapLayerIdFields(payload, (id) => {
+		const canonical = typeof id === 'string' ? canonicalFor(id) : undefined
+		if (canonical === undefined) return id
+		changed = true
+		return canonical
+	})
+	return changed ? next : undefined
+}
+
+// Run during boot, before anything can edit these rows. Few rows, so not gated on the layer data hash.
+export const canonicalizeEditableRows = Instr.spanOp('canonicalizeEditableRows', { module }, async (ctx: C.Db & CS.Log) => {
+	const counts = {
+		savedQueues: await rewriteSuperjsonColumn(ctx, Schema.servers, Schema.servers.id, Schema.servers.layerQueue),
+		rotations: await rewriteSuperjsonColumn(ctx, Schema.rotations, Schema.rotations.id, Schema.rotations.items),
+	}
+	if (Object.values(counts).some((n) => n > 0)) ctx.log.info('rewrote editable layer ids as canonical text: %o', counts)
+	return counts
+})
+
+async function rewriteSuperjsonColumn(
+	ctx: C.Db,
+	table: typeof Schema.servers | typeof Schema.rotations,
+	idColumn: typeof Schema.servers.id | typeof Schema.rotations.id,
+	column: typeof Schema.servers.layerQueue | typeof Schema.rotations.items,
+) {
+	const rows = (await ctx
+		.db()
+		.select({ id: idColumn, value: column })
+		.from(table as any)) as { id: string; value: unknown }[]
+	let changed = 0
+	await DB.runTransaction(ctx, async (ctx) => {
+		for (const row of rows) {
+			let next: unknown
+			try {
+				next = canonicalizedPayload(superjson.deserialize(row.value as any))
+			} catch {
+				continue
+			}
+			if (next === undefined) continue
+			const res = await ctx
+				.db()
+				.update(table)
+				.set({ [column.name]: superjson.serialize(next) })
+				.where(E.eq(idColumn, row.id as any))
+			changed += res.changes
+		}
+	})
+	return changed
 }
 
 // Keyed on the layer data hash: a layer data that adds a layer or an abbreviation can make more older ids readable, and
@@ -171,7 +225,7 @@ async function rewriteAppEvents(ctx: C.Db & CS.AbortSignal) {
 			.where(
 				E.and(
 					after === null ? undefined : E.gt(T.id, after),
-					E.sql`(instr(${T.data}, 'layerId') > 0 OR instr(${T.data}, 'choices') > 0)`,
+					E.sql`(instr(${T.data}, 'layerId') > 0 OR instr(${T.data}, 'LayerId') > 0 OR instr(${T.data}, 'choices') > 0)`,
 				),
 			)
 			.orderBy(T.id)
@@ -186,14 +240,8 @@ async function rewriteAppEvents(ctx: C.Db & CS.AbortSignal) {
 			} catch {
 				continue
 			}
-			let rowChanged = false
-			const next = AppEvents.mapLayerIdFields(payload, (id) => {
-				const canonical = typeof id === 'string' ? canonicalFor(id) : undefined
-				if (canonical === undefined) return id
-				rowChanged = true
-				return canonical
-			})
-			if (rowChanged) rewrites.push({ id: row.id, data: superjson.serialize(next) })
+			const next = canonicalizedPayload(payload)
+			if (next !== undefined) rewrites.push({ id: row.id, data: superjson.serialize(next) })
 		}
 		changed += await writeRows(ctx, T, T.id, rewrites)
 	}

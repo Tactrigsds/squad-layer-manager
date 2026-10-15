@@ -132,7 +132,7 @@ await Instr.spanOp('main', { module }, async () => {
 	History.setup()
 	MatchTallies.setup()
 	MatchLayers.setup()
-	StoredLayerIds.setup()
+	await StoredLayerIds.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off
 	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
