@@ -914,28 +914,31 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 // the payload fields that hold layer ids, by name, across every app event type
 const LAYER_ID_FIELDS = new Set(['layerId', 'layerIds', 'winnerLayerId', 'choices'])
 
-// A copy of `value` with every dense layer id under a LAYER_ID_FIELDS key as canonical text. Descends plain objects and
-// arrays only, so the bigints, dates and maps superjson carries are left as they are.
-function withLayerIdsAsText<T>(value: T): T {
-	const convert = (v: unknown, underLayerKey: boolean): unknown => {
-		if (typeof v === 'number' && underLayerKey) return L.toLayerText(v as L.LayerId)
-		if (Array.isArray(v)) return v.map((item) => convert(item, underLayerKey))
+// A copy of `value` with `convert` applied to every number and string under a LAYER_ID_FIELDS key. Descends plain
+// objects and arrays only, so the bigints, dates and maps superjson carries are left as they are.
+export function mapLayerIdFields<T>(value: T, convert: (id: number | string) => number | string): T {
+	const walk = (v: unknown, underLayerKey: boolean): unknown => {
+		if (underLayerKey && (typeof v === 'number' || typeof v === 'string')) return convert(v)
+		if (Array.isArray(v)) return v.map((item) => walk(item, underLayerKey))
 		if (v && Object.getPrototypeOf(v) === Object.prototype) {
-			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, convert(field, LAYER_ID_FIELDS.has(key))]))
+			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, walk(field, LAYER_ID_FIELDS.has(key))]))
 		}
 		return v
 	}
-	return convert(value, false) as T
+	return walk(value, false) as T
+}
+
+function withLayerIdsAsText<T>(value: T): T {
+	return mapLayerIdFields(value, (id) => (typeof id === 'number' ? L.toLayerText(id as L.LayerId) : id))
 }
 
 // bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.
 export const CURRENT_APP_EVENT_VERSION = 1
 
 export function toRow(e: AppEvent, redact: RedactSettingValue): SchemaModels.NewAppEvent {
-	// Encoded through the same schema rows are read with, so every layer id the payload holds, however deeply, is
-	// stored as canonical text: a dense id only means something against the layer data that produced it. Encoding
-	// validates, and an event that fails its schema is still written (and dropped, with its id named, on read), so
-	// its layer ids are converted by field name instead.
+	// Encoded through the same schema rows are read with, so every layer id the payload holds is stored as canonical
+	// text. An event that fails its schema is still written (and dropped, with its id named, on read), so its layer
+	// ids are converted by field name instead.
 	const encoded = z.safeEncode(AppEventSchema, e)
 	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = (
 		encoded.success ? encoded.data : withLayerIdsAsText(e)

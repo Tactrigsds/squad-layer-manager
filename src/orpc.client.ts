@@ -26,8 +26,7 @@ const wsUrl = `${wsHostname}${AR.route('/orpc')}`
 // On reconnect, tell the server the id we last held so it reclaims that exact presence entry (activity +
 // locks) and evicts our stale socket, instead of minting a fresh id and leaving a ghost that reads as an
 // "other active session". partysocket re-invokes this per connect; empty on the first connect (no id yet).
-// Every connect also names the layer data this page loaded, which the server refuses to serve unless it is its own:
-// layer ids cross the socket as dense ids, which only mean the same thing to both ends of one layer data.
+// Every connect also names the layer data this page loaded (see C.LayerDataSession).
 async function resolveWsUrl(): Promise<string> {
 	await LayerDataClient.setup()
 	const params = new URLSearchParams({ layerData: LayerDataClient.hash! })
