@@ -46,6 +46,9 @@ const CLOSE_DUPLICATE = 4009
 
 // how long an agent has to send its handshake frame before we drop it
 const HANDSHAKE_TIMEOUT_MS = 10_000
+// An agent that misses a pong for one interval is dropped. Without this, a half-open connection holds the server's agent
+// slot until TCP gives up, and every reconnect from the live agent is rejected as a duplicate.
+const HEARTBEAT_INTERVAL_MS = 15_000
 
 // An agent-mode server has no other route to its squad server: SLM holds no RCON details for it and reads no
 // log file of its own. An agent that supplies only one of the two leaves the other permanently dead, which
@@ -368,7 +371,20 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 	})
 	ws.send('ok')
 
+	let alive = true
+	ws.on('pong', () => (alive = true))
+	const heartbeat = setInterval(() => {
+		if (!alive) {
+			log.warn('Server agent %s for server %s stopped answering pings, dropping it', remote, serverId)
+			ws.terminate()
+			return
+		}
+		alive = false
+		ws.ping()
+	}, HEARTBEAT_INTERVAL_MS)
+
 	ws.on('close', (code: number, reason: Buffer) => {
+		clearInterval(heartbeat)
 		if (activeAgents.get(serverId) === ws) activeAgents.delete(serverId)
 		tunnel.detachAgent()
 		log.info('Server agent %s for server %s disconnected', remote, serverId)

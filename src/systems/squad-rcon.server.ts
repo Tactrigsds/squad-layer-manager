@@ -118,10 +118,11 @@ export async function getCurrentLayer(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	const response = await ctx.rcon.execute('ShowCurrentMap', { signal: ctx.signal })
 	if (response.code !== 'ok') return response
 	const match = response.data.match(/^Current level is (.*), layer is (.*), factions (.*)/)
-	if (!match) throw new Error('Invalid response from ShowCurrentMap: ' + response.data)
+	if (!match) return unreadableResponse('ShowCurrentMap', response.data)
 	const layer = match[2]
 	const factions = match[3]
-	const parsedLayer = L.parseRawLayerText(`${layer} ${factions}`)!
+	const parsedLayer = L.parseRawLayerText(`${layer} ${factions}`)
+	if (!parsedLayer) return unreadableResponse('ShowCurrentMap', response.data)
 	return { code: 'ok' as const, layer: parsedLayer }
 }
 
@@ -135,6 +136,12 @@ export async function getNextLayer(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	const factions = match[3]
 	if (!layer || !factions) return { code: 'ok' as const, layer: null }
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
+}
+
+// Returned as an rcon error rather than thrown: a thrown error on a polled resource's last retry tears the managed server down.
+function unreadableResponse(command: string, body: string) {
+	log.warn('Unreadable response to %s: %s', command, body.slice(0, 200))
+	return { code: 'err:rcon' as const, msg: `Unreadable response to ${command}` }
 }
 
 async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
@@ -444,10 +451,15 @@ export const warnAllAdmins = Instr.spanOp(
 async function fetchServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.ServerInfoRes> {
 	const rawDataRes = await ctx.rcon.execute(`ShowServerInfo`, { signal: ctx.signal })
 	if (rawDataRes.code !== 'ok') return rawDataRes
-	const data = JSON.parse(rawDataRes.data)
+	let data: unknown
+	try {
+		data = JSON.parse(rawDataRes.data)
+	} catch {
+		return unreadableResponse('ShowServerInfo', rawDataRes.data)
+	}
 	const res = SM.ServerRawInfoSchema.safeParse(data)
 	if (!res.success) {
-		log.error(res.error, `Failed to parse server info: %O`, data)
+		log.error(res.error, `Failed to parse server info: %s`, rawDataRes.data)
 		return { code: 'err:rcon' as const, msg: 'Failed to parse server info' }
 	}
 
