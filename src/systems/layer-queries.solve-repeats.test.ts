@@ -13,6 +13,9 @@ import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import { LayerEngine } from '@/systems/layer-engine.shared'
 import { getLayerItemStatuses, type QueryCtx, solveRepeatViolations } from '@/systems/layer-queries.shared'
 
+// a layer id from its canonical text, against the layer data the tests load
+const id = (text: string) => L.fromLayerText(text)!
+
 // The solver's search runs in the engine and is checked against brute force in layer-engine/src/solve.rs. This checks
 // the other half: that what solveRepeatViolations encodes for the engine means what the queue warnings mean. The
 // engine wasm is a build artifact (`pnpm build:engine`), so without it there is nothing to run.
@@ -64,7 +67,7 @@ describe.skipIf(!fs.existsSync(WASM_PATH))('solveRepeatViolations', () => {
 			pageSize: 20_000,
 			columns: [engine.columnIndex('id')],
 		})
-		const ids = page.rows.map(([id]) => LC.unpackId(id))
+		const ids = page.rows.map(([id]) => id as L.DenseLayerId)
 		const maps = [...new Set(ids.map((id) => L.toLayer(id).Map))].slice(0, 6)
 		const pick = rng(1)
 		pool = ids.filter((id) => maps.includes(L.toLayer(id).Map as string)).filter(() => pick(20) === 0)
@@ -127,7 +130,10 @@ describe.skipIf(!fs.existsSync(WASM_PATH))('solveRepeatViolations', () => {
 	})
 
 	it('keeps a queued seeding layer in place, and counts no repeat across it', async () => {
-		const [fallujah, seed] = ['FL-RAAS-V1:USA-CA:RGF-CA', 'FL-SD-V1:USA-CA:RGF-CA']
+		const [fallujah, seed] = [
+			id('Fallujah_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+			id('Fallujah_Seed_v1:USA+CombinedArms:RGF+CombinedArms'),
+		]
 		const queue = [fallujah, fallujah, seed, fallujah, fallujah].map((layerId, i) => ({
 			type: 'single-list-item' as const,
 			itemId: `item-${i}`,

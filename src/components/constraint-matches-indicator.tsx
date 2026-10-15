@@ -26,7 +26,7 @@ export type ConstraintEvalTooltipProps = {
 	className?: string
 	layerItem?: LQY.LayerItem
 	// will be inferred from layerItem if layerId missing
-	layerId?: string
+	layerId?: L.LayerId
 	itemParity?: number
 	height?: number
 	tourId?: string
@@ -334,7 +334,7 @@ function FilterRowWithLinkButton(props: { row: FilterRow }) {
 export type RepeatViolationDisplayProps = {
 	constraint: Extract<LQY.Constraint, { type: 'do-not-repeat' }>
 	showIcon: boolean
-	layerId?: string
+	layerId?: L.LayerId
 	matchDescriptors?: LQY.MatchDescriptor[]
 	itemParity?: number
 }

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 import * as LL from '@/models/layer-list.models'
+import * as L from '@/models/layer.models'
 import * as SHIM from '@/models/plugin-api-shim.models'
 import * as SLL from '@/models/shared-layer-list.models'
 
@@ -14,6 +15,9 @@ import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '..
 import { LAYERS, queue, role } from '../harness/arrange'
 import * as Inspect from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
+
+// procedures answer with the app's in-memory ids; the layer data this process loads names them as canonical text
+const asText = (id: unknown) => L.toLayerText(id as L.LayerId)
 
 // The packaged-plugin path end to end: a plugin built into standalone esm, served over http, then
 // installed, started, called, upgraded and removed through the same api the settings page uses. What
@@ -392,7 +396,7 @@ describe('packaged plugins', () => {
 		expect(rotationRow('hello-rot')).toMatchObject({ name: 'Hello rotation', ownerUserId: null, ownerPluginId: 'hello' })
 		expect(rotationRow('hello-rot').items).not.toContain(String(ADMIN_USER.discordId))
 		const stored = await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })
-		expect(stored.items.map((i) => i.layerId)).toEqual([LAYERS.gorodokRaas, LAYERS.harjuRaas])
+		expect(stored.items.map((i) => asText(i.layerId))).toEqual([LAYERS.gorodokRaas, LAYERS.harjuRaas])
 		expect(stored.items.map((i) => i.source.type)).toEqual(['unknown', 'unknown'])
 		expect(stored.items[0].notes).toEqual([{ id: 'hellonot', text: 'from hello' }])
 		expect(await call('rotationIds', {})).toContain('hello-rot')
@@ -469,7 +473,8 @@ describe('packaged plugins', () => {
 		})
 		expect(rotationRow('hello-rot').name).toBe('Hello rotation v2')
 		const updated = await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })
-		expect(updated.items).toMatchObject([{ layerId: LAYERS.sumariSeed, source: { type: 'unknown' } }])
+		expect(updated.items.map((i) => asText(i.layerId))).toEqual([LAYERS.sumariSeed])
+		expect(updated.items).toMatchObject([{ source: { type: 'unknown' } }])
 		expect(updated.items[0].notes?.[0].author).toBeUndefined()
 
 		expect(await call('dropRotation', { id: 'hello-rot-copy' })).toMatchObject({ code: 'ok' })
@@ -535,7 +540,7 @@ describe('packaged plugins', () => {
 			})
 			// a write that leaves the items alone does not touch the draft
 			expect(await call('updateRotation', { id: 'hello-rot', name: 'Hello rotation v3' })).toMatchObject({ code: 'ok' })
-			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => i.layerId)).toEqual([
+			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => asText(i.layerId))).toEqual([
 				LAYERS.sumariSeed,
 			])
 
@@ -546,13 +551,14 @@ describe('packaged plugins', () => {
 				}),
 			).toMatchObject({ code: 'ok' })
 			expect(await call('updateRotation', { id: 'hello-rot', layerIds: [LAYERS.gorodokRaas] })).toMatchObject({ code: 'ok' })
-			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => i.layerId)).toEqual([
+			expect((await call<{ items: StoredItem[] }>('getRotation', { id: 'hello-rot' })).items.map((i) => asText(i.layerId))).toEqual([
 				LAYERS.gorodokRaas,
 			])
 			const save = await app.waitFor(() => received.find((u) => u.ops?.some((op) => op.op === 'save' && op.source?.type === 'plugin')), {
 				label: "the plugin's save reaching the draft",
 			})
-			expect(save.ops?.find((op) => op.op === 'add')).toMatchObject({ items: [{ layerId: LAYERS.gorodokRaas }] })
+			const added = save.ops?.find((op) => op.op === 'add') as { items: { layerId: unknown }[] } | undefined
+			expect(added?.items.map((i) => asText(i.layerId))).toEqual([LAYERS.gorodokRaas])
 		} finally {
 			ac.abort()
 			await watching
@@ -604,14 +610,15 @@ describe('packaged plugins', () => {
 			filterId: 'hello-owi',
 			layerIds: [LAYERS.gorodokRaas, LAYERS.sumariSeed, 'NOT-A-LAYER:XX:YY'],
 		})
-		expect(pool.outOfPool).toEqual([LAYERS.sumariSeed, 'NOT-A-LAYER:XX:YY'])
+		expect(pool.outOfPool.map(asText)).toEqual([LAYERS.sumariSeed, 'NOT-A-LAYER:XX:YY'])
 
-		expect(await call('layersExist', { layerIds: [LAYERS.harjuRaas, 'NOT-A-LAYER:XX:YY'] })).toMatchObject({
-			results: [
-				{ id: LAYERS.harjuRaas, exists: true },
-				{ id: 'NOT-A-LAYER:XX:YY', exists: false },
-			],
+		const existence = await call<{ results: { id: unknown; exists: boolean }[] }>('layersExist', {
+			layerIds: [LAYERS.harjuRaas, 'NOT-A-LAYER:XX:YY'],
 		})
+		expect(existence.results.map((r) => ({ id: asText(r.id), exists: r.exists }))).toEqual([
+			{ id: LAYERS.harjuRaas, exists: true },
+			{ id: 'NOT-A-LAYER:XX:YY', exists: false },
+		])
 
 		const maps = await call<{ code: string; values: string[] }>('mapValues', {})
 		expect(maps.values).toContain('Gorodok')
@@ -653,7 +660,7 @@ describe('packaged plugins', () => {
 
 		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas })).toMatchObject({ code: 'ok' })
 		const after = await call<{ itemId: string; layerId: string; source: string; sourcePluginId: string | null }[]>('savedQueue', {})
-		expect(after[0].layerId).toBe(LAYERS.harjuRaas)
+		expect(asText(after[0].layerId)).toBe(LAYERS.harjuRaas)
 		// the item says which plugin queued it, rather than blaming whoever the edit was performed as
 		expect(after[0].source).toBe('plugin')
 		expect(after[0].sourcePluginId).toBe('hello')

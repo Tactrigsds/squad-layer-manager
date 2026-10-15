@@ -72,7 +72,7 @@ export function layerVersionNameSegment(version: string) {
 }
 
 export type KnownLayer = {
-	id: string
+	id: LayerId
 	Map: string
 	Size: string
 	Layer: string
@@ -100,43 +100,180 @@ export type LayerIdArgs = {
 	Unit_2?: string
 }
 
-// we almost always can extract a Layer string
-export type RawLayer = UnvalidatedLayer & {
-	id: `RAW:${string}`
-}
+declare const layerIdBrand: unique symbol
 
-export const LayerIdSchema = createLayerIdSchema()
+// A layer's id while the app runs. A layer the loaded layer data holds is its dense id (see LC.denseIdLayout); any
+// other layer is its canonical text (see formatLayerText). Every id is built by idFromParts or fromLayerText, which
+// pick the dense form whenever the layer data holds the layer, so two ids for one layer are always ===.
+//
+// Dense ids mean something only against the layer data that produced them. Storage, URLs and the plugin boundary's
+// persisted data hold canonical text, and LayerIdSchema converts: it decodes either form and encodes to text.
+export type LayerId = DenseLayerId | TextLayerId
+export type DenseLayerId = number & { readonly [layerIdBrand]: true }
+export type TextLayerId = string & { readonly [layerIdBrand]: true }
 
-export function createLayerIdSchema() {
-	return z
-		.string()
-		.min(1)
-		.max(255)
-		.refine(
-			(id) => {
-				const components = StaticLayerComponents
-				if (id.startsWith('RAW:')) return true
-				const res = parseLayerId(id, components)
-				if (res.code !== 'ok') {
-					return false
-				}
-				return res.code === 'ok'
-			},
-			{
-				message: 'Is valid layer id',
-				// normalize the id, but avoid cirucular type definitions
-			},
-		)
-		.transform((id) => {
-			return (normalize as any)(id, StaticLayerComponents) as string
-		})
-}
+// a layer the loaded layer data does not hold
+export type RawLayer = UnvalidatedLayer & { id: TextLayerId }
 
-export type LayerId = z.infer<typeof LayerIdSchema>
+export const LayerIdSchema = z.codec(z.union([z.number().int().nonnegative(), z.string().min(1).max(512)]), z.custom<LayerId>(), {
+	decode: (value, payload) => {
+		let id: LayerId | undefined
+		try {
+			id = typeof value === 'number' ? checkDenseId(value) : fromStoredLayerText(value)
+		} catch (err) {
+			// the layer components throw until layer data loads. Stored text still reads, as a text id: a boundary that
+			// promises not to throw (a db read, say) must not, and normalize() can resolve the id once data is loaded.
+			if (typeof value === 'string') return value as TextLayerId
+			throw err
+		}
+		if (id === undefined) {
+			payload.issues.push({ code: 'custom', input: value, message: `${value} is not a layer id` })
+			return value as LayerId
+		}
+		return id
+	},
+	encode: (id) => toLayerText(id),
+})
 
 export type UnvalidatedLayer = Partial<KnownLayer> & {
 	Layer: string
-	id: string
+	id: LayerId
+}
+
+// Canonical text: Layer:Faction+Unit:Faction+Unit, in the game's own names, such as
+// Narva_RAAS_v1:RGF+CombinedArms:USA+CombinedArms. A layer known only in part drops what it lacks from the right: a
+// unit, or both teams. No layer, faction or unit name holds ':', '+' or whitespace (preprocess enforces it).
+const TEXT_NAME = '[^:+\\s]+'
+const layerTextRegex = new RegExp(`^(${TEXT_NAME})(?::(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?:(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?)?$`)
+export const LAYER_TEXT_NAME_FORBIDDEN = /[:+\s]/
+
+export type LayerTextParts = { Layer: string; Faction_1?: string; Unit_1?: string; Faction_2?: string; Unit_2?: string }
+
+export function formatLayerText(parts: LayerTextParts): string {
+	if (!parts.Faction_1 || !parts.Faction_2) return parts.Layer
+	const team = (faction: string, unit: string | undefined) => (unit ? `${faction}+${unit}` : faction)
+	return `${parts.Layer}:${team(parts.Faction_1, parts.Unit_1)}:${team(parts.Faction_2, parts.Unit_2)}`
+}
+
+export function parseLayerText(text: string): LayerTextParts | undefined {
+	const match = layerTextRegex.exec(text)
+	if (!match) return undefined
+	const [, Layer, Faction_1, Unit_1, Faction_2, Unit_2] = match
+	return Obj.trimUndefined({ Layer, Faction_1, Unit_1, Faction_2, Unit_2 })
+}
+
+export function isDenseLayerId(id: LayerId): id is DenseLayerId {
+	return typeof id === 'number'
+}
+
+// the dense id as a LayerId if it names a layer in the loaded layer data
+export function checkDenseId(id: number, components = StaticLayerComponents): DenseLayerId | undefined {
+	return LC.fromDenseId(id, LC.denseIdLayout(components)) ? (id as DenseLayerId) : undefined
+}
+
+// The id for a layer given by its parts: dense when the layer data holds a layer with exactly these parts, canonical
+// text otherwise.
+export function idFromParts(parts: LayerTextParts, components = StaticLayerComponents): LayerId {
+	const { Layer, Faction_1, Unit_1, Faction_2, Unit_2 } = parts
+	if (Faction_1 && Unit_1 && Faction_2 && Unit_2) {
+		const indexes = [
+			LC.enumIndexOf(components.layers, Layer),
+			LC.enumIndexOf(components.factions, Faction_1),
+			LC.enumIndexOf(components.units, Unit_1),
+			LC.enumIndexOf(components.factions, Faction_2),
+			LC.enumIndexOf(components.units, Unit_2),
+		] as const
+		if (!indexes.includes(-1)) {
+			const dense = LC.denseId(...indexes, LC.denseIdLayout(components))
+			if (dense !== -1) return dense as DenseLayerId
+		}
+	}
+	return formatLayerText(parts) as TextLayerId
+}
+
+// The id canonical text names, or undefined when it is not canonical text. Text naming a layer the layer data holds
+// comes back dense, and the rest is normalized the way the raw layer parser reads it (default units filled in, a
+// Training layer's teams taken from its config).
+export function fromLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
+	const parts = parseLayerText(text)
+	if (!parts) return undefined
+	return layerFromParts(parts, components).id
+}
+
+// The id stored text names, whichever format wrote it: canonical text, or an id in the old abbreviated format or its
+// RAW: form from before it. An old abbreviated id also fits the canonical grammar (its Map-Gamemode part reads as a
+// layer name), so text is only taken as canonical when the layer data holds its layer, and undefined only when no
+// format reads it.
+export function fromStoredLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
+	const parts = parseLayerText(text)
+	if (parts && getLayerConfig(parts.Layer, components)) return layerFromParts(parts, components).id
+	if (text.startsWith('RAW:')) return parseRawLayerText(text.slice('RAW:'.length), components)?.id
+	const legacy = parseLegacyLayerId(text, components)
+	if (legacy.code === 'ok') return legacy.layer.id
+	// an abbreviation the layer data no longer has leaves the parts half resolved; keep the text as it was written
+	// rather than an id built from guesses
+	if (legacy.code === 'err:unknown-layer' && legacy.layer.Map && legacy.layer.Gamemode) return legacy.layer.id
+	return parts ? (text as TextLayerId) : undefined
+}
+
+// fromStoredLayerText for a plain text column, where a row must always read: text no format reads stays a text id
+export function readStoredLayerId(text: string, components = StaticLayerComponents): LayerId {
+	try {
+		return fromStoredLayerText(text, components) ?? (text as TextLayerId)
+	} catch {
+		// the layer components throw until layer data loads
+		return text as TextLayerId
+	}
+}
+
+export function toLayerText(id: LayerId, components = StaticLayerComponents): string {
+	if (!isDenseLayerId(id)) return id
+	const layer = knownLayerOfDenseId(id, components)
+	if (!layer) throw new Error(`dense layer id ${id} names no layer in the loaded layer data`)
+	return formatLayerText(layer)
+}
+
+// the known layer behind a dense id, built once per id and layer data
+const knownLayersByDenseId = new WeakMap<LC.LayerComponents, Map<number, KnownLayer>>()
+function knownLayerOfDenseId(id: number, components = StaticLayerComponents): KnownLayer | undefined {
+	let cache = knownLayersByDenseId.get(components)
+	if (!cache) knownLayersByDenseId.set(components, (cache = new Map()))
+	const cached = cache.get(id)
+	if (cached) return cached
+	const indexes = LC.fromDenseId(id, LC.denseIdLayout(components))
+	if (!indexes) return undefined
+	const [layerIndex, faction1, unit1, faction2, unit2] = indexes
+	const config = getLayerConfig(components.layers[layerIndex], components)
+	if (!config) return undefined
+	const Faction_1 = components.factions[faction1]
+	const Faction_2 = components.factions[faction2]
+	const layer: KnownLayer = {
+		id: id as DenseLayerId,
+		Map: config.Map,
+		Size: config.Size,
+		Layer: config.Layer,
+		Gamemode: config.Gamemode,
+		LayerVersion: config.LayerVersion,
+		Collection: layerConfigCollection(config, components),
+		Faction_1,
+		Unit_1: components.units[unit1]!,
+		Faction_2,
+		Unit_2: components.units[unit2]!,
+		Alliance_1: components.factionToAlliance[Faction_1],
+		Alliance_2: components.factionToAlliance[Faction_2],
+	}
+	// shared by every caller holding this id
+	Object.freeze(layer)
+	cache.set(id, layer)
+	return layer
+}
+
+// The layer canonical text parts name. Reads them the way it reads a raw layer command, so a part the layer data
+// lacks still yields a layer with as much as could be resolved.
+function layerFromParts(parts: LayerTextParts, components = StaticLayerComponents): UnvalidatedLayer {
+	const team = (faction?: string, unit?: string) => (faction ? (unit ? `${faction}+${unit}` : faction) : '')
+	const command = [parts.Layer, team(parts.Faction_1, parts.Unit_1), team(parts.Faction_2, parts.Unit_2)].join(' ').trim()
+	return parseRawLayerText(command, components) ?? { id: formatLayerText(parts) as TextLayerId, Layer: parts.Layer }
 }
 
 // factions admit digits and underscores because mod faction ids do (SU_ADF, FAF10); '-' and ':' stay reserved as
@@ -163,9 +300,10 @@ function hasLayerIdArgsShape(layer: Partial<LayerIdArgs>) {
 	)
 }
 
-// known layers can now have raw layer ids
 function hasKnownLayerShape(layer: Partial<KnownLayer>) {
-	return isStr(layer.id) && hasLayerIdArgsShape(layer) && isStr(layer.Alliance_1) && isStr(layer.Alliance_2)
+	return (
+		(isStr(layer.id) || typeof layer.id === 'number') && hasLayerIdArgsShape(layer) && isStr(layer.Alliance_1) && isStr(layer.Alliance_2)
+	)
 }
 
 /** Type guard for a layer the loaded layer data recognizes. Expects backwards-compat mappings to be applied already. */
@@ -323,64 +461,35 @@ export function getLayerIdTeamString(faction: string, unit: string, components =
 	return `${faction}-${unitAbbr}`
 }
 
-/** Builds the canonical id (e.g. "GD-RAAS-V1:USA-CA:RGF-CA") from its parts, or null if they name no known layer. */
-export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents) {
-	if (!areLayerIdArgsValid(layer, components)) {
-		return null
-	}
-	const mapPart = components.mapAbbreviations[layer.Map] ?? layer.Map
-	const gamemodePart = components.gamemodeAbbreviations[layer.Gamemode] ?? layer.Gamemode
-	let mapLayer = `${mapPart}-${gamemodePart}`
-	layer = { ...layer }
-	if (layer.LayerVersion) mapLayer += `-${layer.LayerVersion.toUpperCase()}`
-	if (layer.Collection !== getDefaultCollection(components)) {
-		mapLayer += `-${components.collectionAbbreviations[layer.Collection]}`
-	}
-	for (const prop of ['1', '2'] as const) {
-		const unitProp = `Unit_${prop}` as const
-		if (!layer[unitProp]) {
-			const factionProp = `Faction_${prop}` as const
-			layer[unitProp] = lookupDefaultUnit(getLayerString(layer, components), layer[factionProp], components)
-			if (!layer[unitProp]) {
-				return null
-			}
-		}
-
-		// Validate unit exists
-		if (!components.unitAbbreviations[layer[unitProp]!]) {
-			return null
-		}
-	}
-
-	const team1 = getLayerIdTeamString(layer.Faction_1, layer.Unit_1!, components)
-	const team2 = getLayerIdTeamString(layer.Faction_2, layer.Unit_2!, components)
-	return `${mapLayer}:${team1}:${team2}`
+/** The dense id of the known layer these parts name, or null. Missing units take the layer's default unit. */
+export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents): DenseLayerId | null {
+	if (!areLayerIdArgsValid(layer, components)) return null
+	const config = findLayerConfigs(layer, components).at(0)
+	if (!config) return null
+	const Unit_1 = layer.Unit_1 ?? lookupDefaultUnit(config.Layer, layer.Faction_1, components)
+	const Unit_2 = layer.Unit_2 ?? lookupDefaultUnit(config.Layer, layer.Faction_2, components)
+	if (!Unit_1 || !Unit_2) return null
+	const id = idFromParts({ Layer: config.Layer, Faction_1: layer.Faction_1, Unit_1, Faction_2: layer.Faction_2, Unit_2 }, components)
+	return isDenseLayerId(id) ? id : null
 }
+
 /** The known layer matching these parts, or null. isKnownLayer is the type guard for one you already hold. */
 export function getKnownLayer(layer: LayerIdArgs, components = StaticLayerComponents): KnownLayer | null {
 	const id = getKnownLayerId(layer, components)
-	if (id === null) return null
-
-	// TODO kind of wasteful, could implement separate routine based directly on `layer`
-	const res = parseLayerId(id, components)
-	if (res.code !== 'ok') return null
-	return res.layer
+	return id === null ? null : (knownLayerOfDenseId(id, components) ?? null)
 }
 
 export function isRawLayer(layer: UnvalidatedLayer | LayerId): layer is RawLayer {
-	const id = typeof layer === 'string' ? layer : layer.id
-	return id !== undefined && id.startsWith('RAW:')
-}
-export function isRawLayerId(layerId: LayerId) {
-	return layerId.startsWith('RAW:')
+	return !isDenseLayerId(typeof layer === 'object' ? layer.id : layer)
 }
 
 /**
- * Parses a canonical layer id. Returns a result union: 'ok' with the known layer, or one of
- * 'err:invalid-layer-id', 'err:unknown-training-layer', or 'err:unknown-layer', the last of which
- * still carries the parsed parts.
+ * Parses a layer id in the abbreviated format SLM used before canonical text (e.g. "GD-RAAS-V1:USA-CA:RGF-CA"), for
+ * stored data and links written before it. Returns a result union: 'ok' with the known layer, or one of
+ * 'err:invalid-layer-id', 'err:unknown-training-layer', or 'err:unknown-layer', the last of which still carries the
+ * parsed parts. The layer's id is the current one.
  */
-export function parseLayerId(id: string, components = StaticLayerComponents) {
+export function parseLegacyLayerId(id: string, components = StaticLayerComponents) {
 	const match = knownLayerIdRegex.exec(id)
 
 	if (!match || !match.groups) {
@@ -420,8 +529,10 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 
 	const gamemode = Obj.revLookupCached(components.gamemodeAbbreviations, gamemodePart) as string | undefined
 	const map = Obj.revLookupCached(components.mapAbbreviations, mapPart) as string | undefined
-	const unit1 = Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) as string | undefined
-	const unit2 = Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) as string | undefined
+	const unit1 = (Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) ??
+		components.backwardsCompat.unitAbbreviations[unit1Abbr]) as string | undefined
+	const unit2 = (Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) ??
+		components.backwardsCompat.unitAbbreviations[unit2Abbr]) as string | undefined
 	const foldedCollection = collectionPart === null ? undefined : components.backwardsCompat.collectionAbbreviations[collectionPart]
 	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart) ?? foldedCollection
 
@@ -449,7 +560,7 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 	}
 
 	const layer = {
-		id,
+		id: idFromParts({ Layer: layerString, Faction_1: faction1, Unit_1: unit1, Faction_2: faction2, Unit_2: unit2 }, components),
 		Map: map,
 		Layer: layerString,
 		Size: mapLayer?.Size,
@@ -463,9 +574,6 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 		Unit_2: unit2,
 		Alliance_2: components.factionToAlliance[faction2],
 	}
-	// the id carries the abbreviation of a collection that has since been folded into another, so it will not compare
-	// equal to one the app generates today. Hand back the current spelling instead.
-	if (foldedCollection) layer.id = getKnownLayerId(layer as LayerIdArgs, components) ?? id
 
 	if (!isKnownLayer(layer, components)) {
 		return { code: 'err:unknown-layer' as const, layer }
@@ -479,22 +587,23 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 export function swapFactions(_layer: UnvalidatedLayer | LayerId, components = StaticLayerComponents) {
 	const layer = toLayer(_layer, components)
 	if (!isKnownLayer(layer, components)) return null
-	const swappedId = swapFactionsInId(layer.id)
-	const res = parseLayerId(swappedId, components)
-	if (res.code !== 'ok') return null
-	return res.layer
+	const swapped = toLayer(swapFactionsInId(layer.id, components), components)
+	return isKnownLayer(swapped, components) ? swapped : null
 }
 
-export function swapFactionsInId(id: LayerId) {
-	const [layer, faction1, faction2] = id.split(':')
-	return `${layer}:${faction2}:${faction1}`
+export function swapFactionsInId(id: LayerId, components = StaticLayerComponents): LayerId {
+	const layer = toLayer(id, components)
+	return idFromParts(
+		{ Layer: layer.Layer, Faction_1: layer.Faction_2, Unit_1: layer.Unit_2, Faction_2: layer.Faction_1, Unit_2: layer.Unit_1 },
+		components,
+	)
 }
 
 /** Every column matches. For "one of these is a partial of the other", see areLayersCompatible. */
 export function layersEqual(a: LayerId | UnvalidatedLayer, b: LayerId | UnvalidatedLayer) {
 	if (a === b) return true
-	if (typeof a === 'string') a = toLayer(a)
-	if (typeof b === 'string') b = toLayer(b)
+	if (typeof a !== 'object') a = toLayer(a)
+	if (typeof b !== 'object') b = toLayer(b)
 	for (const def of Object.values(LC.BASE_COLUMN_DEFS)) {
 		if (def.name === 'id') continue
 		if (a[def.name] !== b[def.name]) return false
@@ -523,18 +632,16 @@ export function layerMatchesIngameLayerClassname(_layer: LayerId | UnvalidatedLa
 	return false
 }
 
-/** Resolves a raw layer to the known layer it matches, where there is one. Returns the input unchanged otherwise. */
+/**
+ * Resolves a raw layer to the known layer it matches, where there is one, such as one added by newer layer data.
+ * Returns the input unchanged otherwise.
+ */
 export function normalize<Original extends LayerId | UnvalidatedLayer>(original: Original, components = StaticLayerComponents): Original {
 	const layer = toLayer(original, components)
-
 	if (!isRawLayer(layer)) return original
-	if (!layer.Map || !layer.Gamemode || !layer.Faction_1 || !layer.Faction_2 || layer.LayerVersion === undefined) {
-		return original
-	}
-	const knownLayer = getKnownLayer(layer as LayerIdArgs, components)
-	if (!knownLayer) return original
-
-	return typeof original === 'string' ? (knownLayer.id as Original) : (knownLayer as Original)
+	const id = idFromParts(layer, components)
+	if (!isDenseLayerId(id)) return original
+	return typeof original === 'object' ? (knownLayerOfDenseId(id, components) as Original) : (id as Original)
 }
 
 /**
@@ -548,22 +655,18 @@ export function areLayersPartialMatch(
 ) {
 	if (toCompare === target) return true
 
-	const layerRes = typeof toCompare === 'string' ? toLayer(toCompare, components) : toCompare
-	const targetLayerRes = typeof target === 'string' ? toLayer(target, components) : target
-	if (coalesceFraas) {
-		if (layerRes.Layer) {
-			layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (targetLayerRes.Layer) {
-			targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (layerRes.Gamemode === 'FRAAS') layerRes.Gamemode = 'RAAS'
-		if (targetLayerRes.Gamemode === 'FRAAS') {
-			targetLayerRes.Gamemode = 'RAAS'
-		}
-	}
-
+	const layerRes = typeof toCompare === 'object' ? toCompare : toLayer(toCompare, components)
+	const targetLayerRes = typeof target === 'object' ? target : toLayer(target, components)
+	if (coalesceFraas) return Obj.isPartial(coalesceFraasLayer(layerRes), coalesceFraasLayer(targetLayerRes), ['id'])
 	return Obj.isPartial(layerRes, targetLayerRes, ['id'])
+}
+
+// a copy reading FRAAS as RAAS, or the layer itself when it names no FRAAS
+function coalesceFraasLayer(layer: UnvalidatedLayer): UnvalidatedLayer {
+	if (layer.Gamemode !== 'FRAAS' && !layer.Layer?.includes('FRAAS')) return layer
+	const coalesced = { ...layer, Layer: layer.Layer.replace('FRAAS', 'RAAS') }
+	if (coalesced.Gamemode === 'FRAAS') coalesced.Gamemode = 'RAAS'
+	return coalesced
 }
 
 /** areLayersPartialMatch in either direction, so neither argument has to be the more specific one. */
@@ -587,28 +690,31 @@ export function isSeedingOrTrainingLayer(layerOrId: UnvalidatedLayer | LayerId, 
 
 /** Accepts an id or a layer and gives back a layer. Coercion only: it validates nothing. */
 export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {
-	if (typeof unvalidatedLayerOrId === 'string') {
-		return fromPossibleRawId(unvalidatedLayerOrId, components)
+	if (typeof unvalidatedLayerOrId === 'object') return unvalidatedLayerOrId
+	if (isDenseLayerId(unvalidatedLayerOrId)) {
+		const layer = knownLayerOfDenseId(unvalidatedLayerOrId, components)
+		if (!layer) throw new Error(`dense layer id ${unvalidatedLayerOrId} names no layer in the loaded layer data`)
+		return layer
 	}
-	return unvalidatedLayerOrId
+	return rawLayerOfText(unvalidatedLayerOrId, components)
 }
 
-export function fromPossibleRawId(id: string, components = StaticLayerComponents): UnvalidatedLayer {
-	if (id.startsWith('RAW:')) {
-		return parseRawLayerText(id.slice('RAW:'.length), components)!
-	}
-	const res = parseLayerId(id, components)
-	switch (res.code) {
-		case 'ok':
-			return res.layer
-		case 'err:unknown-layer':
-			return res.layer
-		case 'err:invalid-layer-id':
-		case 'err:unknown-training-layer':
-			throw new Error(res.msg)
-		default:
-			assertNever(res)
-	}
+// the layer behind a text id, parsed once per id and layer data
+const MAX_CACHED_TEXT_LAYERS = 4096
+const rawLayersByText = new WeakMap<LC.LayerComponents, Map<string, UnvalidatedLayer>>()
+function rawLayerOfText(id: TextLayerId, components = StaticLayerComponents): UnvalidatedLayer {
+	let cache = rawLayersByText.get(components)
+	if (!cache) rawLayersByText.set(components, (cache = new Map()))
+	const cached = cache.get(id)
+	if (cached) return cached
+	// text ids can come from anywhere (links, RCON, stored rows), so the cache is dropped rather than left to grow
+	if (cache.size >= MAX_CACHED_TEXT_LAYERS) cache.clear()
+	const parts = parseLayerText(id)
+	const parsed = parts ? layerFromParts(parts, components) : { Layer: id }
+	// keep the id the caller holds: a text id normalizes to a dense one only where the caller asks (see normalize)
+	const layer = Object.freeze({ ...parsed, id })
+	cache.set(id, layer)
+	return layer
 }
 
 export function getLayerCommand(
@@ -616,10 +722,14 @@ export function getLayerCommand(
 	cmdType: 'set-next' | 'change-layer' | 'none',
 	components = StaticLayerComponents,
 ) {
-	const layer = typeof layerOrId === 'string' ? fromPossibleRawId(layerOrId, components) : layerOrId
-	function getFactionModifier(faction: LayerId, subFac: LayerId | null) {
+	const layer = toLayer(layerOrId, components)
+	function getFactionModifier(faction: string, subFac: string | undefined) {
 		return `${faction}${subFac ? `+${subFac}` : ''}`
 	}
+	// a layer the layer data does not hold has no default units to look up; the game picks its own
+	const raw = isRawLayer(layer)
+	const unitFor = (unit: string | undefined, faction: string) =>
+		unit ?? (raw ? undefined : lookupDefaultUnit(layer.Layer, faction, components))
 	let cmd: string
 	switch (cmdType) {
 		case 'set-next':
@@ -638,18 +748,17 @@ export function getLayerCommand(
 	let commandArgs: string
 	// a training layer's teams are fixed by its config, and the game ignores faction arguments on one
 	const bareTrainingLayer = layer.Gamemode === 'Training'
-	if (isRawLayer(layer)) commandArgs = layer.id.slice('RAW:'.length)
-	else if (bareTrainingLayer) {
+	if (bareTrainingLayer) {
 		commandArgs = layer.Layer
 	} else {
 		commandArgs = layer.Layer
 		if (layer.Faction_1) {
 			commandArgs += ' '
-			commandArgs += getFactionModifier(layer.Faction_1, layer.Unit_1 ?? lookupDefaultUnit(layer.Layer, layer.Faction_1, components)!)
+			commandArgs += getFactionModifier(layer.Faction_1, unitFor(layer.Unit_1, layer.Faction_1))
 		}
 		if (layer.Faction_2) {
 			commandArgs += ' '
-			commandArgs += getFactionModifier(layer.Faction_2, layer.Unit_2 ?? lookupDefaultUnit(layer.Layer, layer.Faction_2, components)!)
+			commandArgs += getFactionModifier(layer.Faction_2, unitFor(layer.Unit_2, layer.Faction_2))
 		}
 	}
 	return `${cmd} ${commandArgs.replace('FRAAS', 'RAAS')}`.trim().replace(/\s+/g, ' ')
@@ -670,8 +779,9 @@ export function getSquadcalcUrl(baseUrl: string, layerOrId: UnvalidatedLayer | L
 }
 
 export function parseRawLayerText(rawLayerText: string, components = StaticLayerComponents): UnvalidatedLayer | null {
-	let knownLayerRes = parseLayerId(rawLayerText, components)
-	if (knownLayerRes.code === 'ok') return knownLayerRes.layer
+	// an admin may still paste an id in the old abbreviated format
+	const legacy = parseLegacyLayerId(rawLayerText, components)
+	if (legacy.code === 'ok') return legacy.layer
 	rawLayerText = rawLayerText
 		.replace(/^(AdminSetNextLayer|AdminChangeLayer)/, '')
 		.trim()
@@ -693,24 +803,22 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 	} else {
 		;[faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String, components)
 	}
+	const rawLayer = (fields: Omit<UnvalidatedLayer, 'id'>): UnvalidatedLayer => {
+		const mapped = applyBackwardsCompatMappings(fields, components)
+		return { ...mapped, id: idFromParts(mapped, components) }
+	}
 	if (!parsedLayer || !faction1 || !faction2) {
-		return {
-			id: 'RAW:' + rawLayerText,
-			...applyBackwardsCompatMappings(
-				{
-					Map: parsedLayer?.Map,
-					Layer: layerString,
-					Gamemode: parsedLayer?.Gamemode,
-					LayerVersion: parsedLayer?.LayerVersion ?? null,
-					Collection: parsedLayer?.Collection ?? getDefaultCollection(components),
-					Faction_1: faction1?.faction,
-					Unit_1: faction1?.unit ?? undefined,
-					Faction_2: faction2?.faction,
-					Unit_2: faction2?.unit ?? undefined,
-				},
-				components,
-			),
-		}
+		return rawLayer({
+			Map: parsedLayer?.Map,
+			Layer: layerString,
+			Gamemode: parsedLayer?.Gamemode,
+			LayerVersion: parsedLayer?.LayerVersion ?? null,
+			Collection: parsedLayer?.Collection ?? getDefaultCollection(components),
+			Faction_1: faction1?.faction,
+			Unit_1: faction1?.unit ?? undefined,
+			Faction_2: faction2?.faction,
+			Unit_2: faction2?.unit ?? undefined,
+		})
 	}
 	const { Map: map, Gamemode: gamemode, LayerVersion: version, Collection: collection } = parsedLayer
 
@@ -728,28 +836,19 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 		components,
 	)
 
-	const id = getKnownLayerId(layerIdArgs, components)
-	if (id != null) {
-		knownLayerRes = parseLayerId(id, components)
-		if (knownLayerRes.code === 'ok') return knownLayerRes.layer
-	}
-	return {
-		id: `RAW:${rawLayerText}`,
-		...applyBackwardsCompatMappings(
-			{
-				Map: map,
-				Layer: layerString,
-				Gamemode: gamemode,
-				LayerVersion: version ?? null,
-				Collection: collection,
-				Faction_1: faction1.faction,
-				Unit_1: faction1.unit ?? undefined,
-				Faction_2: faction2.faction,
-				Unit_2: faction2.unit ?? undefined,
-			},
-			components,
-		),
-	}
+	const known = getKnownLayer(layerIdArgs, components)
+	if (known) return known
+	return rawLayer({
+		Map: map,
+		Layer: layerString,
+		Gamemode: gamemode,
+		LayerVersion: version ?? null,
+		Collection: collection,
+		Faction_1: faction1.faction,
+		Unit_1: faction1.unit ?? undefined,
+		Faction_2: faction2.faction,
+		Unit_2: faction2.unit ?? undefined,
+	})
 }
 
 // What is wrong with one part of a pasted line. `suggestion` is the closest name the catalog has, for a typo.
@@ -854,6 +953,10 @@ function diagnoseRawLayer(layer: UnvalidatedLayer, components: typeof StaticLaye
 		if (config && !teamAvail.some((entry) => entry.Faction === faction && (unit === undefined || entry.Unit === unit))) {
 			problems.push({ code: 'unavailable-faction', team, faction, unit: unit ?? null })
 		}
+	}
+	// the layer data leaves these out, so a line naming one is otherwise only "unknown"
+	if (config && layer.Faction_1 && layer.Faction_1 === layer.Faction_2 && config.Gamemode !== 'Training') {
+		problems.push({ code: 'mirror-matchup', faction: layer.Faction_1 })
 	}
 	return problems
 }
@@ -995,7 +1098,11 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 	return parsedFactions
 }
 
-export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:USA-CA:RGF-CA'
+export const DEFAULT_LAYER_TEXT = 'Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+
+export function defaultLayerId(components = StaticLayerComponents): LayerId {
+	return fromLayerText(DEFAULT_LAYER_TEXT, components)!
+}
 
 export type LayerFactionAvailabilityEntry = {
 	Faction: string
@@ -1100,8 +1207,8 @@ export type MapConfigTeam = {
 
 export type BackwardsCompatMappings = Record<'factions' | 'units' | 'gamemodes' | 'maps', Record<string, string>> &
 	Record<'collections', Record<string, string | null>> &
-	// a collection folded into another leaves its abbreviation in every layer id already persisted or pasted into chat
-	Record<'collectionAbbreviations', Record<string, string>>
+	// a collection or unit folded into another leaves its abbreviation in every layer id already persisted or pasted into chat
+	Record<'collectionAbbreviations' | 'unitAbbreviations', Record<string, string>>
 
 export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(layer: T, components = StaticLayerComponents) {
 	const updated: Partial<KnownLayer> = { ...layer }

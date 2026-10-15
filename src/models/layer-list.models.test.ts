@@ -8,7 +8,7 @@ describe('LL.movesToOrder', () => {
 	const ids = ['aaaaaa', 'bbbbbb', 'cccccc', 'dddddd', 'eeeeee', 'ffffff', 'gggggg']
 
 	function apply(current: string[], target: string[]) {
-		const list: LL.List = current.map((itemId) => ({ type: 'single-list-item', itemId, layerId: L.DEFAULT_LAYER_ID, source }))
+		const list: LL.List = current.map((itemId) => ({ type: 'single-list-item', itemId, layerId: L.defaultLayerId(), source }))
 		const moves = LL.movesToOrder(current, target)
 		for (const move of moves) LL.moveItem(list, source, move.itemId, LL.createItemId(), move.cursor)
 		return { order: list.map((item) => item.itemId), moves: moves.length }

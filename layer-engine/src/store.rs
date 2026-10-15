@@ -3,7 +3,7 @@
 //! Layout: `SLMC3` magic, a u32 manifest length, the manifest as JSON, then the sections back to back, each padded to
 //! a 4-byte boundary so u16/u32/i32 sections can be borrowed straight out of linear memory.
 //!
-//! Nothing is stored per row. Rows are packed-id order, which groups them into one contiguous block per layer, and a
+//! Nothing is stored per row. Rows are layer-id order, which groups them into one contiguous block per layer, and a
 //! block's rows are the cross product of that layer's faction/unit availability. So a layer's own columns are stored
 //! once per block (928 of them), the per-team columns once per distinct availability pattern (314, shared by every
 //! block that repeats one), and the score columns once per (layer, faction, unit) side record (8313). See
@@ -161,11 +161,50 @@ pub struct Store {
     pair_record: Vec<u16>,
     /// min/max per column, computed on first ask: the table never changes, and a per-row column costs a full walk
     pub(crate) ranges: Vec<OnceCell<Option<(i64, i64)>>>,
-    /// the columns the id packing and side-record lookups need, resolved once
+    /// the columns the id and side-record lookups need, resolved once
     layer_col: usize,
     faction_col: [usize; 2],
     unit_col: [usize; 2],
+    /// Layer ids are dense: the layer index shifted left by `id_local_bits`, or'd with the row's cell in its layer's
+    /// option grid. A grid's rows are the layer's distinct team-1 sides (faction * units + unit, ascending), its
+    /// columns the team-2 sides, and cell = row * columns + column. LC.denseIdLayout derives the same grids from the
+    /// layer components, and `id_layout` lets the two be checked against each other.
+    id_local_bits: u32,
+    /// per pattern row, its cell
+    pattern_row_cell: Vec<u32>,
+    /// per pattern, where its cells start in `cell_pattern_row`; one extra entry closes the last pattern
+    pattern_cell_start: Vec<u32>,
+    /// per cell, the pattern row filling it as an offset from the pattern's first row, or NO_ROW
+    cell_pattern_row: Vec<u32>,
+    /// per pattern and team, the grid's sides; `pattern_side_start` closes each run like `pattern_cell_start`
+    pattern_sides: [Vec<u32>; 2],
+    pattern_side_start: [Vec<u32>; 2],
+    /// layer index -> block, or NO_BLOCK for a layer with no rows
+    layer_block: Vec<u32>,
 }
+
+/// 32-bit FNV-1a over little-endian u32s. Mirrored by LC.fnvU32 so the id layout digest matches across the boundary.
+struct Fnv(u32);
+
+impl Fnv {
+    fn new() -> Self {
+        Fnv(0x811c9dc5)
+    }
+    fn write(&mut self, value: u32) {
+        for byte in value.to_le_bytes() {
+            self.0 ^= byte as u32;
+            self.0 = self.0.wrapping_mul(0x01000193);
+        }
+    }
+    fn finish(&self) -> u32 {
+        self.0
+    }
+}
+
+const NO_ROW: u32 = u32::MAX;
+const NO_BLOCK: u32 = u32::MAX;
+/// a JS engine keeps an integer inline (unboxed) below 2^30 on every platform we run on
+const MAX_ID_BITS: u32 = 30;
 
 impl Store {
     pub fn load(bytes: Vec<u8>) -> Result<Store, String> {
@@ -211,6 +250,13 @@ impl Store {
             layer_col,
             faction_col,
             unit_col,
+            id_local_bits: 0,
+            pattern_row_cell: Vec::new(),
+            pattern_cell_start: Vec::new(),
+            cell_pattern_row: Vec::new(),
+            pattern_sides: [Vec::new(), Vec::new()],
+            pattern_side_start: [Vec::new(), Vec::new()],
+            layer_block: Vec::new(),
         };
         store.block_row_start = store.u32_section(store.manifest.block_row_start).to_vec();
         store.block_pattern = store.u16_section(store.manifest.block_pattern).to_vec();
@@ -220,6 +266,7 @@ impl Store {
         store.score_layer_start = store.u32_section(store.manifest.score_layer_start).to_vec();
         store.alliance = [store.derive_alliance(0)?, store.derive_alliance(1)?];
         store.index_side_records()?;
+        store.index_dense_ids()?;
         store.ranges = (0..store.manifest.columns.len()).map(|_| OnceCell::new()).collect();
 
         if store.block_row_start.len() != store.manifest.block_count + 1 {
@@ -286,6 +333,107 @@ impl Store {
         self.pair_count = pairs;
         self.pair_record = pair_record;
         Ok(())
+    }
+
+    fn index_dense_ids(&mut self) -> Result<(), String> {
+        let units = self.manifest.unit_count as u32;
+        let patterns = self.manifest.pattern_count;
+        let mut sides_of = [Vec::new(), Vec::new()];
+        for (team, sides) in sides_of.iter_mut().enumerate() {
+            let faction = self.pattern_enum(self.faction_col[team]).ok_or("Faction columns must be pattern scope")?;
+            let unit = self.pattern_enum(self.unit_col[team]).ok_or("Unit columns must be pattern scope")?;
+            *sides = (0..self.manifest.pattern_row_count)
+                .map(|p| match (faction.get(p), unit.get(p)) {
+                    (Some(f), Some(u)) => Ok(f as u32 * units + u as u32),
+                    _ => Err(format!("pattern row {p} has no faction or unit, so it has no layer id")),
+                })
+                .collect::<Result<Vec<u32>, String>>()?;
+        }
+
+        let mut pattern_row_cell = vec![0u32; self.manifest.pattern_row_count];
+        let mut pattern_cell_start = Vec::with_capacity(patterns + 1);
+        let mut cell_pattern_row = Vec::new();
+        let mut pattern_sides = [Vec::new(), Vec::new()];
+        let mut pattern_side_start = [Vec::with_capacity(patterns + 1), Vec::with_capacity(patterns + 1)];
+        let mut largest_grid = 1usize;
+        for p in 0..patterns {
+            let rows = self.pattern_row_start[p] as usize..self.pattern_row_start[p + 1] as usize;
+            let mut grid_sides = [Vec::new(), Vec::new()];
+            for team in 0..2 {
+                let mut sides: Vec<u32> = sides_of[team][rows.clone()].to_vec();
+                sides.sort_unstable();
+                sides.dedup();
+                pattern_side_start[team].push(pattern_sides[team].len() as u32);
+                pattern_sides[team].extend_from_slice(&sides);
+                grid_sides[team] = sides;
+            }
+            let columns = grid_sides[1].len();
+            let cells = grid_sides[0].len() * columns;
+            largest_grid = largest_grid.max(cells);
+            let first_cell = cell_pattern_row.len();
+            pattern_cell_start.push(first_cell as u32);
+            cell_pattern_row.resize(first_cell + cells, NO_ROW);
+            for row in rows.clone() {
+                let i = grid_sides[0].binary_search(&sides_of[0][row]).unwrap();
+                let j = grid_sides[1].binary_search(&sides_of[1][row]).unwrap();
+                let cell = i * columns + j;
+                pattern_row_cell[row] = cell as u32;
+                cell_pattern_row[first_cell + cell] = (row - rows.start) as u32;
+            }
+        }
+        pattern_cell_start.push(cell_pattern_row.len() as u32);
+        for team in 0..2 {
+            pattern_side_start[team].push(pattern_sides[team].len() as u32);
+        }
+
+        let local_bits = usize::BITS - (largest_grid - 1).leading_zeros();
+        let layer_bits = usize::BITS - self.manifest.layer_count.saturating_sub(1).leading_zeros();
+        if local_bits + layer_bits > MAX_ID_BITS {
+            return Err(format!(
+                "dense layer ids need {local_bits} + {layer_bits} bits for {} layers and a largest option grid of {largest_grid}, over the {MAX_ID_BITS} that keep them inline in JS",
+                self.manifest.layer_count
+            ));
+        }
+
+        let layer = self.block_enum(self.layer_col).ok_or("Layer column must be block scope")?;
+        let mut layer_block = vec![NO_BLOCK; self.manifest.layer_count];
+        for b in 0..self.manifest.block_count {
+            let l = layer.get(b).ok_or("a block has no layer")? as usize;
+            *layer_block.get_mut(l).ok_or("block layer out of range")? = b as u32;
+        }
+
+        self.id_local_bits = local_bits;
+        self.pattern_row_cell = pattern_row_cell;
+        self.pattern_cell_start = pattern_cell_start;
+        self.cell_pattern_row = cell_pattern_row;
+        self.pattern_sides = pattern_sides;
+        self.pattern_side_start = pattern_side_start;
+        self.layer_block = layer_block;
+        Ok(())
+    }
+
+    /// The id layout's local bit width, and a digest of each layer's option grid as (layer, digest) for every layer the
+    /// table has rows for. LC.checkDenseIdLayout compares these against the grids it derives from the layer
+    /// components: a mismatch would mean the two name different layers by one id.
+    pub fn id_layout(&self) -> (u32, Vec<(u32, u32)>) {
+        let mut grids = Vec::with_capacity(self.manifest.block_count);
+        for (l, &b) in self.layer_block.iter().enumerate() {
+            if b == NO_BLOCK {
+                continue;
+            }
+            let p = self.block_pattern[b as usize] as usize;
+            let mut hash = Fnv::new();
+            for team in 0..2 {
+                let sides = &self.pattern_sides[team]
+                    [self.pattern_side_start[team][p] as usize..self.pattern_side_start[team][p + 1] as usize];
+                hash.write(sides.len() as u32);
+                for side in sides {
+                    hash.write(*side);
+                }
+            }
+            grids.push((l as u32, hash.finish()));
+        }
+        (self.id_local_bits, grids)
     }
 
     // ---------------------------- sections ----------------------------
@@ -423,7 +571,7 @@ impl Store {
             }
             ColumnSpec::Id { .. } => {
                 let block = self.block_of(row);
-                self.packed_id(block, self.pattern_row_of(block, row))
+                self.dense_id(block, self.pattern_row_of(block, row))
             }
             ColumnSpec::Score { team, metric, .. } => {
                 let block = self.block_of(row);
@@ -466,16 +614,10 @@ impl Store {
         }
     }
 
-    /// The mixed-radix packing of (Layer, Faction_1, Unit_1, Faction_2, Unit_2) that ids use. Mirrors LC.packId.
-    pub fn packed_id(&self, block: usize, pattern_row: usize) -> Option<i64> {
+    /// The dense layer id of a row. Mirrors LC.packId.
+    pub fn dense_id(&self, block: usize, pattern_row: usize) -> Option<i64> {
         let layer = self.block_enum(self.layer_col)?.get(block)?;
-        let factions = self.manifest.faction_count as i64;
-        let units = self.manifest.unit_count as i64;
-        let f1 = self.pattern_enum(self.faction_col[0])?.get(pattern_row)?;
-        let u1 = self.pattern_enum(self.unit_col[0])?.get(pattern_row)?;
-        let f2 = self.pattern_enum(self.faction_col[1])?.get(pattern_row)?;
-        let u2 = self.pattern_enum(self.unit_col[1])?.get(pattern_row)?;
-        Some((((layer * factions + f1) * units + u1) * factions + f2) * units + u2)
+        Some((layer << self.id_local_bits) | self.pattern_row_cell[pattern_row] as i64)
     }
 
     pub fn block_enum(&self, col: usize) -> Option<Enum<'_>> {
@@ -504,23 +646,25 @@ impl Store {
         self.score_key[lo..hi].binary_search(&key).ok().map(|i| i + lo)
     }
 
-    /// The row holding a packed id, if the table has one. Rows ascend by id, so this binary-searches the row space
-    /// and recomputes the id at each step rather than reading a stored column.
+    /// The row holding a dense id, if the table has one: the layer's block, then the cell's row within its pattern.
     pub fn row_of_id(&self, id: i32) -> Option<usize> {
-        let target = id as i64;
-        let mut lo = 0usize;
-        let mut hi = self.manifest.row_count;
-        while lo < hi {
-            let mid = lo.midpoint(hi);
-            let block = self.block_of(mid);
-            let value = self.packed_id(block, self.pattern_row_of(block, mid))?;
-            match value.cmp(&target) {
-                std::cmp::Ordering::Equal => return Some(mid),
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
-            }
+        if id < 0 {
+            return None;
         }
-        None
+        let id = id as u32;
+        let block = *self.layer_block.get((id >> self.id_local_bits) as usize)?;
+        if block == NO_BLOCK {
+            return None;
+        }
+        let p = self.block_pattern[block as usize] as usize;
+        let cell = self.pattern_cell_start[p] + (id & ((1u32 << self.id_local_bits) - 1));
+        if cell >= self.pattern_cell_start[p + 1] {
+            return None;
+        }
+        match self.cell_pattern_row[cell as usize] {
+            NO_ROW => None,
+            offset => Some((self.block_row_start[block as usize] + offset) as usize),
+        }
     }
 
     pub fn faction_alliance(&self) -> &[u8] {
@@ -561,7 +705,7 @@ impl Store {
 pub enum Reader<'a> {
     Block(Enum<'a>),
     Pattern(Enum<'a>),
-    Id { layer: Enum<'a>, sides: [Enum<'a>; 4], factions: i64, units: i64 },
+    Id { layer: Enum<'a>, cells: &'a [u32], local_bits: u32 },
     Score { layer: Enum<'a>, side_pair: &'a [u16], pairs: usize, pair_record: &'a [u16], layer_start: &'a [u32], vals: &'a [i32], metrics: usize, metric: usize },
     Diff { a: Box<Reader<'a>>, b: Box<Reader<'a>>, correction: Option<&'a [u8]> },
     Bitmap { bits: &'a [u8], nulls: Option<&'a [u8]> },
@@ -575,14 +719,7 @@ impl Reader<'_> {
         match self {
             Reader::Block(values) => values.get(block),
             Reader::Pattern(values) => values.get(pattern_row),
-            Reader::Id { layer, sides, factions, units } => {
-                let l = layer.get(block)?;
-                let f1 = sides[0].get(pattern_row)?;
-                let u1 = sides[1].get(pattern_row)?;
-                let f2 = sides[2].get(pattern_row)?;
-                let u2 = sides[3].get(pattern_row)?;
-                Some((((l * factions + f1) * units + u1) * factions + f2) * units + u2)
-            }
+            Reader::Id { layer, cells, local_bits } => Some((layer.get(block)? << local_bits) | cells[pattern_row] as i64),
             Reader::Score { layer, side_pair, pairs, pair_record, layer_start, vals, metrics, metric } => {
                 let l = layer.get(block)? as usize;
                 let pair = side_pair[pattern_row];
@@ -627,27 +764,15 @@ impl Reader<'_> {
 impl Store {
     pub fn reader(&self, col: usize) -> Reader<'_> {
         let col = self.resolve(col);
-        let factions = self.manifest.faction_count as i64;
-        let units = self.manifest.unit_count as i64;
         match &self.manifest.columns[col] {
             ColumnSpec::Alias { .. } => Reader::None,
             ColumnSpec::Block { section, .. } => Reader::Block(self.enum_section(*section)),
             ColumnSpec::Pattern { section, .. } => Reader::Pattern(self.enum_section(*section)),
             ColumnSpec::Alliance { team, .. } => Reader::Pattern(self.alliance[*team as usize - 1].as_enum()),
-            ColumnSpec::Id { .. } => {
-                let sides = [
-                    self.pattern_enum(self.faction_col[0]),
-                    self.pattern_enum(self.unit_col[0]),
-                    self.pattern_enum(self.faction_col[1]),
-                    self.pattern_enum(self.unit_col[1]),
-                ];
-                match (self.block_enum(self.layer_col), sides) {
-                    (Some(layer), [Some(f1), Some(u1), Some(f2), Some(u2)]) => {
-                        Reader::Id { layer, sides: [f1, u1, f2, u2], factions, units }
-                    }
-                    _ => Reader::None,
-                }
-            }
+            ColumnSpec::Id { .. } => match self.block_enum(self.layer_col) {
+                Some(layer) => Reader::Id { layer, cells: &self.pattern_row_cell, local_bits: self.id_local_bits },
+                None => Reader::None,
+            },
             ColumnSpec::Score { team, metric, .. } => match self.block_enum(self.layer_col) {
                 Some(layer) => Reader::Score {
                     layer,

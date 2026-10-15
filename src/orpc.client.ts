@@ -11,10 +11,11 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as RPC_Msgs from '@/messages/rpc.messages'
-import type * as PA from '@/models/procedure-access.models'
+import * as PA from '@/models/procedure-access.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
+import * as LayerDataClient from '@/systems/layer-data.client'
 import { tr } from '@/systems/messages.client'
 
 import { formatVersion } from './lib/versioning'
@@ -25,9 +26,13 @@ const wsUrl = `${wsHostname}${AR.route('/orpc')}`
 // On reconnect, tell the server the id we last held so it reclaims that exact presence entry (activity +
 // locks) and evicts our stale socket, instead of minting a fresh id and leaving a ghost that reads as an
 // "other active session". partysocket re-invokes this per connect; empty on the first connect (no id yet).
-function resolveWsUrl(): string {
+// Every connect also names the layer data this page loaded (see C.LayerDataSession).
+async function resolveWsUrl(): Promise<string> {
+	await LayerDataClient.setup()
+	const params = new URLSearchParams({ layerData: LayerDataClient.hash! })
 	const priorClientId = ConfigClient.getConfig()?.wsClientId
-	return priorClientId ? `${wsUrl}?prior=${encodeURIComponent(priorClientId)}` : wsUrl
+	if (priorClientId) params.set('prior', priorClientId)
+	return `${wsUrl}?${params}`
 }
 const websocket = new WebSocket(resolveWsUrl)
 
@@ -46,6 +51,10 @@ const orpcLink = new RPCLink({
 		onError((error) => {
 			// AbortErrors happen whenever an unsubscribe happens, we can safely ignore them
 			if (error instanceof Error && error.name === 'AbortError') return
+			if (error instanceof ORPCError && error.message === PA.STALE_LAYER_DATA) {
+				reloadForSkew("Layer pool changed (the server refused this page's layer data)", RPC_Msgs.layerPoolUpdated())
+				return
+			}
 			console.error(error)
 			// a dropped socket fails every in-flight call at once, and none of those failures tell the user anything the
 			// reconnect toast isn't already saying. Only calls that failed while the transport was up are real news.
@@ -221,6 +230,11 @@ ConfigClient.Store.subscribe((config) => {
 	if (!config) return
 	if (!previous) {
 		previous = { sha: config.PUBLIC_GIT_SHA, layerDataHash: config.layerDataHash }
+		// the page may have fetched its layer data before a deploy and connected after it, so the first config is held
+		// against what the page actually loaded rather than taken as the baseline
+		if (LayerDataClient.hash !== null && LayerDataClient.hash !== config.layerDataHash) {
+			reloadForSkew(`Layer pool changed (${LayerDataClient.hash} -> ${config.layerDataHash})`, RPC_Msgs.layerPoolUpdated())
+		}
 		console.log(`%cSLM version ${config.version} (${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)})`, 'color: limegreen')
 	} else if (previous.sha !== config.PUBLIC_GIT_SHA) {
 		reloadForSkew(`Version skew detected (${previous.sha} -> ${config.PUBLIC_GIT_SHA})`, RPC_Msgs.upgrading(), { upgraded: true })

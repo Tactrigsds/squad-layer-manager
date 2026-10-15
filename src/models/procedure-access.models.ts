@@ -31,6 +31,10 @@ const GLOBAL_SETTINGS_READ = Access.req(SETTINGS.Grants.globalSettingsRead())
 // live player identity and standing, as the dashboard shows it or as the history page resolves it
 const PLAYER_LOOKUP = Access.req(Req.any(Req.perm('history:query'), Req.viewAnyServer()))
 
+// The message a call is refused with when its client runs other layer data than the server (C.LayerDataSession).
+// The client reloads on it.
+export const STALE_LAYER_DATA = 'stale-layer-data'
+
 export const PROCEDURE_ACCESS = {
 	'battlemetrics.getPlayerBmData': PLAYER_LOOKUP,
 	'battlemetrics.refreshPlayerBmData': Access.req(Req.viewAnyServer()),

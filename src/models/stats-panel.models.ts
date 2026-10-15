@@ -301,9 +301,9 @@ function samplesEnd(samples: Pop.Samples): number | undefined {
 }
 
 // a match's name on the population chart: its map and gamemode, which is what fits above a band
-function layerLabel(layerId: string): string {
+function layerLabel(layerId: L.LayerId): string {
 	const layer = L.toLayer(layerId)
-	return L.isKnownLayer(layer) ? `${layer.Map} ${layer.Gamemode}` : layerId
+	return L.isKnownLayer(layer) ? `${layer.Map} ${layer.Gamemode}` : L.toLayerText(layerId)
 }
 
 function toView(

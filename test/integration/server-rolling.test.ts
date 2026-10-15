@@ -320,7 +320,7 @@ describe('the event archive', () => {
 		if (all.code !== 'ok' || all.type !== 'matches') return
 		if (gorodok.code !== 'ok' || gorodok.type !== 'matches') return
 		expect(gorodok.total).toBeGreaterThan(0)
-		expect(gorodok.matches.every((m) => m.layerId.startsWith('GD-'))).toBe(true)
+		expect(gorodok.matches.every((m) => L.toLayer(m.layerId).Map === 'Gorodok')).toBe(true)
 
 		// negation has to keep the rows a positive filter drops rather than propagating a null through the
 		// compare, so the two halves partition the whole
@@ -341,7 +341,7 @@ describe('the event archive', () => {
 		expect(notGorodok.code).toBe('ok')
 		if (notGorodok.code !== 'ok' || notGorodok.type !== 'matches') return
 		expect(gorodok.total + notGorodok.total).toBe(all.total)
-		expect(notGorodok.matches.every((m) => !m.layerId.startsWith('GD-'))).toBe(true)
+		expect(notGorodok.matches.every((m) => L.toLayer(m.layerId).Map !== 'Gorodok')).toBe(true)
 
 		// a faction matches whichever side played it, since the slot a side occupies flips between matches
 		const rgf = await client.history.query({ query: { type: 'matches', faction: 'RGF' } })
@@ -718,7 +718,7 @@ describe('the event archive', () => {
 	// Vehicles neither side of the current layer fields, so their side has to come from their crew. Which layer that
 	// is depends on the queue the fixture generated, so they are picked against it rather than named.
 	function unfieldedVehicles(layerId: string, count: number): string[] {
-		const layer = L.toLayer(layerId)
+		const layer = L.toLayer(L.readStoredLayerId(layerId))
 		const details = L.isKnownLayer(layer) ? L.resolveLayerDetails(layer) : null
 		const fielded = new Set([details?.team1, details?.team2].flatMap((unit) => (unit ? [...VEH.unitClasses(unit)] : [])))
 		const picks: string[] = []
@@ -745,7 +745,7 @@ describe('the event archive', () => {
 		app.emu.world.destroyDeployable(hunter, 'BP_Ammocrate_RGF')
 		// A radio's side comes from the faction its blueprint names, so these name the current layer's: the hunter, on
 		// team 1, attacks their own side's radio and then the other side's.
-		const layer = L.toLayer(layerId)
+		const layer = L.toLayer(L.readStoredLayerId(layerId))
 		app.emu.world.damageRadio(hunter, `BP_FOBRadio_${layer.Faction_1}`)
 		app.emu.world.damageRadio(hunter, `BP_FOBRadio_${layer.Faction_2}`)
 

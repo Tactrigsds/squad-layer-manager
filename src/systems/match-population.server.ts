@@ -5,6 +5,7 @@ import zlib from 'node:zlib'
 import * as Schema from '$root/drizzle/schema'
 import { LRUMap } from '@/lib/lru-map'
 import type * as CS from '@/models/context-shared.models'
+import * as L from '@/models/layer.models'
 import * as Pop from '@/models/population.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -95,7 +96,12 @@ export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: n
 		} else {
 			Pop.addToBuckets(buckets, await decode(row.id, row.samples), row.ordinal, cap)
 		}
-		bands.push({ ordinal: row.ordinal, layerId: row.layerId, start: matchStart, roundEnd: row.endTime?.getTime() ?? null })
+		bands.push({
+			ordinal: row.ordinal,
+			layerId: L.readStoredLayerId(row.layerId),
+			start: matchStart,
+			roundEnd: row.endTime?.getTime() ?? null,
+		})
 	}
 	return { buckets, bands, pending }
 }

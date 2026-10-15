@@ -134,7 +134,7 @@ A (USMC)" needs them:
 import * as L from 'slm/models/layer'
 import * as MH from 'slm/models/match-history'
 
-function teamLabel(team: MH.NormedTeamProp, layerId: string, ordinal: number) {
+function teamLabel(team: MH.NormedTeamProp, layerId: L.LayerId, ordinal: number) {
 	const faction = L.toLayer(layerId)[MH.getTeamNormalizedFactionProp(ordinal, team)]
 	return `Team ${MH.toNormedTeamId(team)}${faction ? ` (${faction})` : ''}`
 }

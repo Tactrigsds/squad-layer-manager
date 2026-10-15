@@ -381,7 +381,7 @@ export type SideEffect =
 			trigger: 'user-save' | 'chat-write' | 'consumed'
 			source?: USR.GuiOrChatUserId
 			// for 'consumed': the generated layer that satisfied the consumed templates
-			layerId?: string | null
+			layerId?: L.LayerId | null
 	  }
 	| {
 			// the save had nothing to write, but the edit window still closed -- editors are done and the draft

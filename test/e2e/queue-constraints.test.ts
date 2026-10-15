@@ -182,7 +182,7 @@ test.describe('queue item constraints', () => {
 					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
 					// the row clicked in the table is whichever Gorodok AAS layer sorts first, so match the layer
 					// rather than a particular faction matchup of it
-					return list.length === 3 && list[0].layerId.startsWith('GD-AAS-')
+					return list.length === 3 && list[0].layerId.startsWith('Gorodok_AAS_v1:')
 				} finally {
 					db.close()
 				}
@@ -227,7 +227,7 @@ test.describe('queue item constraints', () => {
 				try {
 					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
 					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
+					return list.length === 4 && list.some((item) => item.layerId.startsWith('Narva_RAAS_v1:'))
 				} finally {
 					db.close()
 				}
@@ -269,7 +269,7 @@ test.describe('queue item constraints', () => {
 				try {
 					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
 					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 3 && !list.some((item) => item.layerId.startsWith('HJ-RAAS-'))
+					return list.length === 3 && !list.some((item) => item.layerId.startsWith('Harju_RAAS_v1:'))
 				} finally {
 					db.close()
 				}
@@ -324,7 +324,7 @@ test.describe('queue item constraints', () => {
 				try {
 					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
 					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
+					return list.length === 4 && list.some((item) => item.layerId.startsWith('Narva_RAAS_v1:'))
 				} finally {
 					db.close()
 				}

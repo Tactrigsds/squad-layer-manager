@@ -208,14 +208,14 @@ function ownerClientIds(owner: bigint): string[] {
 
 // ============================== scenarios ==============================
 
-const LAYERS = TUT.LQ_TUTORIAL_LAYERS
+const LAYERS = () => TUT.lqTutorialLayers()
 
 const layerQueue = defScenario({
 	id: 'layer-queue',
 	// a short post-match wait so a staged roll does not stall the tour; no tick chatter so the narrated log stays legible
 	pacing: { postMatchDelayMs: 2000, tickChatter: false },
 	initialQueue: (owner) =>
-		LAYERS.initial.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
+		LAYERS().initial.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
 	setup: async () => {},
 	stages: {
 		welcome: async (ctx) => {
@@ -235,15 +235,16 @@ const layerQueue = defScenario({
 		// Checkpoints, one per region of the tour whose server state differs. The canonical lists mirror what a
 		// linear reader produces: two picks added at the head, the last seed removed before saving, the head removed
 		// again by the force save.
-		'cp-fresh': (ctx) => resetTo(ctx, { saved: [...LAYERS.initial] }),
+		'cp-fresh': (ctx) => resetTo(ctx, { saved: [...LAYERS().initial] }),
 		'cp-edited': (ctx) =>
 			resetTo(ctx, {
-				saved: [...LAYERS.initial],
-				draftPrepend: [LAYERS.picks.chora, LAYERS.picks.yehorivka],
+				saved: [...LAYERS().initial],
+				draftPrepend: [LAYERS().picks.chora, LAYERS().picks.yehorivka],
 				readerEditing: true,
 			}),
-		'cp-saved': (ctx) => resetTo(ctx, { saved: [LAYERS.picks.chora, LAYERS.picks.yehorivka, LAYERS.initial[0], LAYERS.initial[1]] }),
-		'cp-post-force': (ctx) => resetTo(ctx, { saved: [LAYERS.picks.yehorivka, LAYERS.initial[0], LAYERS.initial[1]] }),
+		'cp-saved': (ctx) =>
+			resetTo(ctx, { saved: [LAYERS().picks.chora, LAYERS().picks.yehorivka, LAYERS().initial[0], LAYERS().initial[1]] }),
+		'cp-post-force': (ctx) => resetTo(ctx, { saved: [LAYERS().picks.yehorivka, LAYERS().initial[0], LAYERS().initial[1]] }),
 		'cp-generated': (ctx) => resetTo(ctx, { saved: 'generated' }),
 	},
 })
@@ -528,9 +529,9 @@ const playerManagement = defScenario({
 	// The first two are what the history rolls onto, so the set-by column shows a user on one and SLM on the other;
 	// the match the server boots on is the game server's own.
 	initialQueue: (owner) => [
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[1] }, { type: 'manual', userId: PEER_USER_ID }),
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[2] }, { type: 'generated' }),
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS.initial[0] }, { type: 'manual', userId: owner }),
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[1] }, { type: 'manual', userId: PEER_USER_ID }),
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[2] }, { type: 'generated' }),
+		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[0] }, { type: 'manual', userId: owner }),
 	],
 	setup: async (ctx, reader) => {
 		await ensurePeerUser(ctx)
@@ -662,7 +663,7 @@ function buildSandboxSettings(owner: bigint, scenario: ScenarioDef<string>, next
 			tickChatter: pacing.tickChatter,
 			// boot the emulator holding the queue head as next, or SLM's reconcile pulls the emulator's default
 			// seed into the queue and displaces the scenario's seeded head
-			nextLayerId: nextLayerId ?? undefined,
+			nextLayerId: nextLayerId === null ? undefined : L.toLayerText(nextLayerId),
 		}),
 		queue: {
 			...settings.queue,

@@ -18,6 +18,7 @@ import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared.models'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
+import type * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs.models'
@@ -590,7 +591,7 @@ export const endVote = Instr.spanOp(
 		if (!listItem || !LL.isVoteItem(listItem)) throw new Error('Invalid vote item')
 		let endingVoteState: V.EndingVoteState
 		let tally: V.Tally | null = null
-		let winnerLayerId: string | null = null
+		let winnerLayerId: L.LayerId | null = null
 		if (Object.values(ctx.vote.state.votes).length === 0) {
 			endingVoteState = {
 				code: 'ended:insufficient-votes',

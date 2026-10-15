@@ -300,7 +300,7 @@ export function createVoteItem(
 	voteConfig?: Partial<V.AdvancedVoteConfig>,
 ): VoteItem {
 	const items = choices.map((choice): SingleItem => {
-		if (typeof choice === 'string') {
+		if (typeof choice !== 'object') {
 			return createItem({ type: 'single-list-item', layerId: choice }, source)
 		}
 		if (choice.itemId && choice.source) {
@@ -545,7 +545,7 @@ export function moveItem(
 
 	const targetItem = resolveItemForIndex(list, targetIndex)
 
-	splice(list, movedIndex, 1, { type: 'single-list-item', itemId: '__placeholder__', layerId: L.DEFAULT_LAYER_ID, source })
+	splice(list, movedIndex, 1, { type: 'single-list-item', itemId: '__placeholder__', layerId: L.defaultLayerId(), source })
 
 	let merged: false | string
 	// create a vote out of two existing items

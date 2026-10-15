@@ -13,20 +13,22 @@ import { ADMIN_USER, type TestUser } from './app-fixture'
 // UI: it's faster, and a failure while clicking through setup would masquerade as a failure of the
 // thing under test.
 
-// A layer id is `<MAP>-<GAMEMODE>-<VERSION>:<FACTION>-<UNIT>:<FACTION>-<UNIT>`. These exist in the
-// layer db that ships with the app, so they survive a round trip through its queries.
+// Layers as canonical text (`Layer:Faction+Unit:Faction+Unit`), the form an app stores and decodes on the way in.
+// A test process holds no layer data, so it cannot build the dense ids an app works with; it hands the app text, and
+// compares against text read back out of the db. These exist in the layer data that ships with the app.
+const text = (id: string) => id as L.TextLayerId
 export const LAYERS = {
-	gorodokRaas: 'GD-RAAS-V1:USA-CA:RGF-CA',
+	gorodokRaas: text('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
 	// same map as gorodokRaas: a queue holding both violates a `Map` repeat rule
-	gorodokAas: 'GD-AAS-V1:USA-CA:RGF-CA',
-	harjuRaas: 'HJ-RAAS-V1:RGF-MZ:PLA-AA',
-	narvaRaas: 'NV-RAAS-V1:USA-CA:RGF-CA',
-	sumariSeed: 'SM-SD-V1:RGF-CA:VDV-CA',
-	sumariRaas: 'SM-RAAS-V1:ADF-CA:USA-CA',
-	skorpoRaas: 'SK-RAAS-V1:USA-CA:RGF-CA',
+	gorodokAas: text('Gorodok_AAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	harjuRaas: text('Harju_RAAS_v1:RGF+Mechanized:PLA+AirAssault'),
+	narvaRaas: text('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
+	sumariSeed: text('Sumari_Seed_v1:RGF+CombinedArms:VDV+CombinedArms'),
+	sumariRaas: text('Sumari_RAAS_v1:ADF+CombinedArms:USA+CombinedArms'),
+	skorpoRaas: text('Skorpo_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'),
 	// SuperMod's Sanxian Invasion: only a server with that mod among its installedMods can load it
-	supermodSanxianInvasion: 'SSX-INV-V2-SPM:SU_ADF-CA:SU_BAF-CA',
-} satisfies Record<string, L.LayerId>
+	supermodSanxianInvasion: text('SU_Sanxian_Invasion_v2:SU_ADF+CombinedArms:SU_BAF+CombinedArms'),
+}
 
 // Matches a layer name as a whole name. `hasText` with a bare string is a substring match, and a mod layer name
 // embeds the vanilla one it is derived from: 'Narva_RAAS_v1' also picks out 'Supermod_Narva_RAAS_v1_SPM'. Only an

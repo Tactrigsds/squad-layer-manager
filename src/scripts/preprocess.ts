@@ -153,7 +153,7 @@ async function main() {
 // Builds the factored artifact the query engine reads (see models/layer-artifact.models.ts and layer-engine/src/store.rs).
 //
 // Two passes, so the whole table never exists as JS objects: first the base layers, which fix the row order (ascending
-// packed id, which the engine binary-searches and which groups layers of a map together); then the extra-cols csv,
+// layer id, which groups each layer's rows into one contiguous block); then the extra-cols csv,
 // whose rows are placed by looking their id up in that order. Columns are built straight into typed arrays with the
 // null sentinels already written.
 async function buildLayerArtifact(
@@ -163,13 +163,11 @@ async function buildLayerArtifact(
 	const { components, baseLayers, csvPath } = args
 	const baseColumns = LC.COLUMN_KEYS.filter((key) => key !== 'id')
 
-	const seen = new Set<string>()
+	const seen = new Set<L.LayerId>()
 	const rows: { id: number; values: number[]; unitRecords: [number, number] }[] = []
 	for (const layer of baseLayers) {
 		if (seen.has(layer.id)) {
-			throw new Error(
-				`Duplicate layer ID ${layer.id} (from layer ${layer.Layer}): two layers share Map/Gamemode/Version and factions; add a layerOverrides entry to the source manifest`,
-			)
+			throw new Error(`Duplicate layer ${layer.id}: two map layers share the layer name ${layer.Layer}`)
 		}
 		seen.add(layer.id)
 		let row: Record<string, number | null>
@@ -782,12 +780,25 @@ async function parseSquadLayerSheetData() {
 					Unit_1: availEntry1.Unit ?? null,
 					Unit_2: availEntry2.Unit ?? null,
 				}
-				const layerId = L.getKnownLayerId(idArgs, components)!
-				if (layerId === null) throw new Error(`Invalid layer ID: ${JSON.stringify(idArgs)}`)
+				for (const name of [layer.Layer, availEntry1.Faction, availEntry2.Faction, availEntry1.Unit, availEntry2.Unit]) {
+					if (name && L.LAYER_TEXT_NAME_FORBIDDEN.test(name)) {
+						throw new Error(
+							`"${name}" (layer ${layer.Layer}) holds ':', '+' or whitespace, which layer ids reserve: ${JSON.stringify(idArgs)}`,
+						)
+					}
+				}
 				const baseLayer: PreprocessBaseLayer = {
 					UnitRecord_1: unitRecordIndex(availEntry1, 1),
 					UnitRecord_2: unitRecordIndex(availEntry2, 2),
-					id: layerId,
+					// canonical text rather than the dense id: the components are still being filled in, so a dense id
+					// computed now would not be the one the finished layer data gives this layer. toRow packs it at the end.
+					id: L.formatLayerText({
+						Layer: layer.Layer,
+						Faction_1: availEntry1.Faction,
+						Unit_1: availEntry1.Unit ?? undefined,
+						Faction_2: availEntry2.Faction,
+						Unit_2: availEntry2.Unit ?? undefined,
+					}) as L.TextLayerId,
 					Map: layer.Map,
 					Layer: layer.Layer,
 					Gamemode: layer.Gamemode,

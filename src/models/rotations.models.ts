@@ -9,6 +9,7 @@ import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'
+import type * as L from '@/models/layer.models'
 import * as RRS from '@/models/repeat-rulesets.models'
 
 export const RotationIdSchema = z
@@ -178,7 +179,7 @@ export type Meta = Omit<Rotation, 'items'>
 export type Summary = Meta & {
 	itemCount: number
 	// the first PREVIEW_ITEMS items
-	previewItems: { itemId: string; layerId: string }[]
+	previewItems: { itemId: string; layerId: L.LayerId }[]
 }
 
 export function toSummary({ items, ...rest }: Rotation): Summary {
@@ -244,8 +245,14 @@ export function ownerFromColumns(row: Pick<SchemaModels.Rotation, 'ownerUserId' 
 }
 
 // a row for superjsonify, which encodes the json columns
-export function toRow({ owner, createdAt, updatedAt, ...rest }: Rotation): SchemaModels.NewRotation {
-	return { ...rest, ...F.ownerColumns(owner), createdAt: new Date(createdAt), updatedAt: new Date(updatedAt) }
+export function toRow({ owner, createdAt, updatedAt, items, ...rest }: Rotation): SchemaModels.NewRotation {
+	return {
+		...rest,
+		items: z.encode(LL.ListSchema, items),
+		...F.ownerColumns(owner),
+		createdAt: new Date(createdAt),
+		updatedAt: new Date(updatedAt),
+	}
 }
 
 export type Mutation = {

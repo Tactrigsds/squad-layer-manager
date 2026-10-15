@@ -89,7 +89,7 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 		ctx.signal.throwIfAborted()
 		await DB.runTransaction(ctx, async (ctx) => {
 			for (const { layerId } of batch) {
-				const parts = MH.layerParts(layerId)
+				const parts = MH.layerParts(L.readStoredLayerId(layerId))
 				if (parts.layerMap === null) continue
 				const res = await ctx
 					.db()
@@ -129,10 +129,11 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 				await ctx
 					.db()
 					.update(Schema.matchHistory)
-					.set({ layerId: parsed.id, ...parts })
+					.set({ layerId: L.toLayerText(parsed.id), ...parts })
 					.where(E.eq(Schema.matchHistory.id, match.id))
-				const key = `${match.layerId} ${parsed.id}`
-				const entry = rewritten.get(key) ?? { from: match.layerId, to: parsed.id, matches: 0 }
+				const to = L.toLayerText(parsed.id)
+				const key = `${match.layerId} ${to}`
+				const entry = rewritten.get(key) ?? { from: match.layerId, to, matches: 0 }
 				entry.matches++
 				rewritten.set(key, entry)
 				updated++

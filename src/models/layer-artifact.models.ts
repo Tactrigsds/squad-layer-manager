@@ -7,7 +7,7 @@ import type * as LC from '@/models/layer-columns.models'
 // them, and every section is padded to a 4-byte boundary because the engine borrows u32/i32 sections as aligned
 // slices of wasm linear memory.
 //
-// The table is not stored row by row. Rows are packed-id order, which groups them into one contiguous block per
+// The table is not stored row by row. Rows are layer-id order, which groups them into one contiguous block per
 // layer, and within a block the row set is the cross product of that layer's faction/unit availability. Two facts
 // make that hugely redundant: a layer's non-team columns are constant across its whole block, and the per-team
 // columns repeat verbatim across every layer sharing an availability list (986 layers draw on 314 distinct
@@ -16,7 +16,7 @@ import type * as LC from '@/models/layer-columns.models'
 //   block    Map, Layer, Size, Gamemode, LayerVersion, Collection - one value per block
 //   pattern  Faction_1/2, Unit_1/2, UnitRecord_1/2 - one value per pattern row, shared by every block using it
 //   alliance Alliance_1/2 - a lookup from the row's faction, so nothing is stored per row
-//   id       the mixed-radix packing of (Layer, Faction_1, Unit_1, Faction_2, Unit_2), recomputed
+//   id       the dense layer id (see LC.denseIdLayout), recomputed from Layer and the per-team columns
 //   score    an extra column that is a function of (Layer, Faction, Unit) for one team - one value per side record
 //   diff     an extra column that is the difference of two score columns
 //   bitmap   a boolean extra column - one bit per row
@@ -147,14 +147,14 @@ class SectionWriter {
 	}
 }
 
-// Rows are packed-id order, so every layer's rows are one contiguous run. Anything else means the caller built the
+// Rows are layer-id order, so every layer's rows are one contiguous run. Anything else means the caller built the
 // table in the wrong order, and every scope below would silently store the wrong value.
 function blockBoundaries(layer: ArrayLike<number>, rowCount: number): Uint32Array {
 	const starts: number[] = []
 	const seen = new Set<number>()
 	for (let i = 0; i < rowCount; i++) {
 		if (i === 0 || layer[i] !== layer[i - 1]) {
-			if (seen.has(layer[i])) throw new Error(`layer ${layer[i]} appears in more than one run; rows are not in packed-id order`)
+			if (seen.has(layer[i])) throw new Error(`layer ${layer[i]} appears in more than one run; rows are not in layer-id order`)
 			seen.add(layer[i])
 			starts.push(i)
 		}
@@ -649,6 +649,51 @@ export function sideRecord(art: Artifact, layer: number, faction: number, unit: 
 	return -1
 }
 
+// Every row's dense layer id, derived from the artifact the way Store::index_dense_ids does (see LC.denseIdLayout for
+// the id's shape): each pattern's grid sides are its distinct team-1 and team-2 sides, ascending.
+export function denseIds(art: Artifact): Int32Array {
+	const { manifest } = art
+	const units = manifest.unitCount
+	const column = (name: string) => expandPatternColumn(art, name)
+	const [f1, u1, f2, u2] = [column('Faction_1'), column('Unit_1'), column('Faction_2'), column('Unit_2')]
+	const cellOf = new Int32Array(manifest.patternRowCount)
+	let largestGrid = 1
+	for (let p = 0; p < manifest.patternCount; p++) {
+		const start = art.patternRowStart[p]
+		const end = art.patternRowStart[p + 1]
+		const sides1 = new Set<number>()
+		const sides2 = new Set<number>()
+		for (let r = start; r < end; r++) {
+			sides1.add(f1[r] * units + u1[r])
+			sides2.add(f2[r] * units + u2[r])
+		}
+		const rows = Int32Array.from(sides1).sort()
+		const columns = Int32Array.from(sides2).sort()
+		largestGrid = Math.max(largestGrid, rows.length * columns.length)
+		for (let r = start; r < end; r++) {
+			cellOf[r] = rows.indexOf(f1[r] * units + u1[r]) * columns.length + columns.indexOf(f2[r] * units + u2[r])
+		}
+	}
+	const localBits = largestGrid <= 1 ? 0 : 32 - Math.clz32(largestGrid - 1)
+	const layerSpec = manifest.columns[art.columnIndex.get('Layer')!] as { scope: 'block'; section: number }
+	const layers = art.sections[layerSpec.section]
+	const out = new Int32Array(manifest.rowCount)
+	for (let b = 0; b < manifest.blockCount; b++) {
+		const patternStart = art.patternRowStart[art.blockPattern[b]]
+		const rowStart = art.blockRowStart[b]
+		for (let row = rowStart; row < art.blockRowStart[b + 1]; row++) {
+			out[row] = (layers[b] << localBits) | cellOf[patternStart + row - rowStart]
+		}
+	}
+	return out
+}
+
+function expandPatternColumn(art: Artifact, name: string) {
+	const spec = art.manifest.columns[art.columnIndex.get(name)!]
+	if (spec.scope !== 'pattern') throw new Error(`${name} is not a pattern-scope column`)
+	return art.sections[spec.section]
+}
+
 // Expands one column across the whole row space, with NULL_I32 for null. Walks block by block, so a block-scope
 // value is read once per block and a pattern-scope value once per pattern row: the same shape the engine scans in.
 export function expandColumn(art: Artifact, columnIndex: number): Int32Array {
@@ -683,18 +728,8 @@ export function expandColumn(art: Artifact, columnIndex: number): Int32Array {
 			}
 			return out
 		}
-		case 'id': {
-			const layer = expandColumn(art, art.columnIndex.get('Layer')!)
-			const f1 = expandColumn(art, art.columnIndex.get('Faction_1')!)
-			const u1 = expandColumn(art, art.columnIndex.get('Unit_1')!)
-			const f2 = expandColumn(art, art.columnIndex.get('Faction_2')!)
-			const u2 = expandColumn(art, art.columnIndex.get('Unit_2')!)
-			const { factionCount, unitCount } = manifest
-			for (let i = 0; i < manifest.rowCount; i++) {
-				out[i] = (((layer[i] * factionCount + f1[i]) * unitCount + u1[i]) * factionCount + f2[i]) * unitCount + u2[i]
-			}
-			return out
-		}
+		case 'id':
+			return denseIds(art)
 		case 'score': {
 			const layer = expandColumn(art, art.columnIndex.get('Layer')!)
 			const faction = expandColumn(art, art.columnIndex.get(`Faction_${spec.team}`)!)

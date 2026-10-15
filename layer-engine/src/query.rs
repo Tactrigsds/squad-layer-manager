@@ -52,6 +52,8 @@ pub enum Request {
     GroupCounts { r#where: Option<Ir>, step: StepSpec },
     /// reorder and team-swap a queue to clear repeat-rule violations. Doesn't read the table.
     SolveRepeats(SolveSpec),
+    /// the dense id layout's local bit width and per-layer grid digests (see Store::id_layout)
+    IdLayout,
 }
 
 #[derive(Serialize)]
@@ -416,6 +418,11 @@ pub fn handle(store: &Store, request: Request, cache: &mut FilterCache) -> Resul
         Request::SolveRepeats(spec) => {
             let res = solve::solve(&spec)?;
             serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+
+        Request::IdLayout => {
+            let (local_bits, grids) = store.id_layout();
+            serde_json::to_string(&serde_json::json!({ "localBits": local_bits, "grids": grids })).map_err(|e| e.to_string())
         }
     }
 }

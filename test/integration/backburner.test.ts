@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders.models'
+import * as L from '@/models/layer.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
@@ -139,7 +140,7 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.type).toBe('single-list-item')
-		expect(generated.layerId).toMatch(/^FL-/)
+		expect(L.toLayer(L.readStoredLayerId(generated.layerId!)).Map).toBe('Fallujah')
 		expect(generated.source).toMatchObject({ type: 'layer-request', requesters: [{ steamId: ADMIN_STEAM_ID }] })
 
 		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'the request being consumed', timeoutMs: 20_000 })
@@ -163,7 +164,7 @@ describe('generation on roll', () => {
 			{ label: 'the generated layer', timeoutMs: 30_000 },
 		)
 		expect(generated.type).toBe('single-list-item')
-		expect(generated.layerId).toMatch(/^SK-/)
+		expect(L.toLayer(L.readStoredLayerId(generated.layerId!)).Map).toBe('Skorpo')
 		// nothing was requested this time, so the item is plainly generated
 		expect(generated.source.type).toBe('generated')
 

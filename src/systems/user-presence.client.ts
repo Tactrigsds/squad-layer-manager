@@ -16,6 +16,7 @@ import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
+import type * as L from '@/models/layer.models'
 import * as UP from '@/models/user-presence.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -96,7 +97,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 
 		load(args) {
 			const listHost = ensureListHost(args.key.host)
-			let editedLayerId: string | undefined
+			let editedLayerId: L.LayerId | undefined
 			if (args.key.code === 'EDITING_ITEM') {
 				const layerList = frameManager.getState(listHost)?.queue.layerList ?? []
 				const { item } = Obj.destrNullable(LL.findItemById(layerList, args.key.itemId))

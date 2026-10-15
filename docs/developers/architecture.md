@@ -702,22 +702,43 @@ why someone has access.
 
 ### Layers
 
-`LayerId` is a **structured string**, not an opaque id:
+A `LayerId` takes one of two forms, and which one is decided by the loaded layer data:
 
-```
-<Map>-<Gamemode>[-<Version>][-<Collection>]:<Faction1>[-<Unit1Abbr>]:<Faction2>[-<Unit2Abbr>]
-```
+- a layer the layer data holds is its **dense id**, an integer (`L.DenseLayerId`)
+- any other layer is its **canonical text** (`L.TextLayerId`): `Layer:Faction+Unit:Faction+Unit` in the game's own
+  names, such as `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. A layer known only in part drops what it lacks
+  from the right. No layer, faction or unit name holds `:`, `+` or whitespace, which preprocess enforces.
+
+Every id is built by `L.idFromParts` or `L.fromLayerText`, which pick the dense form whenever the layer data holds the
+layer, so two ids for one layer are always `===`. `L.toLayer` turns either form into a layer, from a frozen object
+cached per id, and `L.toLayerText` turns either into canonical text.
 
 The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
-`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Id resolution is a catalog lookup over
+`SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Resolution is a catalog lookup over
 `mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
-source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collection becomes the id's Collection segment. The Collection
-column is how filters and pools single a source out.
+source (`data/sources/`, see docs/guide/operations/layer_data.md) whose collection the Collection column names, which
+is how filters and pools single a source out. Ids carry no abbreviations, so a layer later layer data drops or renames
+still parses from its text.
 
-Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
-later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
-packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
-which is the row id the store indexes by.
+A dense id is the layer index in the high bits, and in the low bits the layer's cell in its option grid, whose rows are
+the layer's distinct team-1 faction/unit sides and whose columns are its team-2 sides. Every grid for one layer data
+version uses the same low-bit width, sized to the largest grid, so an id decodes with a shift, a division and two table
+reads and stays under 2^30, where JS keeps integers unboxed. Ids ascend in the table's row order, and the engine maps
+one to its row through a per-pattern cell table without searching. `LC.denseIdLayout` derives the grids from the layer
+components and `Store::index_dense_ids` from the artifact; both hosts check that the two agree when the engine loads.
+
+A dense id only means something against the layer data that produced it, which decides where each form is used:
+
+- **In memory and over the socket**, ids are dense. A socket names the hash of the layer data its page loaded, and
+  the server refuses everything but the config to a socket on any other (`C.LayerDataSession`), so both ends always
+  read one id as one layer. The page reloads when refused.
+- **At rest**, ids are canonical text. `L.LayerIdSchema` is a zod codec that decodes a dense id, canonical text, the
+  abbreviated format SLM used before (`GD-RAAS-V1:USA-CA:RGF-CA`) and its `RAW:` form, and encodes to canonical text.
+  Rows read through the same schema they are written with (`z.encode` on app events and rotations), or through a
+  targeted encoder where the schema cannot encode (server events, the saved queue), and plain text columns convert
+  explicitly (`L.readStoredLayerId`, `L.toLayerText`). Filters keep the layers they select as canonical text.
+- `StoredLayerIds` rewrites ids history still holds in an older format into canonical text, once per layer data, while
+  the layer data can still read their abbreviations.
 
 The set of columns is not fixed: `layer-columns.models.ts` combines base columns with server-configurable extra columns
 into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
@@ -730,7 +751,7 @@ sorting, paging, distinct values and weighted random selection. **One module ser
 browser's query worker load the same `.wasm`. It is immutable for its lifetime. That makes caching evaluated bitsets
 safe and shipping the same engine to both sides practical.
 
-**Nothing is stored per row.** Rows are packed-id order, which groups them into one contiguous block per layer, and a
+**Nothing is stored per row.** Rows are layer-id order, which groups them into one contiguous block per layer, and a
 block's rows are the cross product of that layer's faction/unit availability. That makes the row space highly redundant,
 and the store exploits it: a layer's own columns are held once per block (928 of them), the per-team columns once per
 distinct availability pattern (314, shared by every block that repeats one), and the score columns once per (layer,
