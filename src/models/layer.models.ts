@@ -529,8 +529,10 @@ export function parseLegacyLayerId(id: string, components = StaticLayerComponent
 
 	const gamemode = Obj.revLookupCached(components.gamemodeAbbreviations, gamemodePart) as string | undefined
 	const map = Obj.revLookupCached(components.mapAbbreviations, mapPart) as string | undefined
-	const unit1 = Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) as string | undefined
-	const unit2 = Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) as string | undefined
+	const unit1 = (Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) ??
+		components.backwardsCompat.unitAbbreviations[unit1Abbr]) as string | undefined
+	const unit2 = (Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) ??
+		components.backwardsCompat.unitAbbreviations[unit2Abbr]) as string | undefined
 	const foldedCollection = collectionPart === null ? undefined : components.backwardsCompat.collectionAbbreviations[collectionPart]
 	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart) ?? foldedCollection
 
@@ -1205,8 +1207,8 @@ export type MapConfigTeam = {
 
 export type BackwardsCompatMappings = Record<'factions' | 'units' | 'gamemodes' | 'maps', Record<string, string>> &
 	Record<'collections', Record<string, string | null>> &
-	// a collection folded into another leaves its abbreviation in every layer id already persisted or pasted into chat
-	Record<'collectionAbbreviations', Record<string, string>>
+	// a collection or unit folded into another leaves its abbreviation in every layer id already persisted or pasted into chat
+	Record<'collectionAbbreviations' | 'unitAbbreviations', Record<string, string>>
 
 export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(layer: T, components = StaticLayerComponents) {
 	const updated: Partial<KnownLayer> = { ...layer }

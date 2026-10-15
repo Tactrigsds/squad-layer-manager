@@ -911,17 +911,20 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 
 // ---- persistence (appEvents table); actor is flattened into columns, payload goes in the data blob ----
 
-// the payload fields that hold layer ids, by name, across every app event type
-const LAYER_ID_FIELDS = new Set(['layerId', 'layerIds', 'winnerLayerId', 'choices'])
+// Whether a payload field holds layer ids, by its name. Matches by suffix so plugin payloads (seedLayerId, say) are
+// covered too, which is safe because a value is only converted when it reads as a layer id.
+function isLayerIdField(key: string) {
+	return key === 'choices' || /(^l|L)ayerIds?$/.test(key)
+}
 
-// A copy of `value` with `convert` applied to every number and string under a LAYER_ID_FIELDS key. Descends plain
-// objects and arrays only, so the bigints, dates and maps superjson carries are left as they are.
+// A copy of `value` with `convert` applied to every number and string under a layer id field (isLayerIdField).
+// Descends plain objects and arrays only, so the bigints, dates and maps superjson carries are left as they are.
 export function mapLayerIdFields<T>(value: T, convert: (id: number | string) => number | string): T {
 	const walk = (v: unknown, underLayerKey: boolean): unknown => {
 		if (underLayerKey && (typeof v === 'number' || typeof v === 'string')) return convert(v)
 		if (Array.isArray(v)) return v.map((item) => walk(item, underLayerKey))
 		if (v && Object.getPrototypeOf(v) === Object.prototype) {
-			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, walk(field, LAYER_ID_FIELDS.has(key))]))
+			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, walk(field, isLayerIdField(key))]))
 		}
 		return v
 	}
@@ -929,7 +932,10 @@ export function mapLayerIdFields<T>(value: T, convert: (id: number | string) => 
 }
 
 function withLayerIdsAsText<T>(value: T): T {
-	return mapLayerIdFields(value, (id) => (typeof id === 'number' ? L.toLayerText(id as L.LayerId) : id))
+	return mapLayerIdFields(value, (id) => {
+		const dense = typeof id === 'number' ? L.checkDenseId(id) : undefined
+		return dense === undefined ? id : L.toLayerText(dense)
+	})
 }
 
 // bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.

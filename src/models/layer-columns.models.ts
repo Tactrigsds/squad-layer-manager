@@ -1397,6 +1397,9 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 		gamemodes: {},
 		collections: { Community: 'OWI' },
 		collectionAbbreviations: { CL: 'OWI' },
+		// the Seed and Skirmish units, which preprocess produced for a week in September 2025 for what the game names
+		// CombinedArms (*_CombinedArms_Seed)
+		unitAbbreviations: { SD: 'CombinedArms', SK: 'CombinedArms' },
 		maps: {},
 		units: {},
 	}
