@@ -143,6 +143,8 @@ export async function restartIfRunning(serverId: string) {
 // lets destroyServer cancel a managed server's in-flight work before its cleanup tasks run
 const abortControllers = new Map<string, AbortController>()
 
+const FATAL_RESTART_DELAY_MS = 30_000
+
 async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerState) {
 	const serverId = serverState.id
 	const settings = serverState.settings
@@ -178,7 +180,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	cleanup.push(() => CommandPrompts.disposeFor(serverId))
 
 	// a resource that keeps failing after retries means the managed server can't do its job -- tear the managed server down instead of
-	// letting the error escalate to an unhandled rejection and crash the process.
+	// letting the error escalate to an unhandled rejection and crash the process, then boot a fresh one after FATAL_RESTART_DELAY_MS.
 	//
 	// Takes the lifecycle lock, which is safe only because AsyncResource discards this callback's return rather than awaiting it:
 	// nothing holding the lock ever waits on us, so there is no cycle. If the resource dies mid-setup we simply queue behind
@@ -190,6 +192,19 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 		} catch (destroyErr) {
 			SquadServer.log.error(destroyErr, `Server ${serverId}: failed to tear the server down after fatal resource error`)
+			return
+		}
+		ServerConsole.recordSlm(serverId, 'info', `Restarting the server in ${FATAL_RESTART_DELAY_MS / 1000}s`)
+		try {
+			await Prom.sleep(FATAL_RESTART_DELAY_MS, CleanupSys.shutdownSignal)
+		} catch {
+			return
+		}
+		try {
+			await ensureRunning(serverId)
+		} catch (restartErr) {
+			SquadServer.log.error(restartErr, `Server ${serverId}: failed to restart after fatal resource error`)
+			ServerConsole.recordSlm(serverId, 'error', 'The server failed to restart', restartErr)
 		}
 	}
 	const onResourceFatalError = (err: unknown) => void destroyAfterFatalError(err)

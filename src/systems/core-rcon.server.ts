@@ -200,6 +200,7 @@ export default class Rcon extends EventEmitter<Events> {
 					if (this.connectAttempts === 0) this.onStatus?.('info', `Connecting to RCON at ${this.transport.label}`)
 					this.connectAttempts++
 					this.transport.destroy()
+					this.#resetReceiveState()
 					this.transport.connect({
 						// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
 						onConnect: () => {
@@ -422,13 +423,20 @@ export default class Rcon extends EventEmitter<Events> {
 
 	#badPacket(): null {
 		log.error(`Bad packet, clearing: ${this.#bufToHexString(this.stream)} Pending string: ${JSON.stringify(this.responseString)}`)
+		this.#resetReceiveState()
+		return null
+	}
+
+	// A response cut off by a dropped connection would otherwise be prepended to the first response after the reconnect,
+	// and delivered to that command.
+	#resetReceiveState(): void {
 		this.stream = Buffer.alloc(0)
 		this.responseString = { id: 0, body: '' }
-		return null
 	}
 
 	#onClose(): void {
 		log.trace(`Socket closed.`)
+		this.#resetReceiveState()
 		if (this.connected$.value) {
 			this.onStatus?.('warn', `RCON connection to ${this.transport.label} closed, reconnecting`)
 			this.connected$.next(false)
