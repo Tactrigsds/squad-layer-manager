@@ -321,6 +321,15 @@ upgrade deletes the plugin&#x27;s settings.</p>
 <p><strong>Removed:</strong> The global <em>Top Bar Color</em> setting is gone. The navigation bar&#x27;s bottom border now follows the selected server&#x27;s color, and the favicon is the plain SLM mark on every instance.</p>
 <p>The upgrade deletes <code>topBarColor</code> from the global settings, along with any comment on it and any role grant that names it.</p>
 </li>
+<li>
+<p><strong>Fixed:</strong> SLM no longer stops managing a server after its RCON connection drops mid-response.</p>
+<p>When an RCON connection dropped partway through a response, SLM could misread the first response after reconnecting and stop
+managing the server. The server&#x27;s pages then failed to load until the server was disabled and enabled again, or SLM was
+restarted. SLM now discards the partial response. If SLM does stop managing a server after repeated connection
+failures, SLM starts managing it again after 30 seconds.</p>
+<p>A server agent that stops answering is dropped within 30 seconds, so the agent can reconnect straight away. Before,
+SLM held the dead connection for several minutes and refused each reconnect as a duplicate agent.</p>
+</li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
