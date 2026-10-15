@@ -248,7 +248,6 @@ export function ownerFromColumns(row: Pick<SchemaModels.Rotation, 'ownerUserId' 
 export function toRow({ owner, createdAt, updatedAt, items, ...rest }: Rotation): SchemaModels.NewRotation {
 	return {
 		...rest,
-		// the items' layer ids as canonical text: a dense id only means something against the loaded layer data
 		items: z.encode(LL.ListSchema, items),
 		...F.ownerColumns(owner),
 		createdAt: new Date(createdAt),

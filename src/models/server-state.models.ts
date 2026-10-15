@@ -51,9 +51,9 @@ export const ServerStateSchema = z.object({
 
 export type ServerState = z.infer<typeof ServerStateSchema>
 
-// A change to a servers row as it is written: the queue's layer ids as canonical text, since a dense id only means
-// something against the loaded layer data. The queue is the only part of a server's state that holds layer ids, and
-// the rest is left alone because teamswaps reads through a one-way migration that cannot encode.
+// A change to a servers row as it is written: the queue's layer ids as canonical text. The queue is the only part of a
+// server's state that holds layer ids, and the rest is left alone because teamswaps reads through a one-way migration
+// that cannot encode.
 export function toStoredChanges<T extends Partial<ServerState>>(changes: T): T {
 	if (!changes.layerQueue) return changes
 	return { ...changes, layerQueue: z.encode(LL.ListSchema, changes.layerQueue) as unknown as LL.List }

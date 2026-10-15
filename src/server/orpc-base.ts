@@ -78,9 +78,7 @@ export const getOrpcBase = (module: OtelModule) => {
 		return res
 	})
 
-	// A client on other layer data than this server's would read every dense layer id it is sent as a different layer,
-	// and send ids this server reads the same way. Everything but the config (which carries the layer data hash the
-	// client reloads on) is refused until it reloads.
+	// the config carries the layer data hash a stale client reloads on, so it is the one thing still served
 	const staleLayerDataMiddleware = base.middleware(({ context: ctx, path, next }) => {
 		if (!ctx.layerDataCurrent && path[0] !== 'config') {
 			throw new ORPCError('PRECONDITION_FAILED', { message: PA.STALE_LAYER_DATA })

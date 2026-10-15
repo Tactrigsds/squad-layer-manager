@@ -653,22 +653,18 @@ export function areLayersPartialMatch(
 ) {
 	if (toCompare === target) return true
 
-	const layerRes = { ...(typeof toCompare === 'object' ? toCompare : toLayer(toCompare, components)) }
-	const targetLayerRes = { ...(typeof target === 'object' ? target : toLayer(target, components)) }
-	if (coalesceFraas) {
-		if (layerRes.Layer) {
-			layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (targetLayerRes.Layer) {
-			targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (layerRes.Gamemode === 'FRAAS') layerRes.Gamemode = 'RAAS'
-		if (targetLayerRes.Gamemode === 'FRAAS') {
-			targetLayerRes.Gamemode = 'RAAS'
-		}
-	}
-
+	const layerRes = typeof toCompare === 'object' ? toCompare : toLayer(toCompare, components)
+	const targetLayerRes = typeof target === 'object' ? target : toLayer(target, components)
+	if (coalesceFraas) return Obj.isPartial(coalesceFraasLayer(layerRes), coalesceFraasLayer(targetLayerRes), ['id'])
 	return Obj.isPartial(layerRes, targetLayerRes, ['id'])
+}
+
+// a copy reading FRAAS as RAAS, or the layer itself when it names no FRAAS
+function coalesceFraasLayer(layer: UnvalidatedLayer): UnvalidatedLayer {
+	if (layer.Gamemode !== 'FRAAS' && !layer.Layer?.includes('FRAAS')) return layer
+	const coalesced = { ...layer, Layer: layer.Layer.replace('FRAAS', 'RAAS') }
+	if (coalesced.Gamemode === 'FRAAS') coalesced.Gamemode = 'RAAS'
+	return coalesced
 }
 
 /** areLayersPartialMatch in either direction, so neither argument has to be the more specific one. */
@@ -702,12 +698,15 @@ export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, compon
 }
 
 // the layer behind a text id, parsed once per id and layer data
+const MAX_CACHED_TEXT_LAYERS = 4096
 const rawLayersByText = new WeakMap<LC.LayerComponents, Map<string, UnvalidatedLayer>>()
 function rawLayerOfText(id: TextLayerId, components = StaticLayerComponents): UnvalidatedLayer {
 	let cache = rawLayersByText.get(components)
 	if (!cache) rawLayersByText.set(components, (cache = new Map()))
 	const cached = cache.get(id)
 	if (cached) return cached
+	// text ids can come from anywhere (links, RCON, stored rows), so the cache is dropped rather than left to grow
+	if (cache.size >= MAX_CACHED_TEXT_LAYERS) cache.clear()
 	const parts = parseLayerText(id)
 	const parsed = parts ? layerFromParts(parts, components) : { Layer: id }
 	// keep the id the caller holds: a text id normalizes to a dense one only where the caller asks (see normalize)

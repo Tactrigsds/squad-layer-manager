@@ -9,7 +9,6 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared.models'
 import * as L from '@/models/layer.models'
-import * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
@@ -35,6 +34,7 @@ let log!: CS.Logger
 const BOOT_SETTLE_DELAY = ZodUtils.parseHumanTime('3m')
 const CANONICALIZED_HASH_KEY = 'storedLayerIds.canonicalizedArtifactHash'
 const UPDATE_BATCH = 250
+const PAGE_SIZE = 500
 
 // the server event types whose payloads hold a layer id
 const LAYER_EVENT_TYPES = ['MAP_SET', 'NEW_GAME', 'ROUND_ENDED'] as const
@@ -54,36 +54,43 @@ async function runAtBoot() {
 	}
 }
 
-// the canonical text for stored text, or undefined when it already is canonical or no format reads it
+// The canonical text for stored text, or undefined when it already is canonical, no format reads it, or the canonical
+// text would read back as another layer. An old id whose unit the layer data no longer has resolves without that unit,
+// and its text without units would read back with the default ones.
 function canonicalFor(text: string): string | undefined {
 	const id = L.fromStoredLayerText(text)
 	if (id === undefined) return undefined
 	const canonical = L.toLayerText(id)
-	return canonical === text ? undefined : canonical
+	if (canonical === text || L.fromStoredLayerText(canonical) !== id) return undefined
+	return canonical
 }
 
 // Keyed on the layer data hash: a layer data that adds a layer or an abbreviation can make more older ids readable, and
 // a pass over the same data a second time finds nothing.
-export const canonicalizeStoredLayerIds = Instr.spanOp('canonicalizeStoredLayerIds', { module }, async (ctx: C.Db & CS.AbortSignal) => {
-	const artifactHash = LayerData.hash
-	if ((await PersistedCache.load<string>(CANONICALIZED_HASH_KEY)) === artifactHash) return undefined
+export const canonicalizeStoredLayerIds = Instr.spanOp(
+	'canonicalizeStoredLayerIds',
+	{ module },
+	async (ctx: C.Db & CS.AbortSignal & CS.Log) => {
+		const artifactHash = LayerData.hash
+		if ((await PersistedCache.load<string>(CANONICALIZED_HASH_KEY)) === artifactHash) return undefined
 
-	const counts = {
-		matchHistory: await rewriteDistinctText(ctx, Schema.matchHistory, Schema.matchHistory.layerId),
-		associations: await rewriteDistinctText(
-			ctx,
-			Schema.appEventAssociations,
-			Schema.appEventAssociations.value,
-			E.eq(Schema.appEventAssociations.dimension, 'layer'),
-		),
-		serverEvents: await rewriteServerEvents(ctx),
-		appEvents: await rewriteAppEvents(ctx),
-	}
+		const counts = {
+			matchHistory: await rewriteDistinctText(ctx, Schema.matchHistory, Schema.matchHistory.layerId),
+			associations: await rewriteDistinctText(
+				ctx,
+				Schema.appEventAssociations,
+				Schema.appEventAssociations.value,
+				E.eq(Schema.appEventAssociations.dimension, 'layer'),
+			),
+			serverEvents: await rewriteServerEvents(ctx),
+			appEvents: await rewriteAppEvents(ctx),
+		}
 
-	await PersistedCache.save(CANONICALIZED_HASH_KEY, artifactHash)
-	if (Object.values(counts).some((n) => n > 0)) log.info('rewrote stored layer ids as canonical text: %o', counts)
-	return counts
-})
+		await PersistedCache.save(CANONICALIZED_HASH_KEY, artifactHash)
+		if (Object.values(counts).some((n) => n > 0)) ctx.log.info('rewrote stored layer ids as canonical text: %o', counts)
+		return counts
+	},
+)
 
 // a text column holding one layer id per row: rewritten by distinct value, since many rows share one
 async function rewriteDistinctText(
@@ -116,45 +123,80 @@ async function rewriteDistinctText(
 }
 
 async function rewriteServerEvents(ctx: C.Db & CS.AbortSignal) {
-	const rows = await ctx
-		.db()
-		.select({ id: Schema.serverEvents.id, type: Schema.serverEvents.type, data: Schema.serverEvents.data })
-		.from(Schema.serverEvents)
-		.where(E.inArray(Schema.serverEvents.type, [...LAYER_EVENT_TYPES]))
-	const rewrites: { id: number; data: unknown }[] = []
-	for (const row of rows) {
-		let payload: Record<string, any>
-		try {
-			payload = superjson.deserialize(row.data as any)
-		} catch {
-			continue
+	const T = Schema.serverEvents
+	let changed = 0
+	let after = 0
+	for (;;) {
+		ctx.signal.throwIfAborted()
+		const rows = await ctx
+			.db()
+			.select({ id: T.id, type: T.type, data: T.data })
+			.from(T)
+			.where(E.and(E.inArray(T.type, [...LAYER_EVENT_TYPES]), E.gt(T.id, after)))
+			.orderBy(T.id)
+			.limit(PAGE_SIZE)
+		if (rows.length === 0) return changed
+		after = rows.at(-1)!.id
+		const rewrites: { id: number; data: unknown }[] = []
+		for (const row of rows) {
+			let payload: Record<string, any>
+			try {
+				payload = superjson.deserialize(row.data as any)
+			} catch {
+				continue
+			}
+			const holder = row.type === 'ROUND_ENDED' ? payload.action : payload
+			if (typeof holder?.layerId !== 'string') continue
+			const canonical = canonicalFor(holder.layerId)
+			if (!canonical) continue
+			holder.layerId = canonical
+			rewrites.push({ id: row.id, data: superjson.serialize(payload) })
 		}
-		const holder = row.type === 'ROUND_ENDED' ? payload.action : payload
-		if (typeof holder?.layerId !== 'string') continue
-		const canonical = canonicalFor(holder.layerId)
-		if (!canonical) continue
-		holder.layerId = canonical
-		rewrites.push({ id: row.id, data: superjson.serialize(payload) })
+		changed += await writeRows(ctx, T, T.id, rewrites)
 	}
-	return writeRows(ctx, Schema.serverEvents, Schema.serverEvents.id, rewrites)
 }
 
+// Rewrites only the fields that hold layer ids, on the payload as stored. Reading the row through the app event schema
+// instead would drop any field the schema no longer knows.
 async function rewriteAppEvents(ctx: C.Db & CS.AbortSignal) {
-	// a payload holding a layer id names it in a field spelled with layerId, or lists vote choices
-	const rows = await ctx
-		.db()
-		.select()
-		.from(Schema.appEvents)
-		.where(E.sql`instr(${Schema.appEvents.data}, 'layerId') > 0 OR instr(${Schema.appEvents.data}, 'choices') > 0`)
-	const rewrites: { id: string; data: unknown }[] = []
-	for (const row of rows) {
-		const event = AppEvents.fromRow(row)
-		// a row that does not parse is left exactly as it is
-		if (!event) continue
-		const data = AppEvents.toRow(event, SETTINGS.redactSettingValue).data
-		if (JSON.stringify(data) !== JSON.stringify(row.data)) rewrites.push({ id: row.id, data })
+	const T = Schema.appEvents
+	let changed = 0
+	let after: string | null = null
+	for (;;) {
+		ctx.signal.throwIfAborted()
+		const rows: { id: string; data: unknown }[] = await ctx
+			.db()
+			.select({ id: T.id, data: T.data })
+			.from(T)
+			.where(
+				E.and(
+					after === null ? undefined : E.gt(T.id, after),
+					E.sql`(instr(${T.data}, 'layerId') > 0 OR instr(${T.data}, 'choices') > 0)`,
+				),
+			)
+			.orderBy(T.id)
+			.limit(PAGE_SIZE)
+		if (rows.length === 0) return changed
+		after = rows.at(-1)!.id
+		const rewrites: { id: string; data: unknown }[] = []
+		for (const row of rows) {
+			let payload: unknown
+			try {
+				payload = superjson.deserialize(row.data as any)
+			} catch {
+				continue
+			}
+			let rowChanged = false
+			const next = AppEvents.mapLayerIdFields(payload, (id) => {
+				const canonical = typeof id === 'string' ? canonicalFor(id) : undefined
+				if (canonical === undefined) return id
+				rowChanged = true
+				return canonical
+			})
+			if (rowChanged) rewrites.push({ id: row.id, data: superjson.serialize(next) })
+		}
+		changed += await writeRows(ctx, T, T.id, rewrites)
 	}
-	return writeRows(ctx, Schema.appEvents, Schema.appEvents.id, rewrites)
 }
 
 async function writeRows<Id extends string | number>(
@@ -163,20 +205,18 @@ async function writeRows<Id extends string | number>(
 	idColumn: typeof Schema.serverEvents.id | typeof Schema.appEvents.id,
 	rewrites: { id: Id; data: unknown }[],
 ) {
+	if (rewrites.length === 0) return 0
 	let changed = 0
-	for (const batch of Arr.paged(rewrites, UPDATE_BATCH)) {
-		ctx.signal.throwIfAborted()
-		await DB.runTransaction(ctx, async (ctx) => {
-			for (const { id, data } of batch) {
-				const res = await ctx
-					.db()
-					.update(table)
-					.set({ data: data as any })
-					.where(E.eq(idColumn, id as any))
-				changed += res.changes
-			}
-		})
-		await Timers.setImmediate(undefined, { signal: ctx.signal })
-	}
+	await DB.runTransaction(ctx, async (ctx) => {
+		for (const { id, data } of rewrites) {
+			const res = await ctx
+				.db()
+				.update(table)
+				.set({ data: data as any })
+				.where(E.eq(idColumn, id as any))
+			changed += res.changes
+		}
+	})
+	await Timers.setImmediate(undefined, { signal: ctx.signal })
 	return changed
 }
