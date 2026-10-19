@@ -1,4 +1,5 @@
 import { z } from '@/lib/zod'
+import * as LDC from '@/models/layer-data-cache.models'
 import * as L from '@/models/layer.models'
 
 // Mirrors sandbox.models.ts: schemas and metas only, so this stays importable from the client.
@@ -38,13 +39,16 @@ const LQ_TUTORIAL_LAYER_TEXT = {
 } as const
 
 // the layer queue scenario's layers as ids, which only exist once layer data has loaded
-export function lqTutorialLayers() {
-	const id = (text: string) => L.fromLayerText(text)!
+export function lqTutorialLayers(components = L.StaticLayerComponents) {
+	return lqTutorialLayersOf(components)
+}
+const lqTutorialLayersOf = LDC.derived((components) => {
+	const id = (text: string) => L.fromLayerText(text, components)!
 	return {
 		initial: LQ_TUTORIAL_LAYER_TEXT.initial.map(id),
 		picks: { chora: id(LQ_TUTORIAL_LAYER_TEXT.picks.chora), yehorivka: id(LQ_TUTORIAL_LAYER_TEXT.picks.yehorivka) },
 	}
-}
+})
 
 // The player management scenario's roster, shared by the server setup and the client steps so both halves name the
 // same people. Eight a side, so a lone /switch queues rather than firing on the spot. Each player's team is the raw

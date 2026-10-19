@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared.models'
 import type * as GLD from '@/models/game-layer-data.models'
+import * as LDC from '@/models/layer-data-cache.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
 import * as VEH from '@/models/vehicles.models'
@@ -79,12 +80,7 @@ export function isVirtualColumn(name: string, cfg = BASE_COLUMN_CONFIG): boolean
 // records carry it on to vehicles and vehicle classes. A value spanning several collections homes to the
 // default collection when present, else the first in catalog order.
 type CollectionByEnumValue = Partial<Record<string, Map<string, string>>>
-const enumValueCollectionsCache = new WeakMap<object, CollectionByEnumValue>()
-
-function enumValueCollections(components: LayerComponents): CollectionByEnumValue {
-	const cached = enumValueCollectionsCache.get(components)
-	if (cached) return cached
-
+const enumValueCollections = LDC.derived((components): CollectionByEnumValue => {
 	const sets = new Map<string, Map<string, Set<string>>>()
 	const add = (mapping: string, value: string | null | undefined, collection: string) => {
 		if (!value) return
@@ -130,9 +126,8 @@ function enumValueCollections(components: LayerComponents): CollectionByEnumValu
 		}
 		result[mapping] = home
 	}
-	enumValueCollectionsCache.set(components, result)
 	return result
-}
+})
 
 export function collectionForEnumValue(
 	column: string,
@@ -150,22 +145,18 @@ export function collectionForEnumValue(
 
 export type CollectionGroup = { key: string; label: string; prefix: string | null }
 
-const collectionGroupsCache = new WeakMap<object, CollectionGroup[]>()
-
 // The collections as combo box groups: default collection first, then catalog order. The abbreviation is the
 // prefix, since that form is repeated on every row of an "all" listing, and the default collection's null
 // abbreviation carries through as a null prefix so unmodded values read bare, as they do everywhere else.
-// Memoized on the components object because it is passed as a prop, and a fresh array each render would
-// rebuild every option list.
+// Cached because it is passed as a prop, and a fresh array each render would rebuild every option list.
 export function collectionGroups(components = L.StaticLayerComponents): CollectionGroup[] {
-	const cached = collectionGroupsCache.get(components)
-	if (cached) return cached
+	return collectionGroupsOf(components)
+}
+const collectionGroupsOf = LDC.derived((components): CollectionGroup[] => {
 	const defaultCollection = L.getDefaultCollection(components)
 	const ordered = [defaultCollection, ...components.collections.filter((c) => c !== defaultCollection)]
-	const groups = ordered.map((key) => ({ key, label: key, prefix: components.collectionAbbreviations[key] ?? null }))
-	collectionGroupsCache.set(components, groups)
-	return groups
-}
+	return ordered.map((key) => ({ key, label: key, prefix: components.collectionAbbreviations[key] ?? null }))
+})
 
 const vehicleTypeIndexCache = new WeakMap<readonly string[], Map<string, string>>()
 
@@ -654,9 +645,6 @@ export type DenseIdLayout = {
 	grids: (DenseIdGrid | undefined)[]
 	factions: number
 	units: number
-	// lengths of the component lists the layout was built against, so a components object that preprocess is still
-	// filling in is never served a stale layout
-	builtFor: [number, number, number]
 }
 
 type DenseIdGrid = {
@@ -669,13 +657,11 @@ type DenseIdGrid = {
 // JS keeps an integer inline (unboxed) below 2^30
 const MAX_DENSE_ID_BITS = 30
 
-const denseIdLayoutCache = new WeakMap<LayerComponents, DenseIdLayout>()
-
 export function denseIdLayout(components = L.StaticLayerComponents): DenseIdLayout {
-	const cached = denseIdLayoutCache.get(components)
-	const lengths: [number, number, number] = [components.layers.length, components.factions.length, components.units.length]
-	if (cached && cached.builtFor.every((n, i) => n === lengths[i])) return cached
+	return denseIdLayoutOf(components)
+}
 
+const denseIdLayoutOf = LDC.derived((components): DenseIdLayout => {
 	const factions = components.factions.length
 	const units = components.units.length
 	const sideCount = factions * units
@@ -734,10 +720,8 @@ export function denseIdLayout(components = L.StaticLayerComponents): DenseIdLayo
 		)
 	}
 
-	const layout: DenseIdLayout = { localBits, grids, factions, units, builtFor: lengths }
-	denseIdLayoutCache.set(components, layout)
-	return layout
-}
+	return { localBits, grids, factions, units }
+})
 
 function gridDigest(grid: DenseIdGrid) {
 	let digest = FNV_OFFSET

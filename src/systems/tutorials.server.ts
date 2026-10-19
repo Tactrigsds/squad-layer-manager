@@ -208,14 +208,14 @@ function ownerClientIds(owner: bigint): string[] {
 
 // ============================== scenarios ==============================
 
-const LAYERS = () => TUT.lqTutorialLayers()
-
 const layerQueue = defScenario({
 	id: 'layer-queue',
 	// a short post-match wait so a staged roll does not stall the tour; no tick chatter so the narrated log stays legible
 	pacing: { postMatchDelayMs: 2000, tickChatter: false },
 	initialQueue: (owner) =>
-		LAYERS().initial.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
+		TUT.lqTutorialLayers().initial.map((layerId) =>
+			LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner }),
+		),
 	setup: async () => {},
 	stages: {
 		welcome: async (ctx) => {
@@ -235,16 +235,26 @@ const layerQueue = defScenario({
 		// Checkpoints, one per region of the tour whose server state differs. The canonical lists mirror what a
 		// linear reader produces: two picks added at the head, the last seed removed before saving, the head removed
 		// again by the force save.
-		'cp-fresh': (ctx) => resetTo(ctx, { saved: [...LAYERS().initial] }),
+		'cp-fresh': (ctx) => resetTo(ctx, { saved: [...TUT.lqTutorialLayers().initial] }),
 		'cp-edited': (ctx) =>
 			resetTo(ctx, {
-				saved: [...LAYERS().initial],
-				draftPrepend: [LAYERS().picks.chora, LAYERS().picks.yehorivka],
+				saved: [...TUT.lqTutorialLayers().initial],
+				draftPrepend: [TUT.lqTutorialLayers().picks.chora, TUT.lqTutorialLayers().picks.yehorivka],
 				readerEditing: true,
 			}),
 		'cp-saved': (ctx) =>
-			resetTo(ctx, { saved: [LAYERS().picks.chora, LAYERS().picks.yehorivka, LAYERS().initial[0], LAYERS().initial[1]] }),
-		'cp-post-force': (ctx) => resetTo(ctx, { saved: [LAYERS().picks.yehorivka, LAYERS().initial[0], LAYERS().initial[1]] }),
+			resetTo(ctx, {
+				saved: [
+					TUT.lqTutorialLayers().picks.chora,
+					TUT.lqTutorialLayers().picks.yehorivka,
+					TUT.lqTutorialLayers().initial[0],
+					TUT.lqTutorialLayers().initial[1],
+				],
+			}),
+		'cp-post-force': (ctx) =>
+			resetTo(ctx, {
+				saved: [TUT.lqTutorialLayers().picks.yehorivka, TUT.lqTutorialLayers().initial[0], TUT.lqTutorialLayers().initial[1]],
+			}),
 		'cp-generated': (ctx) => resetTo(ctx, { saved: 'generated' }),
 	},
 })
@@ -529,9 +539,9 @@ const playerManagement = defScenario({
 	// The first two are what the history rolls onto, so the set-by column shows a user on one and SLM on the other;
 	// the match the server boots on is the game server's own.
 	initialQueue: (owner) => [
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[1] }, { type: 'manual', userId: PEER_USER_ID }),
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[2] }, { type: 'generated' }),
-		LL.createItem({ type: 'single-list-item', layerId: LAYERS().initial[0] }, { type: 'manual', userId: owner }),
+		LL.createItem({ type: 'single-list-item', layerId: TUT.lqTutorialLayers().initial[1] }, { type: 'manual', userId: PEER_USER_ID }),
+		LL.createItem({ type: 'single-list-item', layerId: TUT.lqTutorialLayers().initial[2] }, { type: 'generated' }),
+		LL.createItem({ type: 'single-list-item', layerId: TUT.lqTutorialLayers().initial[0] }, { type: 'manual', userId: owner }),
 	],
 	setup: async (ctx, reader) => {
 		await ensurePeerUser(ctx)

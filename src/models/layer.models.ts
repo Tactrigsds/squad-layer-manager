@@ -4,6 +4,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as z from '@/lib/zod'
 import type * as GLD from '@/models/game-layer-data.models'
 import * as LC from '@/models/layer-columns.models'
+import * as LDC from '@/models/layer-data-cache.models'
 
 // fully derived layer data, loaded at startup by layer-data.server/layer-data.client (or built
 // directly during preprocessing). models are supposed to be inert, so this state living here is a
@@ -115,6 +116,9 @@ export type TextLayerId = string & { readonly [layerIdBrand]: true }
 // a layer the loaded layer data does not hold
 export type RawLayer = UnvalidatedLayer & { id: TextLayerId }
 
+const MAX_CACHED_TEXT_LOOKUPS = 4096
+const MAX_CACHED_KNOWN_LAYERS = 16384
+
 export const LayerIdSchema = z.codec(z.union([z.number().int().nonnegative(), z.string().min(1).max(512)]), z.custom<LayerId>(), {
 	decode: (value, payload) => {
 		let id: LayerId | undefined
@@ -195,16 +199,22 @@ export function idFromParts(parts: LayerTextParts, components = StaticLayerCompo
 // comes back dense, and the rest is normalized the way the raw layer parser reads it (default units filled in, a
 // Training layer's teams taken from its config).
 export function fromLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
+	return idOfLayerText(text, components)
+}
+const idOfLayerText = LDC.lookup((text: string, components): LayerId | undefined => {
 	const parts = parseLayerText(text)
 	if (!parts) return undefined
 	return layerFromParts(parts, components).id
-}
+}, MAX_CACHED_TEXT_LOOKUPS)
 
 // The id stored text names, whichever format wrote it: canonical text, or an id in the old abbreviated format or its
 // RAW: form from before it. An old abbreviated id also fits the canonical grammar (its Map-Gamemode part reads as a
 // layer name), so text is only taken as canonical when the layer data holds its layer, and undefined only when no
 // format reads it.
 export function fromStoredLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
+	return idOfStoredText(text, components)
+}
+const idOfStoredText = LDC.lookup((text: string, components): LayerId | undefined => {
 	const parts = parseLayerText(text)
 	if (parts && getLayerConfig(parts.Layer, components)) return layerFromParts(parts, components).id
 	if (text.startsWith('RAW:')) return parseRawLayerText(text.slice('RAW:'.length), components)?.id
@@ -214,7 +224,7 @@ export function fromStoredLayerText(text: string, components = StaticLayerCompon
 	// rather than an id built from guesses
 	if (legacy.code === 'err:unknown-layer' && legacy.layer.Map && legacy.layer.Gamemode) return legacy.layer.id
 	return parts ? (text as TextLayerId) : undefined
-}
+}, MAX_CACHED_TEXT_LOOKUPS)
 
 // fromStoredLayerText for a plain text column, where a row must always read: text no format reads stays a text id
 export function readStoredLayerId(text: string, components = StaticLayerComponents): LayerId {
@@ -233,13 +243,8 @@ export function toLayerText(id: LayerId, components = StaticLayerComponents): st
 	return formatLayerText(layer)
 }
 
-// the known layer behind a dense id, built once per id and layer data
-const knownLayersByDenseId = new WeakMap<LC.LayerComponents, Map<number, KnownLayer>>()
-function knownLayerOfDenseId(id: number, components = StaticLayerComponents): KnownLayer | undefined {
-	let cache = knownLayersByDenseId.get(components)
-	if (!cache) knownLayersByDenseId.set(components, (cache = new Map()))
-	const cached = cache.get(id)
-	if (cached) return cached
+// the known layer behind a dense id, shared by every caller holding that id
+const knownLayerOfDenseId = LDC.lookup((id: number, components): KnownLayer | undefined => {
 	const indexes = LC.fromDenseId(id, LC.denseIdLayout(components))
 	if (!indexes) return undefined
 	const [layerIndex, faction1, unit1, faction2, unit2] = indexes
@@ -262,11 +267,8 @@ function knownLayerOfDenseId(id: number, components = StaticLayerComponents): Kn
 		Alliance_1: components.factionToAlliance[Faction_1],
 		Alliance_2: components.factionToAlliance[Faction_2],
 	}
-	// shared by every caller holding this id
-	Object.freeze(layer)
-	cache.set(id, layer)
-	return layer
-}
+	return Object.freeze(layer)
+}, MAX_CACHED_KNOWN_LAYERS)
 
 // The layer canonical text parts name. Reads them the way it reads a raw layer command, so a part the layer data
 // lacks still yields a layer with as much as could be resolved.
@@ -370,19 +372,23 @@ export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayer
 }
 
 // Layer strings are canonical: they come from the source export and mod naming follows no convention worth parsing,
-// so resolution is a catalog lookup, not string (re)construction. The caches key on the components object, which is
-// replaced wholesale when layer data loads.
-const layerConfigByLayerCache = new WeakMap<LC.LayerComponents, Map<string, LayerConfig>>()
-const layerConfigsByDetailsCache = new WeakMap<LC.LayerComponents, Map<string, LayerConfig[]>>()
+// so resolution is a catalog lookup, not string (re)construction.
+const layerConfigByLayer = LDC.derived((components) => new Map(components.mapLayers.map((config) => [config.Layer, config])))
 
 export function getLayerConfig(layer: string, components = StaticLayerComponents): LayerConfig | undefined {
-	let index = layerConfigByLayerCache.get(components)
-	if (!index) {
-		index = new Map(components.mapLayers.map((config) => [config.Layer, config]))
-		layerConfigByLayerCache.set(components, index)
-	}
-	return index.get(layer)
+	return layerConfigByLayer(components).get(layer)
 }
+
+const layerConfigsByDetails = LDC.derived((components) => {
+	const index = new Map<string, LayerConfig[]>()
+	for (const config of components.mapLayers) {
+		const key = `${config.Map}|${config.Gamemode}|${config.LayerVersion}|${layerConfigCollection(config, components)}`
+		let list = index.get(key)
+		if (!list) index.set(key, (list = []))
+		list.push(config)
+	}
+	return index
+})
 
 export function layerConfigCollection(config: LayerConfig, components = StaticLayerComponents) {
 	return config.Collection ?? getDefaultCollection(components)
@@ -394,18 +400,8 @@ export function findLayerConfigs(
 	details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'LayerVersion' | 'Collection'> & Partial<Pick<KnownLayer, 'Faction_1' | 'Faction_2'>>,
 	components = StaticLayerComponents,
 ): LayerConfig[] {
-	let index = layerConfigsByDetailsCache.get(components)
-	if (!index) {
-		index = new Map()
-		for (const config of components.mapLayers) {
-			const key = `${config.Map}|${config.Gamemode}|${config.LayerVersion}|${layerConfigCollection(config, components)}`
-			let list = index.get(key)
-			if (!list) index.set(key, (list = []))
-			list.push(config)
-		}
-		layerConfigsByDetailsCache.set(components, index)
-	}
-	const candidates = index.get(`${details.Map}|${details.Gamemode}|${details.LayerVersion}|${details.Collection}`) ?? []
+	const candidates =
+		layerConfigsByDetails(components).get(`${details.Map}|${details.Gamemode}|${details.LayerVersion}|${details.Collection}`) ?? []
 	if (candidates.length <= 1 || !details.Faction_1 || !details.Faction_2) return candidates
 	const byFactions = candidates.filter((config) => {
 		const avail = components.layerFactionAvailability[config.Layer]
@@ -699,23 +695,13 @@ export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, compon
 	return rawLayerOfText(unvalidatedLayerOrId, components)
 }
 
-// the layer behind a text id, parsed once per id and layer data
-const MAX_CACHED_TEXT_LAYERS = 4096
-const rawLayersByText = new WeakMap<LC.LayerComponents, Map<string, UnvalidatedLayer>>()
-function rawLayerOfText(id: TextLayerId, components = StaticLayerComponents): UnvalidatedLayer {
-	let cache = rawLayersByText.get(components)
-	if (!cache) rawLayersByText.set(components, (cache = new Map()))
-	const cached = cache.get(id)
-	if (cached) return cached
-	// text ids can come from anywhere (links, RCON, stored rows), so the cache is dropped rather than left to grow
-	if (cache.size >= MAX_CACHED_TEXT_LAYERS) cache.clear()
+// the layer behind a text id
+const rawLayerOfText = LDC.lookup((id: TextLayerId, components): UnvalidatedLayer => {
 	const parts = parseLayerText(id)
 	const parsed = parts ? layerFromParts(parts, components) : { Layer: id }
 	// keep the id the caller holds: a text id normalizes to a dense one only where the caller asks (see normalize)
-	const layer = Object.freeze({ ...parsed, id })
-	cache.set(id, layer)
-	return layer
-}
+	return Object.freeze({ ...parsed, id })
+}, MAX_CACHED_TEXT_LOOKUPS)
 
 export function getLayerCommand(
 	layerOrId: UnvalidatedLayer | LayerId,
@@ -961,15 +947,7 @@ function diagnoseRawLayer(layer: UnvalidatedLayer, components: typeof StaticLaye
 	return problems
 }
 
-const layerNamesCache = new WeakMap<typeof StaticLayerComponents, string[]>()
-function layerNames(components: typeof StaticLayerComponents) {
-	let names = layerNamesCache.get(components)
-	if (!names) {
-		names = components.mapLayers.map((config) => config.Layer)
-		layerNamesCache.set(components, names)
-	}
-	return names
-}
+const layerNames = LDC.derived((components) => components.mapLayers.map((config) => config.Layer))
 
 function suggestName(typed: string, candidates: readonly string[]) {
 	if (typed === '') return null
