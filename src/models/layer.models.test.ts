@@ -49,7 +49,22 @@ describe('layer ids', () => {
 
 	it('keeps a legacy id it can only half read as the text it was written as', () => {
 		expect(L.fromStoredLayerText('ZZ-RAAS-V1:USA-CA:RGF-CA')).toBe('ZZ-RAAS-V1:USA-CA:RGF-CA')
+		const unknownUnit = legacyIdOf(L.toLayer(L.fromLayerText(NARVA)!) as L.KnownLayer).replace(':USA-CA:', ':USA-XX:')
+		expect(L.fromStoredLayerText(unknownUnit)).toBe(unknownUnit)
 		expect(L.readStoredLayerId('not a layer id at all')).toBe('not a layer id at all')
+	})
+
+	it('keeps a lone first team of a raw layer in its id', () => {
+		const id = L.fromStoredLayerText('RAW:Narva_RAAS_v1 USA+CombinedArms')!
+		expect(id).toBe('Narva_RAAS_v1:USA+CombinedArms')
+		expect(L.toLayer(id)).toMatchObject({ Layer: 'Narva_RAAS_v1', Faction_1: 'USA', Unit_1: 'CombinedArms' })
+		expect(L.fromLayerText(L.toLayerText(id))).toBe(id)
+	})
+
+	it('reads a FRAAS layer back from its plain command, and sends the game its RAAS name', () => {
+		const id = L.fromLayerText('Narva_FRAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+		expect(L.parseRawLayerText(L.getLayerCommand(id, 'none'))?.id).toBe(id)
+		expect(L.getLayerCommand(id, 'set-next')).toBe('AdminSetNextLayer Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
 	})
 
 	it('decodes either form through LayerIdSchema and encodes to canonical text', () => {
@@ -58,6 +73,7 @@ describe('layer ids', () => {
 		expect(L.LayerIdSchema.parse(NARVA)).toBe(id)
 		expect(L.LayerIdSchema.parse(legacyIdOf(L.toLayer(id) as L.KnownLayer))).toBe(id)
 		expect(L.LayerIdSchema.safeParse(2 ** 29 + 12345).success).toBe(false)
+		expect(L.LayerIdSchema.safeParse(2 ** 32 + (id as number)).success).toBe(false)
 		expect(z.encode(L.LayerIdSchema, id)).toBe(NARVA)
 		expect(z.encode(z.array(L.LayerIdSchema), [id, L.fromLayerText(UNKNOWN)!])).toEqual([NARVA, UNKNOWN])
 	})

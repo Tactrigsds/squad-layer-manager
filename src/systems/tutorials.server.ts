@@ -101,7 +101,7 @@ type SyncCtx = LQ.Ctx & CS.AbortSignal & { sandbox: Sandbox.SandboxInstance }
 function serverHoldsQueueHead(ctx: SyncCtx): boolean {
 	const headLayerId = LL.getNextLayerId(ctx.layerQueue.session.state.savedList)
 	if (!headLayerId) return true
-	return ctx.sandbox.emu.world.nextLayer?.layer === L.getLayerCommand(headLayerId, 'none').split(' ')[0]
+	return ctx.sandbox.emu.world.nextLayer?.layer === L.getLayerCommand(headLayerId, 'set-next').split(' ')[1]
 }
 
 // hold until the emulated server holds the saved queue's head as its next layer. Every path that later ends a match

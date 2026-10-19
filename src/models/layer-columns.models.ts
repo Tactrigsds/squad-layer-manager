@@ -777,7 +777,8 @@ export function denseId(layer: number, faction1: number, unit1: number, faction2
 
 // the component indexes a dense id names, or undefined when it names no layer
 export function fromDenseId(id: number, layout = denseIdLayout()): [number, number, number, number, number] | undefined {
-	if (!Number.isInteger(id) || id < 0) return undefined
+	// the shifts below read only the low 32 bits, so a larger id would alias a smaller one
+	if (!Number.isInteger(id) || id < 0 || id >= 2 ** MAX_DENSE_ID_BITS) return undefined
 	const layer = id >>> layout.localBits
 	const grid = layout.grids[layer]
 	if (!grid) return undefined

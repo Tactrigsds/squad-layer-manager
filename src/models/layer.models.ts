@@ -146,17 +146,19 @@ export type UnvalidatedLayer = Partial<KnownLayer> & {
 
 // Canonical text: Layer:Faction+Unit:Faction+Unit, in the game's own names, such as
 // Narva_RAAS_v1:RGF+CombinedArms:USA+CombinedArms. A layer known only in part drops what it lacks from the right: a
-// unit, or both teams. No layer, faction or unit name holds ':', '+' or whitespace (preprocess enforces it).
+// unit, the second team, or both teams. No layer, faction or unit name holds ':', '+' or whitespace (preprocess
+// enforces it).
 const TEXT_NAME = '[^:+\\s]+'
-const layerTextRegex = new RegExp(`^(${TEXT_NAME})(?::(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?:(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?)?$`)
+const layerTextRegex = new RegExp(`^(${TEXT_NAME})(?::(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?(?::(${TEXT_NAME})(?:\\+(${TEXT_NAME}))?)?)?$`)
 export const LAYER_TEXT_NAME_FORBIDDEN = /[:+\s]/
 
 export type LayerTextParts = { Layer: string; Faction_1?: string; Unit_1?: string; Faction_2?: string; Unit_2?: string }
 
 export function formatLayerText(parts: LayerTextParts): string {
-	if (!parts.Faction_1 || !parts.Faction_2) return parts.Layer
+	if (!parts.Faction_1) return parts.Layer
 	const team = (faction: string, unit: string | undefined) => (unit ? `${faction}+${unit}` : faction)
-	return `${parts.Layer}:${team(parts.Faction_1, parts.Unit_1)}:${team(parts.Faction_2, parts.Unit_2)}`
+	const team1 = `${parts.Layer}:${team(parts.Faction_1, parts.Unit_1)}`
+	return parts.Faction_2 ? `${team1}:${team(parts.Faction_2, parts.Unit_2)}` : team1
 }
 
 export function parseLayerText(text: string): LayerTextParts | undefined {
@@ -220,8 +222,8 @@ const idOfStoredText = LDC.lookup((text: string, components): LayerId | undefine
 	if (text.startsWith('RAW:')) return parseRawLayerText(text.slice('RAW:'.length), components)?.id
 	const legacy = parseLegacyLayerId(text, components)
 	if (legacy.code === 'ok') return legacy.layer.id
-	// an abbreviation the layer data no longer has leaves the parts half resolved; keep the text as it was written
-	// rather than an id built from guesses
+	// a layer the layer data no longer holds, named by abbreviations it still has. Text with an abbreviation the layer
+	// data no longer has is kept as it was written, rather than an id built from guesses.
 	if (legacy.code === 'err:unknown-layer' && legacy.layer.Map && legacy.layer.Gamemode) return legacy.layer.id
 	return parts ? (text as TextLayerId) : undefined
 }, MAX_CACHED_TEXT_LOOKUPS)
@@ -482,8 +484,8 @@ export function isRawLayer(layer: UnvalidatedLayer | LayerId): layer is RawLayer
 /**
  * Parses a layer id in the abbreviated format SLM used before canonical text (e.g. "GD-RAAS-V1:USA-CA:RGF-CA"), for
  * stored data and links written before it. Returns a result union: 'ok' with the known layer, or one of
- * 'err:invalid-layer-id', 'err:unknown-training-layer', or 'err:unknown-layer', the last of which still carries the
- * parsed parts. The layer's id is the current one.
+ * 'err:invalid-layer-id', 'err:unknown-unit', 'err:unknown-training-layer', or 'err:unknown-layer', the last of which
+ * still carries the parsed parts. The layer's id is the current one.
  */
 export function parseLegacyLayerId(id: string, components = StaticLayerComponents) {
 	const match = knownLayerIdRegex.exec(id)
@@ -529,6 +531,9 @@ export function parseLegacyLayerId(id: string, components = StaticLayerComponent
 		components.backwardsCompat.unitAbbreviations[unit1Abbr]) as string | undefined
 	const unit2 = (Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) ??
 		components.backwardsCompat.unitAbbreviations[unit2Abbr]) as string | undefined
+	if ((unit1Abbr && !unit1) || (unit2Abbr && !unit2)) {
+		return { code: 'err:unknown-unit' as const, msg: `Unknown unit in layer ID: ${id}` }
+	}
 	const foldedCollection = collectionPart === null ? undefined : components.backwardsCompat.collectionAbbreviations[collectionPart]
 	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart) ?? foldedCollection
 
@@ -747,7 +752,9 @@ export function getLayerCommand(
 			commandArgs += getFactionModifier(layer.Faction_2, unitFor(layer.Unit_2, layer.Faction_2))
 		}
 	}
-	return `${cmd} ${commandArgs.replace('FRAAS', 'RAAS')}`.trim().replace(/\s+/g, ' ')
+	// the game loads a FRAAS layer by its RAAS name. The plain form keeps the name, so it reads back as the same layer.
+	if (cmdType !== 'none') commandArgs = commandArgs.replace('FRAAS', 'RAAS')
+	return `${cmd} ${commandArgs}`.trim().replace(/\s+/g, ' ')
 }
 
 // undefined when the layer is too partial to locate on a map, which is what makes the caller disable its squadcalc entry
