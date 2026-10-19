@@ -173,9 +173,49 @@ fn candidate_narrowing_does_not_change_the_result() {
     }
 }
 
+/// Id cells as the host hands them over. The host's come from LC.denseIdLayout, which this crate does not see, but any
+/// cells distinct within a pattern serve. These leave a gap after every row, so some ids name no row.
+fn spaced_cells(store: &Store) -> (u32, Vec<u32>) {
+    let patterns = (0..store.block_count()).map(|b| store.block_pattern(b)).max().map_or(0, |p| p + 1);
+    let mut cells = Vec::new();
+    let mut largest = 1usize;
+    for p in 0..patterns {
+        let (start, end) = store.pattern_rows(p);
+        largest = largest.max(2 * (end - start));
+        cells.extend((0..end - start).map(|i| 2 * i as u32));
+    }
+    (usize::BITS - (largest - 1).leading_zeros(), cells)
+}
+
+fn load_with_ids() -> Store {
+    let mut store = load();
+    let (local_bits, cells) = spaced_cells(&store);
+    store.set_id_cells(local_bits, cells).expect("spaced cells serve as ids");
+    store
+}
+
+#[test]
+fn rows_have_no_id_until_the_host_sets_the_cells() {
+    let store = load();
+    let id = col(&store, "id");
+    assert_eq!(store.value(id, 0), None);
+    assert_eq!(store.row_of_id(0), None);
+}
+
+#[test]
+fn refuses_id_cells_that_could_not_serve_as_ids() {
+    let mut store = load();
+    let (local_bits, mut cells) = spaced_cells(&store);
+    assert!(store.set_id_cells(local_bits, cells[1..].to_vec()).is_err(), "one cell short");
+    assert!(store.set_id_cells(local_bits, cells.clone()).is_ok());
+    let (start, _) = store.pattern_rows(0);
+    cells[start + 1] = cells[start];
+    assert!(store.set_id_cells(local_bits, cells).is_err(), "two rows of one pattern share a cell");
+}
+
 #[test]
 fn ids_round_trip_through_the_row_space() {
-    let store = load();
+    let store = load_with_ids();
     let id = col(&store, "id");
     let rows = store.row_count();
     // ids ascend in row order: preprocess sorts rows by id, and pages sorted by id rely on it
@@ -236,7 +276,7 @@ fn alliance_follows_faction() {
 
 #[test]
 fn id_lookups_match_a_row_walk() {
-    let store = load();
+    let store = load_with_ids();
     let id = col(&store, "id");
     let map = col(&store, "Map");
     let mut vals: Vec<i64> = (0..store.row_count()).step_by(55_001).map(|row| store.value(id, row).unwrap()).collect();
@@ -255,7 +295,7 @@ fn id_lookups_match_a_row_walk() {
 /// order kept for ties, which is the order the engine promises.
 #[test]
 fn sorted_pages_match_a_full_sort() {
-    let store = load();
+    let store = load_with_ids();
     let id = col(&store, "id");
     let map = col(&store, "Map");
     let where_ir = Ir::Or { children: vec![Ir::LtVal { col: map, val: 6 }, Ir::EqVal { col: col(&store, "Faction_1"), val: 4 }] };

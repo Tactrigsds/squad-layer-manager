@@ -1,3 +1,5 @@
+import * as LA from '@/models/layer-artifact.models'
+import type * as LC from '@/models/layer-columns.models'
 import type * as LE from '@/models/layer-engine.models'
 
 // Host side of the layer query engine (layer-engine/). The same wasm module runs in the browser's query worker and in the
@@ -9,6 +11,7 @@ type Exports = {
 	alloc: (len: number) => number
 	dealloc: (ptr: number, len: number) => void
 	load: (ptr: number, len: number) => number
+	set_id_cells: (ptr: number, len: number) => number
 	query: (ptr: number, len: number) => number
 	column_index: (ptr: number, len: number) => number
 	result_ptr: () => number
@@ -32,8 +35,10 @@ export class LayerEngine {
 	}
 
 	// `artifact` is handed to wasm and must not be reused by the caller afterwards: the engine takes ownership of the
-	// copy in linear memory, and the layer table is large enough that a second copy is worth avoiding
-	static async create(wasm: BufferSource | WebAssembly.Module, artifact: Uint8Array): Promise<LayerEngine> {
+	// copy in linear memory, and the layer table is large enough that a second copy is worth avoiding. `idLayout` is
+	// the layer data's (LC.denseIdLayout), which the engine reads every row's id from.
+	static async create(wasm: BufferSource | WebAssembly.Module, artifact: Uint8Array, idLayout: LC.DenseIdLayout): Promise<LayerEngine> {
+		const cells = LA.patternRowCells(LA.readArtifact(artifact), idLayout)
 		const instance =
 			wasm instanceof WebAssembly.Module ? await WebAssembly.instantiate(wasm, {}) : (await WebAssembly.instantiate(wasm, {})).instance
 		const exports = instance.exports as unknown as Exports
@@ -45,6 +50,18 @@ export class LayerEngine {
 		if (rowCount === 0) {
 			const result = engine.readResult() as { ok: false; error: string }
 			throw new LayerEngineError(`layer engine failed to load the artifact: ${result.error}`)
+		}
+
+		const idCells = new Uint32Array(cells.length + 1)
+		idCells[0] = idLayout.localBits
+		idCells.set(cells, 1)
+		const bytes = new Uint8Array(idCells.buffer)
+		const [cellsPtr, cellsLen] = engine.write(bytes)
+		const ok = exports.set_id_cells(cellsPtr, cellsLen)
+		exports.dealloc(cellsPtr, cellsLen)
+		if (!ok) {
+			const result = engine.readResult() as { ok: false; error: string }
+			throw new LayerEngineError(`layer engine refused the id cells: ${result.error}`)
 		}
 		return engine
 	}

@@ -31,6 +31,14 @@ impl Engine {
         Ok(Engine { store, cache: RefCell::new(FilterCache::default()) })
     }
 
+    /// See Store::set_id_cells. Drops whatever was cached from the ids before.
+    pub fn set_id_cells(&mut self, local_bits: u32, cells: Vec<u32>) -> Result<(), String> {
+        self.store.set_id_cells(local_bits, cells)?;
+        self.store.ranges.iter_mut().for_each(|range| *range = Default::default());
+        *self.cache.get_mut() = FilterCache::default();
+        Ok(())
+    }
+
     pub fn query(&self, request_json: &str) -> Result<String, String> {
         let request: Request = serde_json::from_str(request_json).map_err(|e| format!("bad request: {e}"))?;
         query::handle(&self.store, request, &mut self.cache.borrow_mut())
@@ -125,6 +133,35 @@ pub unsafe extern "C" fn load(ptr: *mut u8, len: usize) -> usize {
             set_result(format!("{{\"ok\":true,\"rowCount\":{rows}}}").into_bytes());
             ENGINE = Some(engine);
             rows
+        }
+        Err(err) => {
+            set_result(serde_json::to_vec(&serde_json::json!({ "ok": false, "error": err })).unwrap());
+            0
+        }
+    }
+}
+
+/// Hands the engine every pattern row's id cell (see Store::set_id_cells): `local_bits` as a little-endian u32, then
+/// one u32 per pattern row. Returns 1 on success, 0 on error with the message in the result buffer.
+#[no_mangle]
+pub unsafe extern "C" fn set_id_cells(ptr: *const u8, len: usize) -> usize {
+    let engine = match &mut *(&raw mut ENGINE) {
+        Some(engine) => engine,
+        None => {
+            set_result(br#"{"ok":false,"error":"engine not loaded"}"#.to_vec());
+            return 0;
+        }
+    };
+    let bytes = std::slice::from_raw_parts(ptr, len);
+    let mut words = bytes.chunks_exact(4).map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]));
+    let result = match (bytes.len() % 4, words.next()) {
+        (0, Some(local_bits)) => engine.set_id_cells(local_bits, words.collect()),
+        _ => Err("id cells must be whole u32s, starting with the local bit width".into()),
+    };
+    match result {
+        Ok(()) => {
+            set_result(br#"{"ok":true}"#.to_vec());
+            1
         }
         Err(err) => {
             set_result(serde_json::to_vec(&serde_json::json!({ "ok": false, "error": err })).unwrap());

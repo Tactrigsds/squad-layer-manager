@@ -1,4 +1,4 @@
-import type * as LC from '@/models/layer-columns.models'
+import * as LC from '@/models/layer-columns.models'
 
 // The factored layer artifact the query engine reads (layer-engine/src/store.rs).
 //
@@ -597,12 +597,13 @@ export type Artifact = {
 	columnIndex: Map<string, number>
 }
 
-export function readArtifact(bytes: Buffer): Artifact {
-	if (bytes.length < 9 || bytes.toString('ascii', 0, 5) !== MAGIC) {
+export function readArtifact(bytes: Uint8Array): Artifact {
+	const decoder = new TextDecoder()
+	if (bytes.length < 9 || decoder.decode(bytes.subarray(0, 5)) !== MAGIC) {
 		throw new Error(`not a ${MAGIC} layer artifact`)
 	}
-	const manifestLen = bytes.readUInt32LE(5)
-	const manifest: Manifest = JSON.parse(bytes.toString('utf8', 9, 9 + manifestLen))
+	const manifestLen = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(5, true)
+	const manifest: Manifest = JSON.parse(decoder.decode(bytes.subarray(9, 9 + manifestLen)))
 	const header = 9 + manifestLen
 	const dataStart = header + ((4 - (header % 4)) % 4)
 	const sections = manifest.sections.map((s): SectionData => {
@@ -649,48 +650,61 @@ export function sideRecord(art: Artifact, layer: number, faction: number, unit: 
 	return -1
 }
 
-// Every row's dense layer id, derived from the artifact the way Store::index_dense_ids does (see LC.denseIdLayout for
-// the id's shape): each pattern's grid sides are its distinct team-1 and team-2 sides, ascending.
-export function denseIds(art: Artifact): Int32Array {
+// Each pattern row's cell in its layer's option grid (see LC.denseIdLayout). The engine reads ids from these, so the
+// layout has one definition, on this side. Blocks share a pattern's rows, so a pattern's cells are taken from its
+// first block and every other block using it must give the same ones. Throws when a row has no cell, which means the
+// table and the layer data do not belong together.
+export function patternRowCells(art: Artifact, layout = LC.denseIdLayout()): Uint32Array {
 	const { manifest } = art
-	const units = manifest.unitCount
-	const column = (name: string) => expandPatternColumn(art, name)
-	const [f1, u1, f2, u2] = [column('Faction_1'), column('Unit_1'), column('Faction_2'), column('Unit_2')]
-	const cellOf = new Int32Array(manifest.patternRowCount)
-	let largestGrid = 1
-	for (let p = 0; p < manifest.patternCount; p++) {
-		const start = art.patternRowStart[p]
-		const end = art.patternRowStart[p + 1]
-		const sides1 = new Set<number>()
-		const sides2 = new Set<number>()
-		for (let r = start; r < end; r++) {
-			sides1.add(f1[r] * units + u1[r])
-			sides2.add(f2[r] * units + u2[r])
-		}
-		const rows = Int32Array.from(sides1).sort()
-		const columns = Int32Array.from(sides2).sort()
-		largestGrid = Math.max(largestGrid, rows.length * columns.length)
-		for (let r = start; r < end; r++) {
-			cellOf[r] = rows.indexOf(f1[r] * units + u1[r]) * columns.length + columns.indexOf(f2[r] * units + u2[r])
-		}
+	const layers = blockLayers(art)
+	const sides = (['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2'] as const).map((name) => {
+		const spec = manifest.columns[art.columnIndex.get(name)!]
+		if (spec.scope !== 'pattern') throw new Error(`${name} is not a pattern-scope column`)
+		return { values: art.sections[spec.section], nullValue: sectionNull(manifest.sections[spec.section].kind) }
+	})
+	const cellOf = (layer: number, r: number) => {
+		const [f1, u1, f2, u2] = sides.map(({ values, nullValue }) => (values[r] === nullValue ? -1 : values[r]))
+		const id = f1 < 0 || u1 < 0 || f2 < 0 || u2 < 0 ? -1 : LC.denseId(layer, f1, u1, f2, u2, layout)
+		if (id === -1) throw new Error(`pattern row ${r} of layer ${layer} has no cell in the layer data's id layout`)
+		return id - (layer << layout.localBits)
 	}
-	const localBits = largestGrid <= 1 ? 0 : 32 - Math.clz32(largestGrid - 1)
-	const layerSpec = manifest.columns[art.columnIndex.get('Layer')!] as { scope: 'block'; section: number }
-	const layers = art.sections[layerSpec.section]
+
+	const cells = new Uint32Array(manifest.patternRowCount)
+	const patternGrid: (object | undefined)[] = new Array(manifest.patternCount)
+	for (let b = 0; b < manifest.blockCount; b++) {
+		const p = art.blockPattern[b]
+		const grid = layout.grids[layers[b]]
+		if (patternGrid[p] === grid) continue
+		const first = patternGrid[p] === undefined
+		for (let r = art.patternRowStart[p]; r < art.patternRowStart[p + 1]; r++) {
+			const cell = cellOf(layers[b], r)
+			if (first) cells[r] = cell
+			else if (cells[r] !== cell) throw new Error(`layers sharing pattern ${p} give pattern row ${r} different cells`)
+		}
+		patternGrid[p] = grid
+	}
+	return cells
+}
+
+// Every row's dense layer id
+export function denseIds(art: Artifact, layout = LC.denseIdLayout()): Int32Array {
+	const { manifest } = art
+	const cells = patternRowCells(art, layout)
+	const layers = blockLayers(art)
 	const out = new Int32Array(manifest.rowCount)
 	for (let b = 0; b < manifest.blockCount; b++) {
 		const patternStart = art.patternRowStart[art.blockPattern[b]]
 		const rowStart = art.blockRowStart[b]
 		for (let row = rowStart; row < art.blockRowStart[b + 1]; row++) {
-			out[row] = (layers[b] << localBits) | cellOf[patternStart + row - rowStart]
+			out[row] = (layers[b] << layout.localBits) | cells[patternStart + row - rowStart]
 		}
 	}
 	return out
 }
 
-function expandPatternColumn(art: Artifact, name: string) {
-	const spec = art.manifest.columns[art.columnIndex.get(name)!]
-	if (spec.scope !== 'pattern') throw new Error(`${name} is not a pattern-scope column`)
+function blockLayers(art: Artifact) {
+	const spec = art.manifest.columns[art.columnIndex.get('Layer')!]
+	if (spec.scope !== 'block') throw new Error('Layer is not a block-scope column')
 	return art.sections[spec.section]
 }
 

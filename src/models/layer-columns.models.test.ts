@@ -1,7 +1,11 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import * as LC from '@/models/layer-columns.models'
 import type * as L from '@/models/layer.models'
+
+import * as Paths from '../../paths.ts'
 
 function entry(over: Partial<L.LayerFactionAvailabilityEntry> = {}): L.LayerFactionAvailabilityEntry {
 	return {
@@ -64,5 +68,18 @@ describe('layer faction availability pooling', () => {
 			c: [entry({ variants: undefined })],
 		})
 		expect(pooled.entries).toHaveLength(3)
+	})
+})
+
+describe('dense id headroom', () => {
+	const dir = path.join(Paths.ASSETS, 'layers')
+	const versions = fs.readdirSync(dir).filter((name) => /^layer-data_v.+\.json$/.test(name))
+
+	// layer data updates grow the layer count, and ids must stay below 2^30 to stay inline
+	it.each(versions)('%s leaves room for twice as many layers', (name) => {
+		const file = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as L.LayerDataFile
+		const components = LC.buildFullLayerComponents(file.components)
+		const doubledLayerBits = 32 - Math.clz32(2 * components.layers.length - 1)
+		expect(LC.denseIdLayout(components).localBits + doubledLayerBits).toBeLessThanOrEqual(LC.MAX_DENSE_ID_BITS)
 	})
 })

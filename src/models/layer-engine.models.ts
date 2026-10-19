@@ -52,10 +52,6 @@ export type Request =
 	| { kind: 'ranges'; columns: number[] }
 	| { kind: 'groupCounts'; where: Ir | null; step: StepSpec }
 	| ({ kind: 'solveRepeats' } & SolveRepeatsSpec)
-	| { kind: 'idLayout' }
-
-// grids: [layer index, grid digest] for every layer the table has rows for
-export type IdLayoutResponse = { localBits: number; grids: [number, number][] }
 
 // layer-engine/src/solve.rs describes the search. Rule values are interned to integers by the host, NO_RULE_VALUE where
 // a rule has nothing to compare.

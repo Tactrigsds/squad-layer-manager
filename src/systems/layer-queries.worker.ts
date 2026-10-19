@@ -238,23 +238,15 @@ async function init(
 		return { code: 'err:stale-layer-data' }
 	}
 
-	const artifact = await takeLayerArtifact(prev?.artifactHash ?? null)
-
+	// an engine reads its rows' ids from the layer data it was created with, so new layer data takes a new engine even
+	// over the same table
+	const artifact = await takeLayerArtifact(holdsLayerData ? (prev?.artifactHash ?? null) : null)
 	if (holdsLayerData && artifact.code === 'unchanged') return { code: 'ok', state: prev! }
-
-	let engine: LE.EngineHandle
-	let artifactHash: string | null
-	if (artifact.code === 'unchanged') {
-		engine = prev!.ctx.engine
-		artifactHash = prev!.artifactHash
-	} else {
-		if (input.cacheLayerArtifact && !artifact.fromCache) await cacheArtifact(artifact)
-		;[engine, artifactHash] = await createEngine(artifact)
-	}
+	if (artifact.code === 'unchanged') throw new Error('an unconditional layer artifact request answered unchanged')
 
 	if (input.layerData) L.setLayerData(input.layerData)
-	const idLayoutMismatch = LC.checkDenseIdLayout(engine.query<LE.IdLayoutResponse>({ kind: 'idLayout' }))
-	if (idLayoutMismatch) throw new Error(`the layer table and the layer data disagree on layer ids: ${idLayoutMismatch}`)
+	if (input.cacheLayerArtifact && !artifact.fromCache) await cacheArtifact(artifact)
+	const [engine, artifactHash] = await createEngine(artifact)
 	log.info('layer engine ready: %s layers%s', engine.rowCount, prev ? ' (rebuilt for a new layer pool)' : '')
 
 	return {
@@ -337,7 +329,7 @@ function takeLayerArtifact(knownHash: string | null): Promise<ArtifactResult> {
 async function createEngine(artifact: FetchedArtifact): Promise<[LayerEngine, string | null]> {
 	const module = await engineModule
 	try {
-		return [await LayerEngine.create(module, new Uint8Array(artifact.buffer)), artifact.hash]
+		return [await LayerEngine.create(module, new Uint8Array(artifact.buffer), LC.denseIdLayout()), artifact.hash]
 	} catch (error) {
 		// a cached copy the engine rejects is worse than none: with it in place every page load would come back to it
 		if (!artifact.fromCache) throw error
@@ -345,7 +337,7 @@ async function createEngine(artifact: FetchedArtifact): Promise<[LayerEngine, st
 		await discardCachedArtifacts()
 		const fresh = await fetchLayerArtifactDirect(null)
 		if (fresh.code === 'unchanged') throw new Error('unconditional artifact request answered 304', { cause: error })
-		return [await LayerEngine.create(module, new Uint8Array(fresh.buffer)), fresh.hash]
+		return [await LayerEngine.create(module, new Uint8Array(fresh.buffer), LC.denseIdLayout()), fresh.hash]
 	}
 }
 
