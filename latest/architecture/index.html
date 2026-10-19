@@ -746,8 +746,9 @@ still parses from its text.</p>
 the layer&#x27;s distinct team-1 faction/unit sides and whose columns are its team-2 sides. Every grid for one layer data
 version uses the same low-bit width, sized to the largest grid, so an id decodes with a shift, a division and two table
 reads and stays under 2^30, where JS keeps integers unboxed. Ids ascend in the table&#x27;s row order, and the engine maps
-one to its row through a per-pattern cell table without searching. <code>LC.denseIdLayout</code> derives the grids from the layer
-components and <code>Store::index_dense_ids</code> from the artifact; both hosts check that the two agree when the engine loads.</p>
+one to its row through a per-pattern cell table without searching. <code>LC.denseIdLayout</code> is the layout&#x27;s only definition.
+When a host loads the engine, <code>LA.patternRowCells</code> computes every pattern row&#x27;s cell from it and hands the cells to the
+engine, which only indexes them. A table and layer data that do not belong together fail there, on a row with no cell.</p>
 <p>A dense id only means something against the layer data that produced it, which decides where each form is used:</p>
 <ul>
 <li><strong>In memory and over the socket</strong>, ids are dense. A socket names the hash of the layer data its page loaded, and
