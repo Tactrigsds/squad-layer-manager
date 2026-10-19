@@ -228,6 +228,9 @@ on in the others until the page is reloaded. Editing an existing layer still ope
 <p><strong>Fixed:</strong> Ticket counts and results in the Match History outcome column line up from row to row.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> Moving a vote in the queue while editing now marks its choices as moved too, not only the vote.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> On a phone, the pool configuration window fits on screen. Its tabs appear in their own row below the title, and each repeat rule appears as a card with a caption above each control.</p>
 </li>
 <li>
@@ -250,6 +253,15 @@ on in the others until the page is reloaded. Editing an existing layer still ope
 </details>
 <h2 id="for-operators" class="docs-heading">For operators<a href="#for-operators" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/changes#for-operators" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <ul>
+<li>
+<p><strong>Breaking:</strong> Plugins must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.</p>
+<p>SLM now stores a layer id as the layer&#x27;s name and its two teams in the game&#x27;s own words, such as
+<code>Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms</code>. SLM rewrites the layer ids it stored before into this form: saved
+queues, layer requests, rotations and filters as it starts, and match history and the activity feed in the background
+a few minutes later.
+Links to a layer written with an old id still open that layer.</p>
+<p>An older SLM cannot read the rewritten ids. Back up the database before upgrading, so a rollback can restore it.</p>
+</li>
 <li>
 <p><strong>Breaking:</strong> The plugin API is version 0.13. A packed plugin that declares <code>^0.12</code> does not load until it is rebuilt against 0.13.</p>
 <p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.13</code> in its manifest and repack it with <code>pnpm plugin:pack</code>. Changes since 0.12:</p>

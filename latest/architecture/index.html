@@ -726,18 +726,41 @@ path-restricted grants that the flat grammar cannot express. Permissions are com
 into a traced list where every grant records which role granted it, so the UI and the audit log can both explain
 why someone has access.</p>
 <h3 id="layers" class="docs-heading">Layers<a href="#layers" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#layers" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
-<p><code>LayerId</code> is a <strong>structured string</strong>, not an opaque id:</p>
-<div class="docs-code"><pre><code>&lt;Map&gt;-&lt;Gamemode&gt;[-&lt;Version&gt;][-&lt;Collection&gt;]:&lt;Faction1&gt;[-&lt;Unit1Abbr&gt;]:&lt;Faction2&gt;[-&lt;Unit2Abbr&gt;]
-</code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
+<p>A <code>LayerId</code> takes one of two forms, and which one is decided by the loaded layer data:</p>
+<ul>
+<li>a layer the layer data holds is its <strong>dense id</strong>, an integer (<code>L.DenseLayerId</code>)</li>
+<li>any other layer is its <strong>canonical text</strong> (<code>L.TextLayerId</code>): <code>Layer:Faction+Unit:Faction+Unit</code> in the game&#x27;s own
+names, such as <code>Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms</code>. A layer known only in part drops what it lacks
+from the right. No layer, faction or unit name holds <code>:</code>, <code>+</code> or whitespace, which preprocess enforces.</li>
+</ul>
+<p>Every id is built by <code>L.idFromParts</code> or <code>L.fromLayerText</code>, which pick the dense form whenever the layer data holds the
+layer, so two ids for one layer are always <code>===</code>. <code>L.toLayer</code> turns either form into a layer, from a frozen object
+cached per id, and <code>L.toLayerText</code> turns either into canonical text.</p>
 <p>The <code>Layer</code> string itself (the name the game server speaks, e.g. <code>Gorodok_RAAS_v1</code> or supermod&#x27;s
-<code>SU_Sanxian_Invasion_v2</code>) is canonical and comes from the source export. Id resolution is a catalog lookup over
+<code>SU_Sanxian_Invasion_v2</code>) is canonical and comes from the source export. Resolution is a catalog lookup over
 <code>mapLayers</code>, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to a
-source (<code>data/sources/</code>, see docs/guide/operations/layer_data.md) whose collection becomes the id&#x27;s Collection segment. The Collection
-column is how filters and pools single a source out.</p>
-<p>Anything SLM cannot parse, such as an admin typing a layer by hand, becomes <code>RAW:&lt;text&gt;</code>, and <code>normalize()</code> can
-later upgrade it once new layer data makes it resolvable. For the engine, a known layer&#x27;s component indices are
-packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store&#x27;s i32 row ids),
-which is the row id the store indexes by.</p>
+source (<code>data/sources/</code>, see docs/guide/operations/layer_data.md) whose collection the Collection column names, which
+is how filters and pools single a source out. Ids carry no abbreviations, so a layer later layer data drops or renames
+still parses from its text.</p>
+<p>A dense id is the layer index in the high bits, and in the low bits the layer&#x27;s cell in its option grid, whose rows are
+the layer&#x27;s distinct team-1 faction/unit sides and whose columns are its team-2 sides. Every grid for one layer data
+version uses the same low-bit width, sized to the largest grid, so an id decodes with a shift, a division and two table
+reads and stays under 2^30, where JS keeps integers unboxed. Ids ascend in the table&#x27;s row order, and the engine maps
+one to its row through a per-pattern cell table without searching. <code>LC.denseIdLayout</code> derives the grids from the layer
+components and <code>Store::index_dense_ids</code> from the artifact; both hosts check that the two agree when the engine loads.</p>
+<p>A dense id only means something against the layer data that produced it, which decides where each form is used:</p>
+<ul>
+<li><strong>In memory and over the socket</strong>, ids are dense. A socket names the hash of the layer data its page loaded, and
+the server refuses everything but the config to a socket on any other (<code>C.LayerDataSession</code>), so both ends always
+read one id as one layer. The page reloads when refused.</li>
+<li><strong>At rest</strong>, ids are canonical text. <code>L.LayerIdSchema</code> is a zod codec that decodes a dense id, canonical text, the
+abbreviated format SLM used before (<code>GD-RAAS-V1:USA-CA:RGF-CA</code>) and its <code>RAW:</code> form, and encodes to canonical text.
+Rows read through the same schema they are written with (<code>z.encode</code> on app events and rotations), or through a
+targeted encoder where the schema cannot encode (server events, the saved queue), and plain text columns convert
+explicitly (<code>L.readStoredLayerId</code>, <code>L.toLayerText</code>). Filters keep the layers they select as canonical text.</li>
+<li><code>StoredLayerIds</code> rewrites ids history still holds in an older format into canonical text, once per layer data, while
+the layer data can still read their abbreviations.</li>
+</ul>
 <p>The set of columns is not fixed: <code>layer-columns.models.ts</code> combines base columns with server-configurable extra columns
 into an <code>EffectiveColumnConfig</code>, and downstream query state is memoized against that object, so the same columns
 must always produce the same object.</p>
@@ -746,7 +769,7 @@ must always produce the same object.</p>
 sorting, paging, distinct values and weighted random selection. <strong>One module serves both hosts:</strong> the server and the
 browser&#x27;s query worker load the same <code>.wasm</code>. It is immutable for its lifetime. That makes caching evaluated bitsets
 safe and shipping the same engine to both sides practical.</p>
-<p><strong>Nothing is stored per row.</strong> Rows are packed-id order, which groups them into one contiguous block per layer, and a
+<p><strong>Nothing is stored per row.</strong> Rows are layer-id order, which groups them into one contiguous block per layer, and a
 block&#x27;s rows are the cross product of that layer&#x27;s faction/unit availability. That makes the row space highly redundant,
 and the store exploits it: a layer&#x27;s own columns are held once per block (928 of them), the per-team columns once per
 distinct availability pattern (314, shared by every block that repeats one), and the score columns once per (layer,
