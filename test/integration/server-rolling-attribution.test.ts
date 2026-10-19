@@ -57,6 +57,10 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		// into the wholesale RESET -- it must never surface as an individual team-change event for anyone
 		expect(app.countEventsFor('PLAYER_CHANGED_TEAM', stayer.eos, newMatch.id)).toBe(0)
 
+		// The sync above can complete on the roll's first poll, which reports the stayer team-less
+		// (World.sortTeamsLateOnRoll). A switch before the app sees the stayer placed can't be told from the placement.
+		await app.waitForRosterSync()
+
 		// well after the roll has settled -- analogous to the real ~3-5s post-Bringing-World lockout having
 		// elapsed -- the player organically switches teams themselves
 		stayer.teamId = stayer.teamId === 1 ? 2 : 1
