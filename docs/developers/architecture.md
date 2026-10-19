@@ -724,8 +724,9 @@ A dense id is the layer index in the high bits, and in the low bits the layer's 
 the layer's distinct team-1 faction/unit sides and whose columns are its team-2 sides. Every grid for one layer data
 version uses the same low-bit width, sized to the largest grid, so an id decodes with a shift, a division and two table
 reads and stays under 2^30, where JS keeps integers unboxed. Ids ascend in the table's row order, and the engine maps
-one to its row through a per-pattern cell table without searching. `LC.denseIdLayout` derives the grids from the layer
-components and `Store::index_dense_ids` from the artifact; both hosts check that the two agree when the engine loads.
+one to its row through a per-pattern cell table without searching. `LC.denseIdLayout` is the layout's only definition.
+When a host loads the engine, `LA.patternRowCells` computes every pattern row's cell from it and hands the cells to the
+engine, which only indexes them. A table and layer data that do not belong together fail there, on a row with no cell.
 
 A dense id only means something against the layer data that produced it, which decides where each form is used:
 

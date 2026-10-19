@@ -53,7 +53,7 @@ describe.skipIf(!fs.existsSync(WASM_PATH))('solveRepeatViolations', () => {
 		const pair = LayerArtifacts.resolvePair()
 		const bytes = fs.readFileSync(pair.tableLoadPath)
 		const artifact = pair.tableLoadPath.endsWith('.gz') ? zlib.gunzipSync(bytes) : bytes
-		const engine = await LayerEngine.create(fs.readFileSync(WASM_PATH), artifact)
+		const engine = await LayerEngine.create(fs.readFileSync(WASM_PATH), artifact, LC.denseIdLayout())
 		ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(), filters: new Map(), engine } as unknown as QueryCtx
 
 		// a handful of maps, so the random queues repeat often

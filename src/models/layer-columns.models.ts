@@ -634,8 +634,8 @@ export function dbValues(
 // Dense layer ids: the layer index shifted left by `localBits`, or'd with the layer's cell in its option grid. A grid's
 // rows are the layer's distinct team-1 sides and its columns the team-2 sides, where a side is
 // faction index * unit count + unit index, both ascending, and cell = row * columns + column. Ids ascend in the layer
-// table's row order, so the artifact needs nothing new to carry them. Store::index_dense_ids in layer-engine derives
-// the same grids from the artifact, and checkDenseIdLayout compares the two.
+// table's row order, so the artifact needs nothing new to carry them. This is the layout's only definition: the engine
+// reads ids from the cells LA.patternRowCells computes with it.
 //
 // A cell names a layer unless it puts one faction against itself on a layer that is not Training, which is the only
 // pairing preprocess drops.
@@ -723,45 +723,9 @@ const denseIdLayoutOf = LDC.derived((components): DenseIdLayout => {
 	return { localBits, grids, factions, units }
 })
 
-function gridDigest(grid: DenseIdGrid) {
-	let digest = FNV_OFFSET
-	for (const sides of grid.sides) {
-		digest = fnvU32(digest, sides.length)
-		for (const side of sides) digest = fnvU32(digest, side)
-	}
-	return digest
-}
-
-// Describes where the engine's id layout and this one disagree, or returns undefined when every layer the engine
-// holds has the same grid here. The components may hold layers the table has no rows for (a table built by an older
-// preprocess drops some Training layers), and those are fine: their ids name no row, like any other unknown layer.
-// `engine` is the engine's idLayout response (LE.IdLayoutResponse)
-export function checkDenseIdLayout(engine: { localBits: number; grids: [number, number][] }, layout = denseIdLayout()): string | undefined {
-	if (engine.localBits !== layout.localBits) {
-		return `the engine packs layer ids into ${engine.localBits} local bits, the layer components into ${layout.localBits}`
-	}
-	for (const [layer, digest] of engine.grids) {
-		const grid = layout.grids[layer]
-		if (!grid || gridDigest(grid) !== digest)
-			return `layer ${layer} has a different option grid in the engine than in the layer components`
-	}
-	return undefined
-}
-
 // bits needed to hold every value below `count`
 function bitsFor(count: number) {
 	return count <= 1 ? 0 : 32 - Math.clz32(count - 1)
-}
-
-const FNV_OFFSET = 0x811c9dc5
-
-// 32-bit FNV-1a over a u32's little-endian bytes. Mirrors Fnv in layer-engine/src/store.rs.
-export function fnvU32(hash: number, value: number) {
-	for (let shift = 0; shift < 32; shift += 8) {
-		hash ^= (value >>> shift) & 0xff
-		hash = Math.imul(hash, 0x01000193) >>> 0
-	}
-	return hash
 }
 
 // the dense id of a layer given as component indexes, or -1 when the components hold no such layer
@@ -769,8 +733,9 @@ export function denseId(layer: number, faction1: number, unit1: number, faction2
 	const grid = layout.grids[layer]
 	if (!grid) return -1
 	if (faction1 === faction2 && !grid.training) return -1
-	const i = grid.positions[0][faction1 * layout.units + unit1]
-	const j = grid.positions[1][faction2 * layout.units + unit2]
+	// an index past the components' own lists reads as no side
+	const i = grid.positions[0][faction1 * layout.units + unit1] ?? -1
+	const j = grid.positions[1][faction2 * layout.units + unit2] ?? -1
 	if (i === -1 || j === -1) return -1
 	return (layer << layout.localBits) | (i * grid.sides[1].length + j)
 }
