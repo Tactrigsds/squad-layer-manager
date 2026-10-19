@@ -944,10 +944,10 @@ export const CURRENT_APP_EVENT_VERSION = 1
 export function toRow(e: AppEvent, redact: RedactSettingValue): SchemaModels.NewAppEvent {
 	// Encoded through the same schema rows are read with, so every layer id the payload holds is stored as canonical
 	// text. An event that fails its schema is still written (and dropped, with its id named, on read), so its layer
-	// ids are converted by field name instead.
+	// ids are converted by field name instead, as are those in a plugin event's payload, which its schema leaves untyped.
 	const encoded = z.safeEncode(AppEventSchema, e)
 	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = (
-		encoded.success ? encoded.data : withLayerIdsAsText(e)
+		!encoded.success ? withLayerIdsAsText(e) : e.type === 'PLUGIN_EVENT' ? withLayerIdsAsText(encoded.data) : encoded.data
 	) as AppEvent
 	// credentials are stripped here rather than only at the emitters: this is the one path into the table, so no
 	// future caller can persist a credential by forgetting to redact it first

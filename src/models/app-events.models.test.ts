@@ -40,6 +40,25 @@ describe('app-events persistence', () => {
 		expect(back).toEqual(e)
 	})
 
+	it("stores the layer ids in a plugin event's untyped payload as text", () => {
+		const layerId = L.fromLayerText('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+		expect(typeof layerId).toBe('number')
+		const e = AppEvents.create<AppEvents.PluginEvent>({
+			type: 'PLUGIN_EVENT',
+			actor: { type: 'plugin', pluginId: 'p1' },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			pluginId: 'p1',
+			name: 'seeded',
+			payload: { seedLayerId: layerId, history: { layerIds: [layerId] }, count: 3 },
+			message: 'seeded',
+		})
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any) as AppEvents.PluginEvent
+		const text = 'Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+		expect(back.payload).toEqual({ seedLayerId: text, history: { layerIds: [text] }, count: 3 })
+	})
+
 	it('returns null when the persisted payload fails validation', () => {
 		const e = AppEvents.create<AppEvents.VoteStarted>({
 			type: 'VOTE_STARTED',
