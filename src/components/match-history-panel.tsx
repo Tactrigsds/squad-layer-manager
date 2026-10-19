@@ -454,12 +454,24 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 
 	// Build outcome display if available
 	if (spoilersHidden) {
-		outcomeDisp = <SpoilerRedaction stores={stores} className="h-4 w-20" />
+		outcomeDisp = (
+			<OutcomeSlot>
+				<SpoilerRedaction stores={stores} className="h-4 col-span-full" />
+			</OutcomeSlot>
+		)
 	} else if (entry.status === 'post-game') {
 		if (entry.outcome.type === 'draw') {
-			outcomeDisp = <span className="text-sm">{tr.text(MH_Msgs.draw())}</span>
+			outcomeDisp = (
+				<OutcomeSlot>
+					<span className="col-span-full text-center">{tr.text(MH_Msgs.draw())}</span>
+				</OutcomeSlot>
+			)
 		} else if (entry.outcome.type === 'unknown') {
-			outcomeDisp = <span className="text-sm">-</span>
+			outcomeDisp = (
+				<OutcomeSlot>
+					<span className="col-start-3 text-center">-</span>
+				</OutcomeSlot>
+			)
 		} else {
 			// Determine win/loss status
 			let team1Status = entry.outcome.type === 'team1' ? 'W' : 'L'
@@ -474,19 +486,28 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 			}
 
 			outcomeDisp = (
-				<span data-tour="mh-outcome" className="font-mono">
-					{team1Tickets}{' '}
-					<b className={team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{tr.text(MH_Msgs.resultMark(team1Status === 'W'))}</b> -{' '}
-					<b className={team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]'}>{tr.text(MH_Msgs.resultMark(team2Status === 'W'))}</b>{' '}
-					{team2Tickets}
-				</span>
+				<OutcomeSlot>
+					<span className="text-end">{team1Tickets}</span>{' '}
+					<b className={cn('text-center', team1Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]')}>
+						{tr.text(MH_Msgs.resultMark(team1Status === 'W'))}
+					</b>{' '}
+					<span className="text-center">-</span>{' '}
+					<b className={cn('text-center', team2Status === 'W' ? 'text-ok' : 'text-[#ef7c7a]')}>
+						{tr.text(MH_Msgs.resultMark(team2Status === 'W'))}
+					</b>{' '}
+					<span className="text-start">{team2Tickets}</span>
+				</OutcomeSlot>
 			)
 		}
 	} else if (!entry.isCurrentMatch) {
-		outcomeDisp = <span className="text-sm">-</span>
+		outcomeDisp = (
+			<OutcomeSlot>
+				<span className="col-start-3 text-center">-</span>
+			</OutcomeSlot>
+		)
 	} else {
 		outcomeDisp = (
-			<React.Suspense fallback={null}>
+			<React.Suspense fallback={<OutcomeSlot />}>
 				<LiveMatchTickets stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 			</React.Suspense>
 		)
@@ -546,14 +567,18 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		</>
 	)
 
-	const kd = spoilersHidden ? null : entry.isCurrentMatch ? (
-		<React.Suspense fallback={null}>
+	const kd = spoilersHidden ? (
+		<KdPlaceholder />
+	) : entry.isCurrentMatch ? (
+		<React.Suspense fallback={<KdPlaceholder />}>
 			<LiveMatchKd stores={stores} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 		</React.Suspense>
+	) : entry.combatStats ? (
+		<MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
 	) : (
-		entry.combatStats && <MatchKd stats={entry.combatStats} parity={entry.ordinal} normalized={globalSettings.displayTeamsNormalized} />
+		<KdPlaceholder />
 	)
-	const matchKd = kd && (
+	const matchKd = (
 		<span data-tour="mh-kd" className="inline-flex">
 			{kd}
 		</span>
@@ -707,11 +732,27 @@ function LiveMatchTickets(props: { stores: SquadServerFrame.KeyProp; parity: num
 		ClientOnlySettingsStore,
 		StatsModels.Sel.liveTickets,
 	)
-	if (!tickets) return null
+	if (!tickets) return <OutcomeSlot />
 	const [left, right] = props.normalized && props.parity % 2 === 1 ? [tickets[1], tickets[0]] : tickets
 	return (
-		<span data-tour="mh-outcome" className="font-mono" aria-label={tr.text(MH_Msgs.tickets())}>
-			{left} - {right}
+		<OutcomeSlot label={tr.text(MH_Msgs.tickets())}>
+			<span className="text-end">{left}</span> <span className="col-start-3 text-center">-</span>{' '}
+			<span className="col-start-5 text-start">{right}</span>
+		</OutcomeSlot>
+	)
+}
+
+// One grid for every kind of outcome: tickets, result marks and the dash take the same tracks in every row, so they
+// line up down the column. The minimums fit three-digit tickets and one-character marks. The spaces between items take
+// no room in a grid, and keep the text readable when copied or read aloud.
+function OutcomeSlot(props: { label?: string; children?: React.ReactNode }) {
+	return (
+		<span
+			data-tour="mh-outcome"
+			aria-label={props.label}
+			className="inline-grid shrink-0 grid-cols-[minmax(3ch,auto)_minmax(1ch,auto)_minmax(1ch,auto)_minmax(1ch,auto)_minmax(3ch,auto)] items-center gap-x-[1ch] font-mono whitespace-nowrap"
+		>
+			{props.children}
 		</span>
 	)
 }
@@ -727,14 +768,14 @@ function LiveMatchKd(props: { stores: SquadServerFrame.KeyProp; parity: number; 
 		ClientOnlySettingsStore,
 		StatsModels.Sel.liveCombatStats,
 	)
-	if (!stats) return null
+	if (!stats) return <KdPlaceholder />
 	return <MatchKd stats={stats} parity={props.parity} normalized={props.normalized} />
 }
 
 // A match's scoreline in one number: the K/D of the team that came out ahead, coloured for and pointing at that
 // team. Everything it is drawn from is in the tooltip.
 function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized: boolean }) {
-	if (!MH.hasCombat(props.stats)) return null
+	if (!MH.hasCombat(props.stats)) return <KdPlaceholder />
 	const sides = MH.getDisplayedTeamOrder(props.parity, props.normalized).map((normedTeam) => {
 		const teamId = MH.getDenormedTeamId(normedTeam, props.parity)
 		return {
@@ -754,11 +795,12 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 				<span
 					// the tint follows the number, so the badge reads as the favoured team's without a second colour to keep in sync
 					style={{ color: favoured.color, backgroundColor: 'color-mix(in oklab, currentColor 14%, transparent)' }}
-					className="inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5"
+					className={KD_BADGE_CLASS}
 				>
-					{favoursStart && <Icons.ChevronLeft className="rtl:-scale-x-100" />}
-					{Str.formatRatio(favoured.stats.kills, favoured.stats.deaths)}
-					{!favoursStart && <Icons.ChevronRight className="rtl:-scale-x-100" />}
+					{/* both chevrons always take their space, and the ratio a fixed minimum, so every badge is one width */}
+					<Icons.ChevronLeft className={cn('rtl:-scale-x-100', !favoursStart && 'invisible')} />
+					<span className="min-w-[4ch] text-center">{Str.formatRatio(favoured.stats.kills, favoured.stats.deaths)}</span>
+					<Icons.ChevronRight className={cn('rtl:-scale-x-100', favoursStart && 'invisible')} />
 				</span>
 			</TooltipTrigger>
 			<TooltipContent>
@@ -788,6 +830,19 @@ function MatchKd(props: { stats: MH.MatchCombatStats; parity: number; normalized
 				</table>
 			</TooltipContent>
 		</Tooltip>
+	)
+}
+
+const KD_BADGE_CLASS = 'inline-flex items-center gap-px h-4 px-1 rounded-sm font-mono text-[11px] [&_svg]:size-2.5'
+
+// takes a badge's room in a match with no K/D to show, so the outcome and badge pair is one width in every row
+function KdPlaceholder() {
+	return (
+		<span aria-hidden className={cn(KD_BADGE_CLASS, 'invisible')}>
+			<Icons.ChevronLeft />
+			<span className="min-w-[4ch]" />
+			<Icons.ChevronRight />
+		</span>
 	)
 }
 
