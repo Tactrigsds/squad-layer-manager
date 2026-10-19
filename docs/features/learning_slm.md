@@ -21,7 +21,8 @@ ask for an action, such as warning a player or adding a layer, and wait until it
 
 ![the first step of the player management tutorial](../images/features/tutorial_welcome.png)
 
-A tutorial's contents can be searched to jump straight to a topic.
+Each tutorial is split into chapters, and can be started from any of them on the _Tutorials_ page. A tutorial's
+contents can be searched to jump straight to a topic.
 
 ![the contents of the player management tutorial](../images/features/tutorial_contents.png)
 

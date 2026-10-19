@@ -10,7 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser'
 import * as Zus from '@/lib/zustand'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
-import type * as TUT from '@/models/tutorial.models'
+import * as TUT from '@/models/tutorial.models'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 import * as TutorialsClient from '@/systems/tutorials.client'
@@ -39,7 +39,7 @@ export default function TutorialsPage() {
 			<Card className="py-0">
 				<ul>
 					{listed.map((meta) => (
-						<li key={meta.id} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+						<li key={meta.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b px-4 py-3 last:border-b-0">
 							<TutorialRow meta={meta} run={run} progress={(progress.data ?? []).find((p) => p.scenarioId === meta.id)} />
 						</li>
 					))}
@@ -121,6 +121,41 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; progres
 					{starting ? <StartingLabel /> : tr.text(completed || active ? TUT_Msgs.replay() : TUT_Msgs.start())}
 				</Button>
 			)}
+			<Chapters scenarioId={meta.id} progress={progress} resumable={!!resumeAt} busy={busy} />
 		</>
+	)
+}
+
+// The tutorial's chapters, marked done up to the saved place. Each starts the tutorial from that chapter.
+function Chapters(props: { scenarioId: TUT.ScenarioId; progress?: TUT.Progress; resumable: boolean; busy: boolean }) {
+	const { scenarioId, progress, resumable, busy } = props
+	const chapters: readonly TUT.Chapter[] = TUT.CHAPTERS[scenarioId]
+	const reached = progress?.completed
+		? chapters.length
+		: progress?.stepId
+			? Math.max(0, TUT.chapterIndexOf(scenarioId, progress.stepId))
+			: 0
+	return (
+		<div role="group" aria-label={tr.text(TUT_Msgs.chapters())} className="flex basis-full flex-wrap gap-1.5">
+			{chapters.map((chapter, i) => {
+				const current = resumable && i === reached
+				return (
+					<button
+						key={chapter.id}
+						type="button"
+						title={tr.text(TUT_Msgs.startFromChapter())}
+						disabled={busy}
+						onClick={() => void Tour.Actions.startChapter(scenarioId, chapter.id)}
+						className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs hover:bg-accent disabled:opacity-50 ${current ? 'border-info bg-info/15 text-foreground' : i < reached ? 'text-muted-foreground' : ''}`}
+					>
+						<span
+							aria-hidden="true"
+							className={`h-2 w-2 shrink-0 rounded-full ${i < reached ? 'bg-info' : current ? 'border-2 border-info' : 'border-[1.5px] border-muted-foreground'}`}
+						/>
+						{tr.text(TUT_Msgs.chapterName(scenarioId, chapter.id))}
+					</button>
+				)
+			})}
+		</div>
 	)
 }

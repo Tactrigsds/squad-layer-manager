@@ -16,8 +16,9 @@ import * as Tour from '@/systems/tour.client'
 
 // The tutorial tour overlay: a root portal that dims the dashboard, spotlights the anchored element, and shows the
 // coachmark card. Renders Tour.Store and calls Tour.Actions. Visual per the approved mock: medium dim + 2px ring +
-// glow cutout, a card with a numbered badge, a top progress bar and "Step N of M", and a Restart control that
-// re-requests the current step's stage (promoted to the primary Retry when a stage is not ready).
+// glow cutout, a card headed by its chapter's name and one dot per step of that chapter, a card between chapters,
+// and a Restart control that re-requests the current step's stage (promoted to the primary Retry when a stage is not
+// ready). The overall step count is deliberately never shown.
 
 const ACCENT = '#3b82f6'
 const GAP = 12 // px between the anchor and the card
@@ -176,8 +177,9 @@ function StartingCard({ scenarioId }: { scenarioId: TUT.ScenarioId }) {
 function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }> }) {
 	const run = Tour.activeRun()
 	const step = Tour.stepAt(state.scenarioId, state.stepIdx)
-	// resolved here rather than in AnchoredStep because the portal's own layer is derived from it
-	const anchorTarget = run && step ? Tour.resolveAnchor(run, step.anchor) : null
+	// resolved here rather than in AnchoredStep because the portal's own layer is derived from it. The chapter-end
+	// card points at nothing, though its stepIdx names the next step.
+	const anchorTarget = run && step && state.code !== 'chapter-end' ? Tour.resolveAnchor(run, step.anchor) : null
 	const anchorEls = useAnchorEls(anchorTarget)
 	const zIndex = useStackZIndex(anchorEls[0] ?? null)
 	if (!run || !step) return null
@@ -185,6 +187,11 @@ function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }
 	const body =
 		state.code === 'paused' ? (
 			<DockedCard serverId={run.serverId} />
+		) : state.code === 'chapter-end' ? (
+			<>
+				<ChapterEndCard state={state} />
+				<NavPanel state={state} run={run} />
+			</>
 		) : (
 			<>
 				<AnchoredStep
@@ -413,8 +420,8 @@ function Card(props: {
 	total: number
 }) {
 	const { state, step, rendered, anchorRect, spotRect, total } = props
-	const stepNo = state.stepIdx + 1
 	const isLast = state.stepIdx === total - 1
+	const chapter = Tour.chapterAt(state.scenarioId, state.stepIdx)
 	const notReady = state.code === 'stage-not-ready'
 	const failed = state.code === 'stage-failed'
 	const staging = state.code === 'staging'
@@ -433,18 +440,11 @@ function Card(props: {
 		<div
 			ref={cardRef}
 			data-tour-anchor={props.anchor}
-			className="absolute w-max rounded-lg border border-line-soft bg-ground p-3.5 pt-4 text-text shadow-2xl"
+			data-tour-step={step.id}
+			className="absolute w-max rounded-lg border border-line-soft bg-ground p-3.5 text-text shadow-2xl"
 			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, card.w, card.h) }}
 		>
-			<div
-				className={`absolute -inset-s-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
-			>
-				{stepNo}
-			</div>
-			<div className="mb-0.5 text-[11px] text-text-3">{tr.text(TUT_Msgs.stepCounter(stepNo, total))}</div>
-			<div className="mb-2.5 h-[3px] overflow-hidden rounded-full bg-ground">
-				<div className={`h-full ${accent}`} style={{ width: `${(stepNo / Math.max(1, total)) * 100}%` }} />
-			</div>
+			{chapter && <ChapterHeader scenarioId={state.scenarioId} chapter={chapter} stepIdx={state.stepIdx} accent={accent} />}
 			<h3 className={`text-sm font-semibold ${notReady || failed ? 'text-warn' : ''}`}>
 				{failed ? tr.text(APP_Msgs.somethingWentWrong()) : rendered.title}
 			</h3>
@@ -476,6 +476,79 @@ function Card(props: {
 				</div>
 			</div>
 		</div>
+	)
+}
+
+// The chapter's name, and a dot for each of its steps: the ones behind the reader filled, the current one wider.
+function ChapterHeader(props: { scenarioId: TUT.ScenarioId; chapter: Tour.ChapterSpan; stepIdx: number; accent: string }) {
+	const { scenarioId, chapter, stepIdx, accent } = props
+	const dots: React.ReactNode[] = []
+	for (let i = chapter.start; i < chapter.end; i++) {
+		dots.push(
+			<span
+				key={i}
+				className={`block h-1.5 rounded-full ${i === stepIdx ? 'w-3.5' : 'w-1.5'} ${i <= stepIdx ? accent : 'bg-line-soft'}`}
+			/>,
+		)
+	}
+	return (
+		<div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<span className="text-[11px] font-semibold text-info">{tr.text(TUT_Msgs.chapterName(scenarioId, chapter.id))}</span>
+			<div className="flex items-center gap-[3px]" aria-hidden="true">
+				{dots}
+			</div>
+		</div>
+	)
+}
+
+// Shown in place of a step between one chapter and the next, over a full dim.
+function ChapterEndCard({ state }: { state: ChapterEndState }) {
+	const done = Tour.chapterAt(state.scenarioId, state.stepIdx - 1)
+	const next = Tour.chapterAt(state.scenarioId, state.stepIdx)
+	return (
+		<>
+			<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)', pointerEvents: 'auto' }} />
+			<section
+				data-tour-chapter-end=""
+				aria-labelledby="tour-chapter-end-title"
+				className="absolute start-1/2 top-1/2 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-soft bg-ground p-4 text-text shadow-2xl rtl:translate-x-1/2"
+				style={{ pointerEvents: 'auto' }}
+			>
+				<div className="flex items-center gap-2.5">
+					<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-info text-white" aria-hidden="true">
+						<Icons.Check className="h-3.5 w-3.5" strokeWidth={3} />
+					</span>
+					<div>
+						<div className="text-[11px] text-text-3">{tr.text(TUT_Msgs.chapterComplete())}</div>
+						<h3 id="tour-chapter-end-title" className="text-sm font-semibold">
+							{done && tr.text(TUT_Msgs.chapterName(state.scenarioId, done.id))}
+						</h3>
+					</div>
+				</div>
+				{next && (
+					<p className={`mt-3 border-t border-line-soft pt-3 text-xs font-semibold text-info ${BODY_MEASURE}`}>
+						{tr.text(TUT_Msgs.upNext(tr.text(TUT_Msgs.chapterName(state.scenarioId, next.id))))}
+					</p>
+				)}
+				<div className="mt-3 flex items-center justify-between gap-2">
+					<button
+						type="button"
+						className="rounded px-1 py-1 text-xs text-text-3 hover:text-text"
+						onClick={() => void Tour.Actions.exit()}
+					>
+						{tr.text(TUT_Msgs.stopHere())}
+					</button>
+					<button
+						type="button"
+						autoFocus
+						className="rounded-md bg-info px-2.5 py-1 text-xs text-white"
+						onClick={() => Tour.Actions.continueChapter()}
+					>
+						{tr.text(TUT_Msgs.continueTutorial())}
+					</button>
+				</div>
+			</section>
+		</>
 	)
 }
 
@@ -515,7 +588,7 @@ function CardActions(props: {
 const NAV_BTN =
 	'flex h-7 w-7 items-center justify-center rounded text-text hover:bg-ground hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text'
 
-function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStores }) {
+function NavPanel({ state, run }: { state: NavState; run: Tour.RunStores }) {
 	const [tocOpen, setTocOpen] = React.useState(false)
 	const idx = state.stepIdx
 	const total = Tour.stepCount(state.scenarioId)
@@ -570,18 +643,25 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 	)
 }
 
-function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () => void }) {
+// The steps grouped by chapter. Only the current chapter starts expanded; a search expands every chapter it matches in.
+function Toc(props: { state: NavState; run: Tour.RunStores; onPick: () => void }) {
 	const { state, run, onPick } = props
 	const steps = Tour.stepsOf(state.scenarioId)
+	const chapters = Tour.chaptersOf(state.scenarioId)
+	const current = Tour.chapterAt(state.scenarioId, state.stepIdx)
 	const [query, setQuery] = React.useState('')
+	const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(() => new Set(current ? [current.id] : []))
 	const currentRef = React.useRef<HTMLButtonElement>(null)
 	React.useEffect(() => {
 		currentRef.current?.scrollIntoView({ block: 'center' })
 	}, [])
 	const q = query.trim().toLowerCase()
-	const items = steps
-		.map((step, i) => ({ step, i, title: Tour.renderMsg(run, step.msg).title }))
-		.filter((item) => !q || item.title.toLowerCase().includes(q))
+	const toggle = (id: string) =>
+		setExpanded((prev) => {
+			const next = new Set(prev)
+			if (!next.delete(id)) next.add(id)
+			return next
+		})
 	return (
 		<nav
 			aria-label={tr.text(TUT_Msgs.tableOfContents())}
@@ -596,24 +676,62 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 				onChange={(event) => setQuery(event.currentTarget.value)}
 			/>
 			<div className="max-h-[50vh] overflow-y-auto pb-1">
-				{items.map(({ step, i, title }) => {
-					const current = i === state.stepIdx
+				{chapters.map((chapter) => {
+					const items = steps
+						.slice(chapter.start, chapter.end)
+						.map((step, k) => ({ step, i: chapter.start + k, title: Tour.renderMsg(run, step.msg).title }))
+						.filter((item) => !q || item.title.toLowerCase().includes(q))
+					if (q && items.length === 0) return null
+					const open = !!q || expanded.has(chapter.id)
+					const done = chapter.end <= state.stepIdx
+					const isCurrent = chapter === current
 					return (
-						<button
-							key={step.id}
-							ref={current ? currentRef : undefined}
-							type="button"
-							onClick={() => {
-								onPick()
-								void Tour.Actions.jump(i)
-							}}
-							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-start text-xs hover:bg-ground ${current ? 'bg-ground text-white' : 'text-text'}`}
-						>
-							<span className={`w-6 shrink-0 text-end font-mono text-[10px] ${current ? 'text-info' : 'text-text-3'}`}>{i + 1}</span>
-							<span className="truncate" title={title}>
-								{title}
-							</span>
-						</button>
+						<div key={chapter.id}>
+							<button
+								type="button"
+								aria-expanded={open}
+								onClick={() => toggle(chapter.id)}
+								className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-start text-xs hover:bg-ground ${isCurrent ? 'font-semibold' : ''} ${done ? 'text-text-3' : 'text-text'}`}
+							>
+								<span
+									aria-hidden="true"
+									className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full ${done ? 'bg-info text-white' : isCurrent ? 'border-2 border-info' : 'border-2 border-line-soft'}`}
+								>
+									{done && <Icons.Check className="h-2.5 w-2.5" strokeWidth={4} />}
+								</span>
+								<span className="min-w-0 grow truncate">{tr.text(TUT_Msgs.chapterName(state.scenarioId, chapter.id))}</span>
+								{open ? (
+									<Icons.ChevronDown className="h-3 w-3 shrink-0 text-text-3" />
+								) : (
+									<Icons.ChevronRight className="h-3 w-3 shrink-0 text-text-3 rtl:-scale-x-100" />
+								)}
+							</button>
+							{open &&
+								items.map(({ step, i, title }) => {
+									const here = i === state.stepIdx
+									return (
+										<button
+											key={step.id}
+											ref={here ? currentRef : undefined}
+											type="button"
+											data-tour-toc-step={step.id}
+											onClick={() => {
+												onPick()
+												void Tour.Actions.jump(i)
+											}}
+											className={`flex w-full items-center gap-2 py-1 ps-8 pe-2.5 text-start text-xs hover:bg-ground ${here ? 'bg-ground text-white' : i < state.stepIdx ? 'text-text-3' : 'text-text'}`}
+										>
+											<span
+												aria-hidden="true"
+												className={`h-1.5 w-1.5 shrink-0 rounded-full ${i <= state.stepIdx ? 'bg-info' : 'bg-line-soft'}`}
+											/>
+											<span className="truncate" title={title}>
+												{title}
+											</span>
+										</button>
+									)
+								})}
+						</div>
 					)
 				})}
 			</div>
@@ -640,3 +758,5 @@ function DockedCard({ serverId }: { serverId: string }) {
 }
 
 type AnchoredStepState = Extract<Tour.TourState, { code: 'staging' | 'narrating' | 'stage-not-ready' | 'stage-failed' }>
+type ChapterEndState = Extract<Tour.TourState, { code: 'chapter-end' }>
+type NavState = AnchoredStepState | ChapterEndState

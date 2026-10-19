@@ -32,6 +32,8 @@ const TUTORIAL = 'The layer queue'
 const STEP = {
 	welcome: 'Welcome',
 	queueItems: 'Queue items',
+	repeatIndicators: 'Repeat indicators',
+	openLayerDetails: 'Open the details',
 	startEditing: 'Start editing',
 	addedLayers: 'Your added layers',
 	removeItem: 'Remove an item',
@@ -139,8 +141,20 @@ async function jumpTo(page: Page, title: string) {
 	await overlay(page).getByRole('button', { name: 'Contents' }).click()
 	const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })
 	await contents.getByRole('searchbox', { name: 'Search steps' }).fill(title)
-	await contents.getByRole('button', { name: title }).first().click()
+	await tocSteps(page).filter({ hasText: title }).first().click()
 	await onStep(page, title)
+}
+
+// the contents' step entries, without the chapter headings they sit under
+function tocSteps(page: Page) {
+	return overlay(page).getByRole('navigation', { name: 'Tutorial contents' }).locator('[data-tour-toc-step]')
+}
+
+// opens the contents with every chapter expanded, where they otherwise open with only the current one
+async function openAllContents(page: Page) {
+	await overlay(page).getByRole('button', { name: 'Contents' }).click()
+	const collapsed = overlay(page).getByRole('navigation', { name: 'Tutorial contents' }).locator('button[aria-expanded="false"]')
+	while ((await collapsed.count()) > 0) await collapsed.first().click()
 }
 
 test('the layer queue tutorial, started and navigated out of order', async ({ page, browser }) => {
@@ -191,14 +205,24 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		// the run stands up its own scoped server and the tour navigates to that dashboard
 		await expect(page).toHaveURL(new RegExp(`/servers/tutorial-${USER.discordId}`), { timeout: 60_000 })
 		await onStep(page, STEP.welcome)
-		await expect(overlay(page).getByText('Step 1 of')).toBeVisible()
+		await expect(overlay(page).locator('[data-tour-step="welcome"]')).toBeVisible()
 		// both panels stay mounted in one grid cell, so a tour left on Teams would narrate a queue nothing shows
 		await expect(Dash.queueSection(page)).toBeVisible()
 	})
 
 	await test.step('the card button advances', async () => {
 		await overlay(page).getByRole('button', { name: 'Next', exact: true }).click()
-		await expect(overlay(page).getByText('Step 2 of')).toBeVisible()
+		await expect(overlay(page).locator('[data-tour-step="sandbox"]')).toBeVisible()
+	})
+
+	await test.step("a chapter's last step moves on through the chapter-end card", async () => {
+		await jumpTo(page, STEP.repeatIndicators)
+		await overlay(page).getByRole('button', { name: 'Next', exact: true }).click()
+		const chapterEnd = overlay(page).locator('[data-tour-chapter-end]')
+		await expect(chapterEnd.getByRole('heading', { name: 'Reading the queue', exact: true })).toBeVisible()
+		await expect(chapterEnd.getByText('Up next: Layer details')).toBeVisible()
+		await chapterEnd.getByRole('button', { name: 'Continue' }).click()
+		await onStep(page, STEP.openLayerDetails)
 	})
 
 	await test.step('a forward jump provisions the state its step is about', async () => {
@@ -285,14 +309,13 @@ test('the player management tutorial, acted on and navigated out of order', asyn
 
 	const PM_TUTORIAL = 'Player management'
 	const row = (name: string) => page.locator(`[data-tour="teams-panel"] [data-tour="player-row"][data-tour-player="${name}"]`)
-	// several titles contain another ("Timeouts", "Active timeouts"), so an entry, named "<number> <title>", is
-	// matched whole
+	// several titles contain another ("Timeouts", "Active timeouts"), so an entry is matched whole
 	async function jumpToExact(title: string) {
 		await overlay(page).getByRole('button', { name: 'Contents' }).click()
 		const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })
 		await contents.getByRole('searchbox', { name: 'Search steps' }).fill(title)
-		await contents
-			.getByRole('button', { name: new RegExp(`^\\d+ ${title}$`) })
+		await tocSteps(page)
+			.filter({ hasText: new RegExp(`^${title}$`) })
 			.first()
 			.click()
 		await onStep(page, title)
@@ -303,12 +326,15 @@ test('the player management tutorial, acted on and navigated out of order', asyn
 		await page.getByRole('menuitem', { name: item, exact: true }).click()
 	}
 
-	await test.step('the index page starts a run', async () => {
+	await test.step('the index page starts a run from a chapter', async () => {
 		await page.goto(app.loginUrl(USER, '/tutorials'))
 		const entry = page.getByRole('listitem').filter({ hasText: PM_TUTORIAL })
-		await entry.getByRole('button', { name: 'Start', exact: true }).click({ timeout: 20_000 })
+		await entry
+			.getByRole('group', { name: 'Chapters' })
+			.getByRole('button', { name: 'Match history', exact: true })
+			.click({ timeout: 20_000 })
 		await expect(page).toHaveURL(new RegExp(`/servers/tutorial-${USER.discordId}`), { timeout: 60_000 })
-		await onStep(page, 'Welcome')
+		await onStep(page, 'Match History')
 	})
 
 	await test.step('the match history holds the matches played before the reader arrived', async () => {
@@ -453,22 +479,24 @@ test('every step of every tutorial sets up and finds its anchor', async ({ page 
 				.getByRole('button', { name: /^(Start|Replay)$/ })
 				.first()
 				.click({ timeout: 20_000 })
-			const counter = overlay(page).getByText(/^Step 1 of \d+$/)
-			await expect(counter).toBeVisible({ timeout: 90_000 })
-			const total = Number(/of (\d+)/.exec(await counter.innerText())![1])
+			const card = overlay(page).locator('[data-tour-anchor]')
+			await expect(card).toHaveAttribute('data-tour-step', /./, { timeout: 90_000 })
 
-			for (let stepNo = 1; stepNo <= total; stepNo++) {
-				await overlay(page).getByRole('button', { name: 'Contents' }).click()
-				const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })
-				const entryButton = contents.getByRole('button', { name: new RegExp(`^${stepNo} `) })
-				const title = (await entryButton.innerText()).replace(/^\d+\s*/, '').trim()
-				await entryButton.click()
+			await openAllContents(page)
+			const steps = await tocSteps(page).evaluateAll((els) =>
+				els.map((el) => ({ id: el.getAttribute('data-tour-toc-step')!, title: el.textContent!.trim() })),
+			)
+			expect(steps.length).toBeGreaterThan(0)
+			await overlay(page).getByRole('button', { name: 'Contents' }).click()
 
-				const card = overlay(page).locator('[data-tour-anchor]')
-				// the counter rather than the text, so a card that already moved past the step reports where it went
-				await expect(card.getByText(/^Step \d+ of \d+$/)).toHaveText(`Step ${stepNo} of ${total}`, { timeout: 60_000 })
+			for (const [i, { id, title }] of steps.entries()) {
+				await openAllContents(page)
+				await overlay(page).locator(`[data-tour-toc-step="${id}"]`).click()
+
+				// the step id rather than the text, so a card that already moved past the step reports where it went
+				await expect(card).toHaveAttribute('data-tour-step', id, { timeout: 60_000 })
 				await expect(card.getByText('Preparing…')).toHaveCount(0, { timeout: 60_000 })
-				const where = `${name}, step ${stepNo} "${title}"`
+				const where = `${name}, step ${i + 1} "${title}"`
 				// a failed or not-ready stage both leave a Retry on the card
 				await expect.soft(card.getByRole('button', { name: 'Retry' }), `${where} could not be set up`).toHaveCount(0)
 				await expect.soft(card, `${where} lost its anchor`).toHaveAttribute('data-tour-anchor', /^(found|none)$/, { timeout: 15_000 })

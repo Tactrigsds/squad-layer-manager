@@ -119,6 +119,174 @@ export const ProgressSchema = z.object({
 })
 export type Progress = z.infer<typeof ProgressSchema>
 
+// A tutorial's chapters, in order, and the ids of the steps each one holds. The steps files build the step list and a
+// run checks it against this outline, which is what lets the index page place a saved step in its chapter without
+// loading a steps file. A step that only some installs get is listed all the same. Names are copy, in
+// tutorials.messages.ts, keyed by chapter id. A chapter's first step must be one every install gets, because starting
+// from a chapter resumes at it.
+export type Chapter = { id: string; steps: readonly string[] }
+
+export const CHAPTERS = {
+	'layer-queue': [
+		{ id: 'getting-started', steps: ['welcome', 'sandbox', 'match-history'] },
+		{
+			id: 'reading-the-queue',
+			steps: ['queue-panel', 'queue-items', 'next-badge', 'layer-anatomy', 'team-normalize', 'filter-indicators', 'repeat-indicators'],
+		},
+		{
+			id: 'layer-details',
+			steps: [
+				'open-layer-details',
+				'layer-details',
+				'open-layer-scores',
+				'layer-scores',
+				'balance-score',
+				'asymmetry-score',
+				'category-scores',
+				'layer-scores-nonstandard',
+				'close-layer-details',
+			],
+		},
+		{
+			id: 'finding-layers',
+			steps: [
+				'layer-context-menu',
+				'start-editing',
+				'queue-editors',
+				'add-layers-button',
+				'add-dialog-tour',
+				'layer-filter-menu',
+				'results-table',
+				'results-pagination',
+				'results-sorting',
+				'results-randomization',
+				'applied-filters',
+			],
+		},
+		{
+			id: 'choosing-layers',
+			steps: [
+				'results-repeats',
+				'hide-repeats',
+				'click-to-select',
+				'results-context-menu',
+				'add-another',
+				'see-selection',
+				'add-submit',
+			],
+		},
+		{
+			id: 'editing-items',
+			steps: [
+				'added-highlight',
+				'layer-attribution',
+				'reorder',
+				'remove-layer',
+				'swap-teams',
+				'edit-layer',
+				'edit-layer-dialog',
+				'item-menu',
+				'replay-layer',
+				'add-tag',
+				'add-note',
+			],
+		},
+		{
+			id: 'saving',
+			steps: ['save', 'warnings-on-save', 'force-save-editing', 'collaborative-editing', 'force-save-edit', 'force-save'],
+		},
+		{
+			id: 'generation-and-pool',
+			steps: [
+				'autogen-intro',
+				'autogen-editing',
+				'autogen-try',
+				'autogen-item',
+				'open-pool-settings',
+				'pool-settings',
+				'pool-filter',
+				'indicate-matches',
+				'default-select',
+			],
+		},
+		{ id: 'repeat-rules', steps: ['view-repeat-rules', 'repeat-rules', 'repeat-rule', 'target-values', 'rule-options'] },
+		{ id: 'next-layer-settings', steps: ['view-next-layer', 'override-admin-set-next-layer', 'warn-on-next-layer-change'] },
+	],
+	'player-management': [
+		{
+			id: 'server-activity',
+			steps: ['welcome', 'activity-panel', 'activity-filter', 'activity-select', 'activity-copy', 'activity-warn'],
+		},
+		{
+			id: 'match-history',
+			steps: ['mh-overview', 'mh-time', 'mh-outcome', 'mh-kd', 'mh-set-by', 'mh-open', 'mh-viewing', 'mh-arrows', 'mh-live', 'mh-days'],
+		},
+		{ id: 'teams-panel', steps: ['find-teams', 'teams-header', 'groupings-column', 'grouping-modes'] },
+		{
+			id: 'teams-breakdown',
+			steps: ['breakdown', 'breakdown-hover', 'breakdown-filter', 'breakdown-select', 'breakdown-unmatched', 'breakdown-history'],
+		},
+		{
+			id: 'finding-players',
+			steps: [
+				'column-filter',
+				'remove-filter',
+				'search',
+				'squad-sorting',
+				'show-spoilers',
+				'score-sorting',
+				'selecting',
+				'warn-selected',
+				'reset-panel',
+			],
+		},
+		{
+			id: 'player-details',
+			steps: [
+				'open-player-details',
+				'player-details',
+				'player-details-ids',
+				'player-details-tags',
+				'player-details-activity',
+				'warn-box',
+				'warn-options',
+				'warn-presets',
+				'warn-ingame',
+				'warn-squad',
+			],
+		},
+		{
+			id: 'kicks-and-timeouts',
+			steps: ['actions-menu', 'kick', 'kick-ingame', 'timeout', 'timeouts-open', 'timeouts-list', 'timeouts-ingame'],
+		},
+		{
+			id: 'team-swaps',
+			steps: [
+				'swap-now',
+				'swap-now-ingame',
+				'swap-next',
+				'swaps-panel',
+				'swaps-add-more',
+				'swaps-remove',
+				'swaps-save',
+				'swaps-execute',
+				'teamswaps-ingame',
+			],
+		},
+		{
+			id: 'switch-requests',
+			steps: ['other-actions', 'switch-request', 'switch-open', 'switch-window', 'switch-now', 'switch-ingame', 'finish'],
+		},
+	],
+} as const satisfies Record<ScenarioId, readonly Chapter[]>
+
+export type ChapterId<S extends ScenarioId> = (typeof CHAPTERS)[S][number]['id']
+
+// the index into CHAPTERS[scenarioId] of the chapter holding stepId, or -1 for a step id the outline does not know
+export function chapterIndexOf(scenarioId: ScenarioId, stepId: string): number {
+	return (CHAPTERS[scenarioId] as readonly Chapter[]).findIndex((chapter) => chapter.steps.includes(stepId))
+}
+
 // A page that offers tutorials when it opens, and which ones. Adding a page is an entry here plus mounting the
 // dialog on that route; the dialog itself is the same everywhere.
 export const SurfaceIdSchema = z.enum(['server-dashboard'])
