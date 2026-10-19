@@ -7,7 +7,7 @@ import * as L from '@/models/layer.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
-import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedQueue, warnsTo } from '../harness/inspect'
+import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedFilter, savedQueue, warnsTo } from '../harness/inspect'
 
 // The layer backburner's in-game surface, and the generation it feeds: /reqlayer requests are validated
 // against the pool, queued, listed, evicted at the per-user cap, and consumed by autogeneration when the
@@ -45,6 +45,8 @@ beforeAll(async () => {
 				'Generation Pool',
 				FB.and([FB.inValues('Map', ['Gorodok', 'Skorpo', 'Fallujah']), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
 			),
+			// saved before layer ids were canonical text. Nothing references it.
+			filter('legacy-ids', 'Legacy ids', legacyIdsFilter(LEGACY_GORODOK, LEGACY_NARVA)),
 		],
 		globalSettings: (s) => {
 			s.rbac.roles['requesters'] = role([], { users: [REQUESTER] }, { maxLayerRequests: 1 })
@@ -63,6 +65,20 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await app?.dispose()
+})
+
+const LEGACY_GORODOK = 'GD-RAAS-V1:USA-CA:RGF-CA'
+const LEGACY_NARVA = 'NV-RAAS-V1:USA-CA:RGF-CA'
+// an abbreviation no layer data has, which the rewrite must leave as written
+const UNREADABLE = 'ZZ-RAAS-V1:USA-CA:RGF-CA'
+function legacyIdsFilter(gorodok: string, narva: string) {
+	return FB.and([FB.eq('id', gorodok), FB.inValues('id', [narva, UNREADABLE])])
+}
+
+describe('stored layer ids', () => {
+	it('rewrites the old-format layer ids a filter compares against as canonical text at boot', () => {
+		expect(savedFilter(app, 'legacy-ids')).toEqual(legacyIdsFilter(LAYERS.gorodokRaas, LAYERS.narvaRaas))
+	})
 })
 
 describe('layer backburner via chat', () => {

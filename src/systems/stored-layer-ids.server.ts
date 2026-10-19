@@ -23,9 +23,9 @@ import * as PersistedCache from '@/systems/persistedCache.server'
 // leave such an id readable only as the text it was written as.
 //
 // History (match history, the app-event association index, and the server and app events that carry layer ids) is
-// rewritten in the background after boot. The saved queues and rotations can be edited, so they are rewritten during
-// boot, before the squad servers load or any request is served, where no edit can be in flight. Filters already store
-// canonical text. Archived matches stay as they were packed; their reads take the older formats too.
+// rewritten in the background after boot. The saved queues, layer requests, rotations and filters can be edited, so
+// they are rewritten during boot, before the squad servers load or any request is served, where no edit can be in
+// flight. Archived matches stay as they were packed; their reads take the older formats too.
 
 const module = initModule('stored-layer-ids')
 let log!: CS.Logger
@@ -56,8 +56,7 @@ async function runAtBoot() {
 }
 
 // The canonical text for stored text, or undefined when it already is canonical, no format reads it, or the canonical
-// text would read back as another layer. An old id whose unit the layer data no longer has resolves without that unit,
-// and its text without units would read back with the default ones.
+// text would read back as another layer.
 function canonicalFor(text: string): string | undefined {
 	const id = L.fromStoredLayerText(text)
 	if (id === undefined) return undefined
@@ -78,21 +77,55 @@ function canonicalizedPayload(payload: unknown): unknown {
 	return changed ? next : undefined
 }
 
+// A copy of a value holding filter trees with the layer ids their `id` comparisons name as canonical text, or undefined
+// when none needed rewriting
+function canonicalizedFilterIds(value: unknown): unknown {
+	let changed = false
+	const canonicalize = (id: unknown) => {
+		const canonical = typeof id === 'string' ? canonicalFor(id) : undefined
+		if (canonical === undefined) return id
+		changed = true
+		return canonical
+	}
+	const walk = (v: unknown): unknown => {
+		if (Array.isArray(v)) return v.map(walk)
+		if (!v || Object.getPrototypeOf(v) !== Object.prototype) return v
+		const node = v as Record<string, any>
+		const [subject, arg, ...rest] = Array.isArray(node.args) ? node.args : []
+		if (subject?.type === 'column' && subject.column === 'id' && arg) {
+			if (arg.type === 'value') return { ...node, args: [subject, { ...arg, value: canonicalize(arg.value) }, ...rest] }
+			if (arg.type === 'values') return { ...node, args: [subject, { ...arg, values: arg.values.map(canonicalize) }, ...rest] }
+		}
+		return Object.fromEntries(Object.entries(node).map(([key, field]) => [key, walk(field)]))
+	}
+	const next = walk(value)
+	return changed ? next : undefined
+}
+
 // Run during boot, before anything can edit these rows. Few rows, so not gated on the layer data hash.
 export const canonicalizeEditableRows = Instr.spanOp('canonicalizeEditableRows', { module }, async (ctx: C.Db & CS.Log) => {
+	const S = Schema
 	const counts = {
-		savedQueues: await rewriteSuperjsonColumn(ctx, Schema.servers, Schema.servers.id, Schema.servers.layerQueue),
-		rotations: await rewriteSuperjsonColumn(ctx, Schema.rotations, Schema.rotations.id, Schema.rotations.items),
+		savedQueues: await rewriteJsonColumn(ctx, S.servers, S.servers.id, S.servers.layerQueue, 'superjson', canonicalizedPayload),
+		backburners: await rewriteJsonColumn(ctx, S.servers, S.servers.id, S.servers.backburner, 'superjson', canonicalizedFilterIds),
+		rotations: await rewriteJsonColumn(ctx, S.rotations, S.rotations.id, S.rotations.items, 'superjson', canonicalizedPayload),
+		filters: await rewriteJsonColumn(ctx, S.filters, S.filters.id, S.filters.filter, 'json', canonicalizedFilterIds),
 	}
 	if (Object.values(counts).some((n) => n > 0)) ctx.log.info('rewrote editable layer ids as canonical text: %o', counts)
 	return counts
 })
 
-async function rewriteSuperjsonColumn(
+async function rewriteJsonColumn(
 	ctx: C.Db,
-	table: typeof Schema.servers | typeof Schema.rotations,
-	idColumn: typeof Schema.servers.id | typeof Schema.rotations.id,
-	column: typeof Schema.servers.layerQueue | typeof Schema.rotations.items,
+	table: typeof Schema.servers | typeof Schema.rotations | typeof Schema.filters,
+	idColumn: typeof Schema.servers.id | typeof Schema.rotations.id | typeof Schema.filters.id,
+	column:
+		| typeof Schema.servers.layerQueue
+		| typeof Schema.servers.backburner
+		| typeof Schema.rotations.items
+		| typeof Schema.filters.filter,
+	encoding: 'json' | 'superjson',
+	rewrite: (value: unknown) => unknown,
 ) {
 	const rows = (await ctx
 		.db()
@@ -103,7 +136,7 @@ async function rewriteSuperjsonColumn(
 		for (const row of rows) {
 			let next: unknown
 			try {
-				next = canonicalizedPayload(superjson.deserialize(row.value as any))
+				next = rewrite(encoding === 'superjson' ? superjson.deserialize(row.value as any) : row.value)
 			} catch {
 				continue
 			}
@@ -111,7 +144,7 @@ async function rewriteSuperjsonColumn(
 			const res = await ctx
 				.db()
 				.update(table)
-				.set({ [column.name]: superjson.serialize(next) })
+				.set({ [column.name]: encoding === 'superjson' ? superjson.serialize(next) : next })
 				.where(E.eq(idColumn, row.id as any))
 			changed += res.changes
 		}
