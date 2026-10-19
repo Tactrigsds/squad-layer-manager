@@ -655,7 +655,7 @@ type DenseIdGrid = {
 }
 
 // JS keeps an integer inline (unboxed) below 2^30
-const MAX_DENSE_ID_BITS = 30
+export const MAX_DENSE_ID_BITS = 30
 
 export function denseIdLayout(components = L.StaticLayerComponents): DenseIdLayout {
 	return denseIdLayoutOf(components)
