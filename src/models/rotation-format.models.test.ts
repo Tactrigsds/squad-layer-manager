@@ -5,7 +5,7 @@ import * as LTag from '@/models/layer-tags.models'
 import * as L from '@/models/layer.models'
 import * as RFMT from '@/models/rotation-format.models'
 
-const A = L.DEFAULT_LAYER_ID
+const A = L.defaultLayerId()
 const B = L.swapFactionsInId(A)
 const lineOf = (id: L.LayerId) => L.getLayerCommand(id, 'none').trim()
 const EVENT = { id: LTag.createTagId('Event Night'), label: 'Event Night', description: '', color: '#3b82f6' }

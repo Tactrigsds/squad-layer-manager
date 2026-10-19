@@ -253,7 +253,8 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 			{ label: 'the generated vote', timeoutMs: 30_000 },
 		)
 		expect(vote.source.type).toBe('generated')
-		const maps = vote.choices!.map((choice) => L.toLayer(choice.layerId).Map)
+		// the queue as stored holds canonical text, whose layer name says the map without the layer data
+		const maps = vote.choices!.map((choice) => L.parseLayerStringSegment(L.parseLayerText(choice.layerId)!.Layer, null)?.Map)
 		expect(maps).toHaveLength(3)
 		expect(new Set(maps).size).toBe(3)
 		expect(vote.voteConfig?.displayProps?.toSorted()).toEqual(['factions', 'gamemode', 'map'])

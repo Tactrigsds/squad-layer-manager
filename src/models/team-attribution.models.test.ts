@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type * as CHAT from '@/models/chat.models'
+import type * as L from '@/models/layer.models'
 import type * as SM from '@/models/squad.models'
 import * as TA from '@/models/team-attribution.models'
 
@@ -117,7 +118,7 @@ describe('computeTeamAttribution time replay', () => {
 		const event: CHAT.EventEnriched = {
 			type: 'NEW_GAME',
 			source: 'server-roll',
-			layerId: 'some-layer',
+			layerId: 'some-layer' as L.LayerId,
 			state: { players: [a], squads: [] },
 			...base(0),
 		}

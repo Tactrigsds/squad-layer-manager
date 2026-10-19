@@ -302,7 +302,7 @@ export namespace Sel {
 				return {
 					index: entry.index,
 					item: entry.item,
-					mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.layerId),
+					mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.itemId),
 					isLocallyLast: entry.isLocallyLast,
 				}
 			}),

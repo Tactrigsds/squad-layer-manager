@@ -5,7 +5,7 @@ import * as fs from 'node:fs'
 
 import * as Gen from '@/lib/generator-utils'
 import type * as CS from '@/models/context-shared.models'
-import type * as L from '@/models/layer.models'
+import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
@@ -61,7 +61,8 @@ function makeState(emitted: SE.Event[]) {
 		hooks: {
 			onNewGameDuringSync: (layerId) => Promise.resolve({ match: match(layerId), isNewMatch: true }),
 			onNewGameDuringRoll: (layerId) => Promise.resolve({ match: match(layerId), nextLayerId: null }),
-			fetchLayersStatus: () => Promise.resolve({ currentLayer: { id: `RAW:${lastClassname}`, Layer: lastClassname }, nextLayer: null }),
+			fetchLayersStatus: () =>
+				Promise.resolve({ currentLayer: { id: L.idFromParts({ Layer: lastClassname }), Layer: lastClassname }, nextLayer: null }),
 			fetchUsernamesNoTag: () => Promise.resolve(new Map()),
 			skipDestroyedOnTrainingLayers: () => false,
 			createEvent: (event) => {

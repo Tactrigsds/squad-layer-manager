@@ -14,6 +14,7 @@ plugin is only safe to install if running it as a fork of SLM would be.
 - [The manifest](#the-manifest)
 - [The server entry](#the-server-entry)
 - [Storing data](#storing-data)
+- [Layer ids](#layer-ids)
 - [Filters](#filters)
 - [Rotations](#rotations)
 - [Repeat rulesets](#repeat-rulesets)
@@ -75,7 +76,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.19',
+	apiVersion: '^0.20',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -199,6 +200,17 @@ Two rules apply. First, list migrations in name order. The host checks this. Sec
 manifest instead of importing it from `schema.ts`. A migration is frozen in time, and renaming a table later must not
 change what an applied migration did.
 
+## Layer ids
+
+A `LayerId` from `slm/models/layer` names a layer, and only means something against the layer data SLM has loaded:
+a layer that data holds is a number, and any other layer its canonical text, such as
+`Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. Compare ids with `===`, read a layer's parts with `L.toLayer(id)`,
+and build an id with `L.fromLayerText` or `L.idFromParts`.
+
+Anything a plugin stores in its own tables or sends outside SLM holds `L.toLayerText(id)`, and reads back with
+`L.fromStoredLayerText(text)`. A number written down today names a different layer once the layer data changes. Inputs
+to your own rpc that take layer ids should use `L.LayerIdSchema`, which accepts either form.
+
 ## Filters
 
 A filter is a predicate over layers. `slm/systems/filter-entity`
@@ -274,6 +286,7 @@ A rotation is a saved, ordered list of queue items that admins add to a server's
 exports the rotation types and schemas.
 
 ```ts
+import * as L from 'slm/models/layer'
 import * as Rotations from 'slm/systems/rotation'
 
 await Rotations.create(ctx, {
@@ -283,8 +296,8 @@ await Rotations.create(ctx, {
 	repeatRulesetId: null,
 	tags: [],
 	items: [
-		{ type: 'single-list-item', layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' },
-		{ type: 'single-list-item', layerId: 'HJ-RAAS-V1:RGF-MZ:PLA-AA' },
+		{ type: 'single-list-item', layerId: L.fromLayerText('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')! },
+		{ type: 'single-list-item', layerId: L.fromLayerText('Harju_RAAS_v1:RGF+Mechanized:PLA+AirAssault')! },
 	],
 })
 

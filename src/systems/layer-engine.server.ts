@@ -8,6 +8,8 @@ import zlib from 'node:zlib'
 import * as Paths from '$root/paths'
 import type * as CS from '@/models/context-shared.models'
 import * as LA from '@/models/layer-artifact.models'
+import * as LC from '@/models/layer-columns.models'
+import type * as LE from '@/models/layer-engine.models'
 import { initModule } from '@/server/logger'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 import { LayerEngine } from '@/systems/layer-engine.shared'
@@ -56,6 +58,9 @@ async function load(): Promise<void> {
 	const wasm = await fs.promises.readFile(path.join(Paths.ASSETS, 'layer-engine.wasm'))
 	engine = await LayerEngine.create(wasm, artifact)
 	log.info('Loaded the layer engine from %s: %s layers', loadPath, engine.rowCount)
+	// both halves of the pair number layers the same way only if the table and the components agree on every grid
+	const idLayoutMismatch = LC.checkDenseIdLayout(engine.query<LE.IdLayoutResponse>({ kind: 'idLayout' }))
+	if (idLayoutMismatch) throw new Error(`${loadPath} and its layer data disagree on layer ids: ${idLayoutMismatch}`)
 
 	servePath = compressedPath ?? (await compressForServing(artifact))
 	// the etag has to describe the file clients actually download, which is rarely the one loaded above

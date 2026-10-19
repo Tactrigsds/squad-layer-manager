@@ -24,6 +24,7 @@ import * as EFB from '@/models/editable-filter-builders.models'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
 import type * as LQY from '@/models/layer-queries.models'
+import * as L from '@/models/layer.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -1947,6 +1948,7 @@ function InListConfig(props: {
 	)
 }
 
+// `values` are canonical layer text, which is how a filter stores the layers it selects
 function LayersInConfig(props: {
 	values: (string | null)[]
 	setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
@@ -1976,7 +1978,7 @@ function LayersInConfig(props: {
 				<ul className="flex flex-wrap items-center gap-1">
 					{filteredValues.map((layerId) => (
 						<li key={layerId} className="flex min-w-0 items-center justify-between gap-1 px-2 py-1 bg-secondary rounded-md">
-							<ShortLayerName layerId={layerId} className="text-sm" />
+							<ShortLayerName layerId={L.readStoredLayerId(layerId)} className="text-sm" />
 							<Button
 								size="sm"
 								variant="ghost"
@@ -1999,12 +2001,12 @@ function LayersInConfig(props: {
 					onOpenChange={setOpen}
 					title={tr.text(F_Msgs.selectLayers())}
 					pinMode="layers"
-					defaultSelected={filteredValues}
+					defaultSelected={filteredValues.map((text) => L.readStoredLayerId(text))}
 					selectQueueItems={(items) =>
 						props.setValues((values) =>
 							Arr.union(
 								values,
-								items.map((items) => items.layerId!),
+								items.map((items) => L.toLayerText(items.layerId!)),
 							),
 						)
 					}

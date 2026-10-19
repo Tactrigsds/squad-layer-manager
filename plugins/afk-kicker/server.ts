@@ -133,7 +133,7 @@ async function warnPeriodically(ctx: Ctx, tracker: Afk.Tracker, cfg: Config, afk
 	)
 }
 
-function gamemodeOf(layerId: string) {
+function gamemodeOf(layerId: L.LayerId) {
 	try {
 		return L.toLayer(layerId)?.Gamemode
 	} catch {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import * as AppEvents from '@/models/app-events.models'
 import type * as LL from '@/models/layer-list.models'
+import * as L from '@/models/layer.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
 
@@ -28,12 +29,34 @@ describe('app-events persistence', () => {
 			serverId: 's1',
 			matchId: 1,
 			causeId: 'cause-1',
-			layerId: 'GD-RAAS-V1:USA-CA:RGF-CA',
+			layerId: L.fromLayerText('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!,
 			reason: 'override',
 			overrode: { type: 'player', playerId: 'eos-9' },
 		})
-		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any)
+		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue)
+		// a dense id means nothing outside the layer data that produced it, so the row holds the layer's text
+		expect(JSON.stringify(row.data)).toContain('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')
+		const back = AppEvents.fromRow(row as any)
 		expect(back).toEqual(e)
+	})
+
+	it("stores the layer ids in a plugin event's untyped payload as text", () => {
+		const layerId = L.fromLayerText('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+		expect(typeof layerId).toBe('number')
+		const e = AppEvents.create<AppEvents.PluginEvent>({
+			type: 'PLUGIN_EVENT',
+			actor: { type: 'plugin', pluginId: 'p1' },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			pluginId: 'p1',
+			name: 'seeded',
+			payload: { seedLayerId: layerId, history: { layerIds: [layerId] }, count: 3 },
+			message: 'seeded',
+		})
+		const back = AppEvents.fromRow(AppEvents.toRow(e, SETTINGS.redactSettingValue) as any) as AppEvents.PluginEvent
+		const text = 'Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+		expect(back.payload).toEqual({ seedLayerId: text, history: { layerIds: [text] }, count: 3 })
 	})
 
 	it('returns null when the persisted payload fails validation', () => {
@@ -174,11 +197,11 @@ describe('app-events persistence', () => {
 describe('summarizeQueueChanges', () => {
 	const ALICE = 1n
 	const BOB = 2n
-	const LAYER_A = 'GD-RAAS-V1:USA-CA:RGF-CA'
-	const LAYER_B = 'YE-RAAS-V1:USA-CA:RGF-CA'
-	const LAYER_C = 'NV-RAAS-V1:USA-CA:RGF-CA'
+	const LAYER_A = L.fromLayerText('Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+	const LAYER_B = L.fromLayerText('Yehorivka_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+	const LAYER_C = L.fromLayerText('Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
 
-	const item = (itemId: string, layerId: string, userId?: bigint): LL.Item => ({
+	const item = (itemId: string, layerId: L.LayerId, userId?: bigint): LL.Item => ({
 		type: 'single-list-item',
 		itemId,
 		layerId,

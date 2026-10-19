@@ -234,6 +234,7 @@ function setByIds(column: 'match.setByUser' | 'match.setByPlayer', node: HQ.Node
 	return (column === 'match.setByUser' ? art.userValues.get(node) : art.setBySteamIds.get(node)) ?? []
 }
 
+// layerId is the text matchHistory rows hold, which is what the layer-id sets are matched back against
 type PlayedLayer = { layerId: string; layer: L.UnvalidatedLayer }
 
 /**
@@ -245,11 +246,9 @@ async function playedLayers(ctx: C.Db & CS.AbortSignal, bounds: Bounds): Promise
 	const rows = await ctx.db().selectDistinct({ layerId: mh.layerId }).from(mh).where(matchBoundsCond(bounds))
 	const out: PlayedLayer[] = []
 	for (const { layerId } of rows) {
-		// an id whose abbreviations this build no longer knows simply has no parts to match on, the same way a
-		// layer retired from the artifact does. It still answers layer.layer, which toLayer recovers from a
-		// RAW: id's own text.
+		// a layer retired from the layer data still parses from its text, with whatever parts the data still names
 		try {
-			out.push({ layerId, layer: L.toLayer(layerId) })
+			out.push({ layerId, layer: L.toLayer(L.readStoredLayerId(layerId)) })
 		} catch {
 			continue
 		}

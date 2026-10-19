@@ -7,10 +7,10 @@ import * as L from '@/models/layer.models'
 
 import { up } from './0140_queue_updated_vote_layer_ids'
 
-const FIRST = L.DEFAULT_LAYER_ID
-const SECOND = L.swapFactionsInId(L.DEFAULT_LAYER_ID)
+const FIRST = L.defaultLayerId()
+const SECOND = L.swapFactionsInId(FIRST)
 
-function voteItem(layerId: string, winner = false): LL.VoteItem {
+function voteItem(layerId: L.LayerId, winner = false): LL.VoteItem {
 	return {
 		type: 'vote-list-item',
 		itemId: 'vote0001',

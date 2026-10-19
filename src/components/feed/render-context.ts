@@ -8,6 +8,7 @@
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as CHAT from '@/models/chat.models'
+import type * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
 import type * as PG from '@/models/player-groupings.models'
 import type * as SM from '@/models/squad.models'
@@ -140,7 +141,7 @@ export type MenuTarget =
 	| { kind: 'squad'; squad: Pick<SM.Squad, 'squadId' | 'squadName' | 'teamId'> & { uniqueId?: number } }
 	// the layer a row is about, and the match it was played in where the row has one. Acts on neither a
 	// server nor a roster, so it is the one target that opens with no frame at all.
-	| { kind: 'layer'; layerIds: string[]; historyEntryIds?: number[] }
+	| { kind: 'layer'; layerIds: L.LayerId[]; historyEntryIds?: number[] }
 
 export type WindowTarget = {
 	windowId: string

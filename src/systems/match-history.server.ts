@@ -435,7 +435,14 @@ export const addNewCurrentMatch = Instr.spanOp(
 			await ctx
 				.db()
 				.insert(Schema.matchHistory)
-				.values(superjsonify(Schema.matchHistory, { ...entry, ...MH.layerParts(entry.layerId), ordinal, serverId: ctx.serverId }))
+				.values(
+					superjsonify(Schema.matchHistory, {
+						...entry,
+						...MH.layerParts(L.readStoredLayerId(entry.layerId)),
+						ordinal,
+						serverId: ctx.serverId,
+					}),
+				)
 
 			// events are persisted as they're emitted, so the in-memory caches are just dropped; they only ever
 			// hold the current match
@@ -528,7 +535,7 @@ export const syncWithCurrentLayer = Instr.spanOp(
 				.values(
 					superjsonify(Schema.matchHistory, {
 						serverId: ctx.serverId,
-						layerId: currentLayerOnServer.id,
+						layerId: L.toLayerText(currentLayerOnServer.id),
 						ordinal,
 						setByType: 'unknown',
 					}),

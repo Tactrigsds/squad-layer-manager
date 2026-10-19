@@ -407,11 +407,11 @@ export type RepeatMatchDescriptor = {
 	constraintId: string
 	field: RepeatMatchDescriptorField
 	itemId?: ItemId
-	layerId: string
+	layerId: L.LayerId
 	repeatOffset: number
 	// the previous itemId that caused this repeat rule to be violated
 	sourceItemId: ItemId
-	sourceLayerId: string
+	sourceLayerId: L.LayerId
 	sourceField: RepeatMatchDescriptorField
 }
 

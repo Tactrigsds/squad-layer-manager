@@ -1,6 +1,7 @@
 import type { ComboBoxGroupingDef } from '@/components/combo-box/options.ts'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as LC from '@/models/layer-columns.models'
+import * as LDC from '@/models/layer-data-cache.models'
 import * as L from '@/models/layer.models'
 import { tr } from '@/systems/messages.client'
 
@@ -10,38 +11,27 @@ import { tr } from '@/systems/messages.client'
 export const COLLECTION_GROUPING = 'collection'
 export const VEHICLE_TYPE_GROUPING = 'vehicleType'
 
-const vehicleTypeGroupsCache = new WeakMap<object, ComboBoxGroupingDef['groups']>()
-
 // Vehicle classes read as their names rather than their codes, which is the difference between scanning a
 // list for "Tracked IFV" and for IFV_TRACKED. The code stays searchable: it is the group key, and the drill-in
 // matches on both.
-function vehicleTypeGroups(components: typeof L.StaticLayerComponents): ComboBoxGroupingDef['groups'] {
-	const cached = vehicleTypeGroupsCache.get(components)
-	if (cached) return cached
-	const groups = (components.vehicleTypes ?? []).map((type) => {
+const vehicleTypeGroups = LDC.derived((components): ComboBoxGroupingDef['groups'] =>
+	(components.vehicleTypes ?? []).map((type) => {
 		const label = LC_Msgs.vehicleTypeLabels[type]
 		// never a prefix: this grouping never leads, and a class badge on every row would crowd out the name
 		return { key: type, label: label ? tr.text(label) : type, prefix: null }
-	})
-	vehicleTypeGroupsCache.set(components, groups)
-	return groups
-}
-
-const groupingsCache = new WeakMap<object, Map<string, ComboBoxGroupingDef[]>>()
+	}),
+)
 
 // Collection always leads: it is the dimension that orders and prefixes the list, and it applies to every
 // column a mod can add values to. A vehicle picker gains its class as a second dimension, because the two
 // together are the question being asked -- "a tracked IFV from Galactic Contention" is otherwise two passes
 // over a list of 483.
 //
-// Memoized on the components object: these are passed as props, and a fresh array each render would rebuild
-// every option list.
+// Cached per layer data: these are passed as props, and a fresh array each render would rebuild every option list.
 export function enumGroupings(column: LC.EnumColumn, components = L.StaticLayerComponents): ComboBoxGroupingDef[] {
-	let byColumn = groupingsCache.get(components)
-	if (!byColumn) groupingsCache.set(components, (byColumn = new Map()))
-	const cached = byColumn.get(column)
-	if (cached) return cached
-
+	return groupingsOf(column, components)
+}
+const groupingsOf = LDC.lookup((column: LC.EnumColumn, components): ComboBoxGroupingDef[] => {
 	const groupings: ComboBoxGroupingDef[] = [
 		{ key: COLLECTION_GROUPING, label: tr.text(LC_Msgs.collectionGrouping()), groups: LC.collectionGroups(components) },
 	]
@@ -52,9 +42,8 @@ export function enumGroupings(column: LC.EnumColumn, components = L.StaticLayerC
 			groups: vehicleTypeGroups(components),
 		})
 	}
-	byColumn.set(column, groupings)
 	return groupings
-}
+}, 1024)
 
 export function enumOptionGroups(
 	column: LC.EnumColumn,

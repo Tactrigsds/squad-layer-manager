@@ -3,6 +3,7 @@ import superjson from 'superjson'
 
 import type { EmuPlayer } from '@/emulator'
 import type * as BB from '@/models/backburner.models'
+import type * as F from '@/models/filter.models'
 import * as MH from '@/models/match-history.models'
 import type * as Pop from '@/models/population.models'
 import type * as USR from '@/models/users.models'
@@ -41,6 +42,16 @@ export function filterOwner(app: AppFixture, filterId: string): { ownerUserId: s
 		return db.prepare(`SELECT ownerUserId, ownerPluginId FROM filters WHERE id = ?`).get(filterId) as
 			| { ownerUserId: string | null; ownerPluginId: string | null }
 			| undefined
+	} finally {
+		db.close()
+	}
+}
+
+export function savedFilter(app: AppFixture, filterId: string): F.FilterNode | undefined {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT filter FROM filters WHERE id = ?`).get(filterId) as { filter: string } | undefined
+		return row && JSON.parse(row.filter)
 	} finally {
 		db.close()
 	}

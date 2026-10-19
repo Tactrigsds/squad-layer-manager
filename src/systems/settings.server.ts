@@ -336,7 +336,7 @@ export async function createServerEntry(
 	await ctx
 		.db({ redactParams: true })
 		.insert(Schema.servers)
-		.values(superjsonify(Schema.servers, { ...newServer, settings: sealConnections(newServer.settings) }))
+		.values(superjsonify(Schema.servers, { ...SS.toStoredChanges(newServer), settings: sealConnections(newServer.settings) }))
 	serverRegistry.set(newServer.id, {
 		id: newServer.id,
 		displayName: newServer.displayName,

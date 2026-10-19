@@ -579,7 +579,7 @@ const editSavedNow = Instr.spanOp(
 
 		const next: LL.Item[] = []
 		for (const entry of mutate(entries)) {
-			if (typeof entry === 'string') {
+			if (typeof entry !== 'object') {
 				next.push(LL.createItem({ type: 'single-list-item', layerId: entry }, opts.source))
 				continue
 			}
@@ -718,14 +718,14 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 )
 
 // Draws a single layer, folding in whatever backburner templates fit. Falls back to dropping the repeat rules, and
-// then to L.DEFAULT_LAYER_ID, rather than leave the queue empty.
+// then to L.defaultLayerId(), rather than leave the queue empty.
 async function generateLayer(
 	layerCtx: LQY.Ctx,
 	constraints: LQY.Constraint[],
 	templates: LayerQueriesShared.BackburnerTemplate[],
 	list: LQY.LayerItemsState,
 ): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
-	const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
+	const fallback = { layerId: L.defaultLayerId(), consumedItemIds: [] as string[] }
 	try {
 		const res = await LayerQueriesShared.generateWithBackburner({
 			ctx: layerCtx,
@@ -1524,7 +1524,7 @@ const handleSideEffect = Instr.spanOp(
 								causeId: null,
 								itemIds: removed.map((item) => item.itemId),
 								descriptions: removed.map(describe),
-								layerId: se.layerId ?? L.DEFAULT_LAYER_ID,
+								layerId: se.layerId ?? L.defaultLayerId(),
 							}),
 						)
 					}

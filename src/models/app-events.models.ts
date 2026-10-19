@@ -911,11 +911,44 @@ export function create<E extends AppEvent>(fields: Omit<E, 'id' | 'time' | 'inst
 
 // ---- persistence (appEvents table); actor is flattened into columns, payload goes in the data blob ----
 
+// Whether a payload field holds layer ids, by its name. Matches by suffix so plugin payloads (seedLayerId, say) are
+// covered too, which is safe because a value is only converted when it reads as a layer id.
+function isLayerIdField(key: string) {
+	return key === 'choices' || /(^l|L)ayerIds?$/.test(key)
+}
+
+// A copy of `value` with `convert` applied to every number and string under a layer id field (isLayerIdField).
+// Descends plain objects and arrays only, so the bigints, dates and maps superjson carries are left as they are.
+export function mapLayerIdFields<T>(value: T, convert: (id: number | string) => number | string): T {
+	const walk = (v: unknown, underLayerKey: boolean): unknown => {
+		if (underLayerKey && (typeof v === 'number' || typeof v === 'string')) return convert(v)
+		if (Array.isArray(v)) return v.map((item) => walk(item, underLayerKey))
+		if (v && Object.getPrototypeOf(v) === Object.prototype) {
+			return Object.fromEntries(Object.entries(v).map(([key, field]) => [key, walk(field, isLayerIdField(key))]))
+		}
+		return v
+	}
+	return walk(value, false) as T
+}
+
+function withLayerIdsAsText<T>(value: T): T {
+	return mapLayerIdFields(value, (id) => {
+		const dense = typeof id === 'number' ? L.checkDenseId(id) : undefined
+		return dense === undefined ? id : L.toLayerText(dense)
+	})
+}
+
 // bump when a payload changes shape in a way old rows can't satisfy; pair with per-type upgrades in fromRow.
 export const CURRENT_APP_EVENT_VERSION = 1
 
 export function toRow(e: AppEvent, redact: RedactSettingValue): SchemaModels.NewAppEvent {
-	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
+	// Encoded through the same schema rows are read with, so every layer id the payload holds is stored as canonical
+	// text. An event that fails its schema is still written (and dropped, with its id named, on read), so its layer
+	// ids are converted by field name instead, as are those in a plugin event's payload, which its schema leaves untyped.
+	const encoded = z.safeEncode(AppEventSchema, e)
+	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = (
+		!encoded.success ? withLayerIdsAsText(e) : e.type === 'PLUGIN_EVENT' ? withLayerIdsAsText(encoded.data) : encoded.data
+	) as AppEvent
 	// credentials are stripped here rather than only at the emitters: this is the one path into the table, so no
 	// future caller can persist a credential by forgetting to redact it first
 	const redacted =
@@ -953,7 +986,7 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 		}
 	}
 	for (const [layerId, kind] of iterAssocLayerIds(e)) {
-		rows.push({ dimension: 'layer', value: layerId, time, appEventId: e.id, role: kind })
+		rows.push({ dimension: 'layer', value: L.toLayerText(layerId), time, appEventId: e.id, role: kind })
 	}
 	// one role, unlike the other dimensions: iterAssocUserIds already folds the actor in with the users an
 	// event attributes to, and no query has yet wanted to tell those apart

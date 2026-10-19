@@ -1,4 +1,9 @@
+import type { Locator } from '@playwright/test'
+
+import { LAYERS, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { waitReady } from '../harness/ready'
+import { rearrange } from '../harness/rearrange'
 import { expect, sharedAppTest as test } from './fixtures'
 
 // The layer actions are shared between the queue item menu and the match history rows. A queue item's menu holds its
@@ -62,18 +67,47 @@ test.describe('the layer context menu', () => {
 		await page.keyboard.press('Escape')
 	})
 
-	test('show details opens the layer info window on the details tab', async ({ page }) => {
-		const queuePanel = Dash.queueSection(page)
-		const item = queuePanel.getByRole('listitem').first()
+	test('show details opens the layer info window on the details tab, and its scores and popout show the same layer', async ({
+		page,
+		app,
+	}) => {
+		// a seed or training layer has no scores
+		await rearrange(app, { layerQueue: queue(LAYERS.narvaRaas) })
+		const [layer, team1, team2] = LAYERS.narvaRaas.split(':')
+		const factions = [team1, team2].map((team) => team.split('+')[0])
+		const item = Dash.queueSection(page).getByRole('listitem').filter({ hasText: layer })
 		await expect(item).toBeVisible({ timeout: 20_000 })
 
-		await item
-			.getByText(/^\w+_\w+_v\d+$/)
-			.first()
-			.click({ button: 'right' })
+		await item.getByText(layer).first().click({ button: 'right' })
 		await page.getByRole('menuitem', { name: 'Show details' }).click()
 
-		await expect(page.getByRole('button', { name: 'Scores' })).toBeVisible({ timeout: 20_000 })
-		await expect(page.getByText('Team 1 Vehicles')).toBeVisible()
+		const window = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: 'Scores' }) })
+		await expect(window.getByText('Team 1 Vehicles')).toBeVisible({ timeout: 20_000 })
+		await expectLayerInfo(window, layer, factions)
+
+		await window.getByRole('button', { name: 'Scores' }).click()
+		await expectScores(window)
+
+		const popupOpened = page.waitForEvent('popup')
+		await window.getByRole('button', { name: 'Open in popout window' }).click()
+		const popup = await popupOpened
+		await waitReady(popup)
+		await expect(popup).toHaveURL(/\/scores$/)
+		const popoutInfo = popup.locator('body')
+		await expectScores(popoutInfo)
+		await popup.getByRole('button', { name: 'Details' }).click()
+		await expect(popup).toHaveURL(/\/details$/)
+		await expectLayerInfo(popoutInfo, layer, factions)
+		await popup.close()
 	})
 })
+
+async function expectLayerInfo(info: Locator, layer: string, factions: string[]) {
+	await expect(info).toContainText(layer)
+	for (const faction of factions) await expect(info).toContainText(faction)
+}
+
+async function expectScores(info: Locator) {
+	await expect(info.getByRole('figure').first()).toBeVisible()
+	await expect(info).not.toContainText('No scores available')
+}

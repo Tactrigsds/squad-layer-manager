@@ -64,7 +64,7 @@ DraggableWindowStore.getState().registerDefinition<LayerInfoWindowProps, unknown
 	type: WINDOW_ID.enum['layer-info'],
 	component: LayerInfoWindow,
 	initialPosition: 'above',
-	getId: (props) => props.layerId,
+	getId: (props) => String(props.layerId),
 	loadAsync: async ({ props }) => {
 		await RPC.queryClient.fetchQuery(LayerQueriesClient.getLayerInfoQueryOptions(props.layerId))
 	},
@@ -179,7 +179,7 @@ export function LayerInfo(props: LayerInfoContentProps) {
 		scores = LC.partitionScores(layer, cfg)
 	}
 	// we aren't using the tanstack router utility functions here because we might be portaled outside of tanstack router context. unsure of how to best deal with this.
-	const href = `/layers/${props.layerId}/${activeTab}`
+	const href = `/layers/${encodeURIComponent(L.getLayerCommand(props.layerId, 'none'))}/${activeTab}`
 	const openInPopoutWindow = () => {
 		let width = 650
 		let height = 450

@@ -535,11 +535,14 @@ export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, 
 	const priorClientId =
 		typeof (ctx.req.query as { prior?: unknown })?.prior === 'string' ? (ctx.req.query as { prior: string }).prior : undefined
 	const wsClientId = UserPresence.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
+	// the hash of the layer data the client loaded, sent on every connect (see resolveWsUrl in orpc.client.ts)
+	const clientLayerData = (ctx.req.query as { layerData?: unknown })?.layerData
 
 	const wsCtx: C.OrpcBase = {
 		wsClientId,
 		...ctx,
 		ws: websocket,
+		layerDataCurrent: clientLayerData === LayerData.hash,
 	}
 
 	WsSessionSys.registerClient(wsCtx)

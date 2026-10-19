@@ -178,18 +178,31 @@ fn ids_round_trip_through_the_row_space() {
     let store = load();
     let id = col(&store, "id");
     let rows = store.row_count();
-    // ids must ascend, because row_of_id binary-searches them and preprocess relies on the ordering
+    // ids ascend in row order: preprocess sorts rows by id, and pages sorted by id rely on it
     let mut previous = i64::MIN;
+    let mut ids = std::collections::HashSet::with_capacity(rows);
     for row in 0..rows {
         let value = store.value(id, row).expect("every row has an id");
         assert!(value > previous, "ids are not strictly ascending at row {row}");
+        assert!(value < 1 << 30, "id {value} at row {row} does not fit inline in JS");
         previous = value;
+        ids.insert(value);
     }
-    for row in (0..rows).step_by(9973) {
+    for row in 0..rows {
         let value = store.value(id, row).unwrap();
         assert_eq!(store.row_of_id(value as i32), Some(row), "id {value} did not resolve back to row {row}");
     }
+    // every id below the last is either a row's or names no row: an empty grid cell, or a layer with no rows
+    let mut empty = 0;
+    for value in 0..=previous {
+        if !ids.contains(&value) {
+            assert_eq!(store.row_of_id(value as i32), None, "id {value} names no row but resolved to one");
+            empty += 1;
+        }
+    }
+    assert!(empty > 0, "expected some ids that name no row");
     assert_eq!(store.row_of_id(-1), None);
+    assert_eq!(store.row_of_id(i32::MAX), None);
 }
 
 #[test]

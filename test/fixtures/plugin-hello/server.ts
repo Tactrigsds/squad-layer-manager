@@ -4,6 +4,7 @@ import * as z from 'zod'
 import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
+import * as L from 'slm/models/layer'
 import * as RBAC from 'slm/models/rbac'
 import type * as ROT from 'slm/models/rotation'
 import type * as P from 'slm/plugin'
@@ -58,9 +59,9 @@ const os = Rpc.os<typeof manifest>()
 // several times over the journey, and a filter written at activation would collide with its own last run.
 // without an owner, the plugin owns the filter
 const FilterInput = z.object({ id: z.string(), owner: z.string().optional() })
-const RotationInput = z.object({ id: z.string(), owner: z.string().optional(), layerIds: z.array(z.string()) })
+const RotationInput = z.object({ id: z.string(), owner: z.string().optional(), layerIds: z.array(L.LayerIdSchema) })
 
-function attributedItem(layerId: string, userId: bigint): Rotations.NewItems[number] {
+function attributedItem(layerId: L.LayerId, userId: bigint): Rotations.NewItems[number] {
 	return {
 		type: 'single-list-item',
 		layerId,
@@ -164,7 +165,7 @@ export const router = {
 		),
 	updateRotation: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ id: z.string(), name: z.string().optional(), layerIds: z.array(z.string()).optional() }))
+		.input(z.object({ id: z.string(), name: z.string().optional(), layerIds: z.array(L.LayerIdSchema).optional() }))
 		.handler(async ({ context, input }) =>
 			Rotations.update(context, input.id, {
 				name: input.name,
@@ -375,13 +376,13 @@ export const router = {
 		}),
 	outOfPool: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ filterId: z.string(), layerIds: z.array(z.string()) }))
+		.input(z.object({ filterId: z.string(), layerIds: z.array(L.LayerIdSchema) }))
 		.handler(async ({ context, input }) =>
 			LayerQueries.outOfPool(context, { layerIds: input.layerIds, constraints: [CB.filterEntity('pool', input.filterId)] }),
 		),
 	layersExist: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ layerIds: z.array(z.string()) }))
+		.input(z.object({ layerIds: z.array(L.LayerIdSchema) }))
 		.handler(async ({ context, input }) => LayerQueries.exists(context, input.layerIds)),
 	mapValues: os
 		.meta({ access: RBAC.Access.PUBLIC })
@@ -389,7 +390,7 @@ export const router = {
 		.handler(async ({ context }) => LayerQueries.componentValues(context, { column: 'Map' })),
 	drawVote: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ filterId: z.string(), seed: z.string(), presetLayerId: z.string() }))
+		.input(z.object({ filterId: z.string(), seed: z.string(), presetLayerId: L.LayerIdSchema }))
 		.handler(async ({ context, input }) => {
 			const res = await LayerQueries.genVote(context, {
 				seed: input.seed,
@@ -419,7 +420,7 @@ export const router = {
 	// keep their items, hand back a bare id for a new one
 	prependLayer: os
 		.meta({ access: RBAC.Access.PUBLIC })
-		.input(z.object({ layerId: z.string() }))
+		.input(z.object({ layerId: L.LayerIdSchema }))
 		.handler(async ({ context, input }) => LayerQueue.editSaved(context, (entries) => [input.layerId, ...entries])),
 
 	dropFirstLayer: os

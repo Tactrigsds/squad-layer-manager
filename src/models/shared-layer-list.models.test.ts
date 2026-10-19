@@ -13,7 +13,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 
 const USER = 5n
 const OTHER_USER = 6n
-const OTHER_LAYER_ID = L.swapFactionsInId(L.DEFAULT_LAYER_ID)
+const OTHER_LAYER_ID = L.swapFactionsInId(L.defaultLayerId())
 
 let counter = 0
 function bbItem(id: string, owner: bigint = USER, map: string = 'Gorodok'): BB.BackburnerItem {
@@ -47,7 +47,7 @@ function ids(items: BB.BackburnerItem[]) {
 }
 
 function queueItem() {
-	return LL.createItem({ type: 'single-list-item', layerId: L.DEFAULT_LAYER_ID }, { type: 'generated' })
+	return LL.createItem({ type: 'single-list-item', layerId: L.defaultLayerId() }, { type: 'generated' })
 }
 
 describe('backburner draft ops', () => {
@@ -163,7 +163,7 @@ describe('generation consumption', () => {
 		const saves = backburnerSaves(sideEffects)
 		expect(saves).toHaveLength(1)
 		expect(saves[0].trigger).toBe('consumed')
-		expect(saves[0].layerId).toBe(L.DEFAULT_LAYER_ID)
+		expect(saves[0].layerId).toBe(L.defaultLayerId())
 		// the queue item itself still lands via the usual save path
 		expect(listSaves(sideEffects)).toHaveLength(1)
 	})
@@ -183,7 +183,7 @@ describe('generation consumption', () => {
 })
 
 describe('queue saves reset mutation state', () => {
-	function manualItem(layerId: L.LayerId = L.DEFAULT_LAYER_ID) {
+	function manualItem(layerId: L.LayerId = L.defaultLayerId()) {
 		return LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: USER })
 	}
 
@@ -291,7 +291,7 @@ describe('copy-on-write', () => {
 		return {
 			type: 'single-list-item',
 			itemId: 'item001',
-			layerId: L.DEFAULT_LAYER_ID,
+			layerId: L.defaultLayerId(),
 			source: { type: 'manual', userId: USER },
 			tags: [TAG],
 			tagsSetBy: { [TAG]: USER },
@@ -301,7 +301,7 @@ describe('copy-on-write', () => {
 
 	function voteItem(): LL.VoteItem {
 		const choices: LL.SingleItem[] = [
-			{ type: 'single-list-item', itemId: 'vote001c0', layerId: L.DEFAULT_LAYER_ID, source: { type: 'generated' } },
+			{ type: 'single-list-item', itemId: 'vote001c0', layerId: L.defaultLayerId(), source: { type: 'generated' } },
 			{ type: 'single-list-item', itemId: 'vote001c1', layerId: OTHER_LAYER_ID, source: { type: 'generated' } },
 		]
 		return { type: 'vote-list-item', itemId: 'vote001', layerId: choices[0].layerId, choices, source: { type: 'generated' } }
@@ -499,10 +499,10 @@ describe('adding a saved rotation', () => {
 		id: 'weekend',
 		items: [
 			{
-				...LL.createItem({ type: 'single-list-item', layerId: L.DEFAULT_LAYER_ID }, { type: 'unknown' }),
+				...LL.createItem({ type: 'single-list-item', layerId: L.defaultLayerId() }, { type: 'unknown' }),
 				notes: [{ id: 'note01', text: 'watch the middle cap' }],
 			},
-			LL.createVoteItem([L.DEFAULT_LAYER_ID, OTHER_LAYER_ID], { type: 'unknown' }),
+			LL.createVoteItem([L.defaultLayerId(), OTHER_LAYER_ID], { type: 'unknown' }),
 		],
 	}
 

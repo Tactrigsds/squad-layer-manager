@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as CS from '@/models/context-shared.models'
 import type * as GLD from '@/models/game-layer-data.models'
+import * as LDC from '@/models/layer-data-cache.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
 import * as VEH from '@/models/vehicles.models'
@@ -79,12 +80,7 @@ export function isVirtualColumn(name: string, cfg = BASE_COLUMN_CONFIG): boolean
 // records carry it on to vehicles and vehicle classes. A value spanning several collections homes to the
 // default collection when present, else the first in catalog order.
 type CollectionByEnumValue = Partial<Record<string, Map<string, string>>>
-const enumValueCollectionsCache = new WeakMap<object, CollectionByEnumValue>()
-
-function enumValueCollections(components: LayerComponents): CollectionByEnumValue {
-	const cached = enumValueCollectionsCache.get(components)
-	if (cached) return cached
-
+const enumValueCollections = LDC.derived((components): CollectionByEnumValue => {
 	const sets = new Map<string, Map<string, Set<string>>>()
 	const add = (mapping: string, value: string | null | undefined, collection: string) => {
 		if (!value) return
@@ -130,9 +126,8 @@ function enumValueCollections(components: LayerComponents): CollectionByEnumValu
 		}
 		result[mapping] = home
 	}
-	enumValueCollectionsCache.set(components, result)
 	return result
-}
+})
 
 export function collectionForEnumValue(
 	column: string,
@@ -150,22 +145,18 @@ export function collectionForEnumValue(
 
 export type CollectionGroup = { key: string; label: string; prefix: string | null }
 
-const collectionGroupsCache = new WeakMap<object, CollectionGroup[]>()
-
 // The collections as combo box groups: default collection first, then catalog order. The abbreviation is the
 // prefix, since that form is repeated on every row of an "all" listing, and the default collection's null
 // abbreviation carries through as a null prefix so unmodded values read bare, as they do everywhere else.
-// Memoized on the components object because it is passed as a prop, and a fresh array each render would
-// rebuild every option list.
+// Cached because it is passed as a prop, and a fresh array each render would rebuild every option list.
 export function collectionGroups(components = L.StaticLayerComponents): CollectionGroup[] {
-	const cached = collectionGroupsCache.get(components)
-	if (cached) return cached
+	return collectionGroupsOf(components)
+}
+const collectionGroupsOf = LDC.derived((components): CollectionGroup[] => {
 	const defaultCollection = L.getDefaultCollection(components)
 	const ordered = [defaultCollection, ...components.collections.filter((c) => c !== defaultCollection)]
-	const groups = ordered.map((key) => ({ key, label: key, prefix: components.collectionAbbreviations[key] ?? null }))
-	collectionGroupsCache.set(components, groups)
-	return groups
-}
+	return ordered.map((key) => ({ key, label: key, prefix: components.collectionAbbreviations[key] ?? null }))
+})
 
 const vehicleTypeIndexCache = new WeakMap<readonly string[], Map<string, string>>()
 
@@ -545,10 +536,15 @@ export function enumIncludes(arr: readonly unknown[], value: unknown): boolean {
 export function dbValue(columnName: string, value: InputValue, ctx?: Ctx, components = L.StaticLayerComponents): DbValueResult {
 	const def = getColumnDef(columnName, ctx?.effectiveColsConfig)!
 	if (columnName === 'id') {
-		if (!L.isKnownLayer(value as string)) {
-			return UnmappedDbValue
-		}
-		return packId(value as L.LayerId, components)
+		// a dense id, or text as filters store it (canonical, or a legacy id from before it). Text naming a layer the
+		// table has no row for is unmapped.
+		const id =
+			typeof value === 'number'
+				? L.checkDenseId(value, components)
+				: typeof value === 'string'
+					? L.fromStoredLayerText(value, components)
+					: undefined
+		return id !== undefined && L.isDenseLayerId(id) ? id : UnmappedDbValue
 	}
 	switch (def.type) {
 		case 'string': {
@@ -586,9 +582,7 @@ export function fromDbValue(
 ) {
 	const columnDef = getColumnDef(columnName, ctx?.effectiveColsConfig)
 	if (!columnDef) return value
-	if (columnName === 'id') {
-		return unpackId(value as number, components)
-	}
+	if (columnName === 'id') return value as L.DenseLayerId
 
 	switch (columnDef.type) {
 		case 'string': {
@@ -637,30 +631,193 @@ export function dbValues(
  * Packs a layer's identifying components into a compact integer encoding.
  * Uses enumeration indices to minimize the bits required for each component.
  */
+// Dense layer ids: the layer index shifted left by `localBits`, or'd with the layer's cell in its option grid. A grid's
+// rows are the layer's distinct team-1 sides and its columns the team-2 sides, where a side is
+// faction index * unit count + unit index, both ascending, and cell = row * columns + column. Ids ascend in the layer
+// table's row order, so the artifact needs nothing new to carry them. Store::index_dense_ids in layer-engine derives
+// the same grids from the artifact, and checkDenseIdLayout compares the two.
+//
+// A cell names a layer unless it puts one faction against itself on a layer that is not Training, which is the only
+// pairing preprocess drops.
+export type DenseIdLayout = {
+	localBits: number
+	// by layer index; undefined for a layer with no options
+	grids: (DenseIdGrid | undefined)[]
+	factions: number
+	units: number
+}
+
+type DenseIdGrid = {
+	sides: [Int32Array, Int32Array]
+	// side -> position in `sides[team]`, or -1
+	positions: [Int16Array, Int16Array]
+	training: boolean
+}
+
+// JS keeps an integer inline (unboxed) below 2^30
+const MAX_DENSE_ID_BITS = 30
+
+export function denseIdLayout(components = L.StaticLayerComponents): DenseIdLayout {
+	return denseIdLayoutOf(components)
+}
+
+const denseIdLayoutOf = LDC.derived((components): DenseIdLayout => {
+	const factions = components.factions.length
+	const units = components.units.length
+	const sideCount = factions * units
+	// layers drawing on the same availability list share a grid
+	const shared = new Map<readonly L.LayerFactionAvailabilityEntry[], { normal?: DenseIdGrid | null; training?: DenseIdGrid | null }>()
+	const sideOf = (entry: L.LayerFactionAvailabilityEntry) => {
+		const faction = enumIndexOf(components.factions, entry.Faction)
+		const unit = enumIndexOf(components.units, entry.Unit ?? null)
+		if (faction === -1 || unit === -1) throw new Error(`${entry.Faction}+${entry.Unit} is not in the layer components`)
+		return faction * units + unit
+	}
+	const buildGrid = (availability: readonly L.LayerFactionAvailabilityEntry[], training: boolean): DenseIdGrid | null => {
+		const sides: [Set<number>, Set<number>] = [new Set(), new Set()]
+		for (const a of availability) {
+			if (!a.allowedTeams.includes(1)) continue
+			for (const b of availability) {
+				if (!b.allowedTeams.includes(2)) continue
+				if (a.Faction === b.Faction && !training) continue
+				sides[0].add(sideOf(a))
+				sides[1].add(sideOf(b))
+			}
+		}
+		if (sides[0].size === 0) return null
+		const sorted = sides.map((s) => Int32Array.from(s).sort()) as [Int32Array, Int32Array]
+		const positions = sorted.map((list) => {
+			const pos = new Int16Array(sideCount).fill(-1)
+			list.forEach((side, i) => (pos[side] = i))
+			return pos
+		}) as [Int16Array, Int16Array]
+		return { sides: sorted, positions, training }
+	}
+
+	const grids: (DenseIdGrid | undefined)[] = []
+	let largestGrid = 1
+	for (let l = 0; l < components.layers.length; l++) {
+		const name = components.layers[l]
+		const availability = components.layerFactionAvailability[name]
+		const config = L.getLayerConfig(name, components)
+		if (!availability || !config) continue
+		const training = config.Gamemode === 'Training'
+		let entry = shared.get(availability)
+		if (!entry) shared.set(availability, (entry = {}))
+		const key = training ? 'training' : 'normal'
+		if (entry[key] === undefined) entry[key] = buildGrid(availability, training)
+		const grid = entry[key]
+		if (!grid) continue
+		grids[l] = grid
+		largestGrid = Math.max(largestGrid, grid.sides[0].length * grid.sides[1].length)
+	}
+
+	const localBits = bitsFor(largestGrid)
+	const layerBits = bitsFor(components.layers.length)
+	if (localBits + layerBits > MAX_DENSE_ID_BITS) {
+		throw new Error(
+			`dense layer ids need ${localBits} + ${layerBits} bits for ${components.layers.length} layers and a largest option grid of ${largestGrid}, over the ${MAX_DENSE_ID_BITS} that keep them inline`,
+		)
+	}
+
+	return { localBits, grids, factions, units }
+})
+
+function gridDigest(grid: DenseIdGrid) {
+	let digest = FNV_OFFSET
+	for (const sides of grid.sides) {
+		digest = fnvU32(digest, sides.length)
+		for (const side of sides) digest = fnvU32(digest, side)
+	}
+	return digest
+}
+
+// Describes where the engine's id layout and this one disagree, or returns undefined when every layer the engine
+// holds has the same grid here. The components may hold layers the table has no rows for (a table built by an older
+// preprocess drops some Training layers), and those are fine: their ids name no row, like any other unknown layer.
+// `engine` is the engine's idLayout response (LE.IdLayoutResponse)
+export function checkDenseIdLayout(engine: { localBits: number; grids: [number, number][] }, layout = denseIdLayout()): string | undefined {
+	if (engine.localBits !== layout.localBits) {
+		return `the engine packs layer ids into ${engine.localBits} local bits, the layer components into ${layout.localBits}`
+	}
+	for (const [layer, digest] of engine.grids) {
+		const grid = layout.grids[layer]
+		if (!grid || gridDigest(grid) !== digest)
+			return `layer ${layer} has a different option grid in the engine than in the layer components`
+	}
+	return undefined
+}
+
+// bits needed to hold every value below `count`
+function bitsFor(count: number) {
+	return count <= 1 ? 0 : 32 - Math.clz32(count - 1)
+}
+
+const FNV_OFFSET = 0x811c9dc5
+
+// 32-bit FNV-1a over a u32's little-endian bytes. Mirrors Fnv in layer-engine/src/store.rs.
+export function fnvU32(hash: number, value: number) {
+	for (let shift = 0; shift < 32; shift += 8) {
+		hash ^= (value >>> shift) & 0xff
+		hash = Math.imul(hash, 0x01000193) >>> 0
+	}
+	return hash
+}
+
+// the dense id of a layer given as component indexes, or -1 when the components hold no such layer
+export function denseId(layer: number, faction1: number, unit1: number, faction2: number, unit2: number, layout = denseIdLayout()) {
+	const grid = layout.grids[layer]
+	if (!grid) return -1
+	if (faction1 === faction2 && !grid.training) return -1
+	const i = grid.positions[0][faction1 * layout.units + unit1]
+	const j = grid.positions[1][faction2 * layout.units + unit2]
+	if (i === -1 || j === -1) return -1
+	return (layer << layout.localBits) | (i * grid.sides[1].length + j)
+}
+
+// the component indexes a dense id names, or undefined when it names no layer
+export function fromDenseId(id: number, layout = denseIdLayout()): [number, number, number, number, number] | undefined {
+	// the shifts below read only the low 32 bits, so a larger id would alias a smaller one
+	if (!Number.isInteger(id) || id < 0 || id >= 2 ** MAX_DENSE_ID_BITS) return undefined
+	const layer = id >>> layout.localBits
+	const grid = layout.grids[layer]
+	if (!grid) return undefined
+	const columns = grid.sides[1].length
+	const cell = id & ((1 << layout.localBits) - 1)
+	const i = Math.floor(cell / columns)
+	if (i >= grid.sides[0].length) return undefined
+	const side1 = grid.sides[0][i]
+	const side2 = grid.sides[1][cell - i * columns]
+	const faction1 = Math.floor(side1 / layout.units)
+	const faction2 = Math.floor(side2 / layout.units)
+	if (faction1 === faction2 && !grid.training) return undefined
+	return [layer, faction1, side1 - faction1 * layout.units, faction2, side2 - faction2 * layout.units]
+}
+
+// The dense id of a known layer. Computed from the layer's parts rather than read off its id, so preprocess can pack
+// layers it identified before the components were complete.
 export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.StaticLayerComponents): number {
-	const layer = typeof layerOrId === 'string' ? L.toLayer(layerOrId) : layerOrId
+	if (typeof layerOrId === 'number') {
+		if (L.checkDenseId(layerOrId, components) === undefined) throw new Error(`dense id ${layerOrId} names no layer`)
+		return layerOrId
+	}
+	const layer = typeof layerOrId === 'object' ? layerOrId : L.toLayer(layerOrId, components)
 
 	if (!L.isKnownLayer(layer, components)) {
 		throw new Error('Cannot pack raw or invalid layer to integer')
 	}
 
 	const ctx: Ctx = { ...CS.init(), effectiveColsConfig: BASE_COLUMN_CONFIG }
-	const layerIndex = assertedEnumDbValue('Layer', layer.Layer, ctx, components)
-	const faction1Index = assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components)
-	const unit1Index = assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components)
-	const faction2Index = assertedEnumDbValue('Faction_2', layer.Faction_2, ctx, components)
-	const unit2Index = assertedEnumDbValue('Unit_2', layer.Unit_2, ctx, components)
-
-	// Mixed-radix rather than bit-packed: exact products keep the id inside i32 (the artifact's id column) where
-	// power-of-two widths would overflow it at today's component counts. Layer-major, so ascending ids group rows by
-	// map and layer, which the artifact's row order and the engine's scan skipping both rely on.
-	const factions = components.factions.length
-	const units = components.units.length
-	const packed = (((layerIndex * factions + faction1Index) * units + unit1Index) * factions + faction2Index) * units + unit2Index
-	if (packed > 2147483647) {
-		throw new Error(`packed layer id overflows i32: ${components.layers.length} layers x ${factions} factions x ${units} units`)
-	}
-	return packed
+	const id = denseId(
+		assertedEnumDbValue('Layer', layer.Layer, ctx, components),
+		assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components),
+		assertedEnumDbValue('Unit_1', layer.Unit_1, ctx, components),
+		assertedEnumDbValue('Faction_2', layer.Faction_2, ctx, components),
+		assertedEnumDbValue('Unit_2', layer.Unit_2, ctx, components),
+		denseIdLayout(components),
+	)
+	if (id === -1) throw new Error(`${layer.id} is not a layer the components hold`)
+	return id
 }
 
 export function isKnownAndValidLayer(
@@ -693,41 +850,6 @@ export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {
 
 export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.StaticLayerComponents) {
 	return layers.map((l) => packId(l, components))
-}
-
-/**
- * Unpacks a layer from its integer encoding
- */
-export function unpackId(packed: number, components = L.StaticLayerComponents) {
-	const factions = components.factions.length
-	const units = components.units.length
-
-	const unit2Index = packed % units
-	packed = (packed - unit2Index) / units
-	const faction2Index = packed % factions
-	packed = (packed - faction2Index) / factions
-	const unit1Index = packed % units
-	packed = (packed - unit1Index) / units
-	const faction1Index = packed % factions
-	packed = (packed - faction1Index) / factions
-	const layerIndex = packed
-
-	const layer = components.layers[layerIndex]
-	const config = L.getLayerConfig(layer, components)
-	if (!config) throw new Error(`packed id references layer ${layer}, which is not in the catalog`)
-	return L.getKnownLayerId(
-		{
-			Map: config.Map,
-			Gamemode: config.Gamemode,
-			LayerVersion: config.LayerVersion,
-			Collection: L.layerConfigCollection(config, components),
-			Faction_1: components.factions[faction1Index],
-			Unit_1: components.units[unit1Index],
-			Faction_2: components.factions[faction2Index],
-			Unit_2: components.units[unit2Index],
-		},
-		components,
-	)!
 }
 
 export function toRow(layer: L.KnownLayer, ctx: Ctx, components = L.StaticLayerComponents): LayerRow {
@@ -1260,6 +1382,9 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 		gamemodes: {},
 		collections: { Community: 'OWI' },
 		collectionAbbreviations: { CL: 'OWI' },
+		// the Seed and Skirmish units, which preprocess produced for a week in September 2025 for what the game names
+		// CombinedArms (*_CombinedArms_Seed)
+		unitAbbreviations: { SD: 'CombinedArms', SK: 'CombinedArms' },
 		maps: {},
 		units: {},
 	}

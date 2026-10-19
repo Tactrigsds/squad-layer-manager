@@ -1,7 +1,94 @@
 import { describe, expect, it } from 'vitest'
 
+import { z } from '@/lib/zod'
+
 import * as LC from './layer-columns.models'
 import * as L from './layer.models'
+
+// an id in the abbreviated format SLM wrote before canonical text, which stored data can still hold
+function legacyIdOf(layer: L.KnownLayer, components = L.StaticLayerComponents) {
+	let head = `${components.mapAbbreviations[layer.Map]}-${components.gamemodeAbbreviations[layer.Gamemode]}`
+	if (layer.LayerVersion) head += `-${layer.LayerVersion}`
+	if (layer.Collection !== L.getDefaultCollection(components)) head += `-${components.collectionAbbreviations[layer.Collection]}`
+	const team = (faction: string, unit: string) => `${faction}-${components.unitAbbreviations[unit]}`
+	return `${head}:${team(layer.Faction_1, layer.Unit_1)}:${team(layer.Faction_2, layer.Unit_2)}`
+}
+
+describe('layer ids', () => {
+	const NARVA = 'Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+	// a layer the layer data has no config for, such as one from a mod this build was not given
+	const UNKNOWN = 'Nowhere_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+
+	it('gives a layer the layer data holds its dense id, which round-trips through canonical text', () => {
+		const id = L.fromLayerText(NARVA)!
+		expect(L.isDenseLayerId(id)).toBe(true)
+		expect(L.toLayerText(id)).toBe(NARVA)
+		expect(L.fromLayerText(L.toLayerText(id))).toBe(id)
+		expect(L.idFromParts(L.toLayer(id))).toBe(id)
+	})
+
+	it('keeps a layer the layer data does not hold as its text, with what parts can be read', () => {
+		const id = L.fromLayerText(UNKNOWN)!
+		expect(id).toBe(UNKNOWN)
+		expect(L.isRawLayer(id)).toBe(true)
+		expect(L.toLayer(id)).toMatchObject({ Layer: 'Nowhere_RAAS_v1', Faction_1: 'USA', Faction_2: 'RGF' })
+		expect(L.normalize(id)).toBe(id)
+	})
+
+	it('fills in default units, so one layer spelled either way is one id', () => {
+		expect(L.fromLayerText('Narva_RAAS_v1:USA:RGF')).toBe(L.fromLayerText(NARVA))
+	})
+
+	it('reads stored text in every format that has ever written it', () => {
+		const id = L.fromLayerText(NARVA)!
+		const known = L.toLayer(id) as L.KnownLayer
+		expect(L.fromStoredLayerText(NARVA)).toBe(id)
+		expect(L.fromStoredLayerText(legacyIdOf(known))).toBe(id)
+		expect(L.fromStoredLayerText('RAW:Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms')).toBe(id)
+	})
+
+	it('keeps a legacy id it can only half read as the text it was written as', () => {
+		expect(L.fromStoredLayerText('ZZ-RAAS-V1:USA-CA:RGF-CA')).toBe('ZZ-RAAS-V1:USA-CA:RGF-CA')
+		const unknownUnit = legacyIdOf(L.toLayer(L.fromLayerText(NARVA)!) as L.KnownLayer).replace(':USA-CA:', ':USA-XX:')
+		expect(L.fromStoredLayerText(unknownUnit)).toBe(unknownUnit)
+		expect(L.readStoredLayerId('not a layer id at all')).toBe('not a layer id at all')
+	})
+
+	it('keeps a lone first team of a raw layer in its id', () => {
+		const id = L.fromStoredLayerText('RAW:Narva_RAAS_v1 USA+CombinedArms')!
+		expect(id).toBe('Narva_RAAS_v1:USA+CombinedArms')
+		expect(L.toLayer(id)).toMatchObject({ Layer: 'Narva_RAAS_v1', Faction_1: 'USA', Unit_1: 'CombinedArms' })
+		expect(L.fromLayerText(L.toLayerText(id))).toBe(id)
+	})
+
+	it('reads a FRAAS layer back from its plain command, and sends the game its RAAS name', () => {
+		const id = L.fromLayerText('Narva_FRAAS_v1:USA+CombinedArms:RGF+CombinedArms')!
+		expect(L.parseRawLayerText(L.getLayerCommand(id, 'none'))?.id).toBe(id)
+		expect(L.getLayerCommand(id, 'set-next')).toBe('AdminSetNextLayer Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
+	})
+
+	it('decodes either form through LayerIdSchema and encodes to canonical text', () => {
+		const id = L.fromLayerText(NARVA)!
+		expect(L.LayerIdSchema.parse(id)).toBe(id)
+		expect(L.LayerIdSchema.parse(NARVA)).toBe(id)
+		expect(L.LayerIdSchema.parse(legacyIdOf(L.toLayer(id) as L.KnownLayer))).toBe(id)
+		expect(L.LayerIdSchema.safeParse(2 ** 29 + 12345).success).toBe(false)
+		expect(L.LayerIdSchema.safeParse(2 ** 32 + (id as number)).success).toBe(false)
+		expect(z.encode(L.LayerIdSchema, id)).toBe(NARVA)
+		expect(z.encode(z.array(L.LayerIdSchema), [id, L.fromLayerText(UNKNOWN)!])).toEqual([NARVA, UNKNOWN])
+	})
+
+	it('shares one frozen layer per id, which comparisons copy rather than edit', () => {
+		const id = L.fromLayerText('Narva_FRAAS_v1:USA+CombinedArms:RGF+CombinedArms') ?? L.fromLayerText(NARVA)!
+		const layer = L.toLayer(id)
+		expect(L.toLayer(id)).toBe(layer)
+		expect(Object.isFrozen(layer)).toBe(true)
+		const before = layer.Layer
+		L.areLayersPartialMatch(id, id, true)
+		L.areLayersCompatible({ id, Layer: 'Narva_RAAS_v1' }, id)
+		expect(layer.Layer).toBe(before)
+	})
+})
 
 describe('mod source layers', () => {
 	const supermodLayer = 'SU_Sanxian_Invasion_v2'
@@ -59,10 +146,10 @@ describe('mod source layers', () => {
 			Unit_2: team2.Unit,
 		})!
 		expect(id).not.toBeNull()
-		const res = L.parseLayerId(id)
-		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
-		expect(res.layer.Layer).toBe(supermodLayer)
-		expect(res.layer.Faction_1).toBe(team1.Faction)
+		const layer = L.toLayer(id)
+		expect(layer.Layer).toBe(supermodLayer)
+		expect(layer.Faction_1).toBe(team1.Faction)
+		expect(L.fromLayerText(L.toLayerText(id))).toBe(id)
 	})
 
 	it('emits the exact layer string in commands, not a reconstruction', () => {
@@ -108,23 +195,25 @@ describe('the Community collection, folded into OWI', () => {
 		expect(L.StaticLayerComponents.collections).not.toContain('Community')
 	})
 
-	it('puts its layers in OWI, so their ids carry no collection segment', () => {
+	it('puts its layers in OWI', () => {
 		expect(L.layerConfigCollection(L.getLayerConfig(layer)!)).toBe('OWI')
-		expect(idOf(layer)).not.toContain('-CL:')
+		expect(L.toLayer(idOf(layer)).Collection).toBe('OWI')
 	})
 
-	it('resolves an id persisted with the old CL segment to the current one', () => {
+	it('resolves a legacy id persisted with the old CL segment to the current layer', () => {
 		const id = idOf(layer)
-		const res = L.parseLayerId(id.replace(/^([^:]+)/, '$1-CL'))
+		const legacy = legacyIdOf(L.toLayer(id) as L.KnownLayer).replace(/^([^:]+)/, '$1-CL')
+		const res = L.parseLegacyLayerId(legacy)
 		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
 		expect(res.layer.id).toBe(id)
 		expect(res.layer.Collection).toBe('OWI')
 		expect(res.layer.Layer).toBe(layer)
+		expect(L.fromStoredLayerText(legacy)).toBe(id)
 	})
 
-	it('still rejects an id whose collection segment means nothing', () => {
-		const id = idOf(layer)
-		expect(L.parseLayerId(id.replace(/^([^:]+)/, '$1-ZZ')).code).not.toBe('ok')
+	it('still rejects a legacy id whose collection segment means nothing', () => {
+		const legacy = legacyIdOf(L.toLayer(idOf(layer)) as L.KnownLayer).replace(/^([^:]+)/, '$1-ZZ')
+		expect(L.parseLegacyLayerId(legacy).code).not.toBe('ok')
 	})
 })
 
@@ -248,24 +337,24 @@ describe('world partitioning layers', () => {
 
 	it.each(WP_LAYERS)('gives %s an id distinct from its base layer, which round-trips', (layer) => {
 		const id = idOf(layer)
-		expect(id).toMatch(/^YH-[A-Z]+-V1WP:/)
-		expect(idOf(layer.replace(/_WP$/, ''))).toBe(id.replace('-V1WP:', '-V1:'))
+		expect(id).not.toBe(idOf(layer.replace(/_WP$/, '')))
 
-		const res = L.parseLayerId(id, components)
-		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
-		expect(res.layer.Layer).toBe(layer)
+		const known = L.toLayer(id, components) as L.KnownLayer
+		expect(known.Layer).toBe(layer)
+		expect(known.LayerVersion).toBe('V1WP')
 
-		const command = L.getLayerCommand(res.layer, 'set-next', components)
+		const command = L.getLayerCommand(known, 'set-next', components)
 		expect(command).toContain(` ${layer} `)
 		expect(L.parseRawLayerText(command, components)?.id).toBe(id)
 
-		expect(LC.unpackId(LC.packId(res.layer, components), components)).toBe(id)
+		expect(LC.packId(known, components)).toBe(id)
+		const legacy = legacyIdOf(known, components)
+		expect(legacy).toMatch(/^YH-[A-Z]+-V1WP:/)
+		expect(L.fromStoredLayerText(legacy, components)).toBe(id)
 	})
 
 	it('still resolves the base layer to itself', () => {
-		const res = L.parseLayerId(idOf('Yehorivka_AAS_v1'), components)
-		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
-		expect(res.layer.Layer).toBe('Yehorivka_AAS_v1')
+		expect(L.toLayer(idOf('Yehorivka_AAS_v1'), components).Layer).toBe('Yehorivka_AAS_v1')
 	})
 
 	it('spells the version back out as it appears in the layer name', () => {
@@ -303,7 +392,7 @@ describe('layerMatchesIngameLayerClassname', () => {
 
 	it('matches a Jensens Range layer to its world', () => {
 		const id = layerNamed('JensensRange_WPMC-TLF')
-		expect(id).toBe('JR-TR:WPMC-CA:TLF-CA')
+		expect(L.toLayerText(id)).toBe('JensensRange_WPMC-TLF:WPMC+CombinedArms:TLF+CombinedArms')
 		expect(L.layerMatchesIngameLayerClassname(id, 'Jensens_Range_WPMC-TLF')).toBe(true)
 		expect(L.layerMatchesIngameLayerClassname(id, 'JensensRange_WPMC-TLF')).toBe(true)
 	})

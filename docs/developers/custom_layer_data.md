@@ -204,7 +204,7 @@ A mod adds a source: a directory under `data/sources/` holding the mod's `layers
 | `layerOverrides`        | per-layer fixes for an export whose fields are wrong, keyed by level name           |
 
 Run `pnpm preprocess` after adding the source. It fails on the first gap in the manifest and names the layer, such as a
-map with no abbreviation or two layers that come out with the same id. Add a manifest entry for each failure and run
+map with no abbreviation or two map layers that share a layer name. Add a manifest entry for each failure and run
 it again.
 
 A mod's layers have no scores until the csv has rows for them. Score them like any other layer, by their in-game name.
