@@ -199,7 +199,7 @@ describe('generation on roll', () => {
 			const res = await fetch(`${app.appUrl}/history?type=matches&${filter}&contentType=text%2Fcsv`, { headers: { cookie } })
 			expect(res.status).toBe(200)
 			const [header, ...rows] = (await res.text()).split('\r\n').filter((line) => line !== '')
-			expect(header).toBe('Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events')
+			expect(header).toBe('Match ID,Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events')
 			return rows.map((row) => row.split(','))
 		}
 

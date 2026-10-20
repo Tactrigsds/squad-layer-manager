@@ -939,8 +939,11 @@ test.describe('history page', () => {
 		const tip = page.getByRole('tooltip')
 		await expect(tip).toContainText(app.serverId, { timeout: 20_000 })
 
-		// clicking pins it, which is the only state where the pointer can reach its link
+		// clicking copies the id and pins the tip, which is the only state where the pointer can reach its link
+		await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
 		await badge.click()
+		const matchId = (await badge.innerText()).trim().slice(1)
+		await expect.poll(() => readClipboard(page)).toBe(matchId)
 		await tip.getByRole('button', { name: 'Show details' }).click()
 		await expect(page.getByRole('button', { name: 'Close window' })).toBeVisible({ timeout: 20_000 })
 	})
@@ -974,7 +977,9 @@ test.describe('history page', () => {
 		await expect(table).toBeVisible({ timeout: 30_000 })
 
 		const header = table.getByRole('columnheader', { name: /Length/ })
-		const column = () => table.locator('tbody tr[data-dom-menu] td:nth-child(7)').allInnerTexts()
+		const nth = (await table.locator('thead th').allInnerTexts()).findIndex((text) => text.startsWith('Length')) + 1
+		expect(nth).toBeGreaterThan(0)
+		const column = () => table.locator(`tbody tr[data-dom-menu] td:nth-child(${nth})`).allInnerTexts()
 		// a match with no recorded end has no length, and sql puts those last whichever way the rest runs
 		const check = (cells: string[], dir: 'asc' | 'desc') => {
 			const lengths = cells.filter((cell) => cell.trim() !== '').map(Number)

@@ -1321,6 +1321,7 @@
 	"Marks this server across the app: the navigation bar's bottom border while the server is selected, and its entry in server lists. New servers get a color that stands apart from the existing ones.": "Marks this server across the app: the navigation bar's bottom border while the server is selected, and its entry in server lists. New servers get a color that stands apart from the existing ones.",
 	"Match": "Match",
 	"Match History": "Match History",
+	"Match ID": "Match ID",
 	"Match Indicator": "Match Indicator",
 	"Match case": "Match case",
 	"Match ended!": "Match ended!",

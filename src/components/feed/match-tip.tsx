@@ -48,13 +48,13 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 					allowShowInfo={false}
 					className="font-semibold"
 				/>
-				<span className="font-mono text-muted-foreground ltr-isolate">#{details.historyEntryId}</span>
 				<button
 					type="button"
-					className="text-muted-foreground hover:text-foreground transition-colors"
+					className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
 					title={tr.text(HistoryMsgs.copyMatchId())}
 					onClick={copyMatchId}
 				>
+					<span className="font-mono ltr-isolate">#{details.historyEntryId}</span>
 					<Icons.Copy className="h-3 w-3" />
 				</button>
 				<button

@@ -348,7 +348,7 @@ export type PlayerSortColumn = (typeof PLAYER_SORT_COLUMNS)[number]
 
 // The measures a match can be ordered by. Only the ones the engine can order in sql: the events count is
 // gathered per page, after the ordering has already decided which page that is.
-export const MATCH_SORT_COLUMNS = ['time', 'duration', 'ticketDiff', 'kills', 'killDiff'] as const
+export const MATCH_SORT_COLUMNS = ['id', 'time', 'duration', 'ticketDiff', 'kills', 'killDiff'] as const
 export type MatchSortColumn = (typeof MATCH_SORT_COLUMNS)[number]
 
 const QueryFieldsSchema = z.object({

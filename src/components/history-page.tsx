@@ -541,6 +541,7 @@ function MatchesResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 					<thead className="sticky top-0 bg-panel-hi text-text-2">
 						<tr className="border-b border-border">
 							<th className={`${HEADER_CELL} w-6`} />
+							{sortHeader('id', tr.text(HistoryMsgs.colMatchId()))}
 							{sortHeader('time', tr.text(HistoryMsgs.colTime()))}
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colServer())}</th>
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colLayer())}</th>
