@@ -204,9 +204,10 @@ export type State = {
 
 	attributions: Attribution[]
 
-	// players an admin forced to change teams (keyed by player id) -> the admin action source ("why").
-	// consumed by the next teams poll's PLAYER_CHANGED_TEAM, then wiped -- a marker is valid for exactly one poll.
-	forcedTeamChanges: Map<SM.PlayerId, SM.LogEvents.ActionSource>
+	// players an admin forced to change teams (keyed by player id) -> the admin action source ("why") and the log time
+	// of the force. Consumed by the next teams poll requested after the force, whether or not it carries the change: a
+	// poll requested before it still lists the old team even when it is processed after the force's log line.
+	forcedTeamChanges: Map<SM.PlayerId, { source: SM.LogEvents.ActionSource; time: number }>
 
 	// each victim's latest wound, so a death from that wound is judged by the teams at the time it was dealt rather
 	// than after a bleed-out of up to five minutes, during which the attacker can change team
@@ -259,6 +260,10 @@ export type State = {
 	// uniqueId -> log time of each SQUAD_CREATED no poll has been issued since. A poll requested before that time
 	// can't contain the squad, so its absence there is not a disband. Pruned once a later poll is reconciled.
 	squadCreatedAtAwaitingPoll: Map<number, number>
+
+	// player id -> log time of each PLAYER_DISCONNECTED no poll has been requested since. A poll requested before that
+	// time still lists the player, which is not a reconnect. Pruned once a later poll is reconciled.
+	disconnectedAtAwaitingPoll: Map<SM.PlayerId, number>
 
 	// the roster at the moment of the last RCON disconnect. When the reconnect resolves to the SAME match, the
 	// reseeding RESET reuses these squads' uniqueIds (an RCON blip shouldn't make every squad look recreated) and
@@ -339,6 +344,7 @@ export function init(opts: {
 		pollAbsenceStreaks: new Map(),
 		unknownSquadStreaks: new Map(),
 		squadCreatedAtAwaitingPoll: new Map(),
+		disconnectedAtAwaitingPoll: new Map(),
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
@@ -878,6 +884,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		state.pollAbsenceStreaks.clear()
 		state.unknownSquadStreaks.clear()
 		state.squadCreatedAtAwaitingPoll.clear()
+		state.disconnectedAtAwaitingPoll.clear()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
 			await emit(state, pass, {
@@ -963,6 +970,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			state.pollAbsenceStreaks.clear()
 			state.unknownSquadStreaks.clear()
 			state.squadCreatedAtAwaitingPoll.clear()
+			state.disconnectedAtAwaitingPoll.clear()
 			state.unassignedPlayers.clear()
 			state.expectedNewLayer = { layerId: state.nextLayerId }
 			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
@@ -1292,6 +1300,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				break
 			}
 
+			state.disconnectedAtAwaitingPoll.delete(SM.PlayerIds.getPlayerId(player.ids))
 			await emit(state, pass, {
 				type: 'PLAYER_CONNECTED',
 				...base,
@@ -1423,6 +1432,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				...base,
 			})
+			state.disconnectedAtAwaitingPoll.set(SM.PlayerIds.getPlayerId(pendingEvent.playerIds), pendingEvent.time)
 			break
 		}
 
@@ -1445,9 +1455,11 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		case 'ADMIN_FORCED_TEAM_CHANGE': {
 			// The log doesn't state the destination team, and firing early races the teams poll -- which is the real
 			// source of truth for the new team and the implied squad-leave. So just record the admin attribution;
-			// the next teams poll's PLAYER_CHANGED_TEAM picks it up. See reconcileTeamsUpdate / the TEAMS_UPDATE case,
-			// which wipes forcedTeamChanges after every poll (used or not).
-			state.forcedTeamChanges.set(SM.PlayerIds.getPlayerId(pendingEvent.playerIds), pendingEvent.source)
+			// the next teams poll's PLAYER_CHANGED_TEAM picks it up. See reconcileTeamsUpdate / the TEAMS_UPDATE case.
+			state.forcedTeamChanges.set(SM.PlayerIds.getPlayerId(pendingEvent.playerIds), {
+				source: pendingEvent.source,
+				time: pendingEvent.time,
+			})
 			break
 		}
 
@@ -1514,8 +1526,9 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				applyEventToState(state, pass.ctx, event)
 				pass.events.push(event)
 			}
-			// a forced-team-change attribution is valid for exactly one poll -- discard whatever wasn't consumed
-			state.forcedTeamChanges.clear()
+			for (const [playerId, forced] of state.forcedTeamChanges) {
+				if (forced.time < pendingEvent.polledAt) state.forcedTeamChanges.delete(playerId)
+			}
 			break
 		}
 
@@ -1774,8 +1787,17 @@ function vehicleTeam(layer: L.UnvalidatedLayer, className: string): SM.TeamId | 
 }
 
 async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: SE.Event[]): Promise<void> {
-	const nextTeams = event.teams
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
+	let nextTeams = event.teams
+	let leftSincePoll: Set<SM.PlayerId> | undefined
+	for (const [playerId, disconnectedAt] of state.disconnectedAtAwaitingPoll) {
+		if (disconnectedAt < event.polledAt) state.disconnectedAtAwaitingPoll.delete(playerId)
+		else (leftSincePoll ??= new Set()).add(playerId)
+	}
+	if (leftSincePoll) {
+		const left = leftSincePoll
+		nextTeams = { ...nextTeams, players: nextTeams.players.filter((p) => !left.has(SM.PlayerIds.getPlayerId(p.ids))) }
+	}
 	const nextSquads: SM.UniqueSquad[] = []
 	const base = { matchId: state.currentMatch.historyEntryId, time: event.time }
 	const log = state.log
@@ -1996,9 +2018,10 @@ async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: 
 				player: playerId,
 				newTeamId: nextPlayer.teamId,
 				// attributed if an admin forced this change (recorded from the log); undefined for organic switches
-				source: state.forcedTeamChanges.get(playerId),
+				source: state.forcedTeamChanges.get(playerId)?.source,
 				...base,
 			})
+			state.forcedTeamChanges.delete(playerId)
 		}
 	}
 
