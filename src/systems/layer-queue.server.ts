@@ -71,6 +71,10 @@ type SideEffectCtx = C.Db &
 	Msgs.Ctx &
 	Partial<Pick<C.Tx, 'tx'>>
 
+// The server MAP_SET an outside-set sync is reacting to, by the queue item the sync puts in the queue, for the length of
+// that one dispatch. Carried beside the op rather than on it: the op type is part of the plugin API.
+const externalSetEventIds = new Map<LL.ItemId, number>()
+
 const module = initModule('layer-queue')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
@@ -215,9 +219,13 @@ export const setupInstance = Instr.spanOp(
 									itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
 									layerId: event.layerId,
 									externalSource: external,
-									externalEventId: event.id,
 								}
-								await dispatchOp(ctx, op)
+								externalSetEventIds.set(op.itemId, event.id)
+								try {
+									await dispatchOp(ctx, op)
+								} finally {
+									externalSetEventIds.delete(op.itemId)
+								}
 							}
 						},
 					),
@@ -1622,6 +1630,7 @@ const handleSideEffect = Instr.spanOp(
 					prevList: se.prevList,
 					list: se.list,
 					save,
+					externalEventId: triggerOp?.op === 'unshift-first-saved-layer' ? externalSetEventIds.get(triggerOp.itemId) : undefined,
 				})
 				await SquadServerActions.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)

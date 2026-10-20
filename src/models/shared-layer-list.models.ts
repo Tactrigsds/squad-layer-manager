@@ -141,8 +141,6 @@ function buildOperationSchema<
 					z.object({ type: z.literal('unknown') }),
 				])
 				.optional(),
-			// the server MAP_SET this reconciliation reacted to, so the feed can show the two as one entry
-			externalEventId: z.number().optional(),
 		}),
 		z.object({
 			...baseProps,

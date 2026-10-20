@@ -46,6 +46,7 @@ import EmojiDisplay from './emoji-display.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
+import { LayerRequester } from './layer-requester'
 import { ListEditor } from './list-editor.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { ButtonGroup } from './ui/button-group'
@@ -506,16 +507,11 @@ function BackburnerRow(
 	)
 }
 
-// who asked for the layer. A request made in chat by a player with no linked discord account can only be
-// named by their steam id, so that falls back to text rather than an avatar.
+// who asked for the layer. A request made in chat by a player with no linked discord account has no avatar, so it is
+// named in text instead.
 function RequestOwner(props: { source: BB.BackburnerItem['source'] }) {
 	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label={tr.text(BB_Msgs.requestedBy())} />
-	const name = props.source.steamId ? `steam:${props.source.steamId}` : tr.text(BB_Msgs.unknownRequester())
-	return (
-		<span className="max-w-32 truncate text-xs text-muted-foreground" title={name}>
-			{name}
-		</span>
-	)
+	return <LayerRequester requester={props.source} className="max-w-32 truncate text-muted-foreground" />
 }
 
 // what a template constrains, LayerDisplay-style but without team color-coding

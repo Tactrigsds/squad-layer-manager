@@ -7,6 +7,7 @@ import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as PlayerNamesClient from '@/systems/player-names.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 export type ChatSlice = {
@@ -60,6 +61,17 @@ export function initChat(args: Args) {
 			})
 		},
 	} satisfies ChatSlice)
+
+	// names the players of this server's current match wherever the app shows a username (see PlayerNamesClient)
+	args.cleanup.push(
+		PlayerNamesClient.trackRecentPlayers(
+			serverId,
+			args.update$.pipe(
+				Rx.map(([state]) => state.chat.chatState.interpolatedState.recentPlayers),
+				Rx.startWith(get().chatState.interpolatedState.recentPlayers),
+			),
+		),
+	)
 
 	// Live events arrive one per message, and every batch costs each reader of the chat state a recompute, so they are
 	// held for up to LIVE_EVENT_BATCH_MS and applied together. A lifecycle event (the start or end of a sync, a

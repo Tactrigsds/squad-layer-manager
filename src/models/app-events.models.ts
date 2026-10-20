@@ -393,6 +393,8 @@ export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 			overrodeEditors: z.array(USR.UserIdSchema),
 		})
 		.optional(),
+	// for an 'external-layer-change' save: the server MAP_SET it reconciled to, so the feed can show the two as one entry
+	externalEventId: z.number().optional(),
 })
 export type QueueUpdated = z.infer<typeof QueueUpdatedSchema>
 
@@ -726,7 +728,7 @@ export function reactedToServerEventId(e: AppEvent): number | undefined {
 	if (e.type === 'QUEUE_UPDATED' && e.trigger === 'external-layer-change') {
 		const triggerOp = e.ops[e.ops.length - 1]
 		if (triggerOp?.op !== 'unshift-first-saved-layer' || !triggerOp.externalSource || triggerOp.externalSource.type === 'unknown') return
-		return triggerOp.externalEventId
+		return e.externalEventId
 	}
 	return undefined
 }
