@@ -261,12 +261,16 @@ test.describe('collaborative filter editing', () => {
 			await page.getByRole('textbox', { name: 'Node comment' }).fill('a shared draft, not a private copy')
 			// the builder renders the comment and the text mirror repeats it, so match the first
 			await expect(pageB.getByText('a shared draft, not a private copy').first()).toBeVisible({ timeout: 20_000 })
+			// the edit claimed A an editing session, and only A: B's replica claims none of its own
+			const draftEditors = pageB.locator('[data-draft-editors]')
+			await expect(draftEditors).toHaveAttribute('data-draft-editors', '1')
 
 			// A leaves without saving, and was the only one editing -- so there is nobody left to commit the
 			// draft, and B is returned to the filter as it is stored
 			page.once('dialog', (dialog) => void dialog.accept())
 			await page.getByRole('link', { name: 'Filters', exact: true }).click()
 			await page.waitForURL('**/filters')
+			await expect(draftEditors).toHaveAttribute('data-draft-editors', '0')
 			await expect(pageB.getByText('a shared draft, not a private copy')).toHaveCount(0, { timeout: 20_000 })
 
 			const stored = app.readDb().prepare('select name from filters where id = ?').get('collab') as { name: string }

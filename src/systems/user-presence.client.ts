@@ -491,6 +491,16 @@ export namespace Sel {
 		return count
 	}
 
+	// the same count for a filter's shared draft
+	export const filterEditingClientCount = (filterId: string) => (state: Store) => {
+		const trans = UP.Trans.editingFilter(filterId)
+		let count = 0
+		for (const presence of state.presence.values()) {
+			if (presence.activityState && trans.match(presence.activityState)) count++
+		}
+		return count
+	}
+
 	// the users holding an editing session on the given list, whichever client they hold it from
 	export const listEditorUserIds = (host: LL.ListHost) => (state: Store) => {
 		const trans = UP.Trans.editingList(host)
