@@ -420,6 +420,8 @@ export type TourState =
 	| { code: 'stage-failed'; scenarioId: TUT.ScenarioId; stepIdx: number }
 	// off the dashboard: overlay collapses to a docked card. stepIdx is where narration resumes.
 	| { code: 'paused'; scenarioId: TUT.ScenarioId; stepIdx: number }
+	// a chapter has just been finished. stepIdx is the first step of the next chapter, which Continue enters.
+	| { code: 'chapter-end'; scenarioId: TUT.ScenarioId; stepIdx: number }
 
 // `starting` is the tutorial whose server is being stood up, from the click until the first step is narrated. That
 // can take a while, and until it is done there is no step for the overlay to show.
@@ -445,7 +447,13 @@ export namespace Sel {
 
 // ============================== engine ==============================
 
-type Active = { scenarioId: TUT.ScenarioId; steps: Step[]; resetClient?: (run: RunStores) => void; run: RunStores }
+type Active = {
+	scenarioId: TUT.ScenarioId
+	steps: Step[]
+	chapters: ChapterSpan[]
+	resetClient?: (run: RunStores) => void
+	run: RunStores
+}
 let active: Active | null = null
 let stepSub = new Rx.Subscription() // advance + premise watchers for the current step
 let runSub = new Rx.Subscription() // router pause watcher, lives for the run
@@ -501,6 +509,31 @@ export function stepAt(scenarioId: TUT.ScenarioId, stepIdx: number): Step | unde
 }
 export function stepCount(scenarioId: TUT.ScenarioId): number {
 	return stepsOf(scenarioId).length
+}
+
+// A chapter of TUT.CHAPTERS as a run built it: the indexes of the steps it covers, `end` exclusive. A chapter with
+// none of its steps built is left out.
+export type ChapterSpan = { id: string; start: number; end: number }
+
+function chapterSpans(scenarioId: TUT.ScenarioId, steps: Step[]): ChapterSpan[] {
+	const outline: readonly TUT.Chapter[] = TUT.CHAPTERS[scenarioId]
+	const spans: ChapterSpan[] = []
+	let prev = -1
+	for (const [i, step] of steps.entries()) {
+		const c = TUT.chapterIndexOf(scenarioId, step.id)
+		if (c === -1 || c < prev) throw new Error(`tutorial ${scenarioId}: step ${step.id} is missing from TUT.CHAPTERS or out of its order`)
+		if (c === prev) spans[spans.length - 1].end = i + 1
+		else spans.push({ id: outline[c].id, start: i, end: i + 1 })
+		prev = c
+	}
+	return spans
+}
+
+export function chaptersOf(scenarioId: TUT.ScenarioId): ChapterSpan[] {
+	return active?.scenarioId === scenarioId ? active.chapters : []
+}
+export function chapterAt(scenarioId: TUT.ScenarioId, stepIdx: number): ChapterSpan | undefined {
+	return chaptersOf(scenarioId).find((span) => stepIdx >= span.start && stepIdx < span.end)
 }
 // the transition out of stepIdx, which under the inversion is the next step's advanceFromPrevious. What the
 // overlay consults for the Next button and the anchor-click listener.
@@ -673,7 +706,7 @@ async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
 	if (!def) throw new Error(`no steps registered for tutorial ${scenarioId}`)
 	const run = acquireRun(serverId)
 	const steps = typeof def.steps === 'function' ? await def.steps() : def.steps
-	active = { scenarioId, steps, resetClient: def.resetClient, run }
+	active = { scenarioId, steps, chapters: chapterSpans(scenarioId, steps), resetClient: def.resetClient, run }
 	// jumps reset the screen themselves; this covers the run's first step, which is not reached by one
 	def.resetClient?.(run)
 	runSub = new Rx.Subscription()
@@ -716,19 +749,49 @@ async function doResume(scenarioId: TUT.ScenarioId, stepId: string) {
 			const res = await doStart(scenarioId)
 			if (res.code !== 'ok') return res
 		}
-		const idx = active?.steps.findIndex((step) => step.id === stepId) ?? -1
-		// a step id from before the curriculum changed points at nothing; starting over beats landing somewhere arbitrary
-		await doJump(idx === -1 ? 0 : idx)
+		await doJump(active ? resumeIdx(active, stepId) : 0)
 		return { code: 'ok' as const }
 	} finally {
 		Store.setState({ starting: null })
 	}
 }
 
+// The step a saved place resumes at. A step this install does not build resumes at the start of its chapter, and a
+// step id from before the curriculum changed points at nothing, where starting over beats landing somewhere arbitrary.
+function resumeIdx({ scenarioId, steps, chapters }: Active, stepId: string): number {
+	const idx = steps.findIndex((step) => step.id === stepId)
+	if (idx !== -1) return idx
+	const chapterId = TUT.CHAPTERS[scenarioId][TUT.chapterIndexOf(scenarioId, stepId)]?.id
+	return chapters.find((span) => span.id === chapterId)?.start ?? 0
+}
+
+// Moving on from a chapter's last step stops at the chapter-end card rather than entering the next step. The saved
+// place moves on with it, so stopping there resumes at the next chapter.
 function doNext() {
 	const s = Store.getState().state
-	if (s.code !== 'narrating') return
-	void enterStep(s.stepIdx + 1)
+	if (s.code !== 'narrating' || !active) return
+	const next = s.stepIdx + 1
+	const nextStep = active.steps[next]
+	if (!nextStep || chapterAt(s.scenarioId, next) === chapterAt(s.scenarioId, s.stepIdx)) return void enterStep(next)
+	clearStepWatchers()
+	set({ code: 'chapter-end', scenarioId: s.scenarioId, stepIdx: next })
+	recordProgress(s.scenarioId, nextStep.id)
+}
+
+// Start a tutorial from the first step of one of its chapters, from the index page. A tour that is still attached
+// waits on its dashboard to jump, so the reader is taken there first.
+async function doStartChapter(scenarioId: TUT.ScenarioId, chapterId: string) {
+	const chapter = (TUT.CHAPTERS[scenarioId] as readonly TUT.Chapter[]).find((c) => c.id === chapterId)
+	if (!chapter) return
+	if (active?.scenarioId === scenarioId && !isOnDashboard(active.run.serverId)) {
+		await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId: active.run.serverId } })
+	}
+	return doResume(scenarioId, chapter.steps[0])
+}
+
+function doContinue() {
+	const s = Store.getState().state
+	if (s.code === 'chapter-end') void enterStep(s.stepIdx)
 }
 
 // ============================== jumps ==============================
@@ -897,7 +960,9 @@ function doComplete() {
 export namespace Actions {
 	export const start = doStart
 	export const resume = doResume
+	export const startChapter = doStartChapter
 	export const next = doNext
+	export const continueChapter = doContinue
 	export const jump = doJump
 	export const reset = doReset
 	export const exit = doExit
