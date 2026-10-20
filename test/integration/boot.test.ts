@@ -451,7 +451,9 @@ describe('GET /history as text', () => {
 
 		const matches = await get('/history?type=matches&contentType=text%2Fcsv')
 		expect(matches.status).toBe(200)
-		expect((await matches.text()).split('\r\n')[0]).toBe('Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events')
+		expect((await matches.text()).split('\r\n')[0]).toBe(
+			'Match ID,Time,Server,Layer,Outcome,Ticket diff,Kills,Kill diff,Length,Set by,Events',
+		)
 	})
 
 	it('refuses what has no raw form, and a request without a session, as text', async () => {

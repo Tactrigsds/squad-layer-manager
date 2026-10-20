@@ -109,6 +109,11 @@ function onClick(event: MouseEvent) {
 	const tip = tipTargetOf(event)
 	if (pinnedElement && !withinPinned(event.target)) closeTip()
 	if (tip) {
+		const matchId = tip.getAttribute(RC.TIP_MATCH_ATTR)
+		if (matchId) {
+			void navigator.clipboard.writeText(matchId)
+			toast(...tr.toast(HistoryMsgs.matchIdCopied()))
+		}
 		// a second click on the trigger dismisses, the same way the constraint indicators behave
 		if (pinnedElement === tip) closeTip()
 		else if (isInteractive(tipContentOf(tip, RC.scopeOf(tip)) ?? undefined)) pinTip(tip, { x: event.clientX, y: event.clientY })

@@ -68,24 +68,21 @@ export function EventTime(props: { time: number }) {
 // Which match a row came from, drawn only where the ambient says the feed spans matches -- so a dashboard
 // feed of one match is unchanged. Beside the time rather than inside its button, and here rather than in
 // EventLine because a chat row builds its own line and skips that. See RC.setRowMatchId for why it is not a
-// prop. A button because its tooltip can be clicked open, which is how its layer link is reached.
+// prop. A click copies the id and pins its tooltip, which is how its layer link is reached (see interactions.ts).
 function RowMatchId() {
 	const matchId = RC.currentRowMatchId()
 	if (matchId === undefined) return null
 	return (
-		<span className="inline-flex shrink-0 items-center gap-1">
-			<button type="button" data-state="closed" {...{ [RC.TIP_MATCH_ATTR]: matchId }}>
-				<span className="text-muted-foreground/60 font-mono text-2xs ltr-isolate">#{matchId}</span>
-			</button>
-			<button
-				type="button"
-				className="text-muted-foreground/60 hover:text-foreground transition-colors"
-				title={I18n.ambient.text(HistoryMsgs.copyMatchId())}
-				{...RC.copyAttrs(String(matchId))}
-			>
-				<Icon name="Copy" className="h-3 w-3" />
-			</button>
-		</span>
+		<button
+			type="button"
+			className="inline-flex shrink-0 items-center gap-1 text-muted-foreground/60 hover:text-foreground transition-colors"
+			title={I18n.ambient.text(HistoryMsgs.copyMatchId())}
+			data-state="closed"
+			{...{ [RC.TIP_MATCH_ATTR]: matchId }}
+		>
+			<span className="font-mono text-2xs ltr-isolate">#{matchId}</span>
+			<Icon name="Copy" className="h-3 w-3" />
+		</button>
 	)
 }
 

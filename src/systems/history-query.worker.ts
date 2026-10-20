@@ -335,6 +335,7 @@ export async function queryPlayerRows(
 // The same expressions the length and ticket-difference filters compile to, so ordering by a column and
 // filtering on it cannot disagree.
 const MATCH_SORT_EXPRS: Record<HQ.MatchSortColumn, E.SQL> = {
+	id: sql`${mh.id}`,
 	time: matchTime,
 	duration: durationOf(mh),
 	ticketDiff: ticketDiffOf(mh),

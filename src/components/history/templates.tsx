@@ -9,6 +9,7 @@ import { Icon } from '@/components/feed/icons'
 import * as MatchSummary from '@/components/feed/match-summary'
 import * as RC from '@/components/feed/render-context'
 import * as MsgFmt from '@/messages/format'
+import * as HistoryMsgs from '@/messages/history.messages'
 import * as I18n from '@/messages/i18n'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -66,15 +67,15 @@ function ExpandableRow(props: { rowKey: string; count: number; columns: number; 
 
 // the player details window's CopyIdButton, minus its hooks: the click and the "Copied!" feedback ride the
 // delegated handlers (see interactions.ts), and the kind label stays in the column header rather than the cell
-function CopyId(props: { kind: SM_Msgs.IdKind; id: string }) {
+function CopyId(props: { title: string; id: string; label?: string }) {
 	return (
 		<button
 			type="button"
 			className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-			title={I18n.ambient.text(SM_Msgs.copyIdHint(props.kind))}
+			title={props.title}
 			{...RC.copyAttrs(props.id)}
 		>
-			<span className="font-mono ltr-isolate">{props.id}</span>
+			<span className="font-mono ltr-isolate">{props.label ?? props.id}</span>
 			<Icon name="Copy" className="h-3 w-3" />
 		</button>
 	)
@@ -108,9 +109,9 @@ export function PlayerRow(props: { row: HQ.PlayerRow; timeZone: string }) {
 					{row.username ?? row.playerId}
 				</button>
 			</td>
-			<td className={ID_CELL}>{row.steamId && <CopyId kind="steam" id={row.steamId} />}</td>
+			<td className={ID_CELL}>{row.steamId && <CopyId title={I18n.ambient.text(SM_Msgs.copyIdHint('steam'))} id={row.steamId} />}</td>
 			<td className={ID_CELL}>
-				<CopyId kind="eos" id={row.playerId} />
+				<CopyId title={I18n.ambient.text(SM_Msgs.copyIdHint('eos'))} id={row.playerId} />
 			</td>
 			<td className={NUM_CELL}>{row.matches}</td>
 			<td className={NUM_CELL}>{row.chatMessages}</td>
@@ -119,7 +120,7 @@ export function PlayerRow(props: { row: HQ.PlayerRow; timeZone: string }) {
 	)
 }
 
-export const MATCH_ROW_COLUMNS = 11
+export const MATCH_ROW_COLUMNS = 12
 
 export function MatchRow(props: {
 	details: MH.MatchDetails
@@ -137,6 +138,13 @@ export function MatchRow(props: {
 			columns={MATCH_ROW_COLUMNS}
 			menu={{ kind: 'layer', layerIds: [details.layerId], historyEntryIds: [details.historyEntryId] }}
 		>
+			<td className={ID_CELL}>
+				<CopyId
+					title={I18n.ambient.text(HistoryMsgs.copyMatchId())}
+					id={String(details.historyEntryId)}
+					label={`#${details.historyEntryId}`}
+				/>
+			</td>
 			<td className={CELL}>{time ? MsgFmt.formatDate(time, 'dateTime', undefined, props.timeZone) : ''}</td>
 			<td className={CELL}>{details.serverId}</td>
 			<td className="px-2 py-1 align-top">

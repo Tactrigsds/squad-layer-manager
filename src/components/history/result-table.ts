@@ -47,6 +47,7 @@ export type MatchRow = { details: MH.MatchDetails; events: number; setBy: string
 export function matchesTable(rows: MatchRow[], opts: TableOpts): Table {
 	return table<MatchRow>(
 		[
+			{ header: text(HistoryMsgs.colMatchId()), numeric: true, value: ({ details }) => String(details.historyEntryId) },
 			{
 				header: text(HistoryMsgs.colTime()),
 				value: ({ details }) => {
