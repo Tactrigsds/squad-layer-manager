@@ -29,10 +29,15 @@ function tryGit(args, cwd = process.cwd()) {
 	}
 }
 
-// The main checkout: the directory holding the shared git dir. `--git-common-dir` is what makes this work
-// from inside a linked worktree, where `--git-dir` points at a per-worktree directory instead.
+// The shared git dir. `--git-common-dir` is what makes this work from inside a linked worktree, where
+// `--git-dir` points at a per-worktree directory instead.
+function gitCommonDir(cwd) {
+	return path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd))
+}
+
+// The main checkout: the directory holding the shared git dir.
 function mainCheckout(cwd) {
-	return path.dirname(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)))
+	return path.dirname(gitCommonDir(cwd))
 }
 
 function listWorktrees(cwd) {
@@ -135,13 +140,61 @@ function ensureArtifacts(dest, { force = false } = {}) {
 		console.error(`  ${LAYER_DB}: the main checkout has none, skipping`)
 	}
 
+	linkPrivateSkills(dest)
+
 	console.error('  building the layer engine')
 	const [cmd, args] = inFlake('pnpm', ['run', 'build:engine'])
 	run(cmd, args, dest, { quiet: true })
 }
 
+// Skills that must not be published with the repo, such as ones naming production hosts. Claude Code reads a linked
+// worktree's skills from that worktree's own .claude/skills only, so each skill is symlinked into every checkout from
+// one copy that git never tracks, and the link is excluded through the shared info/exclude.
+function linkPrivateSkills(dest) {
+	const commonDir = gitCommonDir(dest)
+	const source = path.resolve(process.env.SLM_PRIVATE_SKILLS_DIR || path.join(commonDir, 'private-skills'))
+	const skillsDir = path.join(dest, '.claude', 'skills')
+	if (fs.existsSync(skillsDir)) {
+		for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+			const link = path.join(skillsDir, entry.name)
+			if (entry.isSymbolicLink() && fs.readlinkSync(link).startsWith(source + path.sep) && !fs.existsSync(link)) {
+				fs.unlinkSync(link)
+				console.error(`  private skill ${entry.name}: removed the link to a deleted skill`)
+			}
+		}
+	}
+	if (!fs.existsSync(source)) return
+
+	const excludeFile = path.join(commonDir, 'info', 'exclude')
+	const excluded = new Set(fs.existsSync(excludeFile) ? fs.readFileSync(excludeFile, 'utf8').split('\n') : [])
+	for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+		if (!entry.isDirectory() || !fs.existsSync(path.join(source, entry.name, 'SKILL.md'))) continue
+		const pattern = `/.claude/skills/${entry.name}`
+		if (!excluded.has(pattern)) {
+			fs.mkdirSync(path.dirname(excludeFile), { recursive: true })
+			fs.appendFileSync(excludeFile, pattern + '\n')
+			excluded.add(pattern)
+		}
+		const link = path.join(skillsDir, entry.name)
+		const target = path.join(source, entry.name)
+		let current = null
+		try {
+			current = fs.lstatSync(link)
+		} catch {}
+		if (current && !current.isSymbolicLink()) {
+			console.error(`  private skill ${entry.name}: ${link} is a tracked skill, skipping`)
+			continue
+		}
+		if (current && fs.readlinkSync(link) === target) continue
+		if (current) fs.unlinkSync(link)
+		fs.mkdirSync(skillsDir, { recursive: true })
+		fs.symlinkSync(target, link)
+		console.error(`  private skill ${entry.name} linked`)
+	}
+}
+
 function slotRegistryPath(cwd) {
-	return path.join(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)), 'slm-dev-slots.json')
+	return path.join(gitCommonDir(cwd), 'slm-dev-slots.json')
 }
 
 // A worktree's slot is keyed by its absolute path, so a move that does not rewrite the registry orphans the
