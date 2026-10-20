@@ -272,7 +272,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<TableHead>{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}</TableHead>
-							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
+							<TableHead className="text-center">{tr.text(MH_Msgs.scoresColumn())}</TableHead>
 							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}</TableHead>
 							<TableHead className="text-center w-14" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
 								<Icons.Flag className="inline size-3" />
@@ -433,7 +433,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 	let outcomeDisp: React.ReactNode = null
 
 	if (entry.isCurrentMatch) {
-		// Determine status badge (exactly one of: rolling, post-game, in-progress)
+		// in-progress gets no badge: the gutter's play icon marks it
 		if (serverRolling) {
 			statusBadge = (
 				<Badge variant="info" className="flex items-center whitespace-nowrap">
@@ -447,8 +447,6 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					{tr.text(MH_Msgs.postGame())}
 				</Badge>
 			)
-		} else if (entry.status === 'in-progress') {
-			statusBadge = <Badge className="whitespace-nowrap">{tr.text(MH_Msgs.inProgress())}</Badge>
 		}
 	}
 
@@ -558,7 +556,10 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 		<>
 			{isViewingThisMatch && <Icons.Eye className="size-[11px] text-[#6ea8ff]" />}
 			{entry.isCurrentMatch && entry.status === 'in-progress' ? (
-				<Icons.Play className="size-[11px] text-ok" />
+				<>
+					<Icons.Play aria-hidden className="size-[11px] text-ok" />
+					<span className="sr-only">{tr.text(MH_Msgs.inProgress())}</span>
+				</>
 			) : entry.isCurrentMatch && entry.status === 'post-game' ? (
 				<Icons.Check className="size-[11px]" />
 			) : (
