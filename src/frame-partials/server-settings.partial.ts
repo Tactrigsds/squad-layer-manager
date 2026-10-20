@@ -78,8 +78,13 @@ export function initServerSettings(args: Args) {
 		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId }))
 			.pipe(RPC.dropUnavailable())
 			.subscribe(([settings, source]) => {
-				const updated = Obj.structuralMerge(get().saved, settings)
-				set({ saved: updated, edited: updated, ops: [], resetKey: get().resetKey + 1 })
+				const state = get()
+				const saved = Obj.structuralMerge(state.saved, settings)
+				// pending ops are replayed onto every push, including the echo of a save that sent them, since a save
+				// can be followed by edits before its echo arrives. `save` trims the ops it sent once they land.
+				const rebased = state.ops.length === 0 ? saved : Im.produce(saved, (draft) => SETTINGS.applySettingMutations(draft, state.ops))
+				const edited = Obj.structuralMerge(state.edited, rebased)
+				set({ saved, edited, resetKey: edited === state.edited ? state.resetKey : state.resetKey + 1 })
 				if (source) {
 					toast(...tr.toast(SS_Msgs.stateUpdateSource(source)))
 				}
@@ -126,6 +131,8 @@ export namespace Actions {
 				toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 				return false
 			}
+			const sent = new Set(ops)
+			slice.setState((state) => ({ ops: state.ops.filter((op) => !sent.has(op)) }))
 			return true
 		} catch (err) {
 			toast.error(...tr.toast(SETTINGS_Msgs.saveFailed(err instanceof Error ? err.message : String(err))))
