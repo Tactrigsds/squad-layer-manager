@@ -780,14 +780,43 @@ test.describe('history page', () => {
 		await expect(page.getByText('0 results')).toBeVisible()
 	})
 
+	// A field the result type lists by default keeps its row once cleared, and its text and number inputs are
+	// uncontrolled, so a clear that only reached the draft left the old value showing.
+	test('a row clear empties the input beside it', async ({ app, page }) => {
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=1`))
+
+		const matchId = page.getByRole('group', { name: 'Match id', exact: true })
+		await expect(matchId.getByRole('spinbutton')).toHaveValue('1')
+		await matchId.getByRole('button', { name: 'Clear' }).click()
+		await expect(matchId.getByRole('spinbutton')).toHaveValue('')
+
+		// an edit still inside its debounce is committed before the clear, not after it
+		const chat = page.getByRole('group', { name: 'Chat contains' })
+		await chat.getByRole('textbox').fill('typed')
+		await chat.getByRole('button', { name: 'Clear' }).click()
+		await expect(chat.getByRole('textbox')).toHaveValue('')
+
+		await page.getByRole('button', { name: 'Run', exact: true }).click()
+		await expect(page).not.toHaveURL(/matchId=|chat=/)
+
+		await gotoReady(page, historyUrl(app, 'type=matches&killsMin=3&killsMax=9'))
+		const kills = page.getByRole('group', { name: 'Kills', exact: true })
+		await expect(kills.getByRole('spinbutton', { name: 'Min' })).toHaveValue('3')
+		await kills.getByRole('button', { name: 'Clear' }).click()
+		await expect(kills.getByRole('spinbutton', { name: 'Min' })).toHaveValue('')
+		await expect(kills.getByRole('spinbutton', { name: 'Max' })).toHaveValue('')
+	})
+
 	test('clear all empties every field the rail is holding', async ({ app, page }) => {
-		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&servers=%5B%22${app.serverId}%22%5D`))
+		await gotoReady(page, historyUrl(app, `type=events&chat=${HISTORY_NEEDLE}&matchId=1&servers=%5B%22${app.serverId}%22%5D`))
 		await expect(page.getByText(/^\d+ results?$/)).toBeVisible()
 
 		const clear = page.getByRole('button', { name: 'Clear All', exact: true })
 		await expect(clear).toBeEnabled()
 		await clear.click()
 		await expect(clear).toBeDisabled()
+		await expect(page.getByRole('group', { name: 'Chat contains' }).getByRole('textbox')).toHaveValue('')
+		await expect(page.getByRole('group', { name: 'Match id', exact: true }).getByRole('spinbutton')).toHaveValue('')
 
 		// the draft is cleared, not the executed query: running is what takes it to the url
 		await page.getByRole('button', { name: 'Run', exact: true }).click()

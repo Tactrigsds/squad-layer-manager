@@ -51,8 +51,9 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
 	// fields "+ Filter" has added that hold no value yet, so nothing else can infer they should be listed
 	const [extra, setExtra] = React.useState<readonly QF.FieldKey[]>([])
-	// bumped by "clear all", which remounts the scope block: its time row holds a "custom range" flag that
-	// nothing in the query can express, so clearing the bounds alone would leave the empty inputs showing
+	// bumped by "clear all", which remounts every row: the time row holds a "custom range" flag that nothing in
+	// the query can express, and the text and number inputs are uncontrolled, so they would go on showing what
+	// was cleared
 	const [generation, setGeneration] = React.useState(0)
 	const groups = QF.visibleFields(draft, extra)
 	const shown = groups.flatMap((g) => g.fields.map((f) => f.key))
@@ -68,7 +69,7 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 					<GroupHeading>{groupLabel(group.group)}</GroupHeading>
 					{group.fields.map((field) => (
 						<FieldRow
-							key={field.key}
+							key={`${field.key}:${generation}`}
 							field={field}
 							draft={draft}
 							set={set}
@@ -86,6 +87,7 @@ export default function HistoryQueryBar(props: { draft: HQ.Query; set: Set }) {
 				className="col-span-full h-7 text-xs"
 				disabled={!QF.anyFieldSet(draft)}
 				onClick={() => {
+					commitFocusedInput()
 					set(QF.clearAllPatch())
 					setExtra([])
 					setGeneration((prev) => prev + 1)
@@ -288,14 +290,18 @@ function Field(props: {
 	stacked?: boolean
 	children: React.ReactNode
 }) {
-	const clear = props.onClear && (
+	const onClear = props.onClear
+	const clear = onClear && (
 		<Button
 			variant="ghost"
 			size="icon"
 			className="h-6 w-6 shrink-0"
 			disabled={props.canClear === false}
 			title={tr.text(HistoryMsgs.clearFilter())}
-			onClick={props.onClear}
+			onClick={() => {
+				commitFocusedInput()
+				onClear()
+			}}
 		>
 			<Icons.Trash className="h-3.5 w-3.5" />
 		</Button>
@@ -304,7 +310,11 @@ function Field(props: {
 
 	if (props.stacked) {
 		return (
-			<div className={cn('col-span-full flex flex-col gap-1 text-xs text-muted-foreground', props.className)}>
+			<div
+				role="group"
+				aria-label={props.label}
+				className={cn('col-span-full flex flex-col gap-1 text-xs text-muted-foreground', props.className)}
+			>
 				<div className="flex items-center justify-between gap-2">
 					{label}
 					{clear}
@@ -315,7 +325,11 @@ function Field(props: {
 	}
 	// a subgrid of the rail's label, control and clear columns. Standalone, a caller gives it its own columns.
 	return (
-		<div className={cn('col-span-full grid grid-cols-subgrid items-center text-xs text-muted-foreground', props.className)}>
+		<div
+			role="group"
+			aria-label={props.label}
+			className={cn('col-span-full grid grid-cols-subgrid items-center text-xs text-muted-foreground', props.className)}
+		>
 			{label}
 			<span className="min-w-0">{props.children}</span>
 			{clear}
@@ -508,6 +522,9 @@ function AddFilterMenu(props: { draft: HQ.Query; shown: readonly QF.FieldKey[]; 
 // the first, and a click that had to land twice to change anything.
 function FieldRow(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onRemove: () => void }) {
 	const { field, draft, set } = props
+	// remounts the control on a clear, since a text or number input is uncontrolled and a default field's row
+	// stays listed once it is cleared
+	const [clears, setClears] = React.useState(0)
 	return (
 		<Field
 			label={fieldLabel(field.key)}
@@ -515,10 +532,11 @@ function FieldRow(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onRemo
 			// the only way to undo a "+ Filter" that was added and left empty
 			onClear={() => {
 				set(QF.clearPatch(field.key))
+				setClears((prev) => prev + 1)
 				props.onRemove()
 			}}
 		>
-			<FieldControl field={field} draft={draft} set={set} />
+			<FieldControl key={clears} field={field} draft={draft} set={set} />
 		</Field>
 	)
 }
@@ -709,6 +727,12 @@ function BoundInput(props: { type: 'number' | 'datetime-local'; label: string; d
 			/>
 		</label>
 	)
+}
+
+// A clear remounts or hides the input it clears, and a DraftInput commits its pending edit on unmount, which would
+// land after the clear. Blurring first commits that edit before the clear replaces it.
+function commitFocusedInput() {
+	if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
 }
 
 // Typing into the draft re-renders the whole page, so a field's edits reach the draft in batches. A blur or the run
