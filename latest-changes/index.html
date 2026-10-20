@@ -126,6 +126,9 @@ tutorial from any chapter.</p>
 <p><strong>Fixed:</strong> When someone deletes a filter, anyone else viewing that filter is returned to the <em>Filters</em> page, even with unsaved changes, since they can no longer be saved. A toast on the <em>Filters</em> page names who deleted the filter.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> The activity feed shows when a player dies of their wounds. Such a death used to read as a kill made with the victim&#x27;s own kit.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> Generate Vote follows your server&#x27;s repeat rules. <em>Hide Repeats</em> is on by default and keeps layers that break a repeat rule out of the choices. With <em>Hide Repeats</em> off, a choice that breaks a repeat rule shows the repeat indicator.</p>
 </li>
 <li>
@@ -334,6 +337,10 @@ in that server&#x27;s activity feed.</p>
 <p>The upgrade grants <code>rotations:create</code> to every role holding <code>filters:create</code>, and <code>rotations:write-all</code> to every role
 holding <code>filters:write-all</code>. Whoever created a rotation can edit it, along with the users and roles added to it as
 contributors.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The upgrade rewrites stored player death and wound events. It takes a few seconds per million events. An earlier version cannot read the rewritten events, so a downgrade drops them from the activity feed and history.</p>
+<p>Plugin <code>PLAYER_DIED</code> and <code>PLAYER_WOUNDED</code> events name the <code>caused by</code> actor <code>damageSource</code> instead of <code>weapon</code>. <code>PLAYER_DIED</code> also records <code>deathVariant</code>, which is <code>killed</code> or <code>diedOfWounds</code>.</p>
 </li>
 <li>
 <p><strong>Changed:</strong> The first start after upgrading takes longer than usual. SLM reads every recorded match once to collect the usernames players have gone by, so the time grows with the size of your match history.</p>
