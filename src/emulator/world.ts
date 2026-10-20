@@ -340,6 +340,12 @@ export class World {
 		this.#log(Fmt.logDie(victim, attacker, 100, weapon))
 	}
 
+	bleedOutPlayer(victim: EmuPlayer, attacker: EmuPlayer, weapon = 'BP_M4_M68') {
+		this.woundPlayer(victim, attacker, weapon)
+		if (victim.teamId === 1 || victim.teamId === 2) this.tickets[victim.teamId - 1] = Math.max(0, this.tickets[victim.teamId - 1] - 1)
+		this.#log(Fmt.logDie(victim, attacker, -300, `BP_Soldier_${victim.role}_C_${this.#nextInstanceId--}`))
+	}
+
 	// descending, as the engine hands them out
 	#nextInstanceId = 2147400000
 

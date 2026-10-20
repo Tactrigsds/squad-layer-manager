@@ -235,6 +235,16 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	'bleed-out': def({
+		usage: 'bleed-out <victim> <attacker>',
+		summary: 'one player wounds another, who then dies of the wounds',
+		input: z.object({ victim: PlayerNameSchema, attacker: PlayerNameSchema }),
+		tokens: ([victim, attacker]) => {
+			requireTokens([victim, attacker], 2, 'bleed-out <victim> <attacker>')
+			return { victim, attacker }
+		},
+		mutatesWorld: true,
+	}),
 	'destroy-vehicle': def({
 		usage: 'destroy-vehicle <attacker> <blueprint> [crew...]',
 		summary: 'a player destroys a vehicle, e.g. BP_BTR80_Militia, with the named players aboard',

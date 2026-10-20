@@ -234,6 +234,15 @@ export const playerDowned = def((victim: Rendered, wounded: boolean, attacker: R
 	}),
 )
 
+export const playerDiedOfWounds = def((victim: Rendered, variant: 'normal' | 'suicide' | 'teamkill', attacker: Rendered) =>
+	rt(
+		'{victim} {variant, select, suicide {died after wounding themselves} teamkill {died after being teamkilled by {attacker}} other {died after being wounded by {attacker}}}',
+		{ victim, variant, attacker },
+	),
+)
+
+export const diedOfWoundsTip = def('Bled out, or gave up while wounded. The server log does not record which.')
+
 export const withWeapon = def(' with {weapon}', (weapon: string) => ({ weapon }))
 
 // -------- vehicles and deployables --------

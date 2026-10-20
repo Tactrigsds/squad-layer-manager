@@ -127,7 +127,11 @@ const WOUND_FENCE =
 const DIED_NULLPTR_WEAPON =
 	'[2026.07.02-12.51.55:354][635]LogSquadTrace: [DedicatedServer]Die(): Player: WildChildCao KillingDamage=100.000000 from BP_PlayerController_C_2147443815 (Online IDs: EOS: 0002560453594f53ba3e3f6d3b1e296a steam: 76561199557617668 | Contoller ID: BP_PlayerController_C_2147443815) caused by nullptr'
 
-// nullptr death with no attacker (bled out) -- must still be dropped
+// A death from wounds: the attacker is whoever last wounded the victim, and the cause is the victim's own soldier pawn
+const DIED_OF_WOUNDS =
+	'[2026.09.27-10.56.20:714][110]LogSquadTrace: [DedicatedServer]Die(): Player: ZAKIR KillingDamage=-300.000000 from BP_PlayerController_C_2147421330 (Online IDs: EOS: 00020ce2bd8e413c93588ffbbddacd6e steam: 76561198132409257 | Contoller ID: BP_PlayerController_C_2147421330) caused by BP_Soldiers_WPMC_Machinegunner_01_C_2147414092'
+
+// nullptr death with no attacker -- must still be dropped
 const DIED_NULLPTR_INVALID =
 	'[2026.07.02-12.19.51:267][953]LogSquadTrace: [DedicatedServer]Die(): Player:Lt.  mech1312 KillingDamage=100.000000 from nullptr (Online IDs: INVALID | Contoller ID: None) caused by nullptr'
 
@@ -191,7 +195,7 @@ describe('LogEvents.parse', () => {
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_WOUNDED',
 				damage: 0,
-				weapon: 'BP_Soldier_USMC_Rifleman1_Woodland',
+				damageSource: 'BP_Soldier_USMC_Rifleman1_Woodland',
 				attackerIds: expect.objectContaining({
 					steam: '76561198397430155',
 					eos: '00029ce874284d2ba0199af5dd36a199',
@@ -204,18 +208,19 @@ describe('LogEvents.parse', () => {
 		it('parses a wound whose weapon is a deployable without a _C suffix, keeping the token verbatim', async () => {
 			const events = await collect([WOUND_FENCE, NEXT_TICK_EVENT].join('\n'))
 			expect(events).toHaveLength(1)
-			expect(events[0]).toMatchObject({ type: 'PLAYER_WOUNDED', weapon: 'Fence58_229' })
+			expect(events[0]).toMatchObject({ type: 'PLAYER_WOUNDED', damageSource: 'Fence58_229' })
 		})
 	})
 
 	describe('PLAYER_DIED', () => {
-		it('parses a death whose killing weapon is nullptr but the attacker is known, with weapon null', async () => {
+		it('parses a death whose killing weapon is nullptr but the attacker is known, with damageSource null', async () => {
 			const events = await collect([DIED_NULLPTR_WEAPON, NEXT_TICK_EVENT].join('\n'))
 			expect(events).toHaveLength(1)
 			expect(events[0]).toMatchObject({
 				type: 'PLAYER_DIED',
-				weapon: null,
+				damageSource: null,
 				damage: 100,
+				deathVariant: 'killed',
 				attackerIds: expect.objectContaining({
 					eos: '0002560453594f53ba3e3f6d3b1e296a',
 					playerController: 'BP_PlayerController_C_2147443815',
@@ -224,7 +229,19 @@ describe('LogEvents.parse', () => {
 			})
 		})
 
-		it('drops a nullptr death when the attacker IDs are INVALID (bled out / no attacker)', async () => {
+		it('parses KillingDamage=-300 as a death from wounds, keeping the sign', async () => {
+			const events = await collect([DIED_OF_WOUNDS, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'PLAYER_DIED',
+				damage: -300,
+				deathVariant: 'diedOfWounds',
+				damageSource: 'BP_Soldiers_WPMC_Machinegunner_01',
+				attackerIds: expect.objectContaining({ eos: '00020ce2bd8e413c93588ffbbddacd6e' }),
+			})
+		})
+
+		it('drops a nullptr death when the attacker IDs are INVALID', async () => {
 			const events = await collect([DIED_NULLPTR_INVALID, NEXT_TICK_EVENT].join('\n'))
 			expect(events.filter((e) => e.type === 'PLAYER_DIED')).toHaveLength(0)
 		})

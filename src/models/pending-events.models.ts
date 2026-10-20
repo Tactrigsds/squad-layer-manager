@@ -208,6 +208,10 @@ export type State = {
 	// consumed by the next teams poll's PLAYER_CHANGED_TEAM, then wiped -- a marker is valid for exactly one poll.
 	forcedTeamChanges: Map<SM.PlayerId, SM.LogEvents.ActionSource>
 
+	// each victim's latest wound, so a death from that wound is judged by the teams at the time it was dealt rather
+	// than after a bleed-out of up to five minutes, during which the attacker can change team
+	lastWounds: Map<SM.PlayerId, { attacker: SM.PlayerId; variant: SE.PlayerWoundedOrDiedVariant; matchId: number }>
+
 	// SLM-armed expectations: match an upcoming server event and stamp its `source` (see EventExpectation)
 	expectations: EventExpectation[]
 
@@ -350,6 +354,7 @@ export function init(opts: {
 		},
 		attributions: [],
 		forcedTeamChanges: new Map(),
+		lastWounds: new Map(),
 		expectations: [],
 		nextLayerId: null,
 		currentMatch: opts.currentMatch,
@@ -868,6 +873,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		state.currTeams = null
 		// team state is gone; any pending forced-team-change attribution can no longer be matched to a poll
 		state.forcedTeamChanges.clear()
+		state.lastWounds.clear()
 		state.pollAbsenceStreaks.clear()
 		state.unknownSquadStreaks.clear()
 		state.squadCreatedAtAwaitingPoll.clear()
@@ -1538,24 +1544,43 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				break
 			}
 
+			const victimId = SM.PlayerIds.getPlayerId(victim.ids)
+			const attackerId = SM.PlayerIds.getPlayerId(attacker.ids)
+			const wound = state.lastWounds.get(victimId)
 			let variant: SE.PlayerWoundedOrDiedVariant
-			if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
+			if (
+				pendingEvent.type === 'PLAYER_DIED' &&
+				pendingEvent.deathVariant === 'diedOfWounds' &&
+				wound?.attacker === attackerId &&
+				wound.matchId === base.matchId
+			) {
+				variant = wound.variant
+			} else if (SM.PlayerIds.match(victim.ids, attacker.ids)) {
 				variant = 'suicide'
 			} else if (victim.teamId !== null && victim.teamId === attacker.teamId) {
 				variant = 'teamkill'
 			} else {
 				variant = 'normal'
 			}
+			if (pendingEvent.type === 'PLAYER_WOUNDED')
+				state.lastWounds.set(victimId, { attacker: attackerId, variant, matchId: base.matchId })
+			else state.lastWounds.delete(victimId)
 
-			await emit(state, pass, {
-				type: pendingEvent.type,
+			const shared = {
 				...base,
 				damage: pendingEvent.damage,
-				weapon: pendingEvent.weapon,
+				damageSource: pendingEvent.damageSource,
 				variant,
-				attacker: SM.PlayerIds.getPlayerId(attacker.ids),
-				victim: SM.PlayerIds.getPlayerId(victim.ids),
-			})
+				attacker: attackerId,
+				victim: victimId,
+			}
+			await emit(
+				state,
+				pass,
+				pendingEvent.type === 'PLAYER_DIED'
+					? { type: 'PLAYER_DIED', ...shared, deathVariant: pendingEvent.deathVariant }
+					: { type: 'PLAYER_WOUNDED', ...shared },
+			)
 
 			break
 		}

@@ -39,7 +39,7 @@ async function run(path: string) {
 			const v = ev.victimIds.username ?? '<none>'
 			deaths++
 			const hasWound = (pendingWounds.get(v) ?? 0) > 0
-			const hasWeapon = ev.weapon != null
+			const hasWeapon = ev.damageSource != null
 			if (hasWound) {
 				deathsPaired++
 				if (hasWeapon) pairedWithWeapon++
@@ -49,7 +49,7 @@ async function run(path: string) {
 				deathsUnpaired++
 				if (hasWeapon) {
 					unpairedWithWeapon++
-					if (unpairedWeaponSamples.length < 12) unpairedWeaponSamples.push(`${v}  |  weapon=${ev.weapon}`)
+					if (unpairedWeaponSamples.length < 12) unpairedWeaponSamples.push(`${v}  |  weapon=${ev.damageSource}`)
 				} else {
 					unpairedNullWeapon++
 				}
