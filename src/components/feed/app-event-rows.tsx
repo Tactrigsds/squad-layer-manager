@@ -899,11 +899,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		)
 
 		const channel = (
-			<span
-				className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
-				style={{ color: style.color }}
-				title={tr.text(AppEvents_Msgs.warnChannelHint())}
-			>
+			<span className="whitespace-nowrap" style={{ color: style.color }} title={tr.text(AppEvents_Msgs.warnChannelHint())}>
 				{tr.richText(AppEvents_Msgs.warnChannel(actorLabel, warnee))}
 			</span>
 		)

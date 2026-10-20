@@ -6,22 +6,14 @@ SLM is a tool for managing upcoming layers on a Squad server, and other things a
 
 **Discord: https://discord.gg/Th7g2nhpR/**
 
-It is the main admin tool of the TacTrig server, used for queueing layers, reading the current state of team balance,
-and running teamswaps. Admins also use it to issue warns, kicks and timeouts, and it integrates with BattleMetrics so
-admins can set player flags and open player profiles without leaving the app. Those flags can then be used to categorise
-players for team balance or monitoring.
+SLM is the main admin tool of the TacTrig server. Admins use it to queue layers, check team balance, run teamswaps,
+and warn, kick or time out players, from a web GUI or with in-game commands.
 
-Everything is available in two ways: through a web GUI that authenticates against your Discord server via OAuth, and
-through in-game commands.
+![the match history and the layer queue](docs/images/features/layer_queue_landing.png)
 
-Layer management is the primary focus of SLM. _Filters_ narrow the playable set with logical expressions, which
-makes it easier to find a layer to play. _Repeat rules_ catch common mistakes like queueing the same map or faction
-twice in a row.
+![the activity feed](docs/images/features/activity_feed.png)
 
-SLM ships with a layer scoring system written by community member Zero. It reduces a set of heuristics to one score
-per measured attribute. Each score indicates how fair a layer is likely to be.
-
-TODO Some screenshots here, also a video
+Read the [documentation](https://tactrigsds.github.io/squad-layer-manager/) to learn more.
 
 ## Try it
 
