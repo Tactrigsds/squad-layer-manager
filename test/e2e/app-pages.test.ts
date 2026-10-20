@@ -367,6 +367,22 @@ test.describe('nav bar', () => {
 		await operatorNotes().click()
 		await expect(operatorNotes()).not.toBeChecked()
 	})
+
+	test('opens About, which lists the servers and links to this version in the changelog', async ({ page }) => {
+		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
+		await page.getByLabel('User menu').click()
+		await page.getByRole('menuitem', { name: 'About' }).click()
+
+		await expect(page.getByRole('heading', { name: 'Squad Layer Manager', level: 1 })).toBeVisible()
+		for (const name of ['Managed Servers', 'Support SLM', 'Debug & Help Info', 'Acknowledgements']) {
+			await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible()
+		}
+		await expect(page.getByRole('link', { name: 'Donate on Ko-fi' })).toBeVisible()
+		await expect(page.getByRole('link', { name: 'Emulated Server', exact: true })).toBeVisible()
+
+		await page.getByRole('link', { name: "What's new in this version" }).click()
+		await expect(page.getByRole('heading', { name: "What's new", level: 1 })).toBeVisible()
+	})
 })
 
 test.describe('announcement banner', () => {

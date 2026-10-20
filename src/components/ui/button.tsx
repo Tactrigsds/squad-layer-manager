@@ -51,8 +51,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 				{...SubmitChordClient.buttonAttrs(submitChord)}
 				{...props}
 			>
-				{children}
-				{submitChord && !asChild && <SubmitChordKbd className="pointer-coarse:hidden" />}
+				{asChild ? (
+					children
+				) : (
+					<>
+						{children}
+						{submitChord && <SubmitChordKbd className="pointer-coarse:hidden" />}
+					</>
+				)}
 			</Comp>
 		)
 	},
