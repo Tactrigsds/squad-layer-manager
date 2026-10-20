@@ -160,6 +160,33 @@ Run `pnpm run format` and `pnpm run check` (or a subset that typechecks your cha
 
 Once a goal or feature is complete, run `pnpm run lint:fix` and fix all lint errors as a cleanup step.
 
+# Recording what you learn
+
+Record a finding where the next person who needs it will look, in a place that changes or closes along with the thing
+it describes. Go down this list and use the first place that fits:
+
+1. **Fix it.** A workaround that exists because a script, harness helper or seed is wrong is a bug in that code. Fix
+   the code instead of recording the workaround.
+2. **An issue.** A defect or a missing piece that a change to the repo could resolve, such as a bug, a flake or a
+   deferred follow-up. Reproduce it first, then file it (see "Flakes"). An issue is visible to every contributor and
+   closes with the fix. A memory of it would outlive the fix.
+3. **The repo's docs.** A fact any contributor needs about how the app or its tooling works goes in docs/developers/,
+   or in a comment beside the code it concerns.
+4. **This file.** A rule that applies to every session.
+5. **A skill.** A procedure with several steps for a task that recurs, started at a moment that can be recognized,
+   with its commands or scripts. Put a skill in `.claude/skills/` by default, where it is published with the repo. A
+   skill that depends on one environment, such as a machine, an account or a deployment, is always private. That
+   includes every skill naming production hosts, containers or addresses. What private means differs between users
+   and machines, so look for a memory that says what to do with a skill that should be private, and ask the user if
+   none does. `scripts/worktree.mjs` can link skills kept in `.git/private-skills/` into every checkout
+   (docs/developers/dev_instances.md, "Env files"). No skill holds a credential.
+6. **A memory.** What is left: facts about one machine or account, the user's preferences and corrections, and the
+   state of work in progress whose decisions are not yet in code or an issue. A memory is not for code structure,
+   git history or a resolved problem.
+
+When a memory's subject gets an issue, a fix, a doc or a skill, delete the memory or cut it down to the part no
+other place records.
+
 # Worktrees and the shell
 
 Several sessions share the main checkout at once, each with uncommitted work. Do not edit, commit, stash or switch
