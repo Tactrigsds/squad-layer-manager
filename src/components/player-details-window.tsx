@@ -179,7 +179,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 								<CopyIdButton kind="eos" id={playerId} />
 							</div>
 						</div>
-						<div className="flex items-center gap-2 text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
 							{steam ? (
 								<>
 									<ExtLink href={`https://steamcommunity.com/profiles/${steam}`}>{SM_Msgs.linkNames.steam}</ExtLink>
@@ -203,8 +203,8 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 							{!!profile?.hoursPlayed && (
 								<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
 							)}
+							<PlayerDiscordLink steamId={steam} />
 						</div>
-						<PlayerDiscordLink steamId={steam} />
 					</div>
 					{/* no groupings: resolving one needs the roster entry's admin standing and discord roles, which is per-server */}
 					<PlayerTags
@@ -435,7 +435,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 								</div>
 							)}
 						</div>
-						<div className="flex items-center gap-2 text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
 							{(ids?.steam ?? profile?.playerIds.steam) ? (
 								<>
 									<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>
@@ -463,8 +463,8 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							{!!profile?.hoursPlayed && (
 								<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
 							)}
+							<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
 						</div>
-						<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
 					</div>
 					<PlayerTags
 						playerId={playerId}
@@ -688,7 +688,7 @@ function PlayerDiscordLinkEditor({ steamId }: { steamId: string | undefined }) {
 	}
 
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex min-w-0 grow basis-64 items-center gap-2 text-foreground">
 			<span className="text-muted-foreground shrink-0">{tr.text(USR_Msgs.discordLabel())}</span>
 			{link ? (
 				<>
