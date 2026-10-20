@@ -2149,6 +2149,122 @@ describe('PendingEvents', () => {
 		})
 	})
 
+	// A poll requested before a log event can be reconciled after it, still listing the roster from before. Each case
+	// applies one roster-changing log or rcon event, then feeds back the roster from just before it as a poll requested
+	// before it: that poll is no evidence against the change, so it must emit nothing and leave the roster alone.
+	describe('a poll requested before a roster change does not undo it', () => {
+		const ids = (eos: string) => ({ eos, playerController: `ctrl_${eos}`, username: eos })
+		const cases: { name: string; push: (state: PendingEvents.State) => void }[] = [
+			{
+				name: 'a member disconnecting',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'PLAYER_DISCONNECTED',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: ids('eos-member'),
+						ip: '1.2.3.4',
+					}),
+			},
+			{
+				name: 'a squad leader disconnecting',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'PLAYER_DISCONNECTED',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: ids('eos-leader'),
+						ip: '1.2.3.4',
+					}),
+			},
+			{
+				name: 'an admin removing a player from their squad',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'ADMIN_REMOVED_FROM_SQUAD',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: { username: 'eos-member' },
+						source: { type: 'rcon' },
+					}),
+			},
+			{
+				name: 'an admin disbanding a squad',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'ADMIN_DISBANDED_SQUAD',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						squadId: 1,
+						teamId: 1,
+						squadName: 'Squad 1',
+						source: { type: 'rcon' },
+					}),
+			},
+			{
+				name: 'a player creating a squad',
+				push: (state) =>
+					PendingEvents.onRconEvent(state, {
+						type: 'SQUAD_CREATED',
+						time: 200,
+						squadId: 2,
+						squadName: 'Bravo',
+						teamName: 'Russian Ground Forces',
+						creatorIds: ids('eos-loner'),
+					}),
+			},
+			{
+				name: 'a player connecting',
+				push: (state) => PendingEvents.onLogEvent(state, makePlayerConnectedChain(200, 'eos-joiner', 'ctrl_eos-joiner', 2)),
+			},
+			{
+				name: 'a squad being renamed',
+				push: (state) =>
+					PendingEvents.onRconEvent(state, {
+						type: 'SQUAD_RENAMED',
+						time: 200,
+						squadId: 1,
+						teamId: 1,
+						oldSquadName: 'Squad 1',
+						newSquadName: 'Renamed',
+					}),
+			},
+		]
+
+		for (const { name, push } of cases) {
+			it(name, async () => {
+				const state = makeSyncedState(
+					[
+						makePlayer('eos-leader', 1, { squadId: 1, isLeader: true }),
+						makePlayer('eos-member', 1, { squadId: 1 }),
+						makePlayer('eos-loner', 1),
+						makePlayer('eos-other', 2),
+					],
+					[makeSquad(1, 1, 'eos-leader', 101)],
+				)
+				const before: SM.Teams = {
+					players: [...state.currTeams!.players.values()],
+					squads: [...state.currTeams!.squads.values()].map(({ uniqueId: _, ...squad }) => squad),
+				}
+
+				push(state)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+				const changed = await collect(state)
+				expect(changed.length).toBeGreaterThan(0)
+				const after = structuredClone(state.currTeams!)
+
+				PendingEvents.onTeamsPolled(state, before, 202, 199)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(203))
+				expect((await collect(state)).map((e) => e.type)).toEqual([])
+				expect(state.currTeams).toEqual(after)
+			})
+		}
+	})
+
 	// SLM pushes an attribution when it sets a layer, and the MAP_SET the server reports back claims it, so the event
 	// carries the app event that caused it rather than the bare `rcon` the log line says.
 	describe('MAP_SET attribution', () => {
