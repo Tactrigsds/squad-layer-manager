@@ -33,11 +33,15 @@ export function createAdminList(args: {
 	}
 	let joined = 0
 
-	function write() {
+	function render() {
 		// ids are derived from the name, so a player who has not connected still resolves to the id they will have
 		const rendered = SB.renderAdminsCfg(list, (name) => args.players().get(name)?.steam ?? steamIdForName(name))
 		const extra = extraAdmins.map((steamId) => `Admin=${steamId}:${SB.DEFAULT_ADMIN_GROUP}\n`).join('')
-		fs.writeFileSync(ADMINS_CFG_PATH, rendered + extra)
+		return rendered + extra
+	}
+
+	function write() {
+		fs.writeFileSync(ADMINS_CFG_PATH, render())
 	}
 
 	function nameOf(player: EmuPlayer): string | undefined {
@@ -48,6 +52,8 @@ export function createAdminList(args: {
 	}
 
 	return {
+		list,
+		render,
 		// A player the pattern does not already cover -- `join Alice` rather than a default name -- is put in a group
 		// here. A default name is left alone: the prefill above has already decided, including deciding on no group.
 		onPlayerJoined: (player) => {

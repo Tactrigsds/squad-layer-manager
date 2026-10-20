@@ -2,7 +2,6 @@ import type * as FRM from '@/lib/frame'
 import * as Zus from '@/lib/zustand'
 import type * as SB from '@/models/sandbox.models'
 import * as RPC from '@/orpc.client'
-import type { SandboxState } from '@/systems/sandbox.shared'
 
 import { frameManager } from './frame-manager'
 
@@ -25,7 +24,7 @@ export const PLAYERS_PAGE_SIZE = 15
 export type Store = {
 	serverId: string
 	// null until the first stream frame arrives, or when the server stops being a sandbox
-	state: SandboxState | null
+	state: SB.SandboxState | null
 	unavailable: boolean
 	playerSearch: string
 	playerPage: number
@@ -78,7 +77,7 @@ export namespace Sel {
 	// change: players leave without asking the window first, and a page that no longer exists should show the last
 	// one, not nothing.
 	export function playersView(state: Store): {
-		players: SandboxState['players']
+		players: SB.SandboxState['players']
 		page: number
 		pageCount: number
 		matched: number
@@ -86,7 +85,7 @@ export namespace Sel {
 	} {
 		const all = players(state)
 		const needle = state.playerSearch.trim().toLowerCase()
-		const matched = needle ? all.filter((p: SandboxState['players'][number]) => p.name.toLowerCase().includes(needle)) : all
+		const matched = needle ? all.filter((p: SB.SandboxState['players'][number]) => p.name.toLowerCase().includes(needle)) : all
 		const pageCount = Math.max(1, Math.ceil(matched.length / PLAYERS_PAGE_SIZE))
 		const page = Math.min(Math.max(state.playerPage, 0), pageCount - 1)
 		return {
@@ -114,7 +113,7 @@ export namespace Sel {
 	}
 
 	export function groupNames(state: Store): string[] {
-		return state.state?.groups.map((g: SandboxState['groups'][number]) => g.name) ?? EMPTY
+		return state.state?.groups.map((g: SB.SandboxState['groups'][number]) => g.name) ?? EMPTY
 	}
 
 	export function adminsCfg(state: Store): string {
@@ -128,9 +127,9 @@ export namespace Sel {
 
 	// The speaker the chat box acts as. Falls back to the first player so the box is usable the moment anyone
 	// joins, and drops a speaker who has left rather than sending as a ghost.
-	export function activeSpeaker(state: Store): SandboxState['players'][number] | null {
+	export function activeSpeaker(state: Store): SB.SandboxState['players'][number] | null {
 		const list = players(state)
-		const held = state.speaker ? list.find((p: SandboxState['players'][number]) => p.name === state.speaker) : undefined
+		const held = state.speaker ? list.find((p: SB.SandboxState['players'][number]) => p.name === state.speaker) : undefined
 		return held ?? list[0] ?? null
 	}
 

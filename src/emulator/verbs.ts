@@ -16,9 +16,11 @@ export type SandboxHost = {
 	players: Map<string, EmuPlayer>
 	// the dev host registers new players with its BattleMetrics stub so the app's lookups resolve rather than 404
 	onPlayerJoined?: (player: EmuPlayer) => void
-	// the emulated admin list, when the host keeps one. Absent (the dev host) means no gating and no editing:
-	// that host's admins come from a real Admins.cfg on disk.
+	// the emulated admin list, when the host keeps one. Absent means no gating and no editing.
 	adminList?: {
+		list: SB.EmulatedAdminList
+		// the Admins.cfg the app reads, as the host hands it out
+		render: () => string
 		isAdmin: (name: string) => boolean
 		setPlayerGroups: (name: string, groups: string[]) => void
 		defineGroup: (group: string, permissions: string[]) => void
@@ -31,6 +33,35 @@ export function nextDefaultName(host: SandboxHost): string {
 	for (let i = 0; ; i++) {
 		const candidate = SB.defaultPlayerName(i)
 		if (!host.players.has(candidate)) return candidate
+	}
+}
+
+// The shape the control window renders. Admin status is derived rather than stored: the checkbox and the group
+// picker are two views of the same membership, so there is nothing to keep in sync.
+export function describe(host: SandboxHost): SB.SandboxState {
+	const adminList = host.adminList
+	return {
+		code: 'ok' as const,
+		groups: adminList ? [...adminList.list.groups.entries()].map(([name, permissions]) => ({ name, permissions: [...permissions] })) : [],
+		adminsCfg: adminList?.render() ?? '',
+		nextDefaultName: nextDefaultName(host),
+		squads: host.emu.world.squads.map((s) => ({
+			teamId: s.teamId,
+			squadId: s.squadId,
+			name: s.name,
+			size: host.emu.world.squadMembers(s).length,
+		})),
+		players: [...host.players.entries()].map(([name, p]) => ({
+			name,
+			eosId: p.eos,
+			steamId: p.steam,
+			teamId: p.teamId ?? null,
+			squadId: p.squadId ?? null,
+			isLeader: p.isLeader,
+			partyId: p.partyId,
+			groups: [...(adminList?.list.memberships.get(name) ?? [])],
+			isAdmin: adminList?.isAdmin(name) ?? false,
+		})),
 	}
 }
 

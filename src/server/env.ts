@@ -304,6 +304,23 @@ export const groups = {
 		}),
 	},
 
+	devInstance: {
+		DEV_EMULATOR_SERVER_ID: z
+			.string()
+			.optional()
+			.meta({
+				description: 'set by `pnpm dev`: the server backed by the workspace emulator, which the sandbox control window can drive.',
+				envExample: { include: 'omit' },
+			}),
+		DEV_EMULATOR_SOCKET: z
+			.string()
+			.optional()
+			.meta({
+				description: "set by `pnpm dev`: the workspace emulator's control socket, which carries the sandbox control window's commands.",
+				envExample: { include: 'omit' },
+			}),
+	},
+
 	db: {
 		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3').meta({
 			description: 'the main sqlite database. -wal and -shm files are created alongside it, so mount the directory, not the file.',
@@ -637,6 +654,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	encryption: { title: 'Encryption' },
 	db: { title: 'Database' },
 	plugins: { title: 'Plugins' },
+	devInstance: { title: 'Development workspace' },
 	backups: { title: 'Backups' },
 	discord: {
 		title: 'Discord',

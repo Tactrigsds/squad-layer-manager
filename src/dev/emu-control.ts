@@ -1,6 +1,8 @@
 import * as fs from 'node:fs'
 import * as net from 'node:net'
 
+import type * as SB from '@/models/sandbox.models'
+
 import type { BmServer } from '../emulator/bm-server.ts'
 import type { Emulator, EmuPlayer } from '../emulator/index.ts'
 import * as Verbs from '../emulator/verbs.ts'
@@ -9,14 +11,17 @@ import type { DevAdminList } from './admin-list.ts'
 // The socket that carries scenario commands to the emulator host.
 //
 // The verbs themselves live in @/models/sandbox.models and run through src/emulator/verbs.ts, shared with the
-// app's sandbox window. This module is only the dev host's two front ends -- the repl inside `pnpm dev --emu-only` and
-// the one-shot `pnpm emuctl` from any other terminal -- plus the transport between them.
+// app's sandbox window. This module is only the dev host's front ends -- the repl inside `pnpm dev --emu-only`, the
+// one-shot `pnpm emuctl` from any other terminal, and the workspace app's sandbox window -- plus the transport between
+// them.
 //
 // A unix socket rather than a port: it needs no slot allocation, it is unreachable from the network, and it
 // lives in the worktree's own data/dev, so it is scoped to the instance by construction.
 
-type Request = { args: string[] }
-type Response = { ok: boolean; output: string }
+// `tokens` is a command line as emuctl takes it. `execute` and `state` serve the app's sandbox window.
+export type Request = { type: 'tokens'; args: string[] } | { type: 'execute'; verb: SB.SandboxVerb; args: unknown } | { type: 'state' }
+export type Response = { ok: boolean; output: string }
+type Reply<R extends Request> = R extends { type: 'state' } ? SB.SandboxState | Response : Response
 
 export function createEmuHost(ctx: {
 	emu: Emulator
@@ -40,9 +45,13 @@ export function createEmuHost(ctx: {
 
 // `afterCommand` runs on success only, and is where the host rewrites its Admins.cfg: the roster a verb leaves
 // behind is what the list is rendered against, so a player who left has to stop being in a group.
-export async function dispatch(host: Verbs.SandboxHost, args: string[], opts?: { afterCommand?: () => void }): Promise<Response> {
+export async function dispatch(
+	host: Verbs.SandboxHost,
+	req: Exclude<Request, { type: 'state' }>,
+	opts?: { afterCommand?: () => void },
+): Promise<Response> {
 	try {
-		const output = await Verbs.executeTokens(host, args)
+		const output = req.type === 'tokens' ? await Verbs.executeTokens(host, req.args) : await Verbs.execute(host, req.verb, req.args)
 		opts?.afterCommand?.()
 		return { ok: true, output }
 	} catch (err) {
@@ -78,9 +87,10 @@ export async function serve(socketPath: string, host: Verbs.SandboxHost, opts?: 
 			const line = buffered.slice(0, newline)
 			buffered = ''
 			void (async () => {
-				let response: Response
+				let response: Response | SB.SandboxState
 				try {
-					response = await dispatch(host, (JSON.parse(line) as Request).args, opts)
+					const req = JSON.parse(line) as Request
+					response = req.type === 'state' ? Verbs.describe(host) : await dispatch(host, req, opts)
 				} catch (err) {
 					response = { ok: false, output: err instanceof Error ? err.message : String(err) }
 				}
@@ -97,17 +107,17 @@ export async function serve(socketPath: string, host: Verbs.SandboxHost, opts?: 
 	return server
 }
 
-export function send(socketPath: string, args: string[]): Promise<Response> {
+export function send<R extends Request>(socketPath: string, req: R): Promise<Reply<R>> {
 	return new Promise((resolve, reject) => {
 		const socket = net.connect(socketPath)
 		let buffered = ''
-		socket.on('connect', () => socket.write(JSON.stringify({ args } satisfies Request) + '\n'))
+		socket.on('connect', () => socket.write(JSON.stringify(req) + '\n'))
 		socket.on('data', (chunk) => {
 			buffered += chunk.toString()
 		})
 		socket.on('end', () => {
 			try {
-				resolve(JSON.parse(buffered) as Response)
+				resolve(JSON.parse(buffered) as Reply<R>)
 			} catch {
 				reject(new Error(`the emulator sent a reply that could not be read: ${buffered}`))
 			}

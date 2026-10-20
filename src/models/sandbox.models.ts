@@ -361,6 +361,34 @@ export function usageLines(): string[] {
 	return SANDBOX_VERB.map((v) => `  ${SANDBOX_VERBS[v].usage.padEnd(width)}  ${SANDBOX_VERBS[v].summary}`)
 }
 
+// ---- the control window's view of an emulated server ----
+
+export type SandboxPlayer = {
+	name: string
+	eosId: string
+	steamId: string
+	teamId: number | null
+	squadId: number | null
+	isLeader: boolean
+	// as ListPlayers prints it ("#0"), or null outside a party
+	partyId: string | null
+	groups: string[]
+	isAdmin: boolean
+}
+
+export type SandboxGroup = { name: string; permissions: string[] }
+
+export type SandboxSquad = { teamId: number; squadId: number; name: string; size: number }
+
+export type SandboxState = {
+	code: 'ok'
+	groups: SandboxGroup[]
+	adminsCfg: string
+	nextDefaultName: string
+	squads: SandboxSquad[]
+	players: SandboxPlayer[]
+}
+
 // ---- the emulated Admins.cfg ----
 //
 // Held as structure and rendered to the real file format on read, so what an emulated server hands out is what a
