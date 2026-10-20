@@ -13,7 +13,7 @@ export const timeColumn = def('Time')
 
 export const layerColumn = def('Layer')
 
-export const outcomeColumn = def('Outcome')
+export const scoresColumn = def('Scores')
 
 // separates the two teams on a phone row, where they share a line instead of taking a column each
 export const versus = def('vs')
