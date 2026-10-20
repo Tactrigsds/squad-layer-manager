@@ -170,7 +170,11 @@ export type TimeoutCancelled = z.infer<typeof TimeoutCancelledSchema>
 export const MatchEndedSchema = event('MATCH_ENDED', {})
 export type MatchEnded = z.infer<typeof MatchEndedSchema>
 
+// the vote events name the queue item the vote belongs to. absent on events recorded before this was introduced.
+const voteItemShape = { itemId: LL.ItemIdSchema.optional() }
+
 export const VoteStartedSchema = event('VOTE_STARTED', {
+	...voteItemShape,
 	choiceCount: z.number(),
 	// the layers players could vote for, and how long they had. snapshotted because the queue item this vote
 	// belongs to is edited in place as the vote resolves.
@@ -180,6 +184,7 @@ export const VoteStartedSchema = event('VOTE_STARTED', {
 export type VoteStarted = z.infer<typeof VoteStartedSchema>
 
 export const VoteEndedSchema = event('VOTE_ENDED', {
+	...voteItemShape,
 	reason: z.enum(['vote-timeout', 'ended-early']),
 	winnerLayerId: L.LayerIdSchema.nullable(),
 	// the final count per choice, in the order the choices were offered. stored by layer (not by queue item id, which
@@ -205,7 +210,7 @@ export const MatchLayersReconciledSchema = event('MATCH_LAYERS_RECONCILED', {
 })
 export type MatchLayersReconciled = z.infer<typeof MatchLayersReconciledSchema>
 
-export const VoteAbortedSchema = event('VOTE_ABORTED', {})
+export const VoteAbortedSchema = event('VOTE_ABORTED', { ...voteItemShape })
 export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
 // SLM process lifecycle. APP_STARTED fires on every boot (system actor); APP_RESTARTED is the intentional
@@ -431,6 +436,13 @@ export const LayerRequestConsumedSchema = event('LAYER_REQUEST_CONSUMED', {
 	itemIds: z.array(z.string()).min(1),
 	descriptions: z.array(z.string()),
 	layerId: L.LayerIdSchema,
+	// the queue item the generated layer went into. absent on events recorded before this was introduced.
+	queueItemId: LL.ItemIdSchema.optional(),
+	// who made each request and when, in itemIds' order. `playerId` is the in-game requester as the roster knew them
+	// when the request was consumed, absent for a request made from the web or by a player who has since left.
+	requests: z
+		.array(z.object({ requester: USR.GuiOrChatUserIdSchema, playerId: SM.PlayerIdSchema.optional(), requestedAt: z.number() }))
+		.optional(),
 })
 export type LayerRequestConsumed = z.infer<typeof LayerRequestConsumedSchema>
 
@@ -449,6 +461,10 @@ export const MapSetSchema = event('MAP_SET', {
 			z.object({ type: z.literal('unknown') }),
 		])
 		.optional(),
+	// the queue item whose layer was set. absent on events recorded before this was introduced.
+	itemId: LL.ItemIdSchema.optional(),
+	// for reason 'override': the server MAP_SET that SLM overrode
+	overrodeEventId: z.number().optional(),
 })
 export type MapSet = z.infer<typeof MapSetSchema>
 
@@ -582,19 +598,27 @@ export const APP_EVENT_META = {
 	MAP_SET: EM.meta<MapSet>({
 		players: [{ assocType: 'player', get: (e) => (e.overrode?.type === 'player' ? e.overrode.playerId : undefined) }],
 		layers: [{ kind: 'set', get: (e) => e.layerId }],
+		items: [{ get: (e) => e.itemId }],
 	}),
-	VOTE_STARTED: EM.meta<VoteStarted>({ layers: [{ kind: 'offered', get: (e) => e.choices }] }),
+	VOTE_STARTED: EM.meta<VoteStarted>({ layers: [{ kind: 'offered', get: (e) => e.choices }], items: [{ get: (e) => e.itemId }] }),
 	VOTE_ENDED: EM.meta<VoteEnded>({
 		layers: [
 			{ kind: 'set', get: (e) => e.winnerLayerId },
 			{ kind: 'offered', get: (e) => e.tally?.map((t) => t.layerId) },
 		],
+		items: [{ get: (e) => e.itemId }],
 	}),
-	LAYER_REQUEST_CONSUMED: EM.meta<LayerRequestConsumed>({ layers: [{ kind: 'queued', get: (e) => e.layerId }] }),
+	LAYER_REQUEST_CONSUMED: EM.meta<LayerRequestConsumed>({
+		layers: [{ kind: 'queued', get: (e) => e.layerId }],
+		players: [{ assocType: 'player', get: (e) => e.requests?.map((r) => r.playerId) }],
+		users: [{ get: (e) => e.requests?.map((r) => r.requester.discordId) }],
+		items: [{ get: (e) => e.queueItemId }],
+	}),
 	// the net change, not the whole list: re-indexing every queued layer on every save would make "when was
 	// Gorodok queued" answer with every save it sat through
 	QUEUE_UPDATED: EM.meta<QueueUpdated>({
 		layers: [{ kind: 'queued', get: (e) => summarizeQueueChanges(e).flatMap((c) => c.layerIds) }],
+		items: [{ get: queueUpdatedItemIds }],
 		users: [
 			{ get: (e) => summarizeQueueChanges(e).map((c) => (c.actor.type === 'slm-user' ? c.actor.userId : undefined)) },
 			{ get: (e) => e.save?.overrodeEditors },
@@ -605,7 +629,7 @@ export const APP_EVENT_META = {
 	BROADCAST_SENT: EM.meta<BroadcastSent>(),
 	RCON_COMMAND_RUN: EM.meta<RconCommandRun>(),
 	MATCH_ENDED: EM.meta<MatchEnded>(),
-	VOTE_ABORTED: EM.meta<VoteAborted>(),
+	VOTE_ABORTED: EM.meta<VoteAborted>({ items: [{ get: (e) => e.itemId }] }),
 	LAYER_REQUEST_ADDED: EM.meta<LayerRequestAdded>(),
 	LAYER_REQUEST_REMOVED: EM.meta<LayerRequestRemoved>(),
 	SETTINGS_UPDATED: EM.meta<SettingsUpdated>(),
@@ -649,6 +673,17 @@ export function* iterAssocLayerIds(e: AppEvent): Generator<readonly [L.LayerId, 
 	yield* EM.iterAssocLayers(metaOf(e), e)
 }
 
+export function* iterAssocItemIds(e: AppEvent): Generator<LL.ItemId> {
+	const seen = new Set<LL.ItemId>()
+	for (const itemMeta of metaOf(e).items) {
+		for (const itemId of EM.iterAssocValues(itemMeta.get(e))) {
+			if (seen.has(itemId)) continue
+			seen.add(itemId)
+			yield itemId
+		}
+	}
+}
+
 export function* iterAssocUserIds(e: AppEvent): Generator<USR.UserId> {
 	// the actor is on the envelope rather than in any payload, so it is yielded here instead of being declared
 	// identically on all 36 metas
@@ -678,6 +713,22 @@ export function queueUpdateKind(e: QueueUpdated): QueueUpdateKind {
 export function queueUpdateExternalSource(e: QueueUpdated) {
 	const triggerOp = e.ops[e.ops.length - 1]
 	return triggerOp?.op === 'unshift-first-saved-layer' ? triggerOp.externalSource : undefined
+}
+
+/**
+ * The server event an app event was written in reaction to: the in-game or external MAP_SET that a queue sync
+ * followed, or that an override undid. The server event was persisted first, so it cannot name the app event the way
+ * an SLM-caused server event does (see ActionSource), and the feed folds it in from this side instead.
+ */
+export function reactedToServerEventId(e: AppEvent): number | undefined {
+	// a layer SLM found already set ('unknown') was set by nobody SLM saw, and its server event says so on its own line
+	if (e.type === 'MAP_SET') return e.overrode && e.overrode.type !== 'unknown' ? e.overrodeEventId : undefined
+	if (e.type === 'QUEUE_UPDATED' && e.trigger === 'external-layer-change') {
+		const triggerOp = e.ops[e.ops.length - 1]
+		if (triggerOp?.op !== 'unshift-first-saved-layer' || !triggerOp.externalSource || triggerOp.externalSource.type === 'unknown') return
+		return triggerOp.externalEventId
+	}
+	return undefined
 }
 
 // verb phrases with the actor left off, for the audit log
@@ -821,6 +872,15 @@ function movedItemIds(prevIds: LL.ItemId[], nextIds: LL.ItemId[]): Set<LL.ItemId
 		else j++
 	}
 	return new Set(before.filter((id) => !kept.has(id)))
+}
+
+// The items a QUEUE_UPDATED touched: every item an op in its span acted on, including edits that cancelled out
+// before the save, plus the item that became the next layer by the save.
+function queueUpdatedItemIds(e: QueueUpdated): LL.ItemId[] {
+	const ids = [...actorsByItem(e.ops).keys(), ...summarizeQueueChanges(e).map((c) => c.itemId)]
+	const head = e.list[0]?.itemId
+	if (head !== undefined && head !== e.prevList[0]?.itemId) ids.push(head)
+	return ids
 }
 
 // the net changes a QUEUE_UPDATED made to the saved queue, in queue order (removals last). Only top-level items are
@@ -992,6 +1052,9 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 	// event attributes to, and no query has yet wanted to tell those apart
 	for (const userId of iterAssocUserIds(e)) {
 		rows.push({ dimension: 'user', value: userId.toString(), time, appEventId: e.id, role: 'involved' })
+	}
+	for (const itemId of iterAssocItemIds(e)) {
+		rows.push({ dimension: 'item', value: itemId, time, appEventId: e.id, role: 'involved' })
 	}
 	return rows
 }

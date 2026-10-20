@@ -432,7 +432,8 @@ function expectationMatches(state: State, match: ExpectationMatch, event: SE.New
 		case 'ADMIN_BROADCAST':
 			// same reasoning: SLM's broadcasts are indistinguishable from any other tool's in the log, and one an
 			// in-game admin sent names them, so only an rcon-sourced broadcast is a candidate
-			return event.type === 'ADMIN_BROADCAST' && event.source?.type === 'rcon' && event.message === match.message
+			// the log drops a broadcast's trailing newline, which the vote announcements end with
+			return event.type === 'ADMIN_BROADCAST' && event.source?.type === 'rcon' && event.message.trim() === match.message.trim()
 	}
 }
 

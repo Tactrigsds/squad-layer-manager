@@ -21,8 +21,11 @@ import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as I18n from '@/messages/i18n'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
+import * as LH from '@/models/layer-history.models'
 import * as LL from '@/models/layer-list.models'
+import * as LTag from '@/models/layer-tags.models'
 import type * as L from '@/models/layer.models'
+import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { tr } from '@/systems/messages.client'
 
@@ -69,46 +72,228 @@ function LayerNames(props: { ctx: RC.RenderCtx; layerIds: L.LayerId[] }) {
 	)
 }
 
-function QueueChangeLine(props: { ctx: RC.RenderCtx; change: AppEvents.QueueChange }) {
-	const { ctx, change } = props
-	const who =
-		change.actor.type === 'slm-user'
-			? labelOf(ctx, change.actor.userId)
-			: change.actor.type === 'system'
-				? tr.text(AppEvents_Msgs.systemActor())
-				: tr.text(AppEvents_Msgs.unnamedIngameAdmin())
-	const layers = <LayerNames ctx={ctx} layerIds={change.layerIds} />
-	const vote = change.isVote ? tr.text(AppEvents_Msgs.queueVoteChoices(change.layerIds.length)) : null
+// the final count per choice, each as a bar of its share of the votes cast
+function VoteTally(props: { ctx: RC.RenderCtx; appEvent: AppEvents.VoteEnded }) {
+	const { ctx, appEvent } = props
+	const tally = appEvent.tally ?? []
+	const total = appEvent.totalVotes ?? tally.reduce((sum, choice) => sum + choice.votes, 0)
+	return (
+		<div className="mt-1 flex max-w-md flex-col gap-1.5 rounded-md bg-muted/50 px-2.5 py-2">
+			{tally.map((choice) => {
+				const won = choice.layerId === appEvent.winnerLayerId
+				const share = total > 0 ? (choice.votes / total) * 100 : 0
+				return (
+					<div key={choice.layerId}>
+						<div className="flex items-baseline gap-2">
+							{/* the layer name wraps rather than running under the count */}
+							<span className={cn('min-w-0 flex-1 wrap-anywhere', won ? 'font-semibold text-foreground' : undefined)}>
+								<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={choice.layerId} />
+							</span>
+							<span className={cn('shrink-0 tabular-nums', won ? 'font-semibold text-primary' : undefined)}>{choice.votes}</span>
+						</div>
+						<div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-background">
+							<div className={cn('h-full', won ? 'bg-primary' : 'bg-muted-foreground/50')} style={{ width: `${share}%` }} />
+						</div>
+					</div>
+				)
+			})}
+			<div className="text-[11px]">{tr.text(AppEvents_Msgs.voteTallyFooter(total, appEvent.turnoutPercentage ?? null))}</div>
+		</div>
+	)
+}
+
+type ServerMapSet = Extract<CHAT.EventEnriched, { type: 'MAP_SET' }>
+
+// the in-game or external set an app event reacted to, once the buffer has folded it under the event
+function reactedToMapSet(event: AppEventEntry): ServerMapSet | undefined {
+	const id = AppEvents.reactedToServerEventId(event.appEvent)
+	if (id === undefined) return undefined
+	return event.collapsed.find((c): c is ServerMapSet => c.type === 'MAP_SET' && c.id === id)
+}
+
+// the in-game admin who made a set outside SLM. Another rcon tool has no name worth more than "outside SLM".
+function externalSetter(ctx: RC.RenderCtx, set: ServerMapSet): React.ReactNode {
+	if (set.source?.type !== 'player') return null
+	if (set.actorPlayer) return <Atoms.PlayerDisplay ctx={ctx} showTeam player={set.actorPlayer} matchId={set.matchId} />
+	return set.source.playerIds.username ?? tr.text(AppEvents_Msgs.unnamedIngameAdmin())
+}
+
+// a queue sync and the in-game set it followed, as one line
+function ExternalSetSyncLine(props: {
+	ctx: RC.RenderCtx
+	event: AppEventEntry
+	appEvent: AppEvents.QueueUpdated
+	externalSet: ServerMapSet
+}) {
+	const { ctx, appEvent, externalSet } = props
+	const layer = <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={externalSet.layerId} />
+	const aheadOf = appEvent.list[1]?.layerId
+	const ahead = aheadOf ? <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={aheadOf} /> : undefined
+	const who = externalSetter(ctx, externalSet)
+	return who
+		? tr.richText(AppEvents_Msgs.externalSetQueued(who, layer, ahead))
+		: tr.richText(AppEvents_Msgs.externalSetQueuedAnonymous(layer, ahead))
+}
+
+type ServerBroadcast = Extract<CHAT.EventEnriched, { type: 'ADMIN_BROADCAST' }>
+
+// the broadcasts an app event sent, as the server logged them (see SquadServerActions.attributeBroadcast)
+function sentBroadcasts(event: AppEventEntry): ServerBroadcast[] {
+	return event.collapsed.filter((c): c is ServerBroadcast => c.type === 'ADMIN_BROADCAST')
+}
+
+function SentBroadcasts(props: { broadcasts: ServerBroadcast[] }) {
+	return (
+		<div className="flex max-w-md flex-col gap-1">
+			{props.broadcasts.map((broadcast) => (
+				<div key={broadcast.id} className="flex gap-2 items-baseline">
+					<Atoms.EventTime time={broadcast.time} />
+					<span className="min-w-0 whitespace-pre-line rounded-md bg-muted/50 px-2 py-1 text-foreground">
+						{broadcast.message.trim()}
+					</span>
+				</div>
+			))}
+		</div>
+	)
+}
+
+// who made a layer request: the SLM user, else the player the roster knew them as
+function requesterLabel(
+	ctx: RC.RenderCtx,
+	event: AppEventEntry,
+	request: NonNullable<AppEvents.LayerRequestConsumed['requests']>[number],
+): React.ReactNode {
+	if (request.requester.discordId !== undefined) return labelOf(ctx, request.requester.discordId)
+	const player = request.playerId ? event.targetPlayers.find((p) => SM.PlayerIds.getPlayerId(p.ids) === request.playerId) : undefined
+	if (player && event.matchId !== null) return <Atoms.PlayerDisplay ctx={ctx} showTeam player={player} matchId={event.matchId} />
+	return tr.text(AppEvents_Msgs.unnamedRequester())
+}
+
+function sessionActorLabel(ctx: RC.RenderCtx, event: AppEventEntry, actor: AppEvents.Actor): React.ReactNode {
+	switch (actor.type) {
+		case 'slm-user':
+			return labelOf(ctx, actor.userId)
+		case 'system':
+			return tr.text(AppEvents_Msgs.systemActor())
+		case 'plugin':
+			return ctx.pluginName(actor.pluginId) ?? actor.pluginId
+		case 'ingame-user': {
+			// the event's actor is the only player the enrichment resolved
+			const appActor = event.appEvent.actor
+			if (appActor.type === 'ingame-user' && appActor.playerId === actor.playerId && event.actorPlayer && event.matchId !== null) {
+				return <Atoms.PlayerDisplay ctx={ctx} player={event.actorPlayer} matchId={event.matchId} />
+			}
+			return tr.text(AppEvents_Msgs.unnamedIngameAdmin())
+		}
+		default:
+			assertNever(actor)
+	}
+}
+
+function SessionLogLine(props: { ctx: RC.RenderCtx; event: AppEventEntry; entry: LH.SessionLogEntry }) {
+	const { ctx, event, entry } = props
+	const who = sessionActorLabel(ctx, event, entry.actor)
+	const layers = <LayerNames ctx={ctx} layerIds={entry.layerIds} />
+	const vote = entry.isVote ? tr.text(AppEvents_Msgs.queueVoteChoices(entry.layerIds.length)) : null
 
 	const [marker, markerClass, body] = ((): [string, string, React.ReactNode] => {
-		switch (change.kind) {
+		switch (entry.kind) {
 			case 'added':
-				return ['+', 'text-added', tr.richText(AppEvents_Msgs.queueItemAdded(who, vote, layers))]
+				return ['+', 'text-added', tr.richText(AppEvents_Msgs.sessionAdded(who, entry.index + 1, vote, layers))]
+			case 'cloned':
+				return ['+', 'text-added', tr.richText(AppEvents_Msgs.sessionCloned(who, entry.index + 1, layers))]
+			case 'generated':
+				return ['+', 'text-added', tr.richText(AppEvents_Msgs.sessionGenerated(entry.index + 1, layers))]
+			case 'synced':
+				return [
+					'+',
+					'text-added',
+					entry.actor.type === 'ingame-user'
+						? tr.richText(AppEvents_Msgs.sessionSyncedBy(who, layers))
+						: tr.richText(AppEvents_Msgs.sessionSynced(layers)),
+				]
 			case 'removed':
-				return ['−', 'text-destructive', tr.richText(AppEvents_Msgs.queueItemRemoved(who, vote, layers))]
-			case 'edited':
+				return ['−', 'text-destructive', tr.richText(AppEvents_Msgs.sessionRemoved(who, vote, layers))]
+			case 'advanced':
+				return ['−', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionAdvanced(layers))]
+			case 'moved':
+				return ['↕', 'text-info', tr.richText(AppEvents_Msgs.sessionMoved(who, layers, entry.fromIndex + 1, entry.toIndex + 1))]
+			case 'factions-swapped':
+				return ['~', 'text-warn', tr.richText(AppEvents_Msgs.sessionFactionsSwapped(who, layers))]
+			case 'layer-edited':
 				return [
 					'~',
 					'text-warn',
-					tr.richText(AppEvents_Msgs.queueItemEdited(who, <LayerNames ctx={ctx} layerIds={change.prevLayerIds} />, layers)),
+					tr.richText(AppEvents_Msgs.sessionLayerEdited(who, <LayerNames ctx={ctx} layerIds={entry.prevLayerIds} />, layers)),
 				]
-			case 'moved':
-				return ['↕', 'text-info', tr.richText(AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1))]
+			case 'tag-added':
+				return ['#', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionTagAdded(who, layers, LTag.originalLabel(entry.tagId)))]
+			case 'tag-removed':
+				return [
+					'#',
+					'text-muted-foreground',
+					tr.richText(AppEvents_Msgs.sessionTagRemoved(who, layers, LTag.originalLabel(entry.tagId))),
+				]
+			case 'note-added':
+				return ['✎', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionNoteAdded(who, layers, entry.text))]
+			case 'note-edited':
+				return ['✎', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionNoteEdited(who, layers, entry.text))]
+			case 'note-deleted':
+				return ['✎', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionNoteDeleted(who, layers))]
+			case 'vote-configured':
+				return ['~', 'text-warn', tr.richText(AppEvents_Msgs.sessionVoteConfigured(who, layers))]
+			case 'vote-result':
+				return ['~', 'text-warn', tr.richText(AppEvents_Msgs.sessionVoteResult(layers))]
+			case 'reverted':
+				return ['↶', 'text-muted-foreground', tr.richText(AppEvents_Msgs.sessionReverted(who, entry.count))]
+			case 'discarded':
+				return [
+					'↶',
+					'text-muted-foreground',
+					entry.actor.type === 'system'
+						? tr.text(AppEvents_Msgs.sessionAbandoned(entry.count))
+						: tr.richText(AppEvents_Msgs.sessionDiscardedBy(who, entry.count)),
+				]
 			default:
-				assertNever(change)
+				assertNever(entry)
 		}
 	})()
 
 	return (
 		<div className="flex gap-2 items-baseline text-xs text-muted-foreground">
-			<span className={cn('font-mono shrink-0', markerClass)}>{marker}</span>
+			<span className={cn('font-mono shrink-0 w-3 text-center', markerClass)}>{marker}</span>
 			<span className="grow min-w-0 wrap-anywhere">{body}</span>
 		</div>
 	)
 }
 
-// a save of the layer queue. The summary names who saved and the net effect; expanding attributes each surviving
-// change to the user who made it, which is the part a shared queue actually needs (several admins edit at once).
+/**
+ * The ops one queue save committed, in order. `itemId` narrows the log to the edits of one item, and counts the rest
+ * of the session in a trailing line.
+ */
+export function SessionLog(props: { ctx: RC.RenderCtx; event: AppEventEntry; entries: LH.SessionLogEntry[]; itemId?: LL.ItemId }) {
+	const { ctx, event, entries, itemId } = props
+	const shown = itemId === undefined ? entries : entries.filter((entry) => LH.entryTouches(entry, itemId))
+	// a discarded draft names no item, so it is neither this item's edit nor another's
+	const others = itemId === undefined ? 0 : entries.filter((entry) => entry.itemId !== null && !LH.entryTouches(entry, itemId)).length
+	return (
+		<div className="flex flex-col gap-0.5">
+			{shown.map((entry) => (
+				<SessionLogLine key={`${entry.opId}:${entry.itemId ?? ''}`} ctx={ctx} event={event} entry={entry} />
+			))}
+			{others > 0 && (
+				<div className="flex gap-2 items-baseline text-xs text-muted-foreground">
+					<span className="w-3 shrink-0" />
+					<span>{tr.text(AppEvents_Msgs.sessionOtherChanges(others))}</span>
+				</div>
+			)}
+		</div>
+	)
+}
+
+// a save of the layer queue. The summary names who saved and the net effect; expanding lists the edit session the
+// save committed, each op attributed to the user who made it, which is the part a shared queue actually needs
+// (several admins edit at once).
 function QueueUpdatedRow(props: {
 	ctx: RC.RenderCtx
 	event: AppEventEntry
@@ -165,39 +350,71 @@ function QueueUpdatedRow(props: {
 
 	const nextBefore = LL.getNextLayerId(appEvent.prevList)
 	const nextAfter = LL.getNextLayerId(appEvent.list)
-	const summary = tr.richText(
-		AppEvents_Msgs.queueSummary(
-			headline,
-			tr.text(AppEvents_Msgs.queueChangeCounts(counts)),
-			nextAfter !== null && nextAfter !== nextBefore
-				? {
-						external: appEvent.trigger === 'external-layer-change',
-						layer: <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
-					}
-				: undefined,
-		),
-	)
+	const externalSet = reactedToMapSet(event)
+	// in the history of the item a roll took off the head of the queue to play, the match's start already says so
+	if (
+		ctx.focusItemId !== undefined &&
+		appEvent.prevList[0]?.itemId === ctx.focusItemId &&
+		appEvent.ops.some((op) => op.op === 'shift-first-saved-layer')
+	) {
+		return null
+	}
+	const summary =
+		kind === 'external-layer-change' && externalSet ? (
+			<ExternalSetSyncLine ctx={ctx} event={event} appEvent={appEvent} externalSet={externalSet} />
+		) : (
+			tr.richText(
+				AppEvents_Msgs.queueSummary(
+					headline,
+					tr.text(AppEvents_Msgs.queueChangeCounts(counts)),
+					nextAfter !== null && nextAfter !== nextBefore
+						? {
+								external: appEvent.trigger === 'external-layer-change',
+								layer: <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
+							}
+						: undefined,
+				),
+			)
+		)
 	const icon = <EventIcon name="ListOrdered" className="text-info" />
+	// a save the queue made for itself is one op its headline already describes
+	const log = kind === 'save' || kind === 'force-save' ? LH.queueSessionLog(appEvent) : []
+	// the edits that reached the queue: a discarded draft is a line of the log, but none of its edits
+	const editCount = log.filter((entry) => entry.kind !== 'discarded').length
+	const focus = ctx.focusItemId
+	const madeNext = focus !== undefined && appEvent.list[0]?.itemId === focus && appEvent.prevList[0]?.itemId !== focus
+	const line = (
+		<>
+			{summary}
+			{madeNext && (
+				<span className="ms-2 rounded bg-primary/20 px-1.5 text-[11px] text-primary">{tr.text(AppEvents_Msgs.nowNextLayer())}</span>
+			)}
+		</>
+	)
 
-	if (changes.length === 0) {
+	if (log.length === 0) {
 		return (
 			<Atoms.EventLine time={event.time} icon={icon}>
-				{summary}
+				{line}
 			</Atoms.EventLine>
 		)
 	}
 
+	// in one item's history the item's own edits are the point, so they start out shown
 	return (
-		<details className={DETAILS_CLASS}>
+		<details className={DETAILS_CLASS} open={focus !== undefined}>
 			<summary className={SUMMARY_CLASS}>
 				<Atoms.EventTime time={event.time} />
 				{icon}
-				<span className="grow min-w-0 wrap-anywhere">{summary}</span>
+				<span className="grow min-w-0 wrap-anywhere">
+					{line}
+					{editCount > 0 && (
+						<span className="ms-2 rounded bg-muted px-1.5 text-[11px]">{tr.text(AppEvents_Msgs.sessionEditCount(editCount))}</span>
+					)}
+				</span>
 			</summary>
-			<div className="ps-6 pt-1 flex flex-col gap-0.5">
-				{changes.map((change) => (
-					<QueueChangeLine key={`${change.kind}:${change.itemId}`} ctx={ctx} change={change} />
-				))}
+			<div className="ps-6 pt-1">
+				<SessionLog ctx={ctx} event={event} entries={log} itemId={focus} />
 			</div>
 		</details>
 	)
@@ -445,14 +662,40 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			</Atoms.EventLine>
 		)
 	}
-	if (appEvent.type === 'VOTE_STARTED') {
+	if (appEvent.type === 'VOTE_STARTED' || appEvent.type === 'VOTE_ABORTED') {
+		const icon =
+			appEvent.type === 'VOTE_STARTED' ? (
+				<EventIcon name="Vote" className="text-info" />
+			) : (
+				<EventIcon name="Ban" className="text-danger" />
+			)
+		const line =
+			appEvent.type === 'VOTE_STARTED'
+				? tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))
+				: tr.richText(AppEvents_Msgs.voteAborted(actorLabel))
+		const broadcasts = sentBroadcasts(event)
+		if (broadcasts.length === 0) {
+			return (
+				<Atoms.EventLine time={event.time} icon={icon}>
+					{line}
+				</Atoms.EventLine>
+			)
+		}
 		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Vote" className="text-info" />}>
-				{tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))}
-			</Atoms.EventLine>
+			<details className={DETAILS_CLASS}>
+				<summary className={SUMMARY_CLASS}>
+					<Atoms.EventTime time={event.time} />
+					{icon}
+					<span className="grow min-w-0 wrap-anywhere">{line}</span>
+				</summary>
+				<div className="ps-6 pt-1">
+					<SentBroadcasts broadcasts={broadcasts} />
+				</div>
+			</details>
 		)
 	}
 	if (appEvent.type === 'VOTE_ENDED') {
+		const broadcasts = sentBroadcasts(event)
 		return (
 			<Atoms.EventLine time={event.time} icon={<EventIcon name="ListChecks" className="text-ok" />}>
 				{appEvent.reason === 'ended-early'
@@ -465,13 +708,13 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 							),
 						)
 					: tr.text(AppEvents_Msgs.voteNoWinner())}
-			</Atoms.EventLine>
-		)
-	}
-	if (appEvent.type === 'VOTE_ABORTED') {
-		return (
-			<Atoms.EventLine time={event.time} icon={<EventIcon name="Ban" className="text-danger" />}>
-				{tr.richText(AppEvents_Msgs.voteAborted(actorLabel))}
+				{appEvent.tally && appEvent.tally.length > 0 && <VoteTally ctx={ctx} appEvent={appEvent} />}
+				{broadcasts.length > 0 && (
+					<details className="mt-1">
+						<summary className="cursor-pointer">{tr.text(AppEvents_Msgs.voteBroadcastsShown(broadcasts.length))}</summary>
+						<SentBroadcasts broadcasts={broadcasts} />
+					</details>
+				)}
 			</Atoms.EventLine>
 		)
 	}
@@ -486,6 +729,21 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		// would just repeat it. Only override sets are worth a line of their own.
 		if (appEvent.reason === 'queue-updated') return null
 		const icon = <EventIcon name="RefreshCw" className="text-warn" />
+		const externalSet = reactedToMapSet(event)
+		const setter = externalSet ? externalSetter(ctx, externalSet) : null
+		if (externalSet && setter) {
+			return (
+				<Atoms.EventLine time={event.time} icon={icon}>
+					{tr.richText(
+						AppEvents_Msgs.externalSetRestored(
+							setter,
+							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={externalSet.layerId} />,
+							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
+						),
+					)}
+				</Atoms.EventLine>
+			)
+		}
 		// nobody was seen setting the layer SLM is replacing -- it was already set when SLM connected
 		if (!appEvent.overrode || appEvent.overrode.type === 'unknown') {
 			return (
@@ -517,6 +775,37 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 					),
 				)}
 			</Atoms.EventLine>
+		)
+	}
+	// recorded with its requests, a consumption lists who asked for what
+	if (appEvent.type === 'LAYER_REQUEST_CONSUMED' && appEvent.requests) {
+		const requests = appEvent.requests
+		// in the history of the item that fulfilled them, the requests are why the item exists, so they start out shown
+		return (
+			<details className={DETAILS_CLASS} open={ctx.focusItemId !== undefined && ctx.focusItemId === appEvent.queueItemId}>
+				<summary className={SUMMARY_CLASS}>
+					<Atoms.EventTime time={event.time} />
+					<EventIcon name="CheckCircle2" className="text-ok" />
+					<span className="grow min-w-0 wrap-anywhere">
+						{tr.richText(
+							AppEvents_Msgs.layerRequestsFulfilled(
+								requests.length,
+								<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
+							),
+						)}
+					</span>
+				</summary>
+				<div className="ps-6 pt-1 flex flex-col gap-0.5">
+					{requests.map((request, i) => (
+						<div key={appEvent.itemIds[i]} className="flex gap-2 items-baseline">
+							<Atoms.EventTime time={request.requestedAt} />
+							<span className="grow min-w-0 wrap-anywhere">
+								{tr.richText(AppEvents_Msgs.layerRequestBy(appEvent.descriptions[i] ?? '', requesterLabel(ctx, event, request)))}
+							</span>
+						</div>
+					))}
+				</div>
+			</details>
 		)
 	}
 	if (appEvent.type === 'LAYER_REQUEST_ADDED' || appEvent.type === 'LAYER_REQUEST_REMOVED' || appEvent.type === 'LAYER_REQUEST_CONSUMED') {

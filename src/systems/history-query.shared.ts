@@ -643,6 +643,8 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 			return compileComp(comp, t.channel, id)
 		case 'match.id':
 			return compileComp(comp, t.matchId, id)
+		case 'queue.item':
+			return playedItemCond(comp, t)
 		case 'match.outcome':
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${t.matchId})`, id)
 		case 'match.setBy':
@@ -788,6 +790,11 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 		}
 		case 'match.id':
 			return compileComp(comp, ae.matchId, id)
+		case 'queue.item': {
+			const itemIds = compValueList(comp).filter((v): v is string => typeof v === 'string')
+			const cond = itemIds.length === 0 ? sql`0 = 1` : appEventItemCond(itemIds)
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.outcome':
 			return compileComp(comp, sql`(SELECT ${mh.outcome} FROM ${mh} WHERE ${mh.id} = ${ae.matchId})`, id)
 		case 'match.setBy':
@@ -835,6 +842,20 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 
 function appEventPlayerCond(playerIds: string[]): E.SQL {
 	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'player' AND ${inJsonSet(aea.value, playerIds)})`
+}
+
+function appEventItemCond(itemIds: string[]): E.SQL {
+	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'item' AND ${inJsonSet(aea.value, itemIds)})`
+}
+
+// the event ended a match that played one of the items
+function playedItemCond(comp: F.CompNode, t: EventTable): E.SQL {
+	const itemIds = compValueList(comp).filter((v): v is string => typeof v === 'string')
+	const cond =
+		itemIds.length === 0
+			? sql`0 = 1`
+			: sql`${t.type} = 'ROUND_ENDED' AND ${t.matchId} IN (SELECT ${mh.id} FROM ${mh} WHERE ${inJsonSet(mh.lqItemId, itemIds)})`
+	return comp.neg ? negate(cond) : cond
 }
 
 function appEventUserCond(userIds: string[]): E.SQL {
@@ -933,6 +954,11 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			return compileComp(comp, matchTime, id)
 		case 'match.id':
 			return compileComp(comp, mh.id, id)
+		case 'queue.item': {
+			const itemIds = compValueList(comp).filter((v): v is string => typeof v === 'string')
+			const cond = itemIds.length === 0 ? sql`0 = 1` : inJsonSet(mh.lqItemId, itemIds)
+			return comp.neg ? negate(cond) : cond
+		}
 		case 'match.outcome':
 			return compileComp(comp, mh.outcome, id)
 		case 'match.setBy':

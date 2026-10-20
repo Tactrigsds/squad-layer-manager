@@ -121,6 +121,7 @@ export function initVoteContext(cleanup: Cleanup.Tasks) {
 		autostartVoteSub: null,
 		voteEndTask: null,
 		state: null,
+		startedEventId: null,
 		mtx: withTimeout(new Mutex(), 5_000),
 
 		update$: new IsolatedSubject<V.VoteStateUpdate>(),
@@ -289,32 +290,23 @@ export const startVote = Instr.spanOp(
 		// not a release task, so the dashboard does not wait on the rcon broadcast and the app event
 		ctx.vote.update$.next(update)
 		registerVoteDeadlineAndReminder$(ctx)
-		await broadcastVoteUpdate(
-			ctx,
-			updatedVoteState,
-			ctx.tr.broadcast(
-				V_Msgs.started(
-					ctx.vote.state,
-					item,
-					duration,
-					item.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
-				),
-			),
+		const message = ctx.tr.broadcast(
+			V_Msgs.started(ctx.vote.state, item, duration, item.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps),
 		)
-
-		await SquadServerActions.emitAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.VoteStarted>({
-				type: 'VOTE_STARTED',
-				actor: SquadServer.actorFromUser(ctx, opts.initiator),
-				serverId: ctx.serverId,
-				matchId: currentMatch?.historyEntryId ?? null,
-				causeId: null,
-				choiceCount: item.choices.length,
-				choices: item.choices.map((choice) => choice.layerId),
-				durationMs: duration,
-			}),
-		)
+		const voteStarted = AppEvents.create<AppEvents.VoteStarted>({
+			type: 'VOTE_STARTED',
+			actor: SquadServer.actorFromUser(ctx, opts.initiator),
+			serverId: ctx.serverId,
+			matchId: currentMatch?.historyEntryId ?? null,
+			causeId: null,
+			itemId: item.itemId,
+			choiceCount: item.choices.length,
+			choices: item.choices.map((choice) => choice.layerId),
+			durationMs: duration,
+		})
+		await SquadServerActions.emitAppEvent(ctx, voteStarted)
+		ctx.vote.startedEventId = voteStarted.id
+		await broadcastVoteUpdate(ctx, updatedVoteState, message, voteStarted.id)
 
 		return { code: 'ok' as const, voteStateUpdate: update }
 	},
@@ -419,8 +411,8 @@ export const abortVote = Instr.spanOp(
 				event: 'abort-vote',
 			},
 		}
-		await broadcastVoteUpdate(ctx, newVoteState, ctx.tr.broadcast(V_Msgs.aborted()))
 		ctx.vote.state = null
+		ctx.vote.startedEventId = null
 		ctx.vote.voteEndTask?.unsubscribe()
 		ctx.vote.voteEndTask = null
 		// not a release task, so the dashboard does not wait on the app event. Sent once the queue holds the result.
@@ -435,16 +427,16 @@ export const abortVote = Instr.spanOp(
 			ctx.vote.update$.next(update)
 		}
 
-		await SquadServerActions.emitAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.VoteAborted>({
-				type: 'VOTE_ABORTED',
-				actor: SquadServer.actorFromUser(ctx, opts.aborter),
-				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
-				causeId: null,
-			}),
-		)
+		const voteAborted = AppEvents.create<AppEvents.VoteAborted>({
+			type: 'VOTE_ABORTED',
+			actor: SquadServer.actorFromUser(ctx, opts.aborter),
+			serverId: ctx.serverId,
+			matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+			causeId: null,
+			itemId: newVoteState.itemId,
+		})
+		await SquadServerActions.emitAppEvent(ctx, voteAborted)
+		await broadcastVoteUpdate(ctx, newVoteState, ctx.tr.broadcast(V_Msgs.aborted()), voteAborted.id)
 
 		return { code: 'ok' as const }
 	},
@@ -517,7 +509,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 							voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 						),
 					)
-					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
+					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, ctx.vote.startedEventId, { onlyNotifyNonVotingAdmins: true })
 				}),
 			)
 			.subscribe(),
@@ -544,7 +536,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 								voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 							),
 						)
-						await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
+						await broadcastVoteUpdate(ctx, ctx.vote.state, msg, ctx.vote.startedEventId, { onlyNotifyNonVotingAdmins: true })
 					}),
 				)
 				.subscribe(),
@@ -637,6 +629,24 @@ export const endVote = Instr.spanOp(
 			ctx.vote.update$.next(update)
 		}
 
+		const voteEnded = AppEvents.create<AppEvents.VoteEnded>({
+			type: 'VOTE_ENDED',
+			actor: SquadServer.actorFromUser(ctx, opts.reason === 'ended-early' ? opts.endedBy : undefined),
+			serverId: ctx.serverId,
+			matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+			causeId: null,
+			itemId: listItem.itemId,
+			reason: opts.reason,
+			winnerLayerId,
+			// the tally is keyed by queue item id, which means nothing once the item is gone: resolve it to layers
+			tally: tally
+				? listItem.choices.map((choice) => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))
+				: undefined,
+			totalVotes: tally?.totalVotes,
+			turnoutPercentage: tally?.turnoutPercentage,
+		})
+		await SquadServerActions.emitAppEvent(ctx, voteEnded)
+		ctx.vote.startedEventId = null
 		const displayProps = listItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps
 		if (endingVoteState.code === 'ended:winner') {
 			await broadcastVoteUpdate(
@@ -645,29 +655,12 @@ export const endVote = Instr.spanOp(
 				ctx.tr.broadcast(
 					V_Msgs.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
 				),
+				voteEnded.id,
 			)
 		}
 		if (endingVoteState.code === 'ended:insufficient-votes') {
-			await broadcastVoteUpdate(ctx, endingVoteState, ctx.tr.broadcast(V_Msgs.insufficientVotes(listItem, displayProps)))
+			await broadcastVoteUpdate(ctx, endingVoteState, ctx.tr.broadcast(V_Msgs.insufficientVotes(listItem, displayProps)), voteEnded.id)
 		}
-		await SquadServerActions.emitAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.VoteEnded>({
-				type: 'VOTE_ENDED',
-				actor: SquadServer.actorFromUser(ctx, opts.reason === 'ended-early' ? opts.endedBy : undefined),
-				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
-				causeId: null,
-				reason: opts.reason,
-				winnerLayerId,
-				// the tally is keyed by queue item id, which means nothing once the item is gone: resolve it to layers
-				tally: tally
-					? listItem.choices.map((choice) => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))
-					: undefined,
-				totalVotes: tally?.totalVotes,
-				turnoutPercentage: tally?.turnoutPercentage,
-			}),
-		)
 		return { code: 'ok' as const, endingVoteState, tally }
 	},
 )
@@ -676,10 +669,13 @@ async function broadcastVoteUpdate(
 	ctx: SQS.Ctx & V.Ctx & SR.Ctx.Rcon & CS.AbortSignal & Msgs.Ctx,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
+	// the vote's app event, which the broadcast the server logs folds under in the feed
+	attributeTo: AppEvents.AppEventId | null,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean },
 ) {
 	switch (voteState.voterType) {
 		case 'public':
+			if (attributeTo) await SquadServerActions.attributeBroadcast(ctx, msg, attributeTo)
 			await SquadRcon.broadcast(ctx, msg)
 			break
 		case 'internal':

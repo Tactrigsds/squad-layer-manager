@@ -135,6 +135,11 @@ export const COLUMN_DEFS = {
 	'chat.channel': { key: 'chat.channel', domain: { kind: 'enum', options: CHAT_CHANNELS } },
 	// the match's own id, which every results row shows, so a row can be taken back to the match it came from
 	'match.id': { key: 'match.id', domain: { kind: 'number' } },
+	// A layer queue item, by its id. An app event matches when it touched the item (see AppEvents iterAssocItemIds), a
+	// match when it played the item, and a server event when it ended the match that played the item: the rest of that
+	// match's server events, connections and next-layer sets among them, are about other layers. Compared exactly,
+	// unlike other text columns.
+	'queue.item': { key: 'queue.item', domain: { kind: 'text' } },
 	'match.outcome': { key: 'match.outcome', domain: { kind: 'enum', options: MATCH_OUTCOMES } },
 	'match.setBy': { key: 'match.setBy', domain: { kind: 'enum', options: SET_BY_TYPES } },
 	// Who set the match's layer: the user behind a manual source, or anyone who asked for it through a layer
@@ -420,6 +425,8 @@ const QueryFieldsSchema = z.object({
 	killDiffMax: z.number().int().nonnegative().optional(),
 	name: z.string().optional(),
 	matchId: z.number().int().positive().optional(),
+	// a layer queue item's id, as the layer history window links to it (see the 'queue.item' column)
+	item: z.string().optional(),
 	minMatches: z.number().int().positive().optional(),
 
 	// one field for all three tabs, read through playerSort/matchSort: the tabs are views over one query, so
@@ -458,6 +465,47 @@ export const QuerySchema = QueryFieldsSchema.transform(foldSingles)
 export type Query = z.infer<typeof QuerySchema>
 
 export const DEFAULT_QUERY: Query = QuerySchema.parse({})
+
+// The queue item history window's event types. MAP_SET is SLM overriding a set made outside it; the server's own sets
+// in a played match are about the layer after it (see the 'queue.item' column).
+const ITEM_HISTORY_TYPES = [
+	'QUEUE_UPDATED',
+	'LAYER_REQUEST_CONSUMED',
+	'VOTE_STARTED',
+	'VOTE_ENDED',
+	'VOTE_ABORTED',
+	'MAP_SET',
+	'ROUND_ENDED',
+] as const satisfies readonly (typeof EVENT_TYPES)[number][]
+
+/**
+ * One layer queue item's history on a server, oldest first. A match that played no queue item stands in for one, with
+ * only the events of the match itself.
+ */
+export function itemHistoryQuery(serverId: string, subject: { itemId: string } | { matchId: number }): Query {
+	return {
+		...DEFAULT_QUERY,
+		type: 'events',
+		order: 'oldest',
+		servers: [serverId],
+		types: [...ITEM_HISTORY_TYPES],
+		...('itemId' in subject ? { item: subject.itemId } : { matchId: subject.matchId }),
+	}
+}
+
+/** The queue item a query is narrowed to, when its tree pins exactly one at the top level. */
+export function focusItemId(query: Query): string | undefined {
+	const root = queryFilterNode(query)
+	if (root.type !== 'and') return undefined
+	for (const child of root.children) {
+		if (!isCompNode(child)) continue
+		const node = child as F.CompNode
+		if (node.neg || node.type !== 'eq' || F.compAnchorColumn(node) !== 'queue.item') continue
+		const value = node.args[1]
+		if (value?.type === 'value' && typeof value.value === 'string') return value.value
+	}
+	return undefined
+}
 
 // The history url's params beside the query. None of them changes what the query answers, so a saved or recent
 // query carries none of them.
@@ -814,6 +862,7 @@ export function queryFilterNode(query: Query): Node {
 	if (query.gamemode) children.push(comp('layer.gamemode', [query.gamemode]))
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.matchId !== undefined) children.push(comp('match.id', [query.matchId]))
+	if (query.item !== undefined) children.push(comp('queue.item', [query.item]))
 	if (query.outcomes?.length) children.push(comp('match.outcome', query.outcomes))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	if (query.setByUsers?.length) children.push(comp('match.setByUser', query.setByUsers))

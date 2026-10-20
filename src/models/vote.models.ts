@@ -335,6 +335,8 @@ export namespace Ctx {
 		autostartVoteSub: Rx.Subscription | null
 		mtx: MutexInterface
 		state: VoteState | null
+		// the VOTE_STARTED of the vote in progress, which its reminder broadcasts are attributed to
+		startedEventId: string | null
 		update$: Rx.Subject<VoteStateUpdate>
 	}
 }

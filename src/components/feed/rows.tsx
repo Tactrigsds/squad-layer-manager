@@ -9,12 +9,16 @@
 // results) and on the client (the activity feed inserts the strings; see render.ts), and interactivity is
 // all attributes the delegated handlers read.
 
+import * as dateFns from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
 import React from 'react'
 
 import { withThrown } from '@/lib/error'
+import * as TZ from '@/lib/time-zones'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as I18n from '@/messages/i18n'
+import * as MH_Msgs from '@/messages/match-history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as DSTR from '@/models/destruction.models'
@@ -209,12 +213,35 @@ function Details(props: { time: number; icon: React.ReactNode; summary: React.Re
 	)
 }
 
+// the day a match started, relative to today where that reads better than a date. The date itself goes through
+// Intl, which formats any locale by its tag, where date-fns would need each locale's module loaded.
+function matchDay(time: number): string {
+	const zone = RC.currentTimeZone() ?? TZ.local()
+	const day = toZonedTime(time, zone)
+	const today = toZonedTime(Date.now(), zone)
+	if (dateFns.isSameDay(day, today)) return tr.text(MH_Msgs.today())
+	if (dateFns.isSameDay(day, dateFns.subDays(today, 1))) return tr.text(MH_Msgs.yesterday())
+	return new Intl.DateTimeFormat(I18n.getAmbientLocale(), {
+		timeZone: zone,
+		month: 'short',
+		day: 'numeric',
+		year: dateFns.isSameYear(day, today) ? undefined : 'numeric',
+	}).format(time)
+}
+
 function NewGame(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'NEW_GAME' }> }) {
 	const { ctx, event } = props
 	const match = ctx.matchById(event.matchId)
-	if (!match || !ctx.currentMatch) return null
-	const visibleMatchIndex = match.ordinal - ctx.currentMatch.ordinal
-
+	if (!match) return null
+	const layer = (
+		<Atoms.ShortLayerName
+			normalized={ctx.displayTeamsNormalized}
+			layerId={match.layerId}
+			teamParity={match.ordinal % 2}
+			historyEntryId={match.historyEntryId}
+			className="text-xs"
+		/>
+	)
 	let label: string
 	switch (event.source) {
 		case 'new-game-detected':
@@ -230,23 +257,32 @@ function NewGame(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, 
 		default:
 			assertNever(event.source)
 	}
+	const icon = <Icon name="Play" className="h-4 w-4 text-ok shrink-0" />
+
+	// a queue item's history reads as a run of matches, so each match heads the events that happened during it. The
+	// match that played the item also gets its start as a row of its own, since that start is part of the item's story.
+	if (ctx.focusItemId !== undefined) {
+		return (
+			<>
+				<h3 className="flex w-full items-center gap-2 pt-3 pb-1 text-xs font-semibold text-muted-foreground after:h-px after:flex-1 after:bg-border">
+					<span className="min-w-0">{tr.richText(CHAT_Msgs.matchHeading(match.historyEntryId, layer, matchDay(event.time)))}</span>
+				</h3>
+				{match.lqItemId === ctx.focusItemId && (
+					<Atoms.EventLine time={event.time} icon={icon} className="py-0.5">
+						{label}
+					</Atoms.EventLine>
+				)}
+			</>
+		)
+	}
+	// a results scope has no current match to count from
+	if (!ctx.currentMatch) return null
+	const which = match.ordinal === ctx.currentMatch.ordinal ? tr.text(CHAT_Msgs.currentMatch()) : match.ordinal - ctx.currentMatch.ordinal
 
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
-			<Atoms.EventLine time={event.time} icon={<Icon name="Play" className="h-4 w-4 text-ok shrink-0" />} className="py-0.5">
-				{tr.richText(
-					CHAT_Msgs.newGameLine(
-						label,
-						visibleMatchIndex === 0 ? tr.text(CHAT_Msgs.currentMatch()) : visibleMatchIndex,
-						<Atoms.ShortLayerName
-							normalized={ctx.displayTeamsNormalized}
-							layerId={match.layerId}
-							teamParity={match.ordinal % 2}
-							historyEntryId={match.historyEntryId}
-							className="text-xs"
-						/>,
-					),
-				)}
+			<Atoms.EventLine time={event.time} icon={icon} className="py-0.5">
+				{tr.richText(CHAT_Msgs.newGameLine(label, which, layer))}
 			</Atoms.EventLine>
 		</div>
 	)

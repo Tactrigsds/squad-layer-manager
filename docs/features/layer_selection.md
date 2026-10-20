@@ -20,6 +20,9 @@ can carry colour-coded tags and freeform notes.
 Right-click a queue item, or use its ⋮ button, to open the queue item's menu. The menu leads with the layer's details,
 scores and SquadCalc link, followed by the queue item's edit, tag, note and placement actions.
 
+Use _View history_ in a queue item's menu, or in a match's menu in the match history, to see every edit to the queue
+item and who made each edit, the queue item's votes, and the match that played the queue item.
+
 ![the layer queue while editing, with the first item's menu open, a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
 
 ## The layer selection dialog

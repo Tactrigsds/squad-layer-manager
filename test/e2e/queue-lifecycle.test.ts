@@ -125,6 +125,21 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		)
 	})
 
+	test("the save's feed row expands into its edit session, the abandoned draft included", async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
+
+		// the save spans every op since the last one, so the draft the second test abandoned is in it too, as the
+		// single line that says it never reached the queue
+		const save = page
+			.getByRole('group')
+			.filter({ hasText: /saved the queue/ })
+			.last()
+		await save.getByText('1 edit', { exact: true }).click()
+		await expect(save.getByText('An unsaved edit was discarded after every editor left')).toBeVisible()
+		await expect(save.getByText(/removed Gorodok_RAAS_v1/)).toBeVisible()
+	})
+
 	test('a map roll consumes the head and pushes the next one', async ({ page }) => {
 		await gotoReady(page, app.loginUrl())
 		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
@@ -140,6 +155,28 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible({ timeout: 20_000 })
 		await expect(queuePanel.getByText('Sumari_Seed_v1')).toBeHidden()
+	})
+
+	test("the played match's history follows its queue item from the save that made it next", async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
+
+		await page.getByRole('row').filter({ hasText: 'Sumari_Seed_v1' }).click({ button: 'right' })
+		await page.getByRole('menuitem', { name: 'View history' }).click()
+		const history = page.getByRole('dialog').filter({ hasText: 'Queue item history' })
+
+		// the save deleted the head, which was an edit to another item, and made this one the next layer
+		const save = history.getByRole('group').filter({ hasText: /saved the queue/ })
+		await expect(save.getByText('Next layer', { exact: true })).toBeVisible()
+		await expect(save.getByText('1 change to another item')).toBeVisible()
+		// each match heads the events that happened during it, the save under the match before the one it played
+		const headings = history.getByRole('heading', { name: /^Match \d+ · .* · (Today|Yesterday)$/ })
+		await expect(headings).toHaveCount(2)
+		await expect(headings.last()).toContainText('Sumari_Seed_v1')
+		// the match that played it opens with its start, which no other match in the history shows as a row
+		await expect(history.getByText('New game started', { exact: true })).toHaveCount(1)
+		// the roll that played it says nothing the match's start does not
+		await expect(history.getByText(/^Queue advanced on map change/)).toHaveCount(0)
 	})
 
 	test('generates a vote from the pool and saves it into the queue', async ({ page }) => {
@@ -263,5 +300,16 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 			.getByRole('listitem')
 			.filter({ has: page.getByRole('heading', { name: 'Vote' }) })
 		await expect(voteItem.getByRole('listitem')).toHaveCount(3)
+	})
+
+	test('a next layer set outside SLM reads as one line with the queue sync that followed it', async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
+
+		app.emu.world.handleCommand(L.getLayerCommand(LAYERS.narvaRaas, 'set-next'))
+		// SLM notices the set on its next poll of the server
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
+		await expect(page.getByText(/The next layer was set to Narva_RAAS_v1.* outside SLM, added to the queue ahead of/)).toBeVisible()
+		await expect(page.getByText(/^Next layer set to Narva_RAAS_v1/)).toHaveCount(0)
 	})
 })

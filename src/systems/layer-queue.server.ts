@@ -205,6 +205,7 @@ export const setupInstance = Instr.spanOp(
 								await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
 									reason: 'override',
 									overrode: external,
+									overrodeEventId: event.id,
 								})
 							} else {
 								const op: SLL.Operation = {
@@ -214,6 +215,7 @@ export const setupInstance = Instr.spanOp(
 									itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
 									layerId: event.layerId,
 									externalSource: external,
+									externalEventId: event.id,
 								}
 								await dispatchOp(ctx, op)
 							}
@@ -864,7 +866,9 @@ export const syncNextLayerToServer = Instr.spanOp(
 		itemId: string,
 		// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
 		// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
-		mapSetCause?: { reason: 'queue-updated'; causeId: string } | { reason: 'override'; overrode?: AppEvents.MapSet['overrode'] },
+		mapSetCause?:
+			| { reason: 'queue-updated'; causeId: string }
+			| { reason: 'override'; overrode?: AppEvents.MapSet['overrode']; overrodeEventId?: number },
 	) => {
 		const syncState$ = ctx.layerQueue.nextLayerSyncState$
 		if (settings.updatesToSquadServerDisabled) {
@@ -932,6 +936,8 @@ export const syncNextLayerToServer = Instr.spanOp(
 						layerId: nextQueuedLayerId,
 						reason: mapSetCause.reason,
 						overrode: mapSetCause.reason === 'override' ? mapSetCause.overrode : undefined,
+						overrodeEventId: mapSetCause.reason === 'override' ? mapSetCause.overrodeEventId : undefined,
+						itemId,
 						actor: { type: 'system' },
 						serverId: ctx.serverId,
 						// no current match yet on a freshly-registered server (first sync hasn't run)
@@ -1525,6 +1531,15 @@ const handleSideEffect = Instr.spanOp(
 								itemIds: removed.map((item) => item.itemId),
 								descriptions: removed.map(describe),
 								layerId: se.layerId ?? L.defaultLayerId(),
+								queueItemId: se.queueItemId,
+								requests: removed.map((item) => {
+									const requester = SquadServer.actorFromUser(ctx, item.source)
+									return {
+										requester: item.source,
+										playerId: requester.type === 'ingame-user' ? requester.playerId : undefined,
+										requestedAt: item.createdAt,
+									}
+								}),
 							}),
 						)
 					}

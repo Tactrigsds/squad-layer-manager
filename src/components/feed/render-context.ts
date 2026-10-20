@@ -32,6 +32,9 @@ export type RenderCtx = {
 	// and including the types the feed draws nothing for, which appear as a type-and-payload placeholder
 	// rather than as a silent gap between the result count and the rows
 	placeholderUndrawn?: boolean
+	// the layer queue item a scope is the history of: queue saves narrow their logs to its edits, and mark the save
+	// that made it the next layer
+	focusItemId?: string
 	matchById: (matchId: number | null | undefined) => MH.MatchDetails | undefined
 	// the most recent match on record, and the one in progress -- not always the same match
 	latestMatch: MH.MatchDetails | undefined

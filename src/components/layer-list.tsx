@@ -43,12 +43,14 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
+import * as LH_Msgs from '@/messages/layer-history.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as UP_Msgs from '@/messages/user-presence.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as DH from '@/models/display-helpers.models'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import type * as LTag from '@/models/layer-tags.models'
@@ -58,6 +60,7 @@ import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
+import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -73,6 +76,7 @@ import EditLayerDialog from './edit-layer-dialog.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
 import { LayerMenuItems } from './layer-context-menu-options.tsx'
 import LayerDisplay from './layer-display.tsx'
+import type { LayerHistoryWindowProps } from './layer-history-window.helpers'
 import LayerSourceDisplay from './layer-source-display.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import { Timer } from './timer.tsx'
@@ -86,6 +90,8 @@ import {
 	DropdownMenuSubTrigger,
 } from './ui/dropdown-menu.tsx'
 import TabsList from './ui/tabs-list.tsx'
+
+void import('@/components/layer-history-window')
 
 // a touch long-press on a drag handle is a drag. The row's context menu opens on the same gesture, and then
 // takes the drop, so the handle keeps the press to itself.
@@ -1460,6 +1466,7 @@ function ItemMenuItems(props: {
 	}
 
 	const user = UsersClient.useLoggedInUser()
+	const openWindow = useOpenOrFocusWindow()
 	const configuredTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const canManageTags = !RbacClient.useAccess('settings.global.upsertLayerTag')
 	const appliedTags = item.type === 'single-list-item' ? (item.tags ?? []) : []
@@ -1511,6 +1518,20 @@ function ItemMenuItems(props: {
 					<Icons.X />
 					{tr.text(LL_Msgs.deleteItem())}
 				</Menu.Item>
+				{host.type === 'server' && (
+					<Menu.Item
+						onClick={() =>
+							openWindow(WINDOW_ID.enum['layer-history'], {
+								serverId: host.serverId,
+								layerId: layerIds[0],
+								itemId: item.itemId,
+							} satisfies LayerHistoryWindowProps)
+						}
+					>
+						<Icons.History />
+						{tr.text(LH_Msgs.viewHistory())}
+					</Menu.Item>
+				)}
 			</Menu.Group>
 			<Menu.Separator />
 			{item.type === 'single-list-item' && (

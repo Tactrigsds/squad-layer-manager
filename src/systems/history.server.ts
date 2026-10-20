@@ -582,7 +582,7 @@ async function assembleEventPage(
 	if (format === 'wire') return { rowsHtml: [] as string[], events: page.events, matches }
 	const events = page.events ? CHAT.Wire.decode(page.events) : []
 	const timeZone = resultZone(query, render, () => eventServerIds(events, matches))
-	const rows = renderEventRows(events, matches, render, await actorLabels(ctx, events), timeZone)
+	const rows = renderEventRows(events, matches, render, await actorLabels(ctx, events), timeZone, HQ.focusItemId(query))
 	return { rowsHtml: rows, events: null, matches }
 }
 
@@ -665,10 +665,10 @@ function resultsRenderCtx(
 // Safe to set-and-restore without a scope: `fn` is synchronous, so nothing else can read the ambient locale while
 // it is ours. Same for the timestamp format: results span days and servers, so a row's time on its own does not
 // place it, unlike in a feed of one match.
-function withResultsAmbient<T>(render: RenderOpts, timeZone: string, fn: () => T): T {
+function withResultsAmbient<T>(render: RenderOpts, timeZone: string, fn: () => T, opts?: { fullTimestamps?: boolean }): T {
 	const prevLocale = I18n.getAmbientLocale()
 	I18n.setAmbientLocale(render.locale)
-	const prevFull = RC.setFullTimestamps(true)
+	const prevFull = RC.setFullTimestamps(opts?.fullTimestamps ?? true)
 	const prevZone = RC.setTimeZone(timeZone)
 	try {
 		return fn()
@@ -686,19 +686,27 @@ function renderEventRows(
 	render: RenderOpts,
 	labels: Pick<RC.RenderCtx, 'userLabel' | 'pluginName'>,
 	timeZone: string,
+	focusItemId?: string,
 ): string[] {
-	const rctx = resultsRenderCtx(matches, render, labels)
-	return withResultsAmbient(render, timeZone, () => {
-		const out: string[] = []
-		for (const event of events) {
-			// per row rather than per pass: results span matches, and which one a row is from is the thing a
-			// timestamp alone does not say
-			RC.setRowMatchId(event.matchId ?? undefined)
-			const html = renderRow(rctx, event)
-			if (html !== '') out.push(RC.withRowIdentity(html, event))
-		}
-		return out
-	})
+	const rctx = { ...resultsRenderCtx(matches, render, labels), focusItemId }
+	// a queue item's history dates each match on its start line, so its rows only need their time of day
+	return withResultsAmbient(
+		render,
+		timeZone,
+		() => {
+			const out: string[] = []
+			for (const event of events) {
+				// per row rather than per pass: results span matches, and which one a row is from is the thing a
+				// timestamp alone does not say
+				// a queue item's history heads each match instead (see NewGame)
+				if (focusItemId === undefined) RC.setRowMatchId(event.matchId ?? undefined)
+				const html = renderRow(rctx, event)
+				if (html !== '') out.push(RC.withRowIdentity(html, event))
+			}
+			return out
+		},
+		{ fullTimestamps: focusItemId === undefined },
+	)
 }
 
 // -------- results as text and csv --------

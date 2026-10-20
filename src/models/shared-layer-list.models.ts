@@ -141,6 +141,8 @@ function buildOperationSchema<
 					z.object({ type: z.literal('unknown') }),
 				])
 				.optional(),
+			// the server MAP_SET this reconciliation reacted to, so the feed can show the two as one entry
+			externalEventId: z.number().optional(),
 		}),
 		z.object({
 			...baseProps,
@@ -380,8 +382,9 @@ export type SideEffect =
 			opId: string
 			trigger: 'user-save' | 'chat-write' | 'consumed'
 			source?: USR.GuiOrChatUserId
-			// for 'consumed': the generated layer that satisfied the consumed templates
+			// for 'consumed': the generated layer that satisfied the consumed templates, and the queue item it went into
 			layerId?: L.LayerId | null
+			queueItemId?: LL.ItemId
 	  }
 	| {
 			// the save had nothing to write, but the edit window still closed -- editors are done and the draft
@@ -876,6 +879,7 @@ function consumeBackburnerItems(
 		opId: newOp.opId,
 		trigger: 'consumed',
 		layerId: newOp.item.type === 'single-list-item' ? newOp.item.layerId : null,
+		queueItemId: newOp.item.itemId,
 	})
 }
 
