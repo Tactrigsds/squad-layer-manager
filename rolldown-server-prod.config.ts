@@ -4,6 +4,7 @@ import { defineConfig } from 'rolldown'
 
 import packageJson from './package.json'
 import { extractMessages } from './src/scripts/messages-build.ts'
+import * as TPN from './src/scripts/third-party-notices.ts'
 
 // Mainly just using rolldown through vite here. haven't explored using vite as a dev server, which we would need to do if we wanted to do any kind of transforms for the server code
 
@@ -34,6 +35,8 @@ export default defineConfig({
 				extractMessages()
 			},
 		},
+		// the server loads layer-engine.wasm too
+		TPN.thirdPartyNotices({ extraEntries: TPN.crateEntries }).emit(),
 	],
 	input: {
 		'main-instrumented': 'src/server/main-instrumented.ts',
