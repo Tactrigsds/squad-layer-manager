@@ -3,6 +3,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 
 import * as Paths from '$root/paths.ts'
+import * as CL from '@/models/changelog.models'
 import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // Checks the changelog. Run with `pnpm changelog:check`, which validates every fragment, and in CI with
@@ -14,10 +15,6 @@ import * as ChangelogFiles from '@/systems/changelog-files.server'
 // - a PR with a breaking commit (`feat!:`, `fix(scope)!:`) adds an operators fragment, and cannot opt out
 //
 // The PR description comes in through the PR_BODY environment variable.
-
-const BACKGROUND_TYPES = new Set(['refactor', 'test', 'ci', 'style', 'chore', 'docs', 'build'])
-const OPT_OUT = /^changelog:\s*none(?![\w-])/im
-const CONVENTIONAL = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<breaking>!)?:/
 
 const args = parseArgs({ options: { base: { type: 'string' } } })
 
@@ -48,15 +45,15 @@ if (base) {
 		.map((file) => path.basename(file, '.md'))
 	const addedEntries = loaded.pending.filter((entry) => added.includes(entry.id))
 
-	const breaking = commits.filter((c) => CONVENTIONAL.exec(c.subject)?.groups?.breaking)
+	const breaking = commits.filter((c) => CL.CONVENTIONAL.exec(c.subject)?.groups?.breaking)
 	if (breaking.length > 0 && !addedEntries.some((entry) => entry.audience === 'operators')) {
 		problems.push(
 			`breaking commits need an operators fragment in changes/ saying what an upgrade has to do:\n    ${breaking.map((c) => c.subject).join('\n    ')}`,
 		)
 	}
 
-	const optedOut = OPT_OUT.test(process.env.PR_BODY ?? '') || commits.some((c) => OPT_OUT.test(c.message))
-	const needsFragment = commits.filter((c) => !BACKGROUND_TYPES.has(CONVENTIONAL.exec(c.subject)?.groups?.type ?? ''))
+	const optedOut = CL.OPT_OUT.test(process.env.PR_BODY ?? '') || commits.some((c) => CL.OPT_OUT.test(c.message))
+	const needsFragment = commits.filter((c) => !CL.isBackgroundSubject(c.subject))
 	if (added.length === 0 && !optedOut && needsFragment.length > 0) {
 		problems.push(
 			'this PR changes more than background code but adds no fragment to changes/. Add one (see changes/README.md), ' +

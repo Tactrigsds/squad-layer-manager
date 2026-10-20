@@ -8,11 +8,13 @@ import * as Project from '@/models/project.models'
 import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // Cuts a release: moves every fragment in changes/ into changelog/<version>/, adds the release to
-// changelog/releases.json and regenerates CHANGELOG.md. Run with `pnpm release`, commit the result on a branch and
-// merge it. CI tags the merged commit `v<version>` and its image `:<version>` and `:stable`.
+// changelog/releases.json and regenerates CHANGELOG.md. Run with `pnpm release` from a clean checkout of the latest
+// origin/main, commit the result on a branch and merge it. CI tags the merged commit `v<version>` and its image
+// `:<version>` and `:stable`.
 //
-// It also lists the commits since the last release that shipped without a fragment, so a change that should have
-// had one can be caught before the release goes out: add the fragment to changes/ and run this again.
+// CI already holds every PR to a fragment or a `Changelog: none` line. What it cannot judge is whether an opt-out was
+// right, so this lists the PRs since the last release that opted out, with their reasons. If one should have had a
+// fragment, add it to changes/ on main and run this again.
 
 const CHANGELOG_MD = path.join(Paths.PROJECT_ROOT, 'CHANGELOG.md')
 
@@ -25,17 +27,55 @@ function git(...args: string[]) {
 	return execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
 
-// commits since the one that cut the last release, oldest first, without the ones that added a fragment
-function commitsWithoutFragments(): string[] {
+// A release that is not cut from the latest main leaves out whatever merged since, fragments included.
+function preflight() {
+	git('fetch', '--quiet', 'origin', 'main')
+	const head = git('rev-parse', 'HEAD')
+	const main = git('rev-parse', 'origin/main')
+	if (head !== main) fail(`HEAD is ${head.slice(0, 8)} but origin/main is ${main.slice(0, 8)}. Cut a release from the latest main.`)
+	if (git('status', '--porcelain')) fail('the checkout has uncommitted changes')
+}
+
+type Commit = { subject: string; message: string }
+
+function commitsIn(range: string): Commit[] {
+	return git('log', '--no-merges', '--format=%x1e%s%x1f%B', range)
+		.split('\x1e')
+		.filter(Boolean)
+		.map((raw) => {
+			const [subject, message] = raw.split('\x1f')
+			return { subject, message }
+		})
+}
+
+function addsFragment(from: string, to: string): boolean {
+	return git('diff', '--name-only', '--no-renames', '--diff-filter=A', from, to, '--', 'changes/')
+		.split('\n')
+		.some((file) => file.endsWith('.md') && path.basename(file) !== 'README.md')
+}
+
+// The changes on main's first-parent line since the last release that added no fragment and are not background-only,
+// each with the `Changelog: none` reason it gave. A PR's reason is in its commits or, when absent there, its
+// description, which git does not have.
+function optedOutSinceLastRelease(): string[] {
 	const lastRelease = git('log', '-1', '--format=%H', '--', 'changelog/releases.json')
 	const range = lastRelease ? `${lastRelease}..HEAD` : 'HEAD'
-	const withFragment = new Set(git('log', '--no-merges', '--diff-filter=A', '--format=%H', range, '--', 'changes/').split('\n'))
-	return git('log', '--no-merges', '--reverse', '--format=%H %h %s', range)
-		.split('\n')
-		.filter(Boolean)
-		.filter((line) => !withFragment.has(line.slice(0, line.indexOf(' '))))
-		.map((line) => line.slice(line.indexOf(' ') + 1))
+	const lines: string[] = []
+	for (const row of git('log', '--first-parent', '--reverse', '--format=%H%x1f%P%x1f%s%x1f%b%x1e', range).split('\x1e')) {
+		const [hash, parents, subject, body] = row.trim().split('\x1f')
+		if (!hash) continue
+		const [first, second] = parents.split(' ')
+		const commits = second ? commitsIn(`${first}..${second}`) : [{ subject, message: `${subject}\n${body}` }]
+		if (commits.every((c) => CL.isBackgroundSubject(c.subject))) continue
+		if (addsFragment(first, hash)) continue
+		const label = second ? `${subject.match(/#\d+/)?.[0] ?? hash.slice(0, 8)} ${body.split('\n')[0]}` : `${hash.slice(0, 8)} ${subject}`
+		const reason = commits.map((c) => c.message.match(CL.OPT_OUT)?.[0]).find(Boolean) ?? '(opted out in the PR description)'
+		lines.push(`${label}\n      ${reason}`)
+	}
+	return lines
 }
+
+preflight()
 
 const loaded = ChangelogFiles.load(Paths.CHANGELOG, Paths.CHANGES)
 if (loaded.errors.length > 0) fail(`fix these first:\n  ${loaded.errors.join('\n  ')}`)
@@ -59,11 +99,16 @@ fs.writeFileSync(path.join(Paths.CHANGELOG, 'releases.json'), JSON.stringify(ind
 const released = ChangelogFiles.load(Paths.CHANGELOG, Paths.CHANGES)
 if (released.errors.length > 0) fail(`the release was written but does not load back:\n  ${released.errors.join('\n  ')}`)
 fs.writeFileSync(CHANGELOG_MD, CL.renderMarkdown(released.releases, Project.REPO_URL))
+// the rendered markdown is not wrapped the way the pre-push format check wants it
+execFileSync('pnpm', ['exec', 'oxfmt', CHANGELOG_MD], { stdio: 'ignore' })
 
 console.log(`Cut ${version} (${date}) with ${loaded.pending.length} changes.`)
-const unrecorded = commitsWithoutFragments()
-if (unrecorded.length > 0) {
-	console.log(`\nThese ${unrecorded.length} commits since the last release have no fragment. Check none of them should:\n`)
-	for (const line of unrecorded) console.log(`  ${line}`)
+const optedOut = optedOutSinceLastRelease()
+if (optedOut.length > 0) {
+	console.log(`\nThese ${optedOut.length} changes since the last release opted out of a fragment. Check each reason holds:\n`)
+	for (const line of optedOut) console.log(`  ${line}`)
 }
-console.log(`\nNext: commit on a branch (git switch -c release/${version} && git add -A changes changelog CHANGELOG.md) and open a PR.`)
+console.log(
+	`\nNext: commit on a branch (git switch -c release/${version} && git add -A changes changelog CHANGELOG.md), with ` +
+		`"Changelog: none, this is the release commit" in the message, and open a PR.`,
+)
