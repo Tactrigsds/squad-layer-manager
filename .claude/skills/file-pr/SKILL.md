@@ -15,6 +15,27 @@ The test runs are long and main keeps moving. Fetch `origin/main` again right be
 
 In a worktree session, run each git and gh command as its own Bash call, with literal arguments. The worktree guard refuses `&&` chains containing git and any `$(...)`, such as `gh pr list --head "$(git branch --show-current)"`: read the branch name first, then pass it.
 
+## After filing
+
+Watch the PR's CI until every check has finished: run `gh pr checks <number> --watch` as a background job and wait
+for its notification. A filed PR is not done while its checks are running or failing.
+
+When a check fails, read the failing job's log (`gh run view <run id> --log-failed`) and treat the failure as a bug,
+including one that looks unrelated to the diff. Fix it on the branch, push, and watch again. A failure that looks
+like a flake follows the Flakes rules in CLAUDE.md: search the issues, and file one if none covers it. Re-run a job
+only once the evidence shows the failure is a known flake, and say so to the user. If the cause is out of reach,
+stop and report the failure with its log.
+
+## Merging
+
+Merge only when the user asked for it, and only once every check is green. The repo merges with merge commits:
+`gh pr merge <number> --merge`. Do not pass `--delete-branch`: it also deletes the local branch, which the worktree
+has checked out.
+
+The repo does not delete merged branches, so delete the remote branch after the merge:
+`git push origin --delete <branch>`. Keep it only for a concrete reason, such as the user asking to keep it, and
+name the reason to the user.
+
 ## PR Descriptions
 
 ALWAYS open the description with a simple explanation of the problem based on the initial user's prompt, and then briefly explain the solution. NEVER lead with an implementation inventory:
