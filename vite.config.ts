@@ -11,10 +11,15 @@ import * as AR from './src/app-routes.ts'
 import { BUILD_TARGET } from './src/browser-support.ts'
 import * as SHIM from './src/models/plugin-api-shim.models.ts'
 import { extractMessages } from './src/scripts/messages-build.ts'
+import * as TPN from './src/scripts/third-party-notices.ts'
 import * as Env from './src/server/env.ts'
 
 Env.ensureEnvSetup()
 const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
+
+// vite bundles a worker before the chunk that imports it, so the workers' packages are collected by the time the
+// main build writes the file
+const notices = TPN.thirdPartyNotices({ extraEntries: TPN.crateEntries })
 
 // Feeds plugins/builtins.ts the source of every plugin directory, in dev only. It is a virtual module
 // rather than a glob guarded by import.meta.env.DEV because a glob's imports are real: eager ones
@@ -81,6 +86,7 @@ export default defineConfig({
 			NODE_ENV: ENV.NODE_ENV,
 		}),
 		quietCompilerBailouts(react({ compiler: true })),
+		notices.emit(),
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {
@@ -165,6 +171,9 @@ export default defineConfig({
 		// the vehicle icons are imported eagerly as a set, so inlined they put every one into the importing chunk as
 		// incompressible base64 whether it is drawn or not
 		assetsInlineLimit: (filePath) => (filePath.includes('/vehicle-icons/') ? false : undefined),
+	},
+	worker: {
+		plugins: () => [notices.collect()],
 	},
 	// optimizeDeps: {
 	// 	exclude: ['ace-builds'],

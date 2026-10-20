@@ -23,6 +23,7 @@ import * as CL from '@/models/changelog.models'
 import * as DS from '@/models/docs-site.models'
 import * as PLG from '@/models/plugins.models'
 import * as Project from '@/models/project.models'
+import * as TPN from '@/scripts/third-party-notices'
 import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // Builds the documentation site. Run with `pnpm docs:build`, or `pnpm docs:dev` to rebuild on change and serve it.
@@ -669,10 +670,22 @@ async function buildCss(dir: string, base: string, fontCss: string) {
 	return writeHashed(dir, base, 'docs', 'css', fontCss + result.css)
 }
 
+// the fonts copyFonts serves and the search index pagefind writes ship beside the bundle, so their notices join it
+function siteNoticeEntries() {
+	const pkgs = [...new Set(FONTS.map((font) => `@fontsource/${font.pkg}`)), 'pagefind']
+	return pkgs.map((pkg) => TPN.packageEntry(path.join(ROOT, 'node_modules', pkg)))
+}
+
 async function buildJs(dir: string, base: string) {
-	const bundle = await rolldown({ input: path.join(ROOT, 'src/systems/docs-site.client.ts'), platform: 'browser' })
+	const bundle = await rolldown({
+		input: path.join(ROOT, 'src/systems/docs-site.client.ts'),
+		platform: 'browser',
+		plugins: [TPN.thirdPartyNotices({ extraEntries: siteNoticeEntries }).emit()],
+	})
 	const { output } = await bundle.generate({ format: 'esm', minify: true })
 	await bundle.close()
+	const notices = output.find((o) => o.fileName === TPN.FILE_NAME)
+	if (notices?.type === 'asset') fs.writeFileSync(path.join(dir, TPN.FILE_NAME), notices.source)
 	return writeHashed(dir, base, 'docs', 'js', output[0].code)
 }
 

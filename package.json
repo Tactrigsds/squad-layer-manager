@@ -63,6 +63,7 @@
 		"__e2e-firefox:comment__": "the @firefox-tagged subset on gecko; see the firefox project in playwright.config.ts",
 		"test:e2e:firefox": "playwright test --project=firefox --workers=2",
 		"test:ci": "pnpm run test:integration && pnpm run test:e2e:ci",
+		"build:crate-notices": "tsx --tsconfig tsconfig.node.json src/scripts/build-crate-notices.ts",
 		"build:engine": "cd layer-engine && cargo build --release --target wasm32-unknown-unknown && cd .. && mkdir -p assets && cp layer-engine/target/wasm32-unknown-unknown/release/layer_engine.wasm assets/layer-engine.wasm",
 		"build:agent": "cargo build --release --manifest-path server-agent/agent/Cargo.toml",
 		"build:all": "pnpm run build:engine && pnpm run build:prod",
