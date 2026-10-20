@@ -20,6 +20,7 @@ export type FieldKey =
 	| 'chat'
 	| 'channel'
 	| 'matchId'
+	| 'item'
 	| 'outcomes'
 	| 'setBy'
 	| 'setByUsers'
@@ -85,6 +86,8 @@ export type FieldDef = {
 	control: FieldControl
 	// absent means every result type offers it
 	onlyFor?: readonly HQ.ResultType[]
+	// shown only once a link has set it: "+ Filter" leaves out a field whose value nobody would type
+	linkOnly?: true
 }
 
 export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
@@ -100,6 +103,7 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	chat: { key: 'chat', group: 'events', control: { kind: 'text' } },
 	channel: { key: 'channel', group: 'events', control: { kind: 'enum', options: HQ.CHAT_CHANNELS } },
 	matchId: { key: 'matchId', group: 'match', control: { kind: 'number', field: 'matchId', min: 1 } },
+	item: { key: 'item', group: 'match', control: { kind: 'text' }, linkOnly: true },
 	outcomes: { key: 'outcomes', group: 'match', control: { kind: 'enum-multi', field: 'outcomes', options: HQ.MATCH_OUTCOMES } },
 	setBy: { key: 'setBy', group: 'match', control: { kind: 'enum', options: HQ.SET_BY_TYPES } },
 	setByUsers: { key: 'setByUsers', group: 'match', control: { kind: 'users', field: 'setByUsers' } },
@@ -205,7 +209,11 @@ export function addableGroups(query: HQ.Query, shown: readonly FieldKey[]): { gr
 	const out: { group: FieldGroup; fields: FieldDef[] }[] = []
 	for (const group of GROUP_ORDER[query.type]) {
 		const fields = Object.values(FIELD_DEFS).filter(
-			(def) => def.group === group && !shown.includes(def.key) && (def.onlyFor === undefined || def.onlyFor.includes(query.type)),
+			(def) =>
+				def.group === group &&
+				!def.linkOnly &&
+				!shown.includes(def.key) &&
+				(def.onlyFor === undefined || def.onlyFor.includes(query.type)),
 		)
 		if (fields.length > 0) out.push({ group, fields })
 	}

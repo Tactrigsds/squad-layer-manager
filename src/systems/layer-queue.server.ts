@@ -71,6 +71,10 @@ type SideEffectCtx = C.Db &
 	Msgs.Ctx &
 	Partial<Pick<C.Tx, 'tx'>>
 
+// The server MAP_SET an outside-set sync is reacting to, by the queue item the sync puts in the queue, for the length of
+// that one dispatch. Carried beside the op rather than on it: the op type is part of the plugin API.
+const externalSetEventIds = new Map<LL.ItemId, number>()
+
 const module = initModule('layer-queue')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
@@ -205,6 +209,7 @@ export const setupInstance = Instr.spanOp(
 								await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
 									reason: 'override',
 									overrode: external,
+									overrodeEventId: event.id,
 								})
 							} else {
 								const op: SLL.Operation = {
@@ -215,7 +220,12 @@ export const setupInstance = Instr.spanOp(
 									layerId: event.layerId,
 									externalSource: external,
 								}
-								await dispatchOp(ctx, op)
+								externalSetEventIds.set(op.itemId, event.id)
+								try {
+									await dispatchOp(ctx, op)
+								} finally {
+									externalSetEventIds.delete(op.itemId)
+								}
 							}
 						},
 					),
@@ -864,7 +874,9 @@ export const syncNextLayerToServer = Instr.spanOp(
 		itemId: string,
 		// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
 		// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
-		mapSetCause?: { reason: 'queue-updated'; causeId: string } | { reason: 'override'; overrode?: AppEvents.MapSet['overrode'] },
+		mapSetCause?:
+			| { reason: 'queue-updated'; causeId: string }
+			| { reason: 'override'; overrode?: AppEvents.MapSet['overrode']; overrodeEventId?: number },
 	) => {
 		const syncState$ = ctx.layerQueue.nextLayerSyncState$
 		if (settings.updatesToSquadServerDisabled) {
@@ -932,6 +944,8 @@ export const syncNextLayerToServer = Instr.spanOp(
 						layerId: nextQueuedLayerId,
 						reason: mapSetCause.reason,
 						overrode: mapSetCause.reason === 'override' ? mapSetCause.overrode : undefined,
+						overrodeEventId: mapSetCause.reason === 'override' ? mapSetCause.overrodeEventId : undefined,
+						itemId,
 						actor: { type: 'system' },
 						serverId: ctx.serverId,
 						// no current match yet on a freshly-registered server (first sync hasn't run)
@@ -1525,6 +1539,15 @@ const handleSideEffect = Instr.spanOp(
 								itemIds: removed.map((item) => item.itemId),
 								descriptions: removed.map(describe),
 								layerId: se.layerId ?? L.defaultLayerId(),
+								queueItemId: se.queueItemId,
+								requests: removed.map((item) => {
+									const requester = SquadServer.actorFromUser(ctx, item.source)
+									return {
+										requester: item.source,
+										playerId: requester.type === 'ingame-user' ? requester.playerId : undefined,
+										requestedAt: item.createdAt,
+									}
+								}),
 							}),
 						)
 					}
@@ -1607,6 +1630,7 @@ const handleSideEffect = Instr.spanOp(
 					prevList: se.prevList,
 					list: se.list,
 					save,
+					externalEventId: triggerOp?.op === 'unshift-first-saved-layer' ? externalSetEventIds.get(triggerOp.itemId) : undefined,
 				})
 				await SquadServerActions.emitAppEvent(ctx, queueUpdated)
 				await saveQueueAndUpdateServer(ctx, se.list, se.prevList, queueUpdated.id)

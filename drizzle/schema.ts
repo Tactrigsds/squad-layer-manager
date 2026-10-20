@@ -305,9 +305,9 @@ export const serverEventIndex = sqliteTable(
 export const appEventAssociations = sqliteTable(
 	'appEventAssociations',
 	{
-		// 'player' | 'layer'
+		// 'player' | 'layer' | 'user' | 'item'
 		dimension: text('dimension').notNull(),
-		// an eos id or a layer id, per the dimension
+		// an eos id, a layer id, a user id or a queue item id, per the dimension
 		value: text('value').notNull(),
 		// denormalized from appEvents so one subject's trail is a contiguous pk range rather than a join then a sort
 		time: timestamp('time').notNull(),

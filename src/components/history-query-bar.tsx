@@ -820,6 +820,8 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldLayer())
 		case 'matchId':
 			return tr.text(HistoryMsgs.fieldMatchId())
+		case 'item':
+			return tr.text(HistoryMsgs.fieldItem())
 		case 'minMatches':
 			return tr.text(HistoryMsgs.fieldMinMatches())
 		default:

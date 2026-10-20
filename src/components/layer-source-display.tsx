@@ -3,15 +3,14 @@ import * as Icons from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
-import * as BB_Msgs from '@/messages/backburner.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import type * as LL from '@/models/layer-list.models'
-import type * as USR from '@/models/users.models'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
 
+import { LayerRequester } from './layer-requester'
 import { Avatar } from './ui/avatar'
-import { UserAvatar, UserLabel } from './user-avatar'
+import { UserAvatar } from './user-avatar'
 
 export default function LayerSourceDisplay(props: { source: LL.Source }) {
 	// a plugin's display name where the install still has it, so the tooltip does not read as an id. An
@@ -47,7 +46,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 				<div className="flex flex-col gap-1">
 					<span>{tr.text(LL_Msgs.requestedBy())}</span>
 					{props.source.requesters.map((requester) => (
-						<Requester key={`${requester.discordId ?? ''}:${requester.steamId ?? ''}`} requester={requester} />
+						<LayerRequester key={`${requester.discordId ?? ''}:${requester.steamId ?? ''}`} requester={requester} />
 					))}
 				</div>
 			)
@@ -56,11 +55,4 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 		default:
 			assertNever(props.source)
 	}
-}
-
-// A request made in chat by a player with no linked discord account can only be named by their steam id.
-function Requester(props: { requester: USR.GuiOrChatUserId }) {
-	if (props.requester.discordId !== undefined) return <UserLabel userId={props.requester.discordId} />
-	const name = props.requester.steamId ? `steam:${props.requester.steamId}` : tr.text(BB_Msgs.unknownRequester())
-	return <span className="text-xs">{name}</span>
 }

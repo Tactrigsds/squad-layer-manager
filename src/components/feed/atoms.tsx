@@ -8,6 +8,7 @@
 // piece (player-display.tsx and friends), rendered to strings client-side for the activity feed, and rendered
 // to strings on the server for history results.
 
+import { formatInTimeZone } from 'date-fns-tz'
 import React from 'react'
 
 import * as Typo from '@/components/typography'
@@ -46,7 +47,7 @@ function shortTime(time: number) {
 export function EventTime(props: { time: number }) {
 	const zone = RC.currentTimeZone()
 	let text: string
-	if (zone) text = TZ.formatDateTime(props.time, zone)
+	if (zone) text = RC.usingFullTimestamps() ? TZ.formatDateTime(props.time, zone) : formatInTimeZone(props.time, zone, 'HH:mm')
 	else text = RC.usingFullTimestamps() ? formatDateTime(props.time) : shortTime(props.time)
 	return (
 		<>

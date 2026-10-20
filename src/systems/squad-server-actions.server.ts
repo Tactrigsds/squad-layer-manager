@@ -194,14 +194,22 @@ export async function broadcastAction(
 		presetLabel: opts?.presetLabel,
 	})
 	await emitAppEvent(ctx, appEvent)
-	const source = { type: 'event' as const, id: appEvent.id }
+	await attributeBroadcast(ctx, rendered, appEvent.id)
+	await SquadRcon.broadcast(ctx, rendered)
+}
+
+/**
+ * Attributes the ADMIN_BROADCAST events a broadcast of `message` will log to the app event that sent it, so they
+ * collapse under that event in the feed. Call it once the app event is emitted and before the broadcast goes out.
+ */
+export async function attributeBroadcast(ctx: SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal, message: string, appEventId: AppEvents.AppEventId) {
+	const source = { type: 'event' as const, id: appEventId }
 	await SquadServerIngest.collectEvents(ctx, () => {
 		// a long broadcast reaches the game as several rcon calls, and the game logs each one
-		for (const message of SquadRcon.splitBroadcast(rendered)) {
-			PendingEvents.armExpectation(ctx.server.eventState, { type: 'ADMIN_BROADCAST', message }, source)
+		for (const chunk of SquadRcon.splitBroadcast(message)) {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'ADMIN_BROADCAST', message: chunk }, source)
 		}
 	})
-	await SquadRcon.broadcast(ctx, rendered)
 }
 
 /**

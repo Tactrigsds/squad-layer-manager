@@ -103,6 +103,9 @@ export const voteStarted = def((actor: React.ReactNode, choiceCount: number) =>
 	rt('{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})', { actor, choiceCount }),
 )
 
+// the disclosure under an ended vote that shows what it broadcast to the server
+export const voteBroadcastsShown = def('{count, plural, one {Broadcast} other {# broadcasts}}', (count: number) => ({ count }))
+
 export const voteEndedEarly = def((actor: React.ReactNode) => rt('{actor} ended the vote early', { actor }))
 
 export const voteEnded = def('The vote ended')
@@ -111,7 +114,29 @@ export const voteWinner = def((layer: React.ReactNode) => rt(': {layer} won', { 
 
 export const voteNoWinner = def(' (no winner)')
 
+export const voteTallyFooter = def(
+	'{total, plural, one {# vote} other {# votes}}{hasTurnout, select, yes { · {turnout}% turnout} other {}}',
+	(total: number, turnout: number | null) => ({
+		total,
+		hasTurnout: turnout !== null ? 'yes' : 'no',
+		turnout: turnout !== null ? Math.round(turnout) : 0,
+	}),
+)
+
 export const voteAborted = def((actor: React.ReactNode) => rt('{actor} aborted the vote', { actor }))
+
+// -------- layer requests --------
+
+export const layerRequestsFulfilled = def((count: number, layer: React.ReactNode) =>
+	rt('{count, plural, one {A layer request was} other {# layer requests were}} fulfilled by {layer}', { count, layer }),
+)
+
+export const layerRequestBy = def((description: string, who: React.ReactNode) =>
+	rt('"{description}", requested by {who}', { description, who }),
+)
+
+// a requester SLM cannot name: an in-game player who left before the request was fulfilled
+export const unnamedRequester = def('a player')
 
 // a generic line for the types the feed has no renderer of its own for; the description comes from the models
 export const genericLine = def((actor: React.ReactNode, description: string) => rt('{actor} {description}', { actor, description }))
@@ -126,6 +151,29 @@ export const nextLayerRestored = def((layer: React.ReactNode) => rt("SLM restore
 
 export const nextLayerOverrode = def((who: React.ReactNode, layer: React.ReactNode) =>
 	rt('SLM overrode a layer set by {who}, next layer set to {layer}', { who, layer }),
+)
+
+// an in-game or external set, folded together with what SLM did about it
+
+export const externalSetQueued = def((who: React.ReactNode, layer: React.ReactNode, ahead?: React.ReactNode) =>
+	rt('{who} set the next layer to {layer}, added to the queue{hasAhead, select, yes { ahead of {ahead}} other {}}', {
+		who,
+		layer,
+		ahead,
+		hasAhead: ahead !== undefined ? 'yes' : 'no',
+	}),
+)
+
+export const externalSetQueuedAnonymous = def((layer: React.ReactNode, ahead?: React.ReactNode) =>
+	rt('The next layer was set to {layer} outside SLM, added to the queue{hasAhead, select, yes { ahead of {ahead}} other {}}', {
+		layer,
+		ahead,
+		hasAhead: ahead !== undefined ? 'yes' : 'no',
+	}),
+)
+
+export const externalSetRestored = def((who: React.ReactNode, layer: React.ReactNode, restored: React.ReactNode) =>
+	rt('{who} set the next layer to {layer}. SLM restored {restored} as the next layer.', { who, layer, restored }),
 )
 
 // -------- the queue --------
@@ -176,20 +224,95 @@ export const queueMore = def('{count} more', (count: number) => ({ count }))
 
 export const queueVoteChoices = def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
 
-export const queueItemAdded = def((who: string, vote: React.ReactNode, layers: React.ReactNode) =>
-	rt('{who} added {vote}{layers}', { who, vote, layers }),
+// -------- an edit session: each op a queue save committed, in order --------
+
+export const sessionAdded = def((who: React.ReactNode, index: number, vote: React.ReactNode, layers: React.ReactNode) =>
+	rt('{who} added #{index} {vote}{layers}', { who, index, vote, layers }),
 )
 
-export const queueItemRemoved = def((who: string, vote: React.ReactNode, layers: React.ReactNode) =>
+export const sessionCloned = def((who: React.ReactNode, index: number, layers: React.ReactNode) =>
+	rt('{who} added #{index} {layers}, a copy', { who, index, layers }),
+)
+
+export const sessionGenerated = def((index: number, layers: React.ReactNode) => rt('SLM generated #{index} {layers}', { index, layers }))
+
+export const sessionSyncedBy = def((who: React.ReactNode, layers: React.ReactNode) =>
+	rt('{who} set the next layer to {layers} in-game, added to the queue at #1', { who, layers }),
+)
+
+export const sessionSynced = def((layers: React.ReactNode) =>
+	rt('The next layer was set to {layers} outside SLM, added to the queue at #1', { layers }),
+)
+
+export const sessionRemoved = def((who: React.ReactNode, vote: React.ReactNode, layers: React.ReactNode) =>
 	rt('{who} removed {vote}{layers}', { who, vote, layers }),
 )
 
-export const queueItemEdited = def((who: string, from: React.ReactNode, to: React.ReactNode) =>
+export const sessionAdvanced = def((layers: React.ReactNode) => rt('{layers} left the queue on map change', { layers }))
+
+export const sessionMoved = def((who: React.ReactNode, layers: React.ReactNode, fromIndex: number, toIndex: number) =>
+	rt('{who} moved {layers} from #{fromIndex} to #{toIndex}', { who, layers, fromIndex, toIndex }),
+)
+
+export const sessionFactionsSwapped = def((who: React.ReactNode, layers: React.ReactNode) =>
+	rt('{who} swapped factions on {layers}', { who, layers }),
+)
+
+export const sessionLayerEdited = def((who: React.ReactNode, from: React.ReactNode, to: React.ReactNode) =>
 	rt('{who} changed {from} to {to}', { who, from, to }),
 )
 
-export const queueItemMoved = def((who: string, layers: React.ReactNode, fromIndex: number, toIndex: number) =>
-	rt('{who} moved {layers} from #{fromIndex} to #{toIndex}', { who, layers, fromIndex, toIndex }),
+export const sessionTagAdded = def((who: React.ReactNode, layers: React.ReactNode, tag: string) =>
+	rt('{who} tagged {layers} "{tag}"', { who, layers, tag }),
+)
+
+export const sessionTagRemoved = def((who: React.ReactNode, layers: React.ReactNode, tag: string) =>
+	rt('{who} removed the tag "{tag}" from {layers}', { who, layers, tag }),
+)
+
+export const sessionNoteAdded = def((who: React.ReactNode, layers: React.ReactNode, text: string) =>
+	rt('{who} added a note to {layers}: "{text}"', { who, layers, text }),
+)
+
+export const sessionNoteEdited = def((who: React.ReactNode, layers: React.ReactNode, text: string) =>
+	rt('{who} edited a note on {layers}: "{text}"', { who, layers, text }),
+)
+
+export const sessionNoteDeleted = def((who: React.ReactNode, layers: React.ReactNode) =>
+	rt('{who} deleted a note from {layers}', { who, layers }),
+)
+
+export const sessionVoteConfigured = def((who: React.ReactNode, layers: React.ReactNode) =>
+	rt('{who} changed the vote settings of {layers}', { who, layers }),
+)
+
+export const sessionVoteResult = def((layers: React.ReactNode) => rt('The vote result was applied to {layers}', { layers }))
+
+export const sessionReverted = def((who: React.ReactNode, count: number) =>
+	rt('{who} undid {count, plural, one {an edit} other {# edits}}', { who, count }),
+)
+
+export const sessionDiscardedBy = def((who: React.ReactNode, count: number) =>
+	rt('{who} discarded {count, plural, one {an unsaved edit} other {# unsaved edits}}', { who, count }),
+)
+
+export const sessionAbandoned = def(
+	'{count, plural, one {An unsaved edit was} other {# unsaved edits were}} discarded after every editor left',
+	(count: number) => ({ count }),
+)
+
+// marks, in one item's history, the save that made the item the next layer
+export const nowNextLayer = def('Next layer')
+
+// the disclosure on a queue save that expands its edit session
+export const sessionEditCount = def('{count, plural, one {# edit} other {# edits}}', (count: number) => ({ count }))
+
+// in one item's history, the edits the same save made to the rest of the queue
+export const sessionOtherChanges = def(
+	'{count, plural, one {# change to another item} other {# changes to other items}}',
+	(count: number) => ({
+		count,
+	}),
 )
 
 // -------- teamswaps --------

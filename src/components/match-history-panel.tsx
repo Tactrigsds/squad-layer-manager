@@ -9,7 +9,7 @@ import { getTeamsDisplay } from '@/components/teams-display'
 import * as Typo from '@/components/typography'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -19,16 +19,19 @@ import * as Str from '@/lib/string-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MsgFmt from '@/messages/format'
+import * as LH_Msgs from '@/messages/layer-history.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as DH from '@/models/display-helpers.models'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import { GlobalSettingsStore, Store as ClientOnlySettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
+import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -37,11 +40,14 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerContextMenuOptions from './layer-context-menu-options'
+import type { LayerHistoryWindowProps } from './layer-history-window.helpers'
 import LayerSourceDisplay from './layer-source-display'
 import MapLayerDisplay from './map-layer-display'
 import { Timer } from './timer'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+
+void import('@/components/layer-history-window')
 
 const STD_PADDING = 'px-1.5'
 
@@ -330,6 +336,7 @@ interface MatchHistoryRowProps {
 
 function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
+	const openWindow = useOpenOrFocusWindow()
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
 	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const showSpoilers = Zus.useStore(stores.squadServer!, SquadServerFrame.Sel.showSpoilers)
@@ -717,6 +724,20 @@ function MatchHistoryRow({ entry, currentMatchOffset, stacked, stores }: MatchHi
 					</>
 				)}
 				<LayerContextMenuOptions layerIds={[entry.layerId]} historyEntryIds={[entry.historyEntryId]} labelled={entry.isCurrentMatch} />
+				<ContextMenuSeparator />
+				<ContextMenuItem
+					onClick={() =>
+						openWindow(WINDOW_ID.enum['layer-history'], {
+							serverId: entry.serverId,
+							layerId: entry.layerId,
+							itemId: entry.lqItemId ?? undefined,
+							matchId: entry.historyEntryId,
+						} satisfies LayerHistoryWindowProps)
+					}
+				>
+					<Icons.History />
+					{tr.text(LH_Msgs.viewHistory())}
+				</ContextMenuItem>
 			</ContextMenuContent>
 		</ContextMenu>
 	)

@@ -29,6 +29,8 @@ export type EventMeta<E> = {
 	layers: { kind: LayerAssocKind; get: (event: E) => AssocValues<L.LayerId> }[]
 	// SLM users the event attributes work to, beyond whoever performed it. Only app events have these.
 	users: { get: (event: E) => AssocValues<USR.UserId> }[]
+	// layer queue items the event touched, by item id. Only app events have these.
+	items: { get: (event: E) => AssocValues<string> }[]
 }
 
 export function* iterAssocValues<T>(values: AssocValues<T>): Generator<T> {
@@ -48,6 +50,7 @@ export function meta<E>(opts?: Partial<EventMeta<E>>): EventMeta<E> {
 		squads: opts?.squads ?? [],
 		layers: opts?.layers ?? [],
 		users: opts?.users ?? [],
+		items: opts?.items ?? [],
 	}
 }
 

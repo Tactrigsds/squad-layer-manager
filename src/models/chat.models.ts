@@ -569,7 +569,16 @@ export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opt
 	}
 
 	if (event.type === 'APP_EVENT') {
-		state.eventBuffer.push(enrichAppEvent(state.interpolatedState, event.appEvent))
+		const entry = enrichAppEvent(state.interpolatedState, event.appEvent)
+		const reactedTo = AppEvents.reactedToServerEventId(event.appEvent)
+		if (reactedTo !== undefined) {
+			const index = state.eventBuffer.findLastIndex((buffered) => buffered.type !== 'APP_EVENT' && buffered.id === reactedTo)
+			if (index !== -1) {
+				entry.collapsed.push(...state.eventBuffer.splice(index, 1))
+				state.bufferEpoch++
+			}
+		}
+		state.eventBuffer.push(entry)
 		return
 	}
 

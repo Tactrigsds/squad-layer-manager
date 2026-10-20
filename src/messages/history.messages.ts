@@ -67,6 +67,7 @@ export const fieldFeed = def('Quick filter')
 export const fieldPlayerRole = def('Involved as')
 export const fieldChannel = def('Chat channel')
 export const fieldMatchId = def('Match id')
+export const fieldItem = def('Queue item')
 export const copyMatchId = def('Copy match id')
 export const matchIdCopied = def('Match id copied')
 export const fieldTicketDiff = def('Ticket difference')
@@ -227,6 +228,7 @@ export const columnNames: Record<HQ.ColumnKey, TString> = {
 	'match.id': t('Match id'),
 	'match.outcome': t('Match outcome'),
 	'match.setBy': t('Layer set by'),
+	'queue.item': t('Queue item'),
 	'match.setByUser': t('Layer set by user'),
 	'match.setByPlayer': t('Layer set by player'),
 	'match.ticketDiff': t('Ticket difference'),

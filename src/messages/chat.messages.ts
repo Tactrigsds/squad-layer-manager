@@ -298,6 +298,9 @@ export const newGameOnRconReconnect = def('New game detected on RCON Reconnect')
 
 export const currentMatch = def('Current Match')
 
+// heads a match's events in a queue item's history
+export const matchHeading = def((id: number, layer: Rendered, day: string) => rt('Match {id} · {layer} · {day}', { id, layer, day }))
+
 // `{label} ({which}): {layer}` -- which is either "Current Match" or how many matches back this one is
 export const newGameLine = def((label: string, which: Rendered, layer: Rendered) =>
 	rt('{label} ({which}): {layer}', { label, which, layer }),

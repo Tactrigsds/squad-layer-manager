@@ -14,6 +14,7 @@ export const WINDOW_ID = z.enum([
 	'sandbox-admin-list',
 	'server-console',
 	'chart',
+	'layer-history',
 ])
 
 export type WindowId = z.infer<typeof WINDOW_ID>
