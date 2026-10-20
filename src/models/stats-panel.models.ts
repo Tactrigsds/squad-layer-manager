@@ -360,7 +360,9 @@ export type Scoreline = {
 
 export type Breakdown = {
 	series: Chart.Series[]
+	// in the displayed team order, so normalized display puts team A first
 	rows: Chart.Row[]
+	rowColors: string[]
 	// who is behind each bar segment, indexed [rowIndex][seriesIndex]. Carries ids as well as names because a
 	// segment is clickable: what it selects is exactly what it counted.
 	members: BreakdownMember[][][]
@@ -472,8 +474,22 @@ export namespace Sel {
 				(...[, , , , , , settings]: BreakdownInputs) => settings?.playerGroupings,
 				activeGroupingId,
 				(...args: BreakdownInputs) => teams(...teamInputs(args)),
+				(...args: BreakdownInputs) => displayMatch(...teamInputs(args))?.ordinal ?? 0,
+				(...[, , , clientSettings]: BreakdownInputs) => clientSettings.displayTeamsNormalized,
 			],
-			(selectedOrdinal, players, attributed, bmData, slsOnly, orgFlags, playerGroupings, groupingId, teamDisplays): Breakdown | null => {
+			(
+				selectedOrdinal,
+				players,
+				attributed,
+				bmData,
+				slsOnly,
+				orgFlags,
+				playerGroupings,
+				groupingId,
+				teamDisplays,
+				parity,
+				normalized,
+			): Breakdown | null => {
 				if (groupingId === null) return null
 				const groupings = playerGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 
@@ -517,14 +533,16 @@ export namespace Sel {
 					})
 				}
 
+				const slotOrder = MH.getDisplayedTeamOrder(parity, normalized).map((team) => MH.getDenormedTeamId(team, parity) - 1)
 				return {
 					series: labels.map((label) => ({
 						key: label,
 						label,
 						color: label === ungrouped ? PG.DEFAULT_GROUP_COLOR : PG.groupColorOf(groupings, groupingId, label, orgFlags),
 					})),
-					rows: teamDisplays.map((team, rowIndex) => ({ key: `team${rowIndex + 1}`, label: team.label, values: counts[rowIndex] })),
-					members,
+					rows: slotOrder.map((slot) => ({ key: `team${slot + 1}`, label: teamDisplays[slot].label, values: counts[slot] })),
+					rowColors: slotOrder.map((slot) => teamDisplays[slot].color),
+					members: slotOrder.map((slot) => members[slot]),
 					ungroupedLabel: ungrouped,
 				}
 			},
