@@ -371,6 +371,9 @@ SLM held the dead connection for several minutes and refused each reconnect as a
 <p><strong>Added:</strong> The plugin API is version 0.16. Plugins can read, add and remove the contributors of a filter or rotation, and copy one filter&#x27;s or rotation&#x27;s contributors to another. Plugins can read and change SLM&#x27;s global settings and their server&#x27;s settings.</p>
 </li>
 <li>
+<p><strong>Changed:</strong> An edit to a local admin list file takes effect as soon as the file is saved, instead of up to 30 seconds later.</p>
+</li>
+<li>
 <p><strong>Changed:</strong> The plugin API is version 0.18, because the settings type plugins read gained the <code>tickets</code> command. A plugin built for 0.17 does not load until its <code>apiVersion</code> is raised to <code>^0.18</code>. Plugins also receive a <code>TICKETS_CHANGED</code> server event each time either team&#x27;s tickets change.</p>
 </li>
 <li>
