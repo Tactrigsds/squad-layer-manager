@@ -1382,8 +1382,9 @@ describe('PendingEvents', () => {
 				time: 1100,
 				chainID: 1,
 				raw: '',
-				damage: 300,
-				weapon: 'BP_Soldier',
+				damage: -300,
+				deathVariant: 'diedOfWounds',
+				damageSource: 'BP_Soldier',
 				victimIds: { username: 'HoneyBooBoo rides again' },
 				attackerIds: { eos: 'eos-atk', playerController: 'ctrl_eos-atk' },
 			})

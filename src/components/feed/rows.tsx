@@ -350,8 +350,31 @@ function WoundedOrDied(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnri
 		}
 	})()
 
-	const weaponSuffix = event.weapon ? (
-		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.weapon))}</span>
+	if (event.type === 'PLAYER_DIED' && event.deathVariant === 'diedOfWounds') {
+		const tone = event.variant === 'teamkill' ? 'text-danger' : event.variant === 'suicide' ? 'text-warn' : 'text-foreground'
+		const showSquad = event.variant !== 'normal'
+		return (
+			<Atoms.EventLine
+				time={event.time}
+				icon={
+					<span className="cursor-help shrink-0" {...{ [RC.TIP_ATTR]: tr.text(CHAT_Msgs.diedOfWoundsTip()) }}>
+						<Icon name="Droplet" className={`h-4 w-4 ${tone}`} />
+					</span>
+				}
+			>
+				{tr.richText(
+					CHAT_Msgs.playerDiedOfWounds(
+						<Atoms.PlayerDisplay ctx={ctx} showTeam showSquad={showSquad} player={event.victim} matchId={event.matchId} />,
+						event.variant,
+						<Atoms.PlayerDisplay ctx={ctx} showTeam showSquad={showSquad} player={event.attacker} matchId={event.matchId} />,
+					),
+				)}
+			</Atoms.EventLine>
+		)
+	}
+
+	const weaponSuffix = event.damageSource ? (
+		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.damageSource))}</span>
 	) : undefined
 
 	const message = (() => {

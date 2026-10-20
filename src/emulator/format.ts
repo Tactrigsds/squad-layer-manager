@@ -316,11 +316,11 @@ export function logWound(victim: PlayerLike, attacker: PlayerLike, damage: numbe
 	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Controller ID: ${attacker.controllerId}) caused by ${weapon}`
 }
 
-export function logDie(victim: PlayerLike, attacker: PlayerLike, damage: number, weapon: string): string {
+export function logDie(victim: PlayerLike, attacker: PlayerLike, damage: number, causer: string): string {
 	// 'Contoller' [sic] -- the real Die() line carries this typo, and the app's regex expects it
 	return `LogSquadTrace: [DedicatedServer]Die(): Player: ${victim.name.trim()} KillingDamage=${damage.toFixed(
 		6,
-	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${weapon}`
+	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${causer}`
 }
 
 // ---------- vehicles and deployables. `actor` is a blueprint class with its `_C_<instance>` suffix.

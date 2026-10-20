@@ -54,7 +54,7 @@ function died(
 	victim: SM.Player,
 	variant: 'normal' | 'suicide' | 'teamkill' = 'normal',
 ): CHAT.EventEnriched {
-	return { type: 'PLAYER_DIED', attacker, victim, damage: 100, weapon: 'BP_Rifle', variant, ...base(time) }
+	return { type: 'PLAYER_DIED', attacker, victim, damage: 100, deathVariant: 'killed', damageSource: 'BP_Rifle', variant, ...base(time) }
 }
 function wounded(
 	time: number,
@@ -62,7 +62,7 @@ function wounded(
 	victim: SM.Player,
 	variant: 'normal' | 'suicide' | 'teamkill' = 'normal',
 ): CHAT.EventEnriched {
-	return { type: 'PLAYER_WOUNDED', attacker, victim, damage: 100, weapon: 'BP_Rifle', variant, ...base(time) }
+	return { type: 'PLAYER_WOUNDED', attacker, victim, damage: 100, damageSource: 'BP_Rifle', variant, ...base(time) }
 }
 // a cheap end-of-match marker: attribution closes open intervals at the last event's time
 function endMarker(time: number): CHAT.EventEnriched {

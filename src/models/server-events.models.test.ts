@@ -115,6 +115,31 @@ describe('fromEventRow', () => {
 		const row = toRow({ id: 7, type: 'MAP_SET', time: 1, matchId: 1, layerId: 'RETIRED-MOD-LAYER:XX:YY' as any })
 		expect(SE.fromEventRow(row)).toMatchObject({ type: 'MAP_SET', layerId: 'RETIRED-MOD-LAYER:XX:YY' })
 	})
+
+	describe('rows written with `weapon`', () => {
+		const legacy = (type: 'PLAYER_DIED' | 'PLAYER_WOUNDED', damage: number, weapon: string | null) =>
+			toRow({ id: 8, type, time: 1, matchId: 1, victim: 'eos-1', attacker: 'eos-2', variant: 'normal', damage, weapon } as any)
+
+		it('reads a death from wounds, logged with its damage unsigned and the victim pawn as its cause', () => {
+			expect(SE.fromEventRow(legacy('PLAYER_DIED', 300, 'BP_Soldier_RU_Medic'))).toMatchObject({
+				damage: -300,
+				deathVariant: 'diedOfWounds',
+				damageSource: 'BP_Soldier_RU_Medic',
+			})
+		})
+
+		it('reads a 300-damage hit from a weapon as a kill', () => {
+			const event = SE.fromEventRow(legacy('PLAYER_DIED', 300, 'BP_RPG7_Tandem_Heat_Proj2'))
+			expect(event).toMatchObject({ damage: 300, deathVariant: 'killed', damageSource: 'BP_RPG7_Tandem_Heat_Proj2' })
+			expect(event).not.toHaveProperty('weapon')
+		})
+
+		it('reads a wound', () => {
+			const event = SE.fromEventRow(legacy('PLAYER_WOUNDED', 60, null))
+			expect(event).toMatchObject({ damageSource: null })
+			expect(event).not.toHaveProperty('deathVariant')
+		})
+	})
 })
 
 describe('fromEventRows', () => {

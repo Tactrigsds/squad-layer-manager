@@ -1458,32 +1458,45 @@ export namespace LogEvents {
 		},
 	})
 
+	// killed: the line's damage was the hit that killed, outright or while the victim was wounded.
+	// diedOfWounds: the victim bled out or gave up while wounded. The log does not distinguish the two.
+	export const DeathVariantSchema = z.enum(['killed', 'diedOfWounds'])
+	export type DeathVariant = z.infer<typeof DeathVariantSchema>
+
+	// KillingDamage=-300 is the only negative value Die() logs, and marks a death from wounds. On those lines the
+	// attacker is whoever last wounded the victim, and `caused by` names the victim's own soldier pawn, not a weapon.
+	export const DIED_OF_WOUNDS_DAMAGE = -300
+
 	export const PlayerDiedDef = eventDef('PLAYER_DIED', {
 		...BaseEventProperties,
 		damage: z.number(),
-		// null when the log records `caused by nullptr` (the killing weapon actor was already gone), even though the attacker is known
-		weapon: z.string().nullable(),
+		deathVariant: DeathVariantSchema,
+		// the blueprint of the `caused by` actor. null when the log records `caused by nullptr` (the actor was already
+		// gone), even though the attacker is known
+		damageSource: z.string().nullable(),
 		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
 
 	export type PlayerDied = z.infer<(typeof PlayerDiedDef)['schema']>
+	// A line whose attacker IDs are INVALID (`from nullptr`, or a bot's controller) names no player to credit, and is
+	// dropped.
 	export const PlayerDiedMatcher = createLogMatcher({
 		event: PlayerDiedDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(?:-)*([0-9.]+) from ([A-z_0-9]+) \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by (\S+)/,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer](?:ASQSoldier::)?Die\(\): Player:(.+) KillingDamage=(-?[0-9.]+) from [A-z_0-9]+ \(Online IDs:([^)|]+)\| Contoller ID: ([\w\d]+)\) caused by (\S+)/,
 		onMatch: (args) => {
-			// Bail if invalid IDs
-			if (args[6].includes('INVALID')) return null
+			if (args[5].includes('INVALID')) return null
 
+			const damage = parseFloat(args[4])
 			return {
 				raw: args[0],
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				victimIds: PlayerIds.parse({ username: args[3] }),
-				damage: parseFloat(args[4]),
-				attackerPlayerController: args[5],
-				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
-				weapon: normalizeWeapon(args[8]),
+				damage,
+				deathVariant: damage === DIED_OF_WOUNDS_DAMAGE ? 'diedOfWounds' : 'killed',
+				attackerIds: PlayerIds.parse({ idsStr: args[5], playerController: args[6] }),
+				damageSource: normalizeWeapon(args[7]),
 			}
 		},
 	})
@@ -1491,8 +1504,9 @@ export namespace LogEvents {
 	export const PlayerWoundedDef = eventDef('PLAYER_WOUNDED', {
 		...BaseEventProperties,
 		damage: z.number(),
-		// null when the log records `caused by nullptr` (the wounding weapon actor was already gone), even though the attacker is known
-		weapon: z.string().nullable(),
+		// the blueprint of the `caused by` actor. null when the log records `caused by nullptr` (the actor was already
+		// gone), even though the attacker is known
+		damageSource: z.string().nullable(),
 		attackerIds: PlayerIds.IdFields('eos', 'playerController'),
 		victimIds: PlayerIds.IdFields('username'),
 	})
@@ -1511,7 +1525,7 @@ export namespace LogEvents {
 				victimIds: PlayerIds.parse({ username: args[3] }),
 				damage: parseFloat(args[4]),
 				attackerIds: PlayerIds.parse({ idsStr: args[6], playerController: args[7] }),
-				weapon: normalizeWeapon(args[8]),
+				damageSource: normalizeWeapon(args[8]),
 			}
 		},
 	})

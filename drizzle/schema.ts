@@ -228,13 +228,11 @@ export const playerEventIndex = sqliteTable(
 			.references(() => servers.id, { onDelete: 'cascade' }),
 		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
 		// The `caused by` token from the Die()/Wound() log line, for the events that carry one. NOT a weapon in
-		// both cases, which is why it is not called one: on a Wound() the weapon actor is still alive and the
-		// token is the weapon (BP_M240_M145), but by Die() it has usually been destroyed and what is left is the
-		// attacker's pawn (BP_Soldier_TLF_Gendarme_01, BP_Loach_CAS_Small). Measured on production: of 782
-		// distinct death tokens and 1161 wound tokens only 684 overlap. So group by this on PLAYER_WOUNDED for
-		// weapon breakdowns and on PLAYER_DIED for what the killer was running -- never across both at once. On a
-		// VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED it is the causer of the final hit: a projectile, a weapon, or the
-		// attacking vehicle.
+		// both cases, which is why it is not called one: on a Wound() the token is the weapon (BP_M240_M145) or
+		// vehicle (BP_Loach_CAS_Small), but nine in ten Die() lines are deaths from wounds, whose token is the
+		// victim's own soldier pawn (BP_Soldier_RU_Medic). So group by this on PLAYER_WOUNDED for weapon
+		// breakdowns, and on PLAYER_DIED only where deathVariant is 'killed'. On a VEHICLE_DESTROYED or
+		// DEPLOYABLE_DESTROYED it is the causer of the final hit: a projectile, a weapon, or the attacking vehicle.
 		//
 		// Interned rather than stored inline: the token averages ~20 bytes and combat is the bulk of this table,
 		// which over a five-year horizon is ~1GB of repeated strings against ~150MB of integers.

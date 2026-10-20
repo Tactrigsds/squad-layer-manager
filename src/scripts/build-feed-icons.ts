@@ -27,6 +27,7 @@ const USED = [
 	'CloudFog',
 	'Crown',
 	'Dot',
+	'Droplet',
 	'Flag',
 	'Flame',
 	'HeartPulse',

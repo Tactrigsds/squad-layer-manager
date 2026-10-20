@@ -326,8 +326,10 @@ export const PLAYER_WARNED_META = meta<PlayerWarned<AnyPlayer>>({ players: [{ as
 export type PlayerDied<P = SM.PlayerId> = {
 	type: 'PLAYER_DIED'
 	damage: number
-	// null when the killing weapon was logged as `caused by nullptr`
-	weapon: string | null
+	deathVariant: SM.LogEvents.DeathVariant
+	// the `caused by` blueprint, null when logged as `caused by nullptr`. For a death from wounds it is the victim's own
+	// soldier pawn, not a weapon
+	damageSource: string | null
 	variant: PlayerWoundedOrDiedVariant
 } & SM.PlayerAssoc<'victim', P> &
 	SM.PlayerAssoc<'attacker', P> &
@@ -345,8 +347,8 @@ export type PlayerWoundedOrDiedVariant = 'normal' | 'suicide' | 'teamkill'
 export type PlayerWounded<P = SM.PlayerId> = {
 	type: 'PLAYER_WOUNDED'
 	damage: number
-	// null when the wounding weapon was logged as `caused by nullptr`
-	weapon: string | null
+	// the `caused by` blueprint, null when logged as `caused by nullptr`
+	damageSource: string | null
 	variant: PlayerWoundedOrDiedVariant
 } & SM.PlayerAssoc<'victim', P> &
 	SM.PlayerAssoc<'attacker', P> &
@@ -577,12 +579,15 @@ export const PlayerWarnedSchema = event('PLAYER_WARNED', {
 const PlayerWoundedOrDiedVariantSchema = ZodUtils.internedEnum(['normal', 'suicide', 'teamkill'])
 const woundedOrDiedShape = {
 	damage: z.number(),
-	weapon: z.string().nullable(),
+	damageSource: z.string().nullable(),
 	variant: PlayerWoundedOrDiedVariantSchema,
 	victim: SM.PlayerIdSchema,
 	attacker: SM.PlayerIdSchema,
 }
-export const PlayerDiedSchema = event('PLAYER_DIED', woundedOrDiedShape)
+export const PlayerDiedSchema = event('PLAYER_DIED', {
+	...woundedOrDiedShape,
+	deathVariant: ZodUtils.internedEnum(SM.LogEvents.DeathVariantSchema.options),
+})
 export const PlayerWoundedSchema = event('PLAYER_WOUNDED', woundedOrDiedShape)
 const TargetActorSchema = z.object({ className: z.string(), instanceId: z.number(), targetType: z.string().nullable() })
 const destroyedShape = {
@@ -738,6 +743,7 @@ export function parseEventRow(row: SchemaModels.ServerEvent): EventRowParseResul
 	} catch (err) {
 		return { code: 'err:unparseable', error: `payload did not deserialize: ${String(err)}` }
 	}
+	if (row.type === 'PLAYER_DIED' || row.type === 'PLAYER_WOUNDED') upgradeWoundedOrDiedPayload(row.type, payload as LegacyWoundedOrDied)
 	const candidate = {
 		...(payload as object),
 		id: row.id,
@@ -749,6 +755,30 @@ export function parseEventRow(row: SchemaModels.ServerEvent): EventRowParseResul
 	return parsed.success
 		? { code: 'ok', event: parsed.data as Event }
 		: { code: 'err:unparseable', error: ZodUtils.summarizeIssues(parsed.error) }
+}
+
+type LegacyWoundedOrDied = {
+	weapon?: string | null
+	damageSource?: string | null
+	damage?: number
+	deathVariant?: SM.LogEvents.DeathVariant
+}
+
+// Rows written before damageSource and deathVariant existed carry `weapon`, and a death from wounds logged its damage
+// unsigned, as 300. Archived matches keep that shape in their blobs, so the upgrade happens on read rather than in a
+// migration. Mutates in place: the payload was just deserialized for this call.
+function upgradeWoundedOrDiedPayload(type: 'PLAYER_DIED' | 'PLAYER_WOUNDED', payload: LegacyWoundedOrDied) {
+	if (!('weapon' in payload)) return
+	payload.damageSource = payload.weapon ?? null
+	delete payload.weapon
+	if (type !== 'PLAYER_DIED') return
+	// a death from wounds names the victim's soldier pawn as its cause, where a 300-damage kill names a weapon
+	if (-(payload.damage ?? 0) === SM.LogEvents.DIED_OF_WOUNDS_DAMAGE && payload.damageSource?.startsWith('BP_Soldier')) {
+		payload.damage = SM.LogEvents.DIED_OF_WOUNDS_DAMAGE
+		payload.deathVariant = 'diedOfWounds'
+	} else {
+		payload.deathVariant = 'killed'
+	}
 }
 
 export function fromEventRow(row: SchemaModels.ServerEvent): Event | null {

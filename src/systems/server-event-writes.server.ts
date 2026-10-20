@@ -53,9 +53,7 @@ function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): E
 		matchId: event.matchId,
 		serverId,
 		type: event.type,
-		// the event model calls this `weapon` because the log line does; see the damageSourceId comment in
-		// the schema for why the projection does not
-		damageSource: 'weapon' in event ? event.weapon : null,
+		damageSource: 'damageSource' in event ? event.damageSource : 'weapon' in event ? event.weapon : null,
 		variant: 'variant' in event ? event.variant : null,
 		channel: event.type === 'CHAT_MESSAGE' ? event.channel.type : null,
 		target: target?.className ?? null,

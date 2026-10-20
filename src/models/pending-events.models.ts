@@ -1547,15 +1547,21 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				variant = 'normal'
 			}
 
-			await emit(state, pass, {
-				type: pendingEvent.type,
+			const shared = {
 				...base,
 				damage: pendingEvent.damage,
-				weapon: pendingEvent.weapon,
+				damageSource: pendingEvent.damageSource,
 				variant,
 				attacker: SM.PlayerIds.getPlayerId(attacker.ids),
 				victim: SM.PlayerIds.getPlayerId(victim.ids),
-			})
+			}
+			await emit(
+				state,
+				pass,
+				pendingEvent.type === 'PLAYER_DIED'
+					? { type: 'PLAYER_DIED', ...shared, deathVariant: pendingEvent.deathVariant }
+					: { type: 'PLAYER_WOUNDED', ...shared },
+			)
 
 			break
 		}

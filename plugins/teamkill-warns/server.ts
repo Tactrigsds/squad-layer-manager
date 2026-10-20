@@ -31,7 +31,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 						if (!attacker || !victim) return
 						const rendered = Templating.renderTemplate(cfg.template, {
 							attacker: attacker.ids.username,
-							weapon: e.weapon ?? 'an unknown weapon',
+							weapon: e.damageSource ?? 'an unknown weapon',
 						})
 						await SquadRcon.warn({ ...sctx, signal }, victim.ids, rendered)
 					}),

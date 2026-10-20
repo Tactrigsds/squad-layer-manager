@@ -493,7 +493,18 @@ describe('chat.models recent players', () => {
 		return { type: 'PLAYER_DISCONNECTED', id, time: 100 + id, matchId: 1, player: eos }
 	}
 	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number): SE.PlayerDied {
-		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId: 1, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+		return {
+			type: 'PLAYER_DIED',
+			id,
+			time: 100 + id,
+			matchId: 1,
+			victim,
+			attacker,
+			damage: 100,
+			damageSource: 'rifle',
+			deathVariant: 'killed',
+			variant: 'normal',
+		}
 	}
 	function reset(players: SM.Player[], id: number, source: SE.Reset['source']): SE.Reset {
 		return { type: 'RESET', id, time: 100 + id, matchId: 1, source, state: { players, squads: [] } }
@@ -775,7 +786,8 @@ describe('Wire codec', () => {
 			victim: 'eos-1',
 			attacker: 'eos-2',
 			damage: 100,
-			weapon: 'BP_M4',
+			deathVariant: 'killed',
+			damageSource: 'BP_M4',
 			variant: 'normal',
 		})
 		CHAT.handleEvent(state, {
@@ -786,7 +798,7 @@ describe('Wire codec', () => {
 			victim: 'eos-2',
 			attacker: 'eos-1',
 			damage: 50,
-			weapon: null,
+			damageSource: null,
 			variant: 'teamkill',
 		})
 		CHAT.handleEvent(state, warnAppEvent(['eos-1', 'eos-2']))
@@ -843,7 +855,18 @@ describe('copy-on-write batches', () => {
 		return { type: 'CHAT_MESSAGE', id, time: 100 + id, matchId: 1, player, message: 'hi', channel: { type: 'ChatAll' } }
 	}
 	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number): SE.PlayerDied {
-		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId: 1, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+		return {
+			type: 'PLAYER_DIED',
+			id,
+			time: 100 + id,
+			matchId: 1,
+			victim,
+			attacker,
+			damage: 100,
+			damageSource: 'rifle',
+			deathVariant: 'killed',
+			variant: 'normal',
+		}
 	}
 	function changedTeam(player: SM.PlayerId, id: number): SE.PlayerChangedTeam {
 		return { type: 'PLAYER_CHANGED_TEAM', id, time: 100 + id, matchId: 1, player, newTeamId: 2 }
@@ -901,7 +924,18 @@ describe('live buffer match pruning', () => {
 		return { type: 'PLAYER_CONNECTED', id, time: 100 + id, matchId, player }
 	}
 	function died(victim: SM.PlayerId, attacker: SM.PlayerId, id: number, matchId: number): SE.PlayerDied {
-		return { type: 'PLAYER_DIED', id, time: 100 + id, matchId, victim, attacker, damage: 100, weapon: 'rifle', variant: 'normal' }
+		return {
+			type: 'PLAYER_DIED',
+			id,
+			time: 100 + id,
+			matchId,
+			victim,
+			attacker,
+			damage: 100,
+			damageSource: 'rifle',
+			deathVariant: 'killed',
+			variant: 'normal',
+		}
 	}
 	function rconConnected(id: number, matchId: number, reconnected: boolean): SE.RconConnected {
 		return { type: 'RCON_CONNECTED', id, time: 100 + id, matchId, reconnected }
