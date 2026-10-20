@@ -12,6 +12,16 @@ import * as TUT from '@/models/tutorial.models'
 // Versions are calendar versions, `YYYY.M.N`: the Nth release of that month. Nothing compares them for
 // compatibility (the plugin API has its own version for that), so they only need to sort and say when.
 
+// A change whose commits are all of these types needs no fragment.
+export const BACKGROUND_TYPES = new Set(['refactor', 'test', 'ci', 'style', 'chore', 'docs', 'build'])
+// `Changelog: none` in a PR description or commit message, optionally followed by a reason on the same line
+export const OPT_OUT = /^changelog:\s*none(?![\w-]).*$/im
+export const CONVENTIONAL = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<breaking>!)?:/
+
+export function isBackgroundSubject(subject: string): boolean {
+	return BACKGROUND_TYPES.has(CONVENTIONAL.exec(subject)?.groups?.type ?? '')
+}
+
 export const AUDIENCES = ['users', 'operators'] as const
 export type Audience = (typeof AUDIENCES)[number]
 

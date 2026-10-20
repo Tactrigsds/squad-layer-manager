@@ -201,7 +201,8 @@ Every green commit on main is still published as `:latest` and deployed. A relea
 pnpm release    # moves changes/*.md into changelog/<version>/ and regenerates CHANGELOG.md
 ```
 
-Commit the result on a branch and merge it. Once CI passes on the merged commit, it tags the commit
+`pnpm release` refuses to run unless the checkout is clean and at the latest `origin/main`, since a release cut from
+an older commit leaves out whatever merged since. Commit the result on a branch and merge it. Once CI passes on the merged commit, it tags the commit
 `v<version>` and the image `:<version>` and `:stable`.
 
 To deploy a change without waiting for the integration suite, add the `fasttrack` label to its pull request before
@@ -209,8 +210,9 @@ merging. CI on main then publishes `:latest` and deploys once the build and the 
 minutes instead of 12. The integration suite still runs on the merged commit, so check the suite's result after the
 deploy. A fasttracked release commit is not tagged until the suite passes on it.
 
-`pnpm release` also lists the commits since the last release that have no fragment. Read them before merging: add
-a fragment for any that should have had one and run it again.
+`pnpm release` also lists the pull requests since the last release that opted out of a fragment with
+`Changelog: none`, each with its reason. Read them before merging. If a change should have had a fragment, add it to
+`changes/` on main and cut the release again.
 
 Versions are `year.month.number` (`2026.9.4` is the fourth release of September 2026). A version records when a release
 was cut, not what broke. Breaking changes are listed in each release's operator notes. The plugin API keeps its own
