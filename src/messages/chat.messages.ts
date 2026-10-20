@@ -236,7 +236,7 @@ export const playerDowned = def((victim: Rendered, wounded: boolean, attacker: R
 
 export const playerDiedOfWounds = def((victim: Rendered, variant: 'normal' | 'suicide' | 'teamkill', attacker: Rendered) =>
 	rt(
-		'{victim} {variant, select, suicide {died of self-inflicted wounds} teamkill {died of wounds from teammate {attacker}} other {died of wounds from {attacker}}}',
+		'{victim} {variant, select, suicide {died after wounding themselves} teamkill {died after being wounded by teammate {attacker}} other {died after being wounded by {attacker}}}',
 		{ victim, variant, attacker },
 	),
 )

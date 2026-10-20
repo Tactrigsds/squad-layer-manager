@@ -210,7 +210,7 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 		case 'bleed-out': {
 			const { victim, attacker } = input as SB.SandboxVerbInput<'bleed-out'>
 			world.bleedOutPlayer(requirePlayer(host, victim), requirePlayer(host, attacker))
-			return `${victim} died of wounds from ${attacker}`
+			return `${victim} died after being wounded by ${attacker}`
 		}
 		case 'destroy-vehicle': {
 			const { attacker, blueprint, crew } = input as SB.SandboxVerbInput<'destroy-vehicle'>
