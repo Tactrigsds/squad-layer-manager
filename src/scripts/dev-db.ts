@@ -9,6 +9,7 @@ import * as Color from '@/lib/color'
 import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import * as CS from '@/models/context-shared.models'
+import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
@@ -25,6 +26,7 @@ const DEV_ADMIN_LIST = 'dev'
 
 // the one server a workspace has: this worktree's emulator
 const DEV_SERVER_ID = 'emulator'
+const DEV_SERVER_NAME = 'Emulated Server'
 
 // Gives this worktree a fresh database for its instance, migrated by the worktree's own build and seeded the way the
 // app's own first boot would seed it, with its one server pointed at the worktree's emulator. Never a copy of another
@@ -121,6 +123,15 @@ function devIntegrations(): SETTINGS.Integrations {
 	}
 }
 
+// The default admins role grants itself to the in-game admins of the sandbox's implicit list only, so an emuctl
+// player put in an admin group on the emulator would get no SLM permissions.
+function withDevAdmins(rbac: SETTINGS.GlobalSettings['rbac']): SETTINGS.GlobalSettings['rbac'] {
+	const admins = rbac.roles.admins
+	if (!admins) return rbac
+	const assignments = { ...admins.assignments, ingameAdminLists: [...admins.assignments.ingameAdminLists, DEV_ADMIN_LIST] }
+	return { ...rbac, roles: { ...rbac.roles, admins: { ...admins, assignments } } }
+}
+
 // What the app's own first boot would write to an empty database, written here instead: a workspace has to be
 // pointed at its emulator and signed in to before anyone sees it, and both need rows to exist by then. The one admin
 // list it keeps is the emulator's Admins.cfg.
@@ -134,11 +145,21 @@ async function seed(driver: Database) {
 
 	const defaults = SETTINGS.parseGlobalSettings({})
 	if (!defaults.success) throw new Error('default global settings failed schema validation', { cause: defaults.error })
+	const globalSettings = Seed.applyInitialGlobalSettings(defaults.data)
+	// the ruleset createServerEntry gives a real server, which this insert would otherwise skip
+	const ownRuleset: RRS.Ruleset = {
+		id: RRS.ownIdForServer(globalSettings.repeatRulesets, DEV_SERVER_ID),
+		name: RRS.freeName(globalSettings.repeatRulesets, DEV_SERVER_NAME),
+		ownerServerId: DEV_SERVER_ID,
+		rules: [...RRS.DEFAULT_RULES],
+	}
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, {
 			id: 1,
 			settings: SETTINGS.GlobalSettingsSchema.encode({
-				...Seed.applyInitialGlobalSettings(defaults.data),
+				...globalSettings,
+				rbac: withDevAdmins(globalSettings.rbac),
+				repeatRulesets: [...globalSettings.repeatRulesets, ownRuleset],
 				integrations: devIntegrations(),
 				adminLists: {
 					[DEV_ADMIN_LIST]: {
@@ -166,10 +187,11 @@ async function seed(driver: Database) {
 			adminLists: [DEV_ADMIN_LIST],
 		}),
 	)
+	settings.queue.mainPool.repeatRulesetId = ownRuleset.id
 	await db.insert(Schema.servers).values(
 		superjsonify(Schema.servers, {
 			id: DEV_SERVER_ID,
-			displayName: 'Emulated Server',
+			displayName: DEV_SERVER_NAME,
 			enabled: true,
 			defaultServer: true,
 			settings,

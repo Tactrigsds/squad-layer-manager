@@ -66,6 +66,59 @@ const ADMIN_LIST_TTL = ZodUtils.HumanTime.parse('1h')
 // made it is still looking. Remote, ftp and sftp sources are a network round trip and keep the hourly cadence.
 const LOCAL_ADMIN_LIST_TTL = ZodUtils.HumanTime.parse('30s')
 
+// A local list is also re-read as soon as its file changes, so an edit to Admins.cfg applies without waiting out the
+// TTL, which stays as the fallback. The directory is watched rather than the file: an editor that saves by renaming
+// replaces the inode a file watch is attached to. A save fires several events, and a read between the truncate and
+// the write sees an empty list, so events are debounced.
+const LOCAL_ADMIN_LIST_SETTLE_MS = 100
+const watchers = new Map<SM.AdminListId, { path: string; watcher: fs.FSWatcher; timer?: NodeJS.Timeout }>()
+
+function closeWatcher(listId: SM.AdminListId) {
+	const entry = watchers.get(listId)
+	if (!entry) return
+	clearTimeout(entry.timer)
+	entry.watcher.close()
+	watchers.delete(listId)
+}
+
+// Points a list's watcher at its current file, or removes it when the list is not local or not configured.
+function syncWatcher(listId: SM.AdminListId) {
+	const source = Settings.GLOBAL_SETTINGS.adminLists[listId]?.source
+	let listPath: string | null = null
+	if (source?.type === 'local') {
+		try {
+			listPath = localListPath(source.source)
+		} catch {
+			// the fetch reports a path outside LOCAL_ADMIN_LISTS_DIR
+		}
+	}
+	if (watchers.get(listId)?.path === listPath) return
+	closeWatcher(listId)
+	if (!listPath) return
+
+	const file = path.basename(listPath)
+	let watcher: fs.FSWatcher
+	try {
+		watcher = fs.watch(path.dirname(listPath), (_event, filename) => {
+			if (filename !== file) return
+			const entry = watchers.get(listId)
+			if (!entry) return
+			clearTimeout(entry.timer)
+			entry.timer = setTimeout(() => {
+				resources.get(listId)?.invalidate({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+			}, LOCAL_ADMIN_LIST_SETTLE_MS)
+		})
+	} catch (err) {
+		log.warn(err, `Cannot watch admin list '${listId}' at ${listPath}; edits apply within ${LOCAL_ADMIN_LIST_TTL}ms`)
+		return
+	}
+	watcher.on('error', (err) => {
+		log.warn(err, `Stopped watching admin list '${listId}'; edits apply within ${LOCAL_ADMIN_LIST_TTL}ms`)
+		closeWatcher(listId)
+	})
+	watchers.set(listId, { path: listPath, watcher })
+}
+
 // Fixed when the resource is created, so a list whose source type is edited keeps the old cadence until the next
 // boot. It only decides how often an unchanged list is re-read; an edit invalidates every list outright.
 function ttlFor(listId: SM.AdminListId): number {
@@ -109,6 +162,7 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 		},
 	)
 	resources.set(listId, resource)
+	syncWatcher(listId)
 	return resource
 }
 
@@ -162,13 +216,17 @@ export function pruneRemoved() {
 		if (configured.has(listId)) continue
 		resources.delete(listId)
 		lastReads.delete(listId)
+		closeWatcher(listId)
 		resource.dispose()
 	}
 }
 
 export function invalidateAll(ctx: CS.Ctx & CS.AbortSignal) {
 	pruneRemoved()
-	for (const resource of resources.values()) resource.invalidate(ctx)
+	for (const [listId, resource] of resources) {
+		syncWatcher(listId)
+		resource.invalidate(ctx)
+	}
 }
 
 // One list. Returns null rather than throwing when the name is not configured: a server or role assignment naming a
@@ -242,6 +300,7 @@ export function setup() {
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
 	CleanupSys.register(() => {
 		for (const resource of resources.values()) resource.dispose()
+		for (const listId of [...watchers.keys()]) closeWatcher(listId)
 		resources.clear()
 		lastReads.clear()
 	}, status$)

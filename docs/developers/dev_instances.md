@@ -136,8 +136,9 @@ pnpm emuctl define-group Donor reserve             # add a group, or change what
 pnpm emuctl delete-group Donor
 ```
 
-A change is written to the file immediately. The app re-reads a local admin list every 30 seconds, so a change
-can take that long to reach the roster.
+A change is written to the file immediately. The app re-reads a local admin list as soon as its file changes, and
+the roster shows the change on its next poll, a few seconds later. In-game admins of the `dev` list get SLM's
+admins role, so their permission-gated in-game commands work.
 
 ## What a dev instance cannot reach
 
