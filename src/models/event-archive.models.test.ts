@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as EA from '@/models/event-archive.models'
+import * as SE from '@/models/server-events.models'
 
 // The archive is the source of truth for a compacted match, and every read path assumes an unpacked row is
 // indistinguishable from the row that went in. That equivalence is the whole contract, so it is what is tested.
@@ -66,6 +67,24 @@ describe('event archive codec', () => {
 
 	test('an empty match round-trips', async () => {
 		expect(await EA.unpack(42, EA.ENCODING, await EA.pack([]))).toEqual([])
+	})
+
+	// a match archived before damageSource existed can be read back next to one archived after it
+	test('death rows archived with `weapon` read back the same as rows archived with damageSource', async () => {
+		const death = { victim: 'eos-1', attacker: 'eos-2', variant: 'normal' }
+		const rows = [
+			row({ id: 10, type: 'PLAYER_DIED', data: { json: { ...death, damage: 300, weapon: 'BP_Soldier_RU_Medic' } } }),
+			row({
+				id: 11,
+				type: 'PLAYER_DIED',
+				data: { json: { ...death, damage: -300, damageSource: 'BP_Soldier_RU_Medic', deathVariant: 'diedOfWounds' } },
+			}),
+		]
+		const events = SE.fromEventRows({ log: { warn: () => {} } } as any, await EA.unpack(42, EA.ENCODING, await EA.pack(rows.map(stored))))
+
+		expect(events).toHaveLength(2)
+		const [legacy, current] = events.map(({ id: _id, ...e }) => e)
+		expect(legacy).toEqual(current)
 	})
 
 	test('an unknown encoding is refused rather than misread', async () => {

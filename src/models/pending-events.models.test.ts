@@ -1394,6 +1394,60 @@ describe('PendingEvents', () => {
 			expect(died.victim).toBe('eos-vic')
 			expect(died.attacker).toBe('eos-atk')
 		})
+
+		function wound(time: number, victim: string, attacker: string): SM.LogEvents.ParsedEvent {
+			return {
+				type: 'PLAYER_WOUNDED',
+				time,
+				chainID: 1,
+				raw: '',
+				damage: 60,
+				damageSource: 'BP_M4_M68',
+				victimIds: { username: victim },
+				attackerIds: { eos: attacker, playerController: `ctrl_${attacker}` },
+			}
+		}
+
+		function die(time: number, victim: string, attacker: string, deathVariant: SM.LogEvents.DeathVariant): SM.LogEvents.ParsedEvent {
+			return {
+				type: 'PLAYER_DIED',
+				time,
+				chainID: 1,
+				raw: '',
+				damage: deathVariant === 'diedOfWounds' ? -300 : 100,
+				deathVariant,
+				damageSource: deathVariant === 'diedOfWounds' ? 'BP_Soldier_RU_Medic' : 'BP_AK74M',
+				victimIds: { username: victim },
+				attackerIds: { eos: attacker, playerController: `ctrl_${attacker}` },
+			}
+		}
+
+		it('judges a death from wounds by the teams when the wound was dealt, not after the attacker changes team', async () => {
+			const state = makeSyncedState([makePlayer('eos-vic', 1), makePlayer('eos-atk', 2)], [])
+			PendingEvents.onLogEvent(state, wound(1100, 'eos-vic', 'eos-atk'))
+			expect(await collect(state)).toMatchObject([{ type: 'PLAYER_WOUNDED', variant: 'normal' }])
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-vic', 1), makePlayer('eos-atk', 1)]), 1200)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(1201))
+			expect(await collect(state)).toContainEqual(expect.objectContaining({ type: 'PLAYER_CHANGED_TEAM', player: 'eos-atk' }))
+
+			PendingEvents.onLogEvent(state, die(1300, 'eos-vic', 'eos-atk', 'diedOfWounds'))
+			const died = (await collect(state)).find((e) => e.type === 'PLAYER_DIED')
+			expect(died).toMatchObject({ deathVariant: 'diedOfWounds', variant: 'normal', attacker: 'eos-atk' })
+		})
+
+		it('credits a teammate who finishes off a player an enemy wounded with a teamkill', async () => {
+			const state = makeSyncedState([makePlayer('eos-vic', 1), makePlayer('eos-mate', 1), makePlayer('eos-enemy', 2)], [])
+			PendingEvents.onLogEvent(state, wound(1100, 'eos-vic', 'eos-enemy'))
+			PendingEvents.onLogEvent(state, die(1150, 'eos-vic', 'eos-mate', 'killed'))
+			const events = await collect(state)
+			expect(events.find((e) => e.type === 'PLAYER_WOUNDED')).toMatchObject({ variant: 'normal', attacker: 'eos-enemy' })
+			expect(events.find((e) => e.type === 'PLAYER_DIED')).toMatchObject({
+				deathVariant: 'killed',
+				variant: 'teamkill',
+				attacker: 'eos-mate',
+			})
+		})
 	})
 
 	describe('destroyed vehicles', () => {
