@@ -32,5 +32,6 @@ describe('TZ.formatFull', () => {
 		const time = Date.UTC(2026, 9, 12, 8, 30)
 		expect(TZ.formatFull(time, 'UTC')).toBe('2026-10-12 08:30:00 UTC')
 		expect(TZ.formatFull(time, 'Europe/Berlin')).toBe('2026-10-12 10:30:00 GMT+2 (Europe/Berlin)')
+		expect(TZ.formatFull(time, 'Europe/Berlin', false)).toBe('2026-10-12 10:30:00 GMT+2')
 	})
 })

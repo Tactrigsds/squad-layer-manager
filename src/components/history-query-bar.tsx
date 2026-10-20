@@ -205,7 +205,7 @@ function TimeZonePicker(props: { draft: HQ.Query; set: Set }) {
 		const shorthands = HQ.TIME_ZONE_SHORTHANDS.map((tz) => {
 			switch (tz) {
 				case 'local':
-					return { value: tz, label: tr.text(HistoryMsgs.timeZoneLocal(local)), keywords: [local] }
+					return { value: tz, label: tr.text(HistoryMsgs.timeZoneLocal(TZ.shortName(local))), keywords: [local] }
 				case 'utc':
 					return { value: tz, label: tr.text(HistoryMsgs.timeZoneUtc()), keywords: ['UTC'] }
 				default:

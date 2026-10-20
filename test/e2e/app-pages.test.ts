@@ -1229,9 +1229,10 @@ test.describe('history page', () => {
 				await expect(time).toHaveText(TZ.formatDateTime(epoch, zone))
 				await time.hover()
 				// the zone's names differ between node's and chromium's time zone data, so only the time is compared
-				await expect(page.getByRole('tooltip')).toHaveText(new RegExp(`^${escapeRegExp(TZ.formatDateTime(epoch, zone))} \\S`), {
-					timeout: 20_000,
-				})
+				const tooltip = page.getByRole('tooltip')
+				await expect(tooltip).toHaveText(new RegExp(`^${escapeRegExp(TZ.formatDateTime(epoch, zone))} \\S`), { timeout: 20_000 })
+				if (zone === VIEWER_ZONE) await expect(tooltip).not.toContainText(VIEWER_ZONE)
+				else await expect(tooltip).toContainText(`(${zone})`)
 				await time.click({ button: 'right' })
 				await page.getByRole('menuitem', { name: 'Copy event as text' }).click()
 				await expect.poll(() => readClipboard(page)).toMatch(new RegExp(`^${escapeRegExp(TZ.formatDateTime(epoch, zone))} `))
@@ -1251,6 +1252,9 @@ test.describe('history page', () => {
 			await expectTimesIn(SHARED_SERVER_TIME_ZONE)
 
 			await page.getByRole('combobox', { name: 'Time zone', exact: true }).click()
+			const localOption = page.getByRole('option', { name: /^Local \(/ })
+			await expect(localOption).toBeVisible()
+			await expect(localOption).not.toContainText(VIEWER_ZONE)
 			await page.getByPlaceholder('Search...').fill('Kiritimati')
 			await page.getByRole('option', { name: 'Pacific/Kiritimati' }).click()
 			await page.getByRole('button', { name: 'Run', exact: true }).click()
