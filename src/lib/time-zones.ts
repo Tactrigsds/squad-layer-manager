@@ -74,10 +74,15 @@ export function formatDateTime(time: number, timeZone: string): string {
 	return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`
 }
 
-/** formatDateTime followed by the zone's short name and, where that differs, its IANA name. */
-export function formatFull(time: number, timeZone: string): string {
+/** The zone's short name at `time`, such as `EDT` or `GMT+2`. */
+export function shortName(timeZone: string, time = Date.now()): string {
+	return wallParts(time, timeZone).zone
+}
+
+/** formatDateTime followed by the zone's short name and, where that differs and `withIana` is set, its IANA name. */
+export function formatFull(time: number, timeZone: string, withIana = true): string {
 	const p = wallParts(time, timeZone)
-	const named = p.zone === timeZone ? p.zone : `${p.zone} (${timeZone})`
+	const named = !withIana || p.zone === timeZone ? p.zone : `${p.zone} (${timeZone})`
 	return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second} ${named}`
 }
 

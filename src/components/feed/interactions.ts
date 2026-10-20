@@ -396,7 +396,9 @@ function tipContentOf(element: Element, ctx: RC.RenderCtx | undefined): RC.TipCo
 	// timestamps cost, and only the one being hovered is ever read
 	if (time !== null) {
 		const zone = element.getAttribute(RC.TIP_TIME_ZONE_ATTR)
-		return { kind: 'text', text: zone ? TZ.formatFull(Number(time), zone) : formatFullTime(Number(time)) }
+		if (zone === null) return { kind: 'text', text: formatFullTime(Number(time)) }
+		// the viewer's own zone is shown by its short name alone, so their IANA zone stays off screenshots
+		return { kind: 'text', text: TZ.formatFull(Number(time), zone, zone !== TZ.local()) }
 	}
 	const text = element.getAttribute(RC.TIP_ATTR)
 	if (text === null) return null
