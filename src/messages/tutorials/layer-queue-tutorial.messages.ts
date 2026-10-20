@@ -141,8 +141,8 @@ export namespace LayerDetails {
 		title: def('Layer scores'),
 		body: def(
 			rt(
-				`<p>SLM precomputes <strong>scores</strong> for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the <em>Balance Differential</em> and the <em>Asymmetry Score</em>.</p>
-<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>
+				`<p>SLM includes <strong>scores</strong> for each layer, generated from a set of heuristics as a rough measure of how fair the matchup is. The included scores only cover RAAS, FRAAS, AAS, and TC layers. The two most important are the <em>Balance Differential</em> and the <em>Asymmetry Score</em>.</p>
+<p>The included scores can be replaced with your own. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>
 				`,
 			),
 		),
