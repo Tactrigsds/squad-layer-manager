@@ -35,6 +35,7 @@ import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ContributorsPopover } from './contributors-popover'
@@ -208,10 +209,16 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const _nodeMapStore = Zus.useStore(stores.filterEditor, (s) => s.nodeMapStore)
 	const validationCurrent = Zus.useStore(stores.filterEditor, EditFrame.Sel.validationCurrent)
+	const draftEditors = Zus.useStore(UPClient.Store, UPClient.Sel.filterEditingClientCount(props.entity.id))
 
 	return (
-		// marked once the warnings below reflect the current draft, for anything that has to wait on them
-		<div className="container mx-auto flex flex-col gap-2" data-draft-validated={validationCurrent || undefined}>
+		// marked once the warnings below reflect the current draft, and with how many clients presence counts as
+		// editing the draft, for anything that has to wait on either. The server discards the draft at zero.
+		<div
+			className="container mx-auto flex flex-col gap-2"
+			data-draft-validated={validationCurrent || undefined}
+			data-draft-editors={draftEditors}
+		>
 			{cloning && <CloneFilterDialog source={props.entity} onClose={() => setCloning(false)} />}
 			<div className="flex justify-between">
 				{!editingDetails ? (

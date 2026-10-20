@@ -259,15 +259,21 @@ test.describe('collaborative filter editing', () => {
 			// A annotates a node; B is a replica of the same draft, so B is looking at the comment too
 			await page.getByRole('button', { name: 'Add comment' }).first().click()
 			await page.getByRole('textbox', { name: 'Node comment' }).fill('a shared draft, not a private copy')
-			// the builder renders the comment and the text mirror repeats it, so match the first
-			await expect(pageB.getByText('a shared draft, not a private copy').first()).toBeVisible({ timeout: 20_000 })
+			// Only what B shows counts. The Text tab's editor is hidden here and is brought up to date only when its tab
+			// is shown, so it holds whatever the draft was when it mounted, and on a slow run that can be this comment.
+			const comment = pageB.getByText('a shared draft, not a private copy').filter({ visible: true })
+			await expect(comment).toBeVisible({ timeout: 20_000 })
+			// the edit claimed A an editing session, and only A: B's replica claims none of its own
+			const draftEditors = pageB.locator('[data-draft-editors]')
+			await expect(draftEditors).toHaveAttribute('data-draft-editors', '1')
 
 			// A leaves without saving, and was the only one editing -- so there is nobody left to commit the
 			// draft, and B is returned to the filter as it is stored
 			page.once('dialog', (dialog) => void dialog.accept())
 			await page.getByRole('link', { name: 'Filters', exact: true }).click()
 			await page.waitForURL('**/filters')
-			await expect(pageB.getByText('a shared draft, not a private copy')).toHaveCount(0, { timeout: 20_000 })
+			await expect(draftEditors).toHaveAttribute('data-draft-editors', '0')
+			await expect(comment).toHaveCount(0, { timeout: 20_000 })
 
 			const stored = app.readDb().prepare('select name from filters where id = ?').get('collab') as { name: string }
 			expect(stored.name).toBe('Collab Draft')
