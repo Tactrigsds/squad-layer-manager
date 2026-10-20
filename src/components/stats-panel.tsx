@@ -309,7 +309,6 @@ function TeamBreakdown(props: {
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.breakdown(props.historicalEvents),
 	)
-	const teams = Zus.useStore_Susp(squadServer, currentMatch$, recentMatches$, ClientOnlySettings.Store, StatsModels.Sel.teams)
 	if (!breakdown) return null
 
 	// series a real player on the server actually matched; the rest still exist in the grouping config but would
@@ -411,7 +410,7 @@ function TeamBreakdown(props: {
 		<StackedBarChart
 			rows={chartRows}
 			series={chartSeries}
-			rowColors={teams.map((team) => team.color)}
+			rowColors={breakdown.rowColors}
 			sideBySide={props.wide}
 			legendPortal={props.legendPortal}
 			ariaLabel={tr.text(MH_Msgs.teamBreakdowns())}
