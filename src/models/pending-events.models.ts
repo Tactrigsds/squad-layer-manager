@@ -648,10 +648,17 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 export type RosterChanges = {
 	players: Map<SM.PlayerId, number>
 	squads: Map<number, { time: number; squad: SM.UniqueSquad }>
+	// player id -> log time of their disconnect, until a poll stops listing them or DISCONNECTED_LISTING_GRACE_MS
+	// passes. The server keeps listing a player for a moment after their disconnect line, so a poll requested after
+	// the line can still list them.
+	departed: Map<SM.PlayerId, number>
 }
 
+// prod's server has listed a player up to ~5.2s, about one poll interval, after their disconnect line
+export const DISCONNECTED_LISTING_GRACE_MS = 10_000
+
 export function initRosterChanges(): RosterChanges {
-	return { players: new Map(), squads: new Map() }
+	return { players: new Map(), squads: new Map(), departed: new Map() }
 }
 
 function recordSquadChange(changes: RosterChanges | undefined, squad: SM.UniqueSquad | undefined, time: number) {
@@ -671,6 +678,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 			if (changes) {
 				changes.players.clear()
 				changes.squads.clear()
+				changes.departed.clear()
 			}
 			teams.players.clear()
 			for (const player of roster.players) teams.players.set(SM.PlayerIds.getPlayerId(player.ids), player)
@@ -827,6 +835,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 			}
 			teams.players.set(playerId, event.player)
 			changes?.players.set(playerId, event.time)
+			changes?.departed.delete(playerId)
 			break
 		}
 
@@ -835,6 +844,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			changes?.players.set(event.player, event.time)
+			changes?.departed.set(event.player, event.time)
 			break
 		}
 	}
@@ -1821,6 +1831,13 @@ function withChangesSincePoll(changes: RosterChanges, currTeams: SM.LiveTeams, e
 	for (const [playerId, time] of changes.players) {
 		if (time < event.polledAt) changes.players.delete(playerId)
 		else (players ??= new Set()).add(playerId)
+	}
+	if (changes.departed.size > 0) {
+		const listed = new Set(event.teams.players.map((p) => SM.PlayerIds.getPlayerId(p.ids)))
+		for (const [playerId, time] of changes.departed) {
+			if (!listed.has(playerId) || event.polledAt - time > DISCONNECTED_LISTING_GRACE_MS) changes.departed.delete(playerId)
+			else (players ??= new Set()).add(playerId)
+		}
 	}
 	let squads: SM.UniqueSquad[] | undefined
 	for (const [uniqueId, change] of changes.squads) {

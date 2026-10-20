@@ -884,9 +884,36 @@ describe('PendingEvents', () => {
 			expect((await collect(state)).map((e) => e.type)).toEqual(['PLAYER_LEFT_SQUAD', 'PLAYER_DISCONNECTED'])
 			expect([...state.currTeams!.players.keys()]).toEqual(['eos-002'])
 
-			// a poll requested after the disconnect is believed, so a player it still lists is back
+			// the server keeps listing a player for a moment after their disconnect line, so a poll requested after it
+			// that still lists them is not a reconnect either, until a poll stops listing them
+			PendingEvents.onTeamsPolled(state, makeTeams([leaver, stayer], [squad]), 251, 250)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(252))
+			expect(await collect(state)).toEqual([])
+			PendingEvents.onTeamsPolled(state, makeTeams([stayer], [squad]), 280)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(281))
+			expect(await collect(state)).toEqual([])
+
+			// once a poll has stopped listing them, one that lists them again is believed: a rejoin whose connect line was lost
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 300)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_CONNECTED']))
+		})
+
+		it('a player the server still lists long after their disconnect line is back', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.onLogEvent(state, {
+				type: 'PLAYER_DISCONNECTED',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-001', playerController: 'ctrl_eos-001' },
+				ip: '1.2.3.4',
+			})
+			await collect(state)
+
+			const later = 200 + PendingEvents.DISCONNECTED_LISTING_GRACE_MS + 1
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), later)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(later + 1))
 			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_CONNECTED']))
 		})
 
