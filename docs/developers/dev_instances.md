@@ -73,7 +73,8 @@ on.
 Provisioning creates an empty database, migrates it with the workspace's own migrations, and seeds it the way the
 app's first boot seeds one. Provisioning also inserts the rows a workspace needs before anyone can look at it: an
 `emulator` server pointed at this workspace's emulated Squad server, a `dev` admin list read from the emulator's
-`Admins.cfg`, and the `dev` user the URL signs in as.
+`Admins.cfg`, and the `dev` user the URL signs in as. Provisioning turns off _Seed Sandbox Server_, so the app does
+not add a sandbox server next to the `emulator` server on its first boot.
 
 A workspace never copies another checkout's database. That database may have been migrated by a newer branch, and SLM
 refuses to start on a database with migrations its build does not have. Seed match history, players and other data
@@ -109,12 +110,12 @@ pnpm emuctl help                # the full list
 ```
 
 The same commands are available as a REPL inside `pnpm dev --emu-only` when it has a terminal (`help` lists them there
-too). Both front ends dispatch one registry (`src/dev/emu-control.ts`) against the same live world, so neither can
-grow a verb the other lacks. A sandbox server's _Sandbox Controls_ window dispatches the same verbs
-(`src/models/sandbox.models.ts`, executed by `src/emulator/verbs.ts`), though it drives the sandbox's own emulator, not
-the dev instance's.
+too), and in the app from the `emulator` server's _Server Actions_ menu, under _Sandbox Controls_. All three front ends
+dispatch one registry (`src/models/sandbox.models.ts`, executed by `src/emulator/verbs.ts`) against the same live
+world, so none of them can grow a verb the others lack.
 
-`emuctl` talks to the host over a unix socket at `data/dev/emu.sock`. The socket needs no port, cannot be reached
+`emuctl` and the app talk to the host over a unix socket at `data/dev/emu.sock` (`src/dev/emu-control.ts`). `pnpm dev`
+passes the app the socket's path and the `emulator` server's id in `DEV_EMULATOR_SOCKET` and `DEV_EMULATOR_SERVER_ID`. The socket needs no port, cannot be reached
 from the network, and is scoped to the worktree because it is stored in the worktree's own `data/dev`. `emuctl` exits
 non-zero and prints what is wrong if the command fails or no emulator is running, so it works in scripts.
 

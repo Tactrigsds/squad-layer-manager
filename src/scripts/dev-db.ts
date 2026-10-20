@@ -24,8 +24,6 @@ import * as BmServer from '../emulator/bm-server.ts'
 // the single admin list a dev workspace keeps, pointed at the worktree's emulated Admins.cfg
 const DEV_ADMIN_LIST = 'dev'
 
-// the one server a workspace has: this worktree's emulator
-const DEV_SERVER_ID = 'emulator'
 const DEV_SERVER_NAME = 'Emulated Server'
 
 // Gives this worktree a fresh database for its instance, migrated by the worktree's own build and seeded the way the
@@ -148,9 +146,9 @@ async function seed(driver: Database) {
 	const globalSettings = Seed.applyInitialGlobalSettings(defaults.data)
 	// the ruleset createServerEntry gives a real server, which this insert would otherwise skip
 	const ownRuleset: RRS.Ruleset = {
-		id: RRS.ownIdForServer(globalSettings.repeatRulesets, DEV_SERVER_ID),
+		id: RRS.ownIdForServer(globalSettings.repeatRulesets, DevInstance.DEV_SERVER_ID),
 		name: RRS.freeName(globalSettings.repeatRulesets, DEV_SERVER_NAME),
-		ownerServerId: DEV_SERVER_ID,
+		ownerServerId: DevInstance.DEV_SERVER_ID,
 		rules: [...RRS.DEFAULT_RULES],
 	}
 	await db.insert(Schema.globalSettings).values(
@@ -161,6 +159,8 @@ async function seed(driver: Database) {
 				rbac: withDevAdmins(globalSettings.rbac),
 				repeatRulesets: [...globalSettings.repeatRulesets, ownRuleset],
 				integrations: devIntegrations(),
+				// the workspace's emulator is already a server to work against, and a sandbox would be a second one
+				seedSandboxServer: false,
 				adminLists: {
 					[DEV_ADMIN_LIST]: {
 						source: { type: 'local', source: DevInstance.ADMINS_CFG_PATH },
@@ -190,7 +190,7 @@ async function seed(driver: Database) {
 	settings.queue.mainPool.repeatRulesetId = ownRuleset.id
 	await db.insert(Schema.servers).values(
 		superjsonify(Schema.servers, {
-			id: DEV_SERVER_ID,
+			id: DevInstance.DEV_SERVER_ID,
 			displayName: DEV_SERVER_NAME,
 			enabled: true,
 			defaultServer: true,
@@ -198,7 +198,9 @@ async function seed(driver: Database) {
 		}),
 	)
 	await Slots.setLogin(DevInstance.DEV_USER.username)
-	console.log(`seeded the '${DEV_SERVER_ID}' server and the '${DevInstance.DEV_USER.username}' user, which this instance signs in as`)
+	console.log(
+		`seeded the '${DevInstance.DEV_SERVER_ID}' server and the '${DevInstance.DEV_USER.username}' user, which this instance signs in as`,
+	)
 }
 
 console.log(`starting ${dest} empty`)

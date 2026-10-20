@@ -1,5 +1,6 @@
 import * as Crypto from 'node:crypto'
 
+import * as EmuControl from '@/dev/emu-control'
 import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
@@ -11,12 +12,12 @@ import * as SETTINGS from '@/models/settings.models'
 import { SandboxConnectionSchema } from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
-import type { SandboxState } from '@/systems/sandbox.shared'
 import * as Seed from '@/systems/seed.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -26,6 +27,10 @@ import * as Settings from '@/systems/settings.server'
 //
 // The instance is owned here rather than by the managed server because the managed server is disposable: every settings edit calls
 // restartIfRunning, and a world that died with it would reset the sandbox out from under whoever was using it.
+//
+// A development workspace's emulator (`pnpm dev`) is offered the same control window. It runs as its own process, whose
+// world outlives the app's restarts, so the window's commands reach it over the emulator's control socket
+// (src/dev/emu-control.ts) rather than through an instance held here.
 
 const module = initModule('sandbox')
 const orpcBase = getOrpcBase(module)
@@ -59,8 +64,22 @@ const instances = new Map<string, SandboxInstance>()
 // how often watchState re-reads the world for changes no verb caused
 const WORLD_POLL_MS = 2000
 
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.devInstance })
+
+type DevEmulator = { serverId: string; socket: string }
+let devEmulator: DevEmulator | null = null
+// emits after every verb the window sends the dev emulator, so its watchers re-read the world straight away
+const devEmulatorChanged$ = new Rx.Subject<void>()
+let devEmulatorState$: Rx.Observable<WatchedState> | undefined
+
+type WatchedState = SB.SandboxState | { code: 'err:not-a-sandbox' | 'err:emulator-down'; serverId: string }
+
 export function setup() {
 	log = module.getLogger()
+	const env = envBuilder()
+	if (env.DEV_EMULATOR_SERVER_ID && env.DEV_EMULATOR_SOCKET) {
+		devEmulator = { serverId: env.DEV_EMULATOR_SERVER_ID, socket: env.DEV_EMULATOR_SOCKET }
+	}
 	CleanupSys.register(() => {
 		for (const serverId of [...instances.keys()]) disposeInstance(serverId)
 	})
@@ -108,6 +127,8 @@ export async function ensureInstance(serverId: string, conn: SETTINGS.SandboxCon
 		list,
 		changed$,
 		adminList: {
+			list,
+			render: () => renderAdminsCfg(instance),
 			isAdmin: (name) => {
 				const groups = list.memberships.get(name)
 				if (!groups) return false
@@ -227,32 +248,31 @@ export function disposeInstance(serverId: string) {
 	log.info(`Sandbox ${serverId}: emulated server stopped`)
 }
 
-// The shape the control window renders. Admin status is derived rather than stored: the checkbox and the group
-// picker are two views of the same membership, so there is nothing to keep in sync.
-function sandboxState(instance: SandboxInstance): SandboxState {
-	return {
-		code: 'ok' as const,
-		groups: [...instance.list.groups.entries()].map(([name, permissions]) => ({ name, permissions: [...permissions] })),
-		adminsCfg: renderAdminsCfg(instance),
-		nextDefaultName: Verbs.nextDefaultName(instance),
-		squads: instance.emu.world.squads.map((s) => ({
-			teamId: s.teamId,
-			squadId: s.squadId,
-			name: s.name,
-			size: instance.emu.world.squadMembers(s).length,
-		})),
-		players: [...instance.players.entries()].map(([name, p]) => ({
-			name,
-			eosId: p.eos,
-			steamId: p.steam,
-			teamId: p.teamId ?? null,
-			squadId: p.squadId ?? null,
-			isLeader: p.isLeader,
-			partyId: p.partyId,
-			groups: [...(instance.list.memberships.get(name) ?? [])],
-			isAdmin: instance.adminList!.isAdmin(name),
-		})),
+function devEmulatorFor(serverId: string): DevEmulator | null {
+	if (devEmulator?.serverId !== serverId) return null
+	return Settings.listServerEntries().some((e) => e.id === serverId) ? devEmulator : null
+}
+
+async function readDevEmulatorState(dev: DevEmulator): Promise<WatchedState> {
+	try {
+		const res = await EmuControl.send(dev.socket, { type: 'state' })
+		if ('code' in res) return res
+		log.warn('Dev emulator %s could not report its state: %s', dev.serverId, res.output)
+	} catch {
+		// not running, which `pnpm dev --no-emu` allows. The poll picks it up once it starts.
 	}
+	return { code: 'err:emulator-down', serverId: dev.serverId }
+}
+
+// One poll of the emulator, however many windows are open on it.
+function devEmulatorState(dev: DevEmulator): Rx.Observable<WatchedState> {
+	devEmulatorState$ ??= Rx.merge(devEmulatorChanged$, Rx.interval(WORLD_POLL_MS)).pipe(
+		Rx.startWith(undefined),
+		Rx.switchMap(() => readDevEmulatorState(dev)),
+		Rx.Ext.distinctDeepEquals(),
+		Rx.share({ connector: () => new Rx.ReplaySubject<WatchedState>(1), resetOnRefCountZero: true }),
+	)
+	return devEmulatorState$
 }
 
 export const orpcRouter = {
@@ -261,7 +281,9 @@ export const orpcRouter = {
 	// `execute` can act on.
 	listSandboxServers: orpcBase.handler(async ({ context }) => {
 		const canAccess = await Rbac.getUserAccessCheck(context)
-		return [...instances.keys()].filter((serverId) => canAccess(RBAC.perm('sandbox:control', { serverId }))).sort()
+		const serverIds = [...instances.keys()]
+		if (devEmulator && devEmulatorFor(devEmulator.serverId)) serverIds.push(devEmulator.serverId)
+		return serverIds.filter((serverId) => canAccess(RBAC.perm('sandbox:control', { serverId }))).sort()
 	}),
 
 	// The control surface's own state: the puppets this sandbox knows by name and the emulated admin list. The
@@ -270,7 +292,12 @@ export const orpcRouter = {
 	watchState: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
-		.handler(async function* ({ context, input, signal }) {
+		.handler(async function* ({ context, input, signal }): AsyncGenerator<WatchedState> {
+			const dev = devEmulatorFor(input.serverId)
+			if (dev) {
+				yield* Rx.Ext.toAsyncGenerator(devEmulatorState(dev).pipe(Rx.Ext.withAbortSignal(signal!)))
+				return
+			}
 			const instance = instances.get(input.serverId)
 			if (!instance) {
 				yield { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
@@ -281,7 +308,7 @@ export const orpcRouter = {
 			// drops it unless the world actually changed.
 			const obs = Rx.merge(instance.changed$, Rx.interval(WORLD_POLL_MS)).pipe(
 				Rx.startWith(undefined),
-				Rx.map(() => sandboxState(instance)),
+				Rx.map(() => Verbs.describe(instance)),
 				Rx.Ext.distinctDeepEquals(),
 				Rx.Ext.withAbortSignal(signal!),
 			)
@@ -291,12 +318,27 @@ export const orpcRouter = {
 	// One procedure for every verb: the wire carries the verb name and its args, which are validated against
 	// that verb's own schema on arrival (parseVerbArgs, inside execute).
 	//
-	// This cannot drive a real squad server, and not because of a check it performs: the only thing it can act
-	// on is an Emulator this module started, so a serverId naming a real server finds no instance and stops here.
+	// This cannot drive a real squad server, and not because of a check it performs: the only things it can act
+	// on are an Emulator this module started and the emulator `pnpm dev` names in the env, so a serverId naming a
+	// real server finds neither and stops here.
 	execute: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }).extend(SB.SandboxCommandSchema.shape))
 		.handler(async ({ context, input }) => {
+			const dev = devEmulatorFor(input.serverId)
+			if (dev) {
+				let res: EmuControl.Response
+				try {
+					res = await EmuControl.send(dev.socket, { type: 'execute', verb: input.verb, args: input.args })
+				} catch (err) {
+					return { code: 'err:rejected' as const, message: err instanceof Error ? err.message : String(err) }
+				}
+				devEmulatorChanged$.next()
+				if (!res.ok) return { code: 'err:rejected' as const, message: res.output }
+				log.info('Dev emulator %s: user %s ran %s', input.serverId, context.user.discordId, input.verb)
+				return { code: 'ok' as const, output: res.output }
+			}
+
 			const instance = instances.get(input.serverId)
 			if (!instance) return { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
 

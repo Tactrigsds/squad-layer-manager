@@ -16,7 +16,7 @@ if (args.length === 0) args.push('help')
 // Everything reaching here (a refused socket, most of all) is a message meant for whoever typed the command,
 // so it is printed as one line rather than left to surface as an unhandled rejection with a stack trace.
 try {
-	const { ok, output } = await EmuControl.send(DevInstance.EMU_SOCKET_PATH, args)
+	const { ok, output } = await EmuControl.send(DevInstance.EMU_SOCKET_PATH, { type: 'tokens', args })
 	if (output) (ok ? console.log : console.error)(output)
 	if (!ok) process.exit(1)
 } catch (err) {

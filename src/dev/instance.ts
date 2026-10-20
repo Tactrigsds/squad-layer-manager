@@ -24,6 +24,9 @@ export const EMU_SOCKET_PATH = path.join(DEV_DIR, 'emu.sock')
 // rather than something each worktree has to be told.
 export const RCON_PASSWORD = 'devpassword'
 
+// the one server a workspace has: its emulator
+export const DEV_SERVER_ID = 'emulator'
+
 // The account a workspace signs in as. Provisioning writes the id into the .env it
 // generates as the sole SUPER_USERS entry, so the instance opens on a user who can administer it. Discord
 // snowflakes are timestamps and far smaller than 2^61, so this can never collide with a real one.
@@ -55,6 +58,8 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 		// set ORIGIN when starting `pnpm dev` to reach the instance through a proxy, e.g. `tailscale serve`
 		ORIGIN: process.env.ORIGIN ?? `http://localhost:${slot.ports.client}`,
 		DB_PATH: DEV_DB_PATH,
+		DEV_EMULATOR_SERVER_ID: DEV_SERVER_ID,
+		DEV_EMULATOR_SOCKET: EMU_SOCKET_PATH,
 
 		// A dev instance never reaches discord: the oauth callback is built from ORIGIN, so real login would
 		// need every slot's port registered as a redirect uri on the discord app. The bypass logs in as any

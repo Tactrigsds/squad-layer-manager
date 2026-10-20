@@ -88,9 +88,13 @@ rl?.prompt()
 rl?.on('close', shutdown)
 rl?.on('line', (line) => {
 	void (async () => {
-		const { ok, output } = await EmuControl.dispatch(host, line.trim().split(/\s+/).filter(Boolean), {
-			afterCommand: () => adminList.write(),
-		})
+		const { ok, output } = await EmuControl.dispatch(
+			host,
+			{ type: 'tokens', args: line.trim().split(/\s+/).filter(Boolean) },
+			{
+				afterCommand: () => adminList.write(),
+			},
+		)
 		if (output) (ok ? console.log : console.error)(output)
 		rl.prompt()
 	})()

@@ -243,6 +243,8 @@ describe('emulated admin list', () => {
 			emu,
 			players: host.players,
 			adminList: {
+				list: { groups, memberships },
+				render: () => SB.renderAdminsCfg({ groups, memberships }, (name) => host.players.get(name)?.steam),
 				isAdmin: (name) => [...(memberships.get(name) ?? [])].some((g) => (groups.get(g) ?? []).includes('canseeadminchat')),
 				setPlayerGroups: (name, next) => {
 					if (next.length === 0) memberships.delete(name)
