@@ -128,15 +128,12 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				// the siblings are reached through the file they compress, so they don't need routes of their own
 				globIgnore: ['**/*.br', '**/*.gz'],
 
-				// send would otherwise compute `public, max-age=0` for every file, and its headers are applied after
-				// setHeaders, so it would win over anything set there
+				// setHeaders sets Cache-Control per file, so send's `public, max-age=0` would only be overwritten
 				cacheControl: false,
-				setHeaders: (header, filePath) => {
-					for (const [key, value] of Object.entries(BASE_HEADERS)) {
-						header.setHeader(key, value)
-					}
+				setHeaders: (reply, filePath) => {
+					reply.headers(BASE_HEADERS)
 					const immutable = filePath.startsWith(HASHED_ASSETS_DIR)
-					header.setHeader('Cache-Control', immutable ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL)
+					reply.header('Cache-Control', immutable ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL)
 				},
 			})
 			break
