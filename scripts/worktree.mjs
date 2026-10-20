@@ -80,9 +80,13 @@ function createWorktree(name, cwd) {
 
 	const branch = name.startsWith(BRANCH_PREFIX) ? name : BRANCH_PREFIX + name
 	const base = baseRef(cwd)
-	const args = tryGit(['rev-parse', '--verify', `refs/heads/${branch}`], cwd)
-		? ['worktree', 'add', dest, branch]
-		: ['worktree', 'add', '-b', branch, dest, base]
+	const branchExists = tryGit(['rev-parse', '--verify', `refs/heads/${branch}`], cwd) !== null
+	// origin's ref moves only on a fetch, which other sessions run on their own schedule, so a branch cut from it
+	// unfetched can start hours behind. Offline, the fetch fails quietly and the local ref is used.
+	if (!branchExists && !process.env.SLM_WORKTREE_BASE && base.startsWith('origin/')) {
+		tryGit(['fetch', '--quiet', 'origin', base.slice('origin/'.length)], cwd)
+	}
+	const args = branchExists ? ['worktree', 'add', dest, branch] : ['worktree', 'add', '-b', branch, dest, base]
 	childProcess.execFileSync('git', args, { cwd, stdio: ['ignore', 2, 2] })
 	return { path: dest, created: true, branch, base }
 }
