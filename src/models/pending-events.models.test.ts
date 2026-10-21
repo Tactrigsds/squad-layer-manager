@@ -884,9 +884,36 @@ describe('PendingEvents', () => {
 			expect((await collect(state)).map((e) => e.type)).toEqual(['PLAYER_LEFT_SQUAD', 'PLAYER_DISCONNECTED'])
 			expect([...state.currTeams!.players.keys()]).toEqual(['eos-002'])
 
-			// a poll requested after the disconnect is believed, so a player it still lists is back
+			// the server keeps listing a player for a moment after their disconnect line, so a poll requested after it
+			// that still lists them is not a reconnect either, until a poll stops listing them
+			PendingEvents.onTeamsPolled(state, makeTeams([leaver, stayer], [squad]), 251, 250)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(252))
+			expect(await collect(state)).toEqual([])
+			PendingEvents.onTeamsPolled(state, makeTeams([stayer], [squad]), 280)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(281))
+			expect(await collect(state)).toEqual([])
+
+			// once a poll has stopped listing them, one that lists them again is believed: a rejoin whose connect line was lost
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 300)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_CONNECTED']))
+		})
+
+		it('a player the server still lists long after their disconnect line is back', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			PendingEvents.onLogEvent(state, {
+				type: 'PLAYER_DISCONNECTED',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-001', playerController: 'ctrl_eos-001' },
+				ip: '1.2.3.4',
+			})
+			await collect(state)
+
+			const later = 200 + PendingEvents.DISCONNECTED_LISTING_GRACE_MS + 1
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), later)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(later + 1))
 			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_CONNECTED']))
 		})
 
@@ -2147,6 +2174,122 @@ describe('PendingEvents', () => {
 			const events = await collect(state)
 			expect(events.find((e) => e.type === 'PLAYER_LEFT_SQUAD')).toBeUndefined()
 		})
+	})
+
+	// A poll requested before a log event can be reconciled after it, still listing the roster from before. Each case
+	// applies one roster-changing log or rcon event, then feeds back the roster from just before it as a poll requested
+	// before it: that poll is no evidence against the change, so it must emit nothing and leave the roster alone.
+	describe('a poll requested before a roster change does not undo it', () => {
+		const ids = (eos: string) => ({ eos, playerController: `ctrl_${eos}`, username: eos })
+		const cases: { name: string; push: (state: PendingEvents.State) => void }[] = [
+			{
+				name: 'a member disconnecting',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'PLAYER_DISCONNECTED',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: ids('eos-member'),
+						ip: '1.2.3.4',
+					}),
+			},
+			{
+				name: 'a squad leader disconnecting',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'PLAYER_DISCONNECTED',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: ids('eos-leader'),
+						ip: '1.2.3.4',
+					}),
+			},
+			{
+				name: 'an admin removing a player from their squad',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'ADMIN_REMOVED_FROM_SQUAD',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						playerIds: { username: 'eos-member' },
+						source: { type: 'rcon' },
+					}),
+			},
+			{
+				name: 'an admin disbanding a squad',
+				push: (state) =>
+					PendingEvents.onLogEvent(state, {
+						type: 'ADMIN_DISBANDED_SQUAD',
+						time: 200,
+						chainID: 0,
+						raw: '',
+						squadId: 1,
+						teamId: 1,
+						squadName: 'Squad 1',
+						source: { type: 'rcon' },
+					}),
+			},
+			{
+				name: 'a player creating a squad',
+				push: (state) =>
+					PendingEvents.onRconEvent(state, {
+						type: 'SQUAD_CREATED',
+						time: 200,
+						squadId: 2,
+						squadName: 'Bravo',
+						teamName: 'Russian Ground Forces',
+						creatorIds: ids('eos-loner'),
+					}),
+			},
+			{
+				name: 'a player connecting',
+				push: (state) => PendingEvents.onLogEvent(state, makePlayerConnectedChain(200, 'eos-joiner', 'ctrl_eos-joiner', 2)),
+			},
+			{
+				name: 'a squad being renamed',
+				push: (state) =>
+					PendingEvents.onRconEvent(state, {
+						type: 'SQUAD_RENAMED',
+						time: 200,
+						squadId: 1,
+						teamId: 1,
+						oldSquadName: 'Squad 1',
+						newSquadName: 'Renamed',
+					}),
+			},
+		]
+
+		for (const { name, push } of cases) {
+			it(name, async () => {
+				const state = makeSyncedState(
+					[
+						makePlayer('eos-leader', 1, { squadId: 1, isLeader: true }),
+						makePlayer('eos-member', 1, { squadId: 1 }),
+						makePlayer('eos-loner', 1),
+						makePlayer('eos-other', 2),
+					],
+					[makeSquad(1, 1, 'eos-leader', 101)],
+				)
+				const before: SM.Teams = {
+					players: [...state.currTeams!.players.values()],
+					squads: [...state.currTeams!.squads.values()].map(({ uniqueId: _, ...squad }) => squad),
+				}
+
+				push(state)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+				const changed = await collect(state)
+				expect(changed.length).toBeGreaterThan(0)
+				const after = structuredClone(state.currTeams!)
+
+				PendingEvents.onTeamsPolled(state, before, 202, 199)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(203))
+				expect((await collect(state)).map((e) => e.type)).toEqual([])
+				expect(state.currTeams).toEqual(after)
+			})
+		}
 	})
 
 	// SLM pushes an attribution when it sets a layer, and the MAP_SET the server reports back claims it, so the event

@@ -257,13 +257,8 @@ export type State = {
 	// synthesize the event from poll data instead of blocking team updates until the next RESET. Self-pruning.
 	unknownSquadStreaks: Map<string, number>
 
-	// uniqueId -> log time of each SQUAD_CREATED no poll has been issued since. A poll requested before that time
-	// can't contain the squad, so its absence there is not a disband. Pruned once a later poll is reconciled.
-	squadCreatedAtAwaitingPoll: Map<number, number>
-
-	// player id -> log time of each PLAYER_DISCONNECTED no poll has been requested since. A poll requested before that
-	// time still lists the player, which is not a reconnect. Pruned once a later poll is reconciled.
-	disconnectedAtAwaitingPoll: Map<SM.PlayerId, number>
+	// the roster changes log and rcon events made since the last poll was requested (see reconcileTeamsUpdate)
+	rosterChangesAwaitingPoll: RosterChanges
 
 	// the roster at the moment of the last RCON disconnect. When the reconnect resolves to the SAME match, the
 	// reseeding RESET reuses these squads' uniqueIds (an RCON blip shouldn't make every squad look recreated) and
@@ -343,8 +338,7 @@ export function init(opts: {
 		currTeams: null,
 		pollAbsenceStreaks: new Map(),
 		unknownSquadStreaks: new Map(),
-		squadCreatedAtAwaitingPoll: new Map(),
-		disconnectedAtAwaitingPoll: new Map(),
+		rosterChangesAwaitingPoll: initRosterChanges(),
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
@@ -524,9 +518,10 @@ async function createEvent(state: State, event: SE.NewEvent): Promise<SE.Event> 
 type Pass = { ctx: CS.Log; events: SE.Event[] }
 
 // Persists an event and folds it into `state` before returning, so the code after an emit sees the roster it produced.
+// Every roster change outside a poll's reconcile goes through here, so it is recorded in rosterChangesAwaitingPoll.
 async function emit(state: State, pass: Pass, newEvent: SE.NewEvent) {
 	const event = await createEvent(state, newEvent)
-	applyEventToState(state, pass.ctx, event)
+	applyEventToState(state, pass.ctx, event, state.rosterChangesAwaitingPoll)
 	pass.events.push(event)
 }
 
@@ -537,12 +532,12 @@ async function emitUnapplied(state: State, out: SE.Event[], newEvent: SE.NewEven
 
 // Fold an emitted event into `state`: seed an empty roster if a roster-bearing event needs one, then apply team
 // mutations. Runs once the event is already on disk.
-function applyEventToState(state: State, ctx: CS.Log, event: SE.Event) {
+function applyEventToState(state: State, ctx: CS.Log, event: SE.Event, changes?: RosterChanges) {
 	if (SE.eventRoster(event) && !state.currTeams) {
 		state.currTeams = initUniqueTeams(state, { players: [], squads: [] })
 	}
 	if (state.currTeams) {
-		applyEventTeamMutations(ctx, state.currTeams, event)
+		applyEventTeamMutations(ctx, state.currTeams, event, changes)
 	}
 }
 
@@ -647,7 +642,31 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 	return pass.events
 }
 
-export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event: SE.Event) {
+// The player id and squad uniqueId -> event time of each roster change made since the last poll was requested, with
+// the squad as it stood, so a squad that is gone since can still be recognised in a poll. Pruned once a poll requested
+// after a change has been reconciled.
+export type RosterChanges = {
+	players: Map<SM.PlayerId, number>
+	squads: Map<number, { time: number; squad: SM.UniqueSquad }>
+	// player id -> log time of their disconnect, until a poll stops listing them or DISCONNECTED_LISTING_GRACE_MS
+	// passes. The server keeps listing a player for a moment after their disconnect line, so a poll requested after
+	// the line can still list them.
+	departed: Map<SM.PlayerId, number>
+}
+
+// prod's server has listed a player up to ~5.2s, about one poll interval, after their disconnect line
+export const DISCONNECTED_LISTING_GRACE_MS = 10_000
+
+export function initRosterChanges(): RosterChanges {
+	return { players: new Map(), squads: new Map(), departed: new Map() }
+}
+
+function recordSquadChange(changes: RosterChanges | undefined, squad: SM.UniqueSquad | undefined, time: number) {
+	if (changes && squad) changes.squads.set(squad.uniqueId, { time, squad })
+}
+
+// `changes`, when given, records which players and squads the event changed
+export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event: SE.Event, changes?: RosterChanges) {
 	const log = ctx.log
 	switch (event.type) {
 		case 'NEW_GAME':
@@ -656,6 +675,11 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 			// reseeds it. RESET, and legacy NEW_GAME-with-state, replace the roster wholesale.
 			const roster = SE.eventRoster(event)
 			if (!roster) break
+			if (changes) {
+				changes.players.clear()
+				changes.squads.clear()
+				changes.departed.clear()
+			}
 			teams.players.clear()
 			for (const player of roster.players) teams.players.set(SM.PlayerIds.getPlayerId(player.ids), player)
 			teams.squads.clear()
@@ -670,6 +694,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 			}
 			const squad: SM.UniqueSquad = event.squad
 			teams.squads.set(squad.uniqueId, squad)
+			recordSquadChange(changes, squad, event.time)
 			// a synthesized event carries no creation-time membership info; the join/promote events reconciled from
 			// the same poll establish it instead
 			if (event.synthesized) break
@@ -691,6 +716,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.players.set(event.squad.creator, { ...creator, isLeader: true, squadId: squad.squadId })
+			changes?.players.set(event.squad.creator, event.time)
 			break
 		}
 
@@ -701,6 +727,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.players.set(event.player, { ...player, teamId: event.newTeamId })
+			changes?.players.set(event.player, event.time)
 			break
 		}
 
@@ -716,6 +743,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.players.set(event.player, { ...player, squadId: squad.squadId, isLeader: false })
+			changes?.players.set(event.player, event.time)
 			break
 		}
 
@@ -726,6 +754,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.players.set(event.player, { ...player, squadId: null, isLeader: false })
+			changes?.players.set(event.player, event.time)
 			break
 		}
 
@@ -744,14 +773,19 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				const isNewLeader = id === event.player
 				if (p.isLeader === isNewLeader) continue
 				teams.players.set(id, { ...p, isLeader: isNewLeader })
+				changes?.players.set(id, event.time)
 			}
 			break
 		}
 
 		case 'SQUAD_DISBANDED': {
-			if (!teams.squads.delete(event.uniqueId)) {
+			const squad = teams.squads.get(event.uniqueId)
+			if (!squad) {
 				log.warn('Squad not found for disband: %s', event.uniqueId)
+				break
 			}
+			teams.squads.delete(event.uniqueId)
+			recordSquadChange(changes, squad, event.time)
 			break
 		}
 
@@ -766,6 +800,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				...event.details,
 				ids: { ...player.ids, username: event.newUsername ?? player.ids.username },
 			})
+			changes?.players.set(event.player, event.time)
 			break
 		}
 
@@ -776,6 +811,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.squads.set(event.uniqueId, { ...squad, ...event.details })
+			recordSquadChange(changes, teams.squads.get(event.uniqueId), event.time)
 			break
 		}
 
@@ -786,6 +822,7 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				break
 			}
 			teams.squads.set(event.uniqueId, { ...squad, squadName: event.newSquadName })
+			recordSquadChange(changes, teams.squads.get(event.uniqueId), event.time)
 			break
 		}
 
@@ -797,6 +834,8 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} ${event.type} but was already in the player list`)
 			}
 			teams.players.set(playerId, event.player)
+			changes?.players.set(playerId, event.time)
+			changes?.departed.delete(playerId)
 			break
 		}
 
@@ -804,6 +843,8 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event:
 			if (!teams.players.delete(event.player)) {
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
+			changes?.players.set(event.player, event.time)
+			changes?.departed.set(event.player, event.time)
 			break
 		}
 	}
@@ -883,8 +924,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		state.lastWounds.clear()
 		state.pollAbsenceStreaks.clear()
 		state.unknownSquadStreaks.clear()
-		state.squadCreatedAtAwaitingPoll.clear()
-		state.disconnectedAtAwaitingPoll.clear()
+		state.rosterChangesAwaitingPoll = initRosterChanges()
 		state.unassignedPlayers.clear()
 		if (state.currentMatch !== 'PENDING') {
 			await emit(state, pass, {
@@ -969,8 +1009,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			// if the roll never completes. The absence streaks and unassigned set belong to the outgoing roster, reset them.
 			state.pollAbsenceStreaks.clear()
 			state.unknownSquadStreaks.clear()
-			state.squadCreatedAtAwaitingPoll.clear()
-			state.disconnectedAtAwaitingPoll.clear()
+			state.rosterChangesAwaitingPoll = initRosterChanges()
 			state.unassignedPlayers.clear()
 			state.expectedNewLayer = { layerId: state.nextLayerId }
 			log.debug('Received TransitionMap NEW_GAME. syncState: rolling')
@@ -1300,7 +1339,6 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				break
 			}
 
-			state.disconnectedAtAwaitingPoll.delete(SM.PlayerIds.getPlayerId(player.ids))
 			await emit(state, pass, {
 				type: 'PLAYER_CONNECTED',
 				...base,
@@ -1401,7 +1439,6 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				)
 			}
 
-			state.squadCreatedAtAwaitingPoll.set(squad.uniqueId, pendingEvent.time)
 			await emit(state, pass, {
 				type: 'SQUAD_CREATED',
 				squad: squad,
@@ -1432,7 +1469,6 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				player: SM.PlayerIds.getPlayerId(pendingEvent.playerIds),
 				...base,
 			})
-			state.disconnectedAtAwaitingPoll.set(SM.PlayerIds.getPlayerId(pendingEvent.playerIds), pendingEvent.time)
 			break
 		}
 
@@ -1786,18 +1822,52 @@ function vehicleTeam(layer: L.UnvalidatedLayer, className: string): SM.TeamId | 
 	return inTeam1 ? 1 : 2
 }
 
+// A poll is ordered by when its response arrived, so one requested before a log or rcon event can be reconciled after
+// it, while still listing the roster from before. Such a poll is no evidence about a player or squad that event
+// changed, so each one is replaced by its current version, or dropped if it is gone, and the diff finds nothing to
+// undo. Prunes the changes a poll requested after them has now covered.
+function withChangesSincePoll(changes: RosterChanges, currTeams: SM.LiveTeams, event: TeamsUpdateEvent): SM.Teams {
+	let players: Set<SM.PlayerId> | undefined
+	for (const [playerId, time] of changes.players) {
+		if (time < event.polledAt) changes.players.delete(playerId)
+		else (players ??= new Set()).add(playerId)
+	}
+	if (changes.departed.size > 0) {
+		const listed = new Set(event.teams.players.map((p) => SM.PlayerIds.getPlayerId(p.ids)))
+		for (const [playerId, time] of changes.departed) {
+			if (!listed.has(playerId) || event.polledAt - time > DISCONNECTED_LISTING_GRACE_MS) changes.departed.delete(playerId)
+			else (players ??= new Set()).add(playerId)
+		}
+	}
+	let squads: SM.UniqueSquad[] | undefined
+	for (const [uniqueId, change] of changes.squads) {
+		if (change.time < event.polledAt) changes.squads.delete(uniqueId)
+		else (squads ??= []).push(change.squad)
+	}
+	if (!players && !squads) return event.teams
+
+	let nextPlayers = event.teams.players
+	if (players) {
+		nextPlayers = nextPlayers.filter((p) => !players.has(SM.PlayerIds.getPlayerId(p.ids)))
+		for (const playerId of players) {
+			const player = currTeams.players.get(playerId)
+			if (player) nextPlayers.push(player)
+		}
+	}
+	let nextSquads = event.teams.squads
+	if (squads) {
+		nextSquads = nextSquads.filter((s) => !squads.some((changed) => SM.Squads.idsEqual(changed, s) && changed.creator === s.creator))
+		for (const changed of squads) {
+			const squad = currTeams.squads.get(changed.uniqueId)
+			if (squad) nextSquads.push(squad)
+		}
+	}
+	return { players: nextPlayers, squads: nextSquads }
+}
+
 async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: SE.Event[]): Promise<void> {
 	if (!state.currTeams || state.currentMatch === 'PENDING') return
-	let nextTeams = event.teams
-	let leftSincePoll: Set<SM.PlayerId> | undefined
-	for (const [playerId, disconnectedAt] of state.disconnectedAtAwaitingPoll) {
-		if (disconnectedAt < event.polledAt) state.disconnectedAtAwaitingPoll.delete(playerId)
-		else (leftSincePoll ??= new Set()).add(playerId)
-	}
-	if (leftSincePoll) {
-		const left = leftSincePoll
-		nextTeams = { ...nextTeams, players: nextTeams.players.filter((p) => !left.has(SM.PlayerIds.getPlayerId(p.ids))) }
-	}
+	const nextTeams = withChangesSincePoll(state.rosterChangesAwaitingPoll, state.currTeams, event)
 	const nextSquads: SM.UniqueSquad[] = []
 	const base = { matchId: state.currentMatch.historyEntryId, time: event.time }
 	const log = state.log
@@ -1951,14 +2021,6 @@ async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: 
 	}
 	if (awaitingSquadCreated) return
 
-	const pollPredatesSquad = (uniqueId: number) => {
-		const createdAt = state.squadCreatedAtAwaitingPoll.get(uniqueId)
-		return createdAt !== undefined && createdAt >= event.polledAt
-	}
-	for (const [uniqueId, createdAt] of state.squadCreatedAtAwaitingPoll) {
-		if (createdAt < event.polledAt || !state.currTeams.squads.has(uniqueId)) state.squadCreatedAtAwaitingPoll.delete(uniqueId)
-	}
-
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
 		const currPlayer = state.currTeams.players.get(playerId)
@@ -1967,7 +2029,6 @@ async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: 
 			currPlayer?.squadId && SM.findSquadForPlayer(state.currTeams.squads, { squadId: currPlayer.squadId, teamId: currPlayer.teamId })
 
 		if (currSquad && (!squad || currSquad.uniqueId !== squad.uniqueId)) {
-			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			// currPlayer.squadId = null
 			emittedEvent = true
 			await emitUnapplied(state, out, {
@@ -1983,7 +2044,6 @@ async function reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent, out: 
 	for (const currSquad of state.currTeams.squads.values()) {
 		const nextSquad = nextSquads.find((s) => s.uniqueId === currSquad.uniqueId)
 		if (!nextSquad) {
-			if (pollPredatesSquad(currSquad.uniqueId)) continue
 			disbandedSquads.add(currSquad.uniqueId)
 			emittedEvent = true
 			await emitUnapplied(state, out, {
