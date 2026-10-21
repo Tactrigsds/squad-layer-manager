@@ -32,13 +32,7 @@ function formatPermissionScope(perm: RBAC.Permission) {
 function formatRoleName(role: RBAC.Role) {
 	if (!RBAC.isInferredRoleType(role)) return role.type
 
-	if (role.type === 'filter-role-contributor') {
-		return `${role.type}: (${role.filterId}, ${role.roleId})`
-	}
-	if (role.type === 'filter-user-contributor') {
-		return `${role.type}: (${role.filterId})`
-	}
-	if (role.type === 'filter-owner') {
+	if (role.type === 'filter-owner' || role.type === 'filter-user-contributor' || role.type === 'filter-role-contributor') {
 		return `${role.type}: (${role.filterId})`
 	}
 	if (role.type === 'rotation-owner' || role.type === 'rotation-user-contributor' || role.type === 'rotation-role-contributor') {
@@ -79,16 +73,19 @@ function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 function RoleBadge(props: { role: RBAC.Role; simulate: boolean; enabled: boolean; onToggle: (enabled: boolean) => void }) {
 	if (!props.simulate) {
 		return (
-			<Badge variant="secondary" className="text-xs">
+			<Badge variant="secondary" className="text-xs whitespace-normal wrap-break-word">
 				{formatRoleName(props.role)}
 			</Badge>
 		)
 	}
 	return (
-		<button type="button" onClick={() => props.onToggle(!props.enabled)}>
+		<button type="button" className="min-w-0 text-start" onClick={() => props.onToggle(!props.enabled)}>
 			<Badge
 				variant={props.enabled ? 'secondary' : 'outline'}
-				className={cn('text-xs cursor-pointer hover:opacity-80', !props.enabled && 'line-through text-muted-foreground')}
+				className={cn(
+					'text-xs whitespace-normal wrap-break-word cursor-pointer hover:opacity-80',
+					!props.enabled && 'line-through text-muted-foreground',
+				)}
 			>
 				{formatRoleName(props.role)}
 			</Badge>
@@ -257,9 +254,9 @@ export default function UserPermissionsDialog(props: {
 									<TableRow>
 										{simulate && <TableHead className="w-8" />}
 										<TableHead>{tr.text(RBAC_Msgs.permissionColumn())}</TableHead>
-										<TableHead>{tr.text(RBAC_Msgs.descriptionColumn())}</TableHead>
 										<TableHead>{tr.text(RBAC_Msgs.scopeColumn())}</TableHead>
 										<TableHead>{tr.text(RBAC_Msgs.grantedByColumn())}</TableHead>
+										<TableHead>{tr.text(RBAC_Msgs.descriptionColumn())}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -270,7 +267,7 @@ export default function UserPermissionsDialog(props: {
 										return (
 											<TableRow
 												key={permKey(perm)}
-												className={cn(simulate && !perm.negating && !isPermActive(perm) && 'opacity-50')}
+												className={cn('[&>td]:py-1', simulate && !perm.negating && !isPermActive(perm) && 'opacity-50')}
 											>
 												{simulate && (
 													<TableCell>
@@ -289,9 +286,8 @@ export default function UserPermissionsDialog(props: {
 														<Label htmlFor={checkboxId}>{perm.type}</Label>
 													</div>
 												</TableCell>
-												<TableCell>{getPermissionDescription(perm.type)}</TableCell>
-												<TableCell>{formatPermissionScope(perm)}</TableCell>
-												<TableCell>
+												<TableCell className="whitespace-normal wrap-break-word">{formatPermissionScope(perm)}</TableCell>
+												<TableCell className="whitespace-normal">
 													<div className="flex flex-wrap gap-1">
 														{perm.allowedByRoles.map((role) => (
 															<RoleBadge
@@ -303,6 +299,9 @@ export default function UserPermissionsDialog(props: {
 															/>
 														))}
 													</div>
+												</TableCell>
+												<TableCell className="whitespace-normal">
+													<div className="min-w-40 max-w-80">{getPermissionDescription(perm.type)}</div>
 												</TableCell>
 											</TableRow>
 										)
