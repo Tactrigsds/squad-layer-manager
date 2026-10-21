@@ -1,5 +1,4 @@
 import * as Otel from '@opentelemetry/api'
-import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm'
 import * as Crypto from 'node:crypto'
 
@@ -22,6 +21,8 @@ import * as Users from '@/systems/users.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
+// extending writes to the db, so a session is extended at most once a day
+export const SESSION_REFRESH_WITHIN = SESSION_MAX_AGE - 1000 * 60 * 60 * 24
 
 const module = initModule('sessions')
 let log!: CS.Logger
@@ -166,7 +167,7 @@ async function closeEndedSockets(ctx: C.Db & CS.AbortSignal) {
 export const validateAndUpdate = Instr.spanOp(
 	'validateAndUpdate',
 	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & C.FastifyRequestFull & Partial<C.FastifyReply>, allowRefresh = false) => {
+	async (ctx: C.Db & C.FastifyRequestFull & Partial<C.FastifyReply>) => {
 		async function errorOrBypass<Res>(res: Res) {
 			if (ENV.QUERY_PARAM_AUTH_BYPASS && !!ctx.res) {
 				// nb: don't shadow `res` with ctx.res here: returning the FastifyReply where the error
@@ -229,10 +230,14 @@ export const validateAndUpdate = Instr.spanOp(
 		const denyRes = await Rbac.tryDenyPermissionsForUser({ ...ctx, user: { discordId } }, RBAC.perm('site:authorized'))
 		if (denyRes) return denyRes
 
+		// The cookie has to be reissued along with the row, or the browser drops it at its original expiry. A websocket
+		// upgrade never sends the reply's headers, so only a plain http response can extend the session.
 		let expiresAt = cachedSession.expiresAt
-		if (allowRefresh && cachedSession.expiresAt.getTime() - currentTime.getTime() < Math.floor(SESSION_MAX_AGE / 4)) {
-			expiresAt = new Date(dateFns.getTime(currentTime) + SESSION_MAX_AGE)
+		const res = ctx.req.headers.upgrade === undefined ? ctx.res : undefined
+		if (res && expiresAt.getTime() - currentTime.getTime() < SESSION_REFRESH_WITHIN) {
+			expiresAt = new Date(currentTime.getTime() + SESSION_MAX_AGE)
 			await updateSessionInCacheAndDb(ctx, sessionId, { expiresAt })
+			setSessionCookie({ ...ctx, res }, token)
 		}
 
 		return { code: 'ok' as const, sessionId, expiresAt, user: await Users.buildUser(cachedSession.user) }
@@ -303,7 +308,7 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 			user: builtUser,
 		})
 	})
-	await setSessionCookie(ctx, token)
+	setSessionCookie(ctx, token)
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
@@ -317,11 +322,8 @@ export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId
 	clearInvalidSession(ctx)
 })
 
-export async function setSessionCookie(ctx: C.HttpRequest, token: string, expiresAt?: number) {
-	let expireArg: { maxAge?: number; expiresAt?: number }
-	if (expiresAt !== undefined) expireArg = { expiresAt }
-	else expireArg = { maxAge: SESSION_MAX_AGE }
-	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], token, { ...sessionCookieDefaults(), ...expireArg })
+export function setSessionCookie(ctx: C.FastifyReply, token: string) {
+	ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], token, { ...sessionCookieDefaults(), maxAge: SESSION_MAX_AGE / 1000 })
 }
 
 export function clearInvalidSession(ctx: C.FastifyReply) {
