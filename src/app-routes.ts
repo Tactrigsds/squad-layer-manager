@@ -250,3 +250,10 @@ export function parseContentHashEtag(etag: string | null): string | null {
 	const match = etag?.match(/^(?:W\/)?"([0-9a-f]{64})"$/)
 	return match ? match[1] : null
 }
+
+// Sent with every /layers.bin.gz response, 304s included: the content hash of the layer-data.json the artifact pairs with
+export const LAYER_DATA_HASH_HEADER = 'X-Layer-Data-Hash'
+
+export function parseLayerDataHashHeader(value: string | null): string | null {
+	return value && /^[0-9a-f]{64}$/.test(value) ? value : null
+}

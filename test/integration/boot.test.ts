@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
+import * as AR from '@/app-routes'
 import { eosIdForName, makePlayer } from '@/emulator'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
@@ -298,6 +299,26 @@ describe('GET /layers.bin.gz', () => {
 
 		const res = await get('/layers.bin.gz', { 'if-none-match': etag })
 		expect(res.status).toBe(304)
+	})
+
+	it('names the layer data it pairs with, and refuses a request for other layer data', async () => {
+		const layerData = await get('/layer-data.json')
+		const layerDataHash = AR.parseContentHashEtag(layerData.headers.get('etag'))!
+		await layerData.arrayBuffer()
+
+		const table = await get(`/layers.bin.gz?layerData=${layerDataHash}`)
+		expect(table.status).toBe(200)
+		expect(table.headers.get(AR.LAYER_DATA_HASH_HEADER)).toBe(layerDataHash)
+		const etag = table.headers.get('etag')!
+		await table.arrayBuffer()
+
+		const revalidated = await get(`/layers.bin.gz?layerData=${layerDataHash}`, { 'if-none-match': etag })
+		expect(revalidated.status).toBe(304)
+		expect(revalidated.headers.get(AR.LAYER_DATA_HASH_HEADER)).toBe(layerDataHash)
+
+		const refused = await get(`/layers.bin.gz?layerData=${'0'.repeat(64)}`, { 'if-none-match': etag })
+		expect(refused.status).toBe(409)
+		expect(refused.headers.get(AR.LAYER_DATA_HASH_HEADER)).toBe(layerDataHash)
 	})
 })
 
