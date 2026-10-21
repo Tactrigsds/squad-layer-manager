@@ -18,6 +18,27 @@ layers each filter matches or removes.</p>
 <p><strong>Changed:</strong> Dragging a queue item or a layer request is easier to aim. Drop it anywhere between the middles of two items to move it there, or on the area at the end of another item to make a vote from the two queue items, or to combine the two requests.</p>
 <p>Dropping on a layer&#x27;s name no longer creates a vote, and dropping on a request&#x27;s description no longer combines requests. The <em>Create Vote</em> and <em>Combine</em> areas appear while an item is dragged. To move an item to the top of its list, release it anywhere between the list&#x27;s header and the middle of the first item. A dragged queue item is shown faded rather than as an empty box.</p>
 </li>
+<li>
+<p><strong>Changed:</strong> SuperMod layers match SuperMod&#x27;s current release. The Belaya, Chornivsk, Hrodna Border and Rassvet maps are added, and the Johat, Khokhan, Mogadishu and OP First Light layers that SuperMod no longer ships are removed.</p>
+<p>Each SuperMod layer takes its map and gamemode from SuperMod&#x27;s own data, which is what the game loads. A GoingDark or
+Large variant shares its map with the layer it is built on: <em>SU_GoingDark_Tallil_RAAS_v1</em> is on Tallil, and
+<em>SU_Chora_LargeInvasion_v1</em> on Chora. <em>SU_Tallil_SeedVehicle_v1</em> is a Seed layer, <em>SU_GoingDark_Narva_RAAS_v1</em> a RAAS
+PreCap layer, and <em>SU_GoingDark_Narva_RVAAS_v1</em> a RAAS layer.</p>
+<p>GoingDark layers, SuperMod&#x27;s night layers, carry a GD version, such as V1GD for <em>SU_GoingDark_Narva_RAAS_v1</em>, the way a
+world-partitioned layer carries WP. A filter on the version can include or exclude them.</p>
+<p>Some vehicles that only SuperMod ships are renamed to the names SuperMod now gives them, such as <em>Mi8 CAS</em> for <em>Mi-8
+CAS</em>. A filter on a vehicle&#x27;s old name no longer matches it, so check vehicle filters for SuperMod vehicles.</p>
+<p>Vehicles that vanilla Squad also ships take their class from vanilla Squad. The BRDM-2 is a light vehicle and the
+Technical BMP-1 a tank destroyer again, and the CH-146 CAS is an attack helicopter.</p>
+</li>
+<li>
+<p><strong>Removed:</strong> Resurgence and Galactic Contention layers are no longer in the layer catalog, because neither mod has been updated for Squad v10.6. They return once each mod is updated.</p>
+<p>A queue item on one of their layers stays in the queue, marked as an unknown layer. A server whose <em>Installed Mods</em>
+names either mod lists it as not in the catalog.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The vehicle tables in layer details show each vehicle&#x27;s ticket value. Since 2026.10.2 the column showed a dash for every vehicle.</p>
+</li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
