@@ -117,16 +117,20 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 type PresenceEntry = { clientId: string; user: USR.User; presence: UP.ClientPresence; activityText: string | null }
 type PresenceGroup = { activityText: string | null; entries: PresenceEntry[] }
 
-// small "reset this session" control shown in the tooltip of one of the current user's OTHER clients
-function ResetSessionButton({ clientId }: { clientId: string }) {
+// small "stop editing in this session" control shown in the tooltip of one of the current user's OTHER clients
+function StopSessionEditingButton({ clientId }: { clientId: string }) {
+	const discardsEdits = Zus.useStore(UPClient.Store, UPClient.Sel.stoppingClientDiscardsDrafts(clientId))
 	return (
-		<button
-			type="button"
-			onClick={() => UPClient.Actions.resetClient(clientId)}
-			className="mt-1.5 w-full rounded border border-border px-2 py-0.5 text-xs font-medium hover:bg-accent"
-		>
-			{tr.text(UP_Msgs.resetSession())}
-		</button>
+		<>
+			<button
+				type="button"
+				onClick={() => UPClient.Actions.resetClient(clientId)}
+				className="mt-1.5 w-full rounded border border-border px-2 py-0.5 text-xs font-medium hover:bg-accent"
+			>
+				{tr.text(UP_Msgs.stopSessionEditing())}
+			</button>
+			{discardsEdits && <div className="mt-1 max-w-48 text-xs opacity-70">{tr.text(UP_Msgs.stoppingDiscardsEdits())}</div>}
+		</>
 	)
 }
 
@@ -149,7 +153,7 @@ const PresenceAvatar = React.forwardRef<
 >(function PresenceAvatar({ user, presence, size, badge, badgeCurrent, avatarClassName, fallbackClassName, ...rest }, ref) {
 	const interrupted = presence.connectionState === 'connection-interrupted'
 	return (
-		<span ref={ref} className={cn('relative isolate inline-flex shrink-0', size)} {...rest}>
+		<span ref={ref} role="img" aria-label={user.displayName} className={cn('relative isolate inline-flex shrink-0', size)} {...rest}>
 			{interrupted && (
 				<Loader2 className="pointer-events-none absolute -inset-[3px] h-[calc(100%+6px)] w-[calc(100%+6px)] animate-spin text-primary" />
 			)}
@@ -300,9 +304,10 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 				if (!item.presence.lastSeen) return false
 				return item.presence.lastSeen + UP.DISPLAYED_AWAY_PRESENCE_WINDOW > clock
 			})
+		const displayed = UP.displayedClients(clientList, myClientId)
 
-		return props.sourcePresenceFn ? clientList.sort(props.sourcePresenceFn) : clientList
-	}, [matchingClientPresence, userMap, clock, props.sourcePresenceFn])
+		return props.sourcePresenceFn ? displayed.sort(props.sourcePresenceFn) : displayed
+	}, [matchingClientPresence, userMap, clock, props.sourcePresenceFn, myClientId])
 
 	// publish the clients this panel is showing to the shared registry, and read back the count of each
 	// user's clients across ALL panels -- a user with more than one visible (even split across panels)
@@ -437,7 +442,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 														<LastSeen time={presence.lastSeen} />
 													</span>
 												)}
-												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
+												{isMyOtherClient(entry) && <StopSessionEditingButton clientId={clientId} />}
 											</div>
 										</div>
 									)
@@ -496,7 +501,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 																		<LastSeen time={presence.lastSeen} />
 																	</div>
 																)}
-																{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
+																{isMyOtherClient(entry) && <StopSessionEditingButton clientId={clientId} />}
 															</div>
 														</TooltipContent>
 													</Tooltip>
@@ -552,7 +557,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 													<LastSeen time={presence.lastSeen} />
 												</div>
 											)}
-											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
+											{isMyOtherClient(entry) && <StopSessionEditingButton clientId={clientId} />}
 										</div>
 									</TooltipContent>
 								</Tooltip>

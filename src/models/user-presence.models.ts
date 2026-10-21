@@ -926,6 +926,57 @@ export function resolveUserPresence(state: PresenceState) {
 	return presenceByUser
 }
 
+export function holdsEditingSession(activity: RootActivity | null | undefined): boolean {
+	return !!editingQueue(activity) || editingTeamswaps(activity) || editingLayerRequests(activity) || editingFilter(activity)
+}
+
+// The shared drafts an editing session keeps alive. Mirrors the server's abandonment accounting
+// (countEditingClients and friends in user-presence.server.ts): a draft no client holds any more is discarded.
+function heldDrafts(activity: RootActivity | null | undefined): string[] {
+	const drafts: string[] = []
+	const dash = dashRoot(activity)
+	if (dash?.editingQueue) drafts.push(`queue:${dash.serverId}`)
+	if (dash?.editingLayerRequests) drafts.push(`layer-requests:${dash.serverId}`)
+	const rotation = rotationRoot(activity)
+	if (rotation?.editingQueue) drafts.push(`rotation:${rotation.rotationId}`)
+	const filter = filterRoot(activity)
+	if (filter?.editingFilter) drafts.push(`filter:${filter.filterId}`)
+	return drafts
+}
+
+// whether ending the editing sessions of `clientIds` leaves one of their drafts with no editor, discarding it
+export function endingSessionsDiscardsDrafts(state: PresenceState, clientIds: ReadonlySet<string>): boolean {
+	const heldByOthers = new Set<string>()
+	for (const [clientId, client] of state) {
+		if (clientIds.has(clientId)) continue
+		for (const draft of heldDrafts(client.activityState)) heldByOthers.add(draft)
+	}
+	for (const clientId of clientIds) {
+		for (const draft of heldDrafts(state.get(clientId)?.activityState)) {
+			if (!heldByOthers.has(draft)) return true
+		}
+	}
+	return false
+}
+
+// Each user's most recently seen client, plus every other client of theirs holding an editing session, in the
+// order given. `preferredClientId` takes its user's slot whatever its lastSeen.
+export function displayedClients<T extends { clientId: string; presence: ClientPresence }>(
+	entries: readonly T[],
+	preferredClientId: string | undefined,
+): T[] {
+	const latestByUser = new Map<USR.UserId, T>()
+	for (const entry of entries) {
+		const userId = entry.presence.userId
+		const latest = latestByUser.get(userId)
+		if (latest?.clientId === preferredClientId) continue
+		if (!latest || entry.clientId === preferredClientId || (entry.presence.lastSeen ?? 0) > (latest.presence.lastSeen ?? 0)) {
+			latestByUser.set(userId, entry)
+		}
+	}
+	return entries.filter((entry) => latestByUser.get(entry.presence.userId) === entry || holdsEditingSession(entry.presence.activityState))
+}
+
 // -------- transient presence events --------
 // emitted by the SLL/teamswap onSideEffect handlers when an op lands on the synced timeline; the presence
 // panel displays UP_Msgs.presenceEventText briefly next to the user's avatar

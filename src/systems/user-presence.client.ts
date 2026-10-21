@@ -12,6 +12,7 @@ import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as ReactRx from '@/lib/react-rxjs'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
@@ -468,17 +469,33 @@ export namespace Sel {
 	export const matchingClientPresence = (matchActivity: UP.Resolver | undefined) => (state: Store) =>
 		MapUtils.filter(state.presence, (_clientId, presence) => (matchActivity ? matchActivity(presence.activityState) : true))
 
-	// count of the user's OTHER clients (excluding `exceptClientId`) that are actively present --
-	// connected and not away. drives the "reset my other sessions" toast, shown while this is > 0.
-	export const activeOtherClientCount = (userId: USR.UserId | undefined, exceptClientId: string | undefined) => (state: Store) => {
+	// the user's clients other than `exceptClientId` that hold an editing session, away or not, since an away
+	// client's session still holds item locks and keeps shared drafts alive. Drives the "reset my other sessions" toast.
+	export const editingOtherClientCount = (userId: USR.UserId | undefined, exceptClientId: string | undefined) => (state: Store) => {
 		if (!userId) return 0
 		let count = 0
 		for (const [clientId, presence] of state.presence) {
 			if (presence.userId !== userId || clientId === exceptClientId) continue
-			if (presence.connectionState === 'connected' && !presence.away) count++
+			if (UP.holdsEditingSession(presence.activityState)) count++
 		}
 		return count
 	}
+
+	// whether stopping the user's other clients' editing discards a draft that no one else is editing
+	export const stoppingOtherClientsDiscardsDrafts =
+		(userId: USR.UserId | undefined, exceptClientId: string | undefined) => (state: Store) => {
+			if (!userId) return false
+			const clientIds = new Set<string>()
+			for (const [clientId, presence] of state.presence) {
+				if (presence.userId === userId && clientId !== exceptClientId) clientIds.add(clientId)
+			}
+			return UP.endingSessionsDiscardsDrafts(state.presence, clientIds)
+		}
+
+	export const stoppingClientDiscardsDrafts = RSel.memoizeFactoryLru(
+		(clientId: string) => (state: Store) => UP.endingSessionsDiscardsDrafts(state.presence, new Set([clientId])),
+		32,
+	)
 
 	// clients (not users) holding an editing session on one of the server's shared drafts. The server discards
 	// the draft once this reaches zero, so the last one out is who has to be warned before they leave.

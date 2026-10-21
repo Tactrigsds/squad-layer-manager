@@ -34,7 +34,9 @@ export const presenceEventText: Record<UP.PresenceEventAction, TString> = {
 
 // -------- the presence panel --------
 
-export const resetSession = def('Reset this session')
+export const stopSessionEditing = def('Stop editing in this session')
+
+export const stoppingDiscardsEdits = def('Unsaved edits are discarded, since no one else is editing.')
 
 export const lastSeen = def('Last seen {when}', (when: string) => ({ when }))
 
