@@ -47,8 +47,9 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 
 // the package paths extraction reads out of a mod; --plan reports the containers that hold them, and a partial
 // fetch that has only those containers still extracts completely
-// GLD is Galactic Contention's spelling of Gameplay_Layer_Data
-var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/", "/Gameplay/Rulesets/" };
+// GLD is Galactic Contention's spelling of Gameplay_Layer_Data. SuperMod prefixes its folder (0_Gameplay_Layer_Data),
+// so that marker has no leading slash, and spells FactionSetups as FactionsSetups.
+var neededPathMarkers = new[] { "Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/FactionsSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/", "/Gameplay/Rulesets/" };
 
 // the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.models.ts
 var asymmetricGamemodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Invasion", "Insurgency", "Destruction" };
@@ -340,6 +341,15 @@ LoadEnumDisplayNames("ESQVehicle");
 LoadEnumDisplayNames("ESQVehicleTag");
 LoadEnumDisplayNames("ESQVehicleSpawnerSize");
 
+// An asset omits an enum property that holds its default, the enumerator with value 0. That enumerator is not
+// always NewEnumerator0: ESQVehicle's value 0 is NewEnumerator7 (AH).
+string EnumDefault(string enumName)
+{
+	var file = searchKeys.FirstOrDefault(k => k.EndsWith($"/{enumName}.uasset", StringComparison.OrdinalIgnoreCase));
+	var names = file != null ? LoadExports(file)?.FirstOrDefault(e => e["Type"]?.ToString() == "UserDefinedEnum")?["Names"] as JObject : null;
+	return names?.Properties().FirstOrDefault(p => p.Value.ToObject<long>() == 0)?.Name ?? "";
+}
+
 // SquadLayerList spells vehicle enum values in SCREAMING_SNAKE ("QuadBike" -> "QUAD_BIKE", "Low Caliber" -> "LOW_CALIBER")
 string SllEnumName(JToken? value)
 {
@@ -367,6 +377,14 @@ string AllianceOf(string factionId)
 {
 	if (factionAlliances.TryGetValue(factionId, out var cached)) return cached;
 	var file = searchKeys.FirstOrDefault(k => k.EndsWith($"/Faction_{factionId}.uasset", StringComparison.OrdinalIgnoreCase));
+	// SuperMod prefixes its faction ids (SU_BAF) but not its Faction_ assets (Faction_BAF), and keeps both its own
+	// asset and the base game's, so the mod's is preferred
+	var unprefixed = factionId.Contains('_') ? factionId[(factionId.IndexOf('_') + 1)..] : null;
+	if (file == null && unprefixed != null)
+	{
+		var candidates = searchKeys.Where(k => k.EndsWith($"/Faction_{unprefixed}.uasset", StringComparison.OrdinalIgnoreCase)).ToList();
+		file = candidates.FirstOrDefault(IsModPath) ?? candidates.FirstOrDefault();
+	}
 	var alliance = "INDEPENDENT";
 	if (file != null)
 	{
@@ -385,7 +403,7 @@ string AllianceOf(string factionId)
 
 var layerFiles = searchKeys
 	.Where(k =>
-		(k.Contains("/Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) || k.Contains("/GLD/", StringComparison.OrdinalIgnoreCase))
+		(k.Contains("Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) || k.Contains("/GLD/", StringComparison.OrdinalIgnoreCase))
 		&& k.EndsWith(".uasset"))
 	// the base game ships maps under three roots: SquadGame/Content, Plugins/Expansions/<Map> and a bare
 	// Plugins/<Map> (Al Basrah). Only Plugins/Mods is a mod, so vanilla is everything else (searchKeys has
@@ -399,6 +417,8 @@ Console.Error.WriteLine($"found {layerFiles.Count} layer packages");
 // every faction setup referenced by any layer ends up in Units
 var referencedSetups = new Dictionary<string, string>(); // package path -> row name (filled while walking layers)
 var maps = new JArray();
+// index into maps -> package name, for a mod's layers
+var modPackageNames = new Dictionary<int, string>();
 
 foreach (var layerFile in layerFiles)
 {
@@ -406,14 +426,16 @@ foreach (var layerFile in layerFiles)
 	var layer = exports?.FirstOrDefault(e => e["Properties"]?["TeamConfigs"] != null);
 	if (layer == null) continue;
 	var props = (JObject)layer["Properties"]!;
-	// the base game's layers are named by their DataTable row, which matches the package everywhere except Jensens
-	// Range, whose packages carry a Training_ infix the layer name does not. Mods are named by their package
-	// instead: their row names are copied along with the asset and left stale (Resurgence files
-	// RS_Yehorivka_Invasion_v2 under the row RS_Yehorivka_Domination_v1, and both rows exist).
-	var rowName = vanilla ? props["Data"]?["RowName"]?.ToString() : null;
-	var levelName = !string.IsNullOrEmpty(rowName)
-		? rowName
-		: BaseName(PackageOfObjectPath(layer["Package"]?.ToString()) ?? layerFile.Replace(".uasset", ""));
+	// Layers are named by their DataTable row, which is the name the game knows them by. The package name differs
+	// from it in Jensens Range, whose packages carry a Training_ infix, and in SuperMod, whose packages carry a size
+	// and region suffix (SU_Anvil_RAAS_v1_L_Heli_Afghan under the row SU_Anvil_RAAS_v1). A mod's row name can also
+	// be copied along with the asset and left stale (Resurgence files RS_Yehorivka_Invasion_v2 under the row
+	// RS_Yehorivka_Domination_v1, and both rows exist), so a mod's layers whose row is shared fall back to their
+	// package name once every layer has been read.
+	var rowName = props["Data"]?["RowName"]?.ToString();
+	var packageName = BaseName(PackageOfObjectPath(layer["Package"]?.ToString()) ?? layerFile.Replace(".uasset", ""));
+	var levelName = !string.IsNullOrEmpty(rowName) ? rowName : packageName;
+	if (!vanilla) modPackageNames[maps.Count] = packageName;
 
 	string SetupRowName(string setupPackage)
 	{
@@ -511,6 +533,18 @@ foreach (var layerFile in layerFiles)
 	});
 }
 
+var sharedRowNames = modPackageNames.Keys
+	.GroupBy(i => maps[i]["rawName"]!.ToString())
+	.Where(g => g.Count() > 1)
+	.SelectMany(g => g);
+foreach (var i in sharedRowNames)
+{
+	var packageName = modPackageNames[i];
+	maps[i]["Name"] = packageName.Replace('_', ' ');
+	maps[i]["rawName"] = packageName;
+	maps[i]["levelName"] = packageName;
+}
+
 // ---------------------------------------------------------------- units
 
 double RestrictionValue(JToken? reference, params string[] fields)
@@ -605,6 +639,8 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 		var availability = exports!.FirstOrDefault(e => e["Name"]?.ToString() == exportName)?["Properties"];
 		if (availability == null) continue;
 		var settingName = QuotedName(availability["Setting"]?["ObjectName"]) ?? "";
+		// an entry with no setting is an empty slot (SuperMod's VDV2_LD_Armored-Boats has one): no vehicle spawns
+		if (settingName == "") continue;
 
 		// the vehicle's identity lives in its Setting asset (Settings/Vehicle/<faction>/<name>.uasset): the class
 		// enums, the per-biome blueprint versions, and a DataTable row with the display name and icon
@@ -623,7 +659,8 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 			var row = LoadExports(vehicleTablePackage)?.FirstOrDefault(e => e["Type"]?.ToString() == "DataTable")?["Rows"]?[vehicleRowName];
 			if (row != null)
 			{
-				var text = TextToString(FindRowField(row, "DisplayName"));
+				// SuperMod pads some display names with spaces ("MRAP M2 ") and leaves others blank
+				var text = TextToString(FindRowField(row, "DisplayName")).Trim();
 				if (text != "") vehicleName = text;
 				// the SLL convention is the texture's object name, the part after the dot ("pkg/map_x.T_map_x" -> "T_map_x")
 				var iconPath = FindRowField(row, "Icon")?["AssetPathName"]?.ToString();
@@ -651,10 +688,10 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 			["count"] = RestrictionValue(availability["LimitedCount"], "BaseAvailability"),
 			["delay"] = RestrictionValue(availability["Delay"], "InitialDelay"),
 			["respawnTime"] = RestrictionValue(availability["Delay"], "Delay"),
-			["vehType"] = setting?["VehicleType"] != null
-				? SllEnumName(setting["VehicleType"])
+			["vehType"] = setting != null
+				? SllEnumName(setting["VehicleType"] ?? EnumDefault("ESQVehicle"))
 				: settingName.Contains('-') ? settingName.Split('-')[^1] : "",
-			["spawnerSize"] = setting?["SpawnerSize"] != null ? SllEnumName(setting["SpawnerSize"]) : "",
+			["spawnerSize"] = setting != null ? SllEnumName(setting["SpawnerSize"] ?? EnumDefault("ESQVehicleSpawnerSize")) : "",
 			["icon"] = vehicleIcon,
 			["classNames"] = new JArray(classNames),
 			["tags"] = new JArray(((setting?["VehicleTags"] as JArray) ?? new JArray()).Select(SllEnumName)),
