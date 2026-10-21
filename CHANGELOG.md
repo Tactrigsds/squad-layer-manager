@@ -252,7 +252,7 @@ CONTRIBUTING.md).
 
 ### For operators
 
-- **Breaking:** Plugins must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.
+- **Breaking:** A plugin that is not built into SLM, tt-slm-plugins included, must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.
 
    SLM now stores a layer id as the layer's name and its two teams in the game's own words, such as
    `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. SLM rewrites the layer ids it stored before into this form: saved
@@ -260,22 +260,23 @@ CONTRIBUTING.md).
    a few minutes later.
    Links to a layer written with an old id still open that layer.
 
-   An older SLM cannot read the rewritten ids. Back up the database before upgrading, so a rollback can restore it.
+   An older SLM cannot read the rewritten ids. To roll back, restore the backup SLM takes before it migrates, as
+   [Backups and restoring](https://tactrigsds.github.io/squad-layer-manager/2026.10.2/backups/) describes.
 
-- **Breaking:** The plugin API is version 0.13. A packed plugin that declares `^0.12` does not load until it is rebuilt against 0.13.
+- **Breaking:** A packed plugin of your own that declares `^0.12` does not load until it is rebuilt against plugin API 0.13.
 
    The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.13` in its manifest and repack it with `pnpm plugin:pack`. Changes since 0.12:
 
    - Filters gain `missExemption`, a filter node or null. Layers that match the node do not show the filter's miss indicator, and null exempts no layer. `Filters.create` exempts seeding and training layers when `missExemption` is left out.
 
-- **Breaking:** The plugin API is version 0.19. A plugin built for an earlier version does not load until its `apiVersion` is raised to `^0.19` and it is repacked with `pnpm plugin:pack`.
+- **Breaking:** A plugin of your own built for an earlier plugin API does not load until its `apiVersion` is raised to `^0.19` and it is repacked with `pnpm plugin:pack`.
 
    The built-in plugins are already updated. Changes since 0.18:
 
    - The layer naming functions moved from `slm/lib/display-helpers` to `slm/models/display-helpers`. Change a plugin's
      imports to the new specifier. The functions are unchanged.
 
-- **Breaking:** The plugin API is version 0.16. A packed plugin that declares `^0.13` does not load until it is rebuilt against 0.16.
+- **Breaking:** A packed plugin of your own that declares `^0.13` does not load until it is rebuilt against plugin API 0.16.
 
    The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.16` in its manifest and
    repack it with `pnpm plugin:pack`. Changes since 0.13:
@@ -286,14 +287,11 @@ CONTRIBUTING.md).
      layer tags must handle one it does not find.
    - A new item passed to `add` may carry notes, but only notes with no `author` and a `fromRotation`.
 
-- **Breaking:** Repeat rules moved from each server's settings into repeat rulesets in the global settings.
+- **Breaking:** A script, settings YAML or plugin that reads or writes `queue.mainPool.repeatRules` must use the server's repeat ruleset instead. Repeat rules moved from each server's settings into repeat rulesets in the global settings.
 
-   The upgrade migrates them automatically. Each server's `queue.mainPool.repeatRules` becomes a repeat ruleset under the
-   global `repeatRulesets` setting, named after the server, and the server's settings point at it with
+   The upgrade migrates the repeat rules automatically. Each server's `queue.mainPool.repeatRules` becomes a repeat
+   ruleset under the global `repeatRulesets` setting, named after the server, and the server's settings point at it with
    `queue.mainPool.repeatRulesetId`. Tutorial servers share one `slm-tutorial` repeat ruleset.
-
-   Anything that writes `queue.mainPool.repeatRules` must write the server's repeat ruleset instead. That covers scripts that
-   edit settings, settings YAML kept outside SLM, and plugins that read the rules from a server's settings.
 
 - **Added:** Plugins can read, create, replace and delete repeat rulesets through `slm/systems/repeat-ruleset`, and choose which repeat ruleset their server applies. A plugin cannot delete a repeat ruleset that a server or rotation still uses. The audit log records every repeat ruleset change a plugin makes against the plugin.
 - **Added:** Plugins can search, read, create, clone, update and delete rotations through `slm/systems/rotation`, and add a rotation to their server's queue the way _Add Rotation_ does. A search returns one page of rotations at a time, without their layers. A plugin's settings can include a rotation tag picker, and a plugin can create layer and rotation tags. When a plugin adds a rotation to the queue, it can clear chosen queue items in the same edit.
@@ -557,14 +555,14 @@ CONTRIBUTING.md).
 
 ### For operators
 
-- **Breaking:** Two changes can need a step when upgrading:
+- **Breaking:** A server agent that uses the default token, or a local admin list file outside the `data` directory, stops working until the change below is made:
 
    - **A server agent** is refused while its server still has the default token, `dev`. Set a token of your own in the
      server's connection settings, and give the agent the same one.
    - **A local admin list file** must be inside the `data` directory. Move the file there, or set `LOCAL_ADMIN_LISTS_DIR`
      to the directory it is kept in.
 
-- **Breaking:** The plugin API is version 0.12. A packed plugin that declares `^0.8`, `^0.9`, `^0.10` or `^0.11` does not load until it is rebuilt against 0.12.
+- **Breaking:** A packed plugin of your own that declares `^0.8`, `^0.9`, `^0.10` or `^0.11` does not load until it is rebuilt against plugin API 0.12.
 
    The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.12` in its manifest and repack it with `pnpm plugin:pack`. Other changes since 0.10:
 
@@ -577,13 +575,13 @@ CONTRIBUTING.md).
    - `slm/systems/player-activity` reads SLM's rule for when a player counts as idle.
    - `register` in `slm/systems/post-roll-reminders` takes the per-server ctx and must be called from `Servers.setup`. The provider takes no arguments. A provider registered for one server is asked only after rolls on that server.
 
-- **Breaking:** A plugin that creates filters, or reads a filter's owner, needs a code change for plugin API 0.12. A filter's `owner` is now `{ type: 'slm-user', userId }`, `{ type: 'plugin', pluginId }` or `{ type: 'system' }` instead of a discord user id.
+- **Breaking:** A plugin of your own that creates filters, or reads a filter's owner, needs a code change for plugin API 0.12. A filter's `owner` is now `{ type: 'slm-user', userId }`, `{ type: 'plugin', pluginId }` or `{ type: 'system' }` instead of a discord user id.
 
    `create` in `slm/systems/filter-entity` makes the calling plugin the filter's owner. To keep an admin as the owner, pass `owner: { type: 'slm-user', userId }`.
 
    The upgrade hands SLM's starting filters, and any filter whose owner was removed from SLM, to SLM itself. Filters an admin owns stay theirs.
 
-- **Breaking:** The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page. The encryption key can be rotated, must be at least 16 characters in production, and credentials can be mounted one file each.
+- **Breaking:** A `SETTINGS_ENCRYPTION_KEY` shorter than 16 characters stops production from starting until it is replaced, as _Encryption key length_ below describes. The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page on their own. The encryption key can be rotated, and credentials can be mounted one file each.
 
    **Integrations on the settings page.** `BM_PAT`, `BM_ORG_ID`, `BM_ENABLED`, `SQUADBROWSER_API_KEY`, `SQUADBROWSER_ENABLED`, `STEAM_API_KEY` and `STEAM_ENABLED` are now the _Integrations_ section of the global settings. The first boot after upgrading carries the values over from the environment into the settings, after which the variables are ignored and the boot log says so each time one is still set. Remove them from `.env` and `.env.secrets` once that boot has happened. A token is stored encrypted and never shown again: the field shows a placeholder, and typing in it replaces the token. Editing the section takes a `global-settings:write` grant on `integrations`, which the default managers role does not hold. `BM_HOST`, `SQUADBROWSER_HOST` and `STEAM_HOST` stay in the environment.
 

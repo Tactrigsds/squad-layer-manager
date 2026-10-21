@@ -3,7 +3,8 @@ audience: operators
 kind: breaking
 ---
 
-Plugins must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.
+A plugin that is not built into SLM, tt-slm-plugins included, must be updated for plugin API 0.20, which changes what a
+layer id is. Update tt-slm-plugins along with SLM.
 
 SLM now stores a layer id as the layer's name and its two teams in the game's own words, such as
 `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. SLM rewrites the layer ids it stored before into this form: saved
@@ -11,4 +12,5 @@ queues, layer requests, rotations and filters as it starts, and match history an
 a few minutes later.
 Links to a layer written with an old id still open that layer.
 
-An older SLM cannot read the rewritten ids. Back up the database before upgrading, so a rollback can restore it.
+An older SLM cannot read the rewritten ids. To roll back, restore the backup SLM takes before it migrates, as
+[Backups and restoring](https://tactrigsds.github.io/squad-layer-manager/2026.10.2/backups/) describes.
