@@ -864,6 +864,32 @@ describe('PendingEvents', () => {
 			expect(state.currTeams?.players).toHaveLength(0)
 		})
 
+		it('a poll requested before the disconnect does not reconnect the player', async () => {
+			const leaver = makePlayer('eos-001', 1, { squadId: 1 })
+			const squad = makeSquad(1, 1, 'eos-002', 100)
+			const stayer = makePlayer('eos-002', 1, { squadId: 1, isLeader: true })
+			const state = makeSyncedState([leaver, stayer], [squad])
+			pinSquadUniqueId(state, 100)
+
+			PendingEvents.onLogEvent(state, {
+				type: 'PLAYER_DISCONNECTED',
+				time: 200,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-001', playerController: 'ctrl_eos-001' },
+				ip: '1.2.3.4',
+			})
+			PendingEvents.onTeamsPolled(state, makeTeams([leaver, stayer], [squad]), 201, 199)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(202))
+			expect((await collect(state)).map((e) => e.type)).toEqual(['PLAYER_LEFT_SQUAD', 'PLAYER_DISCONNECTED'])
+			expect([...state.currTeams!.players.keys()]).toEqual(['eos-002'])
+
+			// a poll requested after the disconnect is believed, so a player it still lists is back
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 300)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			expect((await collect(state)).map((e) => e.type)).toEqual(expect.arrayContaining(['PLAYER_CONNECTED']))
+		})
+
 		it('yields PLAYER_LEFT_SQUAD before PLAYER_DISCONNECTED when player is in a squad', async () => {
 			const p1 = makePlayer('eos-001', 1, { squadId: 1 })
 			const squad = makeSquad(1, 1, 'eos-001', 100)
@@ -1995,6 +2021,31 @@ describe('PendingEvents', () => {
 				source: { type: 'rcon' },
 			})
 			// the marker was consumed
+			expect(state.forcedTeamChanges.size).toBe(0)
+		})
+
+		it('forced team change: a poll requested before the force leaves the attribution for the next poll', async () => {
+			const state = makeSyncedState([makePlayer('eos-1', 1)], [])
+
+			PendingEvents.onLogEvent(state, {
+				type: 'ADMIN_FORCED_TEAM_CHANGE',
+				time: 2000,
+				chainID: 0,
+				raw: '',
+				playerIds: { eos: 'eos-1', username: 'eos-1' },
+				source: { type: 'rcon' },
+			})
+			// requested before the force and received after it, so it still lists the old team
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 1)], []), 2100, 1900)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(2100))
+			expect((await collect(state)).find((e) => e.type === 'PLAYER_CHANGED_TEAM')).toBeUndefined()
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 2)], []), 3000)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
+			expect((await collect(state)).find((e) => e.type === 'PLAYER_CHANGED_TEAM')).toMatchObject({
+				player: 'eos-1',
+				source: { type: 'rcon' },
+			})
 			expect(state.forcedTeamChanges.size).toBe(0)
 		})
 
