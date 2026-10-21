@@ -8,10 +8,8 @@ import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as DH from '@/models/display-helpers.models'
-import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as L from '@/models/layer.models'
-import * as DndKit from '@/systems/dndkit.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
@@ -32,7 +30,7 @@ export default function LayerDisplay({
 	notes?: React.ReactNode
 	backfillLayerId?: L.LayerId
 	allowShowInfo?: boolean
-	droppable?: boolean
+	indicatorsClassName?: string
 	// data-tour for the layer name and for the indicator cluster, so the tour can point at either on the one row
 	// it is narrating
 	layerNameTourId?: string
@@ -69,13 +67,6 @@ export default function LayerDisplay({
 		)
 	}
 
-	const dropItemCursors: LL.ItemRelativeCursor[] = []
-	if (props.droppable && ['single-list-item', 'vote-list-item'].includes(props.item.type)) {
-		dropItemCursors.push({ type: 'item-relative', itemId: props.item.itemId as string, position: 'on' })
-	}
-
-	const { ref: dropRef, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(dropItemCursors))
-
 	if (props.badges) badges.push(...props.badges)
 
 	const layer = L.toLayer(props.item.layerId)
@@ -111,8 +102,7 @@ export default function LayerDisplay({
 				<>
 					<ShortLayerName
 						tourId={props.layerNameTourId}
-						ref={(props.droppable && dropRef) || undefined}
-						className={cn('min-w-0 [&>*]:whitespace-nowrap', isDropTarget && 'bg-secondary')}
+						className="min-w-0 [&>*]:whitespace-nowrap"
 						layerId={props.item.layerId}
 						teamParity={teamParity}
 						backfillLayerId={props.backfillLayerId}
@@ -123,21 +113,17 @@ export default function LayerDisplay({
 						<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 							{props.tags}
 							{props.addNote}
-							{badges.length > 0 && <span className="flex items-center gap-1">{badges}</span>}
+							{badges.length > 0 && <span className={cn('flex items-center gap-1', props.indicatorsClassName)}>{badges}</span>}
 							{props.trailing}
 						</div>
 					)}
 				</>
 			) : (
 				<div className="flex space-x-2 items-center">
-					<span
-						data-over={(props.droppable && isDropTarget) || undefined}
-						className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0"
-					>
+					<span className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
 						<ShortLayerName
 							tourId={props.layerNameTourId}
-							ref={(props.droppable && dropRef) || undefined}
-							className={cn('flex-nowrap shrink-0 whitespace-nowrap', isDropTarget && 'bg-secondary')}
+							className="flex-nowrap shrink-0 whitespace-nowrap"
 							layerId={props.item.layerId}
 							teamParity={teamParity}
 							backfillLayerId={props.backfillLayerId}
@@ -151,7 +137,7 @@ export default function LayerDisplay({
 							</span>
 						)}
 					</span>
-					<span className="flex items-center gap-1">{badges}</span>
+					<span className={cn('flex items-center gap-1', props.indicatorsClassName)}>{badges}</span>
 				</div>
 			)}
 			{props.notes}

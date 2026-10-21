@@ -61,6 +61,7 @@ import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
+import * as LLDnd from '@/systems/layer-list-dnd.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -73,6 +74,7 @@ import * as VoteClient from '@/systems/vote.client'
 
 import { StartActivityInteraction } from './activity.tsx'
 import EditLayerDialog from './edit-layer-dialog.tsx'
+import { EndDropZone } from './end-drop-zone.tsx'
 import GenVoteDialog from './gen-vote-dialog.tsx'
 import { LayerMenuItems } from './layer-context-menu-options.tsx'
 import LayerDisplay from './layer-display.tsx'
@@ -647,6 +649,9 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
+	// what the create-vote zone covers on desktop, hidden while it shows. Phone indicators wrap onto the line below the
+	// name, clear of the zone, so they stay.
+	const underVoteZone = 'group-has-[[data-end-drop-zone]]/single-item:invisible'
 
 	return (
 		<>
@@ -663,9 +668,9 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 					ref={dragRef}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default',
+						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default has-[[data-end-drop-zone]]:relative',
 						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
-						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-line-soft data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
+						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:opacity-50 data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
 						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(26px,max-content)_16px_minmax(0,1fr)_auto]',
 					)}
 					data-mutation={displayedMutation}
@@ -673,7 +678,9 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 					data-is-dragging={isDragging}
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
+					{...{ [LLDnd.ROW_ATTR]: 'single' satisfies LLDnd.RowKind }}
 				>
+					{!isVoteChoice && canEdit && <CreateVoteDropZone itemId={item.itemId} />}
 					<span data-mobile={isPhone} className="text-end font-mono whitespace-nowrap text-text-3 data-[mobile=true]:hidden">
 						<bdi dir="ltr">{LL.getItemNumber(index)}</bdi>
 					</span>
@@ -691,7 +698,7 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 					<span data-tour={isTourRow ? 'queue-item-display' : undefined} className="flex w-full min-w-0 flex-col gap-0.5 py-0.5">
 						<LayerDisplay
 							stores={props.stores}
-							droppable={true}
+							indicatorsClassName={isPhone ? undefined : underVoteZone}
 							stacked={isPhone}
 							trailing={
 								isPhone && sourceDisplay ? (
@@ -760,7 +767,7 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 							</span>
 						)}
 					</span>
-					<span className="flex items-center gap-1.5 max-phone:self-stretch">
+					<span className={cn('flex items-center gap-1.5 max-phone:self-stretch', underVoteZone)}>
 						{sourceDisplay && !isPhone && <span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>}
 						<span className={cn('fd-grp', isPhone && 'hidden')}>
 							<StartActivityInteraction
@@ -906,6 +913,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 					)}
 					data-mutation={displayedMutation}
 					data-is-dragging={isDragging}
+					{...{ [LLDnd.ROW_ATTR]: 'vote' satisfies LLDnd.RowKind }}
 				>
 					{isDragging ? (
 						<span className="mx-auto w-5">...</span>
@@ -1675,21 +1683,32 @@ function QueueItemSeparator(props: {
 	disabled?: boolean
 }) {
 	const dragging = DndKit.useDragging()
-	// a request dragged in from the backburner is a thin, expanding target the pointer must track exactly; queue
-	// reorder (layer-item) keeps the default shape collision so its behaviour is unchanged
-	const collisionDetector = dragging?.type === 'backburner-item' ? DndKit.livePointerIntersection : undefined
-	const { ref, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links), { collisionDetector })
+	const accepts = dragging?.type === 'layer-item' || dragging?.type === 'backburner-item' || dragging?.type === 'history-entry'
+	const { ref, isDropTarget } = DndKit.useDroppable(LL.llItemCursorsToDropItem(props.links), {
+		collisionDetector: LLDnd.separatorCollision,
+		disabled: !accepts,
+	})
 	const disabled = props.disabled || false
-	// taller (bigger drop target) only while an item is actually being dragged; compact otherwise
-	const expanded = !disabled && (dragging?.type === 'layer-item' || dragging?.type === 'backburner-item')
 	return (
 		<Separator
 			ref={ref}
-			className={cn(
-				'w-full min-w-0 bg-transparent shadow-none data-[is-last=true]:invisible data-[is-over=true]:bg-pri',
-				expanded ? 'h-5' : 'h-0',
-			)} // data-is-last={props.isAfterLast && !isOver}
+			className="w-full min-w-0 h-0.5 -my-px bg-transparent shadow-none data-[is-over=true]:bg-pri"
 			data-is-over={!disabled && isDropTarget}
+			{...{ [LLDnd.SEPARATOR_ATTR]: '' }}
+		/>
+	)
+}
+
+// covers the end of a row while another queue item is dragged, and creates a vote from the two when dropped on
+function CreateVoteDropZone(props: { itemId: LL.ItemId }) {
+	const dragging = DndKit.useDragging()
+	const active = dragging?.type === 'layer-item' && dragging.id !== props.itemId
+	if (!active) return null
+	return (
+		<EndDropZone
+			dropItem={LL.llItemCursorsToDropItem([{ type: 'item-relative', itemId: props.itemId, position: 'on' }])}
+			icon={<Icons.Vote />}
+			label={tr.text(V_Msgs.createVote())}
 		/>
 	)
 }

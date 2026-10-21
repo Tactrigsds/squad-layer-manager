@@ -481,8 +481,7 @@ function ChildNodeSeparator(props: {
 				className={cn(
 					'group absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1',
 					// while dragging the target grows over the rows either side rather than pushing them apart,
-					// which would move the row the pointer is already aiming at. livePointerIntersection measures
-					// this element's live rect, so the bigger box counts immediately.
+					// which would move the row the pointer is already aiming at.
 					dragging ? 'h-7' : 'h-3',
 				)}
 			>

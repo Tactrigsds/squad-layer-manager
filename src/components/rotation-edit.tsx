@@ -38,6 +38,7 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as KBClient from '@/systems/keybinds.client'
+import * as LLDnd from '@/systems/layer-list-dnd.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -252,6 +253,7 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 			<section
 				ref={kbScope.ref}
 				className="relative min-w-0 self-start rounded border bg-card [grid-area:layers]"
+				{...{ [LLDnd.BOUNDS_ATTR]: '' }}
 				aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
 				onDragEnter={(e) => {
 					if (!carriesFiles(e) || writeDenied) return
