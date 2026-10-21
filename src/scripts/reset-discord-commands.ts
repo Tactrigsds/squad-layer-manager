@@ -7,7 +7,7 @@ import * as Cli from '@/systems/cli.server'
 // commands and any global ones. The app re-registers its guild commands on the next boot (see
 // discord.server.ts setup()), so this is the way to fix a stale/duplicated command list.
 //
-// Run with `pnpm run discord:reset-commands` (respects --env-file). Deliberately reads env directly
+// Run with `pnpm script src/scripts/reset-discord-commands.ts` (respects --env-file). Deliberately reads env directly
 // instead of importing @/server/config.server, to stay off the logger/OTel chain that isn't loadable
 // outside the instrumented server entrypoint.
 
