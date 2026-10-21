@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
@@ -56,7 +56,64 @@ class FakeTransport implements RconTransport {
 	}
 }
 
+function connectedRcon() {
+	const transport = new FakeTransport()
+	const rcon = new Rcon({ serverId: 'test', transport, autoReconnectDelay: 60_000 })
+	rcon.ensureConnected()
+	transport.handlers!.onReady()
+	return { transport, rcon }
+}
+
+async function sent(transport: FakeTransport, count: number) {
+	await vi.waitFor(() => expect(transport.commands.length).toBe(count))
+}
+
+afterEach(() => {
+	vi.useRealTimers()
+})
+
 describe('Rcon', () => {
+	test('sends at most 61 commands at once, and times each from when the server reaches it', async () => {
+		vi.useFakeTimers()
+		const { transport, rcon } = connectedRcon()
+		const results = Array.from({ length: 100 }, (_, i) => rcon.execute(`ShowCommandInfo Cmd${i}`))
+		await sent(transport, 61)
+		for (let i = 0; i < 100; i++) {
+			await vi.advanceTimersByTimeAsync(30)
+			const cmd = transport.commands[i]
+			transport.respond(cmd.id, `info for ${cmd.body}`)
+			expect(transport.commands.length).toBe(Math.min(100, 62 + i))
+		}
+
+		const bodies = (await Promise.all(results)).map((r) => (r.code === 'ok' ? r.data : r.msg))
+		expect(bodies).toEqual(Array.from({ length: 100 }, (_, i) => `info for ShowCommandInfo Cmd${i}`))
+		expect(transport.commands.every((cmd) => cmd.id >= 20 && cmd.id <= 80)).toBe(true)
+		rcon.disconnect()
+	})
+
+	test('times out a command whose response never arrives, and then times the next one', async () => {
+		vi.useFakeTimers()
+		const { transport, rcon } = connectedRcon()
+		const lost = rcon.execute('ShowCurrentMap')
+		const next = rcon.execute('ShowNextMap')
+		await sent(transport, 2)
+		await vi.advanceTimersByTimeAsync(2_000)
+		expect(await lost).toEqual({ code: 'err:rcon', msg: 'Rcon response timed out' })
+
+		transport.respond(transport.commands[1].id, 'Next level is Harju')
+		expect(await next).toEqual({ code: 'ok', data: 'Next level is Harju' })
+		rcon.disconnect()
+	})
+
+	test('fails unanswered commands as soon as the connection closes', async () => {
+		const { transport, rcon } = connectedRcon()
+		const result = rcon.execute('ShowCurrentMap')
+		await sent(transport, 1)
+		transport.handlers!.onClose()
+		expect(await result).toEqual({ code: 'err:rcon', msg: 'RCON connection closed' })
+		rcon.disconnect()
+	})
+
 	test('drops a response cut off by a reconnect instead of prepending it to the next one', async () => {
 		const transport = new FakeTransport()
 		const rcon = new Rcon({ serverId: 'test', transport, autoReconnectDelay: 60_000 })

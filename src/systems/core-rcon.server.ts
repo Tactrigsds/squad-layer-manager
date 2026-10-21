@@ -104,9 +104,27 @@ function commandVerb(body: string): string {
 type Events = {
 	server: [CS.Otel, DecodedPacket]
 	auth: []
-	[key: `response${string}`]: [string]
 	RCON_ERROR: [Error]
 }
+
+type ExecuteResult = { code: 'err:rcon'; msg: string } | { code: 'ok'; data: string }
+
+type QueuedCommand = {
+	body: string
+	settle: (result: ExecuteResult) => void
+	issuer?: string
+	// set once the command is sent
+	id?: number
+}
+
+type PendingCommand = QueuedCommand & { timeout?: NodeJS.Timeout }
+
+const RESPONSE_TIMEOUT_MS = 2_000
+// Squad has only been seen answering command ids in this range, so it also caps the commands in flight at one per id.
+// The rest wait in `queued`.
+const MIN_COMMAND_ID = 20
+const MAX_COMMAND_ID = 80
+const MAX_IN_FLIGHT = MAX_COMMAND_ID - MIN_COMMAND_ID + 1
 
 export default class Rcon extends EventEmitter<Events> {
 	serverId: string
@@ -126,7 +144,11 @@ export default class Rcon extends EventEmitter<Events> {
 	public connected$ = new Rx.BehaviorSubject<boolean>(false)
 
 	private autoReconnectDelay: number
-	private msgId: number
+	private nextId = MIN_COMMAND_ID
+	// Commands awaiting a response, in the order they were sent. The server answers one command at a time in that order,
+	// so only the oldest is timed: a command's time spent queued behind the others does not count against it.
+	private pending = new Map<number, PendingCommand>()
+	private queued: QueuedCommand[] = []
 	private responseString: { id: number; body: string }
 	// The reconnect loop retries forever at a fixed delay, so an unreachable server would otherwise write the same
 	// line into the console every few seconds until someone noticed. Repeats of a reason already reported are
@@ -136,13 +158,11 @@ export default class Rcon extends EventEmitter<Events> {
 	// Reported from the game server's point of view, not ours: a command we write is one the server receives.
 	// The auth handshake is deliberately not reported -- it carries the rcon password.
 	//
-	// reqId is the packet id the exchange rode on, so a reader can pair a response with its command. Commands are
-	// in flight concurrently, and their responses do not necessarily come back in the order they were sent, so
-	// position in the stream does not correlate them. Absent on a packet the server pushed unprompted.
+	// reqId is the packet id the exchange rode on, so a reader can pair a response with its command. Absent on a packet
+	// the server pushed unprompted.
 	//
 	// issuer names the user who typed the command into a console, on both the command and its response.
 	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number, issuer?: string) => void
-	private issuers = new Map<number, string>()
 
 	// Whether this client can reach the server at all, for an operator rather than for a log file. Carries the
 	// transport's label (host:port) because that is the thing they have to check, never the password.
@@ -162,9 +182,8 @@ export default class Rcon extends EventEmitter<Events> {
 		this.onStatus = options.onStatus
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
-		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
+		this.soh = { size: 7, id: 0, type: this.type.response, body: '\u0001' }
 		this.autoReconnectDelay = options.autoReconnectDelay ?? 5000
-		this.msgId = 20
 		this.responseString = { id: 0, body: '' }
 	}
 
@@ -201,6 +220,7 @@ export default class Rcon extends EventEmitter<Events> {
 					this.connectAttempts++
 					this.transport.destroy()
 					this.#resetReceiveState()
+					this.#failPending('RCON connection lost')
 					this.transport.connect({
 						// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
 						onConnect: () => {
@@ -227,6 +247,7 @@ export default class Rcon extends EventEmitter<Events> {
 		this.ensureConnectedSub?.unsubscribe()
 		this.ensureConnectedSub = undefined
 		this.transport.destroy()
+		this.#failPending('RCON disconnected')
 		this.connected$.next(false)
 		this.connected$.unsubscribe()
 	}
@@ -280,22 +301,68 @@ export default class Rcon extends EventEmitter<Events> {
 			if (length > SM.RCON_MAX_BUF_LEN) {
 				recordOutcome('error')
 				return { code: 'err:rcon' as const, msg: `Oversize, "" > ${SM.RCON_MAX_BUF_LEN}.` }
-			} else {
-				if (this.msgId > 80) this.msgId = 20
-				const listenerId = `response${this.msgId}`
-				const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
-				const response$ = Rx.fromEvent(this, listenerId).pipe(
-					Rx.take(1),
-					Rx.map((data) => ({ code: 'ok' as const, data: data as string })),
-				)
-				this.#send(body, this.msgId, _opts?.issuer)
-				this.msgId++
-				const result = await Rx.Ext.firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
-				recordOutcome(result.code === 'ok' ? 'ok' : 'error')
-				return result
 			}
+			const signal = _opts?.signal
+			signal?.throwIfAborted()
+			const { promise, resolve } = Promise.withResolvers<ExecuteResult>()
+			const cmd: QueuedCommand = { body, settle: resolve, issuer: _opts?.issuer }
+			if (this.pending.size < MAX_IN_FLIGHT) this.#dispatch(cmd)
+			else this.queued.push(cmd)
+			const onAbort = () => {
+				if (cmd.id !== undefined) return this.#settle(cmd.id, { code: 'err:rcon', msg: 'aborted' })
+				const idx = this.queued.indexOf(cmd)
+				if (idx !== -1) this.queued.splice(idx, 1)
+				resolve({ code: 'err:rcon', msg: 'aborted' })
+			}
+			signal?.addEventListener('abort', onAbort, { once: true })
+			const result = await promise
+			signal?.removeEventListener('abort', onAbort)
+			signal?.throwIfAborted()
+			recordOutcome(result.code === 'ok' ? 'ok' : 'error')
+			return result
 		},
 	)
+
+	#dispatch(cmd: QueuedCommand): void {
+		let id = this.nextId
+		while (this.pending.has(id)) id = id >= MAX_COMMAND_ID ? MIN_COMMAND_ID : id + 1
+		this.nextId = id >= MAX_COMMAND_ID ? MIN_COMMAND_ID : id + 1
+		cmd.id = id
+		this.pending.set(id, cmd)
+		if (this.pending.size === 1) this.#armOldest()
+		this.#send(cmd.body, id, cmd.issuer)
+	}
+
+	#armOldest(): void {
+		const oldest = this.pending.entries().next().value
+		if (!oldest || oldest[1].timeout) return
+		const [id, cmd] = oldest
+		cmd.timeout = setTimeout(() => this.#settle(id, { code: 'err:rcon', msg: 'Rcon response timed out' }), RESPONSE_TIMEOUT_MS)
+	}
+
+	#settle(id: number, result: ExecuteResult): void {
+		const cmd = this.pending.get(id)
+		if (!cmd) return
+		this.pending.delete(id)
+		clearTimeout(cmd.timeout)
+		cmd.settle(result)
+		this.#armOldest()
+		const next = this.queued.shift()
+		if (next) this.#dispatch(next)
+	}
+
+	// a connection that drops takes every unanswered command with it: the next connection never answers them
+	#failPending(msg: string): void {
+		const pending = this.pending
+		const queued = this.queued
+		this.pending = new Map()
+		this.queued = []
+		for (const cmd of pending.values()) {
+			clearTimeout(cmd.timeout)
+			cmd.settle({ code: 'err:rcon', msg })
+		}
+		for (const cmd of queued) cmd.settle({ code: 'err:rcon', msg })
+	}
 
 	#sendAuth(): void {
 		const password = this.transport.authPassword
@@ -304,17 +371,14 @@ export default class Rcon extends EventEmitter<Events> {
 		this.#writeBuf(this.#encode(this.type.auth, 2147483647, password))
 	}
 
-	#send(body: string, id = 99, issuer?: string): void {
-		// ids are reused once msgId wraps, so a stale issuer from a timed-out command is overwritten here
-		if (issuer === undefined) this.issuers.delete(id)
-		else this.issuers.set(id, issuer)
+	#send(body: string, id: number, issuer?: string): void {
 		this.onTraffic?.('recv', body, id, issuer)
 		this.#write(this.type.command, id, body)
 		this.#write(this.type.command, id + 2)
 	}
 
 	#write(type: number, id: number, body?: string): void {
-		log.trace(`Writing packet with type "${type}", id "${id}" and body "${body || ''}".`)
+		log.trace('Writing packet with type "%d", id "%d" and body "%s".', type, id, body ?? '')
 		this.#writeBuf(this.#encode(type, id, body))
 	}
 
@@ -345,12 +409,12 @@ export default class Rcon extends EventEmitter<Events> {
 			[ATTRS.SquadServer.ID]: this.serverId,
 			[ATTRS.IO.DIRECTION]: 'received' satisfies ATTRS.IO.Direction,
 		})
-		this.stream = Buffer.concat([this.stream, data], this.stream.byteLength + data.byteLength)
+		this.stream = this.stream.byteLength === 0 ? data : Buffer.concat([this.stream, data])
 		while (this.stream.byteLength >= 7) {
 			const packet = this.#decode()
 			if (!packet) break
 			else {
-				log.trace(`Processing decoded packet: Size: ${packet.size}, ID: ${packet.id}, Type: ${packet.type}, Body: ${packet.body}`)
+				log.trace('Processing decoded packet: Size: %d, ID: %d, Type: %d, Body: %s', packet.size, packet.id, packet.type, packet.body)
 			}
 			if (packet.type === this.type.response) this.#onResponse(packet)
 			else if (packet.type === this.type.server) {
@@ -409,14 +473,15 @@ export default class Rcon extends EventEmitter<Events> {
 	}
 
 	#onResponse(packet: { size: number; id: number; type: number; body: string }): void {
-		if (packet.body === '') {
+		if (packet.body === '\u0001') {
+			// the SOH sequence ends a response. The two empty echoes of the terminator before it set responseString.id to the
+			// terminator's id, which is the command's id + 2.
 			const reqId = this.responseString.id - 2
-			if (this.responseString.body) this.onTraffic?.('send', this.responseString.body, reqId, this.issuers.get(reqId))
-			this.issuers.delete(reqId)
-			this.emit(`response${reqId}`, this.responseString.body)
+			if (this.responseString.body) this.onTraffic?.('send', this.responseString.body, reqId, this.pending.get(reqId)?.issuer)
+			this.#settle(reqId, { code: 'ok', data: this.responseString.body })
 			this.responseString.body = ''
-		} else if (!packet.body.includes('')) {
-			this.responseString.body = this.responseString.body += packet.body
+		} else if (!packet.body.includes('\u0001')) {
+			this.responseString.body += packet.body
 			this.responseString.id = packet.id
 		} else this.#badPacket()
 	}
@@ -437,6 +502,7 @@ export default class Rcon extends EventEmitter<Events> {
 	#onClose(): void {
 		log.trace(`Socket closed.`)
 		this.#resetReceiveState()
+		this.#failPending('RCON connection closed')
 		if (this.connected$.value) {
 			this.onStatus?.('warn', `RCON connection to ${this.transport.label} closed, reconnecting`)
 			this.connected$.next(false)
