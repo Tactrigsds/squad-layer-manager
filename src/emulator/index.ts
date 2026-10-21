@@ -20,6 +20,8 @@ export type EmulatorOptions = WorldOptions & {
 	// log without parseLogStream's idleFlushMs only completes an entry once the next one arrives, so it needs
 	// this (or a line of its own) to see the last thing that happened.
 	tickRateIntervalMs?: number
+	// ms each RCON reply spends in transit (see RconServer)
+	rconResponseLatencyMs?: number
 }
 
 const MAX_RETAINED_LOG_LINES = 10_000
@@ -61,7 +63,7 @@ export class Emulator {
 			},
 			opts,
 		)
-		this.rcon = new RconServer(this.world, { password: this.password })
+		this.rcon = new RconServer(this.world, { password: this.password, responseLatencyMs: opts.rconResponseLatencyMs })
 
 		const tickRateIntervalMs = opts.tickRateIntervalMs ?? 2000
 		if (tickRateIntervalMs > 0) {

@@ -23,6 +23,9 @@ type Conn = {
 	stream: Buffer
 	authed: boolean
 	remoteAddress: string
+	// writes in transit, in the order they were made, delivered by one timer so they cannot be reordered
+	outbox: { at: number; buf: Buffer }[]
+	outboxTimer: ReturnType<typeof setTimeout> | null
 }
 
 function encode(type: number, id: number, body = ''): Buffer {
@@ -44,13 +47,46 @@ export class RconServer {
 	#conns = new Set<Conn>()
 	#commandWaiters: { pred: (cmd: ReceivedCommand) => boolean; resolve: (cmd: ReceivedCommand) => void }[] = []
 
-	// observes traffic as the server sees it: 'recv' is a command arriving from the client, 'send' is anything
-	// written back (a command response, or an unsolicited chat packet)
+	// How long each reply spends in transit. Replies keep their order, while commands still run and log lines are still
+	// written when a command arrives, as on a real server, so a reply can describe a world that a later log line has
+	// already changed.
+	responseLatencyMs: number
 
-	constructor(world: World, opts: { password: string }) {
+	constructor(world: World, opts: { password: string; responseLatencyMs?: number }) {
 		this.#world = world
 		this.#password = opts.password
+		this.responseLatencyMs = opts.responseLatencyMs ?? 0
 		this.#server = net.createServer((socket) => this.#onConnection(socket))
+	}
+
+	#write(conn: Conn, buf: Buffer) {
+		if (this.responseLatencyMs <= 0 && conn.outbox.length === 0) {
+			conn.socket.write(buf)
+			return
+		}
+		const last = conn.outbox.at(-1)?.at ?? 0
+		conn.outbox.push({ at: Math.max(Date.now() + this.responseLatencyMs, last), buf })
+		if (!conn.outboxTimer) this.#armOutbox(conn)
+	}
+
+	#armOutbox(conn: Conn) {
+		const next = conn.outbox[0]
+		if (!next) {
+			conn.outboxTimer = null
+			return
+		}
+		conn.outboxTimer = setTimeout(
+			() => {
+				const now = Date.now()
+				while (conn.outbox.length > 0 && conn.outbox[0].at <= now) {
+					const { buf } = conn.outbox.shift()!
+					if (!conn.socket.destroyed) conn.socket.write(buf)
+				}
+				this.#armOutbox(conn)
+			},
+			Math.max(0, next.at - Date.now()),
+		)
+		conn.outboxTimer.unref()
 	}
 
 	listen(port = 0, host = '127.0.0.1'): Promise<number> {
@@ -93,7 +129,7 @@ export class RconServer {
 
 	broadcastChatPacket(body: string) {
 		for (const conn of this.#conns) {
-			if (conn.authed) conn.socket.write(encode(TYPE.server, 0, body))
+			if (conn.authed) this.#write(conn, encode(TYPE.server, 0, body))
 		}
 	}
 
@@ -120,13 +156,18 @@ export class RconServer {
 			stream: Buffer.alloc(0),
 			authed: false,
 			remoteAddress: socket.remoteAddress ?? 'unknown',
+			outbox: [],
+			outboxTimer: null,
 		}
 		this.#conns.add(conn)
 		socket.on('data', (data) => {
 			conn.stream = Buffer.concat([conn.stream, data])
 			this.#drain(conn)
 		})
-		socket.on('close', () => this.#conns.delete(conn))
+		socket.on('close', () => {
+			this.#conns.delete(conn)
+			if (conn.outboxTimer) clearTimeout(conn.outboxTimer)
+		})
 		socket.on('error', () => this.#conns.delete(conn))
 	}
 
@@ -157,11 +198,11 @@ export class RconServer {
 					}
 				}
 				conn.authed = true
-				conn.socket.write(encode(TYPE.response, id))
-				conn.socket.write(encode(TYPE.command, id))
+				this.#write(conn, encode(TYPE.response, id))
+				this.#write(conn, encode(TYPE.command, id))
 			} else {
-				conn.socket.write(encode(TYPE.response, id))
-				conn.socket.write(encode(TYPE.command, -1))
+				this.#write(conn, encode(TYPE.response, id))
+				this.#write(conn, encode(TYPE.command, -1))
 			}
 			return
 		}
@@ -169,9 +210,9 @@ export class RconServer {
 
 		if (body === '') {
 			// the empty probe: two empty responses with its id, then the SOH terminator
-			conn.socket.write(encode(TYPE.response, id))
-			conn.socket.write(encode(TYPE.response, id))
-			conn.socket.write(SOH_SEQUENCE)
+			this.#write(conn, encode(TYPE.response, id))
+			this.#write(conn, encode(TYPE.response, id))
+			this.#write(conn, SOH_SEQUENCE)
 			return
 		}
 
@@ -186,7 +227,7 @@ export class RconServer {
 
 		const response = this.#world.handleCommand(body)
 		for (let i = 0; i < response.length; i += MAX_CHUNK) {
-			conn.socket.write(encode(TYPE.response, id, response.slice(i, i + MAX_CHUNK)))
+			this.#write(conn, encode(TYPE.response, id, response.slice(i, i + MAX_CHUNK)))
 		}
 	}
 }
