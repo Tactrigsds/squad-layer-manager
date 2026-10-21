@@ -432,7 +432,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			const versionMatch = map.levelName.match(/_[vV](\d+)(?:[_-]|$)/)
 			segments = {
 				layerType: 'normal',
-				Map: map.mapId,
+				Map: manifest.mapRenames[map.mapId] ?? map.mapId,
 				Gamemode: manifest.gamemodeRenames[map.gamemode] ?? map.gamemode,
 				LayerVersion: versionMatch ? `V${versionMatch[1]}` : null,
 				Collection: manifest.collection.name,
@@ -653,7 +653,10 @@ async function parseSquadLayerSheetData() {
 	}
 
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName, factionUnits } = parseBattlegroups(sources)
-	const { stats: vehicleStats, ...vehicleTables } = VEH.buildVehicleTables(factionUnits)
+	const vanilla = sources.find((source) => source.manifest.collection.abbreviation === null)
+	const { stats: vehicleStats, ...vehicleTables } = VEH.buildVehicleTables(factionUnits, {
+		authoritativeUnits: new Set(vanilla ? Object.keys(vanilla.root.Units) : []),
+	})
 	log.info(
 		'vehicle identity: %s distinct records in %s name groups -> %s canonical vehicles (%s split groups), %s classes',
 		vehicleStats.records,

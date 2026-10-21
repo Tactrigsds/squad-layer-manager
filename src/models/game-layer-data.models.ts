@@ -40,6 +40,8 @@ export const SourceManifestSchema = z.object({
 	// structured exports can spell a gamemode differently than layer names do ("TerritoryControl" vs "TC"); renames
 	// keep one vocabulary across sources
 	gamemodeRenames: z.record(z.string(), z.string()).default({}),
+	// the same for a map that the export spells more than one way ("SuperMod_Fallujah" beside "Supermod_Fallujah")
+	mapRenames: z.record(z.string(), z.string()).default({}),
 	// unit types beyond CORE_UNIT_TYPES that appear in this source's unit names
 	extraUnitTypes: z.record(z.string(), z.object({ abbreviation: z.string(), shortName: z.string() })).default({}),
 	// unit object name -> unit type, for names no parse can rescue (supermod ships a unit named "Mechanizedd")
