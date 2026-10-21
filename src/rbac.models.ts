@@ -23,12 +23,7 @@ export function userDefinedRole(type: string): GenericRole {
 export const InferredRoleSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('filter-owner'), filterId: F.FilterEntityIdSchema }),
 	z.object({ type: z.literal('filter-user-contributor'), filterId: F.FilterEntityIdSchema }),
-	z.object({
-		type: z.literal('filter-role-contributor'),
-		source: z.literal('inferred'),
-		filterId: F.FilterEntityIdSchema,
-		roleId: z.string(),
-	}),
+	z.object({ type: z.literal('filter-role-contributor'), filterId: F.FilterEntityIdSchema }),
 	z.object({ type: z.literal('rotation-owner'), rotationId: z.string() }),
 	z.object({ type: z.literal('rotation-user-contributor'), rotationId: z.string() }),
 	z.object({ type: z.literal('rotation-role-contributor'), rotationId: z.string() }),
