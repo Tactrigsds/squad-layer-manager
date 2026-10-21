@@ -739,7 +739,7 @@ must always produce the same object.
 ## The layer engine (rust/wasm)
 
 `layer-engine/` is Rust compiled to wasm. It queries a table of all known layer combinations and implements filtering,
-sorting, paging, distinct values and weighted random selection. **One module serves both hosts:** the server and the
+sorting, paging, distinct values, result summaries and weighted random selection. **One module serves both hosts:** the server and the
 browser's query worker load the same `.wasm`. It is immutable for its lifetime. That makes caching evaluated bitsets
 safe and shipping the same engine to both sides practical.
 
@@ -761,6 +761,10 @@ set at once. One on a per-team column is evaluated once per distinct pattern and
 Only the score scopes go row by row. Blocks the candidate has already excluded are skipped whole. Any path that walks
 matched rows in order (sorting, distinct, generation) carries a `BlockCursor` instead of resolving each row's block
 independently. `store.value` binary-searches the block table, and a naive port would reintroduce that cost per row.
+
+Result summaries (per-value counts, ranges) take the same shortcut further. A block the filter keeps whole adds its
+pattern's value counts, or its own cached min/max, without visiting a row. Both caches fill on first use. The client
+fetches a summary in parts, one worker request each, so that a page query sent meanwhile runs between parts.
 
 `ColData` is how a scan asks _how_ a column varies before it enters its loop, and `Reader` resolves a column down to
 the slices it reads. Both exist so the per-row work never re-examines a column spec.

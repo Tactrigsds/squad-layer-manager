@@ -50,6 +50,10 @@ export type Request =
 	| { kind: 'matches'; filters: Ir[]; ids: number[] }
 	| { kind: 'info'; id: number; columns: number[] }
 	| { kind: 'ranges'; columns: number[] }
+	| { kind: 'valueCounts'; where: Ir | null; columns: number[] }
+	| { kind: 'filteredRanges'; where: Ir | null; columns: number[] }
+	// `conjuncts` ANDed together must be `where`
+	| { kind: 'constraintCounts'; where: Ir | null; filters: Ir[]; conjuncts: Ir[] }
 	| { kind: 'groupCounts'; where: Ir | null; step: StepSpec }
 	| ({ kind: 'solveRepeats' } & SolveRepeatsSpec)
 
@@ -82,6 +86,11 @@ export type SelectResponse = { totalCount: number; rows: (number | null)[][]; in
 export type MatchesResponse = { exists: boolean[]; matches: boolean[][] }
 export type RangeResponse = { col: number; min: number | null; max: number | null }
 export type GroupCount = { key: number; count: number }
+// per requested column, [value, count] pairs
+export type ValueCountsResponse = [number | null, number][][]
+// per requested column, [min, max], or null when every value is null
+export type FilteredRangesResponse = ([number, number] | null)[]
+export type ConstraintCountsResponse = { matches: number[]; removed: number[] }
 
 export type ColumnIndex = (name: string) => number
 

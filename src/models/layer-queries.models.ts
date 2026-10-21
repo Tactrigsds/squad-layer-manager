@@ -260,6 +260,41 @@ export namespace GenVote {
 
 export type LayerComponentInput = BaseQueryInput & { column: LC.GroupByColumn }
 
+// A summary of a query's results is fetched in parts, so that a page query sent meanwhile runs between them rather
+// than behind all of them.
+export type LayersSummaryPart =
+	| { type: 'value-counts'; columns: string[] }
+	| { type: 'ranges'; columns: string[] }
+	| { type: 'constraint-counts' }
+
+export type LayersSummaryPartInput = BaseQueryInput & { part: LayersSummaryPart }
+
+export type ValueCount = { value: string | number | boolean | null; count: number }
+export type ValueRange = { min: number; max: number }
+// each null when every layer it covers holds null in the column
+export type ColumnRange = { results: ValueRange | null; all: ValueRange | null }
+
+export type ConstraintCount = {
+	// how many results match the constraint's filter
+	matches: number
+	// how many layers the constraint alone removes from the results, or null when it isn't applied
+	removed: number | null
+}
+
+export type LayersSummaryPartResult =
+	| { type: 'value-counts'; valueCounts: Record<string, ValueCount[]> }
+	| { type: 'ranges'; ranges: Record<string, ColumnRange> }
+	// keyed by constraint id. Only filter-entity constraints are counted.
+	| { type: 'constraint-counts'; constraintCounts: Record<string, ConstraintCount> }
+
+export type LayersSummary = {
+	valueCounts: Record<string, ValueCount[]> | null
+	// a column is missing until its range arrives
+	ranges: Record<string, ColumnRange>
+	constraintCounts: Record<string, ConstraintCount> | null
+	complete: boolean
+}
+
 export type LayerExistsInput = L.LayerId[]
 
 export type SearchIdsInput = {

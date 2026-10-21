@@ -383,14 +383,13 @@ fn compute_range(store: &Store, col: usize) -> Option<(i64, i64)> {
                     take(values.get(p));
                 }
             }
+            // merged from block ranges, which a filtered range reads too, so the walk is paid once for both
             ColData::PerRow => {
                 let reader = store.reader(col);
                 for block in 0..store.block_count() {
-                    let (start, end) = store.block_rows(block);
-                    let mut p = store.pattern_rows(store.block_pattern(block)).0;
-                    for row in start..end {
-                        take(reader.read(block, p, row));
-                        p += 1;
+                    if let Some((lo, hi)) = store.block_range(col, &reader, block) {
+                        take(Some(lo));
+                        take(Some(hi));
                     }
                 }
             }

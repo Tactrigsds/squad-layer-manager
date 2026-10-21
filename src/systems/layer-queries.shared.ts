@@ -78,6 +78,12 @@ type CompiledConstraints = {
 	code: 'ok'
 	// the pool: every constraint that filters, ANDed together
 	where: LE.Ir
+	// what `where` ANDs together
+	conjuncts: LE.Ir[]
+	// per constraint, its condition before any inversion (null when the constraint was skipped)
+	constraintIrs: (LE.Ir | null)[]
+	// per constraint, its index in `conjuncts` (null when it doesn't filter on its own)
+	conjunctOf: (number | null)[]
 	// per constraint, the condition to report against each returned layer (null when it shows no indicator)
 	indicators: (LE.Ir | null)[]
 	// per constraint, its filter's miss exemption (null when it has none, or shows no indicator)
@@ -100,6 +106,8 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 	const baseConditions: LE.Ir[] = []
 	const indicators: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
 	const missExemptions: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+	const constraintIrs: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+	const conjunctOf: (number | null)[] = new Array(constraints.length).fill(null)
 	// a layer is a repeat when it breaks *any* repeat rule, so the rules are one disjunction rather than a condition
 	// each. Negating them individually and anding the results happens to say the same thing, but applying them
 	// regularly does not: that would ask for a layer repeating every rule at once.
@@ -137,14 +145,17 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 				assertNever(constraint)
 		}
 
+		constraintIrs[i] = ir
 		if (constraint.type === 'do-not-repeat') {
 			if (constraint.filterApplState !== 'disabled') repeatIrs[constraint.filterApplState].push(ir)
 		} else {
 			switch (constraint.filterApplState) {
 				case 'regular':
+					conjunctOf[i] = baseConditions.length
 					baseConditions.push(ir)
 					break
 				case 'inverted':
+					conjunctOf[i] = baseConditions.length
 					baseConditions.push(LE.not(ir))
 					break
 				case 'disabled':
@@ -192,7 +203,16 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		}
 	}
 
-	return { code: 'ok', where: LE.and(conditions), indicators, missExemptions, menuItemConditions }
+	return {
+		code: 'ok',
+		where: LE.and(conditions),
+		conjuncts: conditions,
+		constraintIrs,
+		conjunctOf,
+		indicators,
+		missExemptions,
+		menuItemConditions,
+	}
 }
 
 // An exemption that no longer lowers, such as one applying a filter that has since been deleted, exempts nothing
@@ -759,6 +779,85 @@ export async function queryLayerComponent(args: { ctx: QueryCtx; input: LQY.Laye
 		col: ctx.engine.columnIndex(input.column),
 	})
 	return values.map((value) => LC.fromDbValue(input.column, value, ctx)) as string[]
+}
+
+// One part of a summary of the layers a query returns. See LQY.LayersSummaryPart.
+export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.LayersSummaryPartInput }) {
+	const { ctx, input } = args
+	const compiled = buildQueryConstraints(ctx, input)
+	if (compiled.code !== 'ok') return compiled
+	const part = input.part
+	switch (part.type) {
+		case 'value-counts':
+		case 'ranges': {
+			for (const column of part.columns) {
+				if (!LC.getColumnDef(column, ctx.effectiveColsConfig) || LC.isVirtualColumn(column, ctx.effectiveColsConfig)) {
+					return { code: 'err:unknown-column' as const, column }
+				}
+			}
+			const columns = columnIndexes(ctx, part.columns)
+			if (part.type === 'value-counts') {
+				const res = ctx.engine.query<LE.ValueCountsResponse>({ kind: 'valueCounts', where: compiled.where, columns })
+				const valueCounts: Record<string, LQY.ValueCount[]> = {}
+				part.columns.forEach((column, i) => {
+					valueCounts[column] = res[i].map(([value, count]) => ({
+						// fromDbValue reads a null boolean as false, which would merge it with the real falses
+						value: value === null ? null : (LC.fromDbValue(column, value, ctx) as LQY.ValueCount['value']),
+						count,
+					}))
+				})
+				return { code: 'ok' as const, result: { type: part.type, valueCounts } satisfies LQY.LayersSummaryPartResult }
+			}
+			const filtered = ctx.engine.query<LE.FilteredRangesResponse>({ kind: 'filteredRanges', where: compiled.where, columns })
+			const all = ctx.engine.query<LE.RangeResponse[]>({ kind: 'ranges', columns })
+			const decode = (column: string, min: number | null, max: number | null): LQY.ValueRange | null =>
+				min === null || max === null
+					? null
+					: { min: LC.fromDbValue(column, min, ctx) as number, max: LC.fromDbValue(column, max, ctx) as number }
+			const ranges: Record<string, LQY.ColumnRange> = {}
+			part.columns.forEach((column, i) => {
+				ranges[column] = {
+					results: decode(column, filtered[i]?.[0] ?? null, filtered[i]?.[1] ?? null),
+					all: decode(column, all[i].min, all[i].max),
+				}
+			})
+			return { code: 'ok' as const, result: { type: part.type, ranges } satisfies LQY.LayersSummaryPartResult }
+		}
+		case 'constraint-counts': {
+			const constraints = input.constraints ?? []
+			const lower = lowerCtx(ctx)
+			const counted: { id: string; filter: LE.Ir; conjunct: number | null }[] = []
+			constraints.forEach((constraint, i) => {
+				if (constraint.type !== 'filter-entity') return
+				let filter = compiled.constraintIrs[i]
+				// a constraint that neither filters nor shows an indicator is skipped by the query, and one that no longer
+				// lowers is left uncounted rather than failing the summary
+				if (!filter) {
+					const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [i.toString()])
+					if (res.code !== 'ok') return
+					filter = res.ir
+				}
+				counted.push({ id: constraint.id, filter, conjunct: compiled.conjunctOf[i] })
+			})
+			const constraintCounts: Record<string, LQY.ConstraintCount> = {}
+			if (counted.length > 0) {
+				// every conjunct has to be evaluated whole to say what one of them removes, so skip that when none is asked for
+				const anyApplied = counted.some((c) => c.conjunct !== null)
+				const res = ctx.engine.query<LE.ConstraintCountsResponse>({
+					kind: 'constraintCounts',
+					where: compiled.where,
+					filters: counted.map((c) => c.filter),
+					conjuncts: anyApplied ? compiled.conjuncts : [],
+				})
+				counted.forEach((c, i) => {
+					constraintCounts[c.id] = { matches: res.matches[i], removed: c.conjunct === null ? null : res.removed[c.conjunct] }
+				})
+			}
+			return { code: 'ok' as const, result: { type: part.type, constraintCounts } satisfies LQY.LayersSummaryPartResult }
+		}
+		default:
+			assertNever(part)
+	}
 }
 
 // given a set of layer ids, returns those that fall outside the pool defined by `constraints` (a layer is out of pool
@@ -1359,6 +1458,7 @@ export function getRepeatRuleMatchDescriptors(
 export const queries = {
 	layerExists,
 	queryLayerComponent,
+	queryLayersSummaryPart,
 	getLayerItemStatuses,
 	getLayersOutOfPool,
 	getLayerInfo,

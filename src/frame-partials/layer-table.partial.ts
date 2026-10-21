@@ -126,7 +126,16 @@ export type LayerTable = {
 	requestedQuery: number
 	answeredQuery: number
 	pageData: LayerQueriesClient.QueryLayersPageData | null
+	// what the query's results hold, across every page. Arrives in parts after the page.
+	summary: LQY.LayersSummary | null
+	// the summary is of an earlier query, and stays up until the current one's value counts arrive
+	summaryStale: boolean
+	view: View
+	// the columns whose summary card lists every value rather than the most common few
+	expandedSummaryColumns: string[]
 } & F.NodeValidationErrorStore
+
+export type View = 'results' | 'summary'
 
 export type Predicates = {
 	baseQueryInput: LQY.BaseQueryInput | undefined
@@ -172,6 +181,10 @@ export function initLayerTable(args: Args) {
 		availableWidth: null,
 
 		pageData: null,
+		summary: null,
+		summaryStale: false,
+		view: 'results',
+		expandedSummaryColumns: [],
 		isFetching: false,
 		requestedQuery: 0,
 		answeredQuery: 0,
@@ -239,6 +252,52 @@ export function initLayerTable(args: Args) {
 					setStore({ filterMenuItemPossibleValues: packet.values })
 					return
 				}
+			}),
+	)
+
+	// subscribed after the page query, so that the worker is handed the page first
+	args.cleanup.push(
+		args.update$
+			.pipe(
+				Rx.observeOn(Rx.queueScheduler),
+				Rx.map(([store]) => {
+					const table = store.layerTable
+					const base = LayerQueriesClient.getQueryBaseInput(store.baseQueryInput ?? {}, {
+						cfg: table.colConfig,
+						selectedLayers: table.showSelectedLayers ? table.selected : undefined,
+					})
+					const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: table.colConfig }
+					const valueColumns: string[] = []
+					const rangeColumns: string[] = []
+					for (const [name, def] of Object.entries(table.colConfig.defs)) {
+						if (LC.isVirtualColumn(name, table.colConfig)) continue
+						if (LC.isEnumeratedColumn(name, ctx) || def.type === 'boolean') valueColumns.push(name)
+						else if (LC.isNumericColumn(name, ctx) && table.columnVisibility[name]) rangeColumns.push(name)
+					}
+					return { base, valueColumns, rangeColumns }
+				}),
+				Rx.Ext.distinctDeepEquals(),
+				// marked before the throttle, so a summary waiting out the window already reads as stale
+				Rx.tap(() => {
+					if (get().summary && !get().summaryStale) set({ summaryStale: true })
+				}),
+				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
+				Rx.switchMap(({ base, valueColumns, rangeColumns }) =>
+					LayerQueriesClient.queryLayersSummary$(base, { valueColumns, rangeColumns }).pipe(
+						Rx.catchError((error) => {
+							console.error('error during layers summary:', error)
+							return Rx.EMPTY
+						}),
+					),
+				),
+			)
+			.subscribe((summary) => {
+				const prev = get().summary
+				if (summary.valueCounts === null && prev && prev !== summary) {
+					set({ summaryStale: true })
+					return
+				}
+				set({ summary, summaryStale: false })
 			}),
 	)
 
@@ -412,6 +471,88 @@ export namespace Sel {
 		}),
 	)
 
+	// a column's values among the results, most common first, or null until they arrive
+	export const columnValueCounts = RSel.memoizeFactory((column: string) =>
+		RSel.createSelector([(store: Store) => store.layerTable.summary?.valueCounts?.[column]], (counts) =>
+			counts ? [...counts].sort((a, b) => b.count - a.count) : null,
+		),
+	)
+
+	// how many distinct non-null values a column holds among the results
+	export const columnDistinctCount = RSel.memoizeFactory((column: string) => (store: Store) => {
+		const counts = store.layerTable.summary?.valueCounts?.[column]
+		if (!counts) return null
+		return counts.reduce((n, entry) => (entry.value === null ? n : n + 1), 0)
+	})
+
+	export const summaryColumnExpanded = RSel.memoizeFactory(
+		(column: string) => (store: Store) => store.layerTable.expandedSummaryColumns.includes(column),
+	)
+
+	// how many layers the summary covers: every column's counts add up to it
+	export function summaryTotal(store: Store) {
+		const counts = store.layerTable.summary?.valueCounts
+		if (!counts) return null
+		const first = Object.values(counts)[0]
+		return first ? first.reduce((n, entry) => n + entry.count, 0) : null
+	}
+
+	export const columnRange = RSel.memoizeFactory((column: string) => (store: Store) => store.layerTable.summary?.ranges[column])
+
+	export const summaryColumns = RSel.createSelector(
+		[(store: Store) => store.layerTable.colConfig, (store: Store) => store.layerTable.summary],
+		(cfg, summary) => {
+			const order = [...cfg.orderedColumns.map((col) => col.name), ...Object.keys(cfg.defs)]
+			const seen = new Set<string>()
+			const valueColumns: string[] = []
+			const rangeColumns: string[] = []
+			for (const name of order) {
+				if (seen.has(name)) continue
+				seen.add(name)
+				if (summary?.valueCounts?.[name]) valueColumns.push(name)
+				else if (summary?.ranges[name]) rangeColumns.push(name)
+			}
+			return { valueColumns, rangeColumns }
+		},
+	)
+
+	export type FilterSummaryRow = {
+		filterId: F.FilterEntityId
+		appliedAs: 'regular' | 'inverted' | 'indicator' | 'off'
+		count: LQY.ConstraintCount
+	}
+
+	// One row per filter the summary counted, in the order the query first lists it. A filter can arrive as several
+	// constraints, such as one that applies it and one that only indicates it, and its row speaks for all of them.
+	export const filterSummaryRows = RSel.createSelector(
+		[
+			(store: Store & Predicates) => store.baseQueryInput?.constraints,
+			(store: Store & Predicates) => store.layerTable.summary?.constraintCounts,
+		],
+		(constraints, counts): FilterSummaryRow[] => {
+			if (!constraints || !counts) return []
+			const rows = new Map<F.FilterEntityId, FilterSummaryRow>()
+			for (const constraint of constraints) {
+				if (constraint.type !== 'filter-entity') continue
+				const count = counts[constraint.id]
+				if (!count) continue
+				let appliedAs: FilterSummaryRow['appliedAs']
+				if (constraint.filterApplState !== 'disabled') appliedAs = constraint.filterApplState
+				else appliedAs = constraint.showIndicator === 'disabled' ? 'off' : 'indicator'
+				const row = rows.get(constraint.filterId)
+				if (!row) {
+					rows.set(constraint.filterId, { filterId: constraint.filterId, appliedAs, count })
+					continue
+				}
+				if (APPLIED_AS_RANK[appliedAs] > APPLIED_AS_RANK[row.appliedAs]) row.appliedAs = appliedAs
+				if (row.count.removed === null && count.removed !== null) row.count = count
+			}
+			return [...rows.values()]
+		},
+	)
+
+	const APPLIED_AS_RANK: Record<FilterSummaryRow['appliedAs'], number> = { off: 0, indicator: 1, inverted: 2, regular: 2 }
+
 	export const defaultVisibleColumns = RSel.createSelector(
 		[(store: Store) => store.layerTable.colConfig],
 		(cfg) => cfg?.orderedColumns.filter((col) => col.visible ?? true).map((col) => col.name) ?? [],
@@ -514,6 +655,18 @@ export namespace Actions {
 			table.setState({ columnVisibility: updated, sort, pageIndex })
 		}
 
+	export function setView(stores: KeyProp, view: View) {
+		slice(stores).setState({ view })
+	}
+
+	export function toggleSummaryColumnExpanded(stores: KeyProp, column: string) {
+		const table = slice(stores)
+		const expanded = table.getState().expandedSummaryColumns
+		table.setState({
+			expandedSummaryColumns: expanded.includes(column) ? expanded.filter((c) => c !== column) : [...expanded, column],
+		})
+	}
+
 	export function setPageIndex(stores: KeyProp, pageIndex: number) {
 		slice(stores).setState({ pageIndex })
 	}
@@ -535,6 +688,8 @@ export namespace Actions {
 			const table = slice(stores)
 			const update = (width: number) => {
 				width = Math.floor(width)
+				// the table measures 0 while the summary view hides it, which says nothing about the room it has
+				if (width === 0) return
 				if (table.getState().availableWidth !== width) table.setState({ availableWidth: width })
 			}
 			// measured in the commit phase so the first paint already has the right columns

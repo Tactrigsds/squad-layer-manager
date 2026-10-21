@@ -10,6 +10,7 @@ use layer_engine::gen::{self, StepSpec};
 use layer_engine::ir::{self, all_rows, words_for, Ir, Tri};
 use layer_engine::query::{self, FilterCache};
 use layer_engine::store::Store;
+use layer_engine::summary;
 
 fn load() -> Store {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/layers/layers_v10.5.0.bin");
@@ -405,4 +406,94 @@ fn cached_conjuncts_do_not_change_the_result() {
     select_count(&store, &mut cache, &pool);
     select_count(&store, &mut cache, &user);
     assert_eq!(select_count(&store, &mut cache, &both), want, "conjuncts cached");
+}
+
+/// A filter that keeps some blocks whole and splits others, so both paths of every summary run.
+fn split_filter(store: &Store) -> Ir {
+    Ir::Or {
+        children: vec![
+            Ir::InVals { col: col(store, "Map"), vals: vec![0, 1, 2, 5, 9] },
+            Ir::LtVal { col: col(store, "Asymmetry_Score"), val: 30000 },
+        ],
+    }
+}
+
+#[test]
+fn value_counts_match_a_row_walk() {
+    let store = load();
+    let hits = ir::eval(&store, &split_filter(&store)).into_hits();
+    let names = ["Map", "Gamemode", "Faction_1", "Unit_2", "Alliance_1", "UnitRecord_1", "Z_Pool"];
+    let cols: Vec<usize> = names.iter().map(|n| col(&store, n)).collect();
+    let got = summary::value_counts(&store, &hits, &cols);
+    for (i, c) in cols.iter().enumerate() {
+        let mut want: Vec<(Option<i64>, u32)> = Vec::new();
+        for row in hits.rows() {
+            let v = store.value(*c, row);
+            match want.iter_mut().find(|(w, _)| *w == v) {
+                Some((_, n)) => *n += 1,
+                None => want.push((v, 1)),
+            }
+        }
+        let mut got = got[i].clone();
+        got.sort();
+        want.sort();
+        assert_eq!(got, want, "value counts of {}", names[i]);
+    }
+}
+
+#[test]
+fn filtered_ranges_match_a_row_walk() {
+    let store = load();
+    let hits = ir::eval(&store, &split_filter(&store)).into_hits();
+    let names = ["Gamemode", "Faction_1", "ZERO_Score_1", "Logistics_Diff", "Asymmetry_Score", "Z_Pool"];
+    let cols: Vec<usize> = names.iter().map(|n| col(&store, n)).collect();
+    // twice: the second run reads the block ranges the first one cached
+    for pass in 0..2 {
+        let got = summary::ranges(&store, &hits, &cols);
+        for (i, c) in cols.iter().enumerate() {
+            let want = hits.rows().filter_map(|row| store.value(*c, row)).fold(None, |acc: Option<(i64, i64)>, v| {
+                Some(acc.map_or((v, v), |(lo, hi)| (lo.min(v), hi.max(v))))
+            });
+            assert_eq!(got[i], want, "range of {} on pass {pass}", names[i]);
+        }
+    }
+    // the whole-table range merges the block ranges the filtered pass cached
+    for (i, c) in cols.iter().enumerate() {
+        let want = (0..store.row_count()).filter_map(|row| store.value(*c, row)).fold(None, |acc: Option<(i64, i64)>, v| {
+            Some(acc.map_or((v, v), |(lo, hi)| (lo.min(v), hi.max(v))))
+        });
+        assert_eq!(gen::range(&store, *c), want, "whole-table range of {}", names[i]);
+    }
+}
+
+#[test]
+fn constraint_counts_match_a_row_walk() {
+    let store = load();
+    let conjuncts = vec![
+        Ir::Not { child: Box::new(Ir::InVals { col: col(&store, "Gamemode"), vals: vec![0, 1] }) },
+        Ir::Not { child: Box::new(Ir::LtVal { col: col(&store, "ZERO_Score_1"), val: 80000 }) },
+        Ir::GtVal { col: col(&store, "Faction_1"), val: 4 },
+    ];
+    let filter = Ir::EqVal { col: col(&store, "Map"), val: 3 };
+    let request = serde_json::json!({
+        "kind": "constraintCounts", "where": Ir::And { children: conjuncts.clone() }, "filters": [filter], "conjuncts": conjuncts,
+    });
+    let response = query::handle(&store, serde_json::from_value(request).unwrap(), &mut FilterCache::default()).unwrap();
+    let got: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+    let conjunct_bits: Vec<Tri> = conjuncts.iter().map(|c| naive(&store, c)).collect();
+    let filter_bits = naive(&store, &filter);
+    let passes = |bits: &Tri, row: usize| bits.t[row / 64] & (1u64 << (row % 64)) != 0;
+    let mut want_matches = 0u64;
+    let mut want_removed = vec![0u64; conjuncts.len()];
+    for row in 0..store.row_count() {
+        let failed: Vec<usize> = (0..conjuncts.len()).filter(|i| !passes(&conjunct_bits[*i], row)).collect();
+        match failed.as_slice() {
+            [] => want_matches += passes(&filter_bits, row) as u64,
+            [only] => want_removed[*only] += 1,
+            _ => {}
+        }
+    }
+    assert_eq!(got["matches"], serde_json::json!([want_matches]), "matches");
+    assert_eq!(got["removed"], serde_json::json!(want_removed), "removed");
 }

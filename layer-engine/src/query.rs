@@ -8,6 +8,7 @@ use crate::gen::{self, GenSpec, StepSpec};
 use crate::ir::{self, eval, eval_with, Hits, Ir};
 use crate::solve::{self, SolveSpec};
 use crate::store::{BlockCursor, ColData, Store};
+use crate::summary;
 use crate::IntSet;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -48,6 +49,13 @@ pub enum Request {
     Info { id: i32, columns: Vec<usize> },
     /// min/max of the given columns over the whole table
     Ranges { columns: Vec<usize> },
+    /// per column, each value among the rows that pass the filter and how many rows hold it
+    ValueCounts { r#where: Option<Ir>, columns: Vec<usize> },
+    /// min/max of the given columns over the rows that pass the filter
+    FilteredRanges { r#where: Option<Ir>, columns: Vec<usize> },
+    /// How many rows that pass the filter each of `filters` matches, and per conjunct of the filter, how many rows
+    /// that conjunct alone removes. `conjuncts` ANDed together must be `where`.
+    ConstraintCounts { r#where: Option<Ir>, filters: Vec<Ir>, conjuncts: Vec<Ir> },
     /// how many layers fall in each group of a pick step, over the rows that pass the filter
     GroupCounts { r#where: Option<Ir>, step: StepSpec },
     /// reorder and team-swap a queue to clear repeat-rule violations. Doesn't read the table.
@@ -78,6 +86,13 @@ pub struct RangeResponse {
     pub col: usize,
     pub min: Option<i64>,
     pub max: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConstraintCountsResponse {
+    pub matches: Vec<u32>,
+    pub removed: Vec<u32>,
 }
 
 #[derive(Serialize)]
@@ -323,30 +338,20 @@ pub fn handle(store: &Store, request: Request, cache: &mut FilterCache) -> Resul
             } else if let ColData::PerPattern(values) = store.col_data(col) {
                 // A per-team column repeats across every block sharing an availability pattern, and a pool filter is
                 // usually made of layer-scope terms, so blocks tend to match whole. A block that does contributes
-                // exactly its pattern's distinct values, which are worth computing once per pattern.
-                let mut per_pattern: Vec<Option<Vec<Option<i64>>>> = vec![None; store.manifest.pattern_count];
+                // exactly its pattern's distinct values, which the store keeps per pattern.
+                let per_pattern = store.pattern_counts(col).expect("a per-pattern column has pattern counts");
                 for block in 0..store.block_count() {
                     let (start, end) = store.block_rows(block);
                     if start == end || !hits.any_in(start, end) {
                         continue;
                     }
                     let pattern = store.block_pattern(block);
-                    let (p_start, p_end) = store.pattern_rows(pattern);
+                    let p_start = store.pattern_rows(pattern).0;
                     if hits.all_in(start, end) {
-                        let distinct = per_pattern[pattern].get_or_insert_with(|| {
-                            let mut out: Vec<Option<i64>> = Vec::new();
-                            let mut local: IntSet<Option<i64>> = IntSet::default();
-                            for p in p_start..p_end {
-                                let v = values.get(p);
-                                if local.insert(v) {
-                                    out.push(v);
-                                }
-                            }
-                            out
-                        });
-                        for v in distinct.iter() {
-                            if met.insert(*v) {
-                                seen.push(*v);
+                        for code in per_pattern.of(pattern).0 {
+                            let v = values.decode(*code as usize);
+                            if met.insert(v) {
+                                seen.push(v);
                             }
                         }
                     } else {
@@ -404,6 +409,29 @@ pub fn handle(store: &Store, request: Request, cache: &mut FilterCache) -> Resul
                 })
                 .collect();
             serde_json::to_string(&ranges).map_err(|e| e.to_string())
+        }
+
+        Request::ValueCounts { r#where, columns } => {
+            let hits = matched(store, &r#where, cache);
+            serde_json::to_string(&summary::value_counts(store, &hits, &columns)).map_err(|e| e.to_string())
+        }
+
+        Request::FilteredRanges { r#where, columns } => {
+            let hits = matched(store, &r#where, cache);
+            serde_json::to_string(&summary::ranges(store, &hits, &columns)).map_err(|e| e.to_string())
+        }
+
+        Request::ConstraintCounts { r#where, filters, conjuncts } => {
+            let hits = matched(store, &r#where, cache);
+            let filter_hits: Vec<Rc<Hits>> = filters.iter().map(|ir| eval_cached(store, ir, cache)).collect();
+            // each conjunct is evaluated over the whole table, so the cache holds it whole for the next select too
+            let conjunct_hits: Vec<Rc<Hits>> = conjuncts.iter().map(|ir| eval_cached(store, ir, cache)).collect();
+            let matches = summary::match_counts(&hits, &filter_hits.iter().map(|h| h.as_ref()).collect::<Vec<_>>());
+            let removed = summary::removed_counts(
+                &ir::all_rows(store.row_count()),
+                &conjunct_hits.iter().map(|h| h.as_ref()).collect::<Vec<_>>(),
+            );
+            serde_json::to_string(&ConstraintCountsResponse { matches, removed }).map_err(|e| e.to_string())
         }
 
         Request::GroupCounts { r#where, step } => {

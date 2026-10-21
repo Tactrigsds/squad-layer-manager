@@ -236,6 +236,74 @@ export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	queryLayers$(input).subscribe({ error: () => {} })
 }
 
+const summaryPartCache = new Map<string, Rx.Observable<LQY.LayersSummaryPartResult>>()
+const SUMMARY_PART_CACHE_MAX_ENTRIES = 200
+
+// one cached request per part, so a column shown later costs only its own part
+function summaryPart$(input: LQY.LayersSummaryPartInput): Rx.Observable<LQY.LayersSummaryPartResult> {
+	const key = JSON.stringify(getDepKey(input, Store.getState().backgroundStateEpoch))
+	const cached = summaryPartCache.get(key)
+	if (cached) {
+		summaryPartCache.delete(key)
+		summaryPartCache.set(key, cached)
+		return cached
+	}
+	const part$: Rx.Observable<LQY.LayersSummaryPartResult> = workerRequest$('queryLayersSummaryPart', input).pipe(
+		Rx.map((res) => {
+			if (res.code !== 'ok') throw new Error(`layers summary part ${input.part.type} failed: ${res.code}`)
+			return res.result
+		}),
+		Rx.tap({
+			error: () => {
+				if (summaryPartCache.get(key) === part$) summaryPartCache.delete(key)
+			},
+		}),
+		Rx.shareReplay({ bufferSize: 1, refCount: true }),
+	)
+	summaryPartCache.set(key, part$)
+	while (summaryPartCache.size > SUMMARY_PART_CACHE_MAX_ENTRIES) {
+		summaryPartCache.delete(summaryPartCache.keys().next().value!)
+	}
+	return part$
+}
+
+// Summarizes the layers a query returns, emitting each time a part arrives. Parts are requested one after another
+// rather than all at once, so a page query sent meanwhile runs ahead of the parts still to come. Each range column is
+// its own part, because reading a range costs the most of any part.
+export function queryLayersSummary$(
+	base: LQY.BaseQueryInput,
+	columns: { valueColumns: string[]; rangeColumns: string[] },
+): Rx.Observable<LQY.LayersSummary> {
+	const parts: LQY.LayersSummaryPart[] = [
+		{ type: 'value-counts', columns: columns.valueColumns },
+		{ type: 'constraint-counts' },
+		...columns.rangeColumns.map((column): LQY.LayersSummaryPart => ({ type: 'ranges', columns: [column] })),
+	]
+	const initial: LQY.LayersSummary = { valueCounts: null, ranges: {}, constraintCounts: null, complete: false }
+	const isComplete = (summary: LQY.LayersSummary) =>
+		summary.valueCounts !== null && summary.constraintCounts !== null && columns.rangeColumns.every((c) => c in summary.ranges)
+	return Rx.concat(...parts.map((part) => summaryPart$({ ...base, part }))).pipe(
+		Rx.scan((summary, result): LQY.LayersSummary => {
+			let next: LQY.LayersSummary
+			switch (result.type) {
+				case 'value-counts':
+					next = { ...summary, valueCounts: result.valueCounts }
+					break
+				case 'ranges':
+					next = { ...summary, ranges: { ...summary.ranges, ...result.ranges } }
+					break
+				case 'constraint-counts':
+					next = { ...summary, constraintCounts: result.constraintCounts }
+					break
+				default:
+					assertNever(result)
+			}
+			return { ...next, complete: isComplete(next) }
+		}, initial),
+		Rx.startWith(initial),
+	)
+}
+
 export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: QueryLayersInputOpts): LQY.LayersQueryInput {
 	const opts: QueryLayersInputOpts = _opts ?? {}
 	let sort = opts.sort ?? opts.cfg?.defaultSortBy ?? LQY.DEFAULT_SORT
@@ -243,31 +311,35 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 		console.error('Random sort requires a random seed when used with react query')
 		sort = { ...sort, seed: 'SUPER_RANDOM_SEED' }
 	}
-	const pageSize = opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE
-	const pageIndex = opts.pageIndex ?? 0
-	const selectedLayers = opts.selectedLayers
+	return {
+		...getQueryBaseInput(baseInput, opts),
+		pageIndex: opts.pageIndex ?? 0,
+		sort,
+		pageSize: opts.pageSize ?? LQY.DEFAULT_PAGE_SIZE,
+		selectedLayers: opts.selectedLayers,
+	}
+}
+
+// the constraints, list and cursor that decide which layers a table query returns, whatever page or order it asks for
+export function getQueryBaseInput(
+	baseInput: LQY.BaseQueryInput,
+	opts: Pick<QueryLayersInputOpts, 'cfg' | 'selectedLayers'>,
+): LQY.BaseQueryInput {
 	if (baseInput.cursor && !baseInput.action) {
 		baseInput = { ...baseInput, action: 'add' }
 	}
 
-	if (selectedLayers) {
+	if (opts.selectedLayers) {
 		const filter = FB.inValues(
 			'id',
-			selectedLayers.filter((layer) => LC.isKnownAndValidLayer(layer, opts.cfg)),
+			opts.selectedLayers.filter((layer) => LC.isKnownAndValidLayer(layer, opts.cfg)),
 		)
 		baseInput = {
 			...baseInput,
 			constraints: [...(baseInput.constraints?.filter((c) => !c.filterApplState) ?? []), CB.filterAnon('show-selected', filter)],
 		}
 	}
-
-	return {
-		...baseInput,
-		pageIndex,
-		sort,
-		pageSize,
-		selectedLayers: selectedLayers,
-	}
+	return baseInput
 }
 
 export async function checkBackburnerTemplates(input: LQY.BaseQueryInput & { templates: { itemId: string; filter: F.FilterNode }[] }) {
@@ -506,6 +578,7 @@ const QUERY_PRIORITIES: Record<RequestType, number> = {
 	queryLayers: 3,
 	genVote: 3,
 	solveRepeatViolations: 3,
+	queryLayersSummaryPart: 4,
 	checkBackburnerTemplates: 4,
 }
 

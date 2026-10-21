@@ -274,3 +274,10 @@ export function getTeamColor(teamId: SM.TeamId, parity: number, normalize: boole
 }
 
 // a ratio to two places, or a dash when there is nothing to divide by
+
+// a score as the layer table shows it: two places, signed when positive
+export function formatScore(value: number) {
+	const formatted = value.toFixed(2)
+	if (parseFloat(formatted) > 0) return `+${formatted}`
+	return formatted
+}
