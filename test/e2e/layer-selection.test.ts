@@ -121,6 +121,11 @@ async function setForceWriteSimulatedAway(page: Page, simulatedAway: boolean) {
 	await expect(dialog).toHaveCount(0)
 }
 
+// the first number in a readout like "62,742 matched layers"
+function parseCount(text: string) {
+	return Number(text.match(/[\d,]+/)![0].replaceAll(',', ''))
+}
+
 async function openExplore(page: Page) {
 	await page.getByRole('button', { name: 'Explore Layers' }).click()
 	return page.getByRole('dialog', { name: 'Layers' })
@@ -240,6 +245,37 @@ test.describe('the explore-layers collection', () => {
 })
 
 test.describe('applied filters', () => {
+	// "removes" is the one count the summary derives across constraints, so it is checked against the result counts
+	// with and without the pool rather than against a number the engine also computes
+	test('the summary counts what each filter removes, and summarizes the columns of the results', async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
+		const dialog = await openAddLayers(page)
+		await expect(dialog.getByRole('checkbox', { name: 'RAAS Only' })).toBeVisible()
+		const countWithPool = await settledText(dialog)
+
+		await dialog.getByRole('radio', { name: 'Summary' }).click()
+		const summary = dialog.locator('[data-summary-complete]')
+		await expect(summary).toHaveAttribute('data-summary-complete', 'true')
+
+		const poolRow = summary.getByRole('row').filter({ hasText: 'RAAS Only' })
+		await expect(poolRow).toContainText('Applied')
+		const removed = parseCount((await poolRow.getByRole('cell').last().textContent()) ?? '')
+		// the pinned Seed filter is off and contradicts the RAAS pool, so it matches nothing in the results
+		await expect(summary.getByRole('row').filter({ hasText: 'Seed Only' })).toContainText('0 (0%)')
+
+		const gamemode = summary.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Gamemode', exact: true }) })
+		await expect(gamemode).toContainText('1 value')
+		await expect(gamemode.getByRole('listitem')).toHaveText([/^RAAS/])
+
+		await dialog.getByRole('radio', { name: 'Results' }).click()
+		const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
+		await poolControl.click()
+		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
+		const countWithoutPool = await settledTextAfter(dialog, countWithPool)
+		expect(parseCount(countWithoutPool) - parseCount(countWithPool)).toBe(removed)
+	})
+
 	// the pool's own filters are already rendered as pinned controls, so offering them again in the
 	// extras picker would produce two controls for one constraint
 	test('the extras picker offers only filters the pool does not already pin', async ({ page }) => {

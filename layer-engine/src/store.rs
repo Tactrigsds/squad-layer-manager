@@ -19,7 +19,7 @@
 //! genuinely per-row scopes pay per row.
 
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 
 pub const MAGIC: &[u8; 5] = b"SLMC3";
 pub const NULL_U8: u8 = 255;
@@ -112,6 +112,59 @@ impl Enum<'_> {
             },
         }
     }
+
+    /// The raw code at `i`, null included, for tallying into an array of `slots()` counters.
+    #[inline]
+    pub fn code(&self, i: usize) -> usize {
+        match self {
+            Enum::U8(c) => c[i] as usize,
+            Enum::U16(c) => c[i] as usize,
+        }
+    }
+
+    pub fn slots(&self) -> usize {
+        match self {
+            Enum::U8(_) => NULL_U8 as usize + 1,
+            Enum::U16(_) => NULL_U16 as usize + 1,
+        }
+    }
+
+    pub fn decode(&self, code: usize) -> Option<i64> {
+        if code == self.slots() - 1 {
+            None
+        } else {
+            Some(code as i64)
+        }
+    }
+}
+
+/// A per-team column's value counts within each availability pattern, in the order values first appear there. A block
+/// whose rows all match contributes its pattern's counts whole, without visiting a row.
+pub struct PatternCounts {
+    /// per pattern, where its entries start; one extra entry closes the last pattern
+    pub start: Vec<u32>,
+    pub codes: Vec<u32>,
+    pub counts: Vec<u32>,
+}
+
+/// Per pattern, a list of pattern rows.
+pub struct PatternRows {
+    /// per pattern, where its rows start; one extra entry closes the last pattern
+    start: Vec<u32>,
+    rows: Vec<u32>,
+}
+
+impl PatternRows {
+    fn of(&self, pattern: usize) -> &[u32] {
+        &self.rows[self.start[pattern] as usize..self.start[pattern + 1] as usize]
+    }
+}
+
+impl PatternCounts {
+    pub fn of(&self, pattern: usize) -> (&[u32], &[u32]) {
+        let range = self.start[pattern] as usize..self.start[pattern + 1] as usize;
+        (&self.codes[range.clone()], &self.counts[range])
+    }
 }
 
 /// An owned enum column, for the ones derived at load rather than read out of the artifact.
@@ -161,6 +214,14 @@ pub struct Store {
     pair_record: Vec<u16>,
     /// min/max per column, computed on first ask: the table never changes, and a per-row column costs a full walk
     pub(crate) ranges: Vec<OnceCell<Option<(i64, i64)>>>,
+    /// per column, built on first ask
+    pattern_counts: Vec<OnceCell<PatternCounts>>,
+    /// Per column, per block: None until a query needs the whole block, then the block's min/max (None inside when
+    /// every value is null). Filled block by block, so no query pays for blocks it never asked about.
+    block_ranges: Vec<RefCell<Vec<Option<Option<(i64, i64)>>>>>,
+    /// Per team, per pattern, one pattern row for each distinct side pair the pattern holds. A score column takes
+    /// one value per side pair within a block, so these rows alone settle a block's score range.
+    side_pair_rows: [OnceCell<PatternRows>; 2],
     /// the columns the id and side-record lookups need, resolved once
     layer_col: usize,
     faction_col: [usize; 2],
@@ -225,6 +286,9 @@ impl Store {
             pair_count: 0,
             pair_record: Vec::new(),
             ranges: Vec::new(),
+            pattern_counts: Vec::new(),
+            block_ranges: Vec::new(),
+            side_pair_rows: [OnceCell::new(), OnceCell::new()],
             layer_col,
             faction_col,
             unit_col,
@@ -244,6 +308,8 @@ impl Store {
         store.index_side_records()?;
         store.index_layer_blocks()?;
         store.ranges = (0..store.manifest.columns.len()).map(|_| OnceCell::new()).collect();
+        store.pattern_counts = (0..store.manifest.columns.len()).map(|_| OnceCell::new()).collect();
+        store.block_ranges = (0..store.manifest.columns.len()).map(|_| RefCell::new(Vec::new())).collect();
 
         if store.block_row_start.len() != store.manifest.block_count + 1 {
             return Err("blockRowStart does not match blockCount".into());
@@ -558,6 +624,96 @@ impl Store {
             ColumnSpec::Pattern { section, .. } => Some(self.enum_section(*section)),
             _ => None,
         }
+    }
+
+    /// None for a column that isn't per-pattern.
+    pub fn pattern_counts(&self, col: usize) -> Option<&PatternCounts> {
+        let col = self.resolve(col);
+        let ColData::PerPattern(values) = self.col_data(col) else {
+            return None;
+        };
+        Some(self.pattern_counts[col].get_or_init(|| {
+            let mut tally = vec![0u32; values.slots()];
+            let mut start = Vec::with_capacity(self.manifest.pattern_count + 1);
+            let mut codes = Vec::new();
+            let mut counts = Vec::new();
+            for pattern in 0..self.manifest.pattern_count {
+                let first = codes.len();
+                start.push(first as u32);
+                let (p_start, p_end) = self.pattern_rows(pattern);
+                for p in p_start..p_end {
+                    let code = values.code(p);
+                    if tally[code] == 0 {
+                        codes.push(code as u32);
+                    }
+                    tally[code] += 1;
+                }
+                for code in &codes[first..] {
+                    counts.push(std::mem::take(&mut tally[*code as usize]));
+                }
+            }
+            start.push(codes.len() as u32);
+            PatternCounts { start, codes, counts }
+        }))
+    }
+
+    fn side_pair_rows(&self, team: usize) -> &PatternRows {
+        self.side_pair_rows[team].get_or_init(|| {
+            let side_pair = &self.side_pair[team];
+            let mut seen = vec![false; self.pair_count + 1];
+            let mut start = Vec::with_capacity(self.manifest.pattern_count + 1);
+            let mut rows = Vec::new();
+            for pattern in 0..self.manifest.pattern_count {
+                let first = rows.len();
+                start.push(first as u32);
+                let (p_start, p_end) = self.pattern_rows(pattern);
+                for p in p_start..p_end {
+                    // NULL_U16 takes the last slot, so a pattern row with no side record still gets read
+                    let slot = (side_pair[p] as usize).min(self.pair_count);
+                    if !seen[slot] {
+                        seen[slot] = true;
+                        rows.push(p as u32);
+                    }
+                }
+                for p in &rows[first..] {
+                    seen[(side_pair[*p as usize] as usize).min(self.pair_count)] = false;
+                }
+            }
+            start.push(rows.len() as u32);
+            PatternRows { start, rows }
+        })
+    }
+
+    /// The min/max of a column over one whole block, read once and then remembered.
+    pub fn block_range(&self, col: usize, reader: &Reader, block: usize) -> Option<(i64, i64)> {
+        let col = self.resolve(col);
+        let mut cached = self.block_ranges[col].borrow_mut();
+        if cached.is_empty() {
+            cached.resize(self.block_count(), None);
+        }
+        *cached[block].get_or_insert_with(|| {
+            let mut range: Option<(i64, i64)> = None;
+            let mut take = |v: Option<i64>| {
+                if let Some(v) = v {
+                    range = Some(range.map_or((v, v), |(lo, hi)| (lo.min(v), hi.max(v))));
+                }
+            };
+            let pattern = self.block_pattern(block);
+            if let ColumnSpec::Score { team, .. } = &self.manifest.columns[col] {
+                // a score read never looks at the row index
+                for p in self.side_pair_rows(*team as usize - 1).of(pattern) {
+                    take(reader.read(block, *p as usize, 0));
+                }
+            } else {
+                let (start, end) = self.block_rows(block);
+                let mut p = self.pattern_rows(pattern).0;
+                for row in start..end {
+                    take(reader.read(block, p, row));
+                    p += 1;
+                }
+            }
+            range
+        })
     }
 
     /// The side record for one team of one row, or None. Records are sorted and layer-major, so only the block's own

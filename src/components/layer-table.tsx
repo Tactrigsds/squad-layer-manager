@@ -37,6 +37,7 @@ import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerContextMenuOptions from './layer-context-menu-options'
+import { ColumnDistinctCount, ColumnSummaryTip, LayerTableSummaryView, LayerTableViewToggle } from './layer-table-summary'
 import MapLayerDisplay from './map-layer-display'
 import { MultiLayerSetDialog } from './multi-layer-set-dialog'
 import { TablePagination } from './table-pagination'
@@ -55,12 +56,6 @@ import { tr } from '@/systems/messages.client'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 
-const formatFloat = (value: number) => {
-	const formatted = value.toFixed(2)
-	const numeric = parseFloat(formatted)
-	if (numeric > 0) return `+${formatted}`
-	return formatted
-}
 // table-level display state shared by every cell. these values are identical across the whole
 // table, so cells read them from context instead of each holding its own store subscriptions
 // (~rows × cols of them) and recomputing team parity per cell
@@ -103,7 +98,8 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 				})
 			}
 
-			return (
+			const hasValues = colDef.type === 'boolean' || (colDef.type === 'string' && !!colDef.enumMapping)
+			const button = (
 				<button
 					type="button"
 					className={cn(
@@ -112,10 +108,13 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 						sort && 'text-text [&_svg]:text-text',
 					)}
 					data-sort={!!sort}
-					title={tr.text(LC_Msgs.columnName(colDef))}
+					title={hasValues || isNumeric ? undefined : tr.text(LC_Msgs.columnName(colDef))}
 					onClick={handleClick}
 				>
-					<span className="min-w-0 line-clamp-2 break-words">{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}</span>
+					<span className="min-w-0 line-clamp-2 break-words">
+						{colDef.shortName ?? tr.text(LC_Msgs.columnName(colDef))}
+						{hasValues && <ColumnDistinctCount stores={stores} column={colDef.name} />}
+					</span>
 					{!sort && <ArrowUpDown className="opacity-0 group-hover/th:opacity-100" />}
 					{sort?.direction === 'ASC' && <ArrowUp />}
 					{sort?.direction === 'DESC' && <ArrowDown />}
@@ -132,6 +131,15 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 						</span>
 					)}
 				</button>
+			)
+			if (!hasValues && !isNumeric) return button
+			return (
+				<Tooltip help>
+					<TooltipTrigger asChild>{button}</TooltipTrigger>
+					<TooltipContent>
+						<ColumnSummaryTip stores={stores} colDef={colDef} isNumeric={isNumeric} />
+					</TooltipContent>
+				</Tooltip>
 			)
 		},
 		cell: function ValueColCell(info) {
@@ -182,7 +190,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 			let elt: React.ReactNode
 			switch (colDef.type) {
 				case 'float':
-					elt = valueElt(formatFloat(value as unknown as number))
+					elt = valueElt(DH.formatScore(value as unknown as number))
 					break
 				case 'string':
 					elt = value ? valueElt(value) : emptyElt
@@ -369,6 +377,7 @@ export default function LayerTable(props: {
 			sort: table.sort,
 			pageSize: table.pageSize,
 			pageIndex: table.pageIndex,
+			view: table.view,
 		})),
 	)
 
@@ -444,7 +453,8 @@ export default function LayerTable(props: {
 			<div className="flex flex-col gap-1.5 min-w-0">
 				<LayerTableControlPanel {...props} table={table} />
 				{/*--------- table ---------*/}
-				<div ref={wellRef} className="fd-well overflow-x-auto overflow-y-hidden">
+				{frameState.view === 'summary' && <LayerTableSummaryView stores={props.stores} />}
+				<div ref={wellRef} hidden={frameState.view === 'summary'} className="fd-well overflow-x-auto overflow-y-hidden">
 					<Table
 						className="table-fixed [&_th]:overflow-hidden [&_th]:px-0 [&_td]:overflow-hidden [&_td]:px-0"
 						style={{ minWidth: columns.reduce((width, column) => width + column.getSize(), 0) }}
@@ -929,6 +939,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 			totalPageCount: table.pageData?.pageCount,
 			isFetching: table.isFetching,
 			settled: table.answeredQuery === table.requestedQuery,
+			view: table.view,
 		})),
 	)
 
@@ -941,6 +952,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 			className="flex items-center justify-between gap-4 whitespace-nowrap"
 		>
 			<div className="flex items-center gap-2">
+				<LayerTableViewToggle stores={props.stores} />
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-text-2 [&_strong]:font-semibold [&_strong]:text-foreground">
 						{(frameState.totalRowCount ?? 0) > 0 ? (
@@ -966,7 +978,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 					</div>
 				)}
 			</div>
-			{(frameState?.totalPageCount ?? 0) > 0 && (
+			{frameState.view === 'results' && (frameState?.totalPageCount ?? 0) > 0 && (
 				<TablePagination
 					pageIndex={frameState.pageIndex}
 					pageCount={frameState?.totalPageCount ?? 0}

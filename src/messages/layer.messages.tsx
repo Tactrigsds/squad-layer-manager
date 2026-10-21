@@ -64,6 +64,80 @@ export const matchedLayers = def((count: string) => rt('<strong>{count}</strong>
 
 export const noLayersMatched = def('No layers matched')
 
+// -------- the layer table's summary of its results --------
+
+export const tableView = def('Layer table view')
+
+export const resultsView = def('Results')
+
+export const summaryView = def('Summary')
+
+export const distinctValues = def('{count, plural, one {# value} other {# values}}', (count: number) => ({ count }))
+
+export const moreValues = def('{count} more', (count: string) => ({ count }))
+
+export const showAllValues = def('Show all {count}', (count: string) => ({ count }))
+
+export const showFewerValues = def('Show fewer')
+
+export const noValue = def('None')
+
+export const countingValues = def('Counting values')
+
+export const valueRange = def('{min} to {max}', (min: string, max: string) => ({ min, max }))
+
+export const rangeInResults = def('In these results')
+
+export const rangeTrackCaption = def('The track spans every layer. The highlighted part is these results.')
+
+export const noRangeInResults = def('No layer in these results has a value in this column.')
+
+export const readingRange = def('Reading the range of these results')
+
+export const summaryFilters = def('Filters')
+
+export const summaryColumns = def('Columns')
+
+export const summaryScoreRanges = def('Score ranges')
+
+export const summaryFilterColumn = def('Filter')
+
+export const summaryAppliedAsColumn = def('Applied as')
+
+export const summaryMatchesColumn = def('Results that match')
+
+export const summaryRemovesColumn = def('Layers it removes')
+
+export const filterAppliedRegular = def('Applied')
+
+export const filterAppliedInverted = def('Inverted')
+
+export const filterAppliedIndicator = def('Indicator')
+
+export const filterAppliedOff = def('Off')
+
+export const summaryMatchCount = def('{count} ({percent}%)', (count: string, percent: string) => ({ count, percent }))
+
+export const appliedAsHintLabel = def('What each filter state means')
+
+export const appliedAsHintRegular = def('The results hold only layers that match the filter.')
+
+export const appliedAsHintInverted = def('The results hold only layers that do not match the filter.')
+
+export const appliedAsHintIndicator = def('The filter leaves the results alone, and marks each layer in the table by whether it matches.')
+
+export const appliedAsHintOff = def('The filter neither narrows the results nor marks layers in the table.')
+
+export const removesHintLabel = def('How layers removed are counted')
+
+export const removesHintDefinition = def('The number of extra layers that would appear if only this filter were turned off.')
+
+export const removesHintOverlap = def(
+	'A layer that several filters exclude is counted for none of them, because turning off one of those filters alone does not bring the layer back. The counts can therefore add up to less than the filters remove together.',
+)
+
+export const removesHintOrder = def('The order of the filters does not affect the counts.')
+
 export const initializingDatabase = def('Initializing layer database...')
 
 export const downloadingLayers = def('Downloading layers from server, this may take a few minutes...')

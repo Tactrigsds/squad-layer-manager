@@ -30,7 +30,8 @@ item and who made each edit, the queue item's votes, and the match that played t
 Use the layer selection dialog to search the full layer catalog for layers to add to the queue. Filters narrow the
 catalog, along with constraints on map, gamemode, factions, units and vehicles. The results can be shuffled, weighted
 toward preferable layers. Each layer is marked when it falls outside your pool or would break a
-[repeat rule](#repeat-rules). The selected layers go into the queue as separate queue items or as one vote.
+[repeat rule](#repeat-rules). A summary of the results lists the values each column holds and how many layers each
+filter matches or removes. The selected layers go into the queue as separate queue items or as one vote.
 
 ![the Add Layers dialog, with three RAAS layers selected](../images/features/add_layers.png)
 

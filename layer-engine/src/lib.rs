@@ -2,7 +2,7 @@
 //!
 //! One wasm module serves both hosts: the browser's query worker and the server. It owns the layer table in factored
 //! form and answers every query the app makes of it (filtering, sorting, paging, distinct values, layer statuses, and
-//! weighted generation), replacing the SQLite layer db.
+//! weighted generation, result summaries), replacing the SQLite layer db.
 //!
 //! ABI: no wasm-bindgen. The host allocates a buffer with `alloc`, writes bytes into linear memory, and calls in. Both
 //! requests and responses are JSON; responses are left in memory and read back via `result_ptr`/`result_len`.
@@ -12,6 +12,7 @@ pub mod ir;
 pub mod query;
 pub mod solve;
 pub mod store;
+pub mod summary;
 
 use query::{FilterCache, Request};
 use std::cell::RefCell;
