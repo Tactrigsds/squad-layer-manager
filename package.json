@@ -46,7 +46,6 @@
 		"vehicle-tables": "tsx --tsconfig tsconfig.node.json src/scripts/rebuild-vehicle-tables.ts",
 		"preprocess:prod": "LOG_LEVEL_OVERRIDE=info node --enable-source-maps dist-server/scripts/preprocess.js",
 		"check-layer-compat": "tsx --tsconfig tsconfig.node.json src/scripts/check-layer-compat.ts ./broken-layers.csv",
-		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx --tsconfig tsconfig.node.json src/scripts/migrate.ts",
 		"db:migrate:prod": "node --enable-source-maps dist-server/scripts/migrate.js",
 		"db:restore": "tsx --tsconfig tsconfig.node.json src/scripts/restore.ts",
