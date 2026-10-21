@@ -95,7 +95,7 @@ export const groups = {
 				envExample: { include: 'commented' },
 			}),
 		NODE_ENV: z.enum(['development', 'production', 'test']).meta({
-			description: '`pnpm server:dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
+			description: '`pnpm dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
 			envExample: { include: 'omit', dev: { include: 'set', value: 'development' } },
 		}),
 		LOG_LEVEL_OVERRIDE: z

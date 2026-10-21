@@ -61,9 +61,9 @@ so a browser tab pointed at a workspace stays valid across restarts:
 | 0    | 3100 | 3101   | 3102 | 3103    | 3104    |
 | 1    | 3110 | 3111   | 3112 | 3113    | 3114    |
 
-Slots start above the `.env` defaults (3000/5173), so an ordinary `pnpm server:dev` never contends with one. There are 64
-slots. A slot whose checkout has been deleted is reclaimed automatically, so `pnpm worktree prune` frees the slots of
-merged worktrees.
+Slots start above the `.env` defaults (3000/5173), so a production build run in a checkout never contends with one.
+There are 64 slots. A slot whose checkout has been deleted is reclaimed automatically, so `pnpm worktree prune` frees
+the slots of merged worktrees.
 
 The registry is stored beside the shared git dir (`.git/slm-dev-slots.json`), the only location every worktree agrees
 on.
