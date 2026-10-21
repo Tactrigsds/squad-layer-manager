@@ -1,7 +1,6 @@
 /**
- * Reading, comparing and formatting layers. A LayerId only means something against the layer data the host has
- * loaded: anything a plugin persists or sends elsewhere should hold toLayerText(id), and read back with
- * fromStoredLayerText. The raw-text parsing internals (parseRawLayerText, parseTeamString, the backwards-compat
+ * Reading, comparing and formatting layers. LayerId's doc comment describes ids, and how a plugin stores them. The
+ * raw-text parsing internals (parseRawLayerText, parseTeamString, the backwards-compat
  * mappings) stay with the host, as does setLayerData, which swaps the process-wide layer data out from under
  * everything.
  */

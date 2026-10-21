@@ -103,12 +103,25 @@ export type LayerIdArgs = {
 
 declare const layerIdBrand: unique symbol
 
-// A layer's id while the app runs. A layer the loaded layer data holds is its dense id (see LC.denseIdLayout); any
-// other layer is its canonical text (see formatLayerText). Every id is built by idFromParts or fromLayerText, which
-// pick the dense form whenever the layer data holds the layer, so two ids for one layer are always ===.
-//
-// Dense ids mean something only against the layer data that produced them. Storage, URLs and the plugin boundary's
-// persisted data hold canonical text, and LayerIdSchema converts: it decodes either form and encodes to text.
+/**
+ * A layer's id while the app runs. A layer the loaded layer data holds is its dense id, a number (see
+ * LC.denseIdLayout). Any other layer is its canonical text (see formatLayerText), such as
+ * `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. The layer data picks the form, so one layer can be a number on one
+ * install and text on another.
+ *
+ * fromLayerText, fromStoredLayerText and idFromParts pick the dense form whenever the layer data holds the layer, so two
+ * ids for one layer are ===. The exception is idFromParts given a part that is missing (see idFromParts).
+ *
+ * A dense id indexes the loaded layer data, which changes only across a restart, and then names a different layer or
+ * none. In memory and over the socket ids are dense: a page that loaded other layer data than the server is refused
+ * and reloads, so both ends read one id as one layer. Anything kept past a restart or read by another program, such as
+ * a table, a URL or a webhook payload, holds toLayerText(id), and reads back with fromStoredLayerText. LayerIdSchema
+ * converts between the two.
+ *
+ * An id is a number or a string. Key a Map or Set by it, never an object, which turns a number into a string that is
+ * not === the id. Read its parts with toLayer, never from the text. toLayerText is not a display name: format a layer
+ * for people with display-helpers.
+ */
 export type LayerId = DenseLayerId | TextLayerId
 export type DenseLayerId = number & { readonly [layerIdBrand]: true }
 export type TextLayerId = string & { readonly [layerIdBrand]: true }
@@ -119,6 +132,10 @@ export type RawLayer = UnvalidatedLayer & { id: TextLayerId }
 const MAX_CACHED_TEXT_LOOKUPS = 4096
 const MAX_CACHED_KNOWN_LAYERS = 16384
 
+/**
+ * Decodes a dense id, or any text fromStoredLayerText reads, into a LayerId. A number that names no layer in the loaded
+ * layer data fails. Encodes to canonical text, so `z.encode(L.LayerIdSchema, id)` gives the stored form.
+ */
 export const LayerIdSchema = z.codec(z.union([z.number().int().nonnegative(), z.string().min(1).max(512)]), z.custom<LayerId>(), {
 	decode: (value, payload) => {
 		let id: LayerId | undefined
@@ -177,8 +194,11 @@ export function checkDenseId(id: number, components = StaticLayerComponents): De
 	return LC.fromDenseId(id, LC.denseIdLayout(components)) ? (id as DenseLayerId) : undefined
 }
 
-// The id for a layer given by its parts: dense when the layer data holds a layer with exactly these parts, canonical
-// text otherwise.
+/**
+ * The id for a layer given by its parts: dense when the layer data holds a layer with exactly these parts, canonical
+ * text otherwise. Missing units are not filled in, so `{ Layer, Faction_1, Faction_2 }` gives text where fromLayerText
+ * gives the dense id of the layer with default units. The two ids are not ===, though layersEqual matches them.
+ */
 export function idFromParts(parts: LayerTextParts, components = StaticLayerComponents): LayerId {
 	const { Layer, Faction_1, Unit_1, Faction_2, Unit_2 } = parts
 	if (Faction_1 && Unit_1 && Faction_2 && Unit_2) {
@@ -197,9 +217,12 @@ export function idFromParts(parts: LayerTextParts, components = StaticLayerCompo
 	return formatLayerText(parts) as TextLayerId
 }
 
-// The id canonical text names, or undefined when it is not canonical text. Text naming a layer the layer data holds
-// comes back dense, and the rest is normalized the way the raw layer parser reads it (default units filled in, a
-// Training layer's teams taken from its config).
+/**
+ * The id canonical text names, or undefined when it is not canonical text, such as the game's own
+ * `Narva_RAAS_v1 USA+CombinedArms RGF+CombinedArms`. Text naming a layer the layer data holds comes back dense, and the
+ * rest is normalized the way the raw layer parser reads it (default units filled in, a Training layer's teams taken
+ * from its config). Text read from storage goes through fromStoredLayerText instead.
+ */
 export function fromLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
 	return idOfLayerText(text, components)
 }
@@ -209,10 +232,15 @@ const idOfLayerText = LDC.lookup((text: string, components): LayerId | undefined
 	return layerFromParts(parts, components).id
 }, MAX_CACHED_TEXT_LOOKUPS)
 
-// The id stored text names, whichever format wrote it: canonical text, or an id in the old abbreviated format or its
-// RAW: form from before it. An old abbreviated id also fits the canonical grammar (its Map-Gamemode part reads as a
-// layer name), so text is only taken as canonical when the layer data holds its layer, and undefined only when no
-// format reads it.
+/**
+ * The id stored text names, whichever format wrote it: canonical text, or an id in the old abbreviated format
+ * (`GD-RAAS-V1:USA-CA:RGF-CA`) or its RAW: form from before it. The id is dense whenever the loaded layer data holds the
+ * layer, including one stored as text before the layer data held it, and text otherwise. Undefined only when no format
+ * reads the text. Compare stored layers by reading them back through here, never as text: a layer stored in an older
+ * format does not equal toLayerText of its id.
+ */
+// An old abbreviated id also fits the canonical grammar (its Map-Gamemode part reads as a layer name), so text is only
+// taken as canonical when the layer data holds its layer.
 export function fromStoredLayerText(text: string, components = StaticLayerComponents): LayerId | undefined {
 	return idOfStoredText(text, components)
 }
@@ -238,6 +266,10 @@ export function readStoredLayerId(text: string, components = StaticLayerComponen
 	}
 }
 
+/**
+ * The canonical text of an id, the form an id is stored and sent in. Not a display name: see display-helpers. Throws on
+ * a dense id that names no layer in the loaded layer data.
+ */
 export function toLayerText(id: LayerId, components = StaticLayerComponents): string {
 	if (!isDenseLayerId(id)) return id
 	const layer = knownLayerOfDenseId(id, components)
@@ -600,7 +632,10 @@ export function swapFactionsInId(id: LayerId, components = StaticLayerComponents
 	)
 }
 
-/** Every column matches. For "one of these is a partial of the other", see areLayersCompatible. */
+/**
+ * Every column matches, so ids that are not === can still be equal (see idFromParts). For "one of these is a partial of
+ * the other", see areLayersCompatible.
+ */
 export function layersEqual(a: LayerId | UnvalidatedLayer, b: LayerId | UnvalidatedLayer) {
 	if (a === b) return true
 	if (typeof a !== 'object') a = toLayer(a)
@@ -689,7 +724,11 @@ export function isSeedingOrTrainingLayer(layerOrId: UnvalidatedLayer | LayerId, 
 	return layer.Gamemode === 'Seed' || layer.Gamemode === 'Training'
 }
 
-/** Accepts an id or a layer and gives back a layer. Coercion only: it validates nothing. */
+/**
+ * Accepts an id or a layer and gives back a layer. Coercion only: it validates nothing. The layer is frozen and cached
+ * per id. A text id's layer holds the parts the text names, plus the map, gamemode and version from the layer name and
+ * the default unit of a faction named without one. Throws on a dense id that names no layer in the loaded layer data.
+ */
 export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {
 	if (typeof unvalidatedLayerOrId === 'object') return unvalidatedLayerOrId
 	if (isDenseLayerId(unvalidatedLayerOrId)) {

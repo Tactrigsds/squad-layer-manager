@@ -202,14 +202,18 @@ change what an applied migration did.
 
 ## Layer ids
 
-A `LayerId` from `slm/models/layer` names a layer, and only means something against the layer data SLM has loaded:
-a layer that data holds is a number, and any other layer its canonical text, such as
-`Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. Compare ids with `===`, read a layer's parts with `L.toLayer(id)`,
-and build an id with `L.fromLayerText` or `L.idFromParts`.
+A `LayerId` from `slm/models/layer` names a layer. A layer that SLM's loaded layer data holds is a number, and any
+other layer is its canonical text, such as `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. A number names a
+different layer, or none, once SLM restarts on different layer data. The doc comment on `LayerId` in
+[layer.models.ts](../../src/models/layer.models.ts) describes ids in full, and each function's doc comment describes
+what it accepts and returns.
 
-Anything a plugin stores in its own tables or sends outside SLM holds `L.toLayerText(id)`, and reads back with
-`L.fromStoredLayerText(text)`. A number written down today names a different layer once the layer data changes. Inputs
-to your own rpc that take layer ids should use `L.LayerIdSchema`, which accepts either form.
+- Compare ids with `===`, and key a `Map` or `Set` by them. Do not split or match an id, and do not use one as an
+  object key.
+- Read a layer's parts with `L.toLayer(id)`. Build an id with `L.fromLayerText(text)` or `L.idFromParts(parts)`.
+- Store `L.toLayerText(id)` in your own tables and in anything sent outside SLM, and read it back with
+  `L.fromStoredLayerText(text)`. Ids can pass between your server and client entries unchanged.
+- Validate inputs to your own rpc that take layer ids with `L.LayerIdSchema`, which accepts either form.
 
 ## Filters
 
@@ -1144,5 +1148,9 @@ admin's settings. Admins delete leftovers explicitly from the settings page.
 `slm/systems/squad-rcon` answer from what SLM last polled, so calling them often adds no RCON traffic. To act on a
 change, subscribe to `teams$`, `serverInfo$` or `layerStatus$` rather than polling on a timer. `getCurrentLayer` and
 `getNextLayer` send an RCON command on every call.
+
+**A layer id can be a number.** `L.LayerId` is `number | string`, so string methods throw on one, and an object
+key turns it into a string that no longer `===` the id. A number stored in your own tables names a different layer
+after an SLM upgrade. See [Layer ids](#layer-ids).
 
 **Test against a dev instance, not a live server.** See [dev_instances.md](dev_instances.md).
