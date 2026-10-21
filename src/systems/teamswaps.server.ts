@@ -584,7 +584,10 @@ export const orpcRouter = {
 			if (!source?.discordId || source.discordId !== ctx.user.discordId) {
 				return { code: 'err:invalid-source' as const }
 			}
-			await dispatchOp(ctx, [input], { sourceWsClientId: context.wsClientId })
+			// the op joins the shared session here, so its side effects (persisting a save, warning players) run for the life
+			// of the server rather than of this request
+			const serverCtx = SquadServer.resolveCtx({ ...ctx, signal: CleanupSys.shutdownSignal }, serverId)
+			await dispatchOp(serverCtx, [input], { sourceWsClientId: context.wsClientId })
 		}),
 }
 
