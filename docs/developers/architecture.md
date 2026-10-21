@@ -702,16 +702,9 @@ why someone has access.
 
 ### Layers
 
-A `LayerId` takes one of two forms, and which one is decided by the loaded layer data:
-
-- a layer the layer data holds is its **dense id**, an integer (`L.DenseLayerId`)
-- any other layer is its **canonical text** (`L.TextLayerId`): `Layer:Faction+Unit:Faction+Unit` in the game's own
-  names, such as `Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms`. A layer known only in part drops what it lacks
-  from the right. No layer, faction or unit name holds `:`, `+` or whitespace, which preprocess enforces.
-
-Every id is built by `L.idFromParts` or `L.fromLayerText`, which pick the dense form whenever the layer data holds the
-layer, so two ids for one layer are always `===`. `L.toLayer` turns either form into a layer, from a frozen object
-cached per id, and `L.toLayerText` turns either into canonical text.
+The doc comment on `L.LayerId` describes the id model: the dense and canonical text forms, when a dense id stays
+valid, and where each form is used. This section covers how the model is implemented. Preprocess enforces that no
+layer, faction or unit name holds `:`, `+` or whitespace, which canonical text relies on.
 
 The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
 `SU_Sanxian_Invasion_v2`) is canonical and comes from the source export. Resolution is a catalog lookup over
@@ -728,14 +721,12 @@ one to its row through a per-pattern cell table without searching. `LC.denseIdLa
 When a host loads the engine, `LA.patternRowCells` computes every pattern row's cell from it and hands the cells to the
 engine, which only indexes them. A table and layer data that do not belong together fail there, on a row with no cell.
 
-A dense id only means something against the layer data that produced it, which decides where each form is used:
+Ids are dense in memory and over the socket, and canonical text at rest:
 
-- **In memory and over the socket**, ids are dense. A socket names the hash of the layer data its page loaded, and
-  the server refuses everything but the config to a socket on any other (`C.LayerDataSession`), so both ends always
-  read one id as one layer. The page reloads when refused.
-- **At rest**, ids are canonical text. `L.LayerIdSchema` is a zod codec that decodes a dense id, canonical text, the
-  abbreviated format SLM used before (`GD-RAAS-V1:USA-CA:RGF-CA`) and its `RAW:` form, and encodes to canonical text.
-  Rows read through the same schema they are written with (`z.encode` on app events and rotations), or through a
+- **Over the socket**, a socket names the hash of the layer data its page loaded, and the server refuses everything
+  but the config to a socket on any other (`C.LayerDataSession`), so both ends always read one id as one layer. The
+  page reloads when refused.
+- **At rest**, rows read through the same schema they are written with (`z.encode` on app events and rotations), or through a
   targeted encoder where the schema cannot encode (server events, the saved queue), and plain text columns convert
   explicitly (`L.readStoredLayerId`, `L.toLayerText`). Filters keep the layers they select as canonical text.
 - `StoredLayerIds` rewrites ids history still holds in an older format into canonical text, once per layer data, while
