@@ -153,10 +153,12 @@ function ensureArtifacts(dest, { force = false } = {}) {
 
 // Skills that must not be published with the repo, such as ones naming production hosts. Claude Code reads a linked
 // worktree's skills from that worktree's own .claude/skills only, so each skill is symlinked into every checkout from
-// one copy that git never tracks, and the link is excluded through the shared info/exclude.
+// one copy that git never tracks, and the link is excluded through the shared info/exclude. The copy is kept beside
+// the main checkout, outside every checkout, because Claude Code refuses an edit from a worktree session that resolves
+// into the main checkout.
 function linkPrivateSkills(dest) {
 	const commonDir = gitCommonDir(dest)
-	const source = path.resolve(process.env.SLM_PRIVATE_SKILLS_DIR || path.join(commonDir, 'private-skills'))
+	const source = path.resolve(process.env.SLM_PRIVATE_SKILLS_DIR || path.join(path.dirname(mainCheckout(dest)), 'slm-private-skills'))
 	const skillsDir = path.join(dest, '.claude', 'skills')
 	if (fs.existsSync(skillsDir)) {
 		for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
