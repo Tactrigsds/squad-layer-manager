@@ -266,7 +266,10 @@ export const orpcRouter = {
 			if (userId !== undefined && userId !== ctx.user.discordId) {
 				return { code: 'err:invalid-user' as const, msg: `Invalid user ${userId} for operation ${op.op} (${op.opId})` }
 			}
-			return await dispatchOp({ ...ctx, rotationEdit: session.payload }, op, { sourceWsClientId: ctx.wsClientId })
+			// the op joins the shared draft here, so a save finishes, and sends save-completed, even if this request is gone
+			return await dispatchOp({ ...ctx, signal: CleanupSys.shutdownSignal, rotationEdit: session.payload }, op, {
+				sourceWsClientId: ctx.wsClientId,
+			})
 		}),
 }
 

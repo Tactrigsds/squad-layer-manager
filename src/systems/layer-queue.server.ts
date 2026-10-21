@@ -1198,7 +1198,11 @@ export const router = {
 					}
 				}
 
-				await dispatchOp(ctx, op, { sourceWsClientId: _ctx.wsClientId })
+				// The op joins the shared session here, so what it sets off runs for the life of the server rather than of
+				// this request. A save that its client left mid-way would otherwise never send save-completed, and the queue
+				// would stay saving for every admin.
+				const serverCtx = SquadServer.resolveCtx({ ...ctx, signal: CleanupSys.shutdownSignal }, serverId)
+				await dispatchOp(serverCtx, op, { sourceWsClientId: _ctx.wsClientId })
 
 				return { code: 'ok' as const }
 			}),

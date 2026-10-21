@@ -401,8 +401,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	// A real server (and so the emulator's default) spends 30s in WaitingPostMatch before it brings the next world
 	// up. Nothing in a suite should wait that long for a roll it asked for, so the harness turns it down; a test
-	// that cares about the real duration can pass its own.
-	const emulatorOpts: EmulatorOptions = { postMatchDelayMs: 50, ...opts.emulator }
+	// that cares about the real duration can pass its own. Replies take as long as half of prod's ListPlayers round trip
+	// to arrive, so every suite runs against polls that are a little out of date, as the app's are in prod.
+	const emulatorOpts: EmulatorOptions = { postMatchDelayMs: 50, rconResponseLatencyMs: 65, ...opts.emulator }
 	const emu = new Emulator(emulatorOpts)
 	await emu.start()
 	const secondOpts = opts.secondServer === true ? {} : opts.secondServer || null
