@@ -68,9 +68,9 @@ so a browser tab pointed at a workspace stays valid across restarts:</p>
 
 
 <div class="docs-table"><table><thead><tr><th>slot</th><th>app</th><th>client</th><th>rcon</th><th>bm stub</th><th>inspect</th></tr></thead><tbody><tr><td>0</td><td>3100</td><td>3101</td><td>3102</td><td>3103</td><td>3104</td></tr><tr><td>1</td><td>3110</td><td>3111</td><td>3112</td><td>3113</td><td>3114</td></tr></tbody></table></div>
-<p>Slots start above the <code>.env</code> defaults (3000/5173), so an ordinary <code>pnpm server:dev</code> never contends with one. There are 64
-slots. A slot whose checkout has been deleted is reclaimed automatically, so <code>pnpm worktree prune</code> frees the slots of
-merged worktrees.</p>
+<p>Slots start above the <code>.env</code> defaults (3000/5173), so a production build run in a checkout never contends with one.
+There are 64 slots. A slot whose checkout has been deleted is reclaimed automatically, so <code>pnpm worktree prune</code> frees
+the slots of merged worktrees.</p>
 <p>The registry is stored beside the shared git dir (<code>.git/slm-dev-slots.json</code>), the only location every worktree agrees
 on.</p>
 <h2 id="the-database" class="docs-heading">The database<a href="#the-database" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/dev_instances.md#the-database" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>

@@ -880,8 +880,9 @@ transaction, so a deferred task escapes an enclosing transaction too.</li>
 on a microtask and always wins, while one that reaches the network, the disk or a timer has to yield and loses. Losing
 throws in development and test and warns in production, where a violation is a latency bug and failing the write would
 be worse.</p>
-<p><strong>Migrations</strong> use a custom runner (<code>src/server/migrate.ts</code>, <code>pnpm db:migrate</code>) that merges drizzle-kit generated
-<code>.sql</code> files with hand-written <code>.ts</code> data migrations into one filename-ordered sequence. Two constraints shape it:</p>
+<p><strong>Migrations</strong> use a custom runner (<code>src/server/migrate.ts</code>, <code>pnpm db:migrate</code>) that merges the <code>.sql</code> files
+drizzle-kit generated up to 0007 with the hand-written <code>.ts</code> migrations after them into one filename-ordered sequence.
+Two constraints shape it:</p>
 <ul>
 <li><strong>Migrations are frozen in time.</strong> A <code>.ts</code> migration receives only the raw driver and must not import from the rest of the
 codebase, so a later refactor can never retroactively change what a historical migration meant. <code>superjson</code> is the one
@@ -889,7 +890,8 @@ exception, and is how a JSON column is read and written. See <code>src/migration
 <li><strong>The prod server is bundled</strong>, so <code>.ts</code> migrations cannot be globbed at runtime and are statically imported
 through <code>src/migrations/registry.ts</code>.</li>
 </ul>
-<p><code>drizzle-kit generate</code> still authors schema SQL. Only the <em>apply</em> step is replaced.</p>
+<p>Schema changes are hand-written <code>.ts</code> migrations too. drizzle-kit&#x27;s snapshot stopped at 0007 and no longer matches
+<code>drizzle/schema.ts</code>, so <code>drizzle-kit generate</code> is not used.</p>
 <p><strong>Secrets</strong> are read from a mounted <code>.env.secrets</code> file rather than <code>process.env</code>, switched by <code>secret: true</code> in the
 env schema&#x27;s <code>.meta()</code>. Connection secrets are sealed at the db boundary only, and always plaintext in memory.</p>
 <h2 id="plugins" class="docs-heading">Plugins<a href="#plugins" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#plugins" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
