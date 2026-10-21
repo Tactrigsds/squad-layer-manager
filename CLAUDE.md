@@ -209,8 +209,8 @@ command line and kills it.
 
 Full details in docs/developers/dev_instances.md.
 
-Do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. A development workspace runs its
-own instance instead, with its own database and an emulated Squad server:
+Do not use ports 3000/5173. A development workspace runs its own instance, with its own database and an emulated
+Squad server:
 
 ```sh
 pnpm dev          # provisions the workspace, then starts the app, client and emulator
@@ -408,5 +408,6 @@ change (`!` in the commit subject) always needs an `operators` fragment saying w
 
 # Migrations
 
-Data migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). It is
-backwards-compatible with `drizzle-kit generate`.
+Migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). Schema and data changes
+are both hand-written `.ts` migrations in src/migrations, registered in src/migrations/registry.ts. Do not run
+`drizzle-kit generate`: its snapshot stopped at 0007 and no longer matches drizzle/schema.ts.

@@ -12,7 +12,7 @@ import { Emulator } from '../emulator/index.ts'
 // The emulated Squad server this workspace's app talks to, plus the stub BattleMetrics API, as a long-lived
 // process. `pnpm dev --emu-only`.
 //
-// Deliberately not hosted inside the app: `pnpm server:dev` runs under `tsx watch` and restarts on every
+// Deliberately not hosted inside the app: the app runs under `tsx watch` and restarts on every
 // edit, which would take the emulated world -- players, squads, match state, log history -- down with it. As
 // its own process the world outlives app reloads, which is the whole point of having one while iterating.
 //

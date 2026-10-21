@@ -9,8 +9,8 @@ import * as path from 'node:path'
 // The registry lives next to the shared git dir rather than in any one worktree, since that is the only
 // location every worktree of the repo agrees on.
 
-// Slot ports start above the defaults in .env (3000/5173) so an un-orchestrated `pnpm server:dev` in the
-// main checkout never contends with a slot.
+// Slot ports start above the defaults in .env (3000/5173) so a production build run in a checkout never
+// contends with a slot.
 const SLOT_PORT_BASE = 3100
 const PORTS_PER_SLOT = 10
 const MAX_SLOTS = 64
