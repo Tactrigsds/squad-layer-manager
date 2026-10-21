@@ -140,14 +140,21 @@ export const steamAddNeedsVerification = def((steamId: string) => ({
 
 // One toast for the whole condition, kept alive and updated in place while it holds, so its id, its infinite
 // duration and its action handler stay at the call site.
-export const otherSessionsActive = def((count: number) => ({
+export const otherSessionsEditing = def((count: number, discardsEdits: boolean) => ({
 	toast: [
-		t('Other sessions active'),
-		{ description: t("You're active in {count, plural, one {# other session} other {# other sessions}}.", { count }) },
+		t('Other sessions are editing'),
+		{
+			description: discardsEdits
+				? t(
+						'{count, plural, one {# other session of yours is} other {# other sessions of yours are}} still editing. Unsaved edits are discarded when they stop, since no one else is editing.',
+						{ count },
+					)
+				: t('{count, plural, one {# other session of yours is} other {# other sessions of yours are}} still editing.', { count }),
+		},
 	],
 }))
 
-export const resetOtherSessions = def('Reset them')
+export const stopOtherSessionsEditing = def('Stop editing there')
 
 // -------- a player's discord link --------
 

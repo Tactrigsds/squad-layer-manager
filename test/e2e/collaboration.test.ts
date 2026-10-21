@@ -195,6 +195,46 @@ test.describe('shared query engine', () => {
 	})
 })
 
+test.describe('one user in two tabs', () => {
+	test('the presence panel lists the other tab only while it edits, and offers to stop its editing', async ({ page }) => {
+		const pageB = await page.context().newPage()
+		try {
+			await gotoReady(page, app.loginUrl())
+			await gotoReady(pageB, app.loginUrl())
+			const avatars = Dash.queueSection(page).getByRole('img', { name: app.adminUser.username })
+			const toast = page.getByText('Other sessions are editing')
+			const discardWarning = page.getByText(/Unsaved edits are discarded/)
+			// a tab is listed once it has been interacted with
+			await Dash.queueLabel(page).click()
+			await expect(avatars).toHaveCount(1, { timeout: 15_000 })
+
+			await pageB.getByRole('button', { name: 'Start Editing' }).click()
+			await expect(avatars).toHaveCount(2, { timeout: 15_000 })
+			await expect(toast).toBeVisible()
+			// B is the queue's only editor, so stopping it would discard the draft
+			await expect(discardWarning).toBeVisible()
+
+			// B is still on the queue after it finishes editing, so only the collapse hides it
+			await pageB.getByRole('button', { name: 'Finish Editing' }).click()
+			await expect(avatars).toHaveCount(1, { timeout: 15_000 })
+			await expect(toast).toBeHidden()
+
+			// with A editing too, the draft outlives B's session
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await pageB.getByRole('button', { name: 'Start Editing' }).click()
+			await expect(toast).toBeVisible({ timeout: 15_000 })
+			await expect(discardWarning).toBeHidden()
+			await page.getByRole('button', { name: 'Stop editing there' }).click()
+			await expect(pageB.getByRole('button', { name: 'Start Editing' })).toBeVisible({ timeout: 15_000 })
+			await expect(avatars).toHaveCount(1)
+			await expect(toast).toBeHidden()
+			await page.getByRole('button', { name: 'Finish Editing' }).click()
+		} finally {
+			await pageB.close()
+		}
+	})
+})
+
 test.describe('collaborative queue editing', () => {
 	test("one editor sees the other's edits live, and the save commits both", async ({ page, browser }) => {
 		const second = await browser.newContext()
