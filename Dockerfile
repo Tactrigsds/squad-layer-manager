@@ -8,8 +8,6 @@ RUN cargo build --release --target wasm32-unknown-unknown
 
 # Build stage - compile frontend and backend
 FROM node:24.18.0 AS builder
-LABEL org.opencontainers.image.description="A squad server admin tool focused on managing upcoming layers"
-LABEL org.opencontainers.image.source="https://github.com/tactrigsds/squad-layer-manager"
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -37,6 +35,8 @@ RUN pnpm run build:prod
 
 # Runtime stage - minimal production image
 FROM node:24.18.0-slim AS runtime
+LABEL org.opencontainers.image.description="A tool for managing upcoming layers on a Squad server, and other things also"
+LABEL org.opencontainers.image.source="https://github.com/tactrigsds/squad-layer-manager"
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
