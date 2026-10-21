@@ -408,7 +408,7 @@ function buildUnitIndex(source: LayerSource): Map<string, string> {
 
 const SIZE_LETTERS: Record<string, string> = { Small: 'S', Medium: 'M', Large: 'L' }
 
-function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponents): ParsedSource {
+function parseSourceLayers(source: LayerSource): ParsedSource {
 	const { manifest, root } = source
 	const mapLayers: L.LayerConfig[] = []
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
@@ -416,28 +416,18 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 	let unresolvedUnitNames = 0
 
 	for (const map of root.Maps) {
-		if (map.levelName.includes('Automation')) continue
-		if (map.levelName.toLowerCase().includes('tutorial')) continue
+		if (map.gamemode === 'Tutorial') continue
 
-		let segments: L.ParseLayerStringSegmentResult | null
-		if (manifest.layerNames === 'parsed') {
-			segments = L.parseLayerStringSegment(map.levelName, componentsTemp)
-			if (!segments) {
-				log.error(`${manifest.name}: invalid layer name: ${map.levelName}`)
-				continue
-			}
-		} else {
-			// the export's structured fields are the authority; the only thing still read out of the name is the
-			// version, which has no field of its own ("V1-R" style weather variants keep their version)
-			const versionMatch = map.levelName.match(/_[vV](\d+)(?:[_-]|$)/)
-			segments = {
-				layerType: 'normal',
-				Map: manifest.mapRenames[map.mapId] ?? map.mapId,
-				Gamemode: manifest.gamemodeRenames[map.gamemode] ?? map.gamemode,
-				LayerVersion: versionMatch ? `V${versionMatch[1]}` : null,
-				Collection: manifest.collection.name,
-				...manifest.layerOverrides[map.levelName],
-			}
+		// the export's structured fields are the authority; the only thing still read out of the layer's name is the
+		// version, which has no field of its own ("V1-R" style weather variants keep their version)
+		const versionMatch = map.levelName.match(/_[vV](\d+)(?:[_-]|$)/)
+		const version = versionMatch ? `V${versionMatch[1]}` : null
+		const segments = {
+			Map: manifest.mapRenames[map.mapId] ?? map.mapId,
+			Gamemode: manifest.gamemodeRenames[map.gamemode] ?? map.gamemode,
+			LayerVersion: version && map.worldPartitioned ? L.worldPartitionVersion(version) : version,
+			Collection: manifest.collection.name,
+			...manifest.layerOverrides[map.levelName],
 		}
 		if (!map.teamConfigs.team1?.defaultFactionUnit || !map.teamConfigs.team2?.defaultFactionUnit) continue
 		const size = deriveLayerSize(source, map)
@@ -458,42 +448,12 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 
 		const availForLayer: L.LayerFactionAvailabilityEntry[] = []
 		availability.set(map.levelName, availForLayer)
-		if (segments.layerType === 'training') {
-			availForLayer.push(
-				{
-					Faction: segments.extraFactions[0],
-					Unit: 'CombinedArms',
-					allowedTeams: [1],
-					isDefaultUnit: true,
-				},
-				{
-					Faction: segments.extraFactions[1],
-					Unit: 'CombinedArms',
-					allowedTeams: [2],
-					isDefaultUnit: true,
-				},
-			)
-			mapLayers.push({
-				...baseConfig,
-				teams: [
-					{
-						defaultFaction: segments.extraFactions[0],
-						tickets: map.teamConfigs.team1.tickets,
-					},
-					{
-						defaultFaction: segments.extraFactions[1],
-						tickets: map.teamConfigs.team2.tickets,
-					},
-				],
-			})
-			continue
-		}
 		mapLayers.push({
 			...baseConfig,
 			teams: teamConfigs.map((t): L.MapConfigTeam => {
 				const defaultFaction = root.Units[t.defaultFactionUnit!]?.factionID ?? t.defaultFactionUnit!.split('_')[0]
 				let role: L.MapConfigTeam['role']
-				if (L.ASYMM_GAMEMODES.includes(segments!.Gamemode)) {
+				if (L.ASYMM_GAMEMODES.includes(segments.Gamemode)) {
 					if (t.isAttackingTeam) role = 'attack'
 					if (t.isDefendingTeam) role = 'defend'
 				}
@@ -508,8 +468,8 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 		const sizeLetter = SIZE_LETTERS[size] ?? 'S'
 		const roleForTeam = (team: 1 | 2) => ((team === 1 ? map.teamConfigs.team1 : map.teamConfigs.team2)!.isDefendingTeam ? 'D' : 'O')
 		const lookupUnitName = (faction: string, unit: string, team: 1 | 2, variants: { boats: boolean; noHeli: boolean }) => {
-			const seed = segments!.Gamemode === 'Seed'
-			const skirmish = segments!.Gamemode === 'Skirmish'
+			const seed = segments.Gamemode === 'Seed'
+			const skirmish = segments.Gamemode === 'Skirmish'
 			const role = roleForTeam(team)
 			const positions = sizeLetter === 'S' ? ['S'] : [`${sizeLetter}${role}`, `${sizeLetter}${role === 'O' ? 'D' : 'O'}`]
 			for (const position of positions) {
@@ -584,39 +544,37 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 		)
 	}
 
-	// Mods ship layers the id tuple cannot tell apart: weather variants, dev copies, gamemode fields that lie.
-	// Manifest overrides resolve the ones worth naming; the rest get a version derived from a hash of the level
-	// name, which is stable across data updates so a persisted id keeps meaning the same layer. Training layers
-	// are exempt: their factions already tell them apart.
-	if (manifest.layerNames === 'structured') {
-		const tupleKey = (layer: L.LayerConfig) => `${layer.Map}|${layer.Gamemode}|${layer.LayerVersion}`
-		const byTuple = new Map<string, L.LayerConfig[]>()
-		for (const layer of mapLayers) {
-			if (layer.Gamemode === 'Training') continue
-			const key = tupleKey(layer)
-			let group = byTuple.get(key)
-			if (!group) byTuple.set(key, (group = []))
-			group.push(layer)
-		}
-		const taken = new Set(byTuple.keys())
-		for (const group of Array.from(byTuple.values())) {
-			if (group.length < 2) continue
-			group.sort((a, b) => a.Layer.localeCompare(b.Layer))
-			for (const layer of group.slice(1)) {
-				let hash = 2166136261
-				for (const char of layer.Layer) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
-				let version = 1000 + ((hash >>> 0) % 9000)
-				while (taken.has(`${layer.Map}|${layer.Gamemode}|V${version}`)) version++
-				layer.LayerVersion = `V${version}`
-				taken.add(tupleKey(layer))
-				log.warn(
-					'%s: %s shares Map/Gamemode/Version with %s; its id uses the synthetic version V%s (name it with a layerOverrides entry instead if it matters)',
-					manifest.name,
-					layer.Layer,
-					group[0].Layer,
-					version,
-				)
-			}
+	// Mods ship layers the id tuple cannot tell apart: variants on one world (lighting, size), dev copies, and
+	// layers whose gamemode field matches another's. All but one get a version derived from a hash of the layer
+	// name. Training layers are exempt: their factions already tell them apart.
+	const tupleKey = (layer: L.LayerConfig) => `${layer.Map}|${layer.Gamemode}|${layer.LayerVersion}`
+	const byTuple = new Map<string, L.LayerConfig[]>()
+	for (const layer of mapLayers) {
+		if (layer.Gamemode === 'Training') continue
+		const key = tupleKey(layer)
+		let group = byTuple.get(key)
+		if (!group) byTuple.set(key, (group = []))
+		group.push(layer)
+	}
+	const taken = new Set(byTuple.keys())
+	for (const group of Array.from(byTuple.values())) {
+		if (group.length < 2) continue
+		// the shortest name keeps the real version: it is the plain layer the variants (GoingDark, _Large) build on
+		group.sort((a, b) => a.Layer.length - b.Layer.length || a.Layer.localeCompare(b.Layer))
+		for (const layer of group.slice(1)) {
+			let hash = 2166136261
+			for (const char of layer.Layer) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+			let version = 1000 + ((hash >>> 0) % 9000)
+			while (taken.has(`${layer.Map}|${layer.Gamemode}|V${version}`)) version++
+			layer.LayerVersion = `V${version}`
+			taken.add(tupleKey(layer))
+			log.info(
+				'%s: %s shares Map/Gamemode/Version with %s; its id uses the synthetic version V%s',
+				manifest.name,
+				layer.Layer,
+				group[0].Layer,
+				version,
+			)
 		}
 	}
 
@@ -687,13 +645,11 @@ async function parseSquadLayerSheetData() {
 		}
 	}
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
-	// @ts-expect-error it's fine
-	const componentsTemp = LC.buildFullLayerComponents({ sourceAbbreviations }, true)
 
 	const mapLayers: L.LayerConfig[] = []
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
 	for (const source of sources) {
-		const parsed = parseSourceLayers(source, componentsTemp)
+		const parsed = parseSourceLayers(source)
 		for (const [layer, entries] of parsed.availability) {
 			if (availability.has(layer)) throw new Error(`layer ${layer} appears in more than one source`)
 			availability.set(layer, entries)

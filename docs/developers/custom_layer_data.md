@@ -206,21 +206,25 @@ The file is compiled into the client, so charting a new dimension means editing 
 A mod adds a source: a directory under `data/sources/` holding the mod's `layers.json` and a `source.json` manifest.
 [Mods from the Steam Workshop](#mods-from-the-steam-workshop) describes how to extract the mod's `layers.json`.
 
+Preprocess takes each layer's map, gamemode, world partitioning, teams and factions from the export. The version is
+the only part read from the layer's name, because the game files record none. Layers that still share a map, gamemode
+and version, such as a mod's lighting or size variants on one world, keep the shortest name's version, and the rest
+get a version derived from a hash of their name.
+
 `source.json` describes how to read the export. `data/sources/supermod/source.json` is a complete example.
 
-| Field                   | Meaning                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `name`                  | the directory's name                                                                |
-| `collection`            | the name and abbreviation of the collection every layer of the source lands in      |
-| `layerNames`            | `structured` to read the map and gamemode from the export's fields, which mods need |
-| `fraasVariants`         | whether to add a FRAAS twin for every RAAS layer                                    |
-| `mapAbbreviations`      | an abbreviation for every map the core table does not know                          |
-| `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                     |
-| `gamemodeRenames`       | maps the export's spelling of a gamemode onto the one layer names use               |
-| `mapRenames`            | maps a second spelling of a map onto the one its other layers use                   |
-| `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name                |
-| `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                          |
-| `layerOverrides`        | per-layer fixes for an export whose fields are wrong, keyed by level name           |
+| Field                   | Meaning                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `name`                  | the directory's name                                                           |
+| `collection`            | the name and abbreviation of the collection every layer of the source lands in |
+| `fraasVariants`         | whether to add a FRAAS twin for every RAAS layer                               |
+| `mapAbbreviations`      | an abbreviation for every map the core table does not know                     |
+| `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                |
+| `gamemodeRenames`       | maps the export's spelling of a gamemode onto the catalog's                    |
+| `mapRenames`            | maps the export's spelling of a map onto the catalog's                         |
+| `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name           |
+| `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                     |
+| `layerOverrides`        | a value for a field a layer's export lacks, keyed by level name                |
 
 Run `pnpm preprocess` after adding the source. It fails on the first gap in the manifest and names the layer, such as a
 map with no abbreviation or two map layers that share a layer name. Add a manifest entry for each failure and run

@@ -1,6 +1,7 @@
 {
 	"name": "vanilla",
 	"collection": { "name": "OWI", "abbreviation": null },
-	"layerNames": "parsed",
-	"fraasVariants": true
+	"fraasVariants": true,
+	"gamemodeRenames": { "TerritoryControl": "TC" },
+	"mapRenames": { "Sanxian_Islands": "Sanxian" }
 }
