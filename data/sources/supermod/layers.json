@@ -16,6 +16,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -423,6 +424,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -830,6 +832,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -1301,6 +1304,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -1772,6 +1776,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -2080,6 +2085,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -2388,6 +2394,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -2696,6 +2703,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -3004,6 +3012,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -3312,6 +3321,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -3620,6 +3630,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -3848,6 +3859,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -4171,6 +4183,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -4669,6 +4682,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -4992,6 +5006,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -5315,6 +5330,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -5638,6 +5654,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -6136,6 +6153,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -6459,6 +6477,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -6782,6 +6801,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -7010,6 +7030,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -7330,6 +7351,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -7558,6 +7580,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -7786,6 +7809,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -8014,6 +8038,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -8334,6 +8359,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -8562,6 +8588,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -8790,6 +8817,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -9107,6 +9135,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -9424,6 +9453,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -9747,6 +9777,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -10245,6 +10276,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -10568,6 +10600,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -10891,6 +10924,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -11214,6 +11248,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -11712,6 +11747,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -12210,6 +12246,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -12533,6 +12570,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -12856,6 +12894,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -13179,6 +13218,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -13496,6 +13536,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -13831,6 +13872,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -14166,6 +14208,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -14501,6 +14544,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -14836,6 +14880,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -15171,6 +15216,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -15506,6 +15552,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -15841,6 +15888,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -16176,6 +16224,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -16511,6 +16560,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -16846,6 +16896,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -17181,6 +17232,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -17516,6 +17568,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -17851,6 +17904,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -18186,6 +18240,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -18521,6 +18576,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -18856,6 +18912,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -19191,6 +19248,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -19643,6 +19701,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -20095,6 +20154,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -20379,6 +20439,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -20663,6 +20724,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -20947,6 +21009,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -21231,6 +21294,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -21515,6 +21579,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -21799,6 +21864,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -22083,6 +22149,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -22367,6 +22434,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -22651,6 +22719,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -23103,6 +23172,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -23372,6 +23442,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -23641,6 +23712,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -23910,6 +23982,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -24179,6 +24252,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -24448,6 +24522,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -24717,6 +24792,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -25040,6 +25116,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -25363,6 +25440,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -25686,6 +25764,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -26009,6 +26088,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -26332,6 +26412,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -26655,6 +26736,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -26978,6 +27060,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -27301,6 +27384,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -27624,6 +27708,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -27947,6 +28032,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -28270,6 +28356,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -28593,6 +28680,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -28916,6 +29004,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -29239,6 +29328,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -29562,6 +29652,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -29885,6 +29976,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -30208,6 +30300,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -30531,6 +30624,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -30854,6 +30948,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "GoingDark",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -31177,6 +31272,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -31500,6 +31596,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -31823,6 +31920,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -32146,6 +32244,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -32469,6 +32568,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -32792,6 +32892,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -33115,6 +33216,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -33438,6 +33540,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -33761,6 +33864,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -34084,6 +34188,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -34407,6 +34512,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -34730,6 +34836,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -35053,6 +35160,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -35376,6 +35484,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -35699,6 +35808,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -36022,6 +36132,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -36345,6 +36456,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RVAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -36668,6 +36780,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -36991,6 +37104,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -37314,6 +37428,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -37637,6 +37752,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -37960,6 +38076,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -38283,6 +38400,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -38606,6 +38724,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -38929,6 +39048,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -39252,6 +39372,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -39575,6 +39696,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -39898,6 +40020,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -40221,6 +40344,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -40544,6 +40668,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -40867,6 +40992,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -41190,6 +41316,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -41513,6 +41640,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -41836,6 +41964,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -42159,6 +42288,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -42482,6 +42612,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -42805,6 +42936,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -43128,6 +43260,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -43451,6 +43584,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -43835,6 +43969,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -44219,6 +44354,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -44603,6 +44739,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -44987,6 +45124,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -45371,6 +45509,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -45755,6 +45894,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -46139,6 +46279,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -46523,6 +46664,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -46907,6 +47049,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -47291,6 +47434,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -47675,6 +47819,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -48059,6 +48204,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -48443,6 +48589,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -48827,6 +48974,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -49211,6 +49359,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -49595,6 +49744,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -49979,6 +50129,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -50363,6 +50514,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -50737,6 +50889,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -51111,6 +51264,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -51485,6 +51639,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -51859,6 +52014,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -52233,6 +52389,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -52607,6 +52764,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -52981,6 +53139,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -53355,6 +53514,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -53729,6 +53889,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -54103,6 +54264,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RVAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -54477,6 +54639,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -54851,6 +55014,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -55172,6 +55336,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -55493,6 +55658,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -55814,6 +55980,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "RAAS_PreCap",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -56135,6 +56302,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -56456,6 +56624,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -56777,6 +56946,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_BLUFOR",
@@ -56831,6 +57001,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_BLUFOR",
@@ -56885,6 +57056,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -57402,6 +57574,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -57921,6 +58094,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -58431,6 +58605,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -58948,6 +59123,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -59467,6 +59643,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -59984,6 +60161,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -60503,6 +60681,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -61022,6 +61201,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -61539,6 +61719,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -62058,6 +62239,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -62791,6 +62973,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -63223,6 +63406,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -63657,6 +63841,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -64089,6 +64274,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -64523,6 +64709,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -64957,6 +65144,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -65487,6 +65675,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -65892,6 +66081,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -66388,6 +66578,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -66886,6 +67077,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -67384,6 +67576,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -67882,6 +68075,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -68378,6 +68572,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -68876,6 +69071,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -69374,6 +69570,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -69872,6 +70069,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -70370,6 +70568,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -70868,6 +71067,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -71364,6 +71564,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -71862,6 +72063,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -72358,6 +72560,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -72856,6 +73059,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -73354,6 +73558,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -73850,6 +74055,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -74348,6 +74554,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -74846,6 +75053,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -75342,6 +75550,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -75840,6 +76049,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -76338,6 +76548,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -76791,6 +77002,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -77394,6 +77606,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -78007,6 +78220,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -78556,6 +78770,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -79188,6 +79403,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -79820,6 +80036,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -80452,6 +80669,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -81084,6 +81302,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -81716,6 +81935,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -82348,6 +82568,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -82980,6 +83201,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -83612,6 +83834,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -84244,6 +84467,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -84876,6 +85100,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -85508,6 +85733,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -85754,6 +85980,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -86000,6 +86227,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -86246,6 +86474,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -86492,6 +86721,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -86738,6 +86968,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "GoingDark",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -86984,6 +87215,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -87230,6 +87462,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -87476,6 +87709,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -87722,6 +87956,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -87968,6 +88203,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "GoingDark",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -88214,6 +88450,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -88460,6 +88697,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -88679,6 +88917,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -88916,6 +89155,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -89153,6 +89393,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -89390,6 +89631,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -89627,6 +89869,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -89864,6 +90107,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -90101,6 +90345,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -90338,6 +90583,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -90575,6 +90821,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -90812,6 +91059,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -91049,6 +91297,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -91277,6 +91526,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -91604,6 +91854,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -91832,6 +92083,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -92060,6 +92312,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -92288,6 +92541,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -92615,6 +92869,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -92843,6 +93098,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": null,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -93071,6 +93327,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -93397,6 +93654,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -93741,6 +93999,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -94067,6 +94326,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -94411,6 +94671,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -94729,6 +94990,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -95065,6 +95327,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -95383,6 +95646,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -95719,6 +95983,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -96045,6 +96310,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -96371,6 +96637,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -96707,6 +96974,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -96934,6 +97202,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -97161,6 +97430,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -97388,6 +97658,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -97625,6 +97896,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -97862,6 +98134,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -98198,6 +98471,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -98534,6 +98808,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -98870,6 +99145,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -99206,6 +99482,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -99542,6 +99819,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -99868,6 +100146,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -100194,6 +100473,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -100530,6 +100810,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -100936,6 +101217,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "GoingDark",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -101262,6 +101544,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -101588,6 +101871,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -101914,6 +102198,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -102240,6 +102525,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -103083,6 +103369,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -103609,6 +103896,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Random",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "SU_ADF",
@@ -103961,6 +104249,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -103998,6 +104287,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104035,6 +104325,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104072,6 +104363,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104109,6 +104401,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104146,6 +104439,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104183,6 +104477,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104220,6 +104515,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104257,6 +104553,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104294,6 +104591,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104331,6 +104629,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104368,6 +104667,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104405,6 +104705,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104442,6 +104743,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104479,6 +104781,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104516,6 +104819,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104553,6 +104857,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104590,6 +104895,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104627,6 +104933,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104664,6 +104971,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104701,6 +105009,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -104738,6 +105047,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {

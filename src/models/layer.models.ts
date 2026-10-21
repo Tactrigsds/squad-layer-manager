@@ -49,27 +49,56 @@ export function setLayerData(data: LayerData | Omit<LayerData, 'factionUnits'>) 
 
 export const ASYMM_GAMEMODES = ['Invasion', 'Destruction', 'Insurgency']
 
-// A world partitioning layer (Yehorivka_AAS_v1_WP) shares Map/Gamemode/Version with its base layer, so the suffix
-// is folded into LayerVersion (V1WP) to keep the two apart in ids and filters.
-const WORLD_PARTITION_SUFFIX = 'WP'
+// A variant layer shares Map/Gamemode/Version with its base layer, so the variant is folded into LayerVersion as a
+// suffix to keep the two apart in ids and filters: world partitioning (Yehorivka_AAS_v1_WP, V1WP) and SuperMod's
+// night layers (SU_GoingDark_Narva_RAAS_v1, V1GD). Suffixes always appear in this order.
+const VERSION_SUFFIXES = ['WP', 'GD'] as const
+export type VersionSuffix = (typeof VERSION_SUFFIXES)[number]
+
+function splitLayerVersion(version: string): { base: string; suffixes: VersionSuffix[] } {
+	const suffixes: VersionSuffix[] = []
+	let base = version
+	for (const suffix of [...VERSION_SUFFIXES].reverse()) {
+		if (base.endsWith(suffix)) {
+			suffixes.unshift(suffix)
+			base = base.slice(0, -suffix.length)
+		}
+	}
+	return { base, suffixes }
+}
+
+export function hasVersionSuffix(version: string | null, suffix: VersionSuffix) {
+	return version ? splitLayerVersion(version).suffixes.includes(suffix) : false
+}
+
+/** The version's base swapped for another, keeping its suffixes: V1GD with V4650 -> V4650GD. */
+export function withVersionBase(version: string | null, base: string) {
+	return version ? base + splitLayerVersion(version).suffixes.join('') : base
+}
+
+/** The version with a suffix added, in canonical order: V1GD + WP -> V1WPGD. */
+export function withVersionSuffix(version: string, suffix: VersionSuffix) {
+	const { base, suffixes } = splitLayerVersion(version)
+	return base + VERSION_SUFFIXES.filter((s) => s === suffix || suffixes.includes(s)).join('')
+}
 
 export function isWorldPartitionVersion(version: string | null) {
-	return version?.endsWith(WORLD_PARTITION_SUFFIX) ?? false
+	return hasVersionSuffix(version, 'WP')
 }
 
 export function worldPartitionVersion(version: string) {
-	return version + WORLD_PARTITION_SUFFIX
+	return withVersionSuffix(version, 'WP')
 }
 
-/** The version without its world partitioning suffix: V1WP -> V1. */
+/** The version without its variant suffixes: V1WP -> V1. */
 export function baseLayerVersion(version: string) {
-	return isWorldPartitionVersion(version) ? version.slice(0, -WORLD_PARTITION_SUFFIX.length) : version
+	return splitLayerVersion(version).base
 }
 
 /** How a version is spelled in a layer string: V1 -> v1, V1WP -> v1_WP. */
 export function layerVersionNameSegment(version: string) {
-	const base = baseLayerVersion(version).toLowerCase()
-	return isWorldPartitionVersion(version) ? `${base}_${WORLD_PARTITION_SUFFIX}` : base
+	const { base, suffixes } = splitLayerVersion(version)
+	return [base.toLowerCase(), ...suffixes].join('_')
 }
 
 export type KnownLayer = {

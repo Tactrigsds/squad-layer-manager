@@ -87,5 +87,8 @@
 		"SuperMod_Fallujah": "Supermod_Fallujah",
 		"SuperMod_Harju": "Supermod_Harju",
 		"Supermod_Mekong": "Mekong"
+	},
+	"versionSuffixes": {
+		"GoingDark": "GD"
 	}
 }

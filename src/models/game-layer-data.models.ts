@@ -40,6 +40,9 @@ export const SourceManifestSchema = z.object({
 	// the same for maps: vanilla's "Sanxian_Islands" is the catalog's "Sanxian", and SuperMod spells some maps two ways
 	// ("SuperMod_Fallujah" beside "Supermod_Fallujah")
 	mapRenames: z.record(z.string(), z.string()).default({}),
+	// name segment -> version suffix, for a variant the export carries no field for. SuperMod's night layers are only
+	// marked by their name (SU_GoingDark_Narva_RAAS_v1), so { "GoingDark": "GD" } versions that one V1GD.
+	versionSuffixes: z.record(z.string(), z.enum(['GD'])).default({}),
 	// unit types beyond CORE_UNIT_TYPES that appear in this source's unit names
 	extraUnitTypes: z.record(z.string(), z.object({ abbreviation: z.string(), shortName: z.string() })).default({}),
 	// unit object name -> unit type, for names no parse can rescue (supermod ships a unit named "Mechanizedd")

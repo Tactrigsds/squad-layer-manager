@@ -207,9 +207,11 @@ A mod adds a source: a directory under `data/sources/` holding the mod's `layers
 [Mods from the Steam Workshop](#mods-from-the-steam-workshop) describes how to extract the mod's `layers.json`.
 
 Preprocess takes each layer's map, gamemode, world partitioning, teams and factions from the export. The version is
-the only part read from the layer's name, because the game files record none. Layers that still share a map, gamemode
-and version, such as a mod's lighting or size variants on one world, keep the shortest name's version, and the rest
-get a version derived from a hash of their name.
+read from the layer's name, because the game files record none. A variant the game files do not mark is also read from
+the name, through the manifest's `versionSuffixes`: SuperMod's GoingDark (night) layers are versioned `V1GD`, as
+world-partitioned layers are versioned `V1WP`. Layers that still share a map, gamemode and version, such as a mod's
+size variants on one world, keep the shortest name's version, and the rest get a version derived from a hash of their
+name.
 
 `source.json` describes how to read the export. `data/sources/supermod/source.json` is a complete example.
 
@@ -222,6 +224,7 @@ get a version derived from a hash of their name.
 | `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                |
 | `gamemodeRenames`       | maps the export's spelling of a gamemode onto the catalog's                    |
 | `mapRenames`            | maps the export's spelling of a map onto the catalog's                         |
+| `versionSuffixes`       | a version suffix for every layer whose name has the given segment              |
 | `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name           |
 | `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                     |
 | `layerOverrides`        | a value for a field a layer's export lacks, keyed by level name                |

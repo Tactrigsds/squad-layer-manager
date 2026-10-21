@@ -418,14 +418,19 @@ function parseSourceLayers(source: LayerSource): ParsedSource {
 	for (const map of root.Maps) {
 		if (map.gamemode === 'Tutorial') continue
 
-		// the export's structured fields are the authority; the only thing still read out of the layer's name is the
-		// version, which has no field of its own ("V1-R" style weather variants keep their version)
+		// the export's structured fields are the authority. Only the version, which has no field of its own ("V1-R"
+		// style weather variants keep their version), and the manifest's versionSuffixes are read out of the layer's name
 		const versionMatch = map.levelName.match(/_[vV](\d+)(?:[_-]|$)/)
-		const version = versionMatch ? `V${versionMatch[1]}` : null
+		let version = versionMatch ? `V${versionMatch[1]}` : null
+		if (version && map.worldPartitioned) version = L.worldPartitionVersion(version)
+		const nameSegments = map.levelName.split('_')
+		for (const [segment, suffix] of Object.entries(manifest.versionSuffixes)) {
+			if (version && nameSegments.includes(segment)) version = L.withVersionSuffix(version, suffix)
+		}
 		const segments = {
 			Map: manifest.mapRenames[map.mapId] ?? map.mapId,
 			Gamemode: manifest.gamemodeRenames[map.gamemode] ?? map.gamemode,
-			LayerVersion: version && map.worldPartitioned ? L.worldPartitionVersion(version) : version,
+			LayerVersion: version,
 			Collection: manifest.collection.name,
 			...manifest.layerOverrides[map.levelName],
 		}
@@ -565,15 +570,16 @@ function parseSourceLayers(source: LayerSource): ParsedSource {
 			let hash = 2166136261
 			for (const char of layer.Layer) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
 			let version = 1000 + ((hash >>> 0) % 9000)
-			while (taken.has(`${layer.Map}|${layer.Gamemode}|V${version}`)) version++
-			layer.LayerVersion = `V${version}`
+			const synthetic = (n: number) => L.withVersionBase(layer.LayerVersion, `V${n}`)
+			while (taken.has(`${layer.Map}|${layer.Gamemode}|${synthetic(version)}`)) version++
+			layer.LayerVersion = synthetic(version)
 			taken.add(tupleKey(layer))
 			log.info(
-				'%s: %s shares Map/Gamemode/Version with %s; its id uses the synthetic version V%s',
+				'%s: %s shares Map/Gamemode/Version with %s; its id uses the synthetic version %s',
 				manifest.name,
 				layer.Layer,
 				group[0].Layer,
-				version,
+				layer.LayerVersion,
 			)
 		}
 	}
