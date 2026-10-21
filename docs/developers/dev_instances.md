@@ -172,10 +172,11 @@ provisioned, so it always matches the branch. Cargo skips the build when nothing
 20 seconds. Run `pnpm build:engine` after changing `layer-engine/` while a dev instance is running.
 
 Provisioning also links private Claude Code skills into the checkout. A private skill is kept in
-`.git/private-skills/<name>/SKILL.md` (or under `SLM_PRIVATE_SKILLS_DIR`), outside every working tree, so git never
-tracks it. It is for skills that must not be published with the repo, such as ones naming production hosts. Claude
-Code reads a worktree's skills from that worktree's own `.claude/skills`, so each private skill is symlinked into
-`.claude/skills/<name>` and the link is added to `.git/info/exclude`. A link whose skill has been deleted is removed.
+`../slm-private-skills/<name>/SKILL.md` beside the main checkout (or under `SLM_PRIVATE_SKILLS_DIR`), outside every
+checkout, so git never tracks it and a worktree session can edit it. It is for skills that must not be published with
+the repo, such as ones naming production hosts. Claude Code reads a worktree's skills from that worktree's own
+`.claude/skills`, so each private skill is symlinked into `.claude/skills/<name>` and the link is added to
+`.git/info/exclude`. A link whose skill has been deleted is removed.
 To link a new private skill into an existing checkout, run `node scripts/worktree.mjs ensure-artifacts` there.
 
 These steps are kept in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node because it

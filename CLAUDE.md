@@ -178,8 +178,8 @@ it describes. Go down this list and use the first place that fits:
    skill that depends on one environment, such as a machine, an account or a deployment, is always private. That
    includes every skill naming production hosts, containers or addresses. What private means differs between users
    and machines, so look for a memory that says what to do with a skill that should be private, and ask the user if
-   none does. `scripts/worktree.mjs` can link skills kept in `.git/private-skills/` into every checkout
-   (docs/developers/dev_instances.md, "Env files"). No skill holds a credential.
+   none does. `scripts/worktree.mjs` can link skills kept in `../slm-private-skills/` beside the main checkout into
+   every checkout (docs/developers/dev_instances.md, "Env files"). No skill holds a credential.
 6. **A memory.** What is left: facts about one machine or account, the user's preferences and corrections, and the
    state of work in progress whose decisions are not yet in code or an issue. A memory is not for code structure,
    git history or a resolved problem.
