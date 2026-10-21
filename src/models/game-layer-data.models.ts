@@ -29,24 +29,26 @@ export const SourceManifestSchema = z.object({
 			.regex(/^[A-Za-z]+$/)
 			.nullable(),
 	}),
-	// 'parsed' derives Map/Gamemode/Version by parsing levelName (vanilla's convention). 'structured' trusts the
-	// export's mapId/gamemode fields instead, which is the only thing that works for mod naming.
-	layerNames: z.enum(['parsed', 'structured']),
 	// synthesize a FRAAS twin for every RAAS layer (the fog-removal convention of vanilla community servers)
 	fraasVariants: z.boolean().default(false),
 	// required for every Map value the source produces that the core table doesn't cover
 	mapAbbreviations: z.record(z.string(), z.string()).default({}),
 	gamemodeAbbreviations: z.record(z.string(), z.string()).default({}),
-	// structured exports can spell a gamemode differently than layer names do ("TerritoryControl" vs "TC"); renames
-	// keep one vocabulary across sources
+	// exports can spell a gamemode differently than the catalog does ("TerritoryControl" vs "TC"); renames keep one
+	// vocabulary across sources
 	gamemodeRenames: z.record(z.string(), z.string()).default({}),
+	// the same for maps: vanilla's "Sanxian_Islands" is the catalog's "Sanxian", and SuperMod spells some maps two ways
+	// ("SuperMod_Fallujah" beside "Supermod_Fallujah")
+	mapRenames: z.record(z.string(), z.string()).default({}),
+	// name segment -> version suffix, for a variant the export carries no field for. SuperMod's night layers are only
+	// marked by their name (SU_GoingDark_Narva_RAAS_v1), so { "GoingDark": "GD" } versions that one V1GD.
+	versionSuffixes: z.record(z.string(), z.enum(['GD'])).default({}),
 	// unit types beyond CORE_UNIT_TYPES that appear in this source's unit names
 	extraUnitTypes: z.record(z.string(), z.object({ abbreviation: z.string(), shortName: z.string() })).default({}),
 	// unit object name -> unit type, for names no parse can rescue (supermod ships a unit named "Mechanizedd")
 	unitTypeOverrides: z.record(z.string(), z.string()).default({}),
-	// levelName -> field overrides, for layers whose structured fields are lossy or wrong: distinct layers sharing a
-	// mapId, or a gamemode field that contradicts the name. Preprocess fails on the resulting duplicate ids, naming
-	// the layers to override here.
+	// levelName -> field overrides, for a layer whose export lacks a field outright (SuperMod's SU_Belaya_RAAS_v1 has
+	// no gamemode). A field the export does carry is the game's own value and is not overridden.
 	layerOverrides: z
 		.record(
 			z.string(),
@@ -142,6 +144,8 @@ export const MapSchema = z.object({
 	commander: z.boolean(),
 	lightingLevel: z.string(),
 	persistentLightingType: z.string().nullable(),
+	// null where the extractor could not read the layer's world; absent in exports that predate the field
+	worldPartitioned: z.boolean().nullable().optional(),
 	mapId: z.string(),
 	teamConfigs: z.object({ team1: TeamSchema.optional(), team2: TeamSchema.optional() }),
 })

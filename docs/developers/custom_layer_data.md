@@ -82,7 +82,25 @@ and classes in the new pair with the previous one, and pin anything that changed
 `src/models/vehicles.models.ts`, such as `VEH_TYPE_OVERRIDES`. `pnpm release:layers <version> --dry-run --csv <path>`
 builds a pair and stops, so it can be inspected before a release.
 
+A pair is stamped with the game version it was exported from. The installed version is recorded in the game binary as
+the UTF-16 string `Squad/v<version>`:
+
+```sh
+python3 -c "import re,sys; print(set(re.findall(rb'S\0q\0u\0a\0d\0/\0v\0(?:[0-9.]\0)+', open(sys.argv[1],'rb').read())))" \
+  ~/.local/share/Steam/steamapps/common/Squad/SquadGame/Binaries/Win64/SquadGame-Win64-Shipping.exe
+```
+
 ### Mods from the Steam Workshop
+
+A mod is shipped only while it is updated for the current version of Squad. A mod last updated before the current game
+version was released is left out of the pair, by removing its directory from `data/sources/`, until it is updated
+again. These are the workshop items the mod sources come from, including the ones currently left out:
+
+| Source                | Workshop id  |
+| --------------------- | ------------ |
+| `supermod`            | `3293347373` |
+| `resurgence`          | `3687169051` |
+| `galactic-contention` | `2428425228` |
 
 Squad mods are published on the Steam Workshop, where each one has a numeric workshop id: the `id` in the mod's
 workshop page URL. Pass the extractor the directory that holds the mod's files:
@@ -188,26 +206,41 @@ The file is compiled into the client, so charting a new dimension means editing 
 A mod adds a source: a directory under `data/sources/` holding the mod's `layers.json` and a `source.json` manifest.
 [Mods from the Steam Workshop](#mods-from-the-steam-workshop) describes how to extract the mod's `layers.json`.
 
+Preprocess takes each layer's map, gamemode, world partitioning, teams and factions from the export. The version is
+read from the layer's name, because the game files record none. A variant the game files do not mark is also read from
+the name, through the manifest's `versionSuffixes`: SuperMod's GoingDark (night) layers are versioned `V1GD`, as
+world-partitioned layers are versioned `V1WP`. Layers that still share a map, gamemode and version, such as a mod's
+size variants on one world, keep the shortest name's version, and the rest get a version derived from a hash of their
+name.
+
 `source.json` describes how to read the export. `data/sources/supermod/source.json` is a complete example.
 
-| Field                   | Meaning                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `name`                  | the directory's name                                                                |
-| `collection`            | the name and abbreviation of the collection every layer of the source lands in      |
-| `layerNames`            | `structured` to read the map and gamemode from the export's fields, which mods need |
-| `fraasVariants`         | whether to add a FRAAS twin for every RAAS layer                                    |
-| `mapAbbreviations`      | an abbreviation for every map the core table does not know                          |
-| `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                     |
-| `gamemodeRenames`       | maps the export's spelling of a gamemode onto the one layer names use               |
-| `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name                |
-| `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                          |
-| `layerOverrides`        | per-layer fixes for an export whose fields are wrong, keyed by level name           |
+| Field                   | Meaning                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `name`                  | the directory's name                                                           |
+| `collection`            | the name and abbreviation of the collection every layer of the source lands in |
+| `fraasVariants`         | whether to add a FRAAS twin for every RAAS layer                               |
+| `mapAbbreviations`      | an abbreviation for every map the core table does not know                     |
+| `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                |
+| `gamemodeRenames`       | maps the export's spelling of a gamemode onto the catalog's                    |
+| `mapRenames`            | maps the export's spelling of a map onto the catalog's                         |
+| `versionSuffixes`       | a version suffix for every layer whose name has the given segment              |
+| `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name           |
+| `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                     |
+| `layerOverrides`        | a value for a field a layer's export lacks, keyed by level name                |
 
 Run `pnpm preprocess` after adding the source. It fails on the first gap in the manifest and names the layer, such as a
 map with no abbreviation or two map layers that share a layer name. Add a manifest entry for each failure and run
 it again.
 
 A mod's layers have no scores until the csv has rows for them. Score them like any other layer, by their in-game name.
+
+## Releasing
+
+`pnpm release:layers <version>` builds the pair, runs the e2e suite against it, commits and pushes the pair to main,
+then drafts a Layer Data release. The push needs a clean checkout of main. From a worktree, commit the pair on the
+branch, run `pnpm release:layers <version> --no-preflight` to test the pair and draft the release without committing,
+and publish the draft once the branch has merged.
 
 ## Deploying
 

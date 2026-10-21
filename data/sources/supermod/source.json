@@ -1,13 +1,12 @@
 {
 	"name": "supermod",
-	"collection": { "name": "SuperMod", "abbreviation": "SPM" },
-	"layerNames": "structured",
+	"collection": {
+		"name": "SuperMod",
+		"abbreviation": "SPM"
+	},
 	"mapAbbreviations": {
 		"Douentza": "DZ",
-		"Johat": "JT",
 		"Mekong": "MK",
-		"Mogadishu": "MG",
-		"SU_KhoKhan": "KKH",
 		"GoingDark_Anvil": "DKAN",
 		"GoingDark_Chora": "DKCH",
 		"GoingDark_Fallujah": "DKFL",
@@ -45,12 +44,18 @@
 		"Supermod_Mutaha": "SMT",
 		"Supermod_Narva": "SNV",
 		"GoingDark_Sanxian": "DKSX",
-		"Supermod_Chora_Large": "SCHL",
 		"Supermod_Sanxian": "SSX",
 		"Supermod_Skorpo": "SSK",
 		"Supermod_Sumari": "SSM",
 		"Supermod_Tallil": "STL",
-		"Supermod_Yehorivka": "SYH"
+		"Supermod_Yehorivka": "SYH",
+		"Supermod_Belaya": "SBL",
+		"Supermod_Chornivsk": "SCN",
+		"GoingDark_Chornivsk": "DKCN",
+		"Hrodna_Border": "HRB",
+		"GoingDark_Hrodna_Border": "DKHRB",
+		"Rassvet": "RSV",
+		"GoingDark_HalfMap_BlackCoast": "DKBCH"
 	},
 	"gamemodeAbbreviations": {
 		"Frontline": "FRL",
@@ -58,35 +63,32 @@
 		"AAS_PreCap": "AASP",
 		"RAAS_PreCap": "RAASP",
 		"RVAAS_PreCap": "RVAASP",
-		"SeedVehicle": "SDV"
+		"SeedVehicle": "SDV",
+		"CAH": "CAH"
 	},
 	"extraUnitTypes": {
-		"SpecialForces": { "abbreviation": "SF", "shortName": "SpecFor" }
+		"SpecialForces": {
+			"abbreviation": "SF",
+			"shortName": "SpecFor"
+		}
 	},
 	"unitTypeOverrides": {
 		"IGF_LO_Mechanizedd-Boats": "Mechanized"
 	},
 	"layerOverrides": {
-		"SU_GoingDark_Sanxian_Invasion_v2": { "Map": "GoingDark_Sanxian" },
-		"SU_GoingDark_Tallil_RAAS_v1": { "Map": "GoingDark_Tallil" },
-		"SU_GoingDark_Tallil_RAAS_v1_PreCap": { "Map": "GoingDark_Tallil" },
-		"SU_Chora_LargeInvasion_v1": { "Map": "Supermod_Chora_Large" },
-		"SU_GoingDark_Yehorivka_RAAS_v1": { "Gamemode": "RAAS" },
-		"SU_GoingDark_Lashkar_RVAAS_v1": { "Map": "GoingDark_Lashkar", "Gamemode": "RVAAS" },
-		"SU_Lashkar_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Johat_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Tallil_SeedVehicle_v1": { "Gamemode": "SeedVehicle" },
-		"SU_Sumari_Frontline_v1": { "Gamemode": "Frontline" },
-		"SU_GoingDark_Narva_RAAS_v1": { "Gamemode": "RAAS" },
-		"SU_Mutaha_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Khokhan_Training_v1_USAvsVC": { "LayerVersion": "V2" },
-		"SU_GoingDark_Fallujah_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_GoingDark_Tallil_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_AAS_v1_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_GoingDark_Yehorivka_AAS_v1_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_Yehorivka_AAS_v2_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_Yehorivka_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_RAAS_v2_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_RVAAS_v1_PreCap": { "Gamemode": "RVAAS_PreCap" }
+		"SU_Belaya_RAAS_v1": {
+			"Gamemode": "RAAS"
+		}
+	},
+	"gamemodeRenames": {
+		"TerritoryControl": "TC"
+	},
+	"mapRenames": {
+		"SuperMod_Fallujah": "Supermod_Fallujah",
+		"SuperMod_Harju": "Supermod_Harju",
+		"Supermod_Mekong": "Mekong"
+	},
+	"versionSuffixes": {
+		"GoingDark": "GD"
 	}
 }

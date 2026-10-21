@@ -255,8 +255,9 @@ function main() {
 	if (args.noPreflight) console.log('--no-preflight: leaving the pair uncommitted')
 	else commitAndPush(version)
 
-	const notes = `The layer artifact pair \`pnpm preprocess\` builds from the sources under \`data/sources\` (vanilla, supermod,
-resurgence, galactic-contention) and the attached csv.
+	const sources = fs.readdirSync(path.join(Paths.DATA, 'sources')).sort().join(', ')
+	const notes = `The layer artifact pair \`pnpm preprocess\` builds from the sources under \`data/sources\` (${sources}) and the
+attached csv.
 
 Put the pair in a directory SLM searches and pin \`LAYERS_VERSION=${version}\`, or leave \`@latest\` where this is the
 highest version present. Not required to run SLM, which ships this pair in its image, and the attached source code is

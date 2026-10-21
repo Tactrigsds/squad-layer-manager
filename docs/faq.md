@@ -26,8 +26,14 @@ Donate at [ko-fi.com/grey275](https://ko-fi.com/grey275).
 
 ## Does SLM work with modded layers?
 
-SLM's layer catalog covers vanilla Squad, SuperMod, Resurgence and Galactic Contention. A layer from another mod can
-still be queued as raw input. See [layer_selection.md, Mod support](features/layer_selection.md#mod-support). If you want another mod added without having to roll your own layer data, then file an issue.
+SLM's layer catalog covers vanilla Squad and SuperMod. Resurgence and Galactic Contention are left out until each is
+updated for the current version of Squad.
+
+More mods can be added on request. [Open an issue](https://github.com/Tactrigsds/squad-layer-manager/issues) that
+names the mod and links its Steam Workshop page.
+
+Until a mod is in the catalog, its layers can still be queued as raw input. See
+[layer_selection.md, Mod support](features/layer_selection.md#mod-support).
 
 ## Can SLM be installed as an app?
 

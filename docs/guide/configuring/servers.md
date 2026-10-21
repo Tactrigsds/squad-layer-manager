@@ -44,7 +44,7 @@ If none is named, SLM recognises no in-game admins on this server.
 
 ## Installed mods
 
-SLM's catalog covers vanilla Squad and several mods. Name the ones this server actually has installed, under
+SLM's catalog covers vanilla Squad and the mods listed under [Mods](../operations/layer_data.md#mods). Name the ones this server actually has installed, under
 _Installed Mods_ in its settings. A new server starts with OWI alone, which is vanilla Squad.
 
 A layer from a collection not named here cannot load on this server, so SLM will not queue it, will not generate

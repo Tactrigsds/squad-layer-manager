@@ -360,6 +360,11 @@ describe('world partitioning layers', () => {
 	it('spells the version back out as it appears in the layer name', () => {
 		expect(L.layerVersionNameSegment('V1WP')).toBe('v1_WP')
 		expect(L.layerVersionNameSegment('V1')).toBe('v1')
+		expect(L.layerVersionNameSegment('V1WPGD')).toBe('v1_WP_GD')
+		expect(L.withVersionSuffix('V1GD', 'WP')).toBe('V1WPGD')
+		expect(L.baseLayerVersion('V1WPGD')).toBe('V1')
+		expect(L.isWorldPartitionVersion('V1GD')).toBe(false)
+		expect(L.withVersionBase('V1GD', 'V4650')).toBe('V4650GD')
 		expect(
 			L.getLayerString(
 				{ Map: 'Yehorivka', Gamemode: 'TC', LayerVersion: 'V1WP', Collection: 'OWI', Faction_1: 'USA', Faction_2: 'RGF' },

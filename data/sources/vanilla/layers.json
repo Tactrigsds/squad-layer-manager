@@ -16,6 +16,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -279,6 +280,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -716,6 +718,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -979,6 +982,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -1242,6 +1246,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -1425,6 +1430,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -1608,6 +1614,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -1791,6 +1798,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -1974,6 +1982,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -2137,6 +2146,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -2425,6 +2435,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -2713,6 +2724,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -2896,6 +2908,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -3079,6 +3092,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -3262,6 +3276,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -3531,6 +3546,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -3779,6 +3795,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -4235,6 +4252,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -4691,6 +4709,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -5147,6 +5166,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -5416,6 +5436,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -5685,6 +5706,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -5877,6 +5899,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -6069,6 +6092,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Sandstorm",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -6261,6 +6285,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -6530,6 +6555,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -6713,6 +6739,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -6896,6 +6923,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -7184,6 +7212,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -7472,6 +7501,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -7655,6 +7685,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -7842,6 +7873,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -8029,6 +8061,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -8212,6 +8245,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -8450,6 +8484,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -8844,6 +8879,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "PLANMC",
@@ -9038,6 +9074,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -9276,6 +9313,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -9514,6 +9552,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -9686,6 +9725,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -9858,6 +9898,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -10120,6 +10161,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -10556,6 +10598,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -10800,6 +10843,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -11236,6 +11280,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -11672,6 +11717,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -12108,6 +12154,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -12544,6 +12591,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -12806,6 +12854,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -13068,6 +13117,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -13251,6 +13301,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -13513,6 +13564,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13550,6 +13602,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13587,6 +13640,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13624,6 +13678,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13661,6 +13716,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13698,6 +13754,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13735,6 +13792,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13772,6 +13830,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -13809,6 +13868,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -14072,6 +14132,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -14315,6 +14376,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -14752,6 +14814,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -15015,6 +15078,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -15198,6 +15262,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -15461,6 +15526,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -15724,6 +15790,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -15967,6 +16034,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -16404,6 +16472,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -16841,6 +16910,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -17104,6 +17174,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -17367,6 +17438,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -17550,6 +17622,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -17813,6 +17886,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -17996,6 +18070,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -18179,6 +18254,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -18342,6 +18418,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -18630,6 +18707,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -18813,6 +18891,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -18996,6 +19075,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -19179,6 +19259,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -19442,6 +19523,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -19705,6 +19787,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -19948,6 +20031,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -20385,6 +20469,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -20648,6 +20733,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -20831,6 +20917,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -21094,6 +21181,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -21357,6 +21445,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -21540,6 +21629,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -21703,6 +21793,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -21886,6 +21977,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -22069,6 +22161,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -22252,6 +22345,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -22435,6 +22529,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -22673,6 +22768,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -22911,6 +23007,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -23149,6 +23246,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -23543,6 +23641,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -23937,6 +24036,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -24175,6 +24275,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -24413,6 +24514,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -24585,6 +24687,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -24759,6 +24862,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -24931,6 +25035,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -25103,6 +25208,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -25275,6 +25381,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -25458,6 +25565,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -25641,6 +25749,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -25929,6 +26038,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -26112,6 +26222,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -26299,6 +26410,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -26482,6 +26594,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -26751,6 +26864,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -27020,6 +27134,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -27476,6 +27591,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -27745,6 +27861,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -28014,6 +28131,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -28206,6 +28324,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -28398,6 +28517,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -28667,6 +28787,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -28913,6 +29034,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -29159,6 +29281,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -29405,6 +29528,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -29813,6 +29937,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -30221,6 +30346,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -30629,6 +30755,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -30875,6 +31002,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -31047,6 +31175,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -31293,6 +31422,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -31454,6 +31584,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -31491,6 +31622,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -31652,6 +31784,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -31689,6 +31822,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -32097,6 +32231,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "RGF",
@@ -32367,6 +32502,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "PLAAGF",
@@ -32580,6 +32716,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -32826,6 +32963,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -32998,6 +33136,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -33181,6 +33320,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -33364,6 +33504,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -33547,6 +33688,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -33710,6 +33852,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -33893,6 +34036,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -34076,6 +34220,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -34259,6 +34404,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -34442,6 +34588,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -34625,6 +34772,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -34894,6 +35042,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -35350,6 +35499,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -35619,6 +35769,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -35888,6 +36039,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -36080,6 +36232,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -36272,6 +36425,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -36464,6 +36618,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -36656,6 +36811,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -36925,6 +37081,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -36962,6 +37119,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": null,
+      "worldPartitioned": false,
       "factions": [],
       "separatedFactionsList": false,
       "teamConfigs": {
@@ -36999,6 +37157,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -37261,6 +37420,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": true,
       "factions": [
         {
           "factionId": "BAF",
@@ -37523,6 +37683,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -37785,6 +37946,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -38184,6 +38346,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -38620,6 +38783,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": true,
       "factions": [
         {
           "factionId": "BAF",
@@ -39056,6 +39220,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -39492,6 +39657,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -39754,6 +39920,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": true,
       "factions": [
         {
           "factionId": "BAF",
@@ -40016,6 +40183,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -40273,6 +40441,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -40456,6 +40625,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": true,
       "factions": [
         {
           "factionId": "BAF",
@@ -40639,6 +40809,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -40822,6 +40993,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -41084,6 +41256,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -41346,6 +41519,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -41624,6 +41798,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -41902,6 +42077,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -42180,6 +42356,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -42645,6 +42822,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -43110,6 +43288,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -43575,6 +43754,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -43853,6 +44033,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -44131,6 +44312,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -44409,6 +44591,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -44601,6 +44784,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -44793,6 +44977,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -44985,6 +45170,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -45177,6 +45363,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Evening",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -45369,6 +45556,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -45631,6 +45819,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -45893,6 +46082,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "USMC",
@@ -46134,6 +46324,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -46570,6 +46761,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "RGF",
@@ -46856,6 +47048,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -47118,6 +47311,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -47380,6 +47574,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -47563,6 +47758,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -47746,6 +47942,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -47992,6 +48189,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -48164,6 +48362,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -48336,6 +48535,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "USMC",
@@ -48564,6 +48764,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -48972,6 +49173,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -49380,6 +49582,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -49788,6 +49991,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50034,6 +50238,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50280,6 +50485,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50454,6 +50660,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50626,6 +50833,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50798,6 +51006,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "BAF",
@@ -50970,6 +51179,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Overcast",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -51142,6 +51352,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -51373,6 +51584,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -51604,6 +51816,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -51835,6 +52048,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "USMC",
@@ -52035,6 +52249,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "PLANMC",
@@ -52283,6 +52498,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "PLAAGF",
@@ -52469,6 +52685,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -52700,6 +52917,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -52931,6 +53149,7 @@
       "lightingLevel": "",
       "commander": true,
       "persistentLightingType": "Daytime",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -53096,6 +53315,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Morning",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -53259,6 +53479,7 @@
       "lightingLevel": "",
       "commander": false,
       "persistentLightingType": "Afternoon",
+      "worldPartitioned": false,
       "factions": [
         {
           "factionId": "ADF",
@@ -63974,7 +64195,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 20.0,
-          "vehType": "CAS",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "map_attackhelo",
           "classNames": [
@@ -74074,7 +74295,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 5.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -74094,7 +74315,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 20.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -117131,7 +117352,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 5.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -117499,7 +117720,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 4.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -117540,7 +117761,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -117942,7 +118163,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -118358,7 +118579,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [

@@ -188,13 +188,13 @@ test.describe('the explore-layers collection', () => {
 		await expect(collection).toHaveText('OWI')
 
 		await collection.click()
-		await page.getByRole('option', { name: 'GC', exact: true }).click()
-		await expect(collection).toHaveText('GC')
+		await page.getByRole('option', { name: 'SuperMod', exact: true }).click()
+		await expect(collection).toHaveText('SuperMod')
 
 		await page.reload()
 		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 		const reopened = await openExplore(page)
-		await expect(reopened.getByRole('combobox', { name: 'Collection' })).toHaveText('GC')
+		await expect(reopened.getByRole('combobox', { name: 'Collection' })).toHaveText('SuperMod')
 	})
 
 	test('leaves the collection cleared once the user clears it', async ({ page }) => {

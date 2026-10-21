@@ -408,6 +408,8 @@ type VehicleRecord = {
 	// the chassis token of the first blueprint, original case; names the extra clusters of a split group
 	chassis: string
 	refs: number
+	// how many authoritative (vanilla) unit records reference it
+	authRefs: number
 }
 
 export type VehicleTableStats = {
@@ -446,7 +448,11 @@ class UnionFind {
 	}
 }
 
-export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): VehicleComponents & { stats: VehicleTableStats } {
+// `authoritativeUnits` are the units whose vehicles decide a shared vehicle's name and class (see decidingRefs)
+export function buildVehicleTables(
+	factionUnits: Record<string, GLD.Unit>,
+	opts?: { authoritativeUnits?: ReadonlySet<string> },
+): VehicleComponents & { stats: VehicleTableStats } {
 	const factionTokens = new Set<string>()
 	for (const unit of Object.values(factionUnits)) {
 		for (const token of unit.factionID.split(/[_-]/)) {
@@ -487,9 +493,13 @@ export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): Vehi
 			const key = [normName, vehType, locomotion, weaponTags, Array.from(models).sort().join('|')].join('#')
 			let record = records.get(key)
 			if (!record) {
-				records.set(key, (record = { key, name: overridden, normName, vehType, locomotion, weaponTags, models, chassis, refs: 0 }))
+				records.set(
+					key,
+					(record = { key, name: overridden, normName, vehType, locomotion, weaponTags, models, chassis, refs: 0, authRefs: 0 }),
+				)
 			}
 			record.refs++
+			if (opts?.authoritativeUnits?.has(unitName)) record.authRefs++
 			keys.push(key)
 		}
 		unitRecordKeys.set(unitName, keys)
@@ -516,7 +526,7 @@ export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): Vehi
 	}
 
 	for (const group of groups.values()) {
-		group.sort((a, b) => b.refs - a.refs || a.key.localeCompare(b.key))
+		group.sort((a, b) => b.authRefs - a.authRefs || b.refs - a.refs || a.key.localeCompare(b.key))
 		const uf = new UnionFind(group.length)
 		const chassisSplit = CHASSIS_SPLIT_NAMES.has(group[0].normName)
 		const forceMerge = FORCE_MERGE_NAMES.has(group[0].normName)
@@ -541,7 +551,9 @@ export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): Vehi
 			if (!cluster) clusters.set(root, (cluster = []))
 			cluster.push(group[i])
 		}
-		let ordered = Array.from(clusters.values()).sort((a, b) => refCount(b) - refCount(a) || a[0].key.localeCompare(b[0].key))
+		let ordered = Array.from(clusters.values()).sort(
+			(a, b) => authRefCount(b) - authRefCount(a) || refCount(b) - refCount(a) || a[0].key.localeCompare(b[0].key),
+		)
 		// a split record with no usable blueprints carries no evidence it differs; fold it into the dominant cluster
 		if (ordered.length > 1) {
 			const orphans = ordered.filter((cluster) => cluster.every((record) => record.models.size === 0))
@@ -583,11 +595,18 @@ export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): Vehi
 	const clusterIndex = new Map(allClusters.map((cluster, i) => [cluster, i]))
 	const vehicleTypeNames = allClusters.map((cluster) => {
 		// weighted majority among non-empty classes; guard conflicts within a merged cluster resolve here
-		const vehType = weightedMajority(cluster.records, (record) => record.vehType)
+		const weight = decidingRefs(cluster.records)
+		const vehType =
+			weightedMajority(cluster.records, (record) => record.vehType, weight) ??
+			weightedMajority(
+				cluster.records,
+				(record) => record.vehType,
+				(record) => record.refs,
+			)
 		if (!vehType) stats.typelessVehicles.push(cluster.name)
 		// voted separately, so a cluster that merged copies carrying a stray icon still takes the running gear
 		// of its dominant records
-		const locomotion = weightedMajority(cluster.records, (record) => record.locomotion)!
+		const locomotion = weightedMajority(cluster.records, (record) => record.locomotion, weight)!
 		if (new Set(cluster.records.map((record) => record.locomotion)).size > 1) {
 			stats.mixedLocomotion.push(`${cluster.name} -> ${locomotion}`)
 		}
@@ -606,18 +625,34 @@ export function buildVehicleTables(factionUnits: Record<string, GLD.Unit>): Vehi
 	return { vehicles, vehicleTypes, vehicleTypeIds, unitRecords, unitRecordVehicles, stats }
 }
 
-function weightedMajority<T extends string>(records: VehicleRecord[], of: (record: VehicleRecord) => T): T | undefined {
+// The weight a record's vote carries in its cluster: its authoritative references where the cluster has any. A mod
+// ships many more units than vanilla, so without this a mod's copies outvote vanilla and reclassify a vanilla vehicle
+// (IFV for the BTR-82A). Ranking by authRefs first does the same for names, which filters store.
+function decidingRefs(records: VehicleRecord[]): (record: VehicleRecord) => number {
+	return authRefCount(records) > 0 ? (record) => record.authRefs : (record) => record.refs
+}
+
+function weightedMajority<T extends string>(
+	records: VehicleRecord[],
+	of: (record: VehicleRecord) => T,
+	weight: (record: VehicleRecord) => number,
+): T | undefined {
 	const counts = new Map<T, number>()
 	for (const record of records) {
 		const value = of(record)
-		if (value === '') continue
-		counts.set(value, (counts.get(value) ?? 0) + record.refs)
+		const w = weight(record)
+		if (value === '' || w === 0) continue
+		counts.set(value, (counts.get(value) ?? 0) + w)
 	}
 	return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
 }
 
 function refCount(records: VehicleRecord[]): number {
 	return records.reduce((sum, record) => sum + record.refs, 0)
+}
+
+function authRefCount(records: VehicleRecord[]): number {
+	return records.reduce((sum, record) => sum + record.authRefs, 0)
 }
 
 // the dominant chassis token of the cluster, unless another cluster claims the same one

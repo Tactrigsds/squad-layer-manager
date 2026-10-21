@@ -21,10 +21,11 @@ To build your own pair, with different scoring, extra columns, or different laye
 
 ## Mods
 
-The shipped pair covers vanilla Squad, SuperMod, Resurgence and Galactic Contention. The _Collection_ column records
-which of them each layer comes from. Each server names the mods it has installed, under _Installed Mods_ in its
-settings, and SLM never queues, generates or offers a vote choice from a mod the server lacks. See
-[Installed mods](../configuring/servers.md#installed-mods).
+The shipped pair covers vanilla Squad and SuperMod. Resurgence and Galactic Contention are left out until each is
+updated for the current version of Squad. The _Collection_ column records which collection each layer comes from.
+Each server names the mods it has installed, under _Installed Mods_ in its settings, and SLM never queues, generates
+or offers a vote choice from a mod the server lacks. See [Installed mods](../configuring/servers.md#installed-mods).
 
-To support another mod, build a pair that includes it. See
-[Adding a mod](../../developers/custom_layer_data.md#adding-a-mod).
+More mods can be added on request. [Open an issue](https://github.com/Tactrigsds/squad-layer-manager/issues) that
+names the mod and links its Steam Workshop page. To support a mod without waiting for a release, build a pair that
+includes it. See [Adding a mod](../../developers/custom_layer_data.md#adding-a-mod).
