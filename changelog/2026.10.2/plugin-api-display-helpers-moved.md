@@ -3,8 +3,8 @@ audience: operators
 kind: breaking
 ---
 
-The plugin API is version 0.19. A plugin built for an earlier version does not load until its `apiVersion` is raised
-to `^0.19` and it is repacked with `pnpm plugin:pack`.
+A plugin of your own built for an earlier plugin API does not load until its `apiVersion` is raised to `^0.19` and it
+is repacked with `pnpm plugin:pack`.
 
 The built-in plugins are already updated. Changes since 0.18:
 

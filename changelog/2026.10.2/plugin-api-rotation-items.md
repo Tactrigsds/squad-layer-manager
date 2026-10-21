@@ -3,7 +3,7 @@ audience: operators
 kind: breaking
 ---
 
-The plugin API is version 0.16. A packed plugin that declares `^0.13` does not load until it is rebuilt against 0.16.
+A packed plugin of your own that declares `^0.13` does not load until it is rebuilt against plugin API 0.16.
 
 The built-in plugins are already updated. For a plugin of your own, set `apiVersion` to `^0.16` in its manifest and
 repack it with `pnpm plugin:pack`. Changes since 0.13:

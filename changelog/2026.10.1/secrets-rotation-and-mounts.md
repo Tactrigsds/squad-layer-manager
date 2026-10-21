@@ -3,7 +3,7 @@ audience: operators
 kind: breaking
 ---
 
-The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page. The encryption key can be rotated, must be at least 16 characters in production, and credentials can be mounted one file each.
+A `SETTINGS_ENCRYPTION_KEY` shorter than 16 characters stops production from starting until it is replaced, as _Encryption key length_ below describes. The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page on their own. The encryption key can be rotated, and credentials can be mounted one file each.
 
 **Integrations on the settings page.** `BM_PAT`, `BM_ORG_ID`, `BM_ENABLED`, `SQUADBROWSER_API_KEY`, `SQUADBROWSER_ENABLED`, `STEAM_API_KEY` and `STEAM_ENABLED` are now the _Integrations_ section of the global settings. The first boot after upgrading carries the values over from the environment into the settings, after which the variables are ignored and the boot log says so each time one is still set. Remove them from `.env` and `.env.secrets` once that boot has happened. A token is stored encrypted and never shown again: the field shows a placeholder, and typing in it replaces the token. Editing the section takes a `global-settings:write` grant on `integrations`, which the default managers role does not hold. `BM_HOST`, `SQUADBROWSER_HOST` and `STEAM_HOST` stay in the environment.
 

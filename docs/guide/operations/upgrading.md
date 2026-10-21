@@ -3,7 +3,8 @@
 ## Upgrading
 
 1. Read the "For operators" notes of every release since yours in [CHANGELOG.md](../../../CHANGELOG.md). A "Breaking"
-   note describes a change that must be made to upgrade.
+   note opens with the setups it affects, such as a plugin of your own or a short encryption key, and describes the
+   change those setups need to upgrade. A setup the note does not name needs no change.
 2. Run:
 
    ```sh

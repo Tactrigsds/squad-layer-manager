@@ -19,6 +19,11 @@ description or a commit message instead, so the choice is written down. A reason
 
 A breaking commit (`feat!:`) always needs an `operators` fragment saying what an upgrade has to do.
 
+A `breaking` fragment's first sentence names the setups that must change, such as "A plugin of your own that reads
+`note.author`" or "A `SETTINGS_ENCRYPTION_KEY` shorter than 16 characters". An operator whose setup the fragment does not name
+skips the note. A change the upgrade migrates on its own is breaking only for what the migration cannot reach, such as
+scripts or plugins that write the old shape, so name those.
+
 ## The format
 
 Name the file after the change, in lower case with dashes: `history-short-links.md`. The name is the entry's id and
