@@ -6,7 +6,7 @@ import * as L from '@/models/layer.models'
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
-import { belowItem, centerOf, dragFrom } from '../harness/drag'
+import { belowItem, centerOf, dragFrom, endZoneOf } from '../harness/drag'
 import { savedBackburner } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
@@ -187,7 +187,7 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 		await expect(invertedRow).toBeVisible()
 
 		// drag the inverted request onto the regular one: same filter applied both ways must not merge
-		await dragFrom(page, invertedRow.getByRole('button').first(), () => centerOf(regularRow))
+		await dragFrom(page, invertedRow.getByRole('button').first(), () => endZoneOf(regularRow))
 
 		await expect(page.getByText('Cannot combine these requests')).toBeVisible({ timeout: 5_000 })
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible()
@@ -200,15 +200,14 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 		const requestRow = panel.getByRole('listitem').filter({ hasText: 'Sumari' })
 		await expect(requestRow).toBeVisible()
 
-		// dragging a request expands the queue's drop separators into an easy target without the user
-		// having to start editing the queue first
+		// the queue takes a dragged request without the user having to start editing the queue first
 		const queueItem = panel
 			.getByRole('listitem')
 			.filter({ hasText: layerText('Gorodok_RAAS_v1') })
 			.first()
 		await expect(queueItem).toBeVisible()
 
-		// drag the request's grip onto the separator just below the first queue item
+		// drag the request's grip to just below the first queue item
 		await dragFrom(page, requestRow.getByRole('button').first(), () => belowItem(queueItem))
 
 		// the dialog opens seeded from the template (its headlessui root never reports visible, so assert on

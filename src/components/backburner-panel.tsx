@@ -32,6 +32,7 @@ import * as L from '@/models/layer.models'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as LLDnd from '@/systems/layer-list-dnd.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -43,6 +44,7 @@ import { FilterCheckbox, PoolFilterCheckbox } from './applied-filters-panel.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { CopyableCommand } from './copyable-command.tsx'
 import EmojiDisplay from './emoji-display.tsx'
+import { EndDropZone } from './end-drop-zone.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
@@ -80,7 +82,10 @@ export default function BackburnerPanel(props: StoresProp) {
 	// seeded from it, and on commit the picked layer is added to the queue at `index` while the request is consumed
 	const [queueDrop, setQueueDrop] = React.useState<QueueDrop | null>(null)
 	const dragging = DndKit.useDragging()
-	const { ref: panelDropRef } = DndKit.useDroppable(PANEL_DROP_ITEM, { disabled: dragging?.type !== 'layer-item' || !canRequest })
+	const { ref: panelDropRef, isDropTarget: panelIsDropTarget } = DndKit.useDroppable(PANEL_DROP_ITEM, {
+		collisionDetector: LLDnd.pointerInRectCollision,
+		disabled: dragging?.type !== 'layer-item' || !canRequest,
+	})
 
 	const satisfiable = useBackburnerSatisfiability(items)
 	const combinableWith = useCombinability(items)
@@ -185,7 +190,17 @@ export default function BackburnerPanel(props: StoresProp) {
 	const showDropHint = dragging?.type === 'layer-item' && canRequest
 
 	return (
-		<div ref={panelDropRef} className={cn('mx-2 mt-1 border-t border-line pt-1.5', showDropHint && 'ring-2 ring-inset ring-pri/50')}>
+		<div
+			ref={panelDropRef}
+			className={cn(
+				'mx-2 mt-1 border-t border-line pt-1.5',
+				// an overlay, since the list's well would paint over the panel's own ring and background
+				showDropHint &&
+					'relative after:pointer-events-none after:absolute after:inset-0 after:ring-2 after:ring-inset after:ring-pri/50',
+				showDropHint && panelIsDropTarget && 'after:bg-pri/15 after:ring-pri',
+			)}
+			{...{ [LLDnd.BOUNDS_ATTR]: '' }}
+		>
 			<div className="flex flex-wrap items-center gap-2 min-h-(--ctl)">
 				<span className="fd-cond font-bold text-base flex items-center gap-1.5">
 					{tr.text(BB_Msgs.heading(items.length))}
@@ -394,13 +409,31 @@ function RowSeparator(props: { slot: { position: 'before' | 'after'; itemId: str
 		type: 'relative-to-drag-item',
 		slots: [{ position: props.slot.position, dragItem: { type: 'backburner-item', id: props.slot.itemId } }],
 	}
-	// the pointer decides the target: over a row = combine, in the (drag-expanded) gap = reorder. Without
-	// this, shape-overlap collision lets the full-height rows swallow every drop and reordering is impossible.
-	// isDropTarget must be read unconditionally: the read is what subscribes this component to target changes
-	const { ref, isDropTarget } = DndKit.useDroppable(dropItem, { collisionDetector: DndKit.livePointerIntersection })
 	const dragging = DndKit.useDragging()
-	const active = dragging?.type === 'backburner-item'
-	return <Separator ref={ref} className={cn('w-full', active ? 'h-5' : 'h-1', active && isDropTarget ? 'bg-accent' : 'bg-transparent')} />
+	const { ref, isDropTarget } = DndKit.useDroppable(dropItem, {
+		collisionDetector: LLDnd.separatorCollision,
+		disabled: dragging?.type !== 'backburner-item',
+	})
+	return (
+		<Separator
+			ref={ref}
+			className="w-full h-0.5 -my-px bg-transparent shadow-none data-[is-over=true]:bg-pri"
+			data-is-over={isDropTarget}
+			{...{ [LLDnd.SEPARATOR_ATTR]: '' }}
+		/>
+	)
+}
+
+// covers the end of a row while another request is dragged, and combines the two when dropped on
+function CombineDropZone(props: { itemId: string; combinable: boolean }) {
+	return (
+		<EndDropZone
+			dropItem={{ type: 'relative-to-drag-item', slots: [{ position: 'on', dragItem: { type: 'backburner-item', id: props.itemId } }] }}
+			icon={<Icons.Combine />}
+			label={tr.text(props.combinable ? BB_Msgs.combineDropLabel() : BB_Msgs.uncombinableDropLabel())}
+			tone={props.combinable ? 'pri' : 'danger'}
+		/>
+	)
 }
 
 function BackburnerRow(
@@ -423,36 +456,27 @@ function BackburnerRow(
 		handleRef: dragHandleRef,
 		isDragging,
 	} = DndKit.useDraggable({ type: 'backburner-item', id: props.itemId }, { feedback: 'default' })
-	const { ref: dropRef, isDropTarget } = DndKit.useDroppable(
-		{
-			type: 'relative-to-drag-item',
-			slots: [{ position: 'on', dragItem: { type: 'backburner-item', id: props.itemId } }],
-		},
-		{ collisionDetector: DndKit.livePointerIntersection },
-	)
 
 	if (!item) return null
 	const isOwn = loggedInUserId !== undefined && item.source.discordId === loggedInUserId
 	const canEdit = props.canWriteQueue || isOwn
 	const draggingOther = dragging?.type === 'backburner-item' && dragging.id !== props.itemId
-	const combineTarget = draggingOther && isDropTarget
+	const underEndZone = 'group-has-[[data-end-drop-zone]]/request:invisible'
 
 	const queueKey: LayerQueuePrt.KeyProp = { queue: props.stores.squadServer! }
 
 	return (
 		<li
-			ref={(el) => {
-				dragRef(el)
-				dropRef(el)
-			}}
+			ref={dragRef}
 			data-is-dragging={isDragging}
 			data-mutation={displayedMutation}
+			{...{ [LLDnd.ROW_ATTR]: 'single' satisfies LLDnd.RowKind }}
 			className={cn(
-				'flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50',
+				'group/request flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50 has-[[data-end-drop-zone]]:relative',
 				'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
-				combineTarget && (props.combinable ? 'bg-pri/10 outline outline-1 outline-pri' : 'outline outline-1 outline-danger/50'),
 			)}
 		>
+			{draggingOther && <CombineDropZone itemId={props.itemId} combinable={props.combinable} />}
 			<button
 				type="button"
 				ref={dragHandleRef}
@@ -470,9 +494,11 @@ function BackburnerRow(
 				</Tooltip>
 			)}
 			<TemplateDisplay filter={item.filter} className="min-w-0 flex-1 truncate" />
-			<RequestOwner source={item.source} />
+			<span className={cn('flex', underEndZone)}>
+				<RequestOwner source={item.source} />
+			</span>
 			{(canEdit || props.canRequest) && (
-				<span className="fd-grp">
+				<span className={cn('fd-grp', underEndZone)}>
 					{props.canRequest && (
 						<Tooltip help>
 							<TooltipTrigger asChild>

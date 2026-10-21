@@ -37,6 +37,10 @@ export const panelHelp = def(
 
 export const commandExampleLabel = def('Ingame command example:')
 
+export const combineDropLabel = def('Combine')
+
+export const uncombinableDropLabel = def('Cannot combine')
+
 export const revertToSaved = def('Revert to saved')
 
 export const requestLayer = def('Request layer')

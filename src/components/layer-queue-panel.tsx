@@ -29,6 +29,7 @@ import * as UP from '@/models/user-presence.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as KBClient from '@/systems/keybinds.client'
+import * as LLDnd from '@/systems/layer-list-dnd.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -565,7 +566,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 
 	return (
 		<KBClient.Context.Provider value={kbScope.id}>
-			<div ref={kbScope.ref} className="contents">
+			<div ref={kbScope.ref} className="contents" {...{ [LLDnd.BOUNDS_ATTR]: '' }}>
 				<ValidationWarningsDisplay
 					warnings={warnings ?? []}
 					showWarnings={showWarnings}
@@ -590,8 +591,11 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 					</span>
 				</div>
 				<StickyGroup stickyRef={headerRef}>
-					<div className="fd-well mx-2 mb-2">
-						<LayerList stores={{ listHost: props.stores.squadServer! }} />
+					{/* padding rather than margin, so the drop bounds take in the space below the list */}
+					<div className="px-2 pb-2">
+						<div className="fd-well">
+							<LayerList stores={{ listHost: props.stores.squadServer! }} />
+						</div>
 					</div>
 				</StickyGroup>
 			</div>
