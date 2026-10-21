@@ -402,9 +402,11 @@ string AllianceOf(string factionId)
 // ---------------------------------------------------------------- layers
 
 // Whether the layer's world uses world partition, which makes it a distinct layer from its twin on the same map
-// (Yehorivka_AAS_v1_WP beside Yehorivka_AAS_v1). Null where the world is not on disk: a partial mod fetch leaves the
-// worlds out.
+// (Yehorivka_AAS_v1_WP beside Yehorivka_AAS_v1). Null where the world is not on disk: a partial mod fetch leaves
+// worlds out, and SuperMod's maps (/Rassvet, /BelayaMap, ...) ship as separate workshop items.
 var missingWorlds = 0;
+// the mount roots ("/Rassvet") of the worlds that are not on disk, which name the mods they ship in
+var missingWorldRoots = new SortedDictionary<string, int>(StringComparer.Ordinal);
 bool? WorldPartitioned(JObject props)
 {
 	var world = RefPackage((props["Worlds"] as JArray)?.FirstOrDefault());
@@ -412,6 +414,11 @@ bool? WorldPartitioned(JObject props)
 	if (file == null)
 	{
 		missingWorlds++;
+		if (world != null)
+		{
+			var root = world[..(world.IndexOf('/', 1) is var slash and > 0 ? slash : world.Length)];
+			missingWorldRoots[root] = missingWorldRoots.GetValueOrDefault(root) + 1;
+		}
 		return null;
 	}
 	return provider.LoadPackage(file).GetExports().Any(e => e.ExportType == "WorldPartition");
@@ -749,7 +756,11 @@ var output = new JObject
 	["MeleeWeapons"] = new JArray(),
 };
 
-if (missingWorlds > 0) Console.Error.WriteLine($"warn: {missingWorlds} layers' worlds are not on disk; their worldPartitioned is null");
+if (missingWorlds > 0)
+{
+	Console.Error.WriteLine(
+		$"warn: {missingWorlds} layers' worlds are not on disk, under {string.Join(", ", missingWorldRoots.Select(r => $"{r.Key} ({r.Value})"))}; their worldPartitioned is null");
+}
 Console.Error.WriteLine($"extracted {maps.Count} layers, {units.Count} units");
 var json = output.ToString(Formatting.Indented);
 if (outPath != null)
