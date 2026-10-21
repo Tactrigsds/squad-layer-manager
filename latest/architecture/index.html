@@ -758,7 +758,7 @@ into an <code>EffectiveColumnConfig</code>, and downstream query state is memoiz
 must always produce the same object.</p>
 <h2 id="the-layer-engine-rustwasm" class="docs-heading">The layer engine (rust/wasm)<a href="#the-layer-engine-rustwasm" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#the-layer-engine-rustwasm" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p><code>layer-engine/</code> is Rust compiled to wasm. It queries a table of all known layer combinations and implements filtering,
-sorting, paging, distinct values and weighted random selection. <strong>One module serves both hosts:</strong> the server and the
+sorting, paging, distinct values, result summaries and weighted random selection. <strong>One module serves both hosts:</strong> the server and the
 browser&#x27;s query worker load the same <code>.wasm</code>. It is immutable for its lifetime. That makes caching evaluated bitsets
 safe and shipping the same engine to both sides practical.</p>
 <p><strong>Nothing is stored per row.</strong> Rows are layer-id order, which groups them into one contiguous block per layer, and a
@@ -775,6 +775,9 @@ set at once. One on a per-team column is evaluated once per distinct pattern and
 Only the score scopes go row by row. Blocks the candidate has already excluded are skipped whole. Any path that walks
 matched rows in order (sorting, distinct, generation) carries a <code>BlockCursor</code> instead of resolving each row&#x27;s block
 independently. <code>store.value</code> binary-searches the block table, and a naive port would reintroduce that cost per row.</p>
+<p>Result summaries (per-value counts, ranges) take the same shortcut further. A block the filter keeps whole adds its
+pattern&#x27;s value counts, or its own cached min/max, without visiting a row. Both caches fill on first use. The client
+fetches a summary in parts, one worker request each, so that a page query sent meanwhile runs between parts.</p>
 <p><code>ColData</code> is how a scan asks <em>how</em> a column varies before it enters its loop, and <code>Reader</code> resolves a column down to
 the slices it reads. Both exist so the per-row work never re-examines a column spec.</p>
 <p>Three things shape working on it:</p>
