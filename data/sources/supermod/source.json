@@ -1,6 +1,9 @@
 {
 	"name": "supermod",
-	"collection": { "name": "SuperMod", "abbreviation": "SPM" },
+	"collection": {
+		"name": "SuperMod",
+		"abbreviation": "SPM"
+	},
 	"layerNames": "structured",
 	"mapAbbreviations": {
 		"Douentza": "DZ",
@@ -50,7 +53,18 @@
 		"Supermod_Skorpo": "SSK",
 		"Supermod_Sumari": "SSM",
 		"Supermod_Tallil": "STL",
-		"Supermod_Yehorivka": "SYH"
+		"Supermod_Yehorivka": "SYH",
+		"Supermod_Belaya": "SBL",
+		"Supermod_Chornivsk": "SCN",
+		"Supermod_Chornivsk_Large": "SCNL",
+		"GoingDark_Chornivsk": "DKCN",
+		"GoingDark_Chornivsk_Large": "DKCNL",
+		"Hrodna_Border": "HRB",
+		"GoingDark_Hrodna_Border": "DKHRB",
+		"Rassvet": "RSV",
+		"GoingDark_Rassvet": "DKRSV",
+		"GoingDark_HalfMap_BlackCoast": "DKBCH",
+		"GoingDark_HalfMap_Gorodok": "DKGDH"
 	},
 	"gamemodeAbbreviations": {
 		"Frontline": "FRL",
@@ -58,35 +72,148 @@
 		"AAS_PreCap": "AASP",
 		"RAAS_PreCap": "RAASP",
 		"RVAAS_PreCap": "RVAASP",
-		"SeedVehicle": "SDV"
+		"SeedVehicle": "SDV",
+		"CAH": "CAH"
 	},
 	"extraUnitTypes": {
-		"SpecialForces": { "abbreviation": "SF", "shortName": "SpecFor" }
+		"SpecialForces": {
+			"abbreviation": "SF",
+			"shortName": "SpecFor"
+		}
 	},
 	"unitTypeOverrides": {
 		"IGF_LO_Mechanizedd-Boats": "Mechanized"
 	},
 	"layerOverrides": {
-		"SU_GoingDark_Sanxian_Invasion_v2": { "Map": "GoingDark_Sanxian" },
-		"SU_GoingDark_Tallil_RAAS_v1": { "Map": "GoingDark_Tallil" },
-		"SU_GoingDark_Tallil_RAAS_v1_PreCap": { "Map": "GoingDark_Tallil" },
-		"SU_Chora_LargeInvasion_v1": { "Map": "Supermod_Chora_Large" },
-		"SU_GoingDark_Yehorivka_RAAS_v1": { "Gamemode": "RAAS" },
-		"SU_GoingDark_Lashkar_RVAAS_v1": { "Map": "GoingDark_Lashkar", "Gamemode": "RVAAS" },
-		"SU_Lashkar_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Johat_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Tallil_SeedVehicle_v1": { "Gamemode": "SeedVehicle" },
-		"SU_Sumari_Frontline_v1": { "Gamemode": "Frontline" },
-		"SU_GoingDark_Narva_RAAS_v1": { "Gamemode": "RAAS" },
-		"SU_Mutaha_RVAAS_v1": { "Gamemode": "RVAAS" },
-		"SU_Khokhan_Training_v1_USAvsVC": { "LayerVersion": "V2" },
-		"SU_GoingDark_Fallujah_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_GoingDark_Tallil_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_AAS_v1_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_GoingDark_Yehorivka_AAS_v1_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_Yehorivka_AAS_v2_PreCap": { "Gamemode": "AAS_PreCap" },
-		"SU_Yehorivka_RAAS_v1_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_RAAS_v2_PreCap": { "Gamemode": "RAAS_PreCap" },
-		"SU_Yehorivka_RVAAS_v1_PreCap": { "Gamemode": "RVAAS_PreCap" }
+		"SU_GoingDark_Sanxian_Invasion_v2": {
+			"Map": "GoingDark_Sanxian"
+		},
+		"SU_GoingDark_Tallil_RAAS_v1": {
+			"Map": "GoingDark_Tallil"
+		},
+		"SU_GoingDark_Tallil_RAAS_v1_PreCap": {
+			"Gamemode": "RAAS_PreCap"
+		},
+		"SU_Chora_LargeInvasion_v1": {
+			"Map": "Supermod_Chora_Large"
+		},
+		"SU_GoingDark_Yehorivka_RAAS_v1": {
+			"Gamemode": "RAAS"
+		},
+		"SU_GoingDark_Lashkar_RVAAS_v1": {
+			"Map": "GoingDark_Lashkar",
+			"Gamemode": "RVAAS"
+		},
+		"SU_Lashkar_RVAAS_v1": {
+			"Gamemode": "RVAAS"
+		},
+		"SU_Tallil_SeedVehicle_v1": {
+			"Gamemode": "SeedVehicle"
+		},
+		"SU_Sumari_Frontline_v1": {
+			"Gamemode": "Frontline"
+		},
+		"SU_GoingDark_Narva_RAAS_v1": {
+			"Gamemode": "RAAS"
+		},
+		"SU_Mutaha_RVAAS_v1": {
+			"Gamemode": "RVAAS"
+		},
+		"SU_GoingDark_Fallujah_RAAS_v1_PreCap": {
+			"Gamemode": "RAAS_PreCap"
+		},
+		"SU_Yehorivka_AAS_v1_PreCap": {
+			"Gamemode": "AAS_PreCap"
+		},
+		"SU_GoingDark_Yehorivka_AAS_v1_PreCap": {
+			"Gamemode": "AAS_PreCap"
+		},
+		"SU_Yehorivka_AAS_v2_PreCap": {
+			"Gamemode": "AAS_PreCap"
+		},
+		"SU_Yehorivka_RAAS_v1_PreCap": {
+			"Gamemode": "RAAS_PreCap"
+		},
+		"SU_Yehorivka_RAAS_v2_PreCap": {
+			"Gamemode": "RAAS_PreCap"
+		},
+		"SU_Yehorivka_RVAAS_v1_PreCap": {
+			"Gamemode": "RVAAS_PreCap"
+		},
+		"SU_Chornivsk_AAS_v1_Large": {
+			"Map": "Supermod_Chornivsk_Large"
+		},
+		"SU_GoingDark_Chornivsk_AAS_v1_Large": {
+			"Map": "GoingDark_Chornivsk_Large"
+		},
+		"SU_Chornivsk_Invasion_v1_Large": {
+			"Map": "Supermod_Chornivsk_Large"
+		},
+		"SU_GoingDark_Chornivsk_Invasion_v1_Large": {
+			"Map": "GoingDark_Chornivsk_Large"
+		},
+		"SU_Chornivsk_RAAS_v1_Large": {
+			"Map": "Supermod_Chornivsk_Large"
+		},
+		"SU_GoingDark_Chornivsk_RAAS_v1_Large": {
+			"Map": "GoingDark_Chornivsk_Large"
+		},
+		"SU_Chornivsk_RVAAS_v1_Large": {
+			"Map": "Supermod_Chornivsk_Large"
+		},
+		"SU_GoingDark_Chornivsk_RVAAS_v1_Large": {
+			"Map": "GoingDark_Chornivsk_Large"
+		},
+		"SU_GoingDark_HalfMap_Gorodok_RAAS_v1": {
+			"Map": "GoingDark_HalfMap_Gorodok"
+		},
+		"SU_GoingDark_HalfMap_Gorodok_RVAAS_v1": {
+			"Map": "GoingDark_HalfMap_Gorodok"
+		},
+		"SU_GoingDark_Rassvet_AAS_v1": {
+			"Map": "GoingDark_Rassvet",
+			"Gamemode": "AAS"
+		},
+		"SU_Rassvet_AAS_v1": {
+			"Gamemode": "AAS"
+		},
+		"SU_GoingDark_Rassvet_Seed_v1": {
+			"Map": "GoingDark_Rassvet",
+			"Gamemode": "Seed"
+		},
+		"SU_Rassvet_Seed_v1": {
+			"Gamemode": "Seed"
+		},
+		"SU_GoingDark_Rassvet_Skirmish_v1": {
+			"Map": "GoingDark_Rassvet",
+			"Gamemode": "Skirmish"
+		},
+		"SU_Rassvet_Skirmish_v1": {
+			"Gamemode": "Skirmish"
+		},
+		"SU_GoingDark_Rassvet_TC_v1": {
+			"Map": "GoingDark_Rassvet",
+			"Gamemode": "TC"
+		},
+		"SU_Rassvet_TC_v1": {
+			"Gamemode": "TC"
+		},
+		"SU_GoingDark_Narva_RVAAS_v1": {
+			"Gamemode": "RVAAS"
+		},
+		"SU_SV_Tallil_SeedVehicle_v1": {
+			"Gamemode": "SeedVehicle"
+		},
+		"SU_Belaya_RAAS_v1": {
+			"Gamemode": "RAAS"
+		}
+	},
+	"gamemodeRenames": {
+		"TerritoryControl": "TC"
+	},
+	"mapRenames": {
+		"SuperMod_Fallujah": "Supermod_Fallujah",
+		"SuperMod_Harju": "Supermod_Harju",
+		"Supermod_Mekong": "Mekong"
 	}
 }

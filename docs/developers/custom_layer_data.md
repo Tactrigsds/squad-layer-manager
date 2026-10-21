@@ -82,7 +82,25 @@ and classes in the new pair with the previous one, and pin anything that changed
 `src/models/vehicles.models.ts`, such as `VEH_TYPE_OVERRIDES`. `pnpm release:layers <version> --dry-run --csv <path>`
 builds a pair and stops, so it can be inspected before a release.
 
+A pair is stamped with the game version it was exported from. The installed version is recorded in the game binary as
+the UTF-16 string `Squad/v<version>`:
+
+```sh
+python3 -c "import re,sys; print(set(re.findall(rb'S\0q\0u\0a\0d\0/\0v\0(?:[0-9.]\0)+', open(sys.argv[1],'rb').read())))" \
+  ~/.local/share/Steam/steamapps/common/Squad/SquadGame/Binaries/Win64/SquadGame-Win64-Shipping.exe
+```
+
 ### Mods from the Steam Workshop
+
+A mod is shipped only while it is updated for the current version of Squad. A mod last updated before the current game
+version was released is left out of the pair, by removing its directory from `data/sources/`, until it is updated
+again. These are the workshop items the mod sources come from, including the ones currently left out:
+
+| Source                | Workshop id  |
+| --------------------- | ------------ |
+| `supermod`            | `3293347373` |
+| `resurgence`          | `3687169051` |
+| `galactic-contention` | `2428425228` |
 
 Squad mods are published on the Steam Workshop, where each one has a numeric workshop id: the `id` in the mod's
 workshop page URL. Pass the extractor the directory that holds the mod's files:
@@ -199,6 +217,7 @@ A mod adds a source: a directory under `data/sources/` holding the mod's `layers
 | `mapAbbreviations`      | an abbreviation for every map the core table does not know                          |
 | `gamemodeAbbreviations` | an abbreviation for every gamemode the core table does not know                     |
 | `gamemodeRenames`       | maps the export's spelling of a gamemode onto the one layer names use               |
+| `mapRenames`            | maps a second spelling of a map onto the one its other layers use                   |
 | `extraUnitTypes`        | unit types beyond the core ones, with an abbreviation and short name                |
 | `unitTypeOverrides`     | the unit type of a unit object whose name cannot be parsed                          |
 | `layerOverrides`        | per-layer fixes for an export whose fields are wrong, keyed by level name           |
@@ -208,6 +227,13 @@ map with no abbreviation or two map layers that share a layer name. Add a manife
 it again.
 
 A mod's layers have no scores until the csv has rows for them. Score them like any other layer, by their in-game name.
+
+## Releasing
+
+`pnpm release:layers <version>` builds the pair, runs the e2e suite against it, commits and pushes the pair to main,
+then drafts a Layer Data release. The push needs a clean checkout of main. From a worktree, commit the pair on the
+branch, run `pnpm release:layers <version> --no-preflight` to test the pair and draft the release without committing,
+and publish the draft once the branch has merged.
 
 ## Deploying
 

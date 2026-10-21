@@ -63974,7 +63974,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 20.0,
-          "vehType": "CAS",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "map_attackhelo",
           "classNames": [
@@ -74074,7 +74074,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 5.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -74094,7 +74094,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 20.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -117131,7 +117131,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 5.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -117499,7 +117499,7 @@
           "count": 1.0,
           "delay": 0.0,
           "respawnTime": 4.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_scout",
           "classNames": [
@@ -117540,7 +117540,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -117942,7 +117942,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [
@@ -118358,7 +118358,7 @@
           "count": 1.0,
           "delay": 6.0,
           "respawnTime": 15.0,
-          "vehType": "",
+          "vehType": "AH",
           "spawnerSize": "HELICOPTER",
           "icon": "T_map_helicopter_lightcas",
           "classNames": [

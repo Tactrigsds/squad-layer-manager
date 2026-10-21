@@ -145,7 +145,8 @@ can be WPMC on Narva.
 
 ## Mod support
 
-SLM's layer catalog covers vanilla Squad and three mods: SuperMod, Resurgence and Galactic Contention. Each layer's
+SLM's layer catalog covers vanilla Squad and SuperMod. Resurgence and Galactic Contention are left out until each is
+updated for the current version of Squad. Each layer's
 _Collection_ column records whether the layer is vanilla (`OWI`) or which mod it comes from, so a filter can include or
 exclude a whole mod. Each server's settings name the mods that server has installed, and SLM never queues, generates or
 offers a layer from a mod the server lacks.
