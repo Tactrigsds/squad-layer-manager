@@ -192,7 +192,7 @@ if (command != null && command.StartsWith("dump:"))
 {
 	var needle = command["dump:".Length..];
 	var file = searchKeys
-		.Where(k => k.EndsWith(".uasset") && k.Contains(needle, StringComparison.OrdinalIgnoreCase))
+		.Where(k => (k.EndsWith(".uasset") || k.EndsWith(".umap")) && k.Contains(needle, StringComparison.OrdinalIgnoreCase))
 		.OrderBy(k => k.Length)
 		.FirstOrDefault();
 	if (file == null)
@@ -401,6 +401,22 @@ string AllianceOf(string factionId)
 
 // ---------------------------------------------------------------- layers
 
+// Whether the layer's world uses world partition, which makes it a distinct layer from its twin on the same map
+// (Yehorivka_AAS_v1_WP beside Yehorivka_AAS_v1). Null where the world is not on disk: a partial mod fetch leaves the
+// worlds out.
+var missingWorlds = 0;
+bool? WorldPartitioned(JObject props)
+{
+	var world = RefPackage((props["Worlds"] as JArray)?.FirstOrDefault());
+	var file = world == null ? null : CandidateFilePaths(world).Select(p => Path.ChangeExtension(p, ".umap")).FirstOrDefault(provider.Files.ContainsKey);
+	if (file == null)
+	{
+		missingWorlds++;
+		return null;
+	}
+	return provider.LoadPackage(file).GetExports().Any(e => e.ExportType == "WorldPartition");
+}
+
 var layerFiles = searchKeys
 	.Where(k =>
 		(k.Contains("Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) || k.Contains("/GLD/", StringComparison.OrdinalIgnoreCase))
@@ -527,6 +543,7 @@ foreach (var layerFile in layerFiles)
 		["lightingLevel"] = "",
 		["commander"] = !(gameFlags?["CommanderDisabled"]?.ToObject<bool>() ?? gameFlags?["bCommanderDisabled"]?.ToObject<bool>() ?? false),
 		["persistentLightingType"] = props["PersistentLightingType"]?["RowName"]?.ToString(),
+		["worldPartitioned"] = WorldPartitioned(props),
 		["factions"] = factions,
 		["separatedFactionsList"] = separated,
 		["teamConfigs"] = teamConfigs,
@@ -732,6 +749,7 @@ var output = new JObject
 	["MeleeWeapons"] = new JArray(),
 };
 
+if (missingWorlds > 0) Console.Error.WriteLine($"warn: {missingWorlds} layers' worlds are not on disk; their worldPartitioned is null");
 Console.Error.WriteLine($"extracted {maps.Count} layers, {units.Count} units");
 var json = output.ToString(Formatting.Indented);
 if (outPath != null)
